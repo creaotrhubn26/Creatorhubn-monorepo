@@ -21,7 +21,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Pool } from "pg";
 import Stripe from "stripe";
 
-type RequireAdminSession = (req: Request, res: Response, next: NextFunction) => void;
+type RequireAdminSession = (req: Request, res: Response) => { userId: string; email: string; name: string; role: string; loginAt: string } | null;
 
 let stripeClient: Stripe | null = null;
 const getStripe = (): Stripe | null => {

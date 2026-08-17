@@ -24,6 +24,7 @@ import Movie from '@mui/icons-material/Movie';
 import { WsCard, WsTag, WsModal } from '../ui';
 import { wsIcon } from '../crewIcons';
 import AiBuyCreditsModal from '../AiBuyCreditsModal';
+import { useCaptureRealtime } from '../useCaptureRealtime';
 
 const STATUS_META: any = {
   approved: { label: 'Godkjent', tone: 'green', dot: ws.green, icon: 'Check' },
@@ -87,6 +88,8 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     }).catch(() => {});
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId]);
+  // Sanntid: refetch INSTANT når iPad-en skyter/culler nye bilder inn i denne capture-sesjonen (WS).
+  const { live: capLive } = useCaptureRealtime(projectId, () => load());
 
   const assets = data?.assets || [];
   const stats = data?.stats || {};
@@ -213,7 +216,15 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       {/* Header */}
       <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 2 }}>
         <Box>
-          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Photo Review</Typography>
+          <Stack direction="row" alignItems="center" spacing={1.25}>
+            <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Photo Review</Typography>
+            {capLive && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, px: 1, py: 0.25, borderRadius: 999, bgcolor: ws.greenSoft }}>
+                <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#22c55e' }} />
+                <Typography sx={{ fontSize: 11, color: '#22c55e', fontWeight: 600 }}>Live</Typography>
+              </Box>
+            )}
+          </Stack>
           <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Produsent-side bilde-review — godkjenning, Før/Etter, klient-kommentarer og utvalg. Samme rom klienten ser.</Typography>
         </Box>
         {sel?.id && <Button variant="contained" startIcon={<Send sx={{ fontSize: 17 }} />} onClick={approveSelection} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Godkjenn utvalg</Button>}

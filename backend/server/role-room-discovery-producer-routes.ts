@@ -75,7 +75,7 @@ export function setupRoleRoomDiscoveryProducerRoutes(deps: RoleRoomDiscoveryProd
 
   // Resolve + authorize a connection for the session; returns {fresh, token} or null (response sent).
   async function resolve(req: express.Request, res: express.Response) {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return null;
     const connectionId = typeof req.query.connectionId === "string" ? req.query.connectionId : "";
     if (!connectionId) {

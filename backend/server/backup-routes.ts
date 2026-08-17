@@ -48,21 +48,21 @@ export interface BackupRoutesDeps {
   // index.ts readString returnerer string | null — bruk samme signatur så
   // wiring matcher (vi koalescerer til "" inni route-handlers ved behov).
   readString: (value: unknown) => string | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   readGoogleWorkspaceBackupStatus: (userId: string) => Promise<any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   derivePreferredGoogleWorkspaceOauthApps: (req: express.Request) => any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   buildGoogleWorkspaceStorageSnapshot: (userId: string, preferredOauthApps: any) => Promise<any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   buildGoogleContactsStatusSnapshot: (userId: string, preferredOauthApps: any) => Promise<any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   buildGooglePhotosStatusSnapshot: () => Promise<any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   resolveRoleRoomGoogleConnection: (pool: Pool, userId: string, opts: { preferredOauthApps: any }) => Promise<any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   ensureGoogleDriveBackupFolder: (driveApi: any) => Promise<any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   sanitizeBackupFileSegment: (value: any, fallback: string) => string;
   ensureGoogleWorkspaceBackupDir: (userId: string) => Promise<string>;
   getGoogleWorkspaceLatestBackupPath: (userId: string) => string;

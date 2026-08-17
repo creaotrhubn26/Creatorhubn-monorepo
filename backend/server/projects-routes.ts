@@ -4,6 +4,7 @@ import { promises as fs } from "fs";
 import { existsSync } from "fs";
 import path from "path";
 import { readString } from "./_shared";
+import { broadcastUserEvent } from "./realtime-user-events.js";
 
 export interface ProjectsRoutesDeps {
   app: express.Application;
@@ -1580,6 +1581,11 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
       if (!result.ok) {
         return res.status(404).json({ error: result.error });
       }
+      broadcastUserEvent(userId, {
+        kind: "shot.list-updated",
+        projectId,
+        timestamp: new Date().toISOString(),
+      });
       res.json({ success: true, data: result.data });
     } catch (error) {
       console.error("Error persisting shot list:", error);

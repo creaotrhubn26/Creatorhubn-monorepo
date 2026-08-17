@@ -2,6 +2,26 @@ import "dotenv/config";
 import { config } from "dotenv";
 config({ override: true });
 
+// Extend Express Request with adminSession property
+declare global {
+  namespace Express {
+    interface Request {
+      adminSession?: {
+        userId: string;
+        email: string;
+        name: string;
+        role: string;
+        loginAt: string;
+        impersonatedByAdmin?: boolean;
+        impersonatorId?: string;
+        impersonatorEmail?: string;
+        impersonatorSnapshot?: any;
+        impersonationExpiresAt?: number;
+      };
+    }
+  }
+}
+
 // Sentry MUST initialiseres FØR alle andre imports for å fange tidlig errors
 import { initBackendSentry, buildSentryErrorMiddleware } from "./sentry-init.js";
 initBackendSentry();
@@ -90,7 +110,6 @@ import { registerRoleRoomMarketingPreviewVideoRoutes } from "./role-room-marketi
 import { registerRoleRoomIntakeVersionsRoutes } from "./role-room-intake-versions-routes.js";
 import { registerRoleRoomPlanVersionsRoutes } from "./role-room-plan-versions-routes.js";
 import { registerRoleRoomMarketingActivityFeedRoutes } from "./role-room-marketing-activity-feed-routes.js";
-import { buildCmsR2Config } from "./cms-media-service.js";
 import {
   maybeStartAuditionReminderSweep,
   readAuditionReminderStatus,
@@ -474,6 +493,7 @@ import { setupNextRoleArbeidsplassenRoutes } from "./nextrole-arbeidsplassen";
 import { setupNextRolePublicCvAnalyticsRoutes } from "./nextrole-public-cv-analytics";
 import { setupNextRoleEducationVerificationRoutes } from "./nextrole-education-verification";
 import { setupNextRoleCareerMentorRoutes } from "./nextrole-career-mentor";
+import { setupNextRoleCvRoutes } from "./nextrole-cv-routes";
 import {
   setupMetaCapiRoutes,
   sendCheckoutCapiEvent,
@@ -2034,6 +2054,11 @@ const KNOWN_ORIGINS = new Set([
   'tauri://localhost',
   'http://tauri.localhost',
   'https://tauri.localhost',
+  // `npm run tauri dev`: webview laster fra vite dev-server (strictPort 1420),
+  // så webview-origin er http://localhost:1420 — IKKE tauri://localhost. Uten
+  // denne får dev-innlogging «TypeError: Load failed» (200 uten CORS-header).
+  'http://localhost:1420',
+  'http://127.0.0.1:1420',
 ]);
 app.use(helmet({
   // API-only backend — no HTML served, so CSP is not needed
@@ -2331,6 +2356,7 @@ function requireAdminSession(
     return null;
   }
 
+  (req as any).adminSession = session;
   return session;
 }
 
@@ -2439,36 +2465,11 @@ app.use("/api/desktop", createDesktopAuthRouter(pool));
 app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
 
 // Role Room member profile (separat fra Creatorhub-profil) — central solution
-// for alle Role Room-medlemmer. Inkluderer onboarding-state + R2-image-upload.
-// Bruker statiske imports av aws-sdk (toppen av filen) — `require()` her
-// før genererte esbuild-bundle som kastet `Dynamic require of @aws-sdk/client-s3`
-// ved boot på Render, så hele backend feilet å starte og alle deploys
-// siden 2026-05-28 18:16 var "update_failed".
-{
-  const r2cfg = buildCmsR2Config();
-  let uploadImage: ((buf: Buffer, mime: string, key: string) => Promise<string>) | undefined;
-  if (r2cfg.enabled && r2cfg.endpoint && r2cfg.accessKeyId && r2cfg.secretAccessKey && r2cfg.bucket) {
-    const client = new S3Client({
-      region: "auto",
-      endpoint: r2cfg.endpoint,
-      credentials: {
-        accessKeyId: r2cfg.accessKeyId,
-        secretAccessKey: r2cfg.secretAccessKey,
-      },
-    });
-    const bucket = r2cfg.bucket;
-    const publicBase = r2cfg.publicUrlBase?.replace(/\/+$/, "");
-    uploadImage = async (buffer, mimeType, key) => {
-      await client.send(new PutObjectCommand({
-        Bucket: bucket, Key: key, Body: buffer,
-        ContentType: mimeType,
-        CacheControl: "public, max-age=31536000, immutable",
-      }));
-      return publicBase ? `${publicBase}/${key}` : `${r2cfg.endpoint}/${bucket}/${key}`;
-    };
-  }
-  registerRoleRoomProfileRoutes(app, { pool, activeSessions, uploadImage, requireAdminSession });
-}
+// for alle Role Room-medlemmer. Profilbilder lastes opp til The Role Room sin
+// B2-bøtte (the-role-room-prod) via b2-archive-helper.ts — ikke R2. B2-nøklene
+// (B2_ROLE_ROOM_*) er satt på Render; signerte URL-er genereres on-demand ved
+// hver profil-lesing, så bøtta forblir privat.
+registerRoleRoomProfileRoutes(app, { pool, activeSessions, requireAdminSession });
 registerRoleRoomProjectTabConfigRoutes(app, { pool, activeSessions });
 registerRoleRoomProjectMembersRoutes(app, { pool, activeSessions });
 registerRoleRoomSeatManagementRoutes(app, { pool, activeSessions });
@@ -6037,6 +6038,7 @@ export type CompatGearNewsItem = {
   isNorwegian?: boolean;
   publishedAt?: string;
   source?: string;
+  imageUrl?: string;
 };
 
 type GearNewsSourceDefinition = {
@@ -6322,6 +6324,13 @@ const parseFeedItems = (
       const brand = guessBrand(title);
       const idSeed = `${source.id}|${link}|${title}|${index}`;
 
+      // Thumbnail fra RSS: media:thumbnail/media:content url-attributt, ellers enclosure.
+      const thumbSrc =
+        (entry.match(/<media:thumbnail[^>]*url="([^"]+)"/i) || [])[1] ||
+        (entry.match(/<media:content[^>]*url="([^"]+)"/i) || [])[1] ||
+        (entry.match(/<enclosure[^>]*url="([^"]+)"/i) || [])[1] ||
+        undefined;
+
       return {
         id: `live-${source.id}-${crypto.createHash("sha1").update(idSeed).digest("hex").slice(0, 12)}`,
         title,
@@ -6342,6 +6351,7 @@ const parseFeedItems = (
         isNorwegian: Boolean(source.isNorwegian),
         publishedAt,
         source: source.name,
+        imageUrl: thumbSrc && thumbSrc.startsWith("http") ? thumbSrc : undefined,
       } as CompatGearNewsItem;
     })
     .filter((item): item is CompatGearNewsItem => Boolean(item));
@@ -15057,7 +15067,7 @@ app.get("/api/profession/config/:profession", async (req, res) => {
 });
 
 app.post("/api/profession/config/:profession", async (req, res) => {
-  const session = requireAdminSession(req, res);
+  const session = req.adminSession;
   if (!session) return;
 
   const profession =
@@ -17324,6 +17334,7 @@ setupNextRoleArbeidsplassenRoutes({ app, getActiveSessionFromRequest });
 setupNextRolePublicCvAnalyticsRoutes({ app, pool, getActiveSessionFromRequest });
 setupNextRoleEducationVerificationRoutes({ app, pool, getActiveSessionFromRequest });
 setupNextRoleCareerMentorRoutes({ app, pool, getActiveSessionFromRequest });
+setupNextRoleCvRoutes({ app, pool, getActiveSessionFromRequest });
 setupMetaCapiRoutes({ app, getActiveSessionFromRequest });
 
 app.post("/api/demo/troll/seed-all", async (req, res) => {
@@ -23553,7 +23564,7 @@ async function buildGoogleWorkspaceStorageSnapshot(
     (googleDriveConnected ? "connected" : "disconnected");
   let driveAccountEmail =
     readString(connectionRow.google_account_email) || null;
-  let lastDriveSyncAt = readOptionalIsoDate(
+  const lastDriveSyncAt = readOptionalIsoDate(
     connectionRow.last_sync ?? connectionRow.updated_at,
   );
   let dataSource: "live-drive" | "database-estimate" = "database-estimate";
@@ -27958,7 +27969,7 @@ async function syncCreatorHubStripeCheckoutSession(
 // webhook-hooken ble lagt til. Ikke-destruktiv (rører aldri en org som allerede
 // har en kunde-id) og skriver ALDRI til Stripe. Kun super_admin.
 app.post("/api/superadmin/creatorhub/backfill-org-stripe-links", async (req, res) => {
-  const session = requireAdminSession(req, res);
+  const session = req.adminSession;
   if (!session) return;
   if (String(session.role || "").trim().toLowerCase() !== "super_admin") {
     return res.status(403).json({ error: "Krever super-admin" });
@@ -30680,7 +30691,7 @@ function buildRoleRoomCommercialCheckoutRecordFromInviteRequest(
     seatPriceExVat: snapshot.seatPriceExVat || plan.seatPriceExVat,
     billableSeatCount: snapshot.teamSize || memberEmails.length || 1,
     paymentCompleted: Boolean(inviteRequest.payment_completed),
-    checkoutStatus: Boolean(inviteRequest.payment_completed)
+    checkoutStatus: inviteRequest.payment_completed
       ? "completed"
       : snapshot.billingStatus === "payment_failed"
         ? "payment_failed"
@@ -30779,7 +30790,7 @@ async function readRoleRoomCommercialRequestIdentity(
 }
 
 function scoreRoleRoomCommercialInviteRow(row: Record<string, unknown>) {
-  const paymentCompleted = Boolean(row.payment_completed) ? 1000 : 0;
+  const paymentCompleted = row.payment_completed ? 1000 : 0;
   const updatedAt = Date.parse(toAdminString(row.updated_at) || "") || 0;
   const createdAt = Date.parse(toAdminString(row.created_at) || "") || 0;
   return paymentCompleted + Math.max(updatedAt, createdAt);
@@ -30991,7 +31002,7 @@ async function resolveRoleRoomCommercialAccountForRequest(
   const stripe = getRoleRoomStripeClient();
 
   let subscriptionStatus: string | null = null;
-  let stripeSubscriptionId =
+  const stripeSubscriptionId =
     snapshot.stripeSubscriptionId || record?.stripeSubscriptionId || null;
   let stripeCustomerId =
     snapshot.stripeCustomerId || record?.stripeCustomerId || null;
@@ -31190,7 +31201,7 @@ async function runRoleRoomCommercialReminderSweep(
           snapshot.memberIsLeader === true ||
           (snapshot.teamLeadEmail || "") === normalizedEmail;
 
-        if (!Boolean(row.payment_completed)) {
+        if (!row.payment_completed) {
           const teamKey = buildRoleRoomCommercialReminderTeamKey(snapshot);
           const existingGroup = paymentGroups.get(teamKey);
           if (!existingGroup) {
@@ -31564,7 +31575,7 @@ async function getRoleRoomCommercialLoginGate(input: {
     };
   }
 
-  if (!Boolean(inviteRequest.payment_completed)) {
+  if (!inviteRequest.payment_completed) {
     return {
       required: true,
       allowed: false,
@@ -43399,7 +43410,7 @@ app.get("/api/prototype-tester-requests", async (req, res) => {
   try {
     // Staff-only: denne lista er applikanters PII (navn/e-post/firma/enhet).
     // Manglet auth tidligere → hvem som helst kunne dumpe alle søknader.
-    const admin = requireAdminSession(req, res);
+    const admin = req.adminSession;
     if (!admin) return;
     const tableCheck = await pool.query(
       `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'prototype_tester_requests')`,
@@ -43457,7 +43468,7 @@ app.post("/api/prototype-tester-requests/:id/process", async (req, res) => {
   try {
     // Staff-only: prosessering (godkjenn/avslå) er en admin-handling.
     // Manglet auth → hvem som helst kunne endre status på vilkårlig søknad.
-    const admin = requireAdminSession(req, res);
+    const admin = req.adminSession;
     if (!admin) return;
     const { id } = req.params;
     const { status, notes } = req.body;
@@ -43499,7 +43510,7 @@ app.get("/api/business-lifecycle/profile-by-email/:email", async (req, res) => {
     // Staff-only: slår opp en vilkårlig e-post og returnerer sammenslått PII
     // (firmanavn/orgnr/adresse/telefon m.m.). Kun admin-invite-konsollen kaller
     // dette. Manglet auth → åpen e-post→PII-oppslag for hvem som helst.
-    const admin = requireAdminSession(req, res);
+    const admin = req.adminSession;
     if (!admin) return;
     const { email } = req.params;
     // Aggregate profile from invite_requests + vendors + creatorhub_users
@@ -45535,7 +45546,7 @@ async function getAdminAcademyRevenueSnapshot(): Promise<{
     const courseId = toAdminString(row.id);
     if (courseId) {
       distinctCourseIds.add(courseId);
-      if (Boolean(row.is_published)) {
+      if (row.is_published) {
         publishedCourseIds.add(courseId);
       }
     }
@@ -47187,7 +47198,7 @@ app.put(
       const { events } = req.body;
 
       // Find timeline
-      let tlResult = await pool.query(
+      const tlResult = await pool.query(
         "SELECT id FROM wedding_timelines WHERE wedding_id = $1 OR project_id = $1 OR id = $1 LIMIT 1",
         [weddingId],
       );
@@ -47218,7 +47229,7 @@ app.post(
       const { weddingId } = req.params;
       const eventData = req.body;
 
-      let tlResult = await pool.query(
+      const tlResult = await pool.query(
         "SELECT id, wedding_date FROM wedding_timelines WHERE wedding_id = $1 OR project_id = $1 OR id = $1 LIMIT 1",
         [weddingId],
       );
@@ -65042,7 +65053,7 @@ app.post("/api/audio/mix", async (req, res) => {
     let demucsApplied = false;
     let demucsUsedModel = false;
     let demucsAppliedTracks = 0;
-    let demucsMetaSamples: Array<Record<string, unknown>> = [];
+    const demucsMetaSamples: Array<Record<string, unknown>> = [];
     const demucsRuntimeWarnings: string[] = [];
     let demucsModel =
       readString(mixContext.demucsModel) || AUDIO_MIX_DEMUCS_MODEL;
@@ -65164,7 +65175,7 @@ app.post("/api/audio/mix", async (req, res) => {
     let ffmpegApplied = false;
     let twoPassLoudnorm = false;
     const warnings: string[] = [...demucsRuntimeWarnings];
-    let masteringPrefixFilter = buildAudioMixMasteringPrefixFilter(
+    const masteringPrefixFilter = buildAudioMixMasteringPrefixFilter(
       selectedMasteringStage,
     );
     const arnndnAvailable = AUDIO_MIX_ARNNDN_MODEL_PATH_EFFECTIVE !== null;
@@ -75437,9 +75448,9 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   void (async () => {
     try {
       const r = await pool.query<{
-        token: string; user_id: string; email: string | null; role: string | null;
+        token: string; user_id: string; email: string | null; name: string | null; role: string | null;
       }>(
-        `SELECT t.token, t.user_id, u.email, u.role
+        `SELECT t.token, t.user_id, u.email, u.name, u.role
            FROM ipad_tokens t
            JOIN users u ON u.id::text = t.user_id
           WHERE t.revoked_at IS NULL`,
@@ -75450,7 +75461,9 @@ httpServer.listen(PORT, "0.0.0.0", () => {
           activeSessions.set(row.token, {
             userId: row.user_id,
             email: row.email ?? "",
+            name: row.name ?? "",
             role: row.role ?? "member",
+            loginAt: new Date().toISOString(),
           });
           hydrated++;
         }

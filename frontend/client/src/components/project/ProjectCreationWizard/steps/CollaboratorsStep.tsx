@@ -1,0 +1,49 @@
+// @ts-nocheck
+import React from "react";
+// CollaboratorsStep - Team collaborators management
+import { Box, Typography, Button } from '@mui/material';
+import { Groups } from '@mui/icons-material';
+
+interface CollaboratorsStepProps {
+  projectData: any;
+  updateProjectData: (updates: Partial<any>) => void;
+  collaborators: any[];
+  onCollaboratorsChange: (collaborators: any[]) => void;
+  onNext: () => void;
+  onBack: () => void;
+  canProceed: boolean;
+}
+
+export function CollaboratorsStep({ projectData, updateProjectData, collaborators, onNext, onBack, canProceed }: {
+  projectData: any;
+  updateProjectData: (updates: Partial<any>) => void;
+  collaborators: any[];
+  onNext: () => void;
+  onBack: () => void;
+  canProceed: boolean;
+}) {
+  return (
+    <Box sx={{ p: 3, maxWidth: 800, mx: 'auto' }}>
+      <Typography variant="h5" gutterBottom sx={{ fontWeight: 700, mb: 3 }}>
+        Samarbeidspartnere
+      </Typography>
+
+      <div style={{ padding: 24, background: 'rgba(21,101,192,0.08)', borderRadius: 8, border: '1px solid rgba(21,101,192,0.2)', mb: 3 }}>
+        <Typography variant="h6" gutterBottom>Samarbeidspartnere</Typography>
+        <p>Legg til samarbeidspartnere for dette prosjektet.</p>
+        <p style={{ marginTop: 12, color: 'text.secondary' }}>Nåværende partnere: {collaborators?.length || 0}</p>
+      </div>
+
+      <div style={{ marginTop: 24, display: 'flex', justifyContent: 'space-between' }}>
+        <button onClick={onBack} style={{ padding: '12px 24px', border: '1.5px solid rgba(255,255,255,0.3)', background: 'transparent', color: 'rgba(255,255,255,0.95)', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>
+          ← Tilbake
+        </button>
+        <button onClick={onNext} disabled={!canProceed} style={{ padding: '16px 32px', fontSize: '1.1rem', fontWeight: 700, background: 'linear-gradient(135deg, #1565c0 0%, #0d47a1 100%)', color: 'white', border: 'none', borderRadius: '8px', cursor: canProceed ? 'pointer' : 'not-allowed', opacity: canProceed ? 1 : 0.6 }}>
+          Fortsett →
+        </button>
+      </div>
+    </Box>
+  );
+}
+
+export default CollaboratorsStep;

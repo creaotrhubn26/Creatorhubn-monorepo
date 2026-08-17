@@ -178,7 +178,7 @@ async function metaRequest<T>(
     const err = (raw as { error?: { message?: string; type?: string; code?: number } })?.error;
     throw new MetaAdsApiError(
       res.status,
-      "internal_error" || `Meta API ${method} ${path} failed (HTTP ${res.status})`,
+      `Meta API ${method} ${path} failed (HTTP ${res.status})`,
       raw as MetaAdsApiError["meta"],
     );
   }

@@ -27,13 +27,13 @@
 import type express from "express";
 import type { Pool } from "pg";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 export interface AdminIntegrationsExtrasRoutesDeps {
   app: express.Application;
   pool: Pool;
   requireAdminSession: (req: express.Request, res: express.Response) => any;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
+ 
 
 // ── Whitelist over env-key-prefikser vi tillater å eksponere navnet på ──
 // VIKTIG: vi returnerer KUN navnet, aldri value.

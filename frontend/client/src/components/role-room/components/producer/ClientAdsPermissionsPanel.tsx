@@ -13,7 +13,7 @@
  *   POST /api/role-room/ads-configs/:id/permissions/revoke
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useCallback, useState } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress,
   Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
@@ -117,9 +117,11 @@ interface Props {
   platforms?: { tiktok?: boolean; meta?: boolean; linkedin?: boolean; google?: boolean };
 }
 
+const DEFAULT_PLATFORMS = { tiktok: true, meta: true, linkedin: true, google: true };
+
 export default function ClientAdsPermissionsPanel({
   configId,
-  platforms = { tiktok: true, meta: true, linkedin: true, google: true },
+  platforms = DEFAULT_PLATFORMS,
 }: Props) {
   const [state, setState] = useState<State | null>(null);
   const [loading, setLoading] = useState(false);
@@ -130,9 +132,9 @@ export default function ClientAdsPermissionsPanel({
   const [revokeOpen, setRevokeOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const visibleActions = ACTIONS.filter((a) => platforms[a.platform] !== false);
+  const visibleActions = useMemo(() => ACTIONS.filter((a) => platforms[a.platform] !== false), [platforms]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -155,7 +157,7 @@ export default function ClientAdsPermissionsPanel({
     } finally {
       setLoading(false);
     }
-  };
+  }, [configId, visibleActions]);
 
   const save = async () => {
     setSaving(true);

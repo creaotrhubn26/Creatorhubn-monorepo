@@ -170,7 +170,7 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
   // ═══════════════════════════════════════════════════════════
 
   app.get('/api/admin/community/channels', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     try {
       const result = await pool.query<CommunityChannelRow>(
@@ -187,7 +187,7 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
   });
 
   app.post('/api/admin/community/channels', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
     const channelType = String(body.channel_type ?? '').trim();
@@ -221,7 +221,7 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
   });
 
   app.patch('/api/admin/community/channels/:id', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const id = String(req.params.id || '').trim();
     if (!id) return res.status(400).json({ success: false, error: 'id påkrevd' });
@@ -253,7 +253,7 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
   });
 
   app.delete('/api/admin/community/channels/:id', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const id = String(req.params.id || '').trim();
     try {
@@ -271,7 +271,7 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
   // ═══════════════════════════════════════════════════════════
 
   app.get('/api/admin/community/posts', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const channelId = req.query.channelId ? String(req.query.channelId) : null;
     try {
@@ -294,7 +294,7 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
   });
 
   app.post('/api/admin/community/posts', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
     const channelId = String(body.channel_id ?? '').trim();
@@ -330,7 +330,7 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
   });
 
   app.patch('/api/admin/community/posts/:id', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const id = String(req.params.id || '').trim();
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -364,7 +364,7 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
   });
 
   app.delete('/api/admin/community/posts/:id', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const id = String(req.params.id || '').trim();
     try {
@@ -382,7 +382,7 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
   // ═══════════════════════════════════════════════════════════
 
   app.get('/api/admin/community/contacts', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     try {
       const result = await pool.query<OutreachContactRow>(
@@ -399,7 +399,7 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
   });
 
   app.post('/api/admin/community/contacts', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
     const name = String(body.name ?? '').trim();
@@ -433,7 +433,7 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
   });
 
   app.patch('/api/admin/community/contacts/:id', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const id = String(req.params.id || '').trim();
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -467,7 +467,7 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
   });
 
   app.delete('/api/admin/community/contacts/:id', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const id = String(req.params.id || '').trim();
     try {
@@ -487,7 +487,7 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
   // Krever bare manuell trigger; ingen auto-refresh ennå.
 
   app.post('/api/admin/community/posts/:id/refresh-reddit', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const postId = String(req.params.id || '').trim();
     if (!postId) return res.status(400).json({ success: false, error: 'post-id påkrevd' });
@@ -537,7 +537,7 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
 
   // Status-endpoint: lar AdminRoom vise om OAuth er konfigurert
   app.get('/api/admin/community/reddit/status', (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     res.json({
       success: true,
@@ -547,7 +547,7 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
   });
 
   app.get('/api/admin/community/reddit/mentions', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const query = String(req.query.q || 'The Role Room').trim();
     if (!query) return res.status(400).json({ success: false, error: 'q (søkeord) påkrevd' });
@@ -573,7 +573,7 @@ export function setupCommunityPresenceRoutes(deps: CommunityPresenceRoutesDeps):
   // innhold etterpå. Lar admin se template-en separat fra agenten
   // selv.
   app.get('/api/admin/community/post-template', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const channelType = String(req.query.channel_type || '').trim().toLowerCase();
     const topic = String(req.query.topic || '').trim() || 'The Role Room';

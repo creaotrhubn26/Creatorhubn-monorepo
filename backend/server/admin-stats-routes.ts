@@ -18,7 +18,7 @@
 
 import type express from "express";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 export interface AdminStatsRoutesDeps {
   app: express.Application;
   requireAdminSession: (req: express.Request, res: express.Response) => any;
@@ -38,7 +38,7 @@ export interface AdminStatsRoutesDeps {
   isDateWithinWindow: (date: any, start: Date, endExclusive: Date) => boolean;
   roundAdminMetric: (value: number, decimals?: number) => number;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
+ 
 
 export function setupAdminStatsRoutes(deps: AdminStatsRoutesDeps): void {
   const {

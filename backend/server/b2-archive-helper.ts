@@ -22,8 +22,10 @@
  *   ad-hoc/{filename}   (manuelle uploads fra B2-arkiv-fanen)
  */
 
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import fs from "node:fs";
+import path from "node:path";
 
 // NB: the-role-room-prod-bøtta ligger i eu-central-003 (verifisert via B2
 // b2_authorize_account 2026-06-08). Defaulten var feil (us-west-001) → all
@@ -31,6 +33,16 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 // Render, men defaulten her må også være riktig så koden er korrekt uten env.
 const B2_REGION = process.env.B2_REGION || "eu-central-003";
 const B2_ENDPOINT = `https://s3.${B2_REGION}.backblazeb2.com`;
+
+const LOCAL_STORAGE_DIR = path.resolve(process.cwd(), "uploads", "b2_fallback");
+
+export function isRoleRoomB2Configured(): boolean {
+  return Boolean(
+    process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID &&
+    process.env.B2_ROLE_ROOM_APPLICATION_KEY &&
+    process.env.B2_ROLE_ROOM_BUCKET_NAME
+  );
+}
 
 function getRoleRoomB2Client(): { client: S3Client; bucket: string } | null {
   const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID;
@@ -74,16 +86,21 @@ export async function archiveToRoleRoomB2(
   body: Buffer | Uint8Array | string,
   contentType: string,
 ): Promise<{ bucket: string; key: string; size: number } | null> {
-  const config = getRoleRoomB2Client();
-  if (!config) {
-    console.warn(
-      "[b2-archive] Skipping upload — B2_ROLE_ROOM_* env-vars ikke satt. " +
-        `Ville skrevet til key=${key}`,
-    );
-    return null;
-  }
-
   const buf = typeof body === "string" ? Buffer.from(body, "utf8") : Buffer.from(body);
+  const config = getRoleRoomB2Client();
+
+  // Lokal disk-fallback når B2-credentials ikke er satt (dev / lokal testing)
+  if (!config) {
+    try {
+      const fullPath = path.resolve(LOCAL_STORAGE_DIR, key);
+      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+      fs.writeFileSync(fullPath, buf);
+      return { bucket: "local-fallback", key, size: buf.length };
+    } catch (err) {
+      console.warn("[b2-archive] local fallback upload failed", { key, err: (err as Error).message });
+      return null;
+    }
+  }
 
   try {
     await config.client.send(
@@ -113,7 +130,15 @@ export async function getFromRoleRoomB2(
   key: string,
 ): Promise<{ body: Buffer; contentType?: string } | null> {
   const config = getRoleRoomB2Client();
-  if (!config) return null;
+  if (!config) {
+    try {
+      const fullPath = path.resolve(LOCAL_STORAGE_DIR, key);
+      if (!fs.existsSync(fullPath)) return null;
+      return { body: fs.readFileSync(fullPath) };
+    } catch {
+      return null;
+    }
+  }
   try {
     const out = await config.client.send(
       new GetObjectCommand({ Bucket: config.bucket, Key: key }),
@@ -134,15 +159,22 @@ export async function getFromRoleRoomB2(
  * laste direkte fra B2 (ingen båndbredde gjennom Node).
  *
  * `downloadFilename` setter Content-Disposition slik at fila lagres med riktig
- * navn uansett key-struktur. Returnerer null hvis B2 ikke er konfigurert.
+ * navn uansett key-struktur. Returnerer lokal fallback-URL hvis B2 ikke er konfigurert.
  */
 export async function presignRoleRoomB2Download(
   key: string,
-  downloadFilename?: string,
+  downloadFilenameOrExpires?: string | number,
   expiresInSeconds = 300,
 ): Promise<string | null> {
+  if (!key) return null;
+  const downloadFilename = typeof downloadFilenameOrExpires === "string" ? downloadFilenameOrExpires : undefined;
+  const ttl = typeof downloadFilenameOrExpires === "number" ? downloadFilenameOrExpires : expiresInSeconds;
   const config = getRoleRoomB2Client();
-  if (!config) return null;
+  if (!config) {
+    const safeKey = key.split("/").map(encodeURIComponent).join("/");
+    const dlParam = downloadFilename ? `?download=${encodeURIComponent(downloadFilename)}` : "";
+    return `/api/local-storage/${safeKey}${dlParam}`;
+  }
   try {
     const command = new GetObjectCommand({
       Bucket: config.bucket,
@@ -151,7 +183,7 @@ export async function presignRoleRoomB2Download(
         ? { ResponseContentDisposition: `attachment; filename="${downloadFilename}"` }
         : {}),
     });
-    return await getSignedUrl(config.client, command, { expiresIn: expiresInSeconds });
+    return await getSignedUrl(config.client, command, { expiresIn: ttl });
   } catch (err) {
     console.warn("[b2-archive] presign failed", { key, err: (err as Error).message });
     return null;
@@ -180,6 +212,34 @@ export async function presignRoleRoomB2Upload(
   } catch (err) {
     console.warn("[b2-archive] presign upload failed", { key, err: (err as Error).message });
     return null;
+  }
+}
+
+/**
+ * Slett et objekt fra Role Room B2-bucketen. Best-effort — returnerer true
+ * hvis slettet, false hvis ikke konfigurert/ikke funnet. Brukes bl.a. for å
+ * holde per-bruker-mappene ryddige (f.eks. kun én profilbilde-fil per bruker).
+ */
+export async function deleteFromRoleRoomB2(key: string): Promise<boolean> {
+  const config = getRoleRoomB2Client();
+  if (!config) {
+    try {
+      const fullPath = path.resolve(LOCAL_STORAGE_DIR, key);
+      if (fs.existsSync(fullPath)) {
+        fs.unlinkSync(fullPath);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+  try {
+    await config.client.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: key }));
+    return true;
+  } catch (err) {
+    console.warn("[b2-archive] delete failed", { key, err: (err as Error).message });
+    return false;
   }
 }
 

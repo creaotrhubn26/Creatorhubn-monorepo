@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -379,9 +379,10 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
     isCastingWorkflow,
     isShootingWorkflow,
     selectedCandidates.length,
-    selectedCrew.length,
+    selectedCrew,
     selectedEquipment.length,
     selectedLocation,
+    crew,
   ]);
 
   const readinessScore = useMemo(() => {
@@ -412,16 +413,11 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
   const hasBlockingWorkflowGap = workflowGaps.some((gap) => gap.severity === 'error');
   const readinessLabel = hasBlockingWorkflowGap ? 'Blokkert' : workflowGaps.length > 0 ? 'Risiko' : 'Klar';
 
-  useEffect(() => {
-    loadEvents();
-    loadProjectData();
-  }, [projectId]);
-
-  const loadEvents = async () => {
+  const loadEvents = useCallback(async () => {
     setLoading(true);
     try {
       const eventsData = await calendarEventsApi.getAll(projectId);
-      setEvents(eventsData.sort((a, b) => 
+      setEvents(eventsData.sort((a, b) =>
         new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
       ));
     } catch (error) {
@@ -429,9 +425,9 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId, enqueueSnackbar]);
 
-  const refreshModalSources = async () => {
+  const refreshModalSources = useCallback(async () => {
     const [candidateResult, crewResult, locationResult, equipmentResult] = await Promise.allSettled([
       candidatesApi.getAll(projectId),
       crewApi.getAll(projectId),
@@ -462,9 +458,9 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
     setCrew((previous) => mergeCrewLists(previous, propCrew, apiCrew));
     setLocations((previous) => mergeNamedLists(previous, propLocations, apiLocations));
     setEquipment((previous) => mergeEquipmentLists(previous, apiEquipment));
-  };
+  }, [projectId, propCandidates, propCrew, propLocations]);
 
-  const loadProjectData = async () => {
+  const loadProjectData = useCallback(async () => {
     try {
       if (Array.isArray(propCandidates)) {
         setCandidates(sortNamed(propCandidates));
@@ -479,7 +475,12 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
     } catch (error) {
       console.error('Failed to load project data:', error);
     }
-  };
+  }, [propCandidates, propCrew, propLocations, refreshModalSources]);
+  useEffect(() => {
+    loadEvents();
+    loadProjectData();
+  }, [projectId, loadEvents, loadProjectData]);
+
 
   useEffect(() => {
     if (Array.isArray(propCandidates)) {
@@ -502,7 +503,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
   useEffect(() => {
     if (!dialogOpen) return;
     void refreshModalSources();
-  }, [dialogOpen, projectId]);
+  }, [dialogOpen, projectId, refreshModalSources]);
 
   const fetchEquipmentConflicts = async (equipmentIds: string[], start: string, end: string): Promise<{ conflicts: Map<string, EquipmentConflict[]>; conflictingIds: string[] }> => {
     const conflicts = new Map<string, EquipmentConflict[]>();
@@ -521,7 +522,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
     return { conflicts, conflictingIds };
   };
 
-  const fetchCrewConflicts = (crewIds: string[], start: string, end: string): Map<string, CrewConflict[]> => {
+  const fetchCrewConflicts = useCallback((crewIds: string[], start: string, end: string): Map<string, CrewConflict[]> => {
     // Konflikter beregnes fra ALLEREDE-lastet medlems-tilgjengelighet
     // (useProjectMemberAvailability) i stedet for det aldri-bygde
     // `/crew/:id/conflicts`-endepunktet (som ga 404 → konflikt-varsler viste
@@ -534,7 +535,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
       availabilityByUser,
       emailToUser,
     });
-  };
+  }, [crew, availabilityByUser, emailToUser]);
 
   useEffect(() => {
     if (!dialogOpen || !startTime) {
@@ -559,7 +560,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
     return () => {
       isCurrent = false;
     };
-  }, [dialogOpen, endTime, selectedCrew, selectedEquipment, startTime]);
+  }, [dialogOpen, endTime, selectedCrew, selectedEquipment, startTime, fetchCrewConflicts]);
 
   const sendCrewNotifications = async (crewIds: string[], eventTitle: string, eventId: string) => {
     for (const crewId of crewIds) {
@@ -671,7 +672,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
     };
 
     void applyPrefill();
-  }, [preselectedFromCreate, reopenDialogSignal]);
+  }, [preselectedFromCreate, reopenDialogSignal, refreshModalSources]);
 
   const handleSave = async () => {
     if (!title || !startTime) {

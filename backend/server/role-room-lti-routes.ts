@@ -506,7 +506,7 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
       // Les hvert arbeidskravs Canvas-resultater (godkjent = full score).
       const perTag = new Map<string, Map<string, boolean>>();
       for (const ak of arbeidskrav) {
-        // eslint-disable-next-line no-await-in-loop -- få arbeidskrav; sekvensielt er greit
+         
         const rr = await fetchResults(pool, req.params.id, ak.id);
         const passed = new Map<string, boolean>();
         if (rr.ok) {
@@ -578,7 +578,7 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
         const name = (m.name ?? "").trim() || (email ? email.split("@")[0] : "");
         if (!name || (emailKey && seen.has(emailKey))) { skipped++; continue; }
         if (emailKey) seen.add(emailKey);
-        // eslint-disable-next-line no-await-in-loop -- sekvensiell insert holder det enkelt
+         
         await pool.query(
           `INSERT INTO role_room_education_students (id, cohort_id, owner_user_id, name, email)
            VALUES ($1,$2,$3,$4,$5)`,
@@ -646,7 +646,7 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
       const results: { cohortId: string; section: string; name: string; added: number; skipped: number; total: number }[] = [];
       for (const g of groups) {
         // Find-or-create kull på (eier, navn) → re-import = synk, ikke duplikat.
-        // eslint-disable-next-line no-await-in-loop -- sekvensielt per seksjon holder det enkelt
+         
         const found = await pool.query(
           `SELECT id FROM role_room_education_cohorts WHERE owner_user_id = $1 AND name = $2 LIMIT 1`,
           [userId, g.name],
@@ -654,13 +654,13 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
         let cohortId = found.rows[0]?.id as string | undefined;
         if (!cohortId) {
           cohortId = newEntityId("cohort");
-          // eslint-disable-next-line no-await-in-loop
+           
           await pool.query(
             `INSERT INTO role_room_education_cohorts (id, owner_user_id, name) VALUES ($1,$2,$3)`,
             [cohortId, userId, g.name],
           );
         }
-        // eslint-disable-next-line no-await-in-loop
+         
         const existing = await pool.query(
           `SELECT lower(email) AS email FROM role_room_education_students WHERE cohort_id = $1 AND email IS NOT NULL`,
           [cohortId],
@@ -673,7 +673,7 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
           const name = (m.name ?? "").trim() || (email ? email.split("@")[0] : "");
           if (!name || (emailKey && seen.has(emailKey))) { skipped++; continue; }
           if (emailKey) seen.add(emailKey);
-          // eslint-disable-next-line no-await-in-loop
+           
           await pool.query(
             `INSERT INTO role_room_education_students (id, cohort_id, owner_user_id, name, email)
              VALUES ($1,$2,$3,$4,$5)`,
@@ -743,7 +743,7 @@ export function createLtiRouter(pool: Pool, deps: CreateLtiRouterDeps = {}): Exp
           );
           const missing: string[] = [];
           for (const ak of akRes.rows) {
-            // eslint-disable-next-line no-await-in-loop -- få arbeidskrav; sekvensielt greit
+             
             const rr = await fetchResults(pool, req.params.id, String(ak.id));
             const v = rr.ok ? rr.results.get(String(targetUserSub)) : undefined;
             const passed = !!v && v.max > 0 && v.score >= v.max;

@@ -59,7 +59,7 @@ export function setupRoleRoomDataSourcesRoutes(deps: DataSourcesRoutesDeps): voi
     if (!isCompatAdminFeatureEnabled(FEATURE_ID)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId || "").trim();
     if (!projectId) {
@@ -86,7 +86,7 @@ export function setupRoleRoomDataSourcesRoutes(deps: DataSourcesRoutesDeps): voi
     if (!isCompatAdminFeatureEnabled(FEATURE_ID)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId || "").trim();
     if (!projectId) {
@@ -123,7 +123,7 @@ export function setupRoleRoomDataSourcesRoutes(deps: DataSourcesRoutesDeps): voi
     if (!isCompatAdminFeatureEnabled(FEATURE_ID)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId || "").trim();
     const platform = String(req.params.platform || "").trim();
@@ -147,7 +147,7 @@ export function setupRoleRoomDataSourcesRoutes(deps: DataSourcesRoutesDeps): voi
     if (!isCompatAdminFeatureEnabled(FEATURE_ID)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const platform = String(req.query.platform || "").trim();
 
@@ -178,7 +178,7 @@ export function setupRoleRoomDataSourcesRoutes(deps: DataSourcesRoutesDeps): voi
     if (!isCompatAdminFeatureEnabled(FEATURE_ID)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId || "").trim();
     const platform = String(req.params.platform || "").trim();

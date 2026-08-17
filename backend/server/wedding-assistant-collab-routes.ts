@@ -19,7 +19,7 @@ import type express from "express";
 import crypto from "crypto";
 import { createGoogleMeetLink } from "./google-meet";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 export interface WeddingAssistantCollabDeps {
   app: express.Application;

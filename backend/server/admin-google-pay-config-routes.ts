@@ -241,7 +241,7 @@ export function setupAdminGooglePayConfigRoutes(
 
   // ─── PUT /api/admin/google-pay/config ────────────────────────
   app.put("/api/admin/google-pay/config", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     try {
       const exists = await configTableExists(pool);

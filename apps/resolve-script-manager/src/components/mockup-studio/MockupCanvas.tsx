@@ -10,12 +10,16 @@
  * for fart; eksporten kjører full oppløsning.
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { rasterizeMockup, measureTextHeight } from './mockupRaster';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { rasterizeMockup, measureTextHeight, annRect } from './mockupRaster';
 import { parseMermaidMindmap } from './mockupMindmap';
-import { deviceHeight, type MockupDoc, type MockupDeviceSlot, type MockupTextSlot } from './mockupStudioModel';
+import { deviceHeight, deriveTimeline, type MockupDoc, type MockupDeviceSlot, type MockupTextSlot, type MockupImageSlot, type MockupAnnotation } from './mockupStudioModel';
+import { convertFileSrc } from '../../api';
+// Robust: convertFileSrc krever Tauri; i browser-test-modus faller vi tilbake til rå sti/URL.
+const safeFileSrc = (p: string): string => { try { return p.startsWith('data:') || p.startsWith('http') ? p : convertFileSrc(p); } catch { return p; } };
 import { useMockupStudio, type Selection } from './mockupStudioStore';
 import { snapPosition, type Box } from './mockupArrange';
+import { MockupTimelinePanel } from './MockupTimelinePanel';
 
 /** Preview-oppløsning (bredde i px). Lavere = raskere re-render ved skriving. */
 const PREVIEW_W = 1200;
@@ -23,20 +27,140 @@ const NUDGE = 6;        // piltast-steg (base-px)
 const NUDGE_BIG = 48;   // med Shift
 const SNAP = 8;         // snap-terskel i base-px
 const MIN_ZOOM = 0.25, MAX_ZOOM = 4;
+const TL_FS = 'clamp(10px, 0.72vw, 12.5px)'; // responsiv transport-tekst (matcher timeline)
+const motionBtn: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 'clamp(32px, 2.3vw, 44px)', height: 'clamp(32px, 2.3vw, 44px)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.12)', color: '#eef1f6', cursor: 'pointer', fontSize: TL_FS };
+const activeBtn: CSSProperties = { background: '#2563eb', borderColor: '#2563eb', color: '#fff' }; // aktiv tilstand (spiller/loop på)
+const motionSel: CSSProperties = { background: 'rgba(255,255,255,0.06)', color: '#e6e9ef', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 6, padding: '3px 4px', fontSize: TL_FS };
+// Ordentlige SVG-ikoner (ikke emoji) for transport.
+const FPS = 30;
+const fmtTimecode = (sec: number): string => {
+  const f = Math.round((sec % 1) * FPS) % FPS;
+  const s = Math.floor(sec) % 60;
+  const m = Math.floor(sec / 60);
+  return `${m}:${String(s).padStart(2, '0')}:${String(f).padStart(2, '0')}`;
+};
+const ICON = '#eef1f6';
+// Resize-håndtak-posisjoner for bilde-element (8 kanter/hjørner).
+const IMG_HANDLES: { h: string; pos: CSSProperties; cursor: string }[] = [
+  { h: 'nw', pos: { left: -6, top: -6 }, cursor: 'nwse-resize' },
+  { h: 'ne', pos: { right: -6, top: -6 }, cursor: 'nesw-resize' },
+  { h: 'sw', pos: { left: -6, bottom: -6 }, cursor: 'nesw-resize' },
+  { h: 'se', pos: { right: -6, bottom: -6 }, cursor: 'nwse-resize' },
+  { h: 'n', pos: { left: 'calc(50% - 6px)', top: -6 }, cursor: 'ns-resize' },
+  { h: 's', pos: { left: 'calc(50% - 6px)', bottom: -6 }, cursor: 'ns-resize' },
+  { h: 'w', pos: { left: -6, top: 'calc(50% - 6px)' }, cursor: 'ew-resize' },
+  { h: 'e', pos: { right: -6, top: 'calc(50% - 6px)' }, cursor: 'ew-resize' },
+];
+const Svg = ({ children }: { children: ReactNode }) => (
+  <svg width="88%" height="88%" viewBox="0 0 24 24" fill={ICON} stroke="none" style={{ display: 'block' }}>{children}</svg>
+);
+const IcStart = () => <Svg><rect x="6" y="5" width="2.4" height="14" rx="1" /><path d="M19 5 10 12l9 7z" /></Svg>;
+const IcPlay = () => <Svg><path d="M8 5v14l11-7z" /></Svg>;
+const IcPause = () => <Svg><rect x="7" y="5" width="3.4" height="14" rx="1" /><rect x="13.6" y="5" width="3.4" height="14" rx="1" /></Svg>;
+const IcLoop = () => (
+  <svg width="88%" height="88%" viewBox="0 0 24 24" fill="none" stroke={ICON} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+    <path d="M7 7h9a3 3 0 013 3v1" /><path d="m16 4 3 3-3 3" /><path d="M17 17H8a3 3 0 01-3-3v-1" /><path d="m8 20-3-3 3-3" />
+  </svg>
+);
+const IcEnd = () => <Svg><path d="M6 5 13 12 6 19z" /><rect x="14.6" y="5" width="2.4" height="14" rx="1" /></Svg>;
+const chevSvg = { width: '88%', height: '88%', viewBox: '0 0 24 24', fill: 'none', stroke: ICON, strokeWidth: 2.6, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, style: { display: 'block' } };
+const IcStepBack = () => <svg {...chevSvg}><path d="M14 6l-6 6 6 6" /></svg>;
+const IcStepFwd = () => <svg {...chevSvg}><path d="M10 6l6 6-6 6" /></svg>;
 
 export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const doc = useMockupStudio((s) => s.doc);
   const selection = useMockupStudio((s) => s.selection);
   const select = useMockupStudio((s) => s.select);
   const patchText = useMockupStudio((s) => s.patchText);
+  const placeLibraryImage = useMockupStudio((s) => s.placeLibraryImage);
+  const setDocSilent = useMockupStudio((s) => s.setDocSilent);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);     // stage (transformert)
   const viewportRef = useRef<HTMLDivElement>(null); // ytre klippboks
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const dragRef = useRef<{ kind: 'device' | 'text'; id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean } | null>(null);
+  const dragRef = useRef<{ kind: 'device' | 'text' | 'image'; id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean; rot?: { rx: number; ry: number } } | null>(null);
   const dragAbort = useRef<AbortController | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
+
+  // ── Skrive-animasjon: timeline (scrubber + hastighet + easing/speed-ramp) ──
+  // Delt m/ inspektørens keyframe-grafer (mockupStudioStore) — så playheaden er ÉN kilde,
+  // ikke isolert lokal state, og rigg-kurvene kan vise hvor du er i forhåndsvisningen.
+  const playT = useMockupStudio((s) => s.playT);
+  const setPlayT = useMockupStudio((s) => s.setPlayT);
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(1);          // 0.5×–2× hastighet
+  const [timelineH, setTimelineH] = useState(200); // brukerjusterbar timeline-høyde
+  const beginTimelineResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const sy = e.clientY, sh = timelineH;
+    const ac = new AbortController();
+    const move = (ev: PointerEvent) => setTimelineH(Math.max(130, Math.min(600, sh + (sy - ev.clientY)))); // dra opp = høyere
+    window.addEventListener('pointermove', move, { signal: ac.signal });
+    window.addEventListener('pointerup', () => ac.abort(), { once: true });
+  };
+  const [easing, setEasing] = useState<'linear' | 'smooth' | 'in' | 'out'>('smooth');
+  const [inT, setInT] = useState(() => doc.timeline?.in ?? 0);   // inn-merke (0..1)
+  const [outT, setOutT] = useState(() => doc.timeline?.out ?? 1); // ut-merke
+  // Persister inn/ut i doc.timeline så GIF/video-eksporten ærer regionen.
+  useEffect(() => {
+    const tl = deriveTimeline(doc);
+    if ((tl.in ?? 0) !== inT || (tl.out ?? 1) !== outT) setDocSilent({ ...doc, timeline: { ...tl, in: inT, out: outT } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inT, outT]);
+  const [loop, setLoop] = useState(false);
+  const playRef = useRef<number | null>(null);
+  const speedRef = useRef(speed); speedRef.current = speed;
+  const easeRef = useRef(easing); easeRef.current = easing;
+  const inRef = useRef(inT); inRef.current = inT;
+  const outRef = useRef(outT); outRef.current = outT;
+  const loopRef = useRef(loop); loopRef.current = loop;
+  const hasTyping = doc.devices.some((d) => (!!d.typeAnim?.text || !!d.threeD?.kf) && !!d.threeD) || !!doc.canvas.scene?.typeAnim?.text;
+  // Vis transport/timeline også for ren reveal-animasjon (bilder/enheter/tekst glir/popper inn),
+  // ikke bare skrive-animasjon → gjør «reel»-inntoning + GIF/video-eksport tilgjengelig for menyer.
+  const hasMotion = hasTyping || (doc.images?.length ?? 0) > 0 || doc.devices.length > 0 || doc.texts.length > 1;
+  const tlDur = deriveTimeline(doc).duration; // timeline-varighet (sek) for timecode + frame-steg
+  const tlDurRef = useRef(tlDur);
+  tlDurRef.current = tlDur; // onKey-closure er stale (deps [select]) → les dur via ref
+  const stepFrame = (dir: number) => {
+    stopPlay();
+    setPlayT((v) => Math.max(0, Math.min(1, (v ?? 0) + dir / Math.max(1, tlDurRef.current * FPS))));
+  };
+  // Speed-ramp: mapper lineær tids-progresjon p → eased t.
+  const applyEase = (p: number, e: string): number =>
+    e === 'smooth' ? p * p * (3 - 2 * p) : e === 'in' ? p * p : e === 'out' ? 1 - (1 - p) * (1 - p) : p;
+  const baseDur = () => {
+    const lens = doc.devices.filter((d) => d.typeAnim?.text).map((d) => d.typeAnim!.text.length);
+    if (doc.canvas.scene?.typeAnim?.text) lens.push(doc.canvas.scene.typeAnim.text.length);
+    return 900 + Math.max(1, ...lens) * 120;
+  };
+  const playTyping = () => {
+    if (playRef.current) cancelAnimationFrame(playRef.current);
+    setPlaying(true);
+    const a = inRef.current, b = Math.max(a + 0.02, outRef.current); // inn/ut-region
+    let from = playT != null && playT >= a && playT < b ? playT : a;  // fortsett fra playhead om innenfor
+    let start: number | null = null;
+    const step = (ts: number) => {
+      if (start == null) start = ts;
+      // baseDur() alene er tunet for skrive-animasjon (tegn-for-tegn) og var FOR KORT for
+      // ren reveal-innhold (rader/enheter som popper inn) — spilte av på under 2s uansett hvor
+      // lang den avledede reveal-timelinen (tlDur, sekunder) egentlig er, så innhold (f.eks.
+      // skjerm-tekst på telefon/laptop) rakk aldri å bli lesbart før klippet var ferdig.
+      const dur = Math.max(baseDur(), tlDurRef.current * 1000) / Math.max(0.1, speedRef.current);
+      const p = from + (ts - start) / dur;                            // rå progresjon (timeline-skala)
+      if (p >= b) {
+        if (loopRef.current) { start = ts; from = a; setPlayT(applyEase(a, easeRef.current)); playRef.current = requestAnimationFrame(step); return; }
+        playRef.current = null; setPlaying(false); setPlayT(applyEase(b, easeRef.current));
+        window.setTimeout(() => setPlayT((v) => (v != null && v >= b - 0.001 ? null : v)), 800); return;
+      }
+      setPlayT(applyEase(p, easeRef.current));
+      playRef.current = requestAnimationFrame(step);
+    };
+    playRef.current = requestAnimationFrame(step);
+  };
+  const stopPlay = () => { if (playRef.current) { cancelAnimationFrame(playRef.current); playRef.current = null; } setPlaying(false); };
+  const scrubTo = (v: number) => { stopPlay(); setPlayT(v); }; // manuell scrubbing
+  useEffect(() => () => { if (playRef.current) cancelAnimationFrame(playRef.current); }, []);
 
   // ── Visning (zoom/pan) ───────────────────────────────────────────────────
   const [view, setView] = useState({ scale: 1, tx: 0, ty: 0 });
@@ -56,7 +180,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
         ? 'Mind map-kilden er tom eller ugyldig — sjekk Mermaid-syntaksen (rot-node + innrykkede grener).'
         : null);
     }
-    rasterizeMockup(doc, scale).then((off) => {
+    rasterizeMockup(doc, scale, playT != null ? { anim: { t: playT } } : undefined).then((off) => {
       if (!alive) return;
       const cv = canvasRef.current;
       if (!cv) return;
@@ -71,23 +195,95 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
       setRenderError('Kunne ikke tegne forhåndsvisningen — sjekk innholdet/kilden.');
     });
     return () => { alive = false; };
-  }, [doc]);
+  }, [doc, playT]);
 
-  const selId = (s: Selection): string | null => (s.kind === 'device' || s.kind === 'text' ? s.id : null);
+  const selId = (s: Selection): string | null => (s.kind === 'device' || s.kind === 'text' || s.kind === 'image' ? s.id : null);
   const selectedId = selId(selection);
   const W = doc.canvas.w, H = doc.canvas.h;
   const pct = (v: number, base: number) => `${(v / base) * 100}%`;
 
-  const boxOf = (kind: 'device' | 'text', el: MockupDeviceSlot | MockupTextSlot): Box =>
+  // Drop fra bibliotek → frittstående bilde på drop-posisjonen (lerret-px via wrapRef).
+  const LIB_MIME = 'application/x-mockup-lib';
+  const onLibDrop = (e: React.DragEvent) => {
+    const id = e.dataTransfer.getData(LIB_MIME);
+    if (!id) return;
+    e.preventDefault();
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    void placeLibraryImage(id, undefined, { x: (e.clientX - rect.left) * (W / rect.width), y: (e.clientY - rect.top) * (H / rect.height) });
+  };
+
+  // Resize-håndtak for frittstående bilde-element (dra en kant/hjørne).
+  const beginImageResize = (im: MockupImageSlot, handle: string, e: React.PointerEvent) => {
+    e.stopPropagation();
+    select({ kind: 'image', id: im.id });
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const sx = e.clientX, sy = e.clientY, o = { x: im.x, y: im.y, w: im.w, h: im.h };
+    const ratio = o.w / Math.max(1, o.h);
+    let moved = false;
+    const ac = new AbortController();
+    const move = (ev: PointerEvent) => {
+      const dxC = (ev.clientX - sx) * (W / rect.width), dyC = (ev.clientY - sy) * (H / rect.height);
+      if (!moved) { moved = true; useMockupStudio.getState().pushHistory(); }
+      let { x, y, w, h } = o;
+      if (handle.includes('e')) w = Math.max(40, o.w + dxC);
+      if (handle.includes('s')) h = Math.max(40, o.h + dyC);
+      if (handle.includes('w')) { w = Math.max(40, o.w - dxC); x = o.x + (o.w - w); }
+      if (handle.includes('n')) { h = Math.max(40, o.h - dyC); y = o.y + (o.h - h); }
+      if (ev.shiftKey && handle.length === 2) { // hjørne + shift = lås sideforhold
+        h = w / ratio;
+        if (handle.includes('n')) y = o.y + (o.h - h);
+        if (handle.includes('w')) x = o.x + (o.w - w);
+      }
+      const st = useMockupStudio.getState();
+      st.setDocSilent({ ...st.doc, images: (st.doc.images ?? []).map((g) => (g.id === im.id ? { ...g, x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) } : g)) });
+    };
+    window.addEventListener('pointermove', move, { signal: ac.signal });
+    window.addEventListener('pointerup', () => ac.abort(), { once: true });
+  };
+
+  // Dra en annotasjons anker (fx/fy) direkte på lerretet (før: kun X/Y-slidere i høyrepanelet).
+  const beginAnnDrag = (a: MockupAnnotation, e: React.PointerEvent) => {
+    e.stopPropagation();
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const s = annRect(doc, a);
+    const sx = e.clientX, sy = e.clientY, f0x = a.fx, f0y = a.fy;
+    let moved = false;
+    const ac = new AbortController();
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 3) return;
+      if (!moved) { moved = true; useMockupStudio.getState().pushHistory(); }
+      const dxC = (ev.clientX - sx) * (W / rect.width);   // skjerm-delta → lerret-px (kompenserer zoom)
+      const dyC = (ev.clientY - sy) * (H / rect.height);
+      useMockupStudio.getState().patchAnnotation(a.id, {
+        fx: Math.max(0, Math.min(1, f0x + dxC / s.w)),
+        fy: Math.max(0, Math.min(1, f0y + dyC / s.h)),
+      });
+    };
+    window.addEventListener('pointermove', move, { signal: ac.signal });
+    window.addEventListener('pointerup', () => ac.abort(), { once: true });
+  };
+
+  const boxOf = (kind: 'device' | 'text' | 'image', el: MockupDeviceSlot | MockupTextSlot | MockupImageSlot): Box =>
     kind === 'device'
       ? { x: el.x, y: el.y, w: (el as MockupDeviceSlot).w, h: deviceHeight(el as MockupDeviceSlot) }
-      : { x: el.x, y: el.y, w: (el as MockupTextSlot).w, h: measureTextHeight(el as MockupTextSlot) };
+      : kind === 'image'
+        ? { x: el.x, y: el.y, w: (el as MockupImageSlot).w, h: (el as MockupImageSlot).h }
+        : { x: el.x, y: el.y, w: (el as MockupTextSlot).w, h: measureTextHeight(el as MockupTextSlot) };
 
   // ── Flytt utvalgt element (delt av dra + tastatur) ───────────────────────
-  const moveTo = (base: MockupDoc, kind: 'device' | 'text', id: string, nx: number, ny: number): MockupDoc =>
+  const moveTo = (base: MockupDoc, kind: 'device' | 'text' | 'image', id: string, nx: number, ny: number): MockupDoc =>
     kind === 'device'
       ? { ...base, devices: base.devices.map((d) => (d.id === id ? { ...d, x: nx, y: ny } : d)) }
-      : { ...base, texts: base.texts.map((t) => (t.id === id ? { ...t, x: nx, y: ny } : t)) };
+      : kind === 'image'
+        ? { ...base, images: (base.images ?? []).map((im) => (im.id === id ? { ...im, x: nx, y: ny } : im)) }
+        : { ...base, texts: base.texts.map((t) => (t.id === id ? { ...t, x: nx, y: ny } : t)) };
+
+  // 3D-orbit: oppdater device.threeD.rotX/rotY (beholder rotZ/light).
+  const rotateTo = (base: MockupDoc, id: string, rotX: number, rotY: number): MockupDoc =>
+    ({ ...base, devices: base.devices.map((d) => (d.id === id && d.threeD ? { ...d, threeD: { ...d.threeD, rotX, rotY } } : d)) });
 
   // Snap `nx,ny` (topp-venstre) til andre elementers kanter/senter + lerret-senter/kanter.
   const applySnap = (id: string, box: Box, nx: number, ny: number) => {
@@ -100,13 +296,17 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   };
 
   // ── Dra (pointer) ────────────────────────────────────────────────────────
-  const beginDrag = (kind: 'device' | 'text', id: string, e: React.PointerEvent) => {
+  const beginDrag = (kind: 'device' | 'text' | 'image', id: string, e: React.PointerEvent) => {
     e.stopPropagation();
     select({ kind, id });
     const st = useMockupStudio.getState();
-    const el = kind === 'device' ? st.doc.devices.find((d) => d.id === id) : st.doc.texts.find((t) => t.id === id);
+    const el = kind === 'device' ? st.doc.devices.find((d) => d.id === id)
+      : kind === 'image' ? st.doc.images?.find((im) => im.id === id)
+      : st.doc.texts.find((t) => t.id === id);
     if (!el) return;
-    dragRef.current = { kind, id, sx: e.clientX, sy: e.clientY, ox: el.x, oy: el.y, moved: false };
+    // 3D-enhet: dra = orbit (roter). Flytt via numerisk/piltaster.
+    const dev3d = kind === 'device' ? (el as MockupDoc['devices'][number]).threeD : undefined;
+    dragRef.current = { kind, id, sx: e.clientX, sy: e.clientY, ox: el.x, oy: el.y, moved: false, rot: dev3d ? { rx: dev3d.rotX, ry: dev3d.rotY } : undefined };
     dragAbort.current?.abort();
     const ac = new AbortController();
     dragAbort.current = ac;
@@ -124,8 +324,18 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
     if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 3) return; // liten terskel = klikk, ikke dra
     if (!d.moved) { d.moved = true; setDragging(true); useMockupStudio.getState().pushHistory(); }
     const st = useMockupStudio.getState();
-    const el = d.kind === 'device' ? st.doc.devices.find((x) => x.id === d.id) : st.doc.texts.find((x) => x.id === d.id);
+    const el = d.kind === 'device' ? st.doc.devices.find((x) => x.id === d.id)
+      : d.kind === 'image' ? st.doc.images?.find((x) => x.id === d.id)
+      : st.doc.texts.find((x) => x.id === d.id);
     if (!el) return;
+    // 3D-orbit: horisontal dra → snu (rotY), vertikal → vipp (rotX).
+    if (d.rot) {
+      const SENS = 0.18;
+      const ry = Math.max(-70, Math.min(70, Math.round(d.rot.ry + dx * SENS)));
+      const rx = Math.max(-55, Math.min(55, Math.round(d.rot.rx - dy * SENS)));
+      st.setDocSilent(rotateTo(st.doc, d.id, rx, ry));
+      return;
+    }
     const rawX = Math.round(d.ox + dx), rawY = Math.round(d.oy + dy);
     const snapped = e.altKey ? { x: rawX, y: rawY, vx: [], hy: [] } : applySnap(d.id, boxOf(d.kind, el), rawX, rawY); // Alt = fri (ingen snap)
     setGuides({ vx: snapped.vx, hy: snapped.hy });
@@ -201,15 +411,22 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
       if ((e.key === '0') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); resetView(); return; }
       if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomBtn(1.1); return; }
       if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomBtn(1 / 1.1); return; }
+      // Frame-steg (Resolve: , = ett bilde bak, . = ett bilde fram)
+      if (e.key === ',') { e.preventDefault(); stepFrame(-1); return; }
+      if (e.key === '.') { e.preventDefault(); stepFrame(1); return; }
+      // Avspiller-hurtigtaster: mellomrom = play/pause, Home/End = start/slutt (stale-fri via playRef)
+      if (e.key === ' ') { if ((document.activeElement as HTMLElement | null)?.tagName === 'BUTTON') return; e.preventDefault(); if (playRef.current != null) stopPlay(); else playTyping(); return; }
+      if (e.key === 'Home') { e.preventDefault(); scrubTo(0); return; }
+      if (e.key === 'End') { e.preventDefault(); scrubTo(1); return; }
 
       const sel = st.selection;
-      if (sel.kind !== 'device' && sel.kind !== 'text') return;
+      if (sel.kind !== 'device' && sel.kind !== 'text' && sel.kind !== 'image') return;
 
       if ((e.key === 'd' || e.key === 'D') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); st.duplicateSelected(); return; }
       if (e.key === 'Escape') { select({ kind: 'canvas' }); return; }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
-        if (sel.kind === 'device') st.removeDevice(sel.id); else st.removeText(sel.id);
+        if (sel.kind === 'device') st.removeDevice(sel.id); else if (sel.kind === 'image') st.removeImage(sel.id); else st.removeText(sel.id);
         return;
       }
       const step = e.shiftKey ? NUDGE_BIG : NUDGE;
@@ -220,7 +437,9 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
       else if (e.key === 'ArrowDown') dy = step;
       else return;
       e.preventDefault();
-      const el = sel.kind === 'device' ? st.doc.devices.find((d) => d.id === sel.id) : st.doc.texts.find((t) => t.id === sel.id);
+      const el = sel.kind === 'device' ? st.doc.devices.find((d) => d.id === sel.id)
+        : sel.kind === 'image' ? st.doc.images?.find((im) => im.id === sel.id)
+        : st.doc.texts.find((t) => t.id === sel.id);
       if (!el) return;
       st.pushHistory();
       st.setDocSilent(moveTo(st.doc, sel.kind, sel.id, el.x + dx, el.y + dy));
@@ -232,11 +451,16 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const overlayCursor = dragging ? 'grabbing' : 'grab';
 
   return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+    {/* Preview-region: fyller tilgjengelig plass; boksen fit-containes (høyde-drevet) */}
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
     <div
       ref={viewportRef}
       onWheel={onWheel}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes(LIB_MIME)) e.preventDefault(); }}
+      onDrop={onLibDrop}
       style={{
-        position: 'relative', width: '100%', aspectRatio: `${W} / ${H}`, maxHeight: '100%',
+        position: 'relative', height: '100%', width: 'auto', aspectRatio: `${W} / ${H}`, maxWidth: '100%', maxHeight: '100%',
         borderRadius: 12, overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.5)', background: '#05070c',
       }}
     >
@@ -250,6 +474,38 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
       >
         <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block', pointerEvents: 'none' }} />
 
+        {/* Seedance-klipp: spilles i posisjon over poster-bildet (preview). Eksport bruker poster. */}
+        {doc.images?.filter((im) => im.video).map((im) => (
+          <video key={`vid_${im.id}`} src={safeFileSrc(im.video as string)} autoPlay loop muted playsInline
+            style={{ position: 'absolute', left: pct(im.x, W), top: pct(im.y, H), width: pct(im.w, W), height: pct(im.h, H), transform: `rotate(${im.rotation}deg)`, transformOrigin: 'center', objectFit: im.fit === 'contain' ? 'contain' : 'cover', objectPosition: `${(im.focusX ?? 0.5) * 100}% ${(im.focusY ?? 0.5) * 100}%`, borderRadius: pct(im.radius, W), pointerEvents: 'none' }} />
+        ))}
+
+        {/* Frittstående bilde-elementer — dra for å flytte (nederst i overlay-stacken) */}
+        {doc.images?.map((im) => {
+          const active = selectedId === im.id;
+          return (
+            <button
+              key={im.id}
+              onPointerDown={(e) => beginDrag('image', im.id, e)}
+              onFocus={() => select({ kind: 'image', id: im.id })}
+              aria-label={`Bilde${active ? ' (valgt)' : ''} — dra for å flytte, piltaster nudger, Delete fjerner`}
+              aria-pressed={active}
+              title="Bilde · dra for å flytte · piltaster nudger · Cmd/Ctrl+D dupliserer · Delete fjerner"
+              style={{
+                position: 'absolute', left: pct(im.x, W), top: pct(im.y, H), width: pct(im.w, W), height: pct(im.h, H),
+                transform: `rotate(${im.rotation}deg)`, transformOrigin: 'center',
+                background: 'transparent', border: active ? '2px solid #22d3ee' : '2px solid transparent',
+                borderRadius: 8, padding: 0, cursor: overlayCursor, touchAction: 'none',
+              }}
+            >
+              {active && IMG_HANDLES.map((hh) => (
+                <div key={hh.h} onPointerDown={(e) => beginImageResize(im, hh.h, e)} title="Dra for å endre størrelse (Shift = lås sideforhold)"
+                  style={{ position: 'absolute', width: 12, height: 12, background: '#22d3ee', border: '2px solid #fff', borderRadius: 3, cursor: hh.cursor, touchAction: 'none', ...hh.pos }} />
+              ))}
+            </button>
+          );
+        })}
+
         {/* Enheter — dra for å flytte */}
         {doc.devices.map((dev) => {
           const h = deviceHeight(dev);
@@ -259,9 +515,9 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
               key={dev.id}
               onPointerDown={(e) => beginDrag('device', dev.id, e)}
               onFocus={() => select({ kind: 'device', id: dev.id })}
-              aria-label={`Enhet: ${dev.variant}${active ? ' (valgt)' : ''} — dra for å flytte, piltaster nudger, Delete fjerner`}
+              aria-label={`Enhet: ${dev.variant}${active ? ' (valgt)' : ''} — ${dev.threeD ? 'dra for å rotere (3D)' : 'dra for å flytte'}, piltaster nudger, Delete fjerner`}
               aria-pressed={active}
-              title="Dra for å flytte · piltaster nudger · Cmd/Ctrl+D dupliserer · Delete fjerner"
+              title={dev.threeD ? 'Dra for å ROTERE (3D) · flytt med piltaster/numerisk · Delete fjerner' : 'Dra for å flytte · piltaster nudger · Cmd/Ctrl+D dupliserer · Delete fjerner'}
               style={{
                 position: 'absolute', left: pct(dev.x, W), top: pct(dev.y, H), width: pct(dev.w, W), height: pct(h, H),
                 transform: `rotate(${dev.rotation}deg)`, transformOrigin: 'center',
@@ -303,6 +559,21 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
           );
         })}
 
+        {/* Annotasjons-anker — dra ringen for å flytte callout/markør/lupe direkte på lerretet */}
+        {doc.annotations?.map((a) => {
+          const s = annRect(doc, a);
+          const ax = s.x + a.fx * s.w, ay = s.y + a.fy * s.h;
+          return (
+            <button
+              key={`ann_${a.id}`}
+              onPointerDown={(e) => beginAnnDrag(a, e)}
+              aria-label={`Annotasjon-anker: ${a.label ?? a.kind} — dra for å flytte`}
+              title="Dra ankeret for å flytte callout/markør/lupe (før: kun X/Y i høyrepanelet)"
+              style={{ position: 'absolute', left: pct(ax, W), top: pct(ay, H), transform: 'translate(-50%, -50%)', width: 22, height: 22, borderRadius: '50%', background: 'rgba(34,211,238,0.18)', border: '2px solid #22d3ee', cursor: overlayCursor, padding: 0, touchAction: 'none', boxShadow: '0 0 0 2px rgba(0,0,0,0.35)' }}
+            />
+          );
+        })}
+
         {/* Snap-/justeringslinjer (kun mens man drar) */}
         {guides.vx.map((x, i) => (
           <div key={`v${i}`} style={{ position: 'absolute', left: pct(x, W), top: 0, bottom: 0, width: 1, background: '#f472b6', pointerEvents: 'none', boxShadow: '0 0 0 0.5px #f472b6' }} />
@@ -335,12 +606,45 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
         <button onClick={() => zoomBtn(1.1)} aria-label="Zoom inn" title="Zoom inn (+)" style={zoomBtnStyle}>+</button>
       </div>
     </div>
+    </div>
+    {hasMotion && (
+      <>
+        {/* Drabar deler: dra opp/ned for å endre timeline-høyde */}
+        <div onPointerDown={beginTimelineResize} title="Dra for å endre timeline-høyde" style={gripStyle}><div style={gripBar} /></div>
+      <div style={{ height: timelineH, flexShrink: 0, display: 'flex', flexDirection: 'column', borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+        {/* Transport (under preview, ingen overlapp med zoom) */}
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', background: 'rgba(12,15,22,0.92)', color: '#e6e9ef', fontWeight: 600, fontSize: TL_FS, fontFamily: 'system-ui, sans-serif', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <button onClick={() => scrubTo(0)} title="Til start (Home)" style={motionBtn}><IcStart /></button>
+          <button onClick={() => stepFrame(-1)} title="Ett bilde tilbake (,)" style={motionBtn}><IcStepBack /></button>
+          <button onClick={() => (playing ? stopPlay() : playTyping())} title={playing ? 'Pause (mellomrom)' : 'Spill av (mellomrom)'} style={{ ...motionBtn, ...(playing ? activeBtn : { background: 'rgba(255,255,255,0.16)', borderColor: 'rgba(255,255,255,0.28)' }) }}>{playing ? <IcPause /> : <IcPlay />}</button>
+          <button onClick={() => stepFrame(1)} title="Ett bilde fram (.)" style={motionBtn}><IcStepFwd /></button>
+          <button onClick={() => scrubTo(1)} title="Til slutt (End)" style={motionBtn}><IcEnd /></button>
+          <span style={{ width: 1, alignSelf: 'stretch', margin: '2px 2px', background: 'rgba(255,255,255,0.12)' }} />
+          <button onClick={() => setLoop((l) => !l)} title="Loop inn/ut-region" style={{ ...motionBtn, ...(loop ? activeBtn : {}) }}><IcLoop /></button>
+          <input type="range" min={0} max={1000} value={Math.round((playT ?? 0) * 1000)} onChange={(e) => scrubTo(Number(e.target.value) / 1000)} title="Dra playhead" style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }} />
+          <span title="Timecode (m:ss:ff · 30 fps) — , / . steg ett bilde" style={{ minWidth: 62, textAlign: 'right', fontVariantNumeric: 'tabular-nums', opacity: 0.85 }}>{fmtTimecode((playT ?? 0) * tlDur)}</span>
+          <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} title="Hastighet" style={motionSel}>
+            {[0.25, 0.5, 0.75, 1, 1.5, 2].map((s) => <option key={s} value={s}>{s}×</option>)}
+          </select>
+          <select value={easing} onChange={(e) => setEasing(e.target.value as typeof easing)} title="Speed-ramp (retime)" style={motionSel}>
+            <option value="linear">Lineær</option><option value="smooth">Myk</option><option value="in">Akselerér</option><option value="out">Retardér</option>
+          </select>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+          <MockupTimelinePanel playT={playT} onScrub={scrubTo} inT={inT} outT={outT} onSetIn={setInT} onSetOut={setOutT} />
+        </div>
+      </div>
+      </>
+    )}
+    </div>
   );
 }
 
 const zoomBtnStyle: React.CSSProperties = {
-  width: 26, height: 26, display: 'grid', placeItems: 'center', background: 'transparent',
-  color: '#e6e8ee', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 15, lineHeight: 1,
+  width: 'clamp(24px, 1.9vw, 34px)', height: 'clamp(24px, 1.9vw, 34px)', display: 'grid', placeItems: 'center', background: 'transparent',
+  color: '#e6e8ee', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 'clamp(14px, 1.1vw, 18px)', lineHeight: 1,
 };
+const gripStyle: CSSProperties = { height: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'row-resize', touchAction: 'none' };
+const gripBar: CSSProperties = { width: 46, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.25)' };
 
 export default MockupCanvas;

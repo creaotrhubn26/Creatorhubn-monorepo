@@ -455,11 +455,22 @@ final class AppState {
     // ── Admin-room multi-produkt (#1318, portet i main-mergen) ──
     /// Hvilket produkt admin-room-flatene (pipeline, industry-targets)
     /// er i kontekst for. Default `.leadgrid`; persistert i UserDefaults.
-    var activeAdminProduct: AdminProductKey = .leadgrid {
-        didSet {
-            guard oldValue != activeAdminProduct else { return }
+    // Manuelt @Observable-mønster (ikke stored-property-m/-didSet): en toolchain-
+    // bug i @Observable-macroen mister type-scope i den genererte ObservationTracked-
+    // accessoren for stored properties med custom type + didSet («cannot find type
+    // 'AdminProductKey' in scope»). Computed get/set m/ access/withMutation gir
+    // samme observasjon + persistering uten den brutte macro-expansjonen.
+    @ObservationIgnored private var _activeAdminProduct: AdminProductKey = .leadgrid
+    var activeAdminProduct: AdminProductKey {
+        get {
+            access(keyPath: \.activeAdminProduct)
+            return _activeAdminProduct
+        }
+        set {
+            guard _activeAdminProduct != newValue else { return }
+            withMutation(keyPath: \.activeAdminProduct) { _activeAdminProduct = newValue }
             UserDefaults.standard.set(
-                activeAdminProduct.rawValue,
+                newValue.rawValue,
                 forKey: AdminProductDefaultsKey.activeProduct
             )
         }

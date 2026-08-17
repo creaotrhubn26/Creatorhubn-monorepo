@@ -170,7 +170,7 @@ export function setupRoleRoomMarketingPlanRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
     const bootstrap = (body.bootstrap ?? {}) as Parameters<typeof checkMarketingPlanReadiness>[0];
@@ -184,7 +184,7 @@ export function setupRoleRoomMarketingPlanRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
@@ -315,7 +315,7 @@ export function setupRoleRoomMarketingPlanRoutes(
   });
 
   app.get("/api/role-room/marketing-plan/:projectId", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId || "").trim();
     if (!projectId) {
@@ -333,7 +333,7 @@ export function setupRoleRoomMarketingPlanRoutes(
   });
 
   app.get("/api/role-room/marketing-plan/:planId/posts", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const planId = String(req.params.planId || "").trim();
     if (!planId) {
@@ -365,7 +365,7 @@ export function setupRoleRoomMarketingPlanRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const planId = String(req.params.planId || "").trim();
@@ -420,7 +420,7 @@ export function setupRoleRoomMarketingPlanRoutes(
   // Idempotent — re-accepting an already-scheduled post returns current
   // state without duplicating the feed entry.
   app.post("/api/role-room/marketing-plan/posts/:postId/accept", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const postId = String(req.params.postId || "").trim();
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
@@ -446,7 +446,7 @@ export function setupRoleRoomMarketingPlanRoutes(
   // Bulk-endring av primary_platform for et utvalg poster (Creative Sync-audit
   // #5 — UI-knappen fantes men endepunktet manglet).
   app.patch("/api/role-room/marketing-plan/posts/platform", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
     const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
@@ -483,7 +483,7 @@ export function setupRoleRoomMarketingPlanRoutes(
   });
 
   app.post("/api/role-room/marketing-plan/:planId/activate", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const planId = String(req.params.planId || "").trim();
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
@@ -569,7 +569,7 @@ export function setupRoleRoomMarketingPlanRoutes(
     if (!PLAN_SHARE_SECRET || PLAN_SHARE_SECRET.length < 32) {
       return res.status(503).json({ success: false, error: "ROLE_ROOM_SHARE_SECRET er ikke konfigurert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const planId = String(req.params.planId || "").trim();
     if (!planId) {
@@ -639,7 +639,7 @@ export function setupRoleRoomMarketingPlanRoutes(
   // koblet) live discovery-stats for hver match. Tar industry + post-hook
   // som input for relevans-scoring.
   app.post("/api/role-room/marketing-plan/posts/:postId/creators", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const postId = String(req.params.postId || "").trim();
     if (!postId) return res.status(400).json({ success: false, error: "postId er påkrevd." });
@@ -676,7 +676,7 @@ export function setupRoleRoomMarketingPlanRoutes(
     // Forsøk å berike top-3 med IG-discovery-stats hvis IG er koblet
     // til prosjektet. Vi bryr oss kun om Instagram-discovery siden Meta
     // er eneste public discovery-API på sosiale plattformer.
-    let igEnriched: Array<{ handle: string; followersCount: number; biography: string | null; profilePictureUrl: string | null }> = [];
+    const igEnriched: Array<{ handle: string; followersCount: number; biography: string | null; profilePictureUrl: string | null }> = [];
     try {
       const conn = await pool.query<{ ig_user_id: string; access_token: string }>(
         `SELECT ig_user_id, access_token
@@ -727,7 +727,7 @@ export function setupRoleRoomMarketingPlanRoutes(
   //   2. Ellers fall tilbake til direkte OpenAI med OPENAI_API_KEY.
   //   3. Hvis ingen av delene er satt → 503.
   app.post("/api/role-room/marketing-plan/posts/:postId/thumbnail", imageLimit, async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const postId = String(req.params.postId || "").trim();
     if (!postId) return res.status(400).json({ success: false, error: "postId er påkrevd." });
@@ -845,7 +845,7 @@ export function setupRoleRoomMarketingPlanRoutes(
   // (når koblet) faktisk follower-count fra IG-konto. Returnerer estimert
   // reach-range (min/max) + confidence-nivå.
   app.post("/api/role-room/marketing-plan/posts/:postId/reach-estimate", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const postId = String(req.params.postId || "").trim();
     if (!postId) return res.status(400).json({ success: false, error: "postId er påkrevd." });
@@ -964,7 +964,7 @@ export function setupRoleRoomMarketingPlanRoutes(
   // er små payloads. Returnerer ikke persistert — UI viser dem som
   // copy-til-utklippstavle-templates.
   app.post("/api/role-room/marketing-plan/posts/:postId/reply-templates", genLimit, async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const postId = String(req.params.postId || "").trim();
     if (!postId) return res.status(400).json({ success: false, error: "postId er påkrevd." });
@@ -1039,7 +1039,7 @@ Returner KUN JSON: { "positive": "svar på rosende kommentar", "question": "svar
   // + script + caption regenerert med temperature=0.9. UI markerer
   // varianter med sortOrder = orig+0.5 så de havner like under originalen.
   app.post("/api/role-room/marketing-plan/posts/:postId/variant", genLimit, async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const postId = String(req.params.postId || "").trim();
     if (!postId) return res.status(400).json({ success: false, error: "postId er påkrevd." });
@@ -1145,7 +1145,7 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
   // tabellen automatisk. For prøveperioder + manuelt entry kan brukeren
   // skrive inn tall direkte via dette endepunktet.
   app.post("/api/role-room/marketing-plan/posts/:postId/kpi-snapshot", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const postId = String(req.params.postId || "").trim();
     if (!postId) return res.status(400).json({ success: false, error: "postId er påkrevd." });
@@ -1197,7 +1197,7 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
   // i planen og persisterer resultatet. Brukeren får tilbake antall
   // snapshots skrevet per connector.
   app.post("/api/role-room/marketing-plan/:planId/kpi-sync", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const planId = String(req.params.planId || "").trim();
     if (!planId) return res.status(400).json({ success: false, error: "planId er påkrevd." });
@@ -1261,7 +1261,7 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
 
   // Item #180 — list/summarize alle KPI for en plan (driver UI-graf).
   app.get("/api/role-room/marketing-plan/:planId/kpi-summary", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const planId = String(req.params.planId || "").trim();
     if (!planId) return res.status(400).json({ success: false, error: "planId er påkrevd." });
@@ -1362,7 +1362,7 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
   // and which platforms are surprise winners not yet in the setup. Project-
   // scoped (not plan-scoped) so it works even before a plan exists.
   app.get("/api/role-room/marketing-plan/:projectId/scorecard", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId || "").trim();
     if (!projectId) return res.status(400).json({ success: false, error: "projectId er påkrevd." });
@@ -1455,7 +1455,7 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
   // som faktisk er persistert vs. forventet (horizonDays). Frontend
   // poller dette mens auto-genereringen kjører i bakgrunnen.
   app.get("/api/role-room/marketing-plan/:planId/posts/progress", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const planId = String(req.params.planId || "").trim();
     if (!planId) return res.status(400).json({ success: false, error: "planId er påkrevd." });
@@ -1490,7 +1490,7 @@ Returner KUN JSON: { "hook": "...", "script": "...", "captionDraft": "...", "cal
   // ("gjør den mer ironisk", "kort den ned til 50 ord", etc.).
   // Bruker Claude Haiku for hastighet (single-post er liten payload).
   app.post("/api/role-room/marketing-plan/posts/:postId/regenerate", genLimit, async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const postId = String(req.params.postId || "").trim();
     if (!postId) return res.status(400).json({ success: false, error: "postId er påkrevd." });
@@ -1690,7 +1690,7 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
   };
 
   app.patch("/api/role-room/marketing-plan/pillars/:pillarId", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const pillarId = String(req.params.pillarId || "").trim();
     if (!pillarId) {
@@ -1752,7 +1752,7 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
   // Vi sporer hvem som gjorde det via last_edited_by_kind for å vise
   // farget badge på frontend.
   app.patch("/api/role-room/marketing-plan/posts/:postId", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const postId = String(req.params.postId || "").trim();
     if (!postId) {
@@ -1884,7 +1884,7 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
   });
 
   app.post("/api/role-room/marketing-plan/:planId/pillars", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const planId = String(req.params.planId || "").trim();
     if (!planId) {
@@ -1931,7 +1931,7 @@ ${hint ? `Tone-justering bruker ønsker: ${hint}\n\n` : ''}Returner KUN JSON med
   });
 
   app.delete("/api/role-room/marketing-plan/pillars/:pillarId", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const pillarId = String(req.params.pillarId || "").trim();
     if (!pillarId) return res.status(400).json({ success: false, error: "pillarId er påkrevd." });

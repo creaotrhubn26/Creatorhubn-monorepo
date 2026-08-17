@@ -146,7 +146,7 @@ export function setupAdminTestCaseGeneratorRoutes(
 
   // POST /api/admin/generate-test-cases
   app.post("/api/admin/generate-test-cases", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     try {
       const body = (req.body || {}) as Record<string, unknown>;

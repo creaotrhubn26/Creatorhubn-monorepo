@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import PDFDocument from "pdfkit";
 import { requireTeamAccess } from "./team-access";
 import { canAccessProject } from "./project-team-routes";
+import { broadcastUserEvent } from "./realtime-user-events";
 
 // Innebygd TrueType-font (DejaVu Sans, libre) — sikrer at avtale-PDF rendres
 // identisk i alle visere (pdfkit-standardfonter rendres ikke i alle renderere).
@@ -506,6 +507,32 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     }
   }
 
+  // Sound Room: varsle prosjektets team (eier + aktive project_team_members,
+  // minus aktøren) LIVE via bruker-events-WS når noe endrer seg i Audio
+  // Showcase-en som er koblet til dette workspace-prosjektet — samme
+  // "video-room.updated"-mønster som VideoRoomTab bruker. audio_review_
+  // projects er ikke alltid koblet til et workspace-prosjekt (project_audio_
+  // rooms-broen kan mangle), så no-op stille når det ikke finnes en kobling.
+  async function notifySoundRoomUpdated(audioReviewProjectId: string, actorUserId: string | null, reason: "version" | "comment" | "approval"): Promise<void> {
+    try {
+      const link = await pool.query(`SELECT project_id FROM project_audio_rooms WHERE audio_review_project_id = $1::uuid LIMIT 1`, [audioReviewProjectId]).catch(() => ({ rows: [] }));
+      const workspaceProjectId = link.rows[0]?.project_id;
+      if (!workspaceProjectId) return;
+      const owner = await pool.query(`SELECT user_id FROM projects WHERE id = $1`, [workspaceProjectId]).catch(() => ({ rows: [] }));
+      const members = await pool.query(
+        `SELECT user_id FROM project_team_members WHERE project_id = $1 AND status = 'active' AND deactivated_at IS NULL AND user_id IS NOT NULL`,
+        [workspaceProjectId],
+      ).catch(() => ({ rows: [] }));
+      const recipients = new Set<string>([
+        ...(owner.rows[0]?.user_id ? [String(owner.rows[0].user_id)] : []),
+        ...members.rows.map((r: any) => String(r.user_id)),
+      ]);
+      if (actorUserId) recipients.delete(actorUserId);
+      const timestamp = new Date().toISOString();
+      for (const recipientId of recipients) broadcastUserEvent(recipientId, { kind: "sound-room.updated", projectId: workspaceProjectId, reason, timestamp });
+    } catch { /* best-effort — aldri la varsling velte skriveoperasjonen */ }
+  }
+
   // Varsle produsenten (e-post) når et bandmedlem legger igjen en kommentar.
   async function notifyOwnerBandComment(ctx: any, body: string, tc: number) {
     if (!sendEmail) return;
@@ -679,6 +706,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       await pool.query(`UPDATE audio_review_projects SET status='under_review', updated_at=NOW() WHERE id=$1::uuid`, [projectId]);
       // Varsle bandet om at en ny versjon er klar å høre (best-effort).
       void notifyBandNewVersion(projectId, r.rows[0]).catch(() => {});
+      void notifySoundRoomUpdated(projectId, s.userId, "version");
       return res.status(201).json(r.rows[0]);
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
@@ -725,6 +753,8 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
          str(req.body?.authorRole, 80) || null, num(req.body?.timecodeSeconds) ?? num(req.body?.timecode) ?? 0, body,
          str(req.body?.category, 40) || "general", Boolean(req.body?.isDecision), str(req.body?.sectionRef, 120) || null],
       );
+      const vp = await pool.query(`SELECT project_id FROM audio_review_versions WHERE id = $1::uuid`, [versionId]).catch(() => ({ rows: [] }));
+      if (vp.rows[0]?.project_id) void notifySoundRoomUpdated(vp.rows[0].project_id, s.userId, "comment");
       return res.status(201).json(r.rows[0]);
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
@@ -803,6 +833,8 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       await pool.query(
         `UPDATE audio_review_projects SET status = $2, updated_at = NOW()
           WHERE id = (SELECT project_id FROM audio_review_versions WHERE id = $1::uuid)`, [versionId, pStatus]);
+      const vp = await pool.query(`SELECT project_id FROM audio_review_versions WHERE id = $1::uuid`, [versionId]).catch(() => ({ rows: [] }));
+      if (vp.rows[0]?.project_id) void notifySoundRoomUpdated(vp.rows[0].project_id, s.userId, "approval");
       // Synk koblet SongFlow/EaseVerse-track-status (mix_approved→mastering, delivery→completed, changes→mixing).
       const trackStatus = approvalType === "changes_requested" ? "mixing"
         : approvalType === "delivery_approved" ? "completed"
@@ -1806,8 +1838,9 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
         [versionId, `member:${ctx.member_id}`, ctx.name, ctx.role, num(req.body?.timecodeSeconds) ?? 0, body,
          str(req.body?.category, 40) || "general", str(req.body?.sectionRef, 120) || null]);
-      // Varsle produsenten om band-tilbakemeldingen (best-effort).
+      // Varsle produsenten om band-tilbakemeldingen (best-effort: e-post + live WS).
       void notifyOwnerBandComment(ctx, body, num(req.body?.timecodeSeconds) ?? 0).catch(() => {});
+      void notifySoundRoomUpdated(ctx.project_id, null, "comment");
       return res.status(201).json(r.rows[0]);
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
@@ -2461,7 +2494,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   app.post("/api/audio-showcases/:id/warmups", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
     // Band-oppvarmingsrutiner er en team-/Enterprise-funksjon.
-    if (!(await requireTeamAccess(pool, s.userId, res))) return;
+    if (!(await requireTeamAccess(pool as any, s.userId, res))) return;
     const title = str(req.body?.title, 120); const target = str(req.body?.target, 60) || "all";
     const steps = sanitizeSteps(req.body?.steps);
     if (!title || steps.length === 0) return res.status(400).json({ error: "title_and_steps_required" });
@@ -2969,7 +3002,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
   app.post("/api/audio-showcases/:id/remind", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
     // «Påminn bandet» er en team-/Enterprise-funksjon.
-    if (!(await requireTeamAccess(pool, s.userId, res))) return;
+    if (!(await requireTeamAccess(pool as any, s.userId, res))) return;
     const id = str(req.params.id, 64);
     const message = str(req.body?.message, 600);
     if (!message) return res.status(400).json({ error: "message_required" });

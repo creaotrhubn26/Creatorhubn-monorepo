@@ -99,7 +99,13 @@ export const RoleRoomUXLayer: React.FC<RoleRoomUXLayerProps> = ({
           <Typography
             variant="caption"
             color="text.disabled"
-            sx={{ fontFamily: 'monospace', fontSize: 11 }}
+            sx={{
+              fontFamily: 'monospace',
+              fontSize: 11,
+              // Mobil har ikke ⌘K-tastatursnarvei → hintet er meningsløst
+              // og spiser bredde. Skjules på xs.
+              display: { xs: 'none', sm: 'block' },
+            }}
           >
             <Box
               component="kbd"

@@ -196,7 +196,7 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
   // ═══════════════════════════════════════════════════════════
 
   app.get('/api/dit/projects/:projectId/destinations', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId || '').trim();
     if (!projectId) return res.status(400).json({ success: false, error: 'projectId påkrevd' });
@@ -213,7 +213,7 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
   });
 
   app.post('/api/dit/destinations', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
     const projectId = String(body.project_id ?? '').trim();
@@ -248,7 +248,7 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
   });
 
   app.delete('/api/dit/destinations/:id', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const id = String(req.params.id || '').trim();
     try {
@@ -266,7 +266,7 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
   // ═══════════════════════════════════════════════════════════
 
   app.post('/api/dit/projects/:projectId/helper-tokens', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId || '').trim();
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -316,7 +316,7 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
   });
 
   app.get('/api/dit/projects/:projectId/helper-tokens', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId || '').trim();
     try {
@@ -346,7 +346,7 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
   });
 
   app.delete('/api/dit/helper-tokens/:id', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const id = String(req.params.id || '').trim();
     try {
@@ -476,7 +476,7 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
   // ═══════════════════════════════════════════════════════════
 
   app.get('/api/dit/projects/:projectId/jobs', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId || '').trim();
     const limit = Number.isFinite(req.query.limit) ? Number(req.query.limit) : 200;
@@ -497,7 +497,7 @@ export function setupDitBackupRoutes(deps: DitBackupRoutesDeps): void {
 
   // Per-take aggregert backup-status — brukes av LiveSetMode TakeRow
   app.get('/api/dit/projects/:projectId/take-status', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId || '').trim();
     try {

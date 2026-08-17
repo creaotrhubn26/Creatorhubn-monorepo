@@ -18,7 +18,7 @@
 
 import { sendEmail, sendSms } from "./casting-reminder-sender";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // Escape user-styrt tekst (lokasjonsnavn, navn) før det interpoleres i e-post-HTML.
 // Body-strengene bygges av flere kallere og kan inneholde brukerinnhold (venue-labels).

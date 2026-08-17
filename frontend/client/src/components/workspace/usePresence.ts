@@ -10,20 +10,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 
-export interface PresenceMember { userId: string; email: string; name: string; crewRole: string | null; online: boolean }
+export interface PresenceMember { userId: string; email: string; name: string; crewRole: string | null; online: boolean; currentRoute: string | null }
 
 export function usePresence(projectId: string, route?: string) {
   const [online, setOnline] = useState<number | null>(null);
   const [members, setMembers] = useState<PresenceMember[]>([]);
   const timers = useRef<any>({});
 
+  // Sample-prosjekter har ingen ekte presence-backend (krever auth/team-medlemskap)
+  const isReal = projectId && projectId !== 'sample';
+
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || !isReal) return;
     let cancelled = false;
 
     const beat = () => {
       if (document.hidden) return;
-      apiRequest('/api/presence/heartbeat', { method: 'POST', body: { currentRoute: route || `/workspace/${projectId}` } }).catch(() => {});
+      // Feltnavnet MÅ hete «route» — backend (presence-heartbeat-routes.ts) leser body.route.
+      apiRequest('/api/presence/heartbeat', { method: 'POST', body: { route: route || `/workspace/${projectId}` } }).catch(() => {});
     };
     const poll = () => {
       if (document.hidden) return;

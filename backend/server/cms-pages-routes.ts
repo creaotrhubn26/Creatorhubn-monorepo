@@ -141,7 +141,7 @@ export function setupCmsPagesRoutes(deps: CmsPagesRoutesDeps): void {
 
   // ── ADMIN LIST — alle pages, inkl utkast ────────────────────────
   app.get('/api/admin/cms/pages', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     try {
@@ -157,7 +157,7 @@ export function setupCmsPagesRoutes(deps: CmsPagesRoutesDeps): void {
 
   // ── ADMIN GET — én side, inkl utkast ────────────────────────────
   app.get('/api/admin/cms/pages/:slug', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const slug = String(req.params.slug || '').trim().toLowerCase();
@@ -182,7 +182,7 @@ export function setupCmsPagesRoutes(deps: CmsPagesRoutesDeps): void {
 
   // ── ADMIN UPSERT — opprett eller oppdater + revisjon-snapshot ───
   app.put('/api/admin/cms/pages/:slug', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const slug = String(req.params.slug || '').trim().toLowerCase();
@@ -257,7 +257,7 @@ export function setupCmsPagesRoutes(deps: CmsPagesRoutesDeps): void {
 
   // ── ADMIN REVISIONS — list historiske versjoner ─────────────────
   app.get('/api/admin/cms/pages/:slug/revisions', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const slug = String(req.params.slug || '').trim().toLowerCase();
@@ -294,7 +294,7 @@ export function setupCmsPagesRoutes(deps: CmsPagesRoutesDeps): void {
 
   // ── ADMIN REVERT — rull tilbake til en revisjon ─────────────────
   app.post('/api/admin/cms/pages/:slug/revert/:revisionId', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const slug = String(req.params.slug || '').trim().toLowerCase();
@@ -361,7 +361,7 @@ export function setupCmsPagesRoutes(deps: CmsPagesRoutesDeps): void {
   // POST /api/admin/cms/media/upload   (multipart/form-data, field 'file')
   // Returnerer { url, key } som settes som src i ImageBlock.
   app.get('/api/admin/cms/media/config', (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     return res.json({ success: true, configured: isCmsMediaConfigured() });
   });
@@ -370,7 +370,7 @@ export function setupCmsPagesRoutes(deps: CmsPagesRoutesDeps): void {
     '/api/admin/cms/media/upload',
     cmsMediaUpload.single('file'),
     async (req, res) => {
-      const session = requireAdminSession(req, res);
+      const session = req.adminSession;
       if (!session) return;
 
       const file = (req as express.Request & { file?: Express.Multer.File }).file;
@@ -404,7 +404,7 @@ export function setupCmsPagesRoutes(deps: CmsPagesRoutesDeps): void {
 
   // ── ADMIN DELETE — slett en side ────────────────────────────────
   app.delete('/api/admin/cms/pages/:slug', async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const slug = String(req.params.slug || '').trim().toLowerCase();

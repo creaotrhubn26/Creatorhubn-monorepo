@@ -165,7 +165,7 @@ async function removeSpotlight(page) {
 }
 
 async function runDemo(page, env) {
-  let pageUrl = appendBypassToken(
+  const pageUrl = appendBypassToken(
     `${env.APP_BASE_URL}/admin/instagram-business-basic-app-review-demo`,
     env.WHATSAPP_DEMO_BYPASS_TOKEN,
   );

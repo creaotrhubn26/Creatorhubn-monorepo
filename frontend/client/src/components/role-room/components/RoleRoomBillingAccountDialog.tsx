@@ -10,6 +10,7 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  IconButton,
   InputLabel,
   MenuItem,
   Select,
@@ -17,13 +18,17 @@ import {
   Tab,
   Tabs,
   Typography,
+  useMediaQuery,
+  useTheme,
   CircularProgress,
 } from '@mui/material';
 import {
   Business as BusinessIcon,
   CalendarMonthOutlined as CalendarMonthOutlinedIcon,
+  Close as CloseIcon,
   CloudDoneOutlined as CloudDoneOutlinedIcon,
   CloudSyncOutlined as CloudSyncOutlinedIcon,
+  Edit as EditIcon,
   FolderOpen as FolderOpenIcon,
   InstallMobileOutlined as InstallMobileOutlinedIcon,
   LinkOffOutlined as LinkOffOutlinedIcon,
@@ -44,6 +49,7 @@ import {
 } from '../services/castingApiService';
 import { castingService, type RoleRoomProjectSnapshot, type RoleRoomProjectSyncMeta, type RoleRoomQueuedProjectChange } from '../services/castingService';
 import WorkspaceWhatsAppSettings from './WorkspaceWhatsAppSettings';
+import RoleRoomOnboardingDialog from './RoleRoomOnboardingDialog';
 import type { CastingProject } from '../models/casting';
 import { useRoleRoomPwa } from '../hooks/useRoleRoomPwa';
 import { getRoleRoomReturnPath } from '../utils/runtime';
@@ -188,7 +194,10 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
   adminPreview = null,
   onProjectUpdated,
 }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [tabValue, setTabValue] = useState(0);
+  const [profileEditOpen, setProfileEditOpen] = useState(false);
   const paymentTimestamp = formatDateTime(account?.paymentTimestamp);
   const paymentFailedAt = formatDateTime(account?.paymentFailedAt);
   const nextPaymentAttemptAt = formatDateTime(account?.nextPaymentAttemptAt);
@@ -419,9 +428,19 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
       onClose={onClose}
       fullWidth
       maxWidth="md"
+      sx={{
+        // På mobil utnytter dialogen nesten hele bredden (MUI default:
+        // 32px margin + max-width calc(100% - 64px) kaster bort ~80px på
+        // en 390px-skjerm). Desktop beholder default (ikke satt for sm+).
+        '& .MuiDialog-paper': {
+          m: { xs: 1.5 },
+          width: { xs: 'calc(100% - 24px)' },
+          maxWidth: { xs: 'calc(100% - 24px)' },
+        },
+      }}
       PaperProps={{
         sx: {
-          borderRadius: 3,
+          borderRadius: { xs: 2.5, sm: 3 },
           border: '1px solid rgba(246,195,88,0.18)',
           background:
             'linear-gradient(180deg, rgba(16,14,20,0.98) 0%, rgba(10,8,15,0.98) 100%)',
@@ -429,27 +448,56 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
         },
       }}
     >
-      <DialogTitle sx={{ pb: 1.25 }}>
-        <Stack direction="row" spacing={1.25} alignItems="center">
-          <PersonIcon sx={{ color: 'var(--role-cyan, #7dd3fc)' }} />
-          <Box>
-            <Typography sx={{ fontWeight: 800, fontSize: '1.05rem' }}>
-              Konto, abonnement og team
-            </Typography>
-            <Typography sx={{ color: 'rgba(255,255,255,0.64)', fontSize: '0.84rem' }}>
-              Oversikt over hvem som er innlogget, aktivt prosjekt, Google Workspace og workspace-abonnementet.
-            </Typography>
-          </Box>
+      <DialogTitle sx={{ pb: 1.25, pr: 1 }}>
+        <Stack direction="row" spacing={1.25} alignItems="center" justifyContent="space-between">
+          <Stack direction="row" spacing={1.25} alignItems="center" minWidth={0}>
+            <PersonIcon sx={{ color: 'var(--role-cyan, #7dd3fc)', flexShrink: 0 }} />
+            <Box sx={{ minWidth: 0 }}>
+              <Typography sx={{ fontWeight: 800, fontSize: { xs: '1rem', sm: '1.05rem' }, lineHeight: 1.2 }}>
+                Konto, abonnement og team
+              </Typography>
+              {!isMobile ? (
+                <Typography sx={{ color: 'rgba(255,255,255,0.64)', fontSize: '0.84rem' }}>
+                  Oversikt over hvem som er innlogget, aktivt prosjekt, Google Workspace og workspace-abonnementet.
+                </Typography>
+              ) : null}
+            </Box>
+          </Stack>
+          <IconButton
+            onClick={onClose}
+            aria-label="Lukk konto-dialog"
+            size="small"
+            sx={{
+              ml: 0.5,
+              flexShrink: 0,
+              color: 'rgba(255,255,255,0.78)',
+              '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.08)' },
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
         </Stack>
       </DialogTitle>
 
-      <DialogContent sx={{ pt: 1.5 }}>
+      <DialogContent sx={{ pt: 1.5, px: { xs: 2, sm: 3 } }}>
         <Tabs
           value={tabValue}
           onChange={(_, value) => setTabValue(value)}
+          variant={isMobile ? 'scrollable' : 'standard'}
+          scrollButtons={false}
           sx={{
             mb: 2,
-            '& .MuiTab-root': { textTransform: 'none', fontWeight: 700, color: 'rgba(255,255,255,0.72)' },
+            minHeight: { xs: 40, sm: 48 },
+            '& .MuiTab-root': {
+              textTransform: 'none',
+              fontWeight: 700,
+              color: 'rgba(255,255,255,0.72)',
+              fontSize: { xs: '0.8rem', sm: '0.9rem' },
+              minWidth: { xs: 'auto', sm: 90 },
+              px: { xs: 1, sm: 2 },
+              py: 0,
+              '&:not(:first-of-type)': { ml: { xs: 0.5, sm: 0 } },
+            },
             '& .Mui-selected': { color: '#f8fafc' },
             '& .MuiTabs-indicator': { bgcolor: 'var(--role-cyan, #7dd3fc)' },
           }}
@@ -720,6 +768,26 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
                   />
                 ) : null}
               </Stack>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<EditIcon />}
+                onClick={() => setProfileEditOpen(true)}
+                sx={{
+                  alignSelf: 'flex-start',
+                  mt: 0.5,
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  borderColor: 'rgba(125,211,252,0.34)',
+                  color: '#bae6fd',
+                  '&:hover': {
+                    borderColor: 'rgba(125,211,252,0.6)',
+                    bgcolor: 'rgba(125,211,252,0.08)',
+                  },
+                }}
+              >
+                Rediger profil
+              </Button>
               {adminPreview?.enabled ? (
                 <Stack spacing={0.9} sx={{ pt: 1 }}>
                   <Typography sx={{ color: 'rgba(255,255,255,0.62)', fontSize: '0.76rem' }}>
@@ -1490,11 +1558,18 @@ const RoleRoomBillingAccountDialog: FC<RoleRoomBillingAccountDialogProps> = ({
         ) : null}
       </DialogContent>
 
-      <DialogActions sx={{ px: 3, pb: 2.5, pt: 1.25 }}>
+      <DialogActions sx={{ px: 3, pb: 2.5, pt: 1.25, display: isMobile ? 'none' : 'flex' }}>
         <Button onClick={onClose} sx={{ color: 'rgba(255,255,255,0.78)' }}>
           Lukk
         </Button>
       </DialogActions>
+
+      <RoleRoomOnboardingDialog
+        open={profileEditOpen}
+        mode="edit"
+        onComplete={() => setProfileEditOpen(false)}
+        onClose={() => setProfileEditOpen(false)}
+      />
     </Dialog>
   );
 };

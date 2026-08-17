@@ -1486,7 +1486,7 @@ export function setupPhotographerProjectsRoutes(
       const proj = projQ.rows[0];
 
       // Sjekk om det allerede finnes en aktiv capture_session for prosjektet
-      let existing = await pool.query(
+      const existing = await pool.query(
         `SELECT id, name, status, starts_at, created_at
            FROM capture_sessions
           WHERE owner_user_id = $1 AND project_id = $2 AND deleted_at IS NULL

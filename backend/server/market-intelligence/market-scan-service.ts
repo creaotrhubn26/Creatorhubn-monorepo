@@ -302,7 +302,7 @@ export async function runMarketScan(
     }
 
     // 4. Opportunity recommendations
-    let opportunities: OpportunityRecommendation[] = [];
+    const opportunities: OpportunityRecommendation[] = [];
     try {
       const recs = await generateOpportunityRecommendations({
         marketQuery: scan.marketQuery,

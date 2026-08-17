@@ -56,7 +56,7 @@ export interface ClientGalleryRoutesDeps {
   calculateGalleryPricing: (
     gallerySettings: Record<string, unknown> | null | undefined,
     selectedCount: number,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   ) => any;
   checkContractSignature: (galleryId: string) => Promise<any>;
   /** Matcher index.ts:23061. Andre parameter er clientEmail, ikke imageIds. */
@@ -72,7 +72,7 @@ export interface ClientGalleryRoutesDeps {
   dispatchGalleryNotification: (
     type: 'comment_created' | 'selection_submitted' | 'project_milestone',
     photographerId: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     payload: any,
   ) => Promise<void>;
   getCreatorHubStripeClient: () => Stripe | null;
@@ -960,7 +960,7 @@ export function setupClientGalleryRoutes(
           );
           const captureAssetId = imgRow.rows[0]?.image_metadata?.captureAssetId;
           if (captureAssetId) {
-            await updateAssetLabels(db, gallery.photographerId, String(captureAssetId), {
+            await updateAssetLabels(db as any, gallery.photographerId, String(captureAssetId), {
               flaggedForClient: hearted,
             });
           }

@@ -209,6 +209,21 @@ export function createCommunicationRouter(
     const m = /^project-(.+)$/.exec(String(channelId || '').trim());
     return m ? m[1] : null;
   };
+  // Opprettede team-chatkanaler (`teamchat-<id>`) bærer prosjektet sitt i
+  // settings.projectId — slå opp der når regex-en ikke matcher direkte.
+  const projectIdFromChannelAsync = async (channelId: string): Promise<string | null> => {
+    const direct = projectIdFromChannel(channelId);
+    if (direct) return direct;
+    if (!String(channelId || '').startsWith('teamchat-')) return null;
+    try {
+      const ch = await pool.query(
+        `SELECT settings FROM communication_channels WHERE id = $1 LIMIT 1`,
+        [channelId],
+      );
+      const projectId = ch.rows[0]?.settings?.projectId;
+      return typeof projectId === 'string' && projectId ? projectId : null;
+    } catch { return null; }
+  };
   const resolveAuthedUser = async (req: Request): Promise<AuthedUser | null> => {
     const bearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
     if (!bearer) return null;
@@ -257,7 +272,7 @@ export function createCommunicationRouter(
   const guardProjectChannel = async (
     channelId: string, req: Request, res: Response,
   ): Promise<{ ok: boolean; access: { displayName: string } | null; user: AuthedUser | null }> => {
-    const projectId = projectIdFromChannel(channelId);
+    const projectId = await projectIdFromChannelAsync(channelId);
     if (!projectId) return { ok: true, access: null, user: null };
     const user = await resolveAuthedUser(req);
     if (!user) { res.status(401).json({ error: 'unauthorized' }); return { ok: false, access: null, user: null }; }
@@ -322,7 +337,7 @@ export function createCommunicationRouter(
   const guardChannelAccess = async (
     channelId: string, req: Request, res: Response,
   ): Promise<{ ok: boolean; access: { displayName: string } | null; user: AuthedUser | null }> => {
-    if (projectIdFromChannel(channelId)) {
+    if (await projectIdFromChannelAsync(channelId)) {
       return guardProjectChannel(channelId, req, res);
     }
     const user = await resolveAuthedUser(req);
@@ -2253,6 +2268,7 @@ export function createCommunicationRouter(
     messageType: string;
     metadata?: Record<string, unknown>;
     timestamp?: string;
+    isSystemGenerated?: boolean;
   }) => {
     const messageId = toNonEmptyString(params.id) || crypto.randomUUID();
     const now = new Date().toISOString();
@@ -2268,7 +2284,7 @@ export function createCommunicationRouter(
         metadata: params.metadata || {},
         isRead: false,
         isPriority: false,
-        isSystemGenerated: false,
+        isSystemGenerated: params.isSystemGenerated === true,
         createdAt,
         updatedAt: now,
       });
@@ -2289,6 +2305,7 @@ export function createCommunicationRouter(
           messageType: params.messageType,
           content: params.content,
           metadata: params.metadata || {},
+          isSystemGenerated: params.isSystemGenerated === true,
           updatedAt: now,
         })
         .where(eq(schema.communicationMessages.id, messageId));
@@ -2985,6 +3002,173 @@ export function createCommunicationRouter(
     } catch (error) {
       console.error('Error saving chat message:', error);
       res.status(500).json({ error: 'Failed to save message' });
+    }
+  });
+
+  // ─── GET /api/chat/channels?projectId= ────────────────────
+  // Kanalliste for et prosjekt: hovedkanalen `project-<id>` pluss alle
+  // opprettede team-chats (`teamchat-*`). Krever eier/medlemskap.
+  router.get('/api/chat/channels', async (req, res) => {
+    try {
+      const projectId = String(req.query.projectId || '').trim();
+      if (!projectId) return res.status(400).json({ error: 'projectId required' });
+      const user = await resolveAuthedUser(req);
+      if (!user) return res.status(401).json({ error: 'unauthorized' });
+      const access = await resolveProjectAccess(projectId, user);
+      if (!access) return res.status(403).json({ error: 'forbidden' });
+      await ensureChannelExists(`project-${projectId}`, '# Produksjon', 'team');
+      const rows = await pool.query(
+        `SELECT id, name, description, settings, created_at
+           FROM communication_channels
+          WHERE id = $1 OR (settings->>'projectId' = $2 AND settings->>'kind' = 'team')
+          ORDER BY created_at ASC`,
+        [`project-${projectId}`, projectId],
+      );
+      const channels = await Promise.all((rows.rows as any[]).map(async (r) => {
+        const last = await pool.query(
+          `SELECT content, metadata, created_at FROM communication_messages
+            WHERE channel_id = $1 ORDER BY created_at DESC LIMIT 1`,
+          [r.id],
+        ).catch(() => ({ rows: [] as any[] }));
+        const parts = await pool.query(
+          `SELECT count(*)::int n FROM communication_participants WHERE channel_id = $1 AND is_active`,
+          [r.id],
+        ).catch(() => ({ rows: [{ n: 0 }] }));
+        const lastMeta = last.rows[0]?.metadata || {};
+        return {
+          id: r.id,
+          name: r.name,
+          description: r.description || null,
+          kind: r.settings?.kind || (r.id === `project-${projectId}` ? 'main' : 'team'),
+          participantCount: parts.rows[0]?.n || 0,
+          createdAt: r.created_at,
+          lastMessage: last.rows[0] ? {
+            content: last.rows[0].content,
+            senderName: lastMeta.senderName || null,
+            timestamp: last.rows[0].created_at,
+          } : null,
+        };
+      }));
+      res.json({ channels });
+    } catch (error) {
+      console.error('GET /api/chat/channels:', error);
+      res.status(500).json({ error: 'Failed to list channels' });
+    }
+  });
+
+  // ─── POST /api/chat/channels ──────────────────────────────
+  // Oppretter en ny team-chat for prosjektet, seedet med valgte
+  // teammedlemmer + eier, og poster en automatisk velkomstmelding som
+  // ønsker teamet velkommen med prosjektkontekst og prosjektbrief.
+  router.post('/api/chat/channels', async (req, res) => {
+    try {
+      const body = (req.body || {}) as Record<string, unknown>;
+      const projectId = String(body.projectId || '').trim();
+      const name = String(body.name || '').trim().slice(0, 80);
+      if (!projectId || !name) return res.status(400).json({ error: 'projectId og name er påkrevd' });
+      const user = await resolveAuthedUser(req);
+      if (!user) return res.status(401).json({ error: 'unauthorized' });
+      const access = await resolveProjectAccess(projectId, user);
+      if (!access) return res.status(403).json({ error: 'forbidden' });
+
+      const channelId = `teamchat-${crypto.randomUUID().slice(0, 8)}`;
+      await ensureChannelExists(channelId, name, 'team');
+      await pool.query(
+        `UPDATE communication_channels SET settings = $2::jsonb WHERE id = $1`,
+        [channelId, JSON.stringify({ projectId, kind: 'team', createdBy: user.userId })],
+      );
+      const description = String(body.description || '').trim().slice(0, 300);
+      if (description) {
+        await pool.query(`UPDATE communication_channels SET description = $1 WHERE id = $2`, [description, channelId]);
+      }
+
+      // Deltakere: eier + valgte aktive teammedlemmer (verifisert mot prosjektet).
+      const memberRows = await pool.query(
+        `SELECT user_id, email, name, crew_role FROM project_team_members
+          WHERE project_id = $1 AND status = 'active' AND deactivated_at IS NULL`,
+        [projectId],
+      ).catch(() => ({ rows: [] as any[] }));
+      const allowed = new Set<string>();
+      for (const m of memberRows.rows) {
+        if (m.user_id) allowed.add(String(m.user_id).toLowerCase());
+        if (m.email) allowed.add(String(m.email).toLowerCase());
+      }
+      const ownerRow = await pool.query(
+        `SELECT user_id FROM projects WHERE id = $1 AND user_id IS NOT NULL LIMIT 1`,
+        [projectId],
+      ).catch(() => ({ rows: [] as any[] }));
+      const idents: string[] = [];
+      if (ownerRow.rows[0]?.user_id) idents.push(String(ownerRow.rows[0].user_id));
+      const picked = Array.isArray(body.participantIds) ? body.participantIds : [];
+      for (const pid of picked) {
+        const v = String(pid || '').trim();
+        if (v && allowed.has(v.toLowerCase()) && !idents.some((x) => x.toLowerCase() === v.toLowerCase())) idents.push(v);
+      }
+      for (const ident of idents) {
+        const exists = await pool.query(
+          `SELECT 1 FROM communication_participants WHERE channel_id = $1 AND user_id = $2 LIMIT 1`,
+          [channelId, ident],
+        );
+        if ((exists.rowCount ?? 0) === 0) {
+          await pool.query(
+            `INSERT INTO communication_participants (channel_id, user_id, role, is_active) VALUES ($1, $2, 'member', true)`,
+            [channelId, ident],
+          );
+        }
+      }
+
+      // Prosjektbrief fra ekte prosjektdata (alt feiltolerant — ingen data = linjen droppes).
+      const ROLE_NB: Record<string, string> = {
+        fotograf: 'Fotograf', videograf: 'Videograf', editor: 'Editor', lyd: 'Lydtekniker',
+        assistent: 'Assistent', begge: 'Begge', produsent: 'Produsent',
+      };
+      const [p, w, b, c] = await Promise.all([
+        pool.query(`SELECT name, project_type, event_date, location FROM projects WHERE id = $1 LIMIT 1`, [projectId]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT couple_name, venue, wedding_date FROM wedding_timelines WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`, [projectId]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT count(*)::int total, count(*) FILTER (WHERE status = 'done')::int done FROM project_board_tasks WHERE project_id = $1`, [projectId]).catch(() => ({ rows: [{ total: 0, done: 0 }] })),
+        pool.query(`SELECT count(*)::int total, count(*) FILTER (WHERE checked)::int done FROM project_checklist_items WHERE project_id = $1`, [projectId]).catch(() => ({ rows: [{ total: 0, done: 0 }] })),
+      ]);
+      const proj = p.rows[0] || {};
+      const wed = w.rows[0] || {};
+      const projectName = proj.name || wed.couple_name || 'Prosjekt';
+      const teamNames = memberRows.rows.map((m: any) => {
+        const n = m.name || m.email || '';
+        const role = ROLE_NB[m.crew_role] || m.crew_role || '';
+        return role ? `${n} (${role})` : n;
+      });
+      const lines: string[] = [
+        `👋 Hei team! Velkommen til «${name}» for ${projectName}.`,
+        '',
+        '📋 PROSJEKTBRIEF',
+      ];
+      const type = proj.project_type || wed.cultural_type || null;
+      if (type) lines.push(`• Type: ${type}`);
+      const whenWhere = [wed.wedding_date || proj.event_date, wed.venue || proj.location].filter(Boolean);
+      if (whenWhere.length) lines.push(`• ${wed.wedding_date || proj.event_date ? 'Dato' : 'Sted'}: ${whenWhere.join(', ')}`);
+      if (teamNames.length) lines.push(`• Team (${teamNames.length}): ${teamNames.slice(0, 5).join(' · ')}${teamNames.length > 5 ? ` …` : ''}`);
+      const bt = b.rows[0], ct = c.rows[0];
+      if (bt && bt.total > 0) lines.push(`• Oppgaver: ${bt.done}/${bt.total} fullført`);
+      if (ct && ct.total > 0) lines.push(`• Sjekkliste: ${ct.done}/${ct.total} klart`);
+      lines.push('', 'God produksjon! 🎬');
+      const welcome = await persistMessage({
+        channelId,
+        senderId: user.email || 'system',
+        content: lines.join('\n'),
+        messageType: 'text',
+        metadata: { senderName: access.displayName, system: 'welcome' },
+        isSystemGenerated: true,
+      });
+
+      res.status(201).json({
+        channel: {
+          id: channelId, name, description: description || null, kind: 'team',
+          participantCount: idents.length, createdAt: new Date().toISOString(), lastMessage: null,
+        },
+        welcome: { id: welcome.id, content: lines.join('\n') },
+      });
+    } catch (error) {
+      console.error('POST /api/chat/channels:', error);
+      res.status(500).json({ error: 'Failed to create channel' });
     }
   });
 

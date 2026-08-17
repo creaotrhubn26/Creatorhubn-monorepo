@@ -534,7 +534,7 @@ async function main(): Promise<void> {
   const beatByClipId = { ...diversitySeed.beatByClipId };
 
   let alternatives: AutoEditAlternativesResult | null = null;
-  let selectedVariant = options.variant;
+  const selectedVariant = options.variant;
   let selectedProposal = null as AutoEditAlternativesResult['alternatives'][AutoEditVariant] | null;
   let attemptsUsed = 0;
   let missingWeddingIds: string[] = [];

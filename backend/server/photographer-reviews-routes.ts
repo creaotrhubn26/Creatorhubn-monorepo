@@ -17,14 +17,11 @@
 import type express from "express";
 import { sendTransactionalEmail } from "./transactional-email-service";
 import { composeEmail } from "./email-design-system";
-
-type AnyPool = {
-  query: (text: string, params?: unknown[]) => Promise<{ rows: any[]; rowCount: number }>;
-};
+import type { Pool } from "pg";
 
 export interface PhotographerReviewsDeps {
   app: express.Application;
-  pool: AnyPool;
+  pool: Pool;
   requireUserSession: (req: any, res: any) => { userId: string; email?: string | null } | null;
 }
 
@@ -93,7 +90,7 @@ export function setupPhotographerReviewsRoutes(deps: PhotographerReviewsDeps): v
             WHERE access_token = $1 LIMIT 1`,
           [accessToken],
         );
-        if (g.rowCount > 0) {
+        if ((g.rowCount ?? 0) > 0) {
           verified = true;
           photographerId = g.rows[0].photographer_id || photographerId;
           clientEmail = clientEmail || g.rows[0].client_email || null;

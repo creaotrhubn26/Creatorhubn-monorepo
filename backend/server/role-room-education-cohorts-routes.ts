@@ -294,7 +294,7 @@ export function createEducationCohortsRouter(
         const emailKey = email.toLowerCase();
         if (!name || (emailKey && seen.has(emailKey))) { skipped++; continue; }
         if (emailKey) seen.add(emailKey);
-        // eslint-disable-next-line no-await-in-loop -- sekvensiell insert holder skjemaet enkelt
+         
         await pool.query(
           `INSERT INTO role_room_education_students (id, cohort_id, owner_user_id, name, email, student_number)
            VALUES ($1,$2,$3,$4,$5,$6)`,

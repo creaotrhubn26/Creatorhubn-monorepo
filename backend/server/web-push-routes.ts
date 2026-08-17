@@ -19,7 +19,7 @@
 import type express from "express";
 import webPush from "web-push";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 export interface WebPushRoutesDeps {
   app: express.Application;

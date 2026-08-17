@@ -43,12 +43,12 @@
 
 import type express from "express";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 type Handler = (req: any, res: any) => any;
 
 export interface SongflowDeprecatedAliasesRoutesDeps {
   app: express.Application;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   markSongFlowAliasDeprecated: (res: any, successorPath: string) => void;
   listEaseVerseProjectsHandler: Handler;
   listEaseVerseTracksHandler: Handler;

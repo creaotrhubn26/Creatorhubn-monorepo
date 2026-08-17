@@ -188,3 +188,37 @@ struct OAuthAccount: Codable, Hashable, Identifiable {
 struct OAuthAccountsResponse: Codable {
     let accounts: [OAuthAccount]
 }
+
+// ============================================================
+// MARK: - Lead Map · Auto-populate (Site Discovery → lookalike-import)
+// ============================================================
+
+/// Én Claude-generert Google Places-query og dens utfall.
+/// Mappes mot `AutoPopulateResult.details[]` fra
+/// `lead-map-discovery-populate.ts`.
+struct AutoPopulateQueryDetail: Codable, Hashable, Identifiable {
+    let query: String
+    let placesFound: Int?
+    let placesImported: Int?
+    let error: String?
+
+    var id: String { query }
+}
+
+/// Mappes mot `POST /api/role-room/agent/configs/:id/lead-map/auto-populate`
+/// (lead-map-routes.ts → lead-map-discovery-populate.ts).
+///
+/// Backend-kontrakt (AutoPopulateResult):
+///   { ok, queriesGenerated, queriesSearched, placesFound, placesImported,
+///     quotaRemaining (null når ok=false), businessContextSummary,
+///     details: [{ query, placesFound, placesImported, error? }] }
+struct AutoPopulateResult: Codable, Hashable {
+    let ok: Bool
+    let queriesGenerated: Int?
+    let queriesSearched: Int?
+    let placesFound: Int?
+    let placesImported: Int?
+    let quotaRemaining: Int?
+    let businessContextSummary: String?
+    let details: [AutoPopulateQueryDetail]?
+}

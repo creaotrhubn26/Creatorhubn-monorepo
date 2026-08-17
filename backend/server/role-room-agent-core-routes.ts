@@ -150,7 +150,7 @@ export function setupRoleRoomAgentCoreRoutes(
       });
     }
 
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) {
       return;
     }
@@ -275,7 +275,7 @@ export function setupRoleRoomAgentCoreRoutes(
         error: "The Role Room Agent er ikke aktivert.",
       });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
@@ -399,7 +399,7 @@ export function setupRoleRoomAgentCoreRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
@@ -633,7 +633,7 @@ export function setupRoleRoomAgentCoreRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     // Plan-generering tar typisk 2500-4000 input-tokens (system prompt +
@@ -683,7 +683,7 @@ export function setupRoleRoomAgentCoreRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const researchId = readString(req.query.researchId);
     if (!researchId) {
@@ -703,7 +703,7 @@ export function setupRoleRoomAgentCoreRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = readString(req.query.projectId);
     if (!projectId) {
@@ -727,7 +727,7 @@ export function setupRoleRoomAgentCoreRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
@@ -840,7 +840,7 @@ export function setupRoleRoomAgentCoreRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     try {
@@ -920,7 +920,7 @@ export function setupRoleRoomAgentCoreRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
@@ -973,7 +973,7 @@ export function setupRoleRoomAgentCoreRoutes(
   });
 
   app.get("/api/role-room/agent/learning/overrides", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const statusRaw = readString(req.query?.status);
     const status =
@@ -985,7 +985,7 @@ export function setupRoleRoomAgentCoreRoutes(
   });
 
   app.post("/api/role-room/agent/learning/overrides/:id/review", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const id = readString(req.params?.id);
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
@@ -1053,7 +1053,7 @@ export function setupRoleRoomAgentCoreRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
@@ -1145,7 +1145,7 @@ export function setupRoleRoomAgentCoreRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
@@ -1207,7 +1207,7 @@ export function setupRoleRoomAgentCoreRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId ?? "");
     const domain = String(req.query.domain ?? "").trim().toLowerCase()
@@ -1295,7 +1295,7 @@ export function setupRoleRoomAgentCoreRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId ?? "");
     if (!projectId) return res.status(400).json({ success: false, error: "projectId er påkrevd." });
@@ -1366,7 +1366,7 @@ export function setupRoleRoomAgentCoreRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
@@ -1414,7 +1414,7 @@ export function setupRoleRoomAgentCoreRoutes(
   // Meta: VERIFISER at prosjektets kobling faktisk virker (Graph /me),
   // i stedet for selvattestering med «Bekreft koblet»-knappen.
   app.get("/api/role-room/agent/connection-status/:projectId", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId ?? "");
     if (!projectId) return res.status(400).json({ success: false, error: "projectId er påkrevd." });
@@ -1570,7 +1570,7 @@ export function setupRoleRoomAgentCoreRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
     const projectId = readString(body.projectId);
@@ -1614,7 +1614,7 @@ export function setupRoleRoomAgentCoreRoutes(
       if (!isCompatAdminFeatureEnabled(featureId)) {
         return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
       }
-      const session = requireAdminSession(req, res);
+      const session = req.adminSession;
       if (!session) return;
       const projectId = readString((req.body as Record<string, unknown> | undefined)?.projectId);
       const file = (req as unknown as { file?: { buffer: Buffer } }).file;
@@ -1639,7 +1639,7 @@ export function setupRoleRoomAgentCoreRoutes(
   );
 
   app.get("/api/role-room/agent/contract-scan/:projectId", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const scan = await getLatestContractScan(pool, String(req.params.projectId));
     return res.json({ success: true, scan });

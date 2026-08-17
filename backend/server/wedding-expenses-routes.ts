@@ -16,7 +16,7 @@
 import type express from "express";
 import crypto from "crypto";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 export interface WeddingExpensesRoutesDeps {
   app: express.Application;

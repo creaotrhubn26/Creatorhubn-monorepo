@@ -951,7 +951,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   // Persist workflow view preference on change
   useEffect(() => {
     saveWorkflowPreference(projectId, workflowUI);
-  }, [projectId, workflowUI.view.tab, workflowUI.selectedDayId]);
+  }, [projectId, workflowUI]);
 
   // ---- Derived convenience aliases ----
   const showLiveSetMode = workflowUI.view.tab === 'live' && !('showDaySelector' in workflowUI.view && workflowUI.view.showDaySelector);
@@ -1170,7 +1170,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
       }
     };
     if (projectId) loadShootingDays();
-  }, [projectId]);
+  }, [projectId, workflowUI.selectedDayId]);
 
   const followLiveScene = workflowUI.followLiveScene;
   const liveSetStatus = useLiveSetSync({
@@ -1297,9 +1297,9 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   }, [sceneStatusOverrides, getShotsForScene]);
 
   // Get dialogue for scene
-  const getSceneDialogue = (sceneId: string): DialogueLine[] => {
+  const getSceneDialogue = useCallback((sceneId: string): DialogueLine[] => {
     return dialogueLines.filter(d => d.sceneId === sceneId);
-  };
+  }, [dialogueLines]);
 
   // Toggle act
   const toggleAct = (actId: string) => {
@@ -1342,7 +1342,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   }, [getShotsForScene]);
 
   // Get scene metadata
-  const getSceneMetadata = (scene: SceneBreakdown) => {
+  const getSceneMetadata = useCallback((scene: SceneBreakdown) => {
     const shots = getShotsForScene(scene.id);
     return {
       camera: toDisplayString(shots[0]?.camera?.resolution, toDisplayString(shots[0]?.cameraAngle, 'Camera')),
@@ -1352,7 +1352,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
       lens: shots[0]?.focalLength || '50mm Prime',
       shotType: shots[0]?.shotType || '',
     };
-  };
+  }, [getShotsForScene]);
 
   // ============================================
   // PRECOMPUTED allDialogue — scene-ordered, O(n) once via useMemo
@@ -1370,6 +1370,11 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     return scenes.flatMap(s => byScene.get(s.id) ?? []);
   }, [scenes, dialogueLines]);
 
+  const handleReadThroughNext = useCallback(() => {
+    stopTTS();
+    ttsPlayingRef.current = false;
+    setReadThroughCurrentLine(i => Math.min(i + 1, allDialogue.length - 1));
+  }, [allDialogue.length, setReadThroughCurrentLine, ttsPlayingRef]);
   // Sync right panel with selected scene
   useEffect(() => {
     // Auto-advance to next line during read-through if playing
@@ -1441,7 +1446,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
         return () => clearTimeout(timer);
       }
     }
-  }, [readThroughMode, readThroughPlaying, readThroughCurrentLine, allDialogue, ttsEnabled, ttsVoice, ttsLanguage, ttsSpeed, ttsUseCharacterVoices, ttsCharacterVoices, readThroughAnalysis.lineHintsById, readThroughAnalysis.voiceCastingByCharacter]);
+  }, [readThroughMode, readThroughPlaying, readThroughCurrentLine, allDialogue, ttsEnabled, ttsVoice, ttsLanguage, ttsSpeed, ttsUseCharacterVoices, ttsCharacterVoices, readThroughAnalysis.lineHintsById, readThroughAnalysis.voiceCastingByCharacter, handleReadThroughNext, setReadThroughCurrentLine, setReadThroughPlaying, ttsPlayingRef]);
 
   // Auto-scroll to current dialogue line in read-through
   useEffect(() => {
@@ -1456,7 +1461,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
         }
       }
     }
-  }, [readThroughCurrentLine, readThroughMode, allDialogue]);
+  }, [readThroughCurrentLine, readThroughMode, allDialogue, getSceneDialogue, scenes]);
 
   // Update shot properties when scene changes (read-only sync, no save)
   useEffect(() => {
@@ -1474,7 +1479,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
         }});
       }
     }
-  }, [selectedScene?.id]); // Only run when scene ID changes
+  }, [selectedScene?.id, selectedScene, getSceneMetadata, selectedShot]); // Only run when scene ID changes
 
   // ============================================
   // SHOT DRAFT — populate inspector from metadata when shot changes
@@ -1534,7 +1539,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
         }));
       }
     }
-  }, [selectedShotId]);
+  }, [selectedShotId, inspectorUI.dirty, shotMetadata, shotProperties]);
 
 
   // ============================================
@@ -1607,34 +1612,34 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   }, [flushShotProps, flushSceneNeeds]);
 
   // Manuscript zoom handlers — function declarations avoid TDZ issues during HMR
-  function handleManuscriptZoomIn() {
+  const handleManuscriptZoomIn = useCallback(() => {
     setManuscriptZoom(prev => {
       const v = Math.min(prev + 0.25, 2);
       saveZoomPreference(v, projectId);
       return v;
     });
-  }
+  }, [projectId]);
 
-  function handleManuscriptZoomOut() {
+  const handleManuscriptZoomOut = useCallback(() => {
     setManuscriptZoom(prev => {
       const v = Math.max(prev - 0.25, 0.5);
       saveZoomPreference(v, projectId);
       return v;
     });
-  }
+  }, [projectId]);
 
-  function handleManuscriptZoomReset() {
+  const handleManuscriptZoomReset = useCallback(() => {
     setManuscriptZoom(1);
     saveZoomPreference(1, projectId);
-  }
+  }, [projectId]);
 
-  function handleManuscriptFullscreen() {
+  const handleManuscriptFullscreen = useCallback(() => {
     setIsManuscriptFullscreen(prev => {
       const v = !prev;
       saveFullscreenPreference(v, projectId);
       return v;
     });
-  }
+  }, [projectId]);
 
   // Keyboard shortcuts: Escape, Ctrl/Cmd +/-, Ctrl/Cmd 0, F
   useEffect(() => {
@@ -1664,7 +1669,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isManuscriptFullscreen, projectId]);
+  }, [isManuscriptFullscreen, projectId, handleManuscriptFullscreen, handleManuscriptZoomIn, handleManuscriptZoomOut, handleManuscriptZoomReset]);
 
   // Build timeline data
   const timelineData = useMemo(() => {
@@ -1747,7 +1752,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     }));
 
     return { blocks, segments, scenes: timelineScenes, totalDuration: safeTotal };
-  }, [acts, getShotsForScene, scenes, selectedScene?.id, selectedSceneActId, shotLists, timelineActId, timelineScope]);
+  }, [acts, getShotsForScene, scenes, selectedScene?.id, selectedSceneActId, timelineActId, timelineScope]);
 
   const {
     timelineRef,
@@ -1920,7 +1925,10 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
   }, [projectId, scenes, setShotLists, shotLists]);
 
   const selectedSceneMetadata = selectedScene ? getSceneMetadata(selectedScene) : null;
-  const selectedSceneDialogue = selectedScene ? getSceneDialogue(selectedScene.id) : [];
+  const selectedSceneDialogue = useMemo(
+    () => (selectedScene ? getSceneDialogue(selectedScene.id) : []),
+    [selectedScene, getSceneDialogue]
+  );
   const productionMentionCandidates = useMemo(() => {
     const deduped = new Set<string>();
     for (const role of projectRoles) {
@@ -2326,17 +2334,12 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
     setReadThroughPlaying(!readThroughPlaying);
   };
 
-  const handleReadThroughNext = useCallback(() => {
-    stopTTS();
-    ttsPlayingRef.current = false;
-    setReadThroughCurrentLine(i => Math.min(i + 1, allDialogue.length - 1));
-  }, [allDialogue.length]);
 
   const handleReadThroughPrevious = useCallback(() => {
     stopTTS();
     ttsPlayingRef.current = false;
     setReadThroughCurrentLine(i => Math.max(i - 1, 0));
-  }, []);
+  }, [setReadThroughCurrentLine, ttsPlayingRef]);
 
   // Production notes — save handler for <ProductionNotesPanel>
   const handleSaveProductionNote = useCallback((sceneId: string, noteType: NoteType, value: string) => {
@@ -2485,7 +2488,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
       return [...prev, updatedShotList];
     });
     await castingService.saveShotList(projectId, updatedShotList);
-  }, [projectId]);
+  }, [projectId, setShotLists]);
 
   const updateSelectedShotStoryboardState = useCallback(async (
     transform: (shot: CastingShot) => CastingShot,
@@ -2653,7 +2656,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
         }
       }
     }
-  }, [onSceneUpdate, projectId, projectStoryboardLibraryItems, selectedShot, shotLists]);
+  }, [onSceneUpdate, projectId, projectStoryboardLibraryItems, selectedShot, shotLists, setShotLists]);
 
   // Actually create the shot with image — called from <AddShotDialog>
   const handleCreateShot = useCallback((payload?: AddShotDialogCreatePayload) => {
@@ -2735,7 +2738,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
       },
     }));
     setSelectedShot(newShot);
-  }, [selectedScene, projectId, debouncedPersistShotList]);
+  }, [selectedScene, projectId, debouncedPersistShotList, setShotLists]);
 
   // Reference shot search — passed to <AddShotDialog>
   // Race-safe: uses a local monotonic counter to discard stale results
@@ -2800,7 +2803,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
       ...prev,
       [sceneId]: needs,
     }));
-  }, []);
+  }, [setSceneNeeds]);
 
   const handleOpenSceneNeedsDialog = (sceneId: string) => {
     dispatchWorkflow({ type: 'OPEN_SCENE_NEEDS', sceneId });
@@ -3028,7 +3031,7 @@ export const ProductionManuscriptView: FC<ProductionManuscriptViewProps> = ({
       setSelectedScenes(EMPTY_SELECTION);
       setBatchMode(false);
     }
-  }, [selectedScenes, onSceneDelete, scenes, pushPatch]);
+  }, [selectedScenes, onSceneDelete, scenes, pushPatch, setBatchMode, setSelectedScenes]);
 
   const handleBatchExport = useCallback(() => {
     const ids = selectedMapIds(selectedScenes);

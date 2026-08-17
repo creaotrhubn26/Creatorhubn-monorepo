@@ -72,7 +72,7 @@ export function setupQuotesRoutes(deps: QuotesRoutesDeps): void {
     if (headerUserId) {
       return String(headerUserId);
     }
-    return null;
+    throw new Error("userId not found");
   }
 
   function buildSharedQuoteWhereClause(options: {

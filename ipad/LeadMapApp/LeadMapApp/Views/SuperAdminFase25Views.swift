@@ -149,6 +149,7 @@ struct SuperAdminAdsConfigDetailView: View {
     @State private var loading = true
     @State private var actingKey: String?
     @State private var snackbar: String?
+    @State private var showAutoPopulate = false
 
     var body: some View {
         NavigationStack {
@@ -162,6 +163,26 @@ struct SuperAdminAdsConfigDetailView: View {
 
                     if !diagnostics.isEmpty {
                         diagnosticsSection
+                    }
+
+                    // Lead Map · auto-populer
+                    Section {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label("Auto-populer Lead Map", systemImage: "sparkles.rectangle.stack.fill")
+                                .font(.headline)
+                            Text("Analyserer nettstedet, genererer lookalike-søk (Claude) og importerer leads automatisk.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            if let url = cfg.clientWebsiteUrl {
+                                Text(url).font(.caption2).foregroundStyle(.tertiary)
+                            }
+                            Button {
+                                showAutoPopulate = true
+                            } label: {
+                                Label("Konfigurer og kjør", systemImage: "play.circle.fill")
+                            }
+                            .disabled(actingKey != nil)
+                        }
+                        .padding(.vertical, 2)
                     }
 
                     // Meta-platform
@@ -348,6 +369,14 @@ struct SuperAdminAdsConfigDetailView: View {
                 }
             }
             .task { await load() }
+            .sheet(isPresented: $showAutoPopulate) {
+                SuperAdminAutoPopulateSheet(
+                    api: api,
+                    configId: configId,
+                    clientName: clientName,
+                    websiteUrl: config?.clientWebsiteUrl
+                )
+            }
             .overlay(alignment: .bottom) {
                 if let snackbar {
                     Text(snackbar).padding()
@@ -514,6 +543,181 @@ struct SuperAdminAdsConfigDetailView: View {
         await MainActor.run { withAnimation { snackbar = text } }
         try? await Task.sleep(nanoseconds: 2_500_000_000)
         await MainActor.run { withAnimation { snackbar = nil } }
+    }
+}
+
+// ============================================================
+// MARK: - Lead Map · Auto-populate-sheet
+// ============================================================
+
+/// Kjører `POST /api/role-room/agent/configs/:id/lead-map/auto-populate`
+/// med valgfrie parametere, og viser AutoPopulateResult.
+struct SuperAdminAutoPopulateSheet: View {
+    let api: APIClient
+    let configId: String
+    let clientName: String
+    let websiteUrl: String?
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var city = ""
+    @State private var maxQueries = ""
+    @State private var maxImportsPerQuery = ""
+    @State private var running = false
+    @State private var result: AutoPopulateResult?
+    @State private var errorText: String?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Config") {
+                    kvRow("Klient", clientName)
+                    kvRow("Nettsted", websiteUrl ?? "—")
+                }
+
+                Section("Parametere (valgfritt)") {
+                    TextField("By / område (f.eks. «Oslo»)", text: $city)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("Maks. søk (standard 15)", text: $maxQueries)
+                        .keyboardType(.numberPad)
+                    TextField("Maks. import pr. søk (standard 5)", text: $maxImportsPerQuery)
+                        .keyboardType(.numberPad)
+                }
+
+                Section {
+                    Button {
+                        Task { await run() }
+                    } label: {
+                        if running {
+                            HStack(spacing: 8) {
+                                ProgressView().scaleEffect(0.7)
+                                Text("Kjører — dette kan ta litt tid…")
+                            }
+                        } else {
+                            Label("Start auto-populering", systemImage: "sparkles.rectangle.stack.fill")
+                        }
+                    }
+                    .disabled(running)
+                    .foregroundStyle(.white)
+                    .listRowBackground(Color.indigo)
+                }
+
+                if let errorText {
+                    Section {
+                        Label(errorText, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                if let result {
+                    resultSection(result)
+                }
+            }
+            .navigationTitle("Auto-populer Lead Map")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Lukk") { dismiss() }
+                        .disabled(running)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func resultSection(_ r: AutoPopulateResult) -> some View {
+        Section("Resultat") {
+            if r.ok {
+                Label("Ferdig — \(r.placesImported ?? 0) leads importert", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            } else {
+                Label("Kjøring feilet", systemImage: "xmark.circle.fill")
+                    .foregroundStyle(.red)
+            }
+            kvRow("Søk generert", String(r.queriesGenerated ?? 0))
+            kvRow("Søk kjørt", String(r.queriesSearched ?? 0))
+            kvRow("Steder funnet", String(r.placesFound ?? 0))
+            kvRow("Leads importert", String(r.placesImported ?? 0))
+            if let quota = r.quotaRemaining {
+                kvRow("Kvote gjenstår", String(quota))
+            }
+        }
+
+        if let summary = r.businessContextSummary, !summary.isEmpty {
+            Section("Kontekst") {
+                Text(summary).font(.caption)
+            }
+        }
+
+        if let details = r.details, !details.isEmpty {
+            Section("Søk (utfall)") {
+                ForEach(details) { d in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(d.query).font(.caption.bold())
+                        HStack(spacing: 8) {
+                            Text("\(d.placesFound ?? 0) funnet")
+                            Text("·")
+                            Text("\(d.placesImported ?? 0) importert")
+                            if let err = d.error, !err.isEmpty {
+                                Text("·")
+                                Text(err).foregroundStyle(.orange)
+                            }
+                        }
+                        .font(.caption2).foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
+    private func kvRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label).font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            Text(value).font(.callout)
+        }
+    }
+
+    private func run() async {
+        await MainActor.run {
+            running = true
+            errorText = nil
+            result = nil
+        }
+        defer { Task { await MainActor.run { running = false } } }
+
+        do {
+            let r = try await api.runAutoPopulate(
+                configId: configId,
+                city: city.trimmingCharacters(in: .whitespacesAndNewlines),
+                maxQueries: Int(maxQueries),
+                maxImportsPerQuery: Int(maxImportsPerQuery)
+            )
+            await MainActor.run { result = r }
+        } catch {
+            await MainActor.run { errorText = friendlyError(error) }
+        }
+    }
+
+    private func friendlyError(_ error: Error) -> String {
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .forbidden:
+                return "Du eier ikke denne config-en, eller config-en har ikke aktiv Lead Map-modul (sjekk abonnement/kvote)."
+            case .unauthorized:
+                return "Økten er utløpt — logg inn på nytt."
+            case .statusCode(400):
+                return "Config mangler nettsted-URL eller har ugyldig ID. Sjekk at client_website_url er satt."
+            case .serverError(let code, let detail):
+                return "Tjenerfeil (HTTP \(code))\(detail.isEmpty ? "" : " — \(detail)")"
+            default:
+                return apiError.localizedDescription
+            }
+        }
+        return error.localizedDescription
     }
 }
 

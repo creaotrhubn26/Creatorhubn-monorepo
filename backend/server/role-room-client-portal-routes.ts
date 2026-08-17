@@ -67,7 +67,7 @@ export function setupRoleRoomClientPortalRoutes(
   const { app, pool, requireAdminSession } = deps;
 
   app.post("/api/role-room/client-portal/invite", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
     const projectId = typeof body.projectId === "string" ? body.projectId.trim() : "";
@@ -148,7 +148,7 @@ export function setupRoleRoomClientPortalRoutes(
   });
 
   app.get("/api/role-room/client-portal/invites/:projectId", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId || "").trim();
     if (!projectId) {
@@ -171,7 +171,7 @@ export function setupRoleRoomClientPortalRoutes(
   });
 
   app.post("/api/role-room/client-portal/invites/:inviteId/revoke", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const inviteId = String(req.params.inviteId || "").trim();
     if (!inviteId) {
@@ -188,7 +188,7 @@ export function setupRoleRoomClientPortalRoutes(
   // Produsenten velger hvilke «Koblede kontoer» klienten ser/kan koble.
   // Lagrer SKJULTE plattformer; Google Workspace skjult som standard.
   app.get("/api/role-room/client-portal/platform-prefs/:projectId", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId || "").trim();
     if (!projectId) {
@@ -207,7 +207,7 @@ export function setupRoleRoomClientPortalRoutes(
   });
 
   app.put("/api/role-room/client-portal/platform-prefs/:projectId", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId || "").trim();
     if (!projectId) {
@@ -226,7 +226,7 @@ export function setupRoleRoomClientPortalRoutes(
   // Kjøres som klienten (klient-token-stien) mot klientens egen konto. Krever at
   // klienten har koblet Google Ads + at vi har customer-id.
   app.post("/api/role-room/client-portal/ads/sync-conversions/:projectId", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId || "").trim();
     if (!projectId) {

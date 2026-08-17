@@ -29,13 +29,13 @@ import type express from "express";
 import type { Pool } from "pg";
 import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 export interface AdminIntegrationTestsRoutesDeps {
   app: express.Application;
   pool: Pool;
   requireAdminSession: (req: express.Request, res: express.Response) => any;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
+ 
 
 type TestStatus = "pass" | "fail" | "skipped";
 

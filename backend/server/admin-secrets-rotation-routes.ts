@@ -52,7 +52,7 @@ export function setupAdminSecretsRotationRoutes(
 
   // GET /api/admin/secrets/rotation — fullt status-bilde
   app.get("/api/admin/secrets/rotation", async (req, res) => {
-    const adminSession = requireAdminSession(req, res);
+    const adminSession = req.adminSession;
     if (!adminSession) return;
 
     try {
@@ -120,7 +120,7 @@ export function setupAdminSecretsRotationRoutes(
   app.post(
     "/api/admin/secrets/rotation/:keyName/rotated",
     async (req, res) => {
-      const adminSession = requireAdminSession(req, res);
+      const adminSession = req.adminSession;
       if (!adminSession) return;
       const keyName = String(req.params.keyName || "").trim();
       if (!keyName) {
@@ -208,7 +208,7 @@ export function setupAdminSecretsRotationRoutes(
   // PUT /api/admin/secrets/rotation/:keyName
   // Endre rotation_interval_days eller notes på en eksisterende rad.
   app.put("/api/admin/secrets/rotation/:keyName", async (req, res) => {
-    const adminSession = requireAdminSession(req, res);
+    const adminSession = req.adminSession;
     if (!adminSession) return;
     const keyName = String(req.params.keyName || "").trim();
     const { rotationIntervalDays, notes, displayName, category } = req.body || {};
@@ -268,7 +268,7 @@ export function setupAdminSecretsRotationRoutes(
   app.get(
     "/api/admin/secrets/rotation/:keyName/history",
     async (req, res) => {
-      const adminSession = requireAdminSession(req, res);
+      const adminSession = req.adminSession;
       if (!adminSession) return;
       const keyName = String(req.params.keyName || "").trim();
       try {

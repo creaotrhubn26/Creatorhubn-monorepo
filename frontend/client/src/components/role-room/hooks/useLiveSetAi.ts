@@ -103,34 +103,52 @@ export function useLiveSetAi(): UseLiveSetAiResult {
     INITIAL as CallState<EndOfDayBrief>,
   );
 
-  const makeRunner = <T,>(
-    path: string,
-    setState: React.Dispatch<React.SetStateAction<CallState<T>>>,
-  ) =>
-    async (body: unknown): Promise<void> => {
-      setState({ status: 'loading', data: null, error: null });
-      try {
-        const data = await postJson<T>(path, body);
-        setState({ status: 'ready', data, error: null });
-      } catch (err) {
-        setState({ status: 'error', data: null, error: (err as Error).message });
-      }
-    };
-
   const runCoverageCheck = useCallback(
-    makeRunner<CoverageCheckResult>('/api/live-set/ai/coverage-check', setCoverageCheck),
+    async (body: unknown): Promise<void> => {
+      setCoverageCheck({ status: 'loading', data: null, error: null });
+      try {
+        const data = await postJson<CoverageCheckResult>('/api/live-set/ai/coverage-check', body);
+        setCoverageCheck({ status: 'ready', data, error: null });
+      } catch (err) {
+        setCoverageCheck({ status: 'error', data: null, error: (err as Error).message });
+      }
+    },
     [],
   );
   const runReplanDay = useCallback(
-    makeRunner<ReplanDayResult>('/api/live-set/ai/replan-day', setReplanDay),
+    async (body: unknown): Promise<void> => {
+      setReplanDay({ status: 'loading', data: null, error: null });
+      try {
+        const data = await postJson<ReplanDayResult>('/api/live-set/ai/replan-day', body);
+        setReplanDay({ status: 'ready', data, error: null });
+      } catch (err) {
+        setReplanDay({ status: 'error', data: null, error: (err as Error).message });
+      }
+    },
     [],
   );
   const runContinuityCheck = useCallback(
-    makeRunner<ContinuityCheckResult>('/api/live-set/ai/continuity-check', setContinuityCheck),
+    async (body: unknown): Promise<void> => {
+      setContinuityCheck({ status: 'loading', data: null, error: null });
+      try {
+        const data = await postJson<ContinuityCheckResult>('/api/live-set/ai/continuity-check', body);
+        setContinuityCheck({ status: 'ready', data, error: null });
+      } catch (err) {
+        setContinuityCheck({ status: 'error', data: null, error: (err as Error).message });
+      }
+    },
     [],
   );
   const runEndOfDay = useCallback(
-    makeRunner<EndOfDayBrief>('/api/live-set/ai/end-of-day', setEndOfDay),
+    async (body: unknown): Promise<void> => {
+      setEndOfDay({ status: 'loading', data: null, error: null });
+      try {
+        const data = await postJson<EndOfDayBrief>('/api/live-set/ai/end-of-day', body);
+        setEndOfDay({ status: 'ready', data, error: null });
+      } catch (err) {
+        setEndOfDay({ status: 'error', data: null, error: (err as Error).message });
+      }
+    },
     [],
   );
 

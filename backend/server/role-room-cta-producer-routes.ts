@@ -83,7 +83,7 @@ export function setupRoleRoomCtaProducerRoutes(deps: RoleRoomCtaProducerRoutesDe
 
   // ── GET /api/role-room/cta/producer ─────────────────────────────────────
   app.get("/api/role-room/cta/producer", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const connectionId = typeof req.query.connectionId === "string" ? req.query.connectionId : "";
     if (!connectionId) {
@@ -119,7 +119,7 @@ export function setupRoleRoomCtaProducerRoutes(deps: RoleRoomCtaProducerRoutesDe
 
   // ── POST /api/role-room/cta/producer ────────────────────────────────────
   app.post("/api/role-room/cta/producer", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body ?? {}) as { connectionId?: string; ctaType?: unknown; ctaUrl?: string };
     const connectionId = typeof body.connectionId === "string" ? body.connectionId : "";

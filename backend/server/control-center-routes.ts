@@ -687,7 +687,7 @@ export function setupControlCenterRoutes(deps: Deps): void {
     if (!verifyCronToken(req)) return res.status(401).json({ error: "unauthorized" });
     try {
       const summary = await runCanaries(pool);
-      return res.json({ ok: true, ...summary });
+      return res.json({ ...summary });
     } catch (err) {
       console.error("[control-center/canary/run] failed:", (err as Error).message);
       return res.status(500).json({ ok: false, error: "canary_run_failed" });
@@ -711,7 +711,7 @@ export function setupControlCenterRoutes(deps: Deps): void {
     if (!verifyCronToken(req)) return res.status(401).json({ error: "unauthorized" });
     try {
       const summary = await runSecretWatch(pool);
-      return res.json({ ok: true, ...summary });
+      return res.json({ ...summary });
     } catch (err) {
       console.error("[control-center/secret-watch/run] failed:", (err as Error).message);
       return res.status(500).json({ ok: false, error: "secret_watch_failed" });

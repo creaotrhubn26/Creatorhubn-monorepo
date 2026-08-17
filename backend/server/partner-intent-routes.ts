@@ -360,7 +360,7 @@ export function registerPartnerIntentRoutes({ app, pool, activeSessions }: Deps)
     if (tmplR.rows.length === 0) return res.status(404).json({ error: "Template ikke funnet" });
     const t = tmplR.rows[0];
 
-    let vars: Record<string, any> = {
+    const vars: Record<string, any> = {
       ORG_NAME: "Eksempel AS",
       ORG_NUMBER: "987 654 321",
       SIGNER_NAME: "Ola Eksempel",

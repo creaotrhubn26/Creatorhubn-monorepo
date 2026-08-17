@@ -35,7 +35,7 @@ export interface UserRoutesDeps {
   getUserIdFromAuth: (req: any) => string | null;
   isProtectedAcademyKvKey: (rawKey: unknown) => boolean;
   isRecord: (value: unknown) => value is Record<string, unknown>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   normalizeInterfacePreferencesRecord: (value: any) => any;
   readCompatPaymentMethods: (
     userId: string,
@@ -134,7 +134,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
       const r = await pool.query(`SELECT ${PROFILE_COLS} FROM users WHERE id = $1`, [uid]);
       if (!r.rows.length) return res.status(404).json({ error: "Bruker ikke funnet" });
       res.json({ profile: shapeUserProfile(r.rows[0]) });
-    } catch (e: any) { res.status(500).json({ error: "internal_error" || "Kunne ikke hente profil" }); }
+    } catch (e: any) { res.status(500).json({ error: "Kunne ikke hente profil" }); }
   });
 
   app.patch("/api/user/profile", async (req, res) => {

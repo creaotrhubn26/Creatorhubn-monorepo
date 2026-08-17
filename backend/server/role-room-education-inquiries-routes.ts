@@ -92,7 +92,7 @@ export interface RoleRoomEducationInquiriesRoutesDeps {
   getRoleRoomEducationInquiryMailer: () => import("nodemailer").Transporter | null;
   // templateId-typen er en streng-union i index.ts; her relaxed til any
   // slik at dep-bindingen ikke krever importerbar union-type.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   renderRoleRoomPlatformEmail: (input: any) => Promise<RenderedRoleRoomPlatformEmail>;
   resolveRoleRoomEducationInquiryGmailSender: () => Promise<RoleRoomEducationInquiryGmailSender | null>;
   buildGmailRawMessage: (options: {
@@ -106,14 +106,14 @@ export interface RoleRoomEducationInquiriesRoutesDeps {
   getDefaultRoleRoomPublicOrigin: () => string;
   // Typene under er løst typed slik at vi kan binde mot index.ts-
   // versjonene uten å duplisere deres komplekse strukturer her.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   lookupInviteRequestBrregCompany: (organizationNumber: string) => Promise<any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   buildInviteRequestProffAnalysis: (input: any) => any;
   upsertInviteRequestProffScreening: (
     inviteRequestId: string,
     organizationNumber: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     analysis: any,
   ) => Promise<void>;
   isValidNorwegianOrgNumber: (value: string) => boolean;

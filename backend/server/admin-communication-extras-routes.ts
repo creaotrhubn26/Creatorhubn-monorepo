@@ -203,7 +203,7 @@ export function setupAdminCommunicationExtrasRoutes(
 
   // ─── Send ────────────────────────────────────────────────
   app.post("/api/admin/communication/send", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     try {
       const body = (req.body || {}) as Record<string, unknown>;
@@ -307,7 +307,7 @@ export function setupAdminCommunicationExtrasRoutes(
   // infrastruktur — fan-out skjer kun ved at meldingen vises neste gang klienten
   // henter messages/:chatId. Dette er forventet for Phase 1.
   app.post("/api/admin/communication/broadcast", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     try {
       const body = (req.body || {}) as Record<string, unknown>;

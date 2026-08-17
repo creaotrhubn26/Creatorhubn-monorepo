@@ -48,6 +48,14 @@ import { useWorkspaceCategoryMap } from './useWorkspaceCategory';
 import { WsLocaleProvider, type WsLocale } from './wsLocale';
 import { localeForVendor } from '../universal/editing-marketplace/editingMarketplaceStrings';
 
+// Bruker-events-WS (samme kanal/mønster som ShotlistTab/MoodboardTab/VideoRoomTab):
+// /api/ipad/ws/events. Brukes her til å holde sidenav-badgen for Sound Room live
+// uansett hvilken fane man står på (badgen er synlig fra hele shellen, ikke bare
+// mens Sound Room-fanen selv er montert).
+const WORKSPACE_EVENTS_WS_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_WS_BASE)
+  ? import.meta.env.VITE_WS_BASE
+  : 'wss://creatorhub-backend-rtbl.onrender.com';
+
 // Prøveprosjekt (Sara & Amir) — byttes med ekte prosjekt-fetch i wire-fasen.
 const SAMPLE_PROJECT = {
   id: 'sample',
@@ -118,7 +126,21 @@ const TeamWorkspacePage: React.FC = () => {
   }, [user?.id, user?.profession]);
   const [accepted, setAccepted] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const { online } = usePresence(projectId, `/workspace/${projectId}/${tab}`);
+  const { online, members: presenceMembers } = usePresence(projectId, `/workspace/${projectId}/${tab}`);
+
+  // Ekte online-status for "SMART ROM"-fanene: er noen faktisk inne akkurat nå
+  // (ikke bare en statisk `online: true` i WS_NAV-konfigurasjonen)? Utledes fra
+  // presence-medlemmenes currentRoute, satt av samme heartbeat som driver headerens
+  // online-teller.
+  const roomOnlineNow = useMemo(() => {
+    const roomKeys = ['photo-room', 'video-room', 'sound-room'];
+    const out: Record<string, boolean> = {};
+    for (const key of roomKeys) {
+      const roomPath = `/workspace/${projectId}/${key}`;
+      out[key] = presenceMembers.some((m) => m.online && m.currentRoute === roomPath);
+    }
+    return out;
+  }, [presenceMembers, projectId]);
 
   // Aksepter team-invitasjon når man åpner lenken (?invite=<token>).
   useEffect(() => {
@@ -215,12 +237,44 @@ const TeamWorkspacePage: React.FC = () => {
   // Ulest band-aktivitet (band-kommentarer) → badge på Sound Room. Nullstilles når
   // Sound Room-fanen åpnes (marker sett).
   const [bandUnseen, setBandUnseen] = useState(0);
-  useEffect(() => {
+  const loadBandUnseen = useMemo(() => () => {
     if (!projectId || projectId === 'sample') { setBandUnseen(0); return; }
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/unseen-comments`)
       .then((r: any) => setBandUnseen(r?.unseenCount || 0))
       .catch(() => setBandUnseen(0));
-  }, [projectId, tab]);
+  }, [projectId]);
+  useEffect(() => { loadBandUnseen(); }, [loadBandUnseen, tab]);
+
+  // Live: bruker-events-WS → refetch badgen INSTANT når audio-showcase-routes.ts
+  // broadcaster sound-room.updated (ny versjon/kommentar/godkjenning), i stedet
+  // for å vente til brukeren bytter fane (som var eneste trigger før).
+  useEffect(() => {
+    if (!projectId || projectId === 'sample') return;
+    const token = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token') || localStorage.getItem('role_room_auth_token');
+    if (!token) return;
+    let alive = true;
+    let sockEvt: WebSocket | null = null;
+    let retry: any = null;
+    let deb: any = null;
+    const connect = () => {
+      if (!alive) return;
+      clearTimeout(retry);
+      try { sockEvt = new WebSocket(`${WORKSPACE_EVENTS_WS_BASE}/api/ipad/ws/events?token=${encodeURIComponent(token)}`); }
+      catch { retry = setTimeout(connect, 8000); return; }
+      sockEvt.onclose = () => { if (alive) retry = setTimeout(connect, 8000); };
+      sockEvt.onerror = () => { try { sockEvt && sockEvt.close(); } catch { /* */ } };
+      sockEvt.onmessage = (ev) => {
+        let payload: any = null;
+        try { payload = JSON.parse(ev.data); } catch { /* */ }
+        const e = payload?.event;
+        if (e?.kind !== 'sound-room.updated' || e?.projectId !== projectId) return;
+        clearTimeout(deb);
+        deb = setTimeout(loadBandUnseen, 250);
+      };
+    };
+    connect();
+    return () => { alive = false; clearTimeout(retry); clearTimeout(deb); try { sockEvt && sockEvt.close(); } catch { /* */ } };
+  }, [projectId, loadBandUnseen]);
 
   // Profesjons-filtrert nav — kategorien er admin-styrt (profession_types.
   // workspace_category via useWorkspaceCategoryMap), med kode-map som fallback.
@@ -275,7 +329,7 @@ const TeamWorkspacePage: React.FC = () => {
   const content = useMemo(() => {
     switch (tab) {
       case 'oversikt':        return <OversiktTab projectId={projectId} profession={user?.profession} />;
-      case 'prosjektplan':    return <ProsjektplanTab projectId={projectId} />;
+      case 'prosjektplan':    return <ProsjektplanTab projectId={projectId} profession={user?.profession} />;
       case 'produksjonskart': return <ProduksjonskartTab projectId={projectId} />;
       case 'shotlist':        return <ShotlistTab projectId={projectId} />;
       case 'laater':          return <LaaterTab projectId={projectId} />;
@@ -284,11 +338,11 @@ const TeamWorkspacePage: React.FC = () => {
       case 'bookinger':       return <BookingerTab projectId={projectId} />;
       case 'academy':         return <AcademyProvider><AcademyInstructorAdminStudio /></AcademyProvider>;
       case 'community':       return <CommunityHub userId={user?.id} userEmail={user?.email} profession={user?.profession || undefined} />;
-      case 'moodboard':       return <MoodboardTab projectId={projectId} />;
+      case 'moodboard':       return <MoodboardTab projectId={projectId} profession={user?.profession} />;
       case 'media':           return <MediaTab projectId={projectId} />;
       case 'utstyr':          return <UtstyrTab projectId={projectId} profession={user?.profession} userId={user?.id} />;
-      case 'leveranser':      return <LeveranserTab projectId={projectId} />;
-      case 'oppgaver':        return <OppgaverTab projectId={projectId} />;
+            case 'leveranser':      return <LeveranserTab projectId={projectId} />;
+      case 'oppgaver':        return <OppgaverTab projectId={projectId} profession={user?.profession} />;
       case 'avtaler':         return <AvtalerTab projectId={projectId} />;
       case 'foresporsler':    return <ForesporslerTab projectId={projectId} profession={user?.profession} userId={user?.id} userName={user?.firstName || (user as any)?.name || user?.email} />;
       case 'kundevisning':    return <KundevisningTab projectId={projectId} />;
@@ -314,6 +368,7 @@ const TeamWorkspacePage: React.FC = () => {
       onTab={goTab}
       navItems={nav}
       badges={{ foresporsler: inboundCount, kundevisning: clientActivityUnseen, 'sound-room': bandUnseen }}
+      onlineNow={roomOnlineNow}
       onClientView={() => goTab('kundevisning')}
       onInvite={() => goTab('team')}
     >

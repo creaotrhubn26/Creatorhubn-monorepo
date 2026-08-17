@@ -363,7 +363,7 @@ export function setupShowcaseImageOpsRoutes(
         await updateShowcaseItemRecord(String(row.id), {
           cropData: {
             ...cropData,
-            favorite: !Boolean(cropData.favorite),
+            favorite: !cropData.favorite,
           },
         });
       }

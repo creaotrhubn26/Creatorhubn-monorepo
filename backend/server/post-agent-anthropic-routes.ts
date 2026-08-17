@@ -797,7 +797,32 @@ Tidspunkt: ${new Date().toISOString()}
   // ramme (image_url) KREVES — passer med «forankre i produkt-ramme» i klienten.
   // Kø-basert: submit returnerer en responseUrl klienten poller til COMPLETED.
   //
-  // POST /ai/generate-video  { prompt, imageUrl, durationSec?, resolution? }
+  // Jobben persisteres i post_agent_video_jobs (submit → insert, poll → update)
+  // slik at et klipp ikke er orphanet hvis Tauri-appen lukkes/krasjer midt i en
+  // ~1-3 min fal-rendering — /ai/generate-video/jobs lar en ny sesjon liste
+  // åpne/fullførte jobber og koble seg på igjen i stedet for å miste resultatet.
+  let videoJobsTableEnsured = false;
+  async function ensureVideoJobsTable(): Promise<void> {
+    if (videoJobsTableEnsured) return;
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS post_agent_video_jobs (
+        response_url TEXT PRIMARY KEY,
+        user_id      VARCHAR(255) NOT NULL,
+        project_id   TEXT,
+        scene_id     TEXT,
+        prompt       TEXT NOT NULL,
+        status       TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'failed')),
+        video_url    TEXT,
+        error        TEXT,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS post_agent_video_jobs_user_idx ON post_agent_video_jobs (user_id, created_at DESC)`);
+    videoJobsTableEnsured = true;
+  }
+
+  // POST /ai/generate-video  { prompt, imageUrl, durationSec?, resolution?, projectId?, sceneId? }
   //   → 202 { responseUrl }
   router.post('/ai/generate-video', postAgentAuth,
     aiRateLimit({ windowMs: 60_000, max: 12, label: 'post-agent-video-gen' }),
@@ -816,7 +841,7 @@ Tidspunkt: ${new Date().toISOString()}
         res.status(503).json({ error: 'video_provider_not_configured', detail: 'FAL_KEY ikke satt på serveren.' });
         return;
       }
-      const body = (req.body ?? {}) as { prompt?: string; imageUrl?: string; durationSec?: number; resolution?: string };
+      const body = (req.body ?? {}) as { prompt?: string; imageUrl?: string; durationSec?: number; resolution?: string; projectId?: string; sceneId?: string };
       const prompt = (body.prompt ?? '').toString().trim();
       const imageUrl = (body.imageUrl ?? '').toString().trim();
       if (!prompt) { res.status(400).json({ error: 'prompt_required' }); return; }
@@ -833,6 +858,19 @@ Tidspunkt: ${new Date().toISOString()}
       if (sub.error || !sub.responseUrl) {
         res.status(502).json({ error: 'video_submit_failed', detail: sub.error ?? 'ingen responseUrl' });
         return;
+      }
+      try {
+        await ensureVideoJobsTable();
+        await pool.query(
+          `INSERT INTO post_agent_video_jobs (response_url, user_id, project_id, scene_id, prompt)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (response_url) DO NOTHING`,
+          [sub.responseUrl, userId, body.projectId ?? null, body.sceneId ?? null, prompt],
+        );
+        // Retention — jobbrader er kun for gjenkobling etter krasj, ikke historikk.
+        await pool.query(`DELETE FROM post_agent_video_jobs WHERE created_at < NOW() - INTERVAL '7 days'`).catch(() => {});
+      } catch (logErr) {
+        console.warn('[post-agent ai/generate-video] job insert failed:', (logErr as Error).message);
       }
       res.status(202).json({ responseUrl: sub.responseUrl, requestId: sub.requestId ?? null, estCostUsd: duration * (model.costPerSecondUsd ?? 0.1) });
     });
@@ -852,12 +890,61 @@ Tidspunkt: ${new Date().toISOString()}
       if (r.status === 'COMPLETED') {
         const out = falOutputUrl(r.result);
         if (!out.url) { res.status(502).json({ error: 'no_video_in_result' }); return; }
+        try {
+          await ensureVideoJobsTable();
+          await pool.query(
+            `UPDATE post_agent_video_jobs SET status = 'completed', video_url = $2, updated_at = NOW() WHERE response_url = $1`,
+            [responseUrl, out.url],
+          );
+        } catch (logErr) { console.warn('[post-agent ai/generate-video/poll] job update failed:', (logErr as Error).message); }
         res.json({ status: 'COMPLETED', videoUrl: out.url });
         return;
       }
-      if (r.status === 'ERROR') { res.status(502).json({ error: 'video_poll_failed', detail: r.error }); return; }
+      if (r.status === 'ERROR') {
+        try {
+          await ensureVideoJobsTable();
+          await pool.query(
+            `UPDATE post_agent_video_jobs SET status = 'failed', error = $2, updated_at = NOW() WHERE response_url = $1`,
+            [responseUrl, r.error ?? null],
+          );
+        } catch (logErr) { console.warn('[post-agent ai/generate-video/poll] job update failed:', (logErr as Error).message); }
+        res.status(502).json({ error: 'video_poll_failed', detail: r.error });
+        return;
+      }
       res.json({ status: r.status });
     });
+
+  // GET /ai/generate-video/jobs?projectId=  → { jobs: [...] }
+  // Lar en ny app-sesjon liste sine egne åpne/nylig fullførte video-jobber og
+  // koble seg på igjen etter et krasj/lukk, i stedet for å miste klippet.
+  router.get('/ai/generate-video/jobs', postAgentAuth, async (req: Request, res: Response): Promise<void> => {
+    const userId = (req as AuthedRequest).userId;
+    const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
+    try {
+      await ensureVideoJobsTable();
+      const { rows } = await pool.query(
+        `SELECT response_url, project_id, scene_id, prompt, status, video_url, error, created_at
+         FROM post_agent_video_jobs
+         WHERE user_id = $1 AND status != 'failed'
+           AND ($2::text IS NULL OR project_id = $2)
+         ORDER BY created_at DESC LIMIT 50`,
+        [userId, projectId ?? null],
+      );
+      res.json({
+        jobs: rows.map((r) => ({
+          responseUrl: r.response_url,
+          projectId: r.project_id,
+          sceneId: r.scene_id,
+          prompt: r.prompt,
+          status: r.status,
+          videoUrl: r.video_url,
+          createdAt: r.created_at,
+        })),
+      });
+    } catch (err) {
+      res.status(500).json({ error: 'jobs_list_failed', detail: (err as Error).message });
+    }
+  });
 
   // ---- Tekst-til-tale (ElevenLabs) ----
   //

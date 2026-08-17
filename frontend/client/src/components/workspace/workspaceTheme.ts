@@ -25,10 +25,10 @@ export const ws = {
   border: 'var(--ws-border, rgba(255,255,255,0.12))',
   borderSoft: 'var(--ws-border-soft, rgba(255,255,255,0.07))',
 
-  // Tekst
+  // Tekst — textDim/textFaint hevet til WCAG AA (≥4.5:1 for liten tekst på panelSolid).
   text: 'var(--ws-text, rgba(255,255,255,0.95))',
-  textDim: 'var(--ws-text-dim, rgba(255,255,255,0.62))',
-  textFaint: 'var(--ws-text-faint, rgba(255,255,255,0.40))',
+  textDim: 'var(--ws-text-dim, rgba(255,255,255,0.68))',
+  textFaint: 'var(--ws-text-faint, rgba(255,255,255,0.50))',
 
   // Aksent — CreatorHub oransje.
   // CreatorHub Design (Nivå 1): aksent-familien er CSS-var-drevet med literalene som

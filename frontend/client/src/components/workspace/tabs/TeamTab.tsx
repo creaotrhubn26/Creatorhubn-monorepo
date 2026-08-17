@@ -14,11 +14,11 @@ import MailOutline from '@mui/icons-material/MailOutline';
 import Phone from '@mui/icons-material/Phone';
 import PersonAdd from '@mui/icons-material/PersonAdd';
 import { apiRequest } from '@/lib/queryClient';
-import { ws } from '../workspaceTheme';
+import { ws, workspaceCategoryFor } from '../workspaceTheme';
 import { WsCard, WsSectionTitle, WsBar, WsTag, WsTable, WsErrorState } from '../ui';
 import WorkspaceSplitSheet from '../WorkspaceSplitSheet';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
-import { CREW_ROLE_CATALOG, crewRoleDef } from '@shared/crew-roles';
+import { crewRoleDef, resolveCrewRoles } from '@shared/crew-roles';
 import { crewIcon } from '../crewIcons';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab). Dynamiske
@@ -378,17 +378,21 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
         </WsCard>
       </Box>
 
-      <InviteMemberDialog open={inviteOpen} onClose={() => setInviteOpen(false)} projectId={projectId} onInvited={() => { setInviteOpen(false); load(); }} />
+      <InviteMemberDialog open={inviteOpen} onClose={() => setInviteOpen(false)} projectId={projectId} profession={profession} onInvited={() => { setInviteOpen(false); load(); }} />
     </Stack>
   );
 };
 
-const InviteMemberDialog: React.FC<{ open: boolean; onClose: () => void; projectId: string; onInvited: () => void }> = ({ open, onClose, projectId, onInvited }) => {
+const InviteMemberDialog: React.FC<{ open: boolean; onClose: () => void; projectId: string; profession?: string; onInvited: () => void }> = ({ open, onClose, projectId, profession, onInvited }) => {
   const locale = useWsLocale();
   const t = makeT(T, locale);
+  // Kategori-filtrert rolleliste — dumpet tidligere ALLE 17 roller på tvers av
+  // profesjoner (en vendor så «Vokal»/«Fotograf» i sin egen invite-dialog), og
+  // defaultet alltid til 'fotograf' uansett hvem som inviterte.
+  const inviteRoles = resolveCrewRoles(workspaceCategoryFor(profession), []);
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
-  const [crewRole, setCrewRole] = useState('fotograf');
+  const [crewRole, setCrewRole] = useState(inviteRoles.fallbackKey);
   const [role, setRole] = useState('member');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -415,7 +419,7 @@ const InviteMemberDialog: React.FC<{ open: boolean; onClose: () => void; project
           <TextField label={t('nameLabel')} value={name} onChange={(e) => setName(e.target.value)} fullWidth size="small" />
           <TextField label={t('emailLabel')} type="email" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth size="small" required />
           <TextField select label={t('teamRoleLabel')} value={crewRole} onChange={(e) => setCrewRole(e.target.value)} fullWidth size="small">
-            {CREW_ROLE_CATALOG.map((r) => <MenuItem key={r.key} value={r.key} sx={{ gap: 1 }}>{crewIcon(r.icon, { fontSize: 16 })} {locale === 'en' ? r.labelEn : r.label}</MenuItem>)}
+            {inviteRoles.roles.map((r) => <MenuItem key={r.key} value={r.key} sx={{ gap: 1 }}>{crewIcon(r.icon, { fontSize: 16 })} {locale === 'en' ? r.labelEn : r.label}</MenuItem>)}
           </TextField>
           <TextField select label={t('accessLabel')} value={role} onChange={(e) => setRole(e.target.value)} fullWidth size="small">
             <MenuItem value="member">{t('canEdit')}</MenuItem>

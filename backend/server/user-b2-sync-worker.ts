@@ -33,7 +33,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { createHash, hkdfSync, createDecipheriv } from "crypto";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // ───────────────────────────────────────────────────────────────────
 // Crypto-helpers — MÅ være konsistente med user-b2-credentials-routes.ts

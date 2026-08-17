@@ -19,7 +19,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Pool } from "pg";
 import Stripe from "stripe";
 
-type RequireAdminSession = (req: Request, res: Response, next: NextFunction) => void;
+type RequireAdminSession = (req: Request, res: Response) => { userId: string; email: string; name: string; role: string; loginAt: string } | null;
 
 // ─── Stripe-klient (delt med resten av backend) ─────────────────────
 let stripeClient: Stripe | null = null;
@@ -596,7 +596,7 @@ export function registerMarketplaceAppConfigRoutes(
         res.json({ success: true, data: mapRow(result.rows[0]) });
       } catch (err: any) {
         console.error("[admin/marketplace/apps POST] failed:", err);
-        res.status(500).json({ success: false, error: "internal_error" || "create_failed" });
+        res.status(500).json({ success: false, error: "create_failed" });
       }
     },
   );
@@ -678,7 +678,7 @@ export function registerMarketplaceAppConfigRoutes(
         res.json({ success: true, data: mapRow(result.rows[0]) });
       } catch (err: any) {
         console.error("[admin/marketplace/apps PUT] failed:", err);
-        res.status(500).json({ success: false, error: "internal_error" || "update_failed" });
+        res.status(500).json({ success: false, error: "update_failed" });
       }
     },
   );
@@ -729,7 +729,7 @@ export function registerMarketplaceAppConfigRoutes(
         });
       } catch (err: any) {
         console.error('[marketplace publish] failed:', err);
-        res.status(500).json({ success: false, error: "internal_error" || 'publish_failed' });
+        res.status(500).json({ success: false, error: 'publish_failed' });
       }
     },
   );
@@ -747,7 +747,7 @@ export function registerMarketplaceAppConfigRoutes(
         res.json({ success: true });
       } catch (err: any) {
         console.error("[admin/marketplace/apps DELETE] failed:", err);
-        res.status(500).json({ success: false, error: "internal_error" || "delete_failed" });
+        res.status(500).json({ success: false, error: "delete_failed" });
       }
     },
   );

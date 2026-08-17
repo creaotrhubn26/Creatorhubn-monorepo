@@ -83,7 +83,7 @@ export function setupRoleRoomClientRequestsRoutes(deps: ClientRequestsRoutesDeps
     if (!isCompatAdminFeatureEnabled(FEATURE_ID)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId || "").trim();
     if (!projectId) {
@@ -112,7 +112,7 @@ export function setupRoleRoomClientRequestsRoutes(deps: ClientRequestsRoutesDeps
     if (!isCompatAdminFeatureEnabled(FEATURE_ID)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = String(req.params.projectId || "").trim();
     if (!projectId) {
@@ -169,7 +169,7 @@ export function setupRoleRoomClientRequestsRoutes(deps: ClientRequestsRoutesDeps
     if (!isCompatAdminFeatureEnabled(FEATURE_ID)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const id = String(req.params.id || "").trim();
     const request = await getClientRequest(pool, id);
@@ -186,7 +186,7 @@ export function setupRoleRoomClientRequestsRoutes(deps: ClientRequestsRoutesDeps
     if (!isCompatAdminFeatureEnabled(FEATURE_ID)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const id = String(req.params.id || "").trim();
     const existing = await getClientRequest(pool, id);
@@ -216,7 +216,7 @@ export function setupRoleRoomClientRequestsRoutes(deps: ClientRequestsRoutesDeps
     if (!isCompatAdminFeatureEnabled(FEATURE_ID)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const id = String(req.params.id || "").trim();
     const existing = await getClientRequest(pool, id);

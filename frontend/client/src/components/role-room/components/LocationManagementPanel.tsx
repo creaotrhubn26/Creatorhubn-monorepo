@@ -1547,39 +1547,6 @@ export function LocationManagementPanel({
     }
   }, [mapLocations, activeMapLocationId]);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const isTextInput =
-        !!target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.getAttribute('contenteditable') === 'true');
-
-      if (e.ctrlKey && e.key === 'n') {
-        e.preventDefault();
-        handleOpenDialog();
-      }
-      if (e.ctrlKey && e.key === 'e') {
-        e.preventDefault();
-        handleExportCSV();
-      }
-      if (!isTextInput && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'g' || e.key === 'G')) {
-        e.preventDefault();
-        setLocationGuideOpen(true);
-      }
-      if (e.key === 'Escape' && locationGuideOpen) {
-        e.preventDefault();
-        setLocationGuideOpen(false);
-      }
-      if (e.key === 'Escape' && dialogOpen) {
-        handleCloseDialog();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dialogOpen, locationGuideOpen]);
 
   // Handlers
   const handleOpenDialog = (location?: Location) => {
@@ -1611,14 +1578,14 @@ export function LocationManagementPanel({
     handleOpenDialog();
   }, [externalCreateSignal]);
 
-  const handleCloseDialog = () => {
+  const handleCloseDialog = useCallback(() => {
     if (externalCreatePendingRef.current) {
       externalCreatePendingRef.current = false;
       onExternalCreateCancelled?.();
     }
     setDialogOpen(false);
     setEditingLocation(null);
-  };
+  }, [onExternalCreateCancelled]);
 
   const handleSave = async () => {
     if (!formData.name?.trim()) {
@@ -1856,7 +1823,165 @@ export function LocationManagementPanel({
     }
   };
 
-  const handleExportCSV = async () => {
+  const generateLocationsHTML = useCallback((project: any, locations: any[]): string => {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('nb-NO', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const totalLocations = locations.length;
+    const locationsWithScenes = locations.filter(loc => loc.assignedScenes.length > 0).length;
+
+    const locationIconSVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+      <circle cx="12" cy="10" r="3"/>
+    </svg>`;
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>${project.name} - Lokasjoner</title>
+  <style>
+    @page { margin: 0; counter-increment: page; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1a1a1a; line-height: 1.7; padding: 0; background: #fff; font-size: 14px; }
+    .page { padding: 50px 60px 80px 60px; max-width: 210mm; margin: 0 auto; min-height: 297mm; position: relative; }
+    .header { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 5px solid #a855f7; padding: 30px 35px; margin: -50px -60px 40px -60px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+    .title { font-size: 36px; font-weight: 800; color: #a855f7; margin-bottom: 10px; letter-spacing: -1px; line-height: 1.2; display: flex; align-items: center; gap: 12px; }
+    .title svg { flex-shrink: 0; }
+    .subtitle { color: #64748b; font-size: 15px; font-weight: 500; margin-top: 5px; }
+    .summary { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-left: 6px solid #a855f7; padding: 30px; margin-bottom: 45px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .summary-title { font-size: 20px; font-weight: 700; color: #a855f7; margin-bottom: 25px; letter-spacing: -0.3px; display: flex; align-items: center; gap: 12px; }
+    .summary-title svg { flex-shrink: 0; }
+    .summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; }
+    .summary-item { background: white; padding: 25px 20px; border-radius: 10px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
+    .summary-number { font-size: 36px; font-weight: 800; color: #a855f7; display: block; margin-bottom: 8px; line-height: 1; }
+    .summary-label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; display: block; }
+    .section { margin-bottom: 50px; page-break-inside: avoid; }
+    .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; padding-bottom: 15px; border-bottom: 3px solid #e2e8f0; }
+    .section-title { font-size: 24px; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 12px; letter-spacing: -0.4px; }
+    .section-icon { display: inline-flex; align-items: center; }
+    .section-icon svg { flex-shrink: 0; }
+    .section-count { font-size: 13px; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 6px 14px; border-radius: 20px; border: 1px solid #e2e8f0; }
+    .section-content { background: #fafbfc; padding: 0; border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: linear-gradient(135deg, #a855f7 0%, #6d28d9 100%); color: white; font-weight: 700; padding: 18px 20px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; border: none; }
+    th:first-child { border-top-left-radius: 10px; }
+    th:last-child { border-top-right-radius: 10px; }
+    td { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; color: #334155; font-size: 14px; font-weight: 400; vertical-align: top; }
+    td small { display: block; margin-top: 4px; }
+    tr:last-child td { border-bottom: none; }
+    tr:nth-child(even) { background-color: #f8fafc; }
+    .footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 15px 60px; border-top: 2px solid #e2e8f0; background: #fafbfc; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #64748b; font-weight: 500; }
+    .footer-left { display: flex; gap: 20px; }
+    .footer-right { display: flex; gap: 20px; }
+    .page-number { font-weight: 600; }
+    .page-number::after { content: counter(page); }
+    .empty-state { padding: 50px; text-align: center; color: #94a3b8; font-style: italic; font-size: 15px; }
+    @media print {
+      .page { padding: 30px 40px 70px 40px; }
+      .section { page-break-inside: avoid; margin-bottom: 35px; }
+      .summary { page-break-inside: avoid; }
+      .footer { padding: 12px 40px; }
+      .header { margin: -30px -40px 35px -40px; padding: 25px 30px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <div class="title">
+        ${locationIconSVG}
+        ${project.name} - Lokasjoner
+      </div>
+      <div class="subtitle">Eksportert: ${dateStr}</div>
+    </div>
+    <div class="summary">
+      <div class="summary-title">
+        ${locationIconSVG}
+        Oversikt
+      </div>
+      <div class="summary-grid">
+        <div class="summary-item">
+          <span class="summary-number">${totalLocations}</span>
+          <span class="summary-label">Totale Lokasjoner</span>
+        </div>
+        <div class="summary-item">
+          <span class="summary-number">${locationsWithScenes}</span>
+          <span class="summary-label">Med Tildelte Scener</span>
+        </div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-header">
+        <div class="section-title">
+          <span class="section-icon">${locationIconSVG}</span>
+          Lokasjoner
+        </div>
+        <span class="section-count">${totalLocations} lokasjon${totalLocations !== 1 ? 'er' : ''}</span>
+      </div>
+      <div class="section-content">
+        ${locations.length === 0
+          ? '<div class="empty-state">Ingen lokasjoner ennå</div>'
+          : `<table>
+          <thead>
+            <tr>
+              <th style="width: 20%;">Navn</th>
+              <th style="width: 12%;">Type</th>
+              <th style="width: 25%;">Adresse</th>
+              <th style="width: 10%;">Kapasitet</th>
+              <th style="width: 20%;">Fasiliteter</th>
+              <th style="width: 8%;">Scener</th>
+              <th style="width: 5%;">Notater</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${locations.map((loc) => {
+              const facilities = (loc.facilities || []).map(getFacilityLabel).join(', ') || '-';
+              const notes = loc.notes || '-';
+              const contactInfo = loc.contactInfo ? 
+                (loc.contactInfo.name ? `Kontakt: ${loc.contactInfo.name}` : '') +
+                (loc.contactInfo.phone ? (loc.contactInfo.name ? ' | ' : '') + `Tel: ${loc.contactInfo.phone}` : '') +
+                (loc.contactInfo.email ? (loc.contactInfo.name || loc.contactInfo.phone ? ' | ' : '') + `E-post: ${loc.contactInfo.email}` : '')
+                : '';
+              const addressWithContact = contactInfo ? `${loc.address || '-'}<br><small style="color: #64748b;">${contactInfo}</small>` : (loc.address || '-');
+              return `<tr>
+              <td><strong>${loc.name}</strong></td>
+              <td>${getTypeLabel(loc.type)}</td>
+              <td>${addressWithContact}</td>
+              <td>${loc.capacity?.toString() || '-'}</td>
+              <td style="font-size: 13px;">${facilities}</td>
+              <td style="text-align: center;">${loc.assignedScenes.length}</td>
+              <td style="font-size: 13px;">${notes.length > 50 ? notes.substring(0, 50) + '...' : notes}</td>
+            </tr>`;
+            }).join('')}
+          </tbody>
+        </table>`
+        }
+      </div>
+    </div>
+    <div class="footer">
+      <div class="footer-left">
+        <span>${project.name}</span>
+        <span>|</span>
+        <span>ID: ${project.id.substring(0, 8)}</span>
+      </div>
+      <div class="footer-right">
+        <span class="page-number">Side </span>
+        <span>|</span>
+        <span>${dateStr}</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+  }, []);
+  const handleExportCSV = useCallback(async () => {
     try {
       const project = await castingService.getProject(projectId);
       if (!project) {
@@ -1882,7 +2007,40 @@ export function LocationManagementPanel({
       console.error('Error exporting locations:', error);
       alert('Kunne ikke eksportere lokasjoner');
     }
-  };
+  }, [generateLocationsHTML, locations, projectId]);
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isTextInput =
+        !!target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.getAttribute('contenteditable') === 'true');
+
+      if (e.ctrlKey && e.key === 'n') {
+        e.preventDefault();
+        handleOpenDialog();
+      }
+      if (e.ctrlKey && e.key === 'e') {
+        e.preventDefault();
+        handleExportCSV();
+      }
+      if (!isTextInput && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'g' || e.key === 'G')) {
+        e.preventDefault();
+        setLocationGuideOpen(true);
+      }
+      if (e.key === 'Escape' && locationGuideOpen) {
+        e.preventDefault();
+        setLocationGuideOpen(false);
+      }
+      if (e.key === 'Escape' && dialogOpen) {
+        handleCloseDialog();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [dialogOpen, locationGuideOpen, handleCloseDialog, handleExportCSV]);
 
   const applySavedProView = (view: SavedLocationProView) => {
     setSelectedProViewId(view.id);
@@ -2092,164 +2250,6 @@ export function LocationManagementPanel({
     }
   };
 
-  const generateLocationsHTML = (project: any, locations: any[]): string => {
-    const now = new Date();
-    const dateStr = now.toLocaleDateString('nb-NO', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-
-    const totalLocations = locations.length;
-    const locationsWithScenes = locations.filter(loc => loc.assignedScenes.length > 0).length;
-
-    const locationIconSVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-      <circle cx="12" cy="10" r="3"/>
-    </svg>`;
-
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>${project.name} - Lokasjoner</title>
-  <style>
-    @page { margin: 0; counter-increment: page; }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1a1a1a; line-height: 1.7; padding: 0; background: #fff; font-size: 14px; }
-    .page { padding: 50px 60px 80px 60px; max-width: 210mm; margin: 0 auto; min-height: 297mm; position: relative; }
-    .header { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 5px solid #a855f7; padding: 30px 35px; margin: -50px -60px 40px -60px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-    .title { font-size: 36px; font-weight: 800; color: #a855f7; margin-bottom: 10px; letter-spacing: -1px; line-height: 1.2; display: flex; align-items: center; gap: 12px; }
-    .title svg { flex-shrink: 0; }
-    .subtitle { color: #64748b; font-size: 15px; font-weight: 500; margin-top: 5px; }
-    .summary { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-left: 6px solid #a855f7; padding: 30px; margin-bottom: 45px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-    .summary-title { font-size: 20px; font-weight: 700; color: #a855f7; margin-bottom: 25px; letter-spacing: -0.3px; display: flex; align-items: center; gap: 12px; }
-    .summary-title svg { flex-shrink: 0; }
-    .summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; }
-    .summary-item { background: white; padding: 25px 20px; border-radius: 10px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
-    .summary-number { font-size: 36px; font-weight: 800; color: #a855f7; display: block; margin-bottom: 8px; line-height: 1; }
-    .summary-label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; display: block; }
-    .section { margin-bottom: 50px; page-break-inside: avoid; }
-    .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; padding-bottom: 15px; border-bottom: 3px solid #e2e8f0; }
-    .section-title { font-size: 24px; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 12px; letter-spacing: -0.4px; }
-    .section-icon { display: inline-flex; align-items: center; }
-    .section-icon svg { flex-shrink: 0; }
-    .section-count { font-size: 13px; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 6px 14px; border-radius: 20px; border: 1px solid #e2e8f0; }
-    .section-content { background: #fafbfc; padding: 0; border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
-    table { width: 100%; border-collapse: collapse; }
-    th { background: linear-gradient(135deg, #a855f7 0%, #6d28d9 100%); color: white; font-weight: 700; padding: 18px 20px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; border: none; }
-    th:first-child { border-top-left-radius: 10px; }
-    th:last-child { border-top-right-radius: 10px; }
-    td { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; color: #334155; font-size: 14px; font-weight: 400; vertical-align: top; }
-    td small { display: block; margin-top: 4px; }
-    tr:last-child td { border-bottom: none; }
-    tr:nth-child(even) { background-color: #f8fafc; }
-    .footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 15px 60px; border-top: 2px solid #e2e8f0; background: #fafbfc; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #64748b; font-weight: 500; }
-    .footer-left { display: flex; gap: 20px; }
-    .footer-right { display: flex; gap: 20px; }
-    .page-number { font-weight: 600; }
-    .page-number::after { content: counter(page); }
-    .empty-state { padding: 50px; text-align: center; color: #94a3b8; font-style: italic; font-size: 15px; }
-    @media print {
-      .page { padding: 30px 40px 70px 40px; }
-      .section { page-break-inside: avoid; margin-bottom: 35px; }
-      .summary { page-break-inside: avoid; }
-      .footer { padding: 12px 40px; }
-      .header { margin: -30px -40px 35px -40px; padding: 25px 30px; }
-    }
-  </style>
-</head>
-<body>
-  <div class="page">
-    <div class="header">
-      <div class="title">
-        ${locationIconSVG}
-        ${project.name} - Lokasjoner
-      </div>
-      <div class="subtitle">Eksportert: ${dateStr}</div>
-    </div>
-    <div class="summary">
-      <div class="summary-title">
-        ${locationIconSVG}
-        Oversikt
-      </div>
-      <div class="summary-grid">
-        <div class="summary-item">
-          <span class="summary-number">${totalLocations}</span>
-          <span class="summary-label">Totale Lokasjoner</span>
-        </div>
-        <div class="summary-item">
-          <span class="summary-number">${locationsWithScenes}</span>
-          <span class="summary-label">Med Tildelte Scener</span>
-        </div>
-      </div>
-    </div>
-    <div class="section">
-      <div class="section-header">
-        <div class="section-title">
-          <span class="section-icon">${locationIconSVG}</span>
-          Lokasjoner
-        </div>
-        <span class="section-count">${totalLocations} lokasjon${totalLocations !== 1 ? 'er' : ''}</span>
-      </div>
-      <div class="section-content">
-        ${locations.length === 0
-          ? '<div class="empty-state">Ingen lokasjoner ennå</div>'
-          : `<table>
-          <thead>
-            <tr>
-              <th style="width: 20%;">Navn</th>
-              <th style="width: 12%;">Type</th>
-              <th style="width: 25%;">Adresse</th>
-              <th style="width: 10%;">Kapasitet</th>
-              <th style="width: 20%;">Fasiliteter</th>
-              <th style="width: 8%;">Scener</th>
-              <th style="width: 5%;">Notater</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${locations.map((loc) => {
-              const facilities = (loc.facilities || []).map(getFacilityLabel).join(', ') || '-';
-              const notes = loc.notes || '-';
-              const contactInfo = loc.contactInfo ? 
-                (loc.contactInfo.name ? `Kontakt: ${loc.contactInfo.name}` : '') +
-                (loc.contactInfo.phone ? (loc.contactInfo.name ? ' | ' : '') + `Tel: ${loc.contactInfo.phone}` : '') +
-                (loc.contactInfo.email ? (loc.contactInfo.name || loc.contactInfo.phone ? ' | ' : '') + `E-post: ${loc.contactInfo.email}` : '')
-                : '';
-              const addressWithContact = contactInfo ? `${loc.address || '-'}<br><small style="color: #64748b;">${contactInfo}</small>` : (loc.address || '-');
-              return `<tr>
-              <td><strong>${loc.name}</strong></td>
-              <td>${getTypeLabel(loc.type)}</td>
-              <td>${addressWithContact}</td>
-              <td>${loc.capacity?.toString() || '-'}</td>
-              <td style="font-size: 13px;">${facilities}</td>
-              <td style="text-align: center;">${loc.assignedScenes.length}</td>
-              <td style="font-size: 13px;">${notes.length > 50 ? notes.substring(0, 50) + '...' : notes}</td>
-            </tr>`;
-            }).join('')}
-          </tbody>
-        </table>`
-        }
-      </div>
-    </div>
-    <div class="footer">
-      <div class="footer-left">
-        <span>${project.name}</span>
-        <span>|</span>
-        <span>ID: ${project.id.substring(0, 8)}</span>
-      </div>
-      <div class="footer-right">
-        <span class="page-number">Side </span>
-        <span>|</span>
-        <span>${dateStr}</span>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
-  };
 
   const toggleCardExpanded = (id: string) => {
     const newExpanded = new Set(expandedCards);

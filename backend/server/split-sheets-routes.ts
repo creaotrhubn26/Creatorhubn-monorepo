@@ -43,12 +43,12 @@ import { randomUUID } from "crypto";
 export interface SplitSheetsRoutesDeps {
   app: express.Application;
   pool: Pool;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   getSplitSheetUserId: (req: any) => string;
   // Gate for platform-wide aggregate endpoints (cross-tenant revenue/payment
   // business intelligence). Returns the session (truthy) or writes 401/403 and
   // returns null.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   requireAdminSession: (req: any, res: any) => any;
 }
 

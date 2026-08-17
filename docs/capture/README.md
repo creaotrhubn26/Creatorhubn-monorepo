@@ -164,9 +164,9 @@ Memory lives at `~/.claude/projects/-Users-usmanqazi-Creatorhubn-monorepo/memory
 ## Deployment checklist (when ready to ship)
 
 - [ ] Run migrations 110–114 on production Neon via **direct** endpoint.
-- [ ] Set env vars on backend: `CAPTURE_R2_ENDPOINT`, `CAPTURE_R2_BUCKET`, `CAPTURE_R2_ACCESS_KEY_ID`, `CAPTURE_R2_SECRET_ACCESS_KEY` (or fall back to shared `CLOUDFLARE_R2_*`).
+- [ ] Set storage env vars. Produksjon bruker **Backblaze B2** (koden er S3-kompatibel og fungerer med både B2 og Cloudflare R2): `CAPTURE_R2_ENDPOINT=https://s3.<region>.backblazeb2.com`, `CAPTURE_R2_BUCKET`, `CAPTURE_R2_ACCESS_KEY_ID`, `CAPTURE_R2_SECRET_ACCESS_KEY` (+ `CAPTURE_R2_PREFIX=capture/`). Fallback-miljøvariabler: `CLOUDFLARE_R2_*` / `R2_BUCKET`.
 - [ ] Set `CAPTURE_HANDOFF_ENHANCER_URL` if the enhancer moves off localhost.
-- [ ] Configure R2 bucket CORS to allow PUT from iPad app origin.
+- [ ] Configure bucket CORS to allow PUT from iPad app origin (B2: «CORS rules» under bucket settings).
 - [ ] App Store Connect: privacy disclosures for camera/network usage strings in `project.yml`.
 - [ ] TestFlight distribution group for beta photographers.
 

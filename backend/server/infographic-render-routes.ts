@@ -27,7 +27,7 @@ import { generateDesignSuggestions, mapSlotsToSources } from './design-suggest.j
 import { resolveConnector, listLiveConnectors } from './design-connectors.js';
 
 type Sessions = Map<string, { userId?: string }>;
-type AdminGuard = (req: Request, res: Response) => { email: string } | null;
+type AdminGuard = (req: Request, res: Response) => { userId: string; email: string; name: string; role: string; loginAt: string } | null;
 const TEMPLATE_ID_RE = /^[a-z0-9][a-z0-9-]{1,63}$/;
 
 const MAX_TEMPLATE_BYTES = 500_000;   // 500 KB mal-HTML
@@ -354,7 +354,7 @@ export function registerInfographicRenderRoutes(
 
   // PUT overstyr tokens for et workspace (admin). Body = patch (kun kjente string-tokens).
   app.put('/api/admin/design/tokens/:ws', async (req: Request, res: Response) => {
-    const admin = requireAdminSession(req, res);
+    const admin = req.adminSession;
     if (!admin) return;
     const ws = String(req.params.ws);
     const patch = (req.body ?? {}) as Record<string, unknown>;
@@ -459,7 +459,7 @@ export function registerInfographicRenderRoutes(
 
   // POST undo = angre siste token-endring for et workspace (Fase D) — gjenopprett pre-image.
   app.post('/api/admin/design/tokens/:ws/undo', async (req: Request, res: Response) => {
-    const admin = requireAdminSession(req, res);
+    const admin = req.adminSession;
     if (!admin) return;
     if ((admin as any).role !== 'super_admin') { res.status(403).json({ error: 'Angre krever super_admin.' }); return; }
     const ws = String(req.params.ws);
@@ -501,7 +501,7 @@ export function registerInfographicRenderRoutes(
   // DELETE = tilbakestill workspacet til standard (Fase D) — fjern alle overstyringer,
   // re-seed kanonisk merkevare for produkter. Audit-logges.
   app.delete('/api/admin/design/tokens/:ws', async (req: Request, res: Response) => {
-    const admin = requireAdminSession(req, res);
+    const admin = req.adminSession;
     if (!admin) return;
     // Rolle-tier (Fase D): destruktive ops (reset) er super_admin-only; vanlig admin kan redigere.
     if ((admin as any).role !== 'super_admin') { res.status(403).json({ error: 'Tilbakestilling krever super_admin.' }); return; }

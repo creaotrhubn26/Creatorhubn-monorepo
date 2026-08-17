@@ -137,6 +137,25 @@ export type UserEvent =
       rejected: boolean | null;
       timestamp: string;
     }
+  /// Shot-list full upsert (web shotlist legger til shots, per-shot
+  /// kommentarer, redigering/sletting). Web-tabs + iPad observerer og
+  /// refetcher — i dag en sjelden hendelse, så refetch-per-event er billig.
+  | {
+      kind: "shot.list-updated";
+      projectId: string;
+      timestamp: string;
+    }
+  /// Moodboard-studio tilstedeværelse: en fotograf/editor åpnet eller
+  /// forlot prosjektets moodboard. Broadcastes til de ANDRE som ser på
+  /// akkurat nå, så avatar-raden holder seg synk uten polling.
+  | {
+      kind: "moodboard.presence";
+      projectId: string;
+      actorUserId: string;
+      actorName: string | null;
+      joined: boolean;
+      timestamp: string;
+    }
   /// Slice 9X.82 — videograf-leveranse: klient legger inn timecode-
   /// kommentar (Frame.io-stil) på en CinematicVideoPlayer/Audio.
   /// Brukt for både video-, audio- og chapter-comments.
@@ -159,6 +178,31 @@ export type UserEvent =
       clientName: string | null;
       selectedCount: number;
       submissionNote: string | null;
+      timestamp: string;
+    }
+  /// Video Room (produsent-side versjonsgjennomgang, project_video_versions/
+  /// project_video_comments) fikk en ny versjon, kommentar, godkjenning eller
+  /// chapter-endring. Broadcastes til prosjektets ANDRE team-medlemmer (ikke
+  /// aktøren selv) slik at VideoRoomTab refetcher instant i stedet for å
+  /// vente på neste besøk/reload — samme "bare refetch"-mønster som
+  /// shot.list-updated, men fanet ut til hele teamet i stedet for kun
+  /// aktørens egne enheter.
+  | {
+      kind: "video-room.updated";
+      projectId: string;
+      reason: "version" | "comment" | "approval" | "chapters";
+      timestamp: string;
+    }
+  /// Sound Room (Audio Showcase, audio_review_projects/-versions/-comments,
+  /// koblet til workspace-prosjektet via bro-tabellen project_audio_rooms)
+  /// fikk en ny versjon, kommentar (fra eier ELLER bandmedlem via delt lenke)
+  /// eller godkjenning. `projectId` er WORKSPACE-prosjektets id (ikke
+  /// audio_review_projects-id) — samme id-rom som video-room.updated, slik
+  /// at TeamWorkspacePage kan filtrere likt for begge rom-typene.
+  | {
+      kind: "sound-room.updated";
+      projectId: string;
+      reason: "version" | "comment" | "approval";
       timestamp: string;
     };
 

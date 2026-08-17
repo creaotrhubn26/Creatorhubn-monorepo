@@ -13,7 +13,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Button, CircularProgress, Stack, Typography } from '@mui/material';
-import { CenterFocusStrong, Face } from '@mui/icons-material';
+import { AutoFixHigh, CenterFocusStrong } from '@mui/icons-material';
 import {
   detectFaceFocalPoint, focalToObjectPosition, DEFAULT_AVATAR_FOCAL,
 } from '../utils/avatarFocalPoint';
@@ -100,9 +100,15 @@ export const AvatarFocalPointEditor: React.FC<AvatarFocalPointEditorProps> = ({
   const objectPosition = focalToObjectPosition(fx, fy);
 
   return (
-    <Stack spacing={1.5} alignItems="center" sx={{ width: '100%' }}>
-      <Stack direction="row" spacing={2} alignItems="center" justifyContent="center"
-             sx={{ width: '100%' }}>
+    <Stack spacing={2} alignItems="center" sx={{ width: '100%' }}>
+      <Stack
+        direction="row"
+        spacing={2.5}
+        alignItems="center"
+        justifyContent="center"
+        flexWrap="wrap"
+        sx={{ width: '100%' }}
+      >
         {/* Redigerbart bilde med draggbar fokus-markør */}
         <Box
           ref={frameRef}
@@ -112,13 +118,14 @@ export const AvatarFocalPointEditor: React.FC<AvatarFocalPointEditorProps> = ({
           onPointerCancel={endDrag}
           sx={{
             position: 'relative',
-            width: 200,
-            height: 200,
-            borderRadius: 2,
+            width: 210,
+            height: 210,
+            borderRadius: 3,
             overflow: 'hidden',
             cursor: dragging ? 'grabbing' : 'crosshair',
             touchAction: 'none',
-            border: '1px solid rgba(0,0,0,0.12)',
+            border: '1px solid rgba(0,0,0,0.14)',
+            boxShadow: '0 0 0 4px rgba(160,48,192,0.14), 0 8px 24px rgba(0,0,0,0.25)',
             userSelect: 'none',
             flexShrink: 0,
           }}
@@ -140,51 +147,97 @@ export const AvatarFocalPointEditor: React.FC<AvatarFocalPointEditorProps> = ({
             left: `${fx}%`,
             top: `${fy}%`,
             transform: 'translate(-50%, -50%)',
-            width: 34,
-            height: 34,
+            width: 40,
+            height: 40,
             borderRadius: '50%',
-            border: '2px solid #fff',
-            boxShadow: '0 0 0 2px rgba(160,48,192,0.9), 0 1px 6px rgba(0,0,0,0.5)',
+            border: '2.5px solid #fff',
+            boxShadow: '0 0 0 2px rgba(160,48,192,0.95), 0 2px 10px rgba(0,0,0,0.55)',
             pointerEvents: 'none',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              inset: '50%',
+              width: '110%',
+              height: '2px',
+              transform: 'translate(-50%, -50%)',
+              backgroundColor: 'rgba(255,255,255,0.85)',
+            },
             '&::after': {
               content: '""',
               position: 'absolute',
               inset: '50%',
-              width: 4, height: 4,
+              height: '110%',
+              width: '2px',
               transform: 'translate(-50%, -50%)',
-              borderRadius: '50%',
-              backgroundColor: '#fff',
+              backgroundColor: 'rgba(255,255,255,0.85)',
             },
           }} />
         </Box>
 
         {/* Live rund forhåndsvisning (slik avataren faktisk vises) */}
-        <Stack spacing={0.5} alignItems="center">
+        <Stack spacing={0.7} alignItems="center">
           <Box sx={{
-            width: 96, height: 96, borderRadius: '50%', overflow: 'hidden',
-            border: '2px solid rgba(160,48,192,0.5)', flexShrink: 0,
+            p: 0.7,
+            borderRadius: '50%',
+            background: 'conic-gradient(from 180deg, #a030c0, #7c3aed, #22d3ee, #a030c0)',
+            flexShrink: 0,
           }}>
-            <Box component="img" src={imageUrl} alt="Forhåndsvisning"
-                 sx={{ width: '100%', height: '100%', objectFit: 'cover',
-                       objectPosition, display: 'block' }} />
+            <Box sx={{
+              width: 96, height: 96, borderRadius: '50%', overflow: 'hidden',
+              border: '3px solid #fff',
+            }}>
+              <Box component="img" src={imageUrl} alt="Forhåndsvisning"
+                   sx={{ width: '100%', height: '100%', objectFit: 'cover',
+                         objectPosition, display: 'block' }} />
+            </Box>
           </Box>
-          <Typography variant="caption" color="text.secondary">Slik vises den</Typography>
+          <Box sx={{
+            px: 1.1, py: 0.35, borderRadius: 999,
+            bgcolor: 'rgba(160,48,192,0.12)',
+            color: '#c084fc',
+          }}>
+            <Typography variant="caption" sx={{ fontWeight: 700 }}>Slik vises den</Typography>
+          </Box>
         </Stack>
       </Stack>
 
       <Button
         size="small"
-        variant="text"
+        variant="contained"
         onClick={() => void runDetection(false)}
         disabled={detecting}
-        startIcon={detecting ? <CircularProgress size={14} /> : <Face fontSize="small" />}
+        startIcon={detecting ? <CircularProgress size={14} /> : <AutoFixHigh />}
+        sx={{
+          borderRadius: 999,
+          px: 2.5,
+          py: 0.7,
+          textTransform: 'none',
+          fontWeight: 700,
+          color: '#fff',
+          background: 'linear-gradient(135deg, #a030c0 0%, #7c3aed 100%)',
+          boxShadow: '0 4px 14px rgba(160,48,192,0.3)',
+          '&:hover': { background: 'linear-gradient(135deg, #b33dd0 0%, #8b5cf6 100%)' },
+        }}
       >
         Finn ansikt automatisk
       </Button>
 
-      <Stack direction="row" spacing={0.5} alignItems="center">
-        <CenterFocusStrong sx={{ fontSize: 14, color: 'text.secondary' }} />
-        <Typography variant="caption" color="text.secondary" align="center">
+      <Stack
+        direction="row"
+        spacing={1}
+        alignItems="center"
+        justifyContent="center"
+        sx={{
+          width: '100%',
+          px: 1.5,
+          py: 0.8,
+          borderRadius: 2,
+          bgcolor: 'rgba(255,255,255,0.05)',
+          border: '1px solid rgba(255,255,255,0.07)',
+        }}
+      >
+        <CenterFocusStrong sx={{ fontSize: 15, color: 'rgba(160,48,192,0.9)', flexShrink: 0 }} />
+        <Typography variant="caption" color="text.secondary" align="center" sx={{ lineHeight: 1.45 }}>
           {hint ?? 'Dra i bildet for å velge hvilken del som skal være i fokus.'}
         </Typography>
       </Stack>

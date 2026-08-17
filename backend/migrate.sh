@@ -91,8 +91,15 @@ if [ -d "migrations" ]; then
           # statement_timeout=10min: rundhåndet backstop mot en løpsk setning.
           # En migrasjon som treffer disse feiler → logges + hoppes over + IKKE
           # sporet → kan kjøres på nytt. Overstyres av en migrasjon som selv
-          # SET-er timeouts. PGOPTIONS gjelder kun denne tilkoblingen.
-          if PGOPTIONS='-c lock_timeout=30000 -c statement_timeout=600000' psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration_file"; then
+          # SET-er timeouts.
+          # IKKE bruk PGOPTIONS='-c lock_timeout=...' — sendes som startup-
+          # parameter, og Neons pgbouncer-pooler (transaction mode) avviser
+          # ukjente startup-parametre: "unsupported startup parameter in
+          # options" → ALLE migrasjoner feiler på tilkobling, ingen SQL kjøres
+          # (skjedde 2026-08-16 mot ny gentle-grass-pooler-endpoint — 687/687
+          # feilet, _migrations_applied forble tom). SET som vanlig SQL-setning
+          # i stedet — samme effekt, virker uansett pooler-type.
+          if psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SET lock_timeout = '30s'; SET statement_timeout = '600s';" -f "$migration_file"; then
             # Record successful migration
             psql "$DATABASE_URL" -c "INSERT INTO _migrations_applied (filename) VALUES ('$base_name') ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
             echo "  ✅ $base_name applied successfully"

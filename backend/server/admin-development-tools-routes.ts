@@ -15,7 +15,7 @@
  *     hint om å trigge skan.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 import type express from "express";
 import { execSync } from "node:child_process";

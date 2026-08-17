@@ -209,7 +209,7 @@ export function registerTestflightTestersRoutes({ app, pool, activeSessions }: D
 
       // Push til Apple App Store Connect (fire-and-forget)
       const testerId = testerR.rows[0].id;
-      let ascResult: { id?: string; error?: string } = {};
+      const ascResult: { id?: string; error?: string } = {};
       try {
         const parts = (fullName ?? "").trim().split(" ");
         const firstName = parts[0] ?? "";

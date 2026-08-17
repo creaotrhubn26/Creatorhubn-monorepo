@@ -656,7 +656,11 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
           </WsCard>
 
           <WsCard>
-            <WsSectionTitle title={wsCategory === 'music' ? t('refsTitleMusic') : t('refsTitle')} action={<Button size="small" onClick={() => go(wsCategory === 'music' ? 'moodboard' : 'shotlist')} sx={{ color: ws.accent, textTransform: 'none' }}>{t('seeAll')}</Button>} />
+            {/* «Se alle» rutet tidligere alt som ikke var music til shotlist — men
+                shotlist er categories:['visual']-only, så vendor/service traff
+                TeamWorkspacePages ugyldig-tab-guard og ble stille bounset tilbake
+                til Oversikt. Moodboard er universell og finnes for alle kategorier. */}
+            <WsSectionTitle title={wsCategory === 'music' ? t('refsTitleMusic') : t('refsTitle')} action={<Button size="small" onClick={() => go(wsCategory === 'visual' ? 'shotlist' : 'moodboard')} sx={{ color: ws.accent, textTransform: 'none' }}>{t('seeAll')}</Button>} />
             <WsImageGrid columns={3} addLabel={t('addReference')} images={refs.images} onUpload={refs.onUpload} />
           </WsCard>
         </Box>

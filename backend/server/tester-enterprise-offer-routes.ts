@@ -16,7 +16,7 @@
  *   POST   /api/tester-enterprise-offer/:id/decline  — registrer avslag
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 import type express from "express";
 import type Stripe from "stripe";

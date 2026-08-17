@@ -25,7 +25,7 @@
  * Wired i index.ts via setupAdminAnnouncementsRoutes(...).
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 import type express from "express";
 

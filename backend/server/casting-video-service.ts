@@ -229,7 +229,7 @@ export async function createVideoUploadUrl(
 // Konverterer den lagrede full-URL til en presigned GET-URL gyldig 1 time.
 
 const READ_URL_TTL = 3600;
-let readUrlCache = new Map<string, { url: string; expiresAt: number }>();
+const readUrlCache = new Map<string, { url: string; expiresAt: number }>();
 
 async function presignReadUrl(storedUrl: string): Promise<string> {
   const handle = getClient();

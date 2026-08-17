@@ -175,7 +175,7 @@ export function setupRoleRoomSocialRoutes(
   // hvis tokenet ikke har det, returnerer vi scopeMissing=true og UI-en
   // kan be brukeren om å reconnecte.
   app.get("/api/role-room/linkedin/companies", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     try {
       const result = await listManagedCompaniesForUser(pool, session.userId);
@@ -194,7 +194,7 @@ export function setupRoleRoomSocialRoutes(
   // rendre brukerens LinkedIn-konto med navn + avatar (samme nivå som IG).
   // Bruker eksisterende role_room_linkedin_connections-tabell.
   app.get("/api/role-room/linkedin/profile", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     try {
       const result = await pool.query<{
@@ -243,7 +243,7 @@ export function setupRoleRoomSocialRoutes(
   // scopeMissing=true hvis Google-tokenet mangler youtube/youtube.readonly,
   // noConnection=true hvis brukeren ikke har Google-tilkoblet ennå.
   app.get("/api/role-room/youtube/channels", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     try {
       const result = await listYouTubeChannels(pool, session.userId);
@@ -265,7 +265,7 @@ export function setupRoleRoomSocialRoutes(
   // til kunden + bransje. Dette lukker det vanligste blokk-hullet i e2e-
   // publish-flyten ("vi har det teknisk klart, men venter på tilgang").
   app.post("/api/role-room/social/access-request", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = typeof req.body?.projectId === 'string' ? req.body.projectId.trim() : '';
     const platformInput = typeof req.body?.platform === 'string' ? req.body.platform.trim() : '';
@@ -312,7 +312,7 @@ export function setupRoleRoomSocialRoutes(
   // kryptert token. Vi støtter inbox-modus (video.upload-scope) for første
   // versjon; direct publish krever ekstra TikTok App Review.
   app.post("/api/role-room/tiktok/oauth/start", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const config = getTikTokConfig();
     if (!config.configured) {
@@ -332,7 +332,7 @@ export function setupRoleRoomSocialRoutes(
       console.error("[tiktok-oauth-start] failed", error);
       return res
         .status(500)
-        .json({ success: false, error: "internal_error" || "Kunne ikke starte TikTok OAuth." });
+        .json({ success: false, error: "Kunne ikke starte TikTok OAuth." });
     }
   });
 
@@ -369,7 +369,7 @@ export function setupRoleRoomSocialRoutes(
       console.error("[tiktok-oauth-start-client] failed", error);
       return res
         .status(500)
-        .json({ success: false, error: "internal_error" || "Kunne ikke starte TikTok OAuth." });
+        .json({ success: false, error: "Kunne ikke starte TikTok OAuth." });
     }
   });
 
@@ -418,7 +418,7 @@ export function setupRoleRoomSocialRoutes(
   });
 
   app.get("/api/role-room/tiktok/connection", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     try {
       const summary = await getTikTokConnectionSummary(pool, session.userId);
@@ -430,7 +430,7 @@ export function setupRoleRoomSocialRoutes(
   });
 
   app.post("/api/role-room/tiktok/disconnect", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     try {
       await disconnectTikTok(pool, session.userId);
@@ -447,7 +447,7 @@ export function setupRoleRoomSocialRoutes(
   // og channel-trailer-konsept. Returnerer alltid en strukturert plan slik
   // at frontend kan rendre den ryddig uten å parse fri tekst.
   app.post("/api/role-room/youtube/channel-plan", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const projectId = typeof req.body?.projectId === 'string' ? req.body.projectId.trim() : '';
     if (!projectId) {
@@ -482,7 +482,7 @@ export function setupRoleRoomSocialRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const platform = typeof req.query.platform === "string" ? req.query.platform : null;
@@ -567,7 +567,7 @@ export function setupRoleRoomSocialRoutes(
   });
 
   app.post("/api/role-room/social/inbox/:eventId/read", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     try {
       // Scope the write to the caller's own accounts — same filter as the GET.
@@ -592,7 +592,7 @@ export function setupRoleRoomSocialRoutes(
   // Unified cross-platform publish-endepunkt. Router via dispatcher til
   // riktig SocialPublisher-implementasjon basert på platform-felt i body.
   app.post("/api/role-room/social/publish", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body || {}) as Record<string, unknown>;
     const platform = String(body.platform || "").trim();
@@ -837,7 +837,7 @@ export function setupRoleRoomSocialRoutes(
   // Hent insights for en gitt connection + scope (page-level eller post-id).
   // Resultatet blir også INSERTet i social_metrics for tidsserie-tracking.
   app.post("/api/role-room/social/metrics/snapshot", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const body = (req.body || {}) as Record<string, unknown>;
     const platform = String(body.platform || "").trim();
@@ -950,7 +950,7 @@ export function setupRoleRoomSocialRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     // Bygg bruker-scoped account_id-set fra IG-tabellen (IG-id + FB-page-id),
@@ -1155,7 +1155,7 @@ export function setupRoleRoomSocialRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     try {
       const insights = await buildAgentFeedbackInsights(pool, session.userId);

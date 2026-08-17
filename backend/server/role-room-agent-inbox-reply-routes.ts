@@ -74,7 +74,7 @@ export function setupRoleRoomAgentInboxReplyRoutes(
           .status(403)
           .json({ success: false, error: 'The Role Room Agent er ikke aktivert.' });
       }
-      const session = requireAdminSession(req, res);
+      const session = req.adminSession;
       if (!session) return;
 
       const eventId =

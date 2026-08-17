@@ -28,7 +28,7 @@
  *   - 'acknowledge' — bare bekrefter (ingen side-effekt)
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 import type express from "express";
 

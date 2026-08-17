@@ -693,7 +693,7 @@ export function registerTidumAdminRoutes(
 
   app.post("/api/admin/tidum/vendors", async (req, res) => {
     try {
-      const adminSession = requireAdminSession(req, res);
+      const adminSession = req.adminSession;
       if (!adminSession) {
         return;
       }
@@ -746,7 +746,7 @@ export function registerTidumAdminRoutes(
 
   app.patch("/api/admin/tidum-access-requests/:requestId", async (req, res) => {
     try {
-      const adminSession = requireAdminSession(req, res);
+      const adminSession = req.adminSession;
       if (!adminSession) {
         return;
       }

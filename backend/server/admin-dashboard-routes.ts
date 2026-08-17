@@ -30,7 +30,7 @@ import type express from "express";
 
 import { readNumber, readString } from "./_shared";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 export interface AdminDashboardRoutesDeps {
   app: express.Application;
   requireAdminSession: (req: express.Request, res: express.Response) => any;
@@ -58,7 +58,7 @@ export interface AdminDashboardRoutesDeps {
   toAdminString: (value: any) => string | null;
   roundAdminMetric: (value: number, decimals?: number) => number;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
+ 
 
 export function setupAdminDashboardRoutes(deps: AdminDashboardRoutesDeps): void {
   const {

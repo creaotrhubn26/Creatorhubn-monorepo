@@ -23,7 +23,7 @@
  * også på samme per-bruker storage-quota — feiler med 507 hvis full.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert, Box, Button, Chip, CircularProgress, IconButton,
   Stack, Tooltip, Typography,
@@ -102,7 +102,7 @@ export default function EntityAttachmentsPanel({
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setError(null);
     try {
       const r = await fetch(
@@ -121,11 +121,11 @@ export default function EntityAttachmentsPanel({
     } finally {
       setLoading(false);
     }
-  };
+  }, [entityType, entityId, onChange]);
 
   useEffect(() => {
     if (entityType && entityId) refresh();
-  }, [entityType, entityId]);
+  }, [entityType, entityId, refresh]);
 
   const handleUpload = async (selected: FileList | null) => {
     if (!selected || selected.length === 0) return;

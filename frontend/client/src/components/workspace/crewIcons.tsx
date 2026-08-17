@@ -61,6 +61,8 @@ import SmartToy from '@mui/icons-material/SmartToy';
 import Folder from '@mui/icons-material/Folder';
 import WbSunny from '@mui/icons-material/WbSunny';
 import Favorite2 from '@mui/icons-material/FavoriteBorder';
+import Newspaper from '@mui/icons-material/Newspaper';
+import Article from '@mui/icons-material/Article';
 
 const WS_ICONS: Record<string, React.ElementType> = {
   // Crew-roller
@@ -74,6 +76,7 @@ const WS_ICONS: Record<string, React.ElementType> = {
   Headphones, SelfImprovement, Computer, Storage, Save, Check, WarningAmber,
   Link: LinkIcon, Draw, Place, RocketLaunch, Equalizer, CreditCard, Download,
   Security, SmartToy, Folder, WbSunny, FavoriteBorder: Favorite2,
+  Newspaper, Article,
 };
 
 /** Ikon som element ut fra MUI-ikonnavn. Ukjent navn → nøytralt fallback. */

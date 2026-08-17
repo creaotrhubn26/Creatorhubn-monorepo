@@ -145,7 +145,7 @@ async function resolveOrgKeyForProject(
 export async function dispatchTeamWhatsAppInvite(
   input: DispatchTeamInviteInput,
 ): Promise<DispatchTeamInviteResult> {
-  let groupConfig = await getProjectGroupConfig(input.pool, input.projectId);
+  const groupConfig = await getProjectGroupConfig(input.pool, input.projectId);
 
   // Hvis prosjektet ikke har egen gruppe, sjekk om bedriften har
   // workspace-default som dekker det

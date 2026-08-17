@@ -142,7 +142,7 @@ export const installSecretRedactor = (): void => {
     };
   };
 
-  // eslint-disable-next-line no-console
+   
   console.log = wrap(console.log.bind(console));
   console.warn = wrap(console.warn.bind(console));
   console.error = wrap(console.error.bind(console));

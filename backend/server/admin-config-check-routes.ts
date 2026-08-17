@@ -9,7 +9,7 @@
  *   → { status: 'ready' | 'partial' | 'broken', checks: {...}, missing: [...] }
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 import type express from "express";
 

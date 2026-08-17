@@ -15,7 +15,7 @@
 
 import type express from "express";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 export interface WeddingGalleryDeliveryRoutesDeps {
   app: express.Application;

@@ -407,7 +407,7 @@ function AuditionSchedulePanelInner({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onCreateSchedule, openGuideDialog, openShortcutsDialog, selectedIds.size]);
+  }, [onCreateSchedule, openGuideDialog, openShortcutsDialog, selectedIds.size, openDrawer]);
 
   // ── O(1) lookup maps — rebuilt only when the source arrays change ──────────
   const candidateById = useMemo(
@@ -995,12 +995,12 @@ function AuditionSchedulePanelInner({
     }
   };
 
-  const toggleFavorite = (id: string) => {
+  const toggleFavorite = useCallback((id: string) => {
     if (userId) {
       toggleFavoriteViaApi(id);
     }
     // When no userId (unauthenticated), silently skip (favorites require login)
-  };
+  }, [toggleFavoriteViaApi, userId]);
 
   const handleSelectAll = () => {
     if (selectedIds.size === filteredAndSortedSchedules.length) {
@@ -1460,36 +1460,8 @@ function AuditionSchedulePanelInner({
     }
   };
 
-  const handleExportCSV = useCallback(() => {
-    try {
-      const project = castingService.getProject(projectId);
-      if (!project) {
-        alert('Prosjekt ikke funnet');
-        return;
-      }
-
-      const htmlContent = generateAuditionsHTML(project, filteredAndSortedSchedules);
-
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) {
-        alert('Kunne ikke åpne eksport-vindu. Vennligst tillat popups.');
-        return;
-      }
-
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
-
-      setTimeout(() => { printWindow.print(); }, 250);
-    } catch (error) {
-      console.error('Error exporting auditions:', error);
-      alert('Kunne ikke eksportere auditions');
-    }
-  }, [projectId, filteredAndSortedSchedules]);
-
-  // Keep the stable ref in sync so the keyboard effect always calls the latest version
-  useEffect(() => { handleExportCSVRef.current = handleExportCSV; }, [handleExportCSV]);
   // generateAuditionsHTML closes over candidateById/roleById Maps from outer scope
-  const generateAuditionsHTML = (project: any, schedules: any[]): string => {
+  const generateAuditionsHTML = useCallback((project: any, schedules: any[]): string => {
     const now = new Date();
     const dateStr = now.toLocaleDateString('nb-NO', {
       year: 'numeric',
@@ -1659,9 +1631,37 @@ function AuditionSchedulePanelInner({
       </div>
     </div>
   </div>
-</body>
+  </body>
 </html>`;
-  };
+  }, [candidateById, roleById]);
+  const handleExportCSV = useCallback(() => {
+    try {
+      const project = castingService.getProject(projectId);
+      if (!project) {
+        alert('Prosjekt ikke funnet');
+        return;
+      }
+
+      const htmlContent = generateAuditionsHTML(project, filteredAndSortedSchedules);
+
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('Kunne ikke åpne eksport-vindu. Vennligst tillat popups.');
+        return;
+      }
+
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+
+      setTimeout(() => { printWindow.print(); }, 250);
+    } catch (error) {
+      console.error('Error exporting auditions:', error);
+      alert('Kunne ikke eksportere auditions');
+    }
+  }, [generateAuditionsHTML, projectId, filteredAndSortedSchedules]);
+
+  // Keep the stable ref in sync so the keyboard effect always calls the latest version
+  useEffect(() => { handleExportCSVRef.current = handleExportCSV; }, [handleExportCSV]);
 
   const toggleCardExpanded = (id: string) => {
     dispatch({ type: 'TOGGLE_EXPANDED', id });

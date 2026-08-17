@@ -124,7 +124,7 @@ export function setupRoleRoomSocialMetaRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const config = getMetaAppConfig();
     if (!config) {
@@ -269,7 +269,7 @@ export function setupRoleRoomSocialMetaRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const connections = await listInstagramConnections(pool, session.userId);
     return res.json({
@@ -295,7 +295,7 @@ export function setupRoleRoomSocialMetaRoutes(
   });
 
   app.delete("/api/role-room/instagram/connections/:connectionId", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const ok = await revokeIgConnection(pool, req.params.connectionId, session.userId);
     return res.json({ success: ok });
@@ -306,7 +306,7 @@ export function setupRoleRoomSocialMetaRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const connections = await listInstagramConnections(pool, session.userId);
@@ -356,7 +356,7 @@ export function setupRoleRoomSocialMetaRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
@@ -488,7 +488,7 @@ export function setupRoleRoomSocialMetaRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     const body = req.body && typeof req.body === "object" ? (req.body as Record<string, unknown>) : {};
@@ -578,7 +578,7 @@ export function setupRoleRoomSocialMetaRoutes(
     if (!isCompatAdminFeatureEnabled(featureId)) {
       return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
     }
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
 
     // Showrunner-tier (or admin) only — entitlement check via the same gate.
@@ -647,7 +647,7 @@ export function setupRoleRoomSocialMetaRoutes(
   });
 
   app.get("/api/role-room/instagram/jobs/:projectId", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     const jobs = await listIgPublishJobs(pool, req.params.projectId, session.userId);
     return res.json({ success: true, jobs });

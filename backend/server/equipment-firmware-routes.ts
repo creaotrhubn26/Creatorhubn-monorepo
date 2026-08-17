@@ -42,11 +42,11 @@ export interface EquipmentFirmwareRoutesDeps {
   app: express.Application;
   pool: Pool;
   // Returns the authenticated session ({ userId, ... }) or null after sending 401.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   requireUserSession: (req: any, res: any) => any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   db: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   schema: any;
   buildEquipmentImageAttachmentMap: (
     rows: EquipmentImageAttachmentRow[],
@@ -66,18 +66,18 @@ export interface EquipmentFirmwareRoutesDeps {
   loadEquipmentImageAttachments: (
     equipmentIds: number[],
   ) => Promise<EquipmentImageAttachmentRow[]>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   loadFirmwareDevices: (userId?: string | null, profession?: string | null) => Promise<any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   loadFirmwareHistory: (userId?: string | null, profession?: string | null) => Promise<any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   loadFirmwareUpdates: (userId?: string | null, profession?: string | null) => Promise<any>;
   loadFirmwareSeedCandidates: (
     type: "photo" | "video" | null,
     filters?: { userId?: string | null; profession?: string | null },
   ) => Promise<FirmwareSeedCandidate[]>;
   loadUnifiedEquipmentCatalog: () => Promise<CompatCatalogItem[]>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   mapMaintenanceRow: (row: any, equipmentMap: Map<string, any>) => any;
   matchInventoryEquipmentCatalogItem: (
     catalog: CompatCatalogItem[],
@@ -86,7 +86,7 @@ export interface EquipmentFirmwareRoutesDeps {
   parseSettings: (settings: unknown) => Record<string, unknown>;
   readString: (value: unknown) => string | null;
   resolveFallbackSoftwareCatalog: (profession: string | null) => CompatSoftwareCatalogEntry[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   resolveFallbackSoftwareUpdates: (profession: string | null) => any[];
   resolveOfficialCatalogFallback: (
     item: CompatCatalogItem,
@@ -799,6 +799,82 @@ export function setupEquipmentFirmwareRoutes(deps: EquipmentFirmwareRoutesDeps):
     } catch (error) {
       console.error("Equipment inventory create error:", error);
       res.status(500).json({ error: "Failed to create inventory item" });
+    }
+  });
+
+  // Oppdater en inventarenhet (eier-scoped): felter + settings.merge.
+  app.patch("/api/equipment/inventory/:id", async (req, res) => {
+    const _session = requireUserSession(req, res);
+    if (!_session) return;
+    try {
+      const userId = _session.userId || null;
+      const { brand, model, category, condition, status, name, specifications } = req.body || {};
+      const [row] = await db
+        .select()
+        .from(schema.userEquipment)
+        .where(
+          and(
+            eq(schema.userEquipment.id, Number(req.params.id)),
+            eq(schema.userEquipment.userId, userId || ""),
+          ),
+        )
+        .limit(1);
+      if (!row) return res.status(404).json({ error: "not_found" });
+      const settings = parseSettings(row.settings) as any;
+      const nextSettings = {
+        ...settings,
+        ...(typeof name === "string" ? { name } : {}),
+        ...(typeof status === "string" ? { status } : {}),
+        ...(typeof condition === "string" ? { condition } : {}),
+        specifications:
+          specifications && typeof specifications === "object"
+            ? { ...(settings.specifications || {}), ...specifications }
+            : settings.specifications || {},
+      };
+      const [updated] = await db
+        .update(schema.userEquipment)
+        .set({
+          ...(typeof brand === "string" ? { brand } : {}),
+          ...(typeof model === "string" ? { model } : {}),
+          ...(typeof category === "string" ? { category } : {}),
+          ...(typeof condition === "string" ? { condition } : {}),
+          settings: nextSettings,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.userEquipment.id, Number(req.params.id)),
+            eq(schema.userEquipment.userId, userId || ""),
+          ),
+        )
+        .returning();
+      res.json({ id: updated.id, specifications: nextSettings.specifications });
+    } catch (error) {
+      console.error("Equipment inventory update error:", error);
+      res.status(500).json({ error: "Failed to update inventory item" });
+    }
+  });
+
+  // Slett en inventarenhet (eier-scoped).
+  app.delete("/api/equipment/inventory/:id", async (req, res) => {
+    const _session = requireUserSession(req, res);
+    if (!_session) return;
+    try {
+      const userId = _session.userId || null;
+      const del = await db
+        .delete(schema.userEquipment)
+        .where(
+          and(
+            eq(schema.userEquipment.id, Number(req.params.id)),
+            eq(schema.userEquipment.userId, userId || ""),
+          ),
+        )
+        .returning({ id: schema.userEquipment.id });
+      if (del.length === 0) return res.status(404).json({ error: "not_found" });
+      res.json({ success: true, id: del[0].id });
+    } catch (error) {
+      console.error("Equipment inventory delete error:", error);
+      res.status(500).json({ error: "Failed to delete inventory item" });
     }
   });
 

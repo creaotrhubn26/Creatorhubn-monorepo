@@ -34,7 +34,7 @@ let lastFetchedAt = 0;
 
 function baseUrl(): string {
   const s = loadSettings();
-  return (s.RR_POST_AGENT_BASE_URL || "https://creatorhubn.com/api/post-agent").replace(/\/$/, "");
+  return (s.RR_POST_AGENT_BASE_URL || "https://www.creatorhubn.com/api/post-agent").replace(/\/$/, "");
 }
 
 function marketplaceOrigin(): string {

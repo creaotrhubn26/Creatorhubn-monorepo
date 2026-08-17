@@ -32,6 +32,9 @@ import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
 import ScienceIcon from '@mui/icons-material/Science';
 import VerifiedIcon from '@mui/icons-material/Verified';
 import TrackChangesIcon from '@mui/icons-material/TrackChanges';
+import MovieCreationIcon from '@mui/icons-material/MovieCreation';
+import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 
 // Small helpers so contact-rows and section-headers render with a
 // CreatorHub MUI-ikon i stedet for emojis. Holder lest-rytmen i ATS-
@@ -100,6 +103,10 @@ export const RESUME_COLOR_SCHEMES: Record<string, ColorScheme> = {
   'royal-purple': {
     id: 'royal-purple', name: 'Royal Purple',
     accent: '#6366F1', accentDark: '#4F46E5', bgSoft: '#EEF2FF', textOnAccent: '#FFFFFF',
+  },
+  'role-room-purple': {
+    id: 'role-room-purple', name: 'Role Room Lilla',
+    accent: '#A030C0', accentDark: '#7C3AED', bgSoft: '#F6F1FB', textOnAccent: '#FFFFFF',
   },
   'crimson-red': {
     id: 'crimson-red', name: 'Crimson Red',
@@ -2910,10 +2917,379 @@ export const BoldCreativeTemplate: React.FC<ResumeTemplateProps> = ({ resume, pr
 
 
 // ============================================================================
+// ROLE ROOM TEMPLATE — default-mal for CV bygget fra The Role Room-profilen.
+// Mørk lilla gradient + lilla aksenter, samme uttrykk som onboarding i
+// The Role Room. Prosjekter vises som kort med rolle + status-badge.
+// ============================================================================
+
+const ROLE_ROOM_STATUS_LABEL: Record<string, string> = {
+  active: 'Aktiv',
+  planning: 'Planlegging',
+  casting: 'Casting',
+  approved: 'Godkjent',
+  completed: 'Fullført',
+  done: 'Fullført',
+  delivered: 'Levert',
+  archived: 'Arkivert',
+  finished: 'Fullført',
+};
+
+const ROLE_ROOM_STATUS_COLOR: Record<string, string> = {
+  active: '#7C3AED',
+  planning: '#B45309',
+  casting: '#7C3AED',
+  approved: '#16A34A',
+  completed: '#16A34A',
+  done: '#16A34A',
+  delivered: '#0EA5E9',
+  archived: '#6B7280',
+  finished: '#16A34A',
+};
+
+const roleRoomStatusKey = (s: string | undefined): string => String(s || '').toLowerCase();
+
+export const RoleRoomTemplate: React.FC<ResumeTemplateProps> = ({ resume, preview = false }) => {
+  const _sc = resolveScheme(resume, {
+    accent: '#A030C0',
+    accentDark: '#7C3AED',
+    bgSoft: '#F6F1FB',
+    textOnAccent: '#FFFFFF',
+  });
+  const p = resume?.personalInfo ?? {};
+  const projects: any[] = resume?.projects ?? [];
+  const skills: any[] = resume?.skills ?? [];
+  const skillCategories: Record<string, any[]> = {};
+  for (const s of skills) {
+    const cat = s?.category || 'Ferdigheter';
+    (skillCategories[cat] = skillCategories[cat] || []).push(s);
+  }
+
+  const sectionTitle = (label: string, icon?: React.ReactNode) => (
+    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5, mt: 0.5 }}>
+      {icon && (
+        <Box sx={{
+          width: 22, height: 22, borderRadius: 1, display: 'flex', alignItems: 'center',
+          justifyContent: 'center', color: '#FFFFFF',
+          background: `linear-gradient(135deg, ${_sc.accent}, ${_sc.accentDark})`,
+          boxShadow: '0 2px 6px rgba(124,58,237,0.30)',
+          '& svg': { fontSize: 15 },
+        }}>
+          {icon}
+        </Box>
+      )}
+      <Typography sx={{
+        fontSize: 14.5, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase',
+        color: _sc.accentDark,
+      }}>{label}</Typography>
+      <Box sx={{ flex: 1, height: 1.5, borderRadius: 1, background: 'linear-gradient(90deg, rgba(160,48,192,0.35), rgba(160,48,192,0.05))' }} />
+    </Stack>
+  );
+
+  return (
+    <Box sx={{
+      maxWidth: '8.5in', minHeight: '11in',
+      bgcolor: preview ? 'transparent' : 'rgba(255,255,255,0.04)',
+      p: preview ? 2 : 4,
+      fontFamily: '"Inter","Helvetica Neue",Arial,sans-serif',
+    }}>
+      {/* Header — mørk lilla gradient, Role Room-stil */}
+      <Box sx={{
+        background: 'linear-gradient(135deg, #1E1A2E 0%, #2D1B4E 100%)',
+        borderRadius: 3, p: 3, mb: 3, color: '#FFFFFF', position: 'relative', overflow: 'hidden',
+      }}>
+        {/* topp-aksentstripe */}
+        <Box sx={{
+          position: 'absolute', top: 0, left: 0, right: 0, height: 4,
+          background: 'linear-gradient(90deg, #A030C0, #7C3AED, #C084FC)',
+        }} />
+        {/* dekorativ glød */}
+        <Box sx={{
+          position: 'absolute', right: -50, top: -70, width: 230, height: 230,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(124,58,237,0.35), transparent 70%)',
+          pointerEvents: 'none',
+        }} />
+        <Stack direction="row" spacing={2.5} alignItems="center" sx={{ position: 'relative' }}>
+          {p.profilePhoto ? (
+            <Avatar
+              src={p.profilePhoto}
+              alt={p.fullName || 'Profil'}
+              sx={{
+                width: 90, height: 90, borderRadius: 3, bgcolor: '#2D1B4E',
+                border: '2px solid rgba(255,255,255,0.5)',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.35), 0 0 0 4px rgba(124,58,237,0.25)',
+              }}
+            />
+          ) : (
+            <Box sx={{
+              width: 90, height: 90, borderRadius: 3, display: 'flex', alignItems: 'center',
+              justifyContent: 'center',
+              background: 'linear-gradient(135deg, #A030C0, #7C3AED)',
+              fontSize: 42, fontWeight: 800, color: '#FFFFFF',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+            }}>{(p.fullName || '?').charAt(0).toUpperCase()}</Box>
+          )}
+          <Box sx={{ minWidth: 0 }}>
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+              <Box sx={{
+                width: 18, height: 18, borderRadius: 1, display: 'flex', alignItems: 'center',
+                justifyContent: 'center', bgcolor: 'rgba(192,132,252,0.16)', color: '#C084FC',
+              }}>
+                <PlayArrowIcon sx={{ fontSize: 13 }} />
+              </Box>
+              <Typography sx={{
+                fontSize: 10.5, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase',
+                color: '#C084FC',
+              }}>The Role Room</Typography>
+            </Stack>
+            <Typography sx={{ fontSize: 28, fontWeight: 800, lineHeight: 1.2 }}>
+              {p.fullName || 'Ditt navn'}
+            </Typography>
+            {p.professionalTitle && (
+              <Typography sx={{ color: '#E9D5FF', fontSize: 15, fontWeight: 600, mt: 0.5 }}>
+                {p.professionalTitle}
+              </Typography>
+            )}
+            {(p.location || p.email || p.phone || p.website) && (
+              <Stack direction="row" spacing={1.5} flexWrap="wrap" sx={{ mt: 1.25, rowGap: 0.4 }}>
+                {p.location && (
+                  <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, color: 'rgba(255,255,255,0.75)', fontSize: 12 }}>
+                    <LocationOnIcon sx={{ fontSize: 13, color: '#C084FC' }} />{p.location}
+                  </Box>
+                )}
+                {p.email && (
+                  <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, color: 'rgba(255,255,255,0.75)', fontSize: 12 }}>
+                    <MailOutlineIcon sx={{ fontSize: 13, color: '#C084FC' }} />{p.email}
+                  </Box>
+                )}
+                {p.phone && (
+                  <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, color: 'rgba(255,255,255,0.75)', fontSize: 12 }}>
+                    <PhoneIphoneIcon sx={{ fontSize: 13, color: '#C084FC' }} />{p.phone}
+                  </Box>
+                )}
+                {p.website && (
+                  <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, color: 'rgba(255,255,255,0.75)', fontSize: 12 }}>
+                    <PublicIcon sx={{ fontSize: 13, color: '#C084FC' }} />{p.website}
+                  </Box>
+                )}
+              </Stack>
+            )}
+          </Box>
+        </Stack>
+      </Box>
+
+      {/* Profil */}
+      {p.summary && (
+        <Box sx={{ mb: 2.5 }}>
+          {sectionTitle('Profil', <DescriptionIcon sx={{ fontSize: 17 }} />)}
+          <Box sx={{
+            pl: 1.5, borderLeft: `3px solid ${_sc.accent}`,
+            background: 'rgba(160,48,192,0.04)', borderRadius: 1, py: 0.5,
+          }}>
+            <Typography sx={{ fontSize: 12.5, lineHeight: 1.65, color: '#3f3a52' }}>{p.summary}</Typography>
+          </Box>
+        </Box>
+      )}
+
+      {/* Prosjekter — Role Rooms signatur-seksjon */}
+      {projects.length > 0 && (
+        <Box sx={{ mb: 2.5 }}>
+          {sectionTitle('Prosjekter', <WorkOutlineIcon sx={{ fontSize: 17 }} />)}
+          <Stack spacing={1.25}>
+            {projects.map((pr: any) => {
+              const stKey = roleRoomStatusKey(pr.status);
+              return (
+                <Box key={pr.id} sx={{
+                  p: 1.75, borderRadius: 2.5,
+                  bgcolor: 'rgba(160,48,192,0.05)',
+                  border: '1px solid rgba(160,48,192,0.16)',
+                  borderLeft: `3px solid ${_sc.accent}`,
+                }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.4 }}>
+                    <Typography sx={{ fontWeight: 700, fontSize: 14, color: '#241a38' }}>{pr.title}</Typography>
+                    {stKey && ROLE_ROOM_STATUS_LABEL[stKey] && (
+                      <Box component="span" sx={{
+                        px: 1, py: 0.3, borderRadius: 999, fontSize: 10.5, fontWeight: 700,
+                        display: 'inline-flex', alignItems: 'center', gap: 0.5,
+                        bgcolor: `${ROLE_ROOM_STATUS_COLOR[stKey] || '#7C3AED'}1F`,
+                        color: ROLE_ROOM_STATUS_COLOR[stKey] || '#7C3AED',
+                      }}>
+                        <Box component="span" sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'currentColor' }} />
+                        {ROLE_ROOM_STATUS_LABEL[stKey]}
+                      </Box>
+                    )}
+                  </Stack>
+                  {pr.role && (
+                    <Typography sx={{ fontSize: 12.5, color: _sc.accentDark, fontWeight: 600 }}>{pr.role}</Typography>
+                  )}
+                  {pr.description && (
+                    <Typography sx={{ fontSize: 12, lineHeight: 1.5, color: '#4b445f', mt: 0.5 }}>
+                      {pr.description}
+                    </Typography>
+                  )}
+                  {(pr.startDate || pr.projectType) && (
+                    <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mt: 0.7 }}>
+                      {pr.projectType && (
+                        <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, fontSize: 11, color: '#8a8299' }}>
+                          <MovieCreationIcon sx={{ fontSize: 12 }} />{pr.projectType}
+                        </Box>
+                      )}
+                      {pr.startDate && (
+                        <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.4, fontSize: 11, color: '#8a8299' }}>
+                          <CalendarTodayIcon sx={{ fontSize: 12 }} />{pr.startDate}
+                        </Box>
+                      )}
+                    </Stack>
+                  )}
+                </Box>
+              );
+            })}
+          </Stack>
+        </Box>
+      )}
+
+      {/* Ferdigheter */}
+      {Object.keys(skillCategories).length > 0 && (
+        <Box sx={{ mb: 2.5 }}>
+          {sectionTitle('Ferdigheter', <BuildIcon sx={{ fontSize: 17 }} />)}
+          {Object.entries(skillCategories).map(([cat, items]) => (
+            <Box key={cat} sx={{ mb: 1.5 }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#241a38', mb: 0.5 }}>{cat}</Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem 1.5rem', alignItems: 'start' }}>
+                {items.map((s: any) => (
+                  <Box key={s.id}>
+                    <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.15 }}>
+                      <Typography sx={{ fontSize: 12 }}>{s.name}</Typography>
+                    </Stack>
+                    <Box sx={{ height: 4, bgcolor: 'rgba(160,48,192,0.14)', borderRadius: 2, overflow: 'hidden' }}>
+                      <Box sx={{
+                        width: `${Math.max(20, Math.min(100, (s.proficiencyLevel ?? 80) / 5 * 100))}%`,
+                        height: '100%',
+                        background: `linear-gradient(90deg, ${_sc.accent}, ${_sc.accentDark})`,
+                      }} />
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          ))}
+        </Box>
+      )}
+
+      {/* Arbeidserfaring */}
+      {(() => {
+        const { regular, internships } = splitExperiencesByType(resume.experiences ?? []);
+        const renderExp = (exp: any) => (
+          <Box key={exp.id} sx={{ mb: 1.5, pl: 1.25, borderLeft: '2px solid rgba(160,48,192,0.18)' }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="baseline">
+              <Typography sx={{ fontWeight: 700, fontSize: 13.5, color: '#241a38' }}>{exp.jobTitle}</Typography>
+              <Typography sx={{ fontSize: 11, color: '#8a8299' }}>
+                {exp.startDate ? new Date(exp.startDate).toLocaleDateString('no-NO', { year: 'numeric', month: 'short' }) : ''}
+                {exp.startDate ? ' – ' : ''}{exp.isCurrent ? 'Nå' : (exp.endDate ? new Date(exp.endDate).toLocaleDateString('no-NO', { year: 'numeric', month: 'short' }) : '')}
+              </Typography>
+            </Stack>
+            <Typography sx={{ fontSize: 12.5, color: _sc.accentDark, fontWeight: 600 }}>
+              {exp.company}{exp.location ? `  ·  ${exp.location}` : ''}
+            </Typography>
+            <Box sx={{ mt: 0.5, color: '#4b445f' }}>
+              {renderExperienceContent(exp, { bulletSize: 12 })}
+            </Box>
+          </Box>
+        );
+        return (
+          <>
+            {regular.length > 0 && (
+              <Box sx={{ mb: 2.5 }}>
+                {sectionTitle('Arbeidserfaring', <WorkOutlineIcon sx={{ fontSize: 17 }} />)}
+                {regular.map(renderExp)}
+              </Box>
+            )}
+            {internships.length > 0 && (
+              <Box sx={{ mb: 2.5 }}>
+                {sectionTitle('Praksis', <WorkOutlineIcon sx={{ fontSize: 17 }} />)}
+                {internships.map(renderExp)}
+              </Box>
+            )}
+          </>
+        );
+      })()}
+
+      {/* Utdanning */}
+      {(resume.education ?? []).length > 0 && (
+        <Box sx={{ mb: 2.5 }}>
+          {sectionTitle('Utdanning', <SchoolIcon sx={{ fontSize: 17 }} />)}
+          {(resume.education ?? []).map((edu: any) => (
+            <Box key={edu.id} sx={{ mb: 1.25 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="baseline">
+                <Typography sx={{ fontWeight: 700, fontSize: 13.5, color: '#241a38' }}>{edu.degree}</Typography>
+                <Typography sx={{ fontSize: 11, color: '#8a8299' }}>
+                  {edu.startDate ? new Date(edu.startDate).getFullYear() : ''}
+                  {edu.startDate ? ' – ' : ''}{edu.isCurrent ? 'Nå' : (edu.endDate ? new Date(edu.endDate).getFullYear() : '')}
+                </Typography>
+              </Stack>
+              <Typography sx={{ fontSize: 12.5, color: _sc.accentDark, fontWeight: 600 }}>{edu.institution}</Typography>
+              {edu.description && (
+                <Typography sx={{ fontSize: 12, lineHeight: 1.55, mt: 0.5, color: '#4b445f' }}>{edu.description}</Typography>
+              )}
+              {(edu.achievements ?? []).map((a: string, i: number) => (
+                <Typography key={i} sx={{ fontSize: 12, ml: 1.5, color: '#4b445f' }}>• {a}</Typography>
+              ))}
+            </Box>
+          ))}
+        </Box>
+      )}
+
+      {/* Språk */}
+      {(resume.languages ?? []).length > 0 && (
+        <Box sx={{ mb: 2.5 }}>
+          {sectionTitle('Språk', <LanguageIcon sx={{ fontSize: 17 }} />)}
+          {renderLanguageList(resume.languages, {
+            accent: _sc.accent,
+            bgTrack: 'rgba(160,48,192,0.14)',
+            fontSize: 12,
+            labelSize: 11,
+          })}
+        </Box>
+      )}
+
+      {/* Sertifiseringer */}
+      {(resume.certifications ?? []).length > 0 && (
+        <Box sx={{ mb: 2.5 }}>
+          {sectionTitle('Sertifiseringer', <EmojiEventsIcon sx={{ fontSize: 17 }} />)}
+          {(resume.certifications ?? []).map((c: any) => (
+            <Box key={c.id} sx={{ mb: 0.5 }}>
+              <Typography sx={{ fontSize: 12.5, color: '#241a38' }}>
+                <Box component="span" sx={{ fontWeight: 700 }}>{c.name}</Box>
+                {c.issuer ? ` — ${c.issuer}` : ''}
+                {c.issueDate && (
+                  <Box component="span" sx={{ color: '#8a8299', ml: 1 }}>
+                    ({new Date(c.issueDate).toLocaleDateString('no-NO', { year: 'numeric', month: 'short' })})
+                  </Box>
+                )}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+};
+
+// ============================================================================
 // TEMPLATE REGISTRY
 // ============================================================================
 
 export const RESUME_TEMPLATES = {
+  'role-room': {
+    id: 'role-room',
+    name: 'The Role Room',
+    description: 'Bygget fra The Role Room-profilen — mørk lilla, produksjonsklar med prosjekt-statuser',
+    component: RoleRoomTemplate,
+    atsScore: 90,
+    category: 'professional',
+    layout: 'single-column',
+    isPremium: false,
+  },
   'modern-ats': {
     id: 'modern-ats',
     name: 'Modern ATS',

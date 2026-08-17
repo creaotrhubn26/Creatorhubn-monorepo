@@ -29,7 +29,7 @@ import { loadGoogleCredentials } from "./google-calendar-project";
 import { sendPushToUser } from "./web-push-routes";
 import { broadcastEventToRoom } from "./websocket-chat";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 const CREATORHUB_ROOT_FOLDER_NAME = "Creatorhubn";
 const DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder";

@@ -61,13 +61,13 @@ import {
   type FolderTemplate,
 } from "./user-drive-folder-templates";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 export interface UserDriveCredentialsRoutesDeps {
   app: express.Application;
   pool: Pool;
   requireUserSession: (req: any, res: any) => any;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
+ 
 
 // ───────────────────────────────────────────────────────────────────
 // Crypto-helpers (speiler user-b2-credentials-routes.ts envelope)

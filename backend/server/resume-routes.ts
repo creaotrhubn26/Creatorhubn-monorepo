@@ -3518,7 +3518,7 @@ Regler:
       });
       // Rens output: fjern eventuelle markdown-fences eller thinking-tags
       // som Claude kan inkludere på tross av instruksen.
-      let cleanBody = ai.text
+      const cleanBody = ai.text
         .replace(/^```(?:markdown|text)?\s*/i, '')
         .replace(/```\s*$/i, '')
         .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')

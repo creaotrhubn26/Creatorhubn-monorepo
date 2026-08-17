@@ -375,10 +375,10 @@ function requireAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
 
 function handleZod<T>(
   res: Response,
-  parse: z.ZodSafeParseResult<T>,
-): parse is z.ZodSafeParseSuccess<T> {
+  parse: z.SafeParseReturnType<any, T>,
+): parse is z.SafeParseSuccess<T> {
   if (!parse.success) {
-    res.status(400).json({ error: 'invalid_request', details: z.treeifyError(parse.error) });
+    res.status(400).json({ error: 'invalid_request', details: parse.error.issues });
     return false;
   }
   return true;
@@ -774,6 +774,7 @@ export function createCaptureRouter(
       const key = await fetchAssetPreviewKey(db, req.params.id);
       if (!key) { res.status(404).json({ error: 'not_found' }); return; }
       const url = await signAssetReadUrl(key);
+      if (!url) { res.status(404).json({ error: 'preview_unavailable' }); return; }
       res.setHeader('Cache-Control', 'private, max-age=120');
       res.redirect(302, url);
     } catch {
@@ -799,6 +800,27 @@ export function createCaptureRouter(
     if (!row) {
       res.status(404).json({ error: 'not_found' });
       return;
+    }
+    // Kaskade: når en asset forkastes (rejected), fjern den automatisk fra
+    // alle leveransers deliverables.files — et forkastet bilde skal ikke
+    // lenger stå som vedlegg på en leveranse (se LeveranserTab files-kontrakt).
+    if (parsed.data.rejected === true) {
+      void (async () => {
+        try {
+          const proj = await pool.query(`SELECT s.project_id FROM capture_sessions s WHERE s.id = $1`, [row.sessionId]).catch(() => ({ rows: [] }));
+          const pid = proj.rows[0]?.project_id;
+          if (!pid) return;
+          await pool.query(
+            `UPDATE project_workspace_deliverables
+             SET files = COALESCE((SELECT jsonb_agg(f) FROM jsonb_array_elements(files) f WHERE f->>'refId' IS NULL OR f->>'refId' <> $1), '[]'::jsonb),
+                 updated_at = NOW()
+             WHERE project_id = $2`,
+            [req.params.id, pid],
+          );
+        } catch (e: any) {
+          console.error('[capture] prune rejected asset refs', e?.message || e);
+        }
+      })();
     }
     // Phase 5.3 — broadcast the label change to every photographer
     // currently in this session so multi-iPad shoots see each other's

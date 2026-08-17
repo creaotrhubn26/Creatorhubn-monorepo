@@ -19,7 +19,7 @@ describe("readFeideConfig", () => {
 // ── state-store (CSRF) ──────────────────────────────────────────────────────
 describe("makeStateStore", () => {
   it("consume returnerer nonce én gang, deretter null", () => {
-    let t = 1000;
+    const t = 1000;
     const s = makeStateStore(() => t);
     const state = s.create("nonce-1");
     expect(s.consume(state)).toEqual({ nonce: "nonce-1" });

@@ -18,7 +18,7 @@
 import type express from "express";
 import { canAccessProject } from "./project-team-routes";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 // Eierskaps-sjekk for et bryllup: eier (user_id), tildelt fotograf
 // (photographer_id) eller team-tilgang til koblet prosjekt. Speiler

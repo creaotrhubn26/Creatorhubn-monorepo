@@ -153,7 +153,7 @@ async function fetchAllRoleRoomSubscribers(stripe: Stripe): Promise<StripeSubscr
   let startingAfter: string | undefined;
   // Hent alle subscriptions først, så map mot customers — så ingen blir glemt
   // som har kansellert.
-  // eslint-disable-next-line no-constant-condition
+   
   while (true) {
     const page: Stripe.ApiList<Stripe.Subscription> = await stripe.subscriptions.list({
       limit: 100,
@@ -669,7 +669,7 @@ export function setupAdminRoleRoomEconomyRoutes(deps: RoleRoomEconomyDeps): void
       res.json({ ok: true, subscription: { id: sub.id, status: sub.status, pauseCollection: sub.pause_collection } });
     } catch (err) {
       console.error("[admin-room role-room] pause error", err);
-      res.status(500).json({ error: "internal_error" || "Kunne ikke pause subscription" });
+      res.status(500).json({ error: "Kunne ikke pause subscription" });
     }
   });
 
@@ -695,7 +695,7 @@ export function setupAdminRoleRoomEconomyRoutes(deps: RoleRoomEconomyDeps): void
       res.json({ ok: true, subscription: { id: sub.id, status: sub.status, pauseCollection: sub.pause_collection } });
     } catch (err) {
       console.error("[admin-room role-room] resume error", err);
-      res.status(500).json({ error: "internal_error" || "Kunne ikke gjenoppta subscription" });
+      res.status(500).json({ error: "Kunne ikke gjenoppta subscription" });
     }
   });
 
@@ -738,7 +738,7 @@ export function setupAdminRoleRoomEconomyRoutes(deps: RoleRoomEconomyDeps): void
       });
     } catch (err) {
       console.error("[admin-room role-room] cancel error", err);
-      res.status(500).json({ error: "internal_error" || "Kunne ikke kansellere subscription" });
+      res.status(500).json({ error: "Kunne ikke kansellere subscription" });
     }
   });
 
@@ -764,7 +764,7 @@ export function setupAdminRoleRoomEconomyRoutes(deps: RoleRoomEconomyDeps): void
       res.json({ ok: true, subscription: { id: sub.id, status: sub.status, cancelAtPeriodEnd: sub.cancel_at_period_end } });
     } catch (err) {
       console.error("[admin-room role-room] reactivate error", err);
-      res.status(500).json({ error: "internal_error" || "Kunne ikke reaktivere subscription" });
+      res.status(500).json({ error: "Kunne ikke reaktivere subscription" });
     }
   });
 

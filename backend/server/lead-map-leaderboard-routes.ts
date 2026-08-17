@@ -147,12 +147,12 @@ export function registerLeadMapLeaderboardRoutes({ app, pool, activeSessions }: 
         let idx = 2;
 
         // Periode-filter param
-        let wonPeriodClause = wonFilter.sql.replace(/\$1/g, `$${idx}`);
+        const wonPeriodClause = wonFilter.sql.replace(/\$1/g, `$${idx}`);
         for (const p of wonFilter.params) {
           params.push(p);
           idx += 1;
         }
-        let visitPeriodClause = visitFilter.sql.replace(/\$1/g, `$${idx}`);
+        const visitPeriodClause = visitFilter.sql.replace(/\$1/g, `$${idx}`);
         for (const p of visitFilter.params) {
           params.push(p);
           idx += 1;
@@ -326,12 +326,12 @@ export function registerLeadMapLeaderboardRoutes({ app, pool, activeSessions }: 
 
         const params: unknown[] = [orgId];
         let idx = 2;
-        let wonPeriodClause = wonFilter.sql.replace(/\$1/g, `$${idx}`);
+        const wonPeriodClause = wonFilter.sql.replace(/\$1/g, `$${idx}`);
         for (const p of wonFilter.params) {
           params.push(p);
           idx += 1;
         }
-        let visitPeriodClause = visitFilter.sql.replace(/\$1/g, `$${idx}`);
+        const visitPeriodClause = visitFilter.sql.replace(/\$1/g, `$${idx}`);
         for (const p of visitFilter.params) {
           params.push(p);
           idx += 1;

@@ -72,7 +72,7 @@ function harRolle(roller: { globalRole: string | null; orgRole: string | null },
 export function registerLeadgridOversiktRoutes(deps: {
   app: Express;
   pool: Pool;
-  requireUserSession: (req: Request, res: Response) => Promise<{ userId: string } | null>;
+  requireUserSession: (req: Request, res: Response) => { userId: string } | null;
 }): void {
   const { app, pool, requireUserSession } = deps;
 

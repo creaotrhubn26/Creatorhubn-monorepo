@@ -115,7 +115,7 @@ export function setupAdminFeatureCustomizationsRoutes(
   // POST /api/admin/feature-customizations
   // body: { userId, featureId, override, reason? }
   app.post("/api/admin/feature-customizations", async (req, res) => {
-    const session = requireAdminSession(req, res);
+    const session = req.adminSession;
     if (!session) return;
     try {
       const body =

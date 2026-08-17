@@ -91,7 +91,7 @@ export function setupAdminStorageCostRoutes(
   // GET /api/admin/storage-cost/preview?storageGB=50
   // Returnerer kost-/margin-overslag for en hypotetisk plan med X GB.
   app.get("/api/admin/storage-cost/preview", async (req, res) => {
-    const adminSession = requireAdminSession(req, res);
+    const adminSession = req.adminSession;
     if (!adminSession) return;
 
     const storageGBRaw = req.query.storageGB;
@@ -116,7 +116,7 @@ export function setupAdminStorageCostRoutes(
   app.get(
     "/api/admin/users/:userId/storage-cost",
     async (req, res) => {
-      const adminSession = requireAdminSession(req, res);
+      const adminSession = req.adminSession;
       if (!adminSession) return;
       const { userId } = req.params;
 
@@ -235,7 +235,7 @@ export function setupAdminStorageCostRoutes(
   app.get(
     "/api/admin/users-storage-overview",
     async (req, res) => {
-      const adminSession = requireAdminSession(req, res);
+      const adminSession = req.adminSession;
       if (!adminSession) return;
 
       const limit = Math.min(
