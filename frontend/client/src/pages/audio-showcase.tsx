@@ -24,7 +24,7 @@ import {
   Inventory2Outlined, SubjectOutlined, StickyNote2Outlined, TimelineOutlined, Speed, VpnKey,
   CategoryOutlined, StyleOutlined, Schedule, CalendarTodayOutlined, ArrowForwardIos, FiberManualRecord, Sync,
   PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll, RocketLaunchOutlined, FileDownloadDoneOutlined, TipsAndUpdatesOutlined, MovieCreationOutlined, SelfImprovement, EventOutlined,
-  ZoomIn, TouchApp,
+  ZoomIn, TouchApp, Mic, Stop,
 } from '@mui/icons-material';
 import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
 import { buildSectionAnchors, parseSongSections, sectionInsertToken, INSERT_SECTION_OPTIONS, SECTION_COLORS as SECTION_TYPE_COLORS, NB_LABELS, type SectionType } from '@/lib/lyric-sections';
@@ -322,13 +322,53 @@ export default function AudioShowcasePage() {
   }, [versions, currentVid]);
 
   /* ── Mutasjoner (alle wired) ── */
-  const addComment = async (body: string, opts: { parentId?: string; sectionRef?: string | null } = {}) => {
-    if (!currentVid || !body.trim()) return;
+  const addComment = async (body: string, opts: { parentId?: string; sectionRef?: string | null; audioNoteUrl?: string } = {}) => {
+    if (!currentVid || (!body.trim() && !opts.audioNoteUrl)) return;
     const me = members.find((m) => m.is_owner);
-    const c = await apiRequest('/api/audio-comments', { method: 'POST', body: { versionId: currentVid, timecodeSeconds: Math.floor(cur), body, author: me?.name, authorRole: me?.role, parentCommentId: opts.parentId, sectionRef: opts.sectionRef ?? composerSection } });
+    const c = await apiRequest('/api/audio-comments', { method: 'POST', body: { versionId: currentVid, timecodeSeconds: Math.floor(cur), body: body.trim(), audioNoteUrl: opts.audioNoteUrl, author: me?.name, authorRole: me?.role, parentCommentId: opts.parentId, sectionRef: opts.sectionRef ?? composerSection } });
     setDetail((p) => ({ ...p, comments: [...p.comments, c] }));
     setComposerSection(null);
   };
+
+  // Lydnotat: produsenten spiller inn en kort tilbakemelding (f.eks. uttale)
+  // direkte til vokalisten, i stedet for/i tillegg til tekst.
+  const [recording, setRecording] = React.useState(false);
+  const [recordingBusy, setRecordingBusy] = React.useState(false);
+  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = React.useRef<Blob[]>([]);
+  const uploadAudioBlob = (blob: Blob): Promise<string> => {
+    const fd = new FormData(); fd.append('file', blob, 'lydnotat.webm');
+    return getAuthHeader().then((headers) => new Promise((resolve, reject) => {
+      const h = { ...headers } as Record<string, string>; delete h['Content-Type'];
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', buildApiUrl('/api/upload/audio'));
+      Object.entries(h).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+      xhr.onload = () => { try { const j = JSON.parse(xhr.responseText); j?.url ? resolve(j.url) : reject(new Error('no url')); } catch { reject(new Error('bad response')); } };
+      xhr.onerror = () => reject(new Error('upload failed'));
+      xhr.send(fd);
+    }));
+  };
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordedChunksRef.current = [];
+      const mr = new MediaRecorder(stream);
+      mr.ondataavailable = (e) => { if (e.data.size > 0) recordedChunksRef.current.push(e.data); };
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(recordedChunksRef.current, { type: 'audio/webm' });
+        setRecordingBusy(true);
+        try {
+          const url = await uploadAudioBlob(blob);
+          await addComment(draft, { parentId: replyTo?.id, audioNoteUrl: url });
+          setDraft(''); setReplyTo(null);
+        } catch { /* opplasting feilet — behold draft slik at brukeren kan prøve igjen */ }
+        finally { setRecordingBusy(false); }
+      };
+      mr.start(); mediaRecorderRef.current = mr; setRecording(true);
+    } catch { /* mikrofontilgang avslått/utilgjengelig */ }
+  };
+  const stopRecording = () => { mediaRecorderRef.current?.stop(); setRecording(false); };
   // Tekst-seksjoner fra koblet track → kan refereres i kommentarer.
   const lyricSectionLabels = React.useMemo(() => {
     const secs = parseSongSections(easeverseTrack?.lyrics || '');
@@ -741,7 +781,13 @@ export default function AudioShowcasePage() {
                         {c.section_ref && <Chip label={`↳ ${c.section_ref}`} size="small" sx={{ height: 18, fontSize: '0.64rem', fontWeight: 700, bgcolor: 'rgba(255,107,53,0.16)', color: ACCENT }} />}
                         <Box sx={{ flex: 1 }} /><IconButton size="small" sx={{ color: FAINT, p: 0.25 }}><MoreHoriz sx={{ fontSize: 16 }} /></IconButton>
                       </Stack>
-                      <Typography sx={{ fontSize: '0.86rem', color: 'rgba(245,242,234,0.9)', mt: 0.4 }}>{c.body}</Typography>
+                      {c.body && <Typography sx={{ fontSize: '0.86rem', color: 'rgba(245,242,234,0.9)', mt: 0.4 }}>{c.body}</Typography>}
+                      {c.audio_note_url && (
+                        <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mt: 0.6 }}>
+                          <Mic sx={{ fontSize: 14, color: ACCENT }} />
+                          <audio controls src={c.audio_note_url} style={{ height: 30, maxWidth: 220 }} />
+                        </Stack>
+                      )}
                       <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mt: 0.75 }}>
                         <Typography onClick={() => { setReplyTo(c); }} sx={{ fontSize: '0.74rem', color: MUTED, cursor: 'pointer', '&:hover': { color: TEXT } }}>Svar</Typography>
                         <Stack direction="row" alignItems="center" spacing={0.4} onClick={() => void likeComment(c.id)} sx={{ cursor: 'pointer', color: c.like_count > 0 ? ACCENT : FAINT, '&:hover': { color: ACCENT } }}>
@@ -781,6 +827,14 @@ export default function AudioShowcasePage() {
                   sx={{ color: TEXT, fontSize: '0.82rem', py: 0.75 }} />
                 <Tooltip title={`Tidsstemple ved ${fmt(cur)}`}><AccessTime sx={{ fontSize: 17, color: FAINT }} /></Tooltip>
               </Box>
+              <Tooltip title={recording ? 'Stopp opptak' : recordingBusy ? 'Laster opp…' : 'Spill inn lydnotat (f.eks. uttale-tilbakemelding)'}>
+                <span>
+                  <IconButton onClick={recording ? stopRecording : startRecording} disabled={recordingBusy}
+                    sx={{ color: recording ? '#e0606a' : MUTED, bgcolor: recording ? 'rgba(224,96,106,0.14)' : 'transparent' }}>
+                    {recordingBusy ? <CircularProgress size={16} sx={{ color: MUTED }} /> : recording ? <Stop sx={{ fontSize: 18 }} /> : <Mic sx={{ fontSize: 18 }} />}
+                  </IconButton>
+                </span>
+              </Tooltip>
               <IconButton onClick={() => { if (draft.trim()) { void addComment(draft.trim(), { parentId: replyTo?.id }); setDraft(''); setReplyTo(null); } }} sx={{ bgcolor: ACCENT, color: '#150d05', '&:hover': { bgcolor: '#ff855a' } }}><Send sx={{ fontSize: 18 }} /></IconButton>
             </Stack>
           </Box>

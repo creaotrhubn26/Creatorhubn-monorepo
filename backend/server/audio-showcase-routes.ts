@@ -712,18 +712,21 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     const s = requireUserSession(req, res); if (!s) return;
     const versionId = str(req.body?.versionId, 64);
     const body = str(req.body?.body ?? req.body?.comment, 4000);
-    if (!versionId || !body) return res.status(400).json({ error: "versionId_and_body_required" });
+    const audioNoteUrl = str(req.body?.audioNoteUrl, 2000) || null;
+    // Et lydnotat (f.eks. uttale-tilbakemelding produsenten spiller inn til
+    // vokalisten) kan stå alene uten tekst — krev minst ett av de to.
+    if (!versionId || (!body && !audioNoteUrl)) return res.status(400).json({ error: "versionId_and_body_or_audio_required" });
     try {
       // IDOR-guard: kun eieren av versjonen kan kommentere via dette (innloggede)
       // endepunktet. Reviewere kommenterer via egen delings-token-flyt.
       if (!(await ownsVersion(versionId, s.userId))) return res.status(403).json({ error: "no_access" });
       const r = await pool.query(
         `INSERT INTO audio_review_comments
-           (version_id, parent_comment_id, user_id, author, author_role, timecode_seconds, body, category, is_decision, section_ref)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+           (version_id, parent_comment_id, user_id, author, author_role, timecode_seconds, body, category, is_decision, section_ref, audio_note_url)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
         [versionId, str(req.body?.parentCommentId, 64) || null, s.userId, str(req.body?.author, 200) || s.name || s.email || "Bruker",
          str(req.body?.authorRole, 80) || null, num(req.body?.timecodeSeconds) ?? num(req.body?.timecode) ?? 0, body,
-         str(req.body?.category, 40) || "general", Boolean(req.body?.isDecision), str(req.body?.sectionRef, 120) || null],
+         str(req.body?.category, 40) || "general", Boolean(req.body?.isDecision), str(req.body?.sectionRef, 120) || null, audioNoteUrl],
       );
       return res.status(201).json(r.rows[0]);
     } catch (e) {
