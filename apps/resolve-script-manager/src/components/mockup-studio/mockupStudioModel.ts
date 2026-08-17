@@ -17,6 +17,7 @@
 
 import type { FrameVariant } from '../demo-studio/deviceFrames';
 import { MEDSIDE_COLORS, MEDSIDE_LOGO_DATA_URL } from './medsideBrand';
+import { isIconId, iconToSvg } from './mockupIcons';
 
 /**
  * Device-varianter = demo-studio-rammene (iphone/ipad/ipad_landscape/macbook)
@@ -1317,12 +1318,12 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
       const cardContent: PreVisitInfoCardContent = {
         title: 'Strukturert anamnese',
         rows: [
-          { icon: '📋', label: 'Aktuelt', value: 'Hodepine, tiltakende' },
-          { icon: '📝', label: 'Anamnese', value: 'Ingen tidligere hodepine' },
-          { icon: '💊', label: 'Legemidler', value: 'Paracetamol ved behov' },
-          { icon: '👪', label: 'Relevant historikk', value: 'Migrene i familien' },
+          { icon: 'cross', label: 'Aktuelt', value: 'Hodepine, tiltakende' },
+          { icon: 'clipboard', label: 'Anamnese', value: 'Ingen tidligere hodepine' },
+          { icon: 'pill', label: 'Legemidler', value: 'Paracetamol ved behov' },
+          { icon: 'people', label: 'Relevant historikk', value: 'Migrene i familien' },
         ],
-        highlightRow: { icon: '✓', label: 'Klar for konsultasjon' },
+        highlightRow: { icon: 'check', label: 'Klar for konsultasjon' },
         animateRows: true,
       };
       const card = previsitInfoCardImage({ ...cardContent, primary: canvas.accent, accent: canvas.accent2 });
@@ -1357,10 +1358,10 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
       const cardContent: PreVisitInfoCardContent = {
         title: 'PreVisit mottatt', checkHeader: true,
         rows: [
-          { icon: '🩺', label: 'Hovedproblem', value: 'Hodepine og svimmelhet' },
-          { icon: '⏱', label: 'Varighet', value: '3 uker' },
-          { icon: '📈', label: 'Forverres ved', value: 'Fysisk aktivitet' },
-          { icon: '📋', label: 'Relevant historikk', value: 'Migrene i familien' },
+          { icon: 'cross', label: 'Hovedproblem', value: 'Hodepine og svimmelhet' },
+          { icon: 'clock', label: 'Varighet', value: '3 uker' },
+          { icon: 'trend', label: 'Forverres ved', value: 'Fysisk aktivitet' },
+          { icon: 'clipboard', label: 'Relevant historikk', value: 'Migrene i familien' },
         ],
         animateRows: true,
       };
@@ -1396,10 +1397,10 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
       const cardContent: PreVisitInfoCardContent = {
         title: 'PreVisit sammendrag',
         rows: [
-          { icon: '👤', label: 'Pasienten', value: 'Kari Nordmann · 10:30' },
-          { icon: '🩺', label: 'Hovedårsak', value: 'Vedvarende tretthet' },
-          { icon: '⚠️', label: 'Relevante forhold', value: 'Ingen kjente allergier' },
-          { icon: '💬', label: 'Pasientens egne notater', value: 'Har vært slapp i 2 uker', quote: true },
+          { icon: 'people', label: 'Pasienten', value: 'Kari Nordmann · 10:30' },
+          { icon: 'cross', label: 'Hovedårsak', value: 'Vedvarende tretthet' },
+          { icon: 'warning', label: 'Relevante forhold', value: 'Ingen kjente allergier' },
+          { icon: 'chat', label: 'Pasientens egne notater', value: 'Har vært slapp i 2 uker', quote: true },
         ],
         footer: 'Skjema fullført kl. 08:14',
         animateRows: true,
@@ -1581,7 +1582,7 @@ export function previsitInfoCardImage(opts: {
     const cy = y + rowH / 2 - 6;
     const svg = animateRows ? '' : `
       <circle cx="46" cy="${cy}" r="19" fill="${primary}" fill-opacity="0.1"/>
-      <text x="46" y="${cy + 7}" font-size="18" text-anchor="middle">${r.icon}</text>
+      ${isIconId(r.icon) ? iconToSvg(r.icon, 46, cy, 11, primary) : `<text x="46" y="${cy + 7}" font-size="18" text-anchor="middle">${r.icon}</text>`}
       <text x="80" y="${cy - 6}" font-family="-apple-system,system-ui,sans-serif" font-size="13" fill="#8a8f98">${escXml(r.label)}</text>
       <text x="80" y="${cy + 16}" font-family="-apple-system,system-ui,sans-serif" font-size="${r.quote ? 15 : 17}" font-style="${r.quote ? 'italic' : 'normal'}" font-weight="${r.quote ? 400 : 600}" fill="#171a1f">${escXml(r.quote ? `„${r.value}"` : r.value)}</text>
       <line x1="0" y1="${y + rowH - 1}" x2="${W}" y2="${y + rowH - 1}" stroke="#eef0f3" stroke-width="1"/>`;
@@ -1591,7 +1592,7 @@ export function previsitInfoCardImage(opts: {
   const highlightSvg = highlightRow ? (() => {
     const cy = y + highlightH / 2;
     const svg = animateRows ? '' : `<rect x="24" y="${y + 8}" width="${W - 48}" height="${highlightH - 16}" rx="14" fill="${accent}" fill-opacity="0.14"/>
-      <text x="52" y="${cy + 6}" font-size="17">${highlightRow.icon}</text>
+      ${isIconId(highlightRow.icon) ? iconToSvg(highlightRow.icon, 52, cy, 9, primary) : `<text x="52" y="${cy + 6}" font-size="17">${highlightRow.icon}</text>`}
       <text x="80" y="${cy + 6}" font-family="-apple-system,system-ui,sans-serif" font-size="16" font-weight="700" fill="${primary}">${escXml(highlightRow.label)}</text>`;
     y += highlightH;
     return svg;

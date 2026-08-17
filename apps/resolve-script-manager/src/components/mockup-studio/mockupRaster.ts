@@ -21,6 +21,7 @@ import { cacheKey, is3dVariant } from './mockup3d/deviceGeometry';
 import { typedState, drawField, drawOnScreenKeyboard, drawKeyPop } from './mockup3d/keyboardAnim';
 import { sceneById } from './mockupScenes';
 import { drawImageQuad, type Quad } from './mockupSceneWarp';
+import { isIconId, drawIcon } from './mockupIcons';
 import {
   type MockupDoc,
   type MockupDeviceSlot,
@@ -1866,9 +1867,13 @@ function drawIconPill(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: MockupAn
   const icx = x + pad * 0.9 + iconR;
   ctx.fillStyle = doc.canvas.accent;
   ctx.beginPath(); ctx.arc(icx, cy, iconR, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.font = `${Math.round(iconR * 1.15)}px -apple-system, system-ui, sans-serif`;
-  ctx.fillText(a.glyph ?? '✓', icx, cy + iconR * 0.05);
+  if (isIconId(a.glyph)) {
+    drawIcon(ctx, a.glyph, icx, cy, iconR * 0.62, '#ffffff');
+  } else {
+    ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = `${Math.round(iconR * 1.15)}px -apple-system, system-ui, sans-serif`;
+    ctx.fillText(a.glyph ?? '✓', icx, cy + iconR * 0.05);
+  }
   // tekst
   const tx = icx + iconR + pad * 0.9;
   ctx.textAlign = 'left';
@@ -1940,8 +1945,13 @@ function drawInfoCardRows(ctx: CanvasRenderingContext2D, doc: MockupDoc, im: Moc
     withReveal(ctx, rev, im.x + im.w / 2, cy, () => {
       ctx.fillStyle = hexToRgba(navy, 0.1);
       ctx.beginPath(); ctx.arc(im.x + 46 * sf, cy, 19 * sf, 0, Math.PI * 2); ctx.fill();
-      ctx.font = `${18 * sf}px -apple-system, system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(r.icon, im.x + 46 * sf, cy + 1 * sf);
+      if (isIconId(r.icon)) {
+        drawIcon(ctx, r.icon, im.x + 46 * sf, cy, 11 * sf, navy);
+      } else {
+        ctx.fillStyle = '#171a1f'; // fillStyle over var fortsatt satt til den svake sirkel-bakgrunnen — usynlig emoji ellers
+        ctx.font = `${18 * sf}px -apple-system, system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(r.icon, im.x + 46 * sf, cy + 1 * sf);
+      }
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
       ctx.fillStyle = '#8a8f98'; ctx.font = `${13 * sf}px -apple-system, system-ui, sans-serif`;
       ctx.fillText(r.label, im.x + 80 * sf, cy - 6 * sf);
@@ -1961,8 +1971,12 @@ function drawInfoCardRows(ctx: CanvasRenderingContext2D, doc: MockupDoc, im: Moc
       ctx.fillStyle = hexToRgba(gold, 0.14);
       roundRectPath(ctx, im.x + 24 * sf, y + 8 * sf, im.w - 48 * sf, highlightH * sf - 16 * sf, 14 * sf); ctx.fill();
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-      ctx.font = `${17 * sf}px -apple-system, system-ui, sans-serif`; ctx.fillStyle = '#000';
-      ctx.fillText(hr.icon, im.x + 52 * sf, cy + 6 * sf);
+      if (isIconId(hr.icon)) {
+        drawIcon(ctx, hr.icon, im.x + 52 * sf, cy + 1 * sf, 9 * sf, navy);
+      } else {
+        ctx.font = `${17 * sf}px -apple-system, system-ui, sans-serif`; ctx.fillStyle = '#000';
+        ctx.fillText(hr.icon, im.x + 52 * sf, cy + 6 * sf);
+      }
       ctx.fillStyle = navy; ctx.font = `700 ${16 * sf}px -apple-system, system-ui, sans-serif`;
       ctx.fillText(hr.label, im.x + 80 * sf, cy + 6 * sf);
     });

@@ -14,6 +14,7 @@ import { MockupCanvas } from './MockupCanvas';
 import { MockupLibraryPanel } from './MockupLibraryPanel';
 import { ingestImage } from './mockupLibraryIngest';
 import { MockupKeyframeGraph } from './MockupKeyframeGraph';
+import { ICON_DEFS, isIconId, type IconOp } from './mockupIcons';
 import { ExportDialog } from './ExportDialog';
 import { OnboardingDialog } from './OnboardingDialog';
 import { DesignGallery } from './DesignGallery';
@@ -1244,7 +1245,7 @@ function IllustrationInspector() {
           {a.kind === 'pill' && (
             <>
               <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-                <input value={a.glyph ?? ''} onChange={(e) => patchAnnotation(a.id, { glyph: e.target.value })} placeholder="Ikon (f.eks. ✓ ⌂ 📋)" style={{ ...textInput, width: 70 }} title="Ikon-glyph (unicode)" />
+                <IconPickerButton value={a.glyph ?? ''} onSelect={(icon) => patchAnnotation(a.id, { glyph: icon })} />
                 <input value={a.label ?? ''} onChange={(e) => patchAnnotation(a.id, { label: e.target.value })} placeholder="Tittel" style={{ ...textInput, flex: 1 }} />
               </div>
               <input value={a.label2 ?? ''} onChange={(e) => patchAnnotation(a.id, { label2: e.target.value })} placeholder="Undertekst" style={{ ...textInput, width: '100%', marginBottom: 6 }} />
@@ -1479,9 +1480,67 @@ function PreVisitCardEditor({ content, onChange }: { content: PreVisitCardConten
   );
 }
 
-/** Redigerer for det genererte «info-rader»-kortet (previsitInfoCardImage) — tittel,
- *  rad-liste (ikon/etikett/verdi/sitat), valgfri uthevet rad og fotnote. Regenererer
- *  SVG-en live på hver endring (samme mønster som PreVisitCardEditor). */
+/** Rendrer ett ikon fra ICON_DEFS (mockupIcons.ts) som ekte SVG — samme ops-liste
+ *  som kort-generatorene/canvas bruker, så velgeren viser nøyaktig det som limes inn. */
+function IconSvg({ id, size = 18, color = 'currentColor' }: { id: string; size?: number; color?: string }) {
+  const def = ICON_DEFS.find((d) => d.id === id);
+  if (!def) return null;
+  return (
+    <svg width={size} height={size} viewBox="-10 -10 20 20" fill="none" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+      {def.ops.map((op: IconOp, i: number) => {
+        if (op.t === 'path') return <path key={i} d={op.d} fill={op.fill ? color : 'none'} stroke={op.fill ? 'none' : color} />;
+        if (op.t === 'line') return <line key={i} x1={op.x1} y1={op.y1} x2={op.x2} y2={op.y2} />;
+        if (op.t === 'circle') return <circle key={i} cx={op.cx} cy={op.cy} r={op.r} fill={op.fill ? color : 'none'} stroke={op.fill ? 'none' : color} />;
+        return <rect key={i} x={op.x} y={op.y} width={op.w} height={op.h} rx={op.rx ?? 0} />;
+      })}
+    </svg>
+  );
+}
+
+/** Kompakt ikon-velger: viser gjeldende ikon i en knapp (eneste inngang — ingen
+ *  fritekst-felt ved siden av), åpner en rutenett-popover med ICON_DEFS ved klikk.
+ *  Lukkes ved valg eller klikk utenfor. Kampanje-kontekst (medisin/helse) er
+ *  prioritert øverst i banken, se mockupIcons.ts. */
+function IconPickerButton({ value, onSelect }: { value: string; onSelect: (icon: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDocDown = (e: MouseEvent) => { if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', onDocDown);
+    return () => document.removeEventListener('mousedown', onDocDown);
+  }, [open]);
+  return (
+    <div ref={boxRef} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        title="Velg ikon fra banken"
+        style={{ ...listBtn, width: 34, padding: '4px 0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        {isIconId(value) ? <IconSvg id={value} size={16} color={C.ink} /> : <span style={{ fontSize: 15 }}>{value || '·'}</span>}
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', zIndex: 30, top: '100%', left: 0, marginTop: 4, width: 180,
+          background: C.panel, border: `1px solid ${C.border}`, borderRadius: 8, padding: 6,
+          display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 2, boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+        }}>
+          {ICON_DEFS.map((d) => (
+            <button
+              key={d.id}
+              onClick={() => { onSelect(d.id); setOpen(false); }}
+              title={d.label}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <IconSvg id={d.id} size={18} color={C.ink} />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PreVisitInfoCardEditor({ content, onChange }: { content: PreVisitInfoCardContent; onChange: (c: PreVisitInfoCardContent) => void }) {
   return (
     <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
@@ -1497,11 +1556,7 @@ function PreVisitInfoCardEditor({ content, onChange }: { content: PreVisitInfoCa
         {content.rows.map((r, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6, padding: 6, background: C.panelSoft, borderRadius: 6 }}>
             <div style={{ display: 'flex', gap: 4 }}>
-              <input
-                value={r.icon}
-                onChange={(e) => onChange({ ...content, rows: content.rows.map((x, j) => (j === i ? { ...x, icon: e.target.value } : x)) })}
-                placeholder="Ikon" style={{ ...textInput, width: 44 }}
-              />
+              <IconPickerButton value={r.icon} onSelect={(icon) => onChange({ ...content, rows: content.rows.map((x, j) => (j === i ? { ...x, icon } : x)) })} />
               <input
                 value={r.label}
                 onChange={(e) => onChange({ ...content, rows: content.rows.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })}
@@ -1533,11 +1588,7 @@ function PreVisitInfoCardEditor({ content, onChange }: { content: PreVisitInfoCa
       <Field label="Uthevet rad (valgfri)">
         {content.highlightRow ? (
           <div style={{ display: 'flex', gap: 4 }}>
-            <input
-              value={content.highlightRow.icon}
-              onChange={(e) => onChange({ ...content, highlightRow: { ...content.highlightRow!, icon: e.target.value } })}
-              placeholder="Ikon" style={{ ...textInput, width: 44 }}
-            />
+            <IconPickerButton value={content.highlightRow.icon} onSelect={(icon) => onChange({ ...content, highlightRow: { ...content.highlightRow!, icon } })} />
             <input
               value={content.highlightRow.label}
               onChange={(e) => onChange({ ...content, highlightRow: { ...content.highlightRow!, label: e.target.value } })}
