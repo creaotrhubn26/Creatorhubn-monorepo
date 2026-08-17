@@ -668,8 +668,9 @@ export interface PreVisitCardContent {
 export interface PreVisitInfoCardContent {
   title: string;
   checkHeader?: boolean;
-  rows: { icon: string; label: string; value: string; quote?: boolean }[];
-  highlightRow?: { icon: string; label: string };
+  /** iconColor: valgfri per-rad-overstyring — mangler → doc.canvas.accent (primary). */
+  rows: { icon: string; label: string; value: string; quote?: boolean; iconColor?: string }[];
+  highlightRow?: { icon: string; label: string; iconColor?: string };
   footer?: string;
   /** Se PreVisitCardContent.animateSteps — samme flyt-mønster, radene her i stedet for steg. */
   animateRows?: boolean;
@@ -1565,8 +1566,8 @@ export function previsitInfoCardImage(opts: {
   primary: string;
   accent: string;
   checkHeader?: boolean;
-  rows: { icon: string; label: string; value: string; quote?: boolean }[];
-  highlightRow?: { icon: string; label: string };
+  rows: { icon: string; label: string; value: string; quote?: boolean; iconColor?: string }[];
+  highlightRow?: { icon: string; label: string; iconColor?: string };
   footer?: string;
   animateRows?: boolean;
 }): string {
@@ -1582,7 +1583,7 @@ export function previsitInfoCardImage(opts: {
     const cy = y + rowH / 2 - 6;
     const svg = animateRows ? '' : `
       <circle cx="46" cy="${cy}" r="19" fill="${primary}" fill-opacity="0.1"/>
-      ${isIconId(r.icon) ? iconToSvg(r.icon, 46, cy, 11, primary) : `<text x="46" y="${cy + 7}" font-size="18" text-anchor="middle">${r.icon}</text>`}
+      ${isIconId(r.icon) ? iconToSvg(r.icon, 46, cy, 11, r.iconColor ?? primary) : `<text x="46" y="${cy + 7}" font-size="18" text-anchor="middle">${r.icon}</text>`}
       <text x="80" y="${cy - 6}" font-family="-apple-system,system-ui,sans-serif" font-size="13" fill="#8a8f98">${escXml(r.label)}</text>
       <text x="80" y="${cy + 16}" font-family="-apple-system,system-ui,sans-serif" font-size="${r.quote ? 15 : 17}" font-style="${r.quote ? 'italic' : 'normal'}" font-weight="${r.quote ? 400 : 600}" fill="#171a1f">${escXml(r.quote ? `„${r.value}"` : r.value)}</text>
       <line x1="0" y1="${y + rowH - 1}" x2="${W}" y2="${y + rowH - 1}" stroke="#eef0f3" stroke-width="1"/>`;
@@ -1592,7 +1593,7 @@ export function previsitInfoCardImage(opts: {
   const highlightSvg = highlightRow ? (() => {
     const cy = y + highlightH / 2;
     const svg = animateRows ? '' : `<rect x="24" y="${y + 8}" width="${W - 48}" height="${highlightH - 16}" rx="14" fill="${accent}" fill-opacity="0.14"/>
-      ${isIconId(highlightRow.icon) ? iconToSvg(highlightRow.icon, 52, cy, 9, primary) : `<text x="52" y="${cy + 6}" font-size="17">${highlightRow.icon}</text>`}
+      ${isIconId(highlightRow.icon) ? iconToSvg(highlightRow.icon, 52, cy, 9, highlightRow.iconColor ?? primary) : `<text x="52" y="${cy + 6}" font-size="17">${highlightRow.icon}</text>`}
       <text x="80" y="${cy + 6}" font-family="-apple-system,system-ui,sans-serif" font-size="16" font-weight="700" fill="${primary}">${escXml(highlightRow.label)}</text>`;
     y += highlightH;
     return svg;

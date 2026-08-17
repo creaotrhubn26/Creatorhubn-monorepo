@@ -24,7 +24,7 @@ export interface IconOp {
 export const ICON_DEFS: { id: string; label: string; ops: IconOp[] }[] = [
   // Medisinsk/helse-kontekst (PreVisit-kampanjene) — prioritert først i banken.
   { id: 'cross', label: 'Medisinsk kors', ops: [{ t: 'line', x1: 0, y1: -8, x2: 0, y2: 8 }, { t: 'line', x1: -8, y1: 0, x2: 8, y2: 0 }] },
-  { id: 'pill', label: 'Medisin', ops: [{ t: 'rect', x: -8, y: -8, w: 16, h: 16, rx: 8 }, { t: 'line', x1: -6, y1: 6, x2: 6, y2: -6 }] },
+  { id: 'pill', label: 'Medisin', ops: [{ t: 'rect', x: -9, y: -4, w: 18, h: 8, rx: 4 }, { t: 'line', x1: 0, y1: -4, x2: 0, y2: 4 }] },
   { id: 'stethoscope', label: 'Stetoskop', ops: [{ t: 'path', d: 'M -6 -8 L -6 -1 A 6 6 0 0 0 6 -1 L 6 -8' }, { t: 'circle', cx: -6, cy: -9, r: 1.2, fill: true }, { t: 'circle', cx: 6, cy: -9, r: 1.2, fill: true }, { t: 'line', x1: 0, y1: 5, x2: 0, y2: 8 }, { t: 'circle', cx: 4, cy: 8, r: 2.4 }] },
   { id: 'clipboard', label: 'Notat', ops: [{ t: 'rect', x: -6, y: -8, w: 12, h: 16, rx: 1.5 }, { t: 'line', x1: -3, y1: -3, x2: 3, y2: -3 }, { t: 'line', x1: -3, y1: 1, x2: 3, y2: 1 }, { t: 'line', x1: -3, y1: 5, x2: 1, y2: 5 }] },
   { id: 'clock', label: 'Klokke', ops: [{ t: 'circle', cx: 0, cy: 0, r: 8 }, { t: 'line', x1: 0, y1: 0, x2: 0, y2: -5 }, { t: 'line', x1: 0, y1: 0, x2: 4, y2: 2 }] },
@@ -32,9 +32,15 @@ export const ICON_DEFS: { id: string; label: string; ops: IconOp[] }[] = [
   { id: 'warning', label: 'Advarsel', ops: [{ t: 'path', d: 'M 0 -8 L 8 7 L -8 7 Z' }, { t: 'line', x1: 0, y1: -3, x2: 0, y2: 2 }, { t: 'line', x1: 0, y1: 5, x2: 0, y2: 5.2, fill: true }] },
   { id: 'chat', label: 'Samtale', ops: [{ t: 'rect', x: -8, y: -6, w: 16, h: 11, rx: 2 }, { t: 'path', d: 'M -3 5 L -5 9 L -1 5 Z' }] },
   { id: 'lock', label: 'Trygt/privat', ops: [{ t: 'rect', x: -5, y: -1, w: 10, h: 9, rx: 1.5 }, { t: 'path', d: 'M -3 -1 L -3 -4 A 3 3 0 0 1 3 -4 L 3 -1' }] },
-  { id: 'people', label: 'Pasient/kliniker', ops: [{ t: 'circle', cx: -3, cy: -3, r: 3 }, { t: 'circle', cx: 3, cy: -3, r: 3 }, { t: 'path', d: 'M -8 8 Q -3 3 0 6 Q 3 3 8 8' }] },
+  { id: 'people', label: 'Pasient/kliniker', ops: [{ t: 'circle', cx: -4, cy: -5, r: 2 }, { t: 'path', d: 'M -7.5 8 Q -7.5 2 -4 2 Q -0.5 2 -0.5 8' }, { t: 'circle', cx: 4, cy: -5, r: 2 }, { t: 'path', d: 'M 0.5 8 Q 0.5 2 4 2 Q 7.5 2 7.5 8' }] },
   { id: 'trend', label: 'Utvikling', ops: [{ t: 'path', d: 'M -7 5 L -2 -1 L 1 2 L 7 -6' }, { t: 'path', d: 'M 3 -6 L 7 -6 L 7 -2' }] },
   { id: 'check', label: 'Fullført', ops: [{ t: 'path', d: 'M -6 0 L -2 4 L 6 -6' }] },
+  { id: 'thermometer', label: 'Temperatur', ops: [{ t: 'rect', x: -1.5, y: -8, w: 3, h: 11, rx: 1.5 }, { t: 'circle', cx: 0, cy: 6, r: 3 }, { t: 'circle', cx: 0, cy: 6, r: 1.3, fill: true }] },
+  { id: 'drop', label: 'Prøve', ops: [{ t: 'path', d: 'M 0 -8 C 5 -2 6 2 6 4 A 6 6 0 1 1 -6 4 C -6 2 -5 -2 0 -8 Z' }] },
+  { id: 'activity', label: 'Puls', ops: [{ t: 'path', d: 'M -8 0 L -3 0 L -1 -6 L 2 6 L 4 0 L 8 0' }] },
+  { id: 'eye', label: 'Syn', ops: [{ t: 'path', d: 'M -8 0 Q 0 -6 8 0 Q 0 6 -8 0 Z' }, { t: 'circle', cx: 0, cy: 0, r: 2.2 }] },
+  { id: 'doctor', label: 'Lege/kliniker', ops: [{ t: 'circle', cx: 0, cy: -4, r: 3 }, { t: 'path', d: 'M -6 8 Q -6 0 0 0 Q 6 0 6 8' }, { t: 'line', x1: 0, y1: 3, x2: 0, y2: 6 }, { t: 'line', x1: -1.5, y1: 4.5, x2: 1.5, y2: 4.5 }] },
+  { id: 'migraine', label: 'Hodepine', ops: [{ t: 'circle', cx: -3, cy: 0, r: 5 }, { t: 'path', d: 'M 2 -7 L -1 0 L 3 0 L -1 7' }] },
   // Generelle (mindre kampanje-spesifikke, men nyttige som badge/pill-ikon).
   { id: 'shield', label: 'Trygghet', ops: [{ t: 'path', d: 'M 0 -8 L 7 -5 L 7 2 Q 7 7 0 9 Q -7 7 -7 2 L -7 -5 Z' }] },
   { id: 'bell', label: 'Varsel', ops: [{ t: 'path', d: 'M -5 3 L -5 -2 A 5 5 0 0 1 5 -2 L 5 3 L 7 6 L -7 6 Z' }, { t: 'line', x1: -1.5, y1: 8, x2: 1.5, y2: 8 }] },
@@ -43,6 +49,13 @@ export const ICON_DEFS: { id: string; label: string; ops: IconOp[] }[] = [
   { id: 'search', label: 'Søk', ops: [{ t: 'circle', cx: -1, cy: -1, r: 5 }, { t: 'line', x1: 3, y1: 3, x2: 8, y2: 8 }] },
   { id: 'target', label: 'Mål', ops: [{ t: 'circle', cx: 0, cy: 0, r: 8 }, { t: 'circle', cx: 0, cy: 0, r: 4 }, { t: 'circle', cx: 0, cy: 0, r: 0.9, fill: true }] },
   { id: 'pin', label: 'Sted', ops: [{ t: 'path', d: 'M 0 8 C -6 0 -6 -6 0 -8 C 6 -6 6 0 0 8 Z' }, { t: 'circle', cx: 0, cy: -3, r: 2 }] },
+  { id: 'calendar', label: 'Time', ops: [{ t: 'rect', x: -7, y: -6, w: 14, h: 13, rx: 1.5 }, { t: 'line', x1: -4, y1: -8, x2: -4, y2: -4 }, { t: 'line', x1: 4, y1: -8, x2: 4, y2: -4 }, { t: 'line', x1: -7, y1: -2, x2: 7, y2: -2 }] },
+  { id: 'phone', label: 'Telefon', ops: [{ t: 'rect', x: -4, y: -8, w: 8, h: 16, rx: 2 }, { t: 'line', x1: 0, y1: 6, x2: 0, y2: 6.2, fill: true }] },
+  { id: 'mail', label: 'E-post', ops: [{ t: 'rect', x: -8, y: -5, w: 16, h: 11, rx: 1 }, { t: 'path', d: 'M -8 -5 L 0 2 L 8 -5' }] },
+  { id: 'info', label: 'Info', ops: [{ t: 'circle', cx: 0, cy: 0, r: 8 }, { t: 'line', x1: 0, y1: -1, x2: 0, y2: 4 }, { t: 'line', x1: 0, y1: -5, x2: 0, y2: -4.8, fill: true }] },
+  { id: 'question', label: 'Spørsmål', ops: [{ t: 'path', d: 'M -3 -4 Q -3 -8 1 -8 Q 5 -8 5 -4 Q 5 -1 1 0 L 1 2' }, { t: 'line', x1: 1, y1: 6, x2: 1, y2: 6.2, fill: true }] },
+  { id: 'flag', label: 'Flagg', ops: [{ t: 'line', x1: -6, y1: -8, x2: -6, y2: 8 }, { t: 'path', d: 'M -6 -8 L 6 -5 L -6 -2 Z' }] },
+  { id: 'document', label: 'Dokument', ops: [{ t: 'path', d: 'M -6 -8 L 2 -8 L 6 -4 L 6 8 L -6 8 Z' }, { t: 'path', d: 'M 2 -8 L 2 -4 L 6 -4' }, { t: 'line', x1: -3, y1: 0, x2: 3, y2: 0 }, { t: 'line', x1: -3, y1: 3, x2: 3, y2: 3 }] },
 ];
 
 const ICON_MAP = new Map(ICON_DEFS.map((d) => [d.id, d.ops]));

@@ -1541,7 +1541,7 @@ function IconPickerButton({ value, onSelect }: { value: string; onSelect: (icon:
   );
 }
 
-function PreVisitInfoCardEditor({ content, onChange }: { content: PreVisitInfoCardContent; onChange: (c: PreVisitInfoCardContent) => void }) {
+function PreVisitInfoCardEditor({ content, onChange, primary }: { content: PreVisitInfoCardContent; onChange: (c: PreVisitInfoCardContent) => void; primary: string }) {
   return (
     <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
       <SectionLabel>Info-kort (falsk skjerm)</SectionLabel>
@@ -1557,6 +1557,12 @@ function PreVisitInfoCardEditor({ content, onChange }: { content: PreVisitInfoCa
           <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6, padding: 6, background: C.panelSoft, borderRadius: 6 }}>
             <div style={{ display: 'flex', gap: 4 }}>
               <IconPickerButton value={r.icon} onSelect={(icon) => onChange({ ...content, rows: content.rows.map((x, j) => (j === i ? { ...x, icon } : x)) })} />
+              <input
+                type="color"
+                value={r.iconColor ?? primary}
+                onChange={(e) => onChange({ ...content, rows: content.rows.map((x, j) => (j === i ? { ...x, iconColor: e.target.value } : x)) })}
+                title="Ikonfarge" style={{ width: 30, height: 30, border: 'none', background: 'none', padding: 0, cursor: 'pointer', borderRadius: 6, flexShrink: 0 }}
+              />
               <input
                 value={r.label}
                 onChange={(e) => onChange({ ...content, rows: content.rows.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })}
@@ -1589,6 +1595,12 @@ function PreVisitInfoCardEditor({ content, onChange }: { content: PreVisitInfoCa
         {content.highlightRow ? (
           <div style={{ display: 'flex', gap: 4 }}>
             <IconPickerButton value={content.highlightRow.icon} onSelect={(icon) => onChange({ ...content, highlightRow: { ...content.highlightRow!, icon } })} />
+            <input
+              type="color"
+              value={content.highlightRow.iconColor ?? primary}
+              onChange={(e) => onChange({ ...content, highlightRow: { ...content.highlightRow!, iconColor: e.target.value } })}
+              title="Ikonfarge" style={{ width: 30, height: 30, border: 'none', background: 'none', padding: 0, cursor: 'pointer', borderRadius: 6, flexShrink: 0 }}
+            />
             <input
               value={content.highlightRow.label}
               onChange={(e) => onChange({ ...content, highlightRow: { ...content.highlightRow!, label: e.target.value } })}
@@ -1739,6 +1751,7 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
       {image.infoCardContent && (
         <PreVisitInfoCardEditor
           content={image.infoCardContent}
+          primary={doc.canvas.accent}
           onChange={(content) => patchImage(image.id, { infoCardContent: content, image: previsitInfoCardImage({ ...content, primary: doc.canvas.accent, accent: doc.canvas.accent2 }) })}
         />
       )}
