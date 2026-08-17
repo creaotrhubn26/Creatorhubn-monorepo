@@ -1453,6 +1453,31 @@ function PersonStylePicker({ style, onChange }: { style: PersonStyle | undefined
 
 const STEP_STATE_LABEL: Record<PreVisitStepState, string> = { done: 'Fullført', active: 'Aktiv', todo: 'Ikke startet' };
 
+/** Startinnhold for «legg til falsk skjerm»-bryteren — universell, ikke PreVisit-kampanje-spesifikk.
+ *  Funksjoner (ikke konstanter) slik at hver tilkobling får sine egne arrays (ingen delt mutabel state). */
+const defaultCardContent = (): PreVisitCardContent => ({
+  title: 'Overskrift', subtitle: 'Undertekst', buttonText: 'Kom i gang',
+  steps: [{ label: 'Steg 1', state: 'done' }, { label: 'Steg 2', state: 'active' }, { label: 'Steg 3', state: 'todo' }],
+});
+const defaultInfoCardContent = (): PreVisitInfoCardContent => ({
+  title: 'Info-kort', rows: [{ icon: 'check', label: 'Punkt', value: 'Verdi' }],
+});
+const defaultFormListContent = (): PreVisitFormListContent => ({
+  fields: [{ q: 'Spørsmål', sub: 'Undertekst' }], buttonText: 'Neste',
+});
+const defaultChecklistContent = (): PreVisitChecklistContent => ({
+  items: [{ label: 'Punkt 1', done: true }, { label: 'Punkt 2', done: false }],
+});
+const defaultDashboardContent = (): PreVisitDashboardContent => ({
+  patient: 'Pasient · Time i dag', fields: [{ label: 'Felt', value: 'Verdi' }],
+});
+const defaultQuestionContent = (): PreVisitQuestionContent => ({
+  index: 1, total: 1, question: 'Hva gjelder henvendelsen?', answer: '',
+});
+const defaultNoteContent = (): PreVisitNoteContent => ({
+  patientLine: 'Pasient · født dd.mm.åååå · time dd.mm.åååå, tt:mm', paragraphs: ['Notat.'], footerNote: 'Marker hentet og slett.',
+});
+
 /** Redigerer for det genererte falske PreVisit-kortet: tittel/undertekst/knapp-tekst
  *  + stegliste (legg til/fjern/endre navn+status). Regenererer SVG-en live på hver endring. */
 function PreVisitCardEditor({ content, onChange, primary }: { content: PreVisitCardContent; onChange: (c: PreVisitCardContent) => void; primary: string }) {
@@ -1852,6 +1877,20 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
           <input ref={imgFileInputRef} type="file" accept="image/*" onChange={onImageFilePicked} style={{ display: 'none' }} />
         </>
       )}
+      {!isPersonRig && !isBackdrop && (
+        <Field label="Falsk skjerm (redigerbart kort oppå bildet)">
+          <Segmented<'none' | 'card' | 'infoCard' | 'formList'>
+            options={[['none', 'Ingen'], ['card', 'PreVisit-kort'], ['infoCard', 'Info-kort'], ['formList', 'Skjema-liste']]}
+            value={image.cardContent ? 'card' : image.infoCardContent ? 'infoCard' : image.formListContent ? 'formList' : 'none'}
+            onChange={(kind) => {
+              if (kind === 'none') { patchImage(image.id, { cardContent: undefined, infoCardContent: undefined, formListContent: undefined }); return; }
+              if (kind === 'card') { const c = defaultCardContent(); patchImage(image.id, { cardContent: c, infoCardContent: undefined, formListContent: undefined, image: previsitUiCardImage(c, doc.canvas.accent, doc.canvas.accent2) }); return; }
+              if (kind === 'infoCard') { const c = defaultInfoCardContent(); patchImage(image.id, { infoCardContent: c, cardContent: undefined, formListContent: undefined, image: previsitInfoCardImage({ ...c, primary: doc.canvas.accent, accent: doc.canvas.accent2 }) }); return; }
+              const c = defaultFormListContent(); patchImage(image.id, { formListContent: c, cardContent: undefined, infoCardContent: undefined, image: previsitFormListCardImage(c.fields, c.buttonText, doc.canvas.accent, doc.canvas.accent2) });
+            }}
+          />
+        </Field>
+      )}
       {image.cardContent && (
         <>
           <PreVisitCardEditor content={image.cardContent} primary={doc.canvas.accent} onChange={(content) => patchImage(image.id, { cardContent: content, image: previsitUiCardImage(content, doc.canvas.accent, doc.canvas.accent2) })} />
@@ -2175,6 +2214,29 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
           {device.image && <button onClick={() => setDeviceImage(device.id, undefined)} style={listBtn} title="Fjern bilde" aria-label="Fjern bilde">✕</button>}
         </div>
         {simMsg && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 6 }}>{simMsg}</div>}
+      </Field>
+      <Field label="Falsk skjerm (redigerbart innhold i skjerm-hullet)">
+        {orientationGroup(device.variant).includes('macbook') ? (
+          <Segmented<'none' | 'dashboard' | 'note'>
+            options={[['none', 'Ingen'], ['dashboard', 'Dashboard'], ['note', 'PreVisit-notat']]}
+            value={device.dashboardContent ? 'dashboard' : device.noteContent ? 'note' : 'none'}
+            onChange={(kind) => {
+              if (kind === 'none') { patchDevice(device.id, { dashboardContent: undefined, noteContent: undefined }); return; }
+              if (kind === 'dashboard') { const c = defaultDashboardContent(); patchDevice(device.id, { dashboardContent: c, noteContent: undefined, image: previsitDashboardScreenImage(c, doc.canvas.accent, doc.canvas.accent2) }); return; }
+              const c = defaultNoteContent(); patchDevice(device.id, { noteContent: c, dashboardContent: undefined, image: previsitNoteScreenImage(c, doc.canvas.accent, doc.canvas.accent2) });
+            }}
+          />
+        ) : (
+          <Segmented<'none' | 'checklist' | 'question'>
+            options={[['none', 'Ingen'], ['checklist', 'Sjekkliste'], ['question', 'Spørsmål-skjema']]}
+            value={device.checklistContent ? 'checklist' : device.questionContent ? 'question' : 'none'}
+            onChange={(kind) => {
+              if (kind === 'none') { patchDevice(device.id, { checklistContent: undefined, questionContent: undefined }); return; }
+              if (kind === 'checklist') { const c = defaultChecklistContent(); patchDevice(device.id, { checklistContent: c, questionContent: undefined, image: previsitPhoneScreenImage(c, doc.canvas.accent) }); return; }
+              const c = defaultQuestionContent(); patchDevice(device.id, { questionContent: c, checklistContent: undefined, image: previsitQuestionScreenImage(c, doc.canvas.accent, doc.canvas.accent2) });
+            }}
+          />
+        )}
       </Field>
       {device.checklistContent && (
         <PreVisitChecklistEditor
