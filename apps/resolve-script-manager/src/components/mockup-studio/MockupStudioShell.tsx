@@ -17,6 +17,7 @@ import { MockupKeyframeGraph } from './MockupKeyframeGraph';
 import { ExportDialog } from './ExportDialog';
 import { OnboardingDialog } from './OnboardingDialog';
 import { DesignGallery } from './DesignGallery';
+import { CampaignCompareDialog } from './CampaignCompareDialog';
 import { CaptureDialog } from './CaptureDialog';
 import { ProjectsView } from './ProjectsView';
 import { useMockupStudio } from './mockupStudioStore';
@@ -172,6 +173,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
   const [showExport, setShowExport] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showGallery, setShowGallery] = useState(false);
+  const [showCompare, setShowCompare] = useState(false);
   const [showCapture, setShowCapture] = useState(false);
   const [videoBusy, setVideoBusy] = useState(false);
   const [showSwitch, setShowSwitch] = useState(false);
@@ -558,6 +560,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         />
         <button onClick={() => setShowOnboarding(true)} style={ghostBtn} title="Velg mal / nytt materiell">Ny mockup</button>
         <button onClick={() => setShowGallery(true)} style={ghostBtn} title="Bla i ferdig-stylede design">✦ Galleri</button>
+        <button onClick={() => setShowCompare(true)} style={ghostBtn} title="Se alle kampanje-varianter side ved side, eksporter dem som én video">⚖ Sammenlign</button>
         <button onClick={() => store.undo()} disabled={store.past.length === 0} style={{ ...ghostBtn, opacity: store.past.length ? 1 : 0.4, padding: '6px 10px' }} title="Angre" aria-label="Angre">↶</button>
         <button onClick={() => store.redo()} disabled={store.future.length === 0} style={{ ...ghostBtn, opacity: store.future.length ? 1 : 0.4, padding: '6px 10px' }} title="Gjør om" aria-label="Gjør om">↷</button>
         <span style={{ fontSize: 11, color: C.inkSoft, whiteSpace: 'nowrap' }} title="Alt lagres automatisk lokalt ved hver endring">✓ Lagret{store.past.length ? ` · ${store.past.length} angre` : ''}</span>
@@ -854,6 +857,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
       {showExport && <ExportDialog onClose={() => setShowExport(false)} />}
       {showOnboarding && <OnboardingDialog onClose={() => setShowOnboarding(false)} onDone={() => setView('editor')} />}
       {showGallery && <DesignGallery onClose={() => setShowGallery(false)} onDone={() => setView('editor')} />}
+      {showCompare && <CampaignCompareDialog category="kampanje" onClose={() => setShowCompare(false)} onDone={() => setView('editor')} />}
       {showSwitch && <OnboardingDialog switchDoc={doc} onClose={() => setShowSwitch(false)} />}
       {showCapture && <CaptureDialog onClose={() => setShowCapture(false)} />}
     </div>
