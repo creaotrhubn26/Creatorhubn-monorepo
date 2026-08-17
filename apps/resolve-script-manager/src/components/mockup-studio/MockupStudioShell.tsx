@@ -1215,14 +1215,19 @@ function IllustrationInspector() {
           )}
 
           {a.kind === 'connector' && (
-            <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
-              <label style={{ fontSize: 11, color: C.inkSoft, flex: 1 }}>X2: {Math.round((a.fx2 ?? a.fx) * 100)}%
-                <input type="range" min={0} max={1} step={0.01} value={a.fx2 ?? a.fx} onChange={(e) => patchAnnotation(a.id, { fx2: Number(e.target.value) })} style={{ width: '100%' }} />
+            <>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
+                <label style={{ fontSize: 11, color: C.inkSoft, flex: 1 }}>X2: {Math.round((a.fx2 ?? a.fx) * 100)}%
+                  <input type="range" min={0} max={1} step={0.01} value={a.fx2 ?? a.fx} onChange={(e) => patchAnnotation(a.id, { fx2: Number(e.target.value) })} style={{ width: '100%' }} />
+                </label>
+                <label style={{ fontSize: 11, color: C.inkSoft, flex: 1 }}>Y2: {Math.round((a.fy2 ?? a.fy) * 100)}%
+                  <input type="range" min={0} max={1} step={0.01} value={a.fy2 ?? a.fy} onChange={(e) => patchAnnotation(a.id, { fy2: Number(e.target.value) })} style={{ width: '100%' }} />
+                </label>
+              </div>
+              <label style={{ fontSize: 11, color: C.inkSoft, display: 'block', marginBottom: 4 }}>Bue: {Math.round((a.curve ?? 0) * 1000) / 10}%
+                <input type="range" min={-0.15} max={0.15} step={0.005} value={a.curve ?? 0} onChange={(e) => patchAnnotation(a.id, { curve: Number(e.target.value) })} style={{ width: '100%' }} />
               </label>
-              <label style={{ fontSize: 11, color: C.inkSoft, flex: 1 }}>Y2: {Math.round((a.fy2 ?? a.fy) * 100)}%
-                <input type="range" min={0} max={1} step={0.01} value={a.fy2 ?? a.fy} onChange={(e) => patchAnnotation(a.id, { fy2: Number(e.target.value) })} style={{ width: '100%' }} />
-              </label>
-            </div>
+            </>
           )}
 
           <div style={{ display: 'flex', gap: 6 }}>

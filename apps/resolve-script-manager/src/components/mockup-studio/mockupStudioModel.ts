@@ -507,6 +507,8 @@ export interface MockupAnnotation {
   // connector: andre endepunkt (lerret-fraksjon) — fx/fy er første endepunkt.
   fx2?: number;
   fy2?: number;
+  /** connector: sidelengs bue-forskyvning (-1..1, lerret-bredde-fraksjon) — 0 = rett strek. */
+  curve?: number;
   // pill: ikon-glyph (unicode) + tittel (label) + undertekst (label2), sentrert på fx/fy.
   glyph?: string;
   label2?: string;
@@ -520,7 +522,7 @@ export function makeAnnotation(kind: MockupAnnotationKind, deviceId: string | un
   if (kind === 'marker') return { ...base, fx: 0.4, fy: 0.35, fw: 0.22, fh: 0.14 };
   if (kind === 'step') return { ...base, deviceId: undefined, fx: 0.035, fy: 0.035, n };
   if (kind === 'pill') return { ...base, deviceId: undefined, fx: 0.5, fy: 0.9, glyph: '✓', label: 'Ny pill', label2: 'Kort forklaring' };
-  return { ...base, deviceId: undefined, fx: 0.3, fy: 0.6, fx2: 0.5, fy2: 0.55 }; // connector
+  return { ...base, deviceId: undefined, fx: 0.3, fy: 0.6, fx2: 0.5, fy2: 0.55, curve: 0.04 }; // connector
 }
 
 export function makeDevice(variant: MockupDeviceVariant, partial: Partial<MockupDeviceSlot> = {}): MockupDeviceSlot {
@@ -1157,8 +1159,12 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
       return {
         ...base,
         images: [
-          makeImage(placeholderImage('PASIENT-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 40, y: 470, w: 460, h: 570, radius: 24 }),
-          makeImage(placeholderImage('LEGE-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 580, y: 470, w: 460, h: 570, radius: 24 }),
+          // Foto-bleed: kant-til-kant (ingen marg/avrunding) som i referanse-annonsene —
+          // IKKE flytende avrundede kort. De to møtes midt på (x=540), skillelinjen
+          // under legges over som et eget, like redigerbart bilde-element.
+          makeImage(placeholderImage('PASIENT-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 0, y: 420, w: 540, h: 660, radius: 0 }),
+          makeImage(placeholderImage('LEGE-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 540, y: 420, w: 540, h: 660, radius: 0 }),
+          makeImage(placeholderImage('', '#ffffff', '#ffffff'), { x: 538, y: 420, w: 4, h: 660, radius: 0, shadow: false }),
           makeImage(previsitUiCardImage(DEFAULT_PREVISIT_CARD_CONTENT), { x: 350, y: 540, w: 380, h: 340, radius: 20, cardContent: DEFAULT_PREVISIT_CARD_CONTENT }),
         ],
         annotations: [
@@ -1166,8 +1172,8 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
           // to connector-linjer: hvert foto → sin nærmeste kort-kant. Ankrene MÅ ligge
           // utenfor kortets eget rektangel (x:350-730,y:540-880) — forrige versjon endte
           // begge punktene inni kortet (dermed usynlig "i" knappen), fikset her.
-          { id: uid('ann'), kind: 'connector', fx: 0.231, fy: 0.602, fx2: 0.324, fy2: 0.546 },
-          { id: uid('ann'), kind: 'connector', fx: 0.787, fy: 0.602, fx2: 0.676, fy2: 0.546 },
+          { id: uid('ann'), kind: 'connector', fx: 0.231, fy: 0.602, fx2: 0.324, fy2: 0.546, curve: 0.035 },
+          { id: uid('ann'), kind: 'connector', fx: 0.787, fy: 0.602, fx2: 0.676, fy2: 0.546, curve: -0.035 },
           // bunn-pills, én pr. foto (ikke én sentrert pill).
           { id: uid('ann'), kind: 'pill', fx: 0.25, fy: 0.945, glyph: '⌂', label: 'Pasienten fyller ut', label2: '– hjemme i ro og fred' },
           { id: uid('ann'), kind: 'pill', fx: 0.75, fy: 0.945, glyph: '✓', label: 'Klinikeren er forberedt', label2: '– før pasienten kommer' },

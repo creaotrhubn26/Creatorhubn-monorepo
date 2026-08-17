@@ -360,14 +360,15 @@ function drawDecor(ctx: CanvasRenderingContext2D, doc: MockupDoc): void {
     ctx.fill();
     ctx.restore();
   } else if (decor === 'arc') {
-    // Myk kurvet buedeling (bezier, ikke rette linjer som 'band') — varm
-    // sekundærflate bak nedre del av komposisjonen, redaksjonell foto-annonse-look.
+    // Asymmetrisk, dramatisk buesving (bezier) — sitter i sonen over der foto/kort-
+    // elementer typisk starter (~0.39H), IKKE bak dem (fotoer kant-til-kant dekker
+    // resten av lerretet og ville skjult en lavere/svakere kurve helt).
     ctx.save();
-    ctx.fillStyle = `rgba(${rgb2},${light ? 0.1 : 0.16})`;
+    ctx.fillStyle = `rgba(${rgb2},${light ? 0.16 : 0.24})`;
     ctx.beginPath();
-    ctx.moveTo(0, H * 0.42);
-    ctx.bezierCurveTo(W * 0.35, H * 0.3, W * 0.62, H * 0.52, W, H * 0.38);
-    ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
+    ctx.moveTo(0, H * 0.3);
+    ctx.bezierCurveTo(W * 0.38, H * 0.1, W * 0.62, H * 0.34, W, H * 0.22);
+    ctx.lineTo(W, H * 0.39); ctx.lineTo(0, H * 0.39); ctx.closePath();
     ctx.fill();
     ctx.restore();
   }
@@ -1774,9 +1775,11 @@ function drawStepBadge(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: MockupA
   const x = a.fx * W, y = a.fy * doc.canvas.h;
   const r = size * 0.22;
   ctx.save();
+  ctx.shadowColor = 'rgba(15,20,30,0.28)'; ctx.shadowBlur = W * 0.014; ctx.shadowOffsetY = W * 0.004;
   ctx.fillStyle = doc.canvas.accent;
   roundRectPath(ctx, x, y, size, size, r);
   ctx.fill();
+  ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.font = `700 ${Math.round(size * 0.5)}px -apple-system, system-ui, sans-serif`;
@@ -1785,23 +1788,33 @@ function drawStepBadge(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: MockupA
 }
 
 /** Prikket forbindelseslinje m/ glødende punkt — kobler visuelt to elementer
- *  (t.d. foto → UI-kort) langs én rett linje mellom (fx,fy) og (fx2,fy2). */
+ *  (t.d. foto → UI-kort) mellom (fx,fy) og (fx2,fy2). `curve` (annotasjonens
+ *  eget felt, redigerbart i UI) bøyer linjen sidelengs i stedet for en rett strek. */
 function drawConnectorLine(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: MockupAnnotation): void {
   const W = doc.canvas.w, H = doc.canvas.h;
   const x1 = a.fx * W, y1 = a.fy * H;
   const x2 = (a.fx2 ?? a.fx) * W, y2 = (a.fy2 ?? a.fy) * H;
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+  // Kontrollpunkt forskjøvet VINKELRETT på linjen (ikke bare sidelengs i X) —
+  // gir en naturlig bue uansett linjens helning.
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len, ny = dx / len;
+  const bend = (a.curve ?? 0) * W;
+  const cx = mx + nx * bend, cy = my + ny * bend;
   ctx.save();
   ctx.strokeStyle = doc.canvas.accent2;
   ctx.lineWidth = Math.max(1.5, W * 0.0018);
   ctx.setLineDash([W * 0.007, W * 0.009]);
-  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(cx, cy, x2, y2); ctx.stroke();
   ctx.setLineDash([]);
   const dotR = Math.max(3, W * 0.006);
-  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
-  const glow = ctx.createRadialGradient(mx, my, 0, mx, my, dotR * 3.2);
+  // Glød-punktet sitter PÅ kurven (bezier-midtpunkt ved t=0.5), ikke på den rette linja.
+  const qx = 0.25 * x1 + 0.5 * cx + 0.25 * x2, qy = 0.25 * y1 + 0.5 * cy + 0.25 * y2;
+  const glow = ctx.createRadialGradient(qx, qy, 0, qx, qy, dotR * 3.2);
   glow.addColorStop(0, doc.canvas.accent2); glow.addColorStop(1, hexToRgba(doc.canvas.accent2, 0));
-  ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(mx, my, dotR * 3.2, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = doc.canvas.accent2; ctx.beginPath(); ctx.arc(mx, my, dotR, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(qx, qy, dotR * 3.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = doc.canvas.accent2; ctx.beginPath(); ctx.arc(qx, qy, dotR, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 }
 
