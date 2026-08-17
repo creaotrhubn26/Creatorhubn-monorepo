@@ -710,9 +710,17 @@ function drawImageSlot(ctx: CanvasRenderingContext2D, im: import('./mockupStudio
   if (sw && sh) {
     const tA = im.w / im.h, sA = sw / sh;
     let rw = im.w, rh = im.h;
-    if (im.fit === 'contain') { ctx.fillStyle = '#0c0e16'; ctx.fillRect(im.x, im.y, im.w, im.h); if (sA > tA) rh = im.w / sA; else rw = im.h * sA; }
-    else { if (sA > tA) rw = im.h * sA; else rh = im.w / sA; } // cover
-    ctx.drawImage(source, im.x + (im.w - rw) / 2, im.y + (im.h - rh) / 2, rw, rh);
+    if (im.fit === 'contain') {
+      ctx.fillStyle = '#0c0e16'; ctx.fillRect(im.x, im.y, im.w, im.h);
+      if (sA > tA) rh = im.w / sA; else rw = im.h * sA;
+      ctx.drawImage(source, im.x + (im.w - rw) / 2, im.y + (im.h - rh) / 2, rw, rh);
+    } else {
+      // cover: kilden skaleres opp til den dekker slotten, deretter forskyves den etter
+      // fokuspunktet (0.5,0.5 = sentrert, «reframe» i inspektøren styrer resten).
+      if (sA > tA) rw = im.h * sA; else rh = im.w / sA;
+      const fx = im.focusX ?? 0.5, fy = im.focusY ?? 0.5;
+      ctx.drawImage(source, im.x + (im.w - rw) * fx, im.y + (im.h - rh) * fy, rw, rh);
+    }
   }
   ctx.restore();
   ctx.restore();

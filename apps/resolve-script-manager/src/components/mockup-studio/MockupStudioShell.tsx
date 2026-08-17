@@ -1648,6 +1648,16 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
           <Segmented<'cover' | 'contain'> options={[['cover', 'Fyll'], ['contain', 'Hele bildet']]} value={image.fit} onChange={(v) => patchImage(image.id, { fit: v })} />
         </Field>
       )}
+      {!isIllustration && (image.fit ?? 'cover') === 'cover' && (
+        <>
+          <Field label={`Reframe X: ${Math.round((image.focusX ?? 0.5) * 100)}%`}>
+            <input type="range" min={0} max={1} step={0.01} value={image.focusX ?? 0.5} onChange={(e) => patchImage(image.id, { focusX: Number(e.target.value) })} style={{ width: '100%' }} />
+          </Field>
+          <Field label={`Reframe Y: ${Math.round((image.focusY ?? 0.5) * 100)}%`}>
+            <input type="range" min={0} max={1} step={0.01} value={image.focusY ?? 0.5} onChange={(e) => patchImage(image.id, { focusY: Number(e.target.value) })} style={{ width: '100%' }} />
+          </Field>
+        </>
+      )}
       <Field label={`Rotasjon (${Math.round(image.rotation)}°)`}>
         <input type="range" min={-45} max={45} value={image.rotation} onChange={(e) => patchImage(image.id, { rotation: Number(e.target.value) })} style={{ width: '100%' }} />
       </Field>

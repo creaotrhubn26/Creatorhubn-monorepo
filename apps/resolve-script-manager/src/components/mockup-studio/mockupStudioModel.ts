@@ -609,6 +609,10 @@ export interface MockupImageSlot {
   h: number;
   radius: number;         // hjørne-radius (lerret-px)
   fit: 'cover' | 'contain';
+  /** Fokuspunkt for cover-beskjæring (0..1) — hvilken del av bildet/videoen som beholdes
+   *  når kilden er en annen aspekt-ratio enn slotten («reframe»). Default midt (0.5, 0.5). */
+  focusX?: number;
+  focusY?: number;
   rotation: number;       // grader
   shadow: boolean;
   /** Eid av en galleri-fremvisning (arrangeLibrary). Ryddes ved neste fremvisning → ingen stabling. */
