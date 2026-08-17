@@ -1479,6 +1479,94 @@ function PreVisitCardEditor({ content, onChange }: { content: PreVisitCardConten
   );
 }
 
+/** Redigerer for det genererte «info-rader»-kortet (previsitInfoCardImage) — tittel,
+ *  rad-liste (ikon/etikett/verdi/sitat), valgfri uthevet rad og fotnote. Regenererer
+ *  SVG-en live på hver endring (samme mønster som PreVisitCardEditor). */
+function PreVisitInfoCardEditor({ content, onChange }: { content: PreVisitInfoCardContent; onChange: (c: PreVisitInfoCardContent) => void }) {
+  return (
+    <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
+      <SectionLabel>Info-kort (falsk skjerm)</SectionLabel>
+      <Field label="Overskrift">
+        <input value={content.title} onChange={(e) => onChange({ ...content, title: e.target.value })} style={{ ...textInput, width: '100%' }} />
+      </Field>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: FS_SM, color: C.inkSoft, marginBottom: 8, cursor: 'pointer' }}>
+        <input type="checkbox" checked={!!content.checkHeader} onChange={(e) => onChange({ ...content, checkHeader: e.target.checked })} />
+        {' '}Hake ved overskriften
+      </label>
+      <Field label={`Punkter (${content.rows.length})`}>
+        {content.rows.map((r, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6, padding: 6, background: C.panelSoft, borderRadius: 6 }}>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <input
+                value={r.icon}
+                onChange={(e) => onChange({ ...content, rows: content.rows.map((x, j) => (j === i ? { ...x, icon: e.target.value } : x)) })}
+                placeholder="Ikon" style={{ ...textInput, width: 44 }}
+              />
+              <input
+                value={r.label}
+                onChange={(e) => onChange({ ...content, rows: content.rows.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })}
+                placeholder="Etikett" style={{ ...textInput, flex: 1 }}
+              />
+              <button
+                onClick={() => onChange({ ...content, rows: content.rows.filter((_, j) => j !== i) })}
+                disabled={content.rows.length <= 1}
+                style={{ ...listBtn, width: 26, textAlign: 'center', padding: '4px 0', opacity: content.rows.length <= 1 ? 0.4 : 1 }}
+                title="Fjern punkt" aria-label="Fjern punkt"
+              >✕</button>
+            </div>
+            <input
+              value={r.value}
+              onChange={(e) => onChange({ ...content, rows: content.rows.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)) })}
+              placeholder="Verdi" style={{ ...textInput, width: '100%' }}
+            />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, cursor: 'pointer' }}>
+              <input type="checkbox" checked={!!r.quote} onChange={(e) => onChange({ ...content, rows: content.rows.map((x, j) => (j === i ? { ...x, quote: e.target.checked } : x)) })} />
+              {' '}Vis som sitat
+            </label>
+          </div>
+        ))}
+        <button
+          onClick={() => onChange({ ...content, rows: [...content.rows, { icon: '•', label: 'Nytt punkt', value: 'Verdi' }] })}
+          style={{ ...listBtn, width: '100%' }}
+        >+ Punkt</button>
+      </Field>
+      <Field label="Uthevet rad (valgfri)">
+        {content.highlightRow ? (
+          <div style={{ display: 'flex', gap: 4 }}>
+            <input
+              value={content.highlightRow.icon}
+              onChange={(e) => onChange({ ...content, highlightRow: { ...content.highlightRow!, icon: e.target.value } })}
+              placeholder="Ikon" style={{ ...textInput, width: 44 }}
+            />
+            <input
+              value={content.highlightRow.label}
+              onChange={(e) => onChange({ ...content, highlightRow: { ...content.highlightRow!, label: e.target.value } })}
+              placeholder="Tekst" style={{ ...textInput, flex: 1 }}
+            />
+            <button onClick={() => onChange({ ...content, highlightRow: undefined })} style={{ ...listBtn, width: 26, textAlign: 'center', padding: '4px 0' }} title="Fjern" aria-label="Fjern">✕</button>
+          </div>
+        ) : (
+          <button onClick={() => onChange({ ...content, highlightRow: { icon: '✓', label: 'Klar' } })} style={{ ...listBtn, width: '100%' }}>+ Uthevet rad</button>
+        )}
+      </Field>
+      <Field label="Fotnote (valgfri)">
+        {content.footer != null ? (
+          <div style={{ display: 'flex', gap: 4 }}>
+            <input value={content.footer} onChange={(e) => onChange({ ...content, footer: e.target.value })} style={{ ...textInput, flex: 1 }} />
+            <button onClick={() => onChange({ ...content, footer: undefined })} style={{ ...listBtn, width: 26, textAlign: 'center', padding: '4px 0' }} title="Fjern" aria-label="Fjern">✕</button>
+          </div>
+        ) : (
+          <button onClick={() => onChange({ ...content, footer: '' })} style={{ ...listBtn, width: '100%' }}>+ Fotnote</button>
+        )}
+      </Field>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: FS_SM, color: C.inkSoft, marginTop: 6, cursor: 'pointer' }}>
+        <input type="checkbox" checked={!!content.animateRows} onChange={(e) => onChange({ ...content, animateRows: e.target.checked })} />
+        {' '}Animer rader (flyt — hver rad popper inn étt og étt langs tidslinjen)
+      </label>
+    </div>
+  );
+}
+
 function ImageInspector({ image }: { image: import('./mockupStudioModel').MockupImageSlot }) {
   const patchImage = useMockupStudio((s) => s.patchImage);
   const removeImage = useMockupStudio((s) => s.removeImage);
@@ -1598,20 +1686,10 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
         </>
       )}
       {image.infoCardContent && (
-        <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
-          <SectionLabel>Info-kort</SectionLabel>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: FS_SM, color: C.inkSoft, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={!!image.infoCardContent.animateRows}
-              onChange={(e) => {
-                const content: PreVisitInfoCardContent = { ...image.infoCardContent!, animateRows: e.target.checked };
-                patchImage(image.id, { infoCardContent: content, image: previsitInfoCardImage({ ...content, primary: doc.canvas.accent, accent: doc.canvas.accent2 }) });
-              }}
-            />
-            {' '}Animer rader (flyt — hver rad popper inn étt og étt langs tidslinjen)
-          </label>
-        </div>
+        <PreVisitInfoCardEditor
+          content={image.infoCardContent}
+          onChange={(content) => patchImage(image.id, { infoCardContent: content, image: previsitInfoCardImage({ ...content, primary: doc.canvas.accent, accent: doc.canvas.accent2 }) })}
+        />
       )}
       {image.formListContent && (
         <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
