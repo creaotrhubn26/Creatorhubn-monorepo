@@ -81,6 +81,8 @@ import {
   previsitFormListCardImage,
   previsitPhoneScreenImage,
   previsitDashboardScreenImage,
+  previsitQuestionScreenImage,
+  previsitNoteScreenImage,
   placeholderImage,
   type PreVisitCardContent,
   type PreVisitStepState,
@@ -88,6 +90,8 @@ import {
   type PreVisitFormListContent,
   type PreVisitChecklistContent,
   type PreVisitDashboardContent,
+  type PreVisitQuestionContent,
+  type PreVisitNoteContent,
 } from './mockupStudioModel';
 import { drawPersonLaptop } from './mockupRaster';
 import { RECOMMENDED_MAX } from './mockupPreflight';
@@ -2056,6 +2060,64 @@ function PreVisitDashboardEditor({ content, onChange }: { content: PreVisitDashb
   );
 }
 
+/** Redigerer for det genererte falske spørsmål-skjermbildet (previsitQuestionScreenImage) —
+ *  PreVisit sitt spørsmål-for-spørsmål-skjema, pasientens ståsted. */
+function PreVisitQuestionEditor({ content, onChange }: { content: PreVisitQuestionContent; onChange: (c: PreVisitQuestionContent) => void }) {
+  return (
+    <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
+      <SectionLabel>Spørsmål-skjema (falsk skjerm)</SectionLabel>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Field label="Spørsmål nr.">
+          <input type="number" min={1} value={content.index} onChange={(e) => onChange({ ...content, index: Math.max(1, Number(e.target.value)) })} style={textInput} />
+        </Field>
+        <Field label="Totalt">
+          <input type="number" min={1} value={content.total} onChange={(e) => onChange({ ...content, total: Math.max(1, Number(e.target.value)) })} style={textInput} />
+        </Field>
+      </div>
+      <Field label="Spørsmål">
+        <textarea value={content.question} onChange={(e) => onChange({ ...content, question: e.target.value })} rows={3} style={{ ...textInput, width: '100%', resize: 'vertical' }} />
+      </Field>
+      <Field label="Svar (pasientens tekst)">
+        <textarea value={content.answer} onChange={(e) => onChange({ ...content, answer: e.target.value })} rows={2} style={{ ...textInput, width: '100%', resize: 'vertical' }} />
+      </Field>
+    </div>
+  );
+}
+
+/** Redigerer for det genererte falske PreVisit-notat-skjermbildet (previsitNoteScreenImage) —
+ *  legens KI-genererte anamnesenotat. Chatlogg-fanen er dekorativ, ikke redigerbar (trimmet scope). */
+function PreVisitNoteEditor({ content, onChange }: { content: PreVisitNoteContent; onChange: (c: PreVisitNoteContent) => void }) {
+  return (
+    <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
+      <SectionLabel>PreVisit-notat (falsk skjerm)</SectionLabel>
+      <Field label="Pasientlinje">
+        <input value={content.patientLine} onChange={(e) => onChange({ ...content, patientLine: e.target.value })} style={{ ...textInput, width: '100%' }} />
+      </Field>
+      <Field label={`Notat-avsnitt (${content.paragraphs.length})`}>
+        {content.paragraphs.map((p, i) => (
+          <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+            <textarea
+              value={p}
+              onChange={(e) => onChange({ ...content, paragraphs: content.paragraphs.map((x, j) => (j === i ? e.target.value : x)) })}
+              rows={2} style={{ ...textInput, flex: 1, resize: 'vertical' }}
+            />
+            <button
+              onClick={() => onChange({ ...content, paragraphs: content.paragraphs.filter((_, j) => j !== i) })}
+              disabled={content.paragraphs.length <= 1}
+              style={{ ...listBtn, width: 26, textAlign: 'center', padding: '4px 0', opacity: content.paragraphs.length <= 1 ? 0.4 : 1 }}
+              title="Fjern avsnitt" aria-label="Fjern avsnitt"
+            >✕</button>
+          </div>
+        ))}
+        <button onClick={() => onChange({ ...content, paragraphs: [...content.paragraphs, 'Nytt avsnitt.'] })} style={{ ...listBtn, width: '100%' }}>+ Avsnitt</button>
+      </Field>
+      <Field label="Fotnotat">
+        <input value={content.footerNote} onChange={(e) => onChange({ ...content, footerNote: e.target.value })} style={{ ...textInput, width: '100%' }} />
+      </Field>
+    </div>
+  );
+}
+
 function DeviceInspector({ device, onUpload, advanced }: { device: import('./mockupStudioModel').MockupDeviceSlot; onUpload: () => void; advanced: boolean }) {
   const doc = useMockupStudio((s) => s.doc);
   const patchDevice = useMockupStudio((s) => s.patchDevice);
@@ -2106,6 +2168,18 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
         <PreVisitDashboardEditor
           content={device.dashboardContent}
           onChange={(content) => patchDevice(device.id, { dashboardContent: content, image: previsitDashboardScreenImage(content, doc.canvas.accent, doc.canvas.accent2) })}
+        />
+      )}
+      {device.questionContent && (
+        <PreVisitQuestionEditor
+          content={device.questionContent}
+          onChange={(content) => patchDevice(device.id, { questionContent: content, image: previsitQuestionScreenImage(content, doc.canvas.accent, doc.canvas.accent2) })}
+        />
+      )}
+      {device.noteContent && (
+        <PreVisitNoteEditor
+          content={device.noteContent}
+          onChange={(content) => patchDevice(device.id, { noteContent: content, image: previsitNoteScreenImage(content, doc.canvas.accent, doc.canvas.accent2) })}
         />
       )}
       {device.image && (

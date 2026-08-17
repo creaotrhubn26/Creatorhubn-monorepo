@@ -81,6 +81,10 @@ export interface MockupDeviceSlot {
   checklistContent?: PreVisitChecklistContent;
   /** Satt → skjermbildet er et generert falsk dashboard-skjermbilde (previsitDashboardScreenImage). */
   dashboardContent?: PreVisitDashboardContent;
+  /** Satt → skjermbildet er et generert falsk spørsmål-skjema (previsitQuestionScreenImage). */
+  questionContent?: PreVisitQuestionContent;
+  /** Satt → skjermbildet er et generert falsk PreVisit-notat (previsitNoteScreenImage). */
+  noteContent?: PreVisitNoteContent;
 }
 
 export interface PreVisitChecklistContent {
@@ -93,6 +97,21 @@ export interface PreVisitDashboardContent {
   patient: string;
   fields: { label: string; value: string }[];
   animate?: boolean;
+}
+
+/** Falsk telefon-skjerm: PreVisit sitt spørsmål-for-spørsmål-skjema (pasientens ståsted). */
+export interface PreVisitQuestionContent {
+  index: number;
+  total: number;
+  question: string;
+  answer: string;
+}
+
+/** Falsk laptop-skjerm: legens PreVisit-notat (anamnesenotat generert av KI fra pasientsvarene). */
+export interface PreVisitNoteContent {
+  patientLine: string;
+  paragraphs: string[];
+  footerNote: string;
 }
 
 /** Skrive-animasjon: humanisert tempo + felt-kontekst + payoff. */
@@ -1443,30 +1462,23 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
         background: 'light', bgColor: MEDSIDE_COLORS.cream, bgStyle: 'clean', decor: 'arc', typography: 'editorial',
         logo: { image: MEDSIDE_LOGO_DATA_URL, x: 860, y: 44, w: 176 },
       });
-      const checklistContent: PreVisitChecklistContent = {
-        items: [
-          { label: 'Invitasjon sendt', done: true },
-          { label: 'Spørreskjema besvart', done: true },
-          { label: 'Svar mottatt', done: true },
-          { label: 'Klar for timen', done: false },
-        ],
-        animate: true,
+      const questionContent: PreVisitQuestionContent = {
+        index: 1, total: 10,
+        question: 'Hva er grunnen til at du bestilte time i dag? Fortell gjerne hva som har skjedd og hva som gjorde at du tok kontakt nå.',
+        answer: 'Jeg har hatt vondt i hodet i noen uker.',
       };
-      const dashboardContent: PreVisitDashboardContent = {
-        patient: 'Kari Nordmann · Time i dag 10:30',
-        fields: [
-          { label: 'Hovedårsak', value: 'Vedvarende hodepine' },
-          { label: 'Symptomer', value: 'Svimmelhet, lysfølsomhet' },
-          { label: 'Varighet', value: 'Ca. 3 uker' },
-          { label: 'Viktig for deg å vite', value: 'Stressende periode på jobb' },
-          { label: 'Tidligere sykdommer', value: 'Migrene (2019)' },
-          { label: 'Medisiner', value: 'Paracetamol ved behov' },
+      const noteContent: PreVisitNoteContent = {
+        patientLine: 'Kari Nordmann · født 12.05.1968 · tlf +47 900 00 000 · time 18.08.2026, 10:30',
+        paragraphs: [
+          'Pasient har hatt hodepine i noen uker med oppstart nesten hver dag. Smerter våkner pasienten med og varer utover dagen.',
+          'Hodepinen har utviklet seg gradvis verre. Paracetamol og ibuprofen gir midlertidig lindring.',
+          'Pasienten er bekymret for at tilstanden kan være alvorlig og ønsker utredning med MR av hodet.',
         ],
-        animate: true,
+        footerNote: 'Når du har limt notatet inn i journalen, marker det som hentet – da slettes samtalen og notatet.',
       };
       const base = doc('PreVisit kampanje 6', 'previsit_campaign_6', canvas, [
-        makeDevice('iphone', { x: 60, y: 420, w: 230, image: previsitPhoneScreenImage(checklistContent, canvas.accent), fit: 'cover', checklistContent }),
-        makeDevice('macbook', { x: 330, y: 480, w: 680, image: previsitDashboardScreenImage(dashboardContent, canvas.accent, canvas.accent2), fit: 'cover', dashboardContent }),
+        makeDevice('iphone', { x: 60, y: 420, w: 230, image: previsitQuestionScreenImage(questionContent, canvas.accent, canvas.accent2), fit: 'cover', questionContent }),
+        makeDevice('macbook', { x: 330, y: 480, w: 680, image: previsitNoteScreenImage(noteContent, canvas.accent, canvas.accent2), fit: 'cover', noteContent }),
       ], [
         makeText('title', { text: 'PreVisit', x: 70, y: 140, w: 700, size: 60, color: MEDSIDE_COLORS.navy }),
         makeText('title', { text: 'by MedSide', x: 70, y: 205, w: 700, size: 34, color: MEDSIDE_COLORS.gold }),
@@ -1701,6 +1713,79 @@ export function previsitDashboardScreenImage(content: PreVisitDashboardContent, 
     <rect x="40" y="120" width="800" height="60" rx="14" fill="${accent}" fill-opacity="0.16"/>
     <text x="64" y="157" font-family="-apple-system,system-ui,sans-serif" font-size="18" font-weight="700" fill="${primary}">${escXml(patient)}</text>
     ${fieldsSvg}
+  </svg>`;
+  return `data:image/svg+xml;base64,${utf8ToBase64(svg)}`;
+}
+
+/** Naiv ord-wrap for flerlinjes SVG-tekst (ingen canvas measureText tilgjengelig ved bygge-tid). */
+function wrapByChars(text: string, maxChars: number): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let cur = '';
+  words.forEach((w) => {
+    const next = cur ? `${cur} ${w}` : w;
+    if (next.length > maxChars && cur) { lines.push(cur); cur = w; } else { cur = next; }
+  });
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+/** Falsk telefon-skjerm SVG: PreVisit sitt spørsmål-for-spørsmål-skjema. Kampanje-mal 6
+ *  (pasient-perspektiv-variant). Samme navy-header-look som previsitPhoneScreenImage. */
+export function previsitQuestionScreenImage(content: PreVisitQuestionContent, primary: string, accent: string): string {
+  const { index, total, question, answer } = content;
+  const qLines = wrapByChars(question, 34);
+  const qH = 40 + qLines.length * 28;
+  const qSvg = qLines.map((l, i) => `<text x="60" y="${252 + i * 28}" font-family="-apple-system,system-ui,sans-serif" font-size="19" fill="#171a1f">${escXml(l)}</text>`).join('');
+  const answerY = 210 + qH + 30;
+  const aLines = wrapByChars(answer, 40).slice(0, 4);
+  const aSvg = aLines.map((l, i) => `<text x="52" y="${answerY + 42 + i * 26}" font-family="-apple-system,system-ui,sans-serif" font-size="16" fill="#6b7280">${escXml(l)}</text>`).join('');
+  const answerH = Math.max(140, 40 + aLines.length * 26);
+  const sendY = answerY + answerH + 36;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="1160">
+    <rect width="600" height="1160" fill="#f7f6f3"/>
+    <rect width="600" height="130" fill="${primary}"/>
+    <text x="40" y="80" font-family="Georgia,'Iowan Old Style',serif" font-size="30" font-weight="700" fill="#ffffff">PreVisit</text>
+    <text x="300" y="180" font-family="-apple-system,system-ui,sans-serif" font-size="14" fill="#8a8f98" text-anchor="middle">Spørsmål ${index} av ${total}</text>
+    <rect x="30" y="210" width="540" height="${qH}" rx="18" fill="#eceef1"/>
+    ${qSvg}
+    <rect x="30" y="${answerY}" width="540" height="${answerH}" rx="14" fill="#ffffff" stroke="#e2e5ea" stroke-width="1.5"/>
+    ${aSvg}
+    <rect x="30" y="${sendY}" width="540" height="56" rx="14" fill="${accent}"/>
+    <text x="300" y="${sendY + 36}" font-family="-apple-system,system-ui,sans-serif" font-size="17" font-weight="700" fill="#ffffff" text-anchor="middle">Send svar</text>
+    <rect x="30" y="${sendY + 68}" width="540" height="52" rx="14" fill="#e5e7eb"/>
+    <text x="300" y="${sendY + 101}" font-family="-apple-system,system-ui,sans-serif" font-size="15" font-weight="600" fill="#4b5563" text-anchor="middle">Neste spørsmål</text>
+    <text x="300" y="${sendY + 152}" font-family="-apple-system,system-ui,sans-serif" font-size="12" fill="#9aa0a8" text-anchor="middle">All informasjon behandles konfidensielt i henhold til GDPR</text>
+  </svg>`;
+  return `data:image/svg+xml;base64,${utf8ToBase64(svg)}`;
+}
+
+/** Falsk laptop-skjerm SVG: legens PreVisit-notat (KI-generert anamnesenotat). Kampanje-mal 6
+ *  (legens tidsklemme-variant). Chatlogg-fanen er dekorativ (ikke redigerbart innhold — trimmet scope). */
+export function previsitNoteScreenImage(content: PreVisitNoteContent, primary: string, accent: string): string {
+  const { patientLine, paragraphs, footerNote } = content;
+  let y = 218;
+  const paraSvg = paragraphs.map((p) => {
+    const lines = wrapByChars(p, 92);
+    const block = lines.map((l, i) => `<text x="64" y="${y + i * 24}" font-family="-apple-system,system-ui,sans-serif" font-size="14" fill="#3c4453">${escXml(l)}</text>`).join('');
+    y += lines.length * 24 + 22;
+    return block;
+  }).join('');
+  const boxH = Math.min(400, y - 218 + 30);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="880" height="620">
+    <rect width="880" height="620" fill="#f7f6f3"/>
+    <rect width="880" height="90" fill="${primary}"/>
+    <text x="40" y="45" font-family="Georgia,'Iowan Old Style',serif" font-size="22" font-weight="700" fill="#ffffff">PreVisit-notat</text>
+    <text x="40" y="72" font-family="-apple-system,system-ui,sans-serif" font-size="13" fill="#ffffff" fill-opacity="0.75">${escXml(patientLine)}</text>
+    <rect x="40" y="112" width="180" height="36" rx="18" fill="${accent}" fill-opacity="0.18"/>
+    <text x="130" y="135" font-family="-apple-system,system-ui,sans-serif" font-size="13" font-weight="700" fill="${primary}" text-anchor="middle">Anamnesenotat</text>
+    <text x="256" y="135" font-family="-apple-system,system-ui,sans-serif" font-size="13" fill="#9aa0a8">Chatlogg</text>
+    <rect x="40" y="170" width="800" height="${boxH}" rx="16" fill="#ffffff" stroke="#eef0f3"/>
+    ${paraSvg}
+    <rect x="40" y="${170 + boxH + 20}" width="800" height="56" rx="14" fill="${accent}" fill-opacity="0.14"/>
+    ${wrapByChars(footerNote, 70).slice(0, 2).map((l, i) => `<text x="60" y="${170 + boxH + (wrapByChars(footerNote, 70).length > 1 ? 33 : 53) + i * 18}" font-family="-apple-system,system-ui,sans-serif" font-size="12" fill="#6b7280">${escXml(l)}</text>`).join('')}
+    <rect x="640" y="${170 + boxH + 32}" width="184" height="32" rx="16" fill="${primary}"/>
+    <text x="732" y="${170 + boxH + 53}" font-family="-apple-system,system-ui,sans-serif" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">Marker hentet og slett</text>
   </svg>`;
   return `data:image/svg+xml;base64,${utf8ToBase64(svg)}`;
 }
