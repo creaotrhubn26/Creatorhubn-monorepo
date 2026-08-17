@@ -621,6 +621,10 @@ export interface PreVisitCardContent {
   subtitle: string;
   buttonText: string;
   steps: { label: string; state: PreVisitStepState }[];
+  /** Når true: steg-raden bakes IKKE inn i SVG-en — den tegnes live på lerretet i stedet
+   *  (mockupRaster.drawCardSteps), slik at hvert steg kan poppe inn étt-og-étt langs
+   *  animasjons-tidslinjen («flow») i stedet for å alltid vises statisk ferdig. */
+  animateSteps?: boolean;
 }
 
 /** Farge-tilpasning for person-laptop-figuren. Alle felt valgfrie — mangler felt bruker standardpaletten. */
@@ -1204,6 +1208,187 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
       };
     },
   },
+  {
+    id: 'previsit_campaign_2', name: 'PreVisit kampanje — foto + skjema-kort', category: 'kampanje', variant: 'light', devices: 0,
+    description: 'Kvadratisk (1080×1080): ett foto-plassholder, flytende «skjema»-kort (spørsmålsliste m/ piler + CTA), badge 2, én bunn-pill.',
+    build: () => {
+      const canvas = baseCanvas({
+        w: 1080, h: 1080,
+        accent: MEDSIDE_COLORS.navy, accent2: MEDSIDE_COLORS.gold,
+        background: 'light', bgColor: MEDSIDE_COLORS.cream, bgStyle: 'clean', decor: 'arc', typography: 'editorial',
+        logo: { image: MEDSIDE_LOGO_DATA_URL, x: 860, y: 44, w: 176 },
+      });
+      const base = doc('PreVisit kampanje 2', 'previsit_campaign_2', canvas, [], [
+        makeText('title', { text: 'Fortell hva du', x: 70, y: 160, w: 700, size: 56, color: MEDSIDE_COLORS.navy }),
+        makeText('title', { text: 'kommer for.', x: 70, y: 226, w: 700, size: 56, color: MEDSIDE_COLORS.gold }),
+      ]);
+      const fields = [
+        { q: 'Hva gjelder timen?', sub: 'Fortell med egne ord' },
+        { q: 'Når startet det?', sub: 'Velg tidspunkt' },
+        { q: 'Symptomer', sub: 'Hva opplever du?' },
+        { q: 'Medisiner', sub: 'Hva bruker du nå?' },
+        { q: 'Tidligere sykdom', sub: 'Relevant sykehistorie?' },
+      ];
+      return {
+        ...base,
+        images: [
+          makeImage(placeholderImage('PASIENT-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 0, y: 420, w: 1080, h: 660, radius: 0 }),
+          makeImage(previsitFormListCardImage(fields, 'Neste', canvas.accent, canvas.accent2), { x: 600, y: 460, w: 380, h: 355, radius: 20 }),
+        ],
+        annotations: [
+          { id: uid('ann'), kind: 'step', fx: 0.035, fy: 0.035, n: 2 },
+          { id: uid('ann'), kind: 'connector', fx: 0.3, fy: 0.6, fx2: 0.556, fy2: 0.6, curve: 0.03 },
+          { id: uid('ann'), kind: 'pill', fx: 0.28, fy: 0.945, glyph: '⏱', label: 'I eget tempo', label2: '– hjemme før timen' },
+        ],
+      };
+    },
+  },
+  {
+    id: 'previsit_campaign_3', name: 'PreVisit kampanje — historie → anamnese', category: 'kampanje', variant: 'light', devices: 0,
+    description: 'Kvadratisk (1080×1080): halvt foto-plassholder + bredt «strukturert anamnese»-kort m/ gull-utheving på siste rad, badge 3, sentrert bunn-pill.',
+    build: () => {
+      const canvas = baseCanvas({
+        w: 1080, h: 1080,
+        accent: MEDSIDE_COLORS.navy, accent2: MEDSIDE_COLORS.gold,
+        background: 'light', bgColor: MEDSIDE_COLORS.cream, bgStyle: 'clean', decor: 'arc', typography: 'editorial',
+        logo: { image: MEDSIDE_LOGO_DATA_URL, x: 860, y: 44, w: 176 },
+      });
+      const base = doc('PreVisit kampanje 3', 'previsit_campaign_3', canvas, [], [
+        makeText('title', { text: 'Fra historie til', x: 70, y: 160, w: 700, size: 56, color: MEDSIDE_COLORS.navy }),
+        makeText('title', { text: 'strukturert notat.', x: 70, y: 226, w: 700, size: 56, color: MEDSIDE_COLORS.gold }),
+      ]);
+      const card = previsitInfoCardImage({
+        title: 'Strukturert anamnese', primary: canvas.accent, accent: canvas.accent2,
+        rows: [
+          { icon: '📋', label: 'Aktuelt', value: 'Hodepine, tiltakende' },
+          { icon: '📝', label: 'Anamnese', value: 'Ingen tidligere hodepine' },
+          { icon: '💊', label: 'Legemidler', value: 'Paracetamol ved behov' },
+          { icon: '👪', label: 'Relevant historikk', value: 'Migrene i familien' },
+        ],
+        highlightRow: { icon: '✓', label: 'Klar for konsultasjon' },
+      });
+      return {
+        ...base,
+        images: [
+          makeImage(placeholderImage('PASIENT-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 0, y: 420, w: 540, h: 660, radius: 0 }),
+          makeImage(card, { x: 580, y: 460, w: 460, h: 377, radius: 20 }),
+        ],
+        annotations: [
+          { id: uid('ann'), kind: 'step', fx: 0.035, fy: 0.035, n: 3 },
+          { id: uid('ann'), kind: 'connector', fx: 0.3, fy: 0.6, fx2: 0.537, fy2: 0.6, curve: 0.03 },
+          { id: uid('ann'), kind: 'pill', fx: 0.5, fy: 0.945, glyph: '✓', label: 'Bedre forberedelser', label2: '– bedre konsultasjoner' },
+        ],
+      };
+    },
+  },
+  {
+    id: 'previsit_campaign_4', name: 'PreVisit kampanje — mottatt-kort', category: 'kampanje', variant: 'light', devices: 0,
+    description: 'Kvadratisk (1080×1080): ett foto-plassholder (kliniker), «PreVisit mottatt ✓»-kort m/ nøkkeldata, badge 4, sentrert bunn-pill.',
+    build: () => {
+      const canvas = baseCanvas({
+        w: 1080, h: 1080,
+        accent: MEDSIDE_COLORS.navy, accent2: MEDSIDE_COLORS.gold,
+        background: 'light', bgColor: MEDSIDE_COLORS.cream, bgStyle: 'clean', decor: 'arc', typography: 'editorial',
+        logo: { image: MEDSIDE_LOGO_DATA_URL, x: 860, y: 44, w: 176 },
+      });
+      const base = doc('PreVisit kampanje 4', 'previsit_campaign_4', canvas, [], [
+        makeText('title', { text: 'Klar oversikt', x: 70, y: 160, w: 700, size: 56, color: MEDSIDE_COLORS.navy }),
+        makeText('title', { text: 'før pasienten kommer.', x: 70, y: 226, w: 900, size: 48, color: MEDSIDE_COLORS.gold }),
+      ]);
+      const card = previsitInfoCardImage({
+        title: 'PreVisit mottatt', checkHeader: true, primary: canvas.accent, accent: canvas.accent2,
+        rows: [
+          { icon: '🩺', label: 'Hovedproblem', value: 'Hodepine og svimmelhet' },
+          { icon: '⏱', label: 'Varighet', value: '3 uker' },
+          { icon: '📈', label: 'Forverres ved', value: 'Fysisk aktivitet' },
+          { icon: '📋', label: 'Relevant historikk', value: 'Migrene i familien' },
+        ],
+      });
+      return {
+        ...base,
+        images: [
+          makeImage(placeholderImage('LEGE-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 0, y: 420, w: 1080, h: 660, radius: 0 }),
+          makeImage(card, { x: 600, y: 460, w: 380, h: 271, radius: 20 }),
+        ],
+        annotations: [
+          { id: uid('ann'), kind: 'step', fx: 0.035, fy: 0.035, n: 4 },
+          { id: uid('ann'), kind: 'connector', fx: 0.3, fy: 0.55, fx2: 0.556, fy2: 0.5, curve: 0.03 },
+          { id: uid('ann'), kind: 'pill', fx: 0.5, fy: 0.945, glyph: '📋', label: 'Klar oversikt', label2: '– før konsultasjonen' },
+        ],
+      };
+    },
+  },
+  {
+    id: 'previsit_campaign_5', name: 'PreVisit kampanje — sammendrag', category: 'kampanje', variant: 'light', devices: 0,
+    description: 'Kvadratisk (1080×1080): to foto-plassholdere (pasient+kliniker), «PreVisit sammendrag»-kort m/ sitat + tidsstempel, badge 5, tre kompakte bunn-pills.',
+    build: () => {
+      const canvas = baseCanvas({
+        w: 1080, h: 1080,
+        accent: MEDSIDE_COLORS.navy, accent2: MEDSIDE_COLORS.gold,
+        background: 'light', bgColor: MEDSIDE_COLORS.cream, bgStyle: 'clean', decor: 'arc', typography: 'editorial',
+        logo: { image: MEDSIDE_LOGO_DATA_URL, x: 860, y: 44, w: 176 },
+      });
+      const base = doc('PreVisit kampanje 5', 'previsit_campaign_5', canvas, [], [
+        makeText('title', { text: 'Bedre forberedt.', x: 70, y: 160, w: 700, size: 56, color: MEDSIDE_COLORS.navy }),
+        makeText('title', { text: 'Fra første minutt.', x: 70, y: 226, w: 700, size: 56, color: MEDSIDE_COLORS.gold }),
+      ]);
+      const card = previsitInfoCardImage({
+        title: 'PreVisit sammendrag', primary: canvas.accent, accent: canvas.accent2,
+        rows: [
+          { icon: '👤', label: 'Pasienten', value: 'Kari Nordmann · 10:30' },
+          { icon: '🩺', label: 'Hovedårsak', value: 'Vedvarende tretthet' },
+          { icon: '⚠️', label: 'Relevante forhold', value: 'Ingen kjente allergier' },
+          { icon: '💬', label: 'Pasientens egne notater', value: 'Har vært slapp i 2 uker', quote: true },
+        ],
+        footer: 'Skjema fullført kl. 08:14',
+      });
+      return {
+        ...base,
+        images: [
+          makeImage(placeholderImage('PASIENT-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 0, y: 420, w: 540, h: 660, radius: 0 }),
+          makeImage(placeholderImage('LEGE-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 540, y: 420, w: 540, h: 660, radius: 0 }),
+          makeImage(placeholderImage('', '#ffffff', '#ffffff'), { x: 538, y: 420, w: 4, h: 660, radius: 0, shadow: false, solidColor: '#ffffff' }),
+          makeImage(card, { x: 350, y: 540, w: 380, h: 296, radius: 20 }),
+        ],
+        annotations: [
+          { id: uid('ann'), kind: 'step', fx: 0.035, fy: 0.035, n: 5 },
+          { id: uid('ann'), kind: 'connector', fx: 0.231, fy: 0.602, fx2: 0.324, fy2: 0.546, curve: 0.035 },
+          { id: uid('ann'), kind: 'connector', fx: 0.787, fy: 0.602, fx2: 0.676, fy2: 0.546, curve: -0.035 },
+          { id: uid('ann'), kind: 'pill', fx: 0.2, fy: 0.945, glyph: '💡', label: 'Mer innsikt' },
+          { id: uid('ann'), kind: 'pill', fx: 0.5, fy: 0.945, glyph: '🔄', label: 'Bedre flyt' },
+          { id: uid('ann'), kind: 'pill', fx: 0.8, fy: 0.945, glyph: '🤝', label: 'Bedre møte' },
+        ],
+      };
+    },
+  },
+  {
+    id: 'previsit_campaign_6', name: 'PreVisit kampanje — telefon + laptop', category: 'kampanje', variant: 'light', devices: 2,
+    description: 'Kvadratisk (1080×1080), avslutnings-annonse uten badge/foto: telefon + laptop-skjermer viser produktet, tre bunn-pills (Trygt/Enkelt/Klar til bruk).',
+    build: () => {
+      const canvas = baseCanvas({
+        w: 1080, h: 1080,
+        accent: MEDSIDE_COLORS.navy, accent2: MEDSIDE_COLORS.gold,
+        background: 'light', bgColor: MEDSIDE_COLORS.cream, bgStyle: 'clean', decor: 'arc', typography: 'editorial',
+        logo: { image: MEDSIDE_LOGO_DATA_URL, x: 860, y: 44, w: 176 },
+      });
+      const base = doc('PreVisit kampanje 6', 'previsit_campaign_6', canvas, [
+        makeDevice('iphone', { x: 60, y: 420, w: 230, image: previsitPhoneScreenImage(canvas.accent, canvas.accent2), fit: 'cover' }),
+        makeDevice('macbook', { x: 330, y: 480, w: 680, image: previsitDashboardScreenImage(canvas.accent, canvas.accent2), fit: 'cover' }),
+      ], [
+        makeText('title', { text: 'PreVisit', x: 70, y: 140, w: 700, size: 60, color: MEDSIDE_COLORS.navy }),
+        makeText('title', { text: 'by MedSide', x: 70, y: 205, w: 700, size: 34, color: MEDSIDE_COLORS.gold }),
+        makeText('body', { text: 'Pasienten forteller før timen. Du møter forberedt.', x: 70, y: 260, w: 900, size: 22, color: '#3c4453' }),
+      ]);
+      return {
+        ...base,
+        annotations: [
+          { id: uid('ann'), kind: 'pill', fx: 0.22, fy: 0.945, glyph: '🛡️', label: 'Trygt' },
+          { id: uid('ann'), kind: 'pill', fx: 0.5, fy: 0.945, glyph: '✅', label: 'Enkelt' },
+          { id: uid('ann'), kind: 'pill', fx: 0.78, fy: 0.945, glyph: '🚀', label: 'Klar til bruk' },
+        ],
+      };
+    },
+  },
 ];
 
 /** UTF-8-trygg base64 (btoa alene feiler på ikke-Latin1-tegn som "→"/norske bokstaver). */
@@ -1277,12 +1462,149 @@ export function previsitUiCardImage(
     <circle cx="40" cy="46" r="10" fill="${navy}"/>
     <path d="M40 36 l16 10 l-16 10 z" fill="${gold}" opacity="0.9"/>
     <text x="64" y="53" font-family="Georgia,'Iowan Old Style',serif" font-size="24" font-weight="700" fill="${navy}">PreVisit</text>
-    ${connectorLines}
-    ${steps.map(stepCircle).join('')}
+    ${content.animateSteps ? '' : `${connectorLines}${steps.map(stepCircle).join('')}`}
     <text x="60" y="240" font-family="-apple-system,system-ui,sans-serif" font-size="24" font-weight="700" fill="#101317">${escXml(content.title)}</text>
     <text x="60" y="270" font-family="-apple-system,system-ui,sans-serif" font-size="16" fill="#6b7280">${escXml(content.subtitle)}</text>
     <rect x="60" y="320" width="480" height="56" rx="28" fill="${navy}"/>
     <text x="300" y="354" font-family="-apple-system,system-ui,sans-serif" font-size="18" font-weight="700" fill="#ffffff" text-anchor="middle">${escXml(content.buttonText)}  &#8594;</text>
+  </svg>`;
+  return `data:image/svg+xml;base64,${utf8ToBase64(svg)}`;
+}
+
+/** Generisk «info-kort» SVG (ikon+etikett+verdi-rader, valgfri gull-utheving-rad + footer-tidsstempel).
+ *  Dekker «PreVisit mottatt»/«Strukturert anamnese»/«PreVisit sammendrag»-kortene i kampanje-maler
+ *  3/4/5 — én generator i stedet for tre nesten-identiske, siden alle er samme rad-struktur.
+ *  Statisk generert (ikke koblet til cardContent-editoren ennå; kan legges til senere om ønskelig). */
+function previsitInfoCardImage(opts: {
+  title: string;
+  primary: string;
+  accent: string;
+  checkHeader?: boolean;
+  rows: { icon: string; label: string; value: string; quote?: boolean }[];
+  highlightRow?: { icon: string; label: string };
+  footer?: string;
+}): string {
+  const { title, primary, accent, checkHeader, rows, highlightRow, footer } = opts;
+  const W = 600;
+  const headerH = 84;
+  const rowH = 78;
+  const highlightH = highlightRow ? 64 : 0;
+  const footerH = footer ? 40 : 0;
+  const H = headerH + rows.length * rowH + highlightH + footerH + 32;
+  let y = headerH;
+  const rowsSvg = rows.map((r) => {
+    const cy = y + rowH / 2 - 6;
+    const svg = `
+      <circle cx="46" cy="${cy}" r="19" fill="${primary}" fill-opacity="0.1"/>
+      <text x="46" y="${cy + 7}" font-size="18" text-anchor="middle">${r.icon}</text>
+      <text x="80" y="${cy - 6}" font-family="-apple-system,system-ui,sans-serif" font-size="13" fill="#8a8f98">${escXml(r.label)}</text>
+      <text x="80" y="${cy + 16}" font-family="-apple-system,system-ui,sans-serif" font-size="${r.quote ? 15 : 17}" font-style="${r.quote ? 'italic' : 'normal'}" font-weight="${r.quote ? 400 : 600}" fill="#171a1f">${escXml(r.quote ? `„${r.value}"` : r.value)}</text>
+      <line x1="0" y1="${y + rowH - 1}" x2="${W}" y2="${y + rowH - 1}" stroke="#eef0f3" stroke-width="1"/>`;
+    y += rowH;
+    return svg;
+  }).join('');
+  const highlightSvg = highlightRow ? (() => {
+    const cy = y + highlightH / 2;
+    const svg = `<rect x="24" y="${y + 8}" width="${W - 48}" height="${highlightH - 16}" rx="14" fill="${accent}" fill-opacity="0.14"/>
+      <text x="52" y="${cy + 6}" font-size="17">${highlightRow.icon}</text>
+      <text x="80" y="${cy + 6}" font-family="-apple-system,system-ui,sans-serif" font-size="16" font-weight="700" fill="${primary}">${escXml(highlightRow.label)}</text>`;
+    y += highlightH;
+    return svg;
+  })() : '';
+  const footerSvg = footer ? `<text x="${W / 2}" y="${H - 14}" font-family="-apple-system,system-ui,sans-serif" font-size="12" fill="#9aa0a8" text-anchor="middle">${escXml(footer)}</text>` : '';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
+    <rect width="${W}" height="${H}" fill="#ffffff"/>
+    <circle cx="40" cy="42" r="10" fill="${primary}"/>
+    <path d="M40 32 l16 10 l-16 10 z" fill="${accent}" opacity="0.9"/>
+    <text x="64" y="49" font-family="Georgia,'Iowan Old Style',serif" font-size="19" font-weight="700" fill="${primary}">${escXml(title)}${checkHeader ? '  ✓' : ''}</text>
+    <line x1="0" y1="${headerH - 6}" x2="${W}" y2="${headerH - 6}" stroke="#eef0f3" stroke-width="1"/>
+    ${rowsSvg}${highlightSvg}${footerSvg}
+  </svg>`;
+  return `data:image/svg+xml;base64,${utf8ToBase64(svg)}`;
+}
+
+/** «Skjema-liste»-kort SVG: rad pr. spørsmål m/ undertekst + høyre-pil, CTA-knapp nederst.
+ *  Brukes i kampanje-mal 2 («Fortell hva du kommer for»). Statisk generert, se note over. */
+function previsitFormListCardImage(fields: { q: string; sub: string }[], buttonText: string, primary: string, accent: string): string {
+  const W = 600;
+  const headerH = 84;
+  const rowH = 76;
+  const H = headerH + fields.length * rowH + 96;
+  let y = headerH;
+  const rowsSvg = fields.map((f) => {
+    const cy = y + rowH / 2 - 4;
+    const svg = `
+      <text x="40" y="${cy - 6}" font-family="-apple-system,system-ui,sans-serif" font-size="17" font-weight="600" fill="#171a1f">${escXml(f.q)}</text>
+      <text x="40" y="${cy + 16}" font-family="-apple-system,system-ui,sans-serif" font-size="13" fill="#8a8f98">${escXml(f.sub)}</text>
+      <text x="${W - 36}" y="${cy + 6}" font-family="-apple-system,system-ui,sans-serif" font-size="20" fill="${accent}" text-anchor="middle">&#8250;</text>
+      <line x1="0" y1="${y + rowH - 1}" x2="${W}" y2="${y + rowH - 1}" stroke="#eef0f3" stroke-width="1"/>`;
+    y += rowH;
+    return svg;
+  }).join('');
+  const btnY = y + 20;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
+    <rect width="${W}" height="${H}" fill="#ffffff"/>
+    <circle cx="40" cy="42" r="10" fill="${primary}"/>
+    <path d="M40 32 l16 10 l-16 10 z" fill="${accent}" opacity="0.9"/>
+    <text x="64" y="49" font-family="Georgia,'Iowan Old Style',serif" font-size="21" font-weight="700" fill="${primary}">PreVisit</text>
+    <line x1="0" y1="${headerH - 6}" x2="${W}" y2="${headerH - 6}" stroke="#eef0f3" stroke-width="1"/>
+    ${rowsSvg}
+    <rect x="40" y="${btnY}" width="${W - 80}" height="56" rx="28" fill="${primary}"/>
+    <text x="${W / 2}" y="${btnY + 35}" font-family="-apple-system,system-ui,sans-serif" font-size="18" font-weight="700" fill="#ffffff" text-anchor="middle">${escXml(buttonText)}  &#8594;</text>
+  </svg>`;
+  return `data:image/svg+xml;base64,${utf8ToBase64(svg)}`;
+}
+
+/** Falsk telefon-skjerm SVG: sjekkliste m/ hvilke steg som er fullført. Kampanje-mal 6. */
+function previsitPhoneScreenImage(primary: string, _accent: string): string {
+  const items = [
+    { label: 'Invitasjon sendt', done: true },
+    { label: 'Spørreskjema besvart', done: true },
+    { label: 'Svar mottatt', done: true },
+    { label: 'Klar for timen', done: false },
+  ];
+  const rowsSvg = items.map((it, i) => {
+    const y = 210 + i * 84;
+    const fill = it.done ? primary : '#ffffff';
+    const stroke = it.done ? primary : '#d1d5db';
+    const mark = it.done ? `<path d="M28 ${y + 5} l5 5 l9 -10" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>` : '';
+    return `<circle cx="34" cy="${y}" r="15" fill="${fill}" stroke="${stroke}" stroke-width="2"/>${mark}
+      <text x="64" y="${y + 6}" font-family="-apple-system,system-ui,sans-serif" font-size="17" font-weight="${it.done ? 600 : 500}" fill="${it.done ? '#171a1f' : '#9aa0a8'}">${escXml(it.label)}</text>`;
+  }).join('');
+  const noteY = 210 + items.length * 84 + 20;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="1160">
+    <rect width="600" height="1160" fill="#f7f6f3"/>
+    <rect width="600" height="130" fill="${primary}"/>
+    <text x="40" y="80" font-family="Georgia,'Iowan Old Style',serif" font-size="30" font-weight="700" fill="#ffffff">PreVisit</text>
+    ${rowsSvg}
+    <rect x="30" y="${noteY}" width="540" height="70" rx="16" fill="#ffffff" stroke="#eef0f3"/>
+    <text x="300" y="${noteY + 43}" font-family="-apple-system,system-ui,sans-serif" font-size="14" fill="#6b7280" text-anchor="middle">🔒 Dine opplysninger er trygge</text>
+  </svg>`;
+  return `data:image/svg+xml;base64,${utf8ToBase64(svg)}`;
+}
+
+/** Falsk laptop-dashboard SVG: pasientkort + felt-grid. Kampanje-mal 6. */
+function previsitDashboardScreenImage(primary: string, accent: string): string {
+  const fields: [string, string][] = [
+    ['Hovedårsak', 'Vedvarende hodepine'],
+    ['Symptomer', 'Svimmelhet, lysfølsomhet'],
+    ['Varighet', 'Ca. 3 uker'],
+    ['Viktig for deg å vite', 'Stressende periode på jobb'],
+    ['Tidligere sykdommer', 'Migrene (2019)'],
+    ['Medisiner', 'Paracetamol ved behov'],
+  ];
+  const col = (i: number) => (i % 2 === 0 ? 40 : 460);
+  const row = (i: number) => 210 + Math.floor(i / 2) * 130;
+  const fieldsSvg = fields.map(([label, value], i) => `
+    <text x="${col(i)}" y="${row(i)}" font-family="-apple-system,system-ui,sans-serif" font-size="14" fill="#8a8f98">${escXml(label)}</text>
+    <text x="${col(i)}" y="${row(i) + 26}" font-family="-apple-system,system-ui,sans-serif" font-size="17" font-weight="600" fill="#171a1f">${escXml(value)}</text>`).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="880" height="620">
+    <rect width="880" height="620" fill="#f7f6f3"/>
+    <rect width="880" height="90" fill="${primary}"/>
+    <text x="40" y="55" font-family="Georgia,'Iowan Old Style',serif" font-size="22" font-weight="700" fill="#ffffff">PreVisit — pasientsammendrag</text>
+    <rect x="40" y="120" width="800" height="60" rx="14" fill="${accent}" fill-opacity="0.16"/>
+    <text x="64" y="157" font-family="-apple-system,system-ui,sans-serif" font-size="18" font-weight="700" fill="${primary}">Kari Nordmann · Time i dag 10:30</text>
+    ${fieldsSvg}
   </svg>`;
   return `data:image/svg+xml;base64,${utf8ToBase64(svg)}`;
 }

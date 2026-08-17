@@ -1445,6 +1445,10 @@ function PreVisitCardEditor({ content, onChange }: { content: PreVisitCardConten
           style={{ ...listBtn, width: '100%' }}
         >+ Steg</button>
       </Field>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: FS_SM, color: C.inkSoft, marginTop: 6, cursor: 'pointer' }}>
+        <input type="checkbox" checked={!!content.animateSteps} onChange={(e) => onChange({ ...content, animateSteps: e.target.checked })} />
+        {' '}Animer steg (flyt — hvert steg popper inn étt og étt langs tidslinjen)
+      </label>
     </div>
   );
 }

@@ -252,6 +252,10 @@ function drawDecor(ctx: CanvasRenderingContext2D, doc: MockupDoc): void {
   const c = doc.canvas;
   const decor = c.decor ?? 'none';
   if (decor === 'none') return;
+  // Global styrke-skalering (0..2, default 1) — gjelder for ALLE dekor-typer likt,
+  // heller enn å parametrisere alfa-verdiene i hver av de 13 grenene under separat.
+  ctx.save();
+  ctx.globalAlpha *= doc.canvas.decorIntensity ?? 1;
   const W = c.w, H = c.h;
   const light = c.background === 'light';
   const a1 = hexToRgb(c.accent), a2 = hexToRgb(c.accent2);
@@ -372,6 +376,7 @@ function drawDecor(ctx: CanvasRenderingContext2D, doc: MockupDoc): void {
     ctx.fill();
     ctx.restore();
   }
+  ctx.restore();
 }
 
 /** Tegn logo-slot (bevarer bilde-forhold ut fra bredden). */
@@ -1862,6 +1867,45 @@ function drawIconPill(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: MockupAn
   ctx.restore();
 }
 
+/** Live-tegnet steg-rad for et PreVisit-kort med `cardContent.animateSteps` — steg-raden er da
+ *  IKKE bakt inn i SVG-en (previsitUiCardImage hopper over den), og tegnes her i stedet, slik at
+ *  hvert steg kan poppe inn étt-og-étt langs animasjons-tidslinjen («flow») via samme reveal-motor
+ *  som callouts (revealFor('callout', ...) — sekvensiell stagger, gjenbrukt fremfor ny RevealKind).
+ *  Geometrien speiler previsitUiCardImage sin 600px-brede steg-rad, skalert til kortets faktiske
+ *  bredde på lerretet. Kalles uansett om t er satt (statisk visning = full avsløring, som annotations). */
+function drawCardSteps(ctx: CanvasRenderingContext2D, doc: MockupDoc, im: MockupImageSlot, t?: number): void {
+  const content = im.cardContent;
+  if (!content?.animateSteps || content.steps.length === 0) return;
+  const sf = im.w / 600;
+  const n = content.steps.length;
+  const margin = 76, usable = 600 - margin * 2;
+  const cy = im.y + 150 * sf;
+  const points = content.steps.map((s, i) => ({ ...s, cx: im.x + (n === 1 ? 300 : margin + (usable * i) / (n - 1)) * sf }));
+  const navy = doc.canvas.accent, gold = doc.canvas.accent2;
+  ctx.save();
+  points.slice(0, -1).forEach((s, i) => {
+    const next = points[i + 1];
+    ctx.strokeStyle = s.state === 'done' ? navy : '#d1d5db';
+    ctx.lineWidth = Math.max(1, 2 * sf);
+    ctx.beginPath(); ctx.moveTo(s.cx + 15 * sf, cy); ctx.lineTo(next.cx - 15 * sf, cy); ctx.stroke();
+  });
+  points.forEach((s, i) => {
+    const rev = t != null ? revealFor('callout', i, n, t) : null;
+    withReveal(ctx, rev, s.cx, cy, () => {
+      const fill = s.state === 'todo' ? '#ffffff' : s.state === 'active' ? gold : navy;
+      ctx.fillStyle = fill; ctx.strokeStyle = s.state === 'todo' ? '#d1d5db' : fill; ctx.lineWidth = Math.max(1, 2 * sf);
+      ctx.beginPath(); ctx.arc(s.cx, cy, 15 * sf, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      if (s.state === 'done') {
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, 3 * sf); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath(); ctx.moveTo(s.cx - 6 * sf, cy + 5 * sf); ctx.lineTo(s.cx - 1 * sf, cy + 10 * sf); ctx.lineTo(s.cx + 8 * sf, cy - 5 * sf); ctx.stroke();
+      }
+      ctx.fillStyle = '#6b7280'; ctx.font = `${13 * sf}px -apple-system, system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText(s.label, s.cx, cy + 32 * sf);
+    });
+  });
+  ctx.restore();
+}
+
 function drawLoupe(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: MockupAnnotation, scale: number, sampleSource: CanvasImageSource): void {
   const s = annRect(doc, a);
   const fx = s.x + a.fx * s.w, fy = s.y + a.fy * s.h;
@@ -2200,6 +2244,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
       if (im.chatType?.turns?.length && (!rev || rev.alpha > 0.7)) {
         drawChatType(ctx, doc, im.chatType, { x: im.x, y: im.y, w: im.w, h: im.h, radius: im.radius }, typeTFor(im.id) ?? 1);
       }
+      if (im.cardContent?.animateSteps) drawCardSteps(ctx, doc, im, t);
       ctx.restore();
     }
   }
