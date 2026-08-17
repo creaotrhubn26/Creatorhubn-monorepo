@@ -1455,7 +1455,7 @@ const STEP_STATE_LABEL: Record<PreVisitStepState, string> = { done: 'Fullført',
 
 /** Redigerer for det genererte falske PreVisit-kortet: tittel/undertekst/knapp-tekst
  *  + stegliste (legg til/fjern/endre navn+status). Regenererer SVG-en live på hver endring. */
-function PreVisitCardEditor({ content, onChange }: { content: PreVisitCardContent; onChange: (c: PreVisitCardContent) => void }) {
+function PreVisitCardEditor({ content, onChange, primary }: { content: PreVisitCardContent; onChange: (c: PreVisitCardContent) => void; primary: string }) {
   return (
     <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
       <SectionLabel>PreVisit-kort (falsk skjerm)</SectionLabel>
@@ -1470,25 +1470,44 @@ function PreVisitCardEditor({ content, onChange }: { content: PreVisitCardConten
       </Field>
       <Field label={`Steg (${content.steps.length})`}>
         {content.steps.map((s, i) => (
-          <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4, alignItems: 'center' }}>
-            <input
-              value={s.label}
-              onChange={(e) => onChange({ ...content, steps: content.steps.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })}
-              style={{ ...textInput, flex: 1 }}
-            />
-            <select
-              value={s.state}
-              onChange={(e) => onChange({ ...content, steps: content.steps.map((x, j) => (j === i ? { ...x, state: e.target.value as PreVisitStepState } : x)) })}
-              style={{ ...textInput, width: 92 }}
-            >
-              {(Object.keys(STEP_STATE_LABEL) as PreVisitStepState[]).map((st) => <option key={st} value={st}>{STEP_STATE_LABEL[st]}</option>)}
-            </select>
-            <button
-              onClick={() => onChange({ ...content, steps: content.steps.filter((_, j) => j !== i) })}
-              disabled={content.steps.length <= 1}
-              style={{ ...listBtn, width: 26, textAlign: 'center', padding: '4px 0', opacity: content.steps.length <= 1 ? 0.4 : 1 }}
-              title="Fjern steg" aria-label="Fjern steg"
-            >✕</button>
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6, padding: 6, background: C.panelSoft, borderRadius: 6 }}>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <IconPickerButton value={s.icon ?? ''} onSelect={(icon) => onChange({ ...content, steps: content.steps.map((x, j) => (j === i ? { ...x, icon } : x)) })} />
+              <input
+                type="color"
+                value={s.iconColor ?? primary}
+                onChange={(e) => onChange({ ...content, steps: content.steps.map((x, j) => (j === i ? { ...x, iconColor: e.target.value } : x)) })}
+                title="Ikonfarge (overstyrer status-sirkelen)" style={{ width: 30, height: 30, border: 'none', background: 'none', padding: 0, cursor: 'pointer', borderRadius: 6, flexShrink: 0 }}
+              />
+              <input
+                value={s.label}
+                onChange={(e) => onChange({ ...content, steps: content.steps.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })}
+                style={{ ...textInput, flex: 1 }}
+              />
+              <button
+                onClick={() => onChange({ ...content, steps: content.steps.filter((_, j) => j !== i) })}
+                disabled={content.steps.length <= 1}
+                style={{ ...listBtn, width: 26, textAlign: 'center', padding: '4px 0', opacity: content.steps.length <= 1 ? 0.4 : 1 }}
+                title="Fjern steg" aria-label="Fjern steg"
+              >✕</button>
+            </div>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              {!isIconId(s.icon) && (
+                <select
+                  value={s.state}
+                  onChange={(e) => onChange({ ...content, steps: content.steps.map((x, j) => (j === i ? { ...x, state: e.target.value as PreVisitStepState } : x)) })}
+                  style={{ ...textInput, width: 110 }}
+                >
+                  {(Object.keys(STEP_STATE_LABEL) as PreVisitStepState[]).map((st) => <option key={st} value={st}>{STEP_STATE_LABEL[st]}</option>)}
+                </select>
+              )}
+              {isIconId(s.icon) && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, cursor: 'pointer' }} title="Ikonet pulserer jevnt under avspilling/eksport">
+                  <input type="checkbox" checked={!!s.iconPulse} onChange={(e) => onChange({ ...content, steps: content.steps.map((x, j) => (j === i ? { ...x, iconPulse: e.target.checked } : x)) })} />
+                  {' '}Pulser ikon
+                </label>
+              )}
+            </div>
           </div>
         ))}
         <button
@@ -1835,7 +1854,7 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
       )}
       {image.cardContent && (
         <>
-          <PreVisitCardEditor content={image.cardContent} onChange={(content) => patchImage(image.id, { cardContent: content, image: previsitUiCardImage(content, doc.canvas.accent, doc.canvas.accent2) })} />
+          <PreVisitCardEditor content={image.cardContent} primary={doc.canvas.accent} onChange={(content) => patchImage(image.id, { cardContent: content, image: previsitUiCardImage(content, doc.canvas.accent, doc.canvas.accent2) })} />
           <button
             onClick={() => patchImage(image.id, { image: previsitUiCardImage(image.cardContent, doc.canvas.accent, doc.canvas.accent2) })}
             style={{ ...listBtn, width: '100%', marginBottom: 10 }}

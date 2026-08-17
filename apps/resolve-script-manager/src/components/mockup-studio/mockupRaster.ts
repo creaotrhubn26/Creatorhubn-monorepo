@@ -1915,12 +1915,19 @@ function drawCardSteps(ctx: CanvasRenderingContext2D, doc: MockupDoc, im: Mockup
   points.forEach((s, i) => {
     const rev = t != null ? revealFor('callout', i, n, t) : null;
     withReveal(ctx, rev, s.cx, cy, () => {
-      const fill = s.state === 'todo' ? '#ffffff' : s.state === 'active' ? gold : navy;
-      ctx.fillStyle = fill; ctx.strokeStyle = s.state === 'todo' ? '#d1d5db' : fill; ctx.lineWidth = Math.max(1, 2 * sf);
-      ctx.beginPath(); ctx.arc(s.cx, cy, 15 * sf, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      if (s.state === 'done') {
-        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, 3 * sf); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        ctx.beginPath(); ctx.moveTo(s.cx - 6 * sf, cy + 5 * sf); ctx.lineTo(s.cx - 1 * sf, cy + 10 * sf); ctx.lineTo(s.cx + 8 * sf, cy - 5 * sf); ctx.stroke();
+      if (isIconId(s.icon)) {
+        ctx.fillStyle = hexToRgba(s.iconColor ?? navy, 0.1);
+        ctx.beginPath(); ctx.arc(s.cx, cy, 15 * sf, 0, Math.PI * 2); ctx.fill();
+        const pulse = s.iconPulse ? 1 + 0.14 * Math.sin((t ?? 0) * Math.PI * 6) : 1;
+        drawIcon(ctx, s.icon!, s.cx, cy, 10 * sf * pulse, s.iconColor ?? navy);
+      } else {
+        const fill = s.state === 'todo' ? '#ffffff' : s.state === 'active' ? gold : navy;
+        ctx.fillStyle = fill; ctx.strokeStyle = s.state === 'todo' ? '#d1d5db' : fill; ctx.lineWidth = Math.max(1, 2 * sf);
+        ctx.beginPath(); ctx.arc(s.cx, cy, 15 * sf, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        if (s.state === 'done') {
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, 3 * sf); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+          ctx.beginPath(); ctx.moveTo(s.cx - 6 * sf, cy + 5 * sf); ctx.lineTo(s.cx - 1 * sf, cy + 10 * sf); ctx.lineTo(s.cx + 8 * sf, cy - 5 * sf); ctx.stroke();
+        }
       }
       ctx.fillStyle = '#6b7280'; ctx.font = `${13 * sf}px -apple-system, system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
       ctx.fillText(s.label, s.cx, cy + 32 * sf);

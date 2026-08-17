@@ -683,7 +683,8 @@ export interface PreVisitCardContent {
   title: string;
   subtitle: string;
   buttonText: string;
-  steps: { label: string; state: PreVisitStepState }[];
+  /** icon (valgfri): overstyrer status-sirkelen (hake/prikk/tom) med et ikon fra mockupIcons-banken. */
+  steps: { label: string; state: PreVisitStepState; icon?: string; iconColor?: string; iconPulse?: boolean }[];
   /** Når true: steg-raden bakes IKKE inn i SVG-en — den tegnes live på lerretet i stedet
    *  (mockupRaster.drawCardSteps), slik at hvert steg kan poppe inn étt-og-étt langs
    *  animasjons-tidslinjen («flow») i stedet for å alltid vises statisk ferdig. */
@@ -1549,6 +1550,11 @@ export function previsitUiCardImage(
   const usable = 600 - margin * 2;
   const steps = content.steps.map((s, i) => ({ ...s, cx: n === 1 ? 300 : margin + (usable * i) / (n - 1) }));
   const stepCircle = (s: (typeof steps)[number]) => {
+    if (isIconId(s.icon)) {
+      const circ = `<circle cx="${s.cx}" cy="150" r="15" fill="${s.iconColor ?? navy}" fill-opacity="0.1"/>${iconToSvg(s.icon!, s.cx, 150, 10, s.iconColor ?? navy)}`;
+      return `${circ}
+      <text x="${s.cx}" y="182" font-family="-apple-system,system-ui,sans-serif" font-size="13" fill="#6b7280" text-anchor="middle">${escXml(s.label)}</text>`;
+    }
     const fill = s.state === 'todo' ? '#ffffff' : s.state === 'active' ? gold : navy;
     const stroke = s.state === 'todo' ? '#d1d5db' : fill;
     const mark = s.state === 'done'
