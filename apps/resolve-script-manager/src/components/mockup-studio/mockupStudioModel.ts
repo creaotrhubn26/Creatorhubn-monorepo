@@ -256,13 +256,14 @@ export const DECOR_LABELS: Record<MockupDecor, string> = {
 };
 
 /** Typografi-stil (kuraterte font-paringer, macOS-system-fonter). */
-export type MockupTypographyId = 'moderne' | 'editorial' | 'teknisk' | 'geometrisk';
+export type MockupTypographyId = 'moderne' | 'editorial' | 'teknisk' | 'geometrisk' | 'slab';
 
 export const TYPOGRAPHY_STYLES: Record<MockupTypographyId, { label: string; display: string; body: string }> = {
   moderne: { label: 'Moderne', display: '"Avenir Next", system-ui, sans-serif', body: '"Avenir Next", system-ui, sans-serif' },
   editorial: { label: 'Editorial', display: 'Georgia, "Times New Roman", serif', body: '"Avenir Next", system-ui, sans-serif' },
   teknisk: { label: 'Teknisk', display: 'Menlo, "SF Mono", monospace', body: '"Helvetica Neue", system-ui, sans-serif' },
   geometrisk: { label: 'Geometrisk', display: 'Futura, "Century Gothic", sans-serif', body: '"Avenir Next", system-ui, sans-serif' },
+  slab: { label: 'Slab (tung)', display: 'Rockwell, "Roboto Slab", Georgia, serif', body: '"Avenir Next", system-ui, sans-serif' },
 };
 
 /** Logo-slot (valgfri) — plasseres på lerretet, farge-nøytral. */
@@ -289,6 +290,9 @@ export interface MockupCanvasSpec {
   typography?: MockupTypographyId;
   /** Dekor-lag bak innholdet. Default 'none'. */
   decor?: MockupDecor;
+  /** Global styrke-multiplikator på dekor-laget (0..2, default 1) — skalerer
+   *  alle dekor-typenes egne alpha-verdier likt, uten å måtte parametrisere hver for seg. */
+  decorIntensity?: number;
   /** Warmth-grade (0..1): varm WB + metnings-løft → craveable mat-look (statisk synlig). */
   warmth?: number;
   /** Push-in (0..1): global kamera-zoom under avspilling → kinematisk hero-inntoning. */
@@ -310,13 +314,23 @@ export interface MockupCanvasSpec {
    *  nøytral grå/nær-sort (se resolveBaseBg), som ikke kan uttrykke f.eks. en
    *  varm krem merkevaretone. Satt → vinner over background-modusens standard. */
   bgColor?: string;
+  /** Fri font-familie-streng (CSS-syntaks, f.eks. '"Rockwell", serif') som overstyrer
+   *  typography-presetets display-font (overskrift/etikett) — for eksakt fontkontroll
+   *  utover de ferdige parene i TYPOGRAPHY_STYLES. */
+  customDisplayFont?: string;
+  /** Samme som customDisplayFont, men for body-font (brødtekst/tag). */
+  customBodyFont?: string;
 }
 
-/** Font-familie for en tekst-rolle ut fra lerretets typografi-stil.
+/** Font-familie for en tekst-rolle ut fra lerretets typografi-stil
+ *  (customDisplayFont/customBodyFont overstyrer presetet når satt).
  *  Etikett/overskrift → display-font; brødtekst/tag → body-font. */
 export function fontFamilyFor(role: MockupTextRole, canvas: MockupCanvasSpec): string {
   const t = TYPOGRAPHY_STYLES[canvas.typography ?? 'moderne'];
-  return role === 'eyebrow' || role === 'title' ? t.display : t.body;
+  const isDisplay = role === 'eyebrow' || role === 'title';
+  if (isDisplay && canvas.customDisplayFont) return canvas.customDisplayFont;
+  if (!isDisplay && canvas.customBodyFont) return canvas.customBodyFont;
+  return isDisplay ? t.display : t.body;
 }
 
 // ── Fargematematikk (delt av rasterisator + kvalitetskontroll) ───────────────
@@ -595,6 +609,10 @@ export interface MockupImageSlot {
    *  redigering av feltene her og re-generering holder dem i sync. Uten dette
    *  feltet er `image` en vanlig statisk bilde-URL uten inspektør-redigering. */
   cardContent?: PreVisitCardContent;
+  /** Satt → dette bildet er en ensfarget flate (f.eks. en skillelinje mellom to
+   *  foto-elementer) — `image` regenereres fra denne fargen via `placeholderImage`
+   *  når inspektøren endrer den. Uten dette feltet er `image` statisk. */
+  solidColor?: string;
 }
 
 export type PreVisitStepState = 'done' | 'active' | 'todo';
@@ -1169,7 +1187,7 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
           // under legges over som et eget, like redigerbart bilde-element.
           makeImage(placeholderImage('PASIENT-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 0, y: 420, w: 540, h: 660, radius: 0 }),
           makeImage(placeholderImage('LEGE-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 540, y: 420, w: 540, h: 660, radius: 0 }),
-          makeImage(placeholderImage('', '#ffffff', '#ffffff'), { x: 538, y: 420, w: 4, h: 660, radius: 0, shadow: false }),
+          makeImage(placeholderImage('', '#ffffff', '#ffffff'), { x: 538, y: 420, w: 4, h: 660, radius: 0, shadow: false, solidColor: '#ffffff' }),
           makeImage(previsitUiCardImage(DEFAULT_PREVISIT_CARD_CONTENT, canvas.accent, canvas.accent2), { x: 350, y: 540, w: 380, h: 340, radius: 20, cardContent: DEFAULT_PREVISIT_CARD_CONTENT }),
         ],
         annotations: [

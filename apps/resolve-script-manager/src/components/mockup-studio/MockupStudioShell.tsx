@@ -75,6 +75,7 @@ import {
   type PersonStyle,
   type PersonRigPose,
   previsitUiCardImage,
+  placeholderImage,
   type PreVisitCardContent,
   type PreVisitStepState,
 } from './mockupStudioModel';
@@ -1013,14 +1014,25 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
         />
       </Field>
       <Field label="Typografi">
-        <select value={canvas.typography ?? 'moderne'} onChange={(e) => patchCanvas({ typography: e.target.value as MockupTypographyId })} style={textInput}>
+        <select value={canvas.typography ?? 'moderne'} onChange={(e) => patchCanvas({ typography: e.target.value as MockupTypographyId })} style={{ ...textInput, marginBottom: 6 }}>
           {(Object.keys(TYPOGRAPHY_STYLES) as MockupTypographyId[]).map((id) => <option key={id} value={id}>{TYPOGRAPHY_STYLES[id].label}</option>)}
         </select>
+        <input
+          value={canvas.customDisplayFont ?? ''}
+          onChange={(e) => patchCanvas({ customDisplayFont: e.target.value || undefined })}
+          placeholder='Egendefinert overskrift-font (CSS, f.eks. "Rockwell", serif) — overstyrer forvalget'
+          style={{ ...textInput, width: '100%', fontSize: 11.5 }}
+        />
       </Field>
       <Field label="Dekor">
-        <select value={canvas.decor ?? 'none'} onChange={(e) => patchCanvas({ decor: e.target.value as MockupDecor })} style={textInput}>
+        <select value={canvas.decor ?? 'none'} onChange={(e) => patchCanvas({ decor: e.target.value as MockupDecor })} style={{ ...textInput, marginBottom: canvas.decor && canvas.decor !== 'none' ? 6 : 0 }}>
           {(Object.keys(DECOR_LABELS) as MockupDecor[]).map((id) => <option key={id} value={id}>{DECOR_LABELS[id]}</option>)}
         </select>
+        {canvas.decor && canvas.decor !== 'none' && (
+          <label style={{ fontSize: 11, color: C.inkSoft, display: 'block' }}>Styrke: {Math.round((canvas.decorIntensity ?? 1) * 100)}%
+            <input type="range" min={0} max={2} step={0.05} value={canvas.decorIntensity ?? 1} onChange={(e) => patchCanvas({ decorIntensity: Number(e.target.value) })} style={{ width: '100%' }} />
+          </label>
+        )}
       </Field>
       <Field label="Motion & grad (craveable)">
         <label style={checkRow}>
@@ -1521,6 +1533,11 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
             title="Kortet henter IKKE fargene automatisk når du endrer Accent 1/2 — trykk her etterpå for å synke det"
           >↻ Oppdater kort-farger fra Accent 1/2</button>
         </>
+      )}
+      {image.solidColor && (
+        <Field label="Farge">
+          <ColorRow value={image.solidColor} onChange={(v) => patchImage(image.id, { solidColor: v, image: placeholderImage('', v, v) })} />
+        </Field>
       )}
       <Field label="Størrelse (px)">
         <div style={{ display: 'flex', gap: 6 }}>
