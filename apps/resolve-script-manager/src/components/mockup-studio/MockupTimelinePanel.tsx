@@ -26,10 +26,10 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
   const tl: MockupTimeline = deriveTimeline(doc);
   const railRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [zoom, setZoom] = useState(1);           // horisontal timeline-zoom (1×–8×)
-  const [selClip, setSelClip] = useState<string | null>(null); // valgt klipp (for slett/ripple)
+  const [zoom, setZoom] = useState(1);           // horisontal timeline-zoom (0.3×–8×)
+  const [selClips, setSelClips] = useState<string[]>([]); // valgte klipp (shift/cmd-klikk = multi, for flytt/slett/ripple)
   const nTracks = Math.max(3, ...tl.clips.map((c) => c.track + 1));
-  const sel = tl.clips.find((c) => c.id === selClip) ?? null;
+  const sel = selClips.length === 1 ? tl.clips.find((c) => c.id === selClips[0]) ?? null : null;
 
   // Cmd/Ctrl + hjul over timelinen → zoom mot cursor (holder punktet under cursor fast).
   const onRailWheel = (e: React.WheelEvent) => {
@@ -39,7 +39,7 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
     const rect = sc.getBoundingClientRect();
     const cursorX = e.clientX - rect.left;
     const frac = (sc.scrollLeft + cursorX) / (rect.width * zoom); // innholds-fraksjon under cursor
-    const nz = Math.max(1, Math.min(8, zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+    const nz = Math.max(0.3, Math.min(8, zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
     setZoom(nz);
     requestAnimationFrame(() => { if (scrollRef.current) scrollRef.current.scrollLeft = frac * rect.width * nz - cursorX; });
   };
@@ -101,6 +101,40 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
     window.addEventListener('pointerup', () => ac.abort(), { once: true });
   };
 
+  // Flytt flere valgte klipp sammen (shift/cmd-klikk-utvalg) — samme relative avstand bevares,
+  // snapping kun mot anker-klippet (det man faktisk drar i), delta klippes så INGEN av de valgte
+  // klippene går utenfor [0, dur].
+  const beginGroupDrag = (anchor: TimelineClip, e: React.PointerEvent) => {
+    e.stopPropagation();
+    const r = railRef.current?.getBoundingClientRect();
+    if (!r) return;
+    pushHistory();
+    const movers = tl.clips.filter((c) => selClips.includes(c.id));
+    const starts = new Map(movers.map((c) => [c.id, c.start] as const));
+    const sx = e.clientX;
+    const ac = new AbortController();
+    const move = (ev: PointerEvent) => {
+      const rawDelta = ((ev.clientX - sx) / r.width) * dur;
+      let delta = rawDelta;
+      movers.forEach((c) => {
+        const s0 = starts.get(c.id)!;
+        delta = Math.max(delta, -s0);
+        delta = Math.min(delta, dur - c.len - s0);
+      });
+      const anchorStart = starts.get(anchor.id)!;
+      const snapped = snap(Math.max(0, Math.min(dur - anchor.len, anchorStart + delta)), anchor.id);
+      const finalDelta = snapped - anchorStart;
+      writeClips(tl.clips.map((c) => {
+        if (!selClips.includes(c.id)) return c;
+        const s0 = starts.get(c.id)!;
+        const ns = Math.max(0, Math.min(dur - c.len, s0 + finalDelta));
+        return { ...c, start: Math.round(ns * 100) / 100 };
+      }));
+    };
+    window.addEventListener('pointermove', move, { signal: ac.signal });
+    window.addEventListener('pointerup', () => ac.abort(), { once: true });
+  };
+
   // Resize høyre kant → endre varighet (med snapping).
   const beginClipResize = (clip: TimelineClip, e: React.PointerEvent) => {
     e.stopPropagation();
@@ -139,14 +173,15 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
     window.addEventListener('pointerup', () => ac.abort(), { once: true });
   };
 
-  // Slett valgt klipp (element animerer ikke lenger); ripple = skyv senere klipp på samme spor venstre.
+  // Slett valgte klipp (elementet animerer ikke lenger); ripple = skyv senere klipp på samme spor venstre.
   const deleteClip = (ripple: boolean) => {
-    if (!sel) return;
+    if (selClips.length === 0) return;
     pushHistory();
-    let clips = tl.clips.filter((c) => c.id !== sel.id);
-    if (ripple) clips = clips.map((c) => (c.track === sel.track && c.start > sel.start ? { ...c, start: Math.round(Math.max(0, c.start - sel.len) * 100) / 100 } : c));
+    const doomed = tl.clips.filter((c) => selClips.includes(c.id));
+    let clips = tl.clips.filter((c) => !selClips.includes(c.id));
+    if (ripple) doomed.forEach((d) => { clips = clips.map((c) => (c.track === d.track && c.start > d.start ? { ...c, start: Math.round(Math.max(0, c.start - d.len) * 100) / 100 } : c)); });
     writeClips(clips);
-    setSelClip(null);
+    setSelClips([]);
   };
 
   // Tid-ticks (hvert 0.5s).
@@ -157,22 +192,24 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
     <div style={{ background: 'rgba(12,15,22,0.92)', borderTop: '1px solid rgba(255,255,255,0.1)', color: '#c7cdd8', fontWeight: 600, fontSize: TL_FS, fontFamily: 'system-ui, sans-serif', userSelect: 'none' }}>
       {/* Klipp-handlinger (vises når et klipp er valgt) */}
       <div style={{ minHeight: 22, display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 8, borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: TL_FS, flexWrap: 'wrap', paddingTop: 2, paddingBottom: 2 }}>
-        {sel ? (
+        {selClips.length > 0 ? (
           <>
-            <span style={{ opacity: 0.75, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sel.label} · {sel.start.toFixed(1)}–{(sel.start + sel.len).toFixed(1)}s</span>
-            <button onClick={() => deleteClip(false)} title="Fjern klippet (elementet animerer ikke lenger)" style={clipBtn}>Slett</button>
+            <span style={{ opacity: 0.75, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {sel ? `${sel.label} · ${sel.start.toFixed(1)}–${(sel.start + sel.len).toFixed(1)}s` : `${selClips.length} klipp valgt — dra ett av dem for å flytte alle sammen`}
+            </span>
+            <button onClick={() => deleteClip(false)} title="Fjern klippet/klippene (elementet animerer ikke lenger)" style={clipBtn}>Slett</button>
             <button onClick={() => deleteClip(true)} title="Fjern og skyv senere klipp på sporet til venstre" style={clipBtn}>Ripple-slett</button>
-            <button onClick={() => setSelClip(null)} style={clipBtn}>Fjern valg</button>
+            <button onClick={() => setSelClips([])} style={clipBtn}>Fjern valg</button>
           </>
         ) : (
-          <span style={{ opacity: 0.4 }}>Velg et klipp for å trimme/slette · dra kant = trim · , / . = frame-steg</span>
+          <span style={{ opacity: 0.4 }}>Velg et klipp for å trimme/slette · shift/cmd-klikk = velg flere · dra kant = trim · , / . = frame-steg</span>
         )}
       </div>
       <div style={{ display: 'flex' }}>
         {/* Spor-etiketter */}
         <div style={{ width: 66, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.08)' }}>
           <div style={{ height: 16, display: 'flex', alignItems: 'center', gap: 2, paddingLeft: 4 }}>
-            <button onClick={() => setZoom((z) => Math.max(1, z / 1.4))} title="Zoom ut (timeline)" style={tlZoomBtn}>−</button>
+            <button onClick={() => setZoom((z) => Math.max(0.3, z / 1.4))} title="Zoom ut (timeline)" style={tlZoomBtn}>−</button>
             <button onClick={() => setZoom((z) => Math.min(8, z * 1.4))} title="Zoom inn (timeline) · Cmd/Ctrl+hjul" style={tlZoomBtn}>+</button>
           </div>
           {Array.from({ length: nTracks }, (_, i) => (
@@ -181,7 +218,7 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
         </div>
         {/* Rail: linjal + spor + klipp + playhead (zoombar + scrollbar horisontalt) */}
         <div ref={scrollRef} onWheel={onRailWheel} style={{ flex: 1, overflowX: zoom > 1.001 ? 'auto' : 'hidden', overflowY: 'hidden' }}>
-        <div ref={railRef} style={{ position: 'relative', width: `${zoom * 100}%`, minWidth: '100%', cursor: 'text' }} onPointerDown={(e) => { e.stopPropagation(); scrubFromEvent(e.clientX); }}>
+        <div ref={railRef} style={{ position: 'relative', width: `${zoom * 100}%`, minWidth: zoom < 1 ? undefined : '100%', cursor: 'text' }} onPointerDown={(e) => { e.stopPropagation(); scrubFromEvent(e.clientX); }}>
           {/* Linjal */}
           <div style={{ position: 'relative', height: 16, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
             {ticks.map((s) => (
@@ -219,28 +256,38 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
                 </div>
               );
             }
+            const isSel = selClips.includes(c.id);
             return (
             <div
               key={c.id}
-              onPointerDown={(e) => { setSelClip(c.id); beginClipDrag(c, e); }}
-              title={`${c.label} · ${c.start.toFixed(1)}s–${(c.start + c.len).toFixed(1)}s`}
+              onPointerDown={(e) => {
+                if (e.shiftKey || e.metaKey || e.ctrlKey) {
+                  e.stopPropagation();
+                  setSelClips((prev) => (prev.includes(c.id) ? prev.filter((id) => id !== c.id) : [...prev, c.id]));
+                  return;
+                }
+                const groupActive = selClips.length > 1 && selClips.includes(c.id);
+                if (!groupActive) setSelClips([c.id]);
+                if (groupActive) beginGroupDrag(c, e); else beginClipDrag(c, e);
+              }}
+              title={`${c.label} · ${c.start.toFixed(1)}s–${(c.start + c.len).toFixed(1)}s · shift/cmd-klikk = velg flere`}
               style={{
                 position: 'absolute', left: `${(c.start / dur) * 100}%`, width: `${(c.len / dur) * 100}%`,
                 top: 16 + c.track * TRACK_H + 3, height: TRACK_H - 6,
                 background: CLIP_COLORS[c.kind], borderRadius: 4,
-                border: c.id === selClip ? '1.5px solid #fff' : '1px solid rgba(255,255,255,0.25)',
+                border: isSel ? '1.5px solid #fff' : '1px solid rgba(255,255,255,0.25)',
                 display: 'flex', alignItems: 'center', paddingLeft: 8, overflow: 'hidden', whiteSpace: 'nowrap',
-                color: '#fff', fontSize: TL_FS, cursor: 'grab', boxShadow: c.id === selClip ? '0 0 0 1px #2563eb, 0 1px 3px rgba(0,0,0,0.4)' : '0 1px 3px rgba(0,0,0,0.4)',
+                color: '#fff', fontSize: TL_FS, cursor: 'grab', boxShadow: isSel ? '0 0 0 1px #2563eb, 0 1px 3px rgba(0,0,0,0.4)' : '0 1px 3px rgba(0,0,0,0.4)',
               }}
             >
               {c.label}
               <div
-                onPointerDown={(e) => { setSelClip(c.id); beginClipTrimLeft(c, e); }}
+                onPointerDown={(e) => { setSelClips([c.id]); beginClipTrimLeft(c, e); }}
                 title="Dra for å trimme start"
                 style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: 'rgba(255,255,255,0.25)' }}
               />
               <div
-                onPointerDown={(e) => { setSelClip(c.id); beginClipResize(c, e); }}
+                onPointerDown={(e) => { setSelClips([c.id]); beginClipResize(c, e); }}
                 title="Dra for å endre varighet"
                 style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: 'rgba(255,255,255,0.25)' }}
               />

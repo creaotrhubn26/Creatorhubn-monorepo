@@ -598,7 +598,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
             {MOTION_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
           </optgroup>
           <optgroup label="Animert GIF">
-            {MOTION_PRESETS.map((p) => <option key={`gif-${p.id}`} value={`gif:${p.id}`}>🎞️ {p.label}</option>)}
+            {MOTION_PRESETS.filter((p) => p.id !== 'full').map((p) => <option key={`gif-${p.id}`} value={`gif:${p.id}`}>🎞️ {p.label}</option>)}
           </optgroup>
         </select>
         <button

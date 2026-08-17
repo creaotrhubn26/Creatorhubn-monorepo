@@ -142,7 +142,11 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
     let start: number | null = null;
     const step = (ts: number) => {
       if (start == null) start = ts;
-      const dur = baseDur() / Math.max(0.1, speedRef.current);
+      // baseDur() alene er tunet for skrive-animasjon (tegn-for-tegn) og var FOR KORT for
+      // ren reveal-innhold (rader/enheter som popper inn) — spilte av på under 2s uansett hvor
+      // lang den avledede reveal-timelinen (tlDur, sekunder) egentlig er, så innhold (f.eks.
+      // skjerm-tekst på telefon/laptop) rakk aldri å bli lesbart før klippet var ferdig.
+      const dur = Math.max(baseDur(), tlDurRef.current * 1000) / Math.max(0.1, speedRef.current);
       const p = from + (ts - start) / dur;                            // rå progresjon (timeline-skala)
       if (p >= b) {
         if (loopRef.current) { start = ts; from = a; setPlayT(applyEase(a, easeRef.current)); playRef.current = requestAnimationFrame(step); return; }
@@ -620,7 +624,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
           <input type="range" min={0} max={1000} value={Math.round((playT ?? 0) * 1000)} onChange={(e) => scrubTo(Number(e.target.value) / 1000)} title="Dra playhead" style={{ flex: 1, accentColor: '#2563eb', cursor: 'pointer' }} />
           <span title="Timecode (m:ss:ff · 30 fps) — , / . steg ett bilde" style={{ minWidth: 62, textAlign: 'right', fontVariantNumeric: 'tabular-nums', opacity: 0.85 }}>{fmtTimecode((playT ?? 0) * tlDur)}</span>
           <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))} title="Hastighet" style={motionSel}>
-            {[0.5, 0.75, 1, 1.5, 2].map((s) => <option key={s} value={s}>{s}×</option>)}
+            {[0.25, 0.5, 0.75, 1, 1.5, 2].map((s) => <option key={s} value={s}>{s}×</option>)}
           </select>
           <select value={easing} onChange={(e) => setEasing(e.target.value as typeof easing)} title="Speed-ramp (retime)" style={motionSel}>
             <option value="linear">Lineær</option><option value="smooth">Myk</option><option value="in">Akselerér</option><option value="out">Retardér</option>

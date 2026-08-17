@@ -19,6 +19,7 @@ export const MOTION_PRESETS: { id: string; label: string; cfg: MotionConfig }[] 
   { id: 'story', label: 'Story (6s)', cfg: { seconds: 6, fps: 30 } },
   { id: 'reel', label: 'Reel (4s)', cfg: { seconds: 4, fps: 30 } },
   { id: 'long', label: 'Detaljert (9s)', cfg: { seconds: 9, fps: 30 } },
+  { id: 'full', label: 'Full lengde (90s)', cfg: { seconds: 90, fps: 30 } },
 ];
 export const DEFAULT_MOTION: MotionConfig = MOTION_PRESETS[0].cfg;
 
