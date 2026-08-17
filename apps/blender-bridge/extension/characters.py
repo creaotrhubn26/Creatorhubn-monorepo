@@ -46,6 +46,18 @@ def _meta_ball(mdata, center: Vector, radius: float, stiffness: float = 2.0):
     return el
 
 
+def _meta_ellipsoid(mdata, center: Vector, radius: float, size: tuple, stiffness: float = 2.0):
+    """Som _meta_ball, men skalert ulikt per akse (size=(x,y,z)-multiplikatorer
+    av radius) — brukes til egg-formet hode i stedet for en perfekt kule."""
+    el = mdata.elements.new()
+    el.co = Vector(center)
+    el.type = "ELLIPSOID"
+    el.radius = radius
+    el.size_x, el.size_y, el.size_z = size
+    el.stiffness = stiffness
+    return el
+
+
 def _pull_inward(point: Vector, center: Vector, amount: float) -> Vector:
     """Flytt `point` et stykke mot `center` — brukes til å dra skulder/hofte-
     festet inn i torso-feltet så metaball-elementene faktisk overlapper og
@@ -121,9 +133,11 @@ def create_humanoid_body(armature_name: str, name: str | None = None) -> dict:
         return world(b.tail_local) if b else None
 
     height = arm_obj.dimensions.z or 1.8
-    r_torso, r_neck, r_head = height * 0.09, height * 0.035, height * 0.055
-    r_upper_arm, r_forearm, r_hand = height * 0.032, height * 0.026, height * 0.03
-    r_thigh, r_shin, r_foot = height * 0.055, height * 0.04, height * 0.035
+    # NB: r_head-multiplikatoren (0.062) MÅ holdes lik i attach_face_and_hair —
+    # ansiktstrekkene der skalerer ut fra samme formel og havner feil om de driver fra hverandre.
+    r_torso, r_neck, r_head = height * 0.105, height * 0.058, height * 0.062
+    r_upper_arm, r_forearm, r_hand = height * 0.038, height * 0.032, height * 0.034
+    r_thigh, r_shin, r_foot = height * 0.065, height * 0.048, height * 0.04
 
     torso_top = tail("spine.004") or tail("spine.003") or tail("spine.002")
     head_top = tail("spine.006") or tail("spine.005") or torso_top
@@ -141,7 +155,7 @@ def create_humanoid_body(armature_name: str, name: str | None = None) -> dict:
 
     _meta_capsule(mdata, torso_bottom, torso_top, r_torso, stiffness=2.5)
     _meta_capsule(mdata, torso_top, head_top, r_neck, stiffness=2.2)
-    _meta_ball(mdata, head_top + Vector((0, 0, r_head * 0.8)), r_head, stiffness=2.2)
+    _meta_ellipsoid(mdata, head_top + Vector((0, 0, r_head * 0.8)), r_head, (1.0, 0.94, 1.16), stiffness=2.2)
     # "Hofte-hub": liten kule ved torso-bunnen — uten denne smelter beina
     # dårlig sammen med torso og det blir et gap ved skrittet.
     _meta_ball(mdata, torso_bottom, r_torso * 0.85, stiffness=2.0)
@@ -206,7 +220,7 @@ def attach_face_and_hair(rig_name: str, name_prefix: str = "", hair_color: list 
     # (samme punkt create_humanoid_body bygger hode-kulen ut fra). matrix.translation
     # peker feil (nakke-høyde), derfor .tail her, ikke .matrix.
     height = rig_obj.dimensions.z or 1.8
-    r_head = height * 0.055
+    r_head = height * 0.062  # MÅ matche create_humanoid_body sin r_head-formel
     skull_base = rig_obj.matrix_world @ Vector(head_bone.tail)
     face_center = skull_base + Vector((0, 0, r_head * 0.8))
     scale = height / 1.98  # skaler ansiktsdetaljer proporsjonalt med figurhøyden
