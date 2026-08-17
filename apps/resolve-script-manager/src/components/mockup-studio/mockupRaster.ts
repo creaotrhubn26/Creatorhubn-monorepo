@@ -1797,7 +1797,7 @@ function drawStepBadge(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: MockupA
   const r = size * 0.22;
   ctx.save();
   ctx.shadowColor = 'rgba(15,20,30,0.28)'; ctx.shadowBlur = W * 0.014; ctx.shadowOffsetY = W * 0.004;
-  ctx.fillStyle = doc.canvas.accent;
+  ctx.fillStyle = a.color ?? doc.canvas.accent;
   roundRectPath(ctx, x, y, size, size, r);
   ctx.fill();
   ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
@@ -1824,8 +1824,9 @@ function drawConnectorLine(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: Moc
   const bend = (a.curve ?? 0) * W;
   const cx = mx + nx * bend, cy = my + ny * bend;
   const sc = a.scale ?? 1;
+  const col = a.color ?? doc.canvas.accent2;
   ctx.save();
-  ctx.strokeStyle = doc.canvas.accent2;
+  ctx.strokeStyle = col;
   ctx.lineWidth = Math.max(1.5, W * 0.0018) * sc;
   ctx.setLineDash([W * 0.007 * sc, W * 0.009 * sc]);
   ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(cx, cy, x2, y2); ctx.stroke();
@@ -1834,15 +1835,15 @@ function drawConnectorLine(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: Moc
   // Glød-punktet sitter PÅ kurven (bezier-midtpunkt ved t=0.5), ikke på den rette linja.
   const qx = 0.25 * x1 + 0.5 * cx + 0.25 * x2, qy = 0.25 * y1 + 0.5 * cy + 0.25 * y2;
   const glow = ctx.createRadialGradient(qx, qy, 0, qx, qy, dotR * 3.2);
-  glow.addColorStop(0, doc.canvas.accent2); glow.addColorStop(1, hexToRgba(doc.canvas.accent2, 0));
+  glow.addColorStop(0, col); glow.addColorStop(1, hexToRgba(col, 0));
   ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(qx, qy, dotR * 3.2, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = doc.canvas.accent2; ctx.beginPath(); ctx.arc(qx, qy, dotR, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = col; ctx.beginPath(); ctx.arc(qx, qy, dotR, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 }
 
 /** Hvit pill m/ ikon-sirkel (unicode-glyph) + fet tittel + grå undertekst —
  *  «Pasienten fyller ut — hjemme i ro og fred»-stil bunn-callout. Sentrert på (fx,fy). */
-function drawIconPill(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: MockupAnnotation): void {
+function drawIconPill(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: MockupAnnotation, t?: number): void {
   const W = doc.canvas.w;
   const cx = a.fx * W, cy = a.fy * doc.canvas.h;
   const iconR = Math.max(16, W * 0.021);
@@ -1868,7 +1869,8 @@ function drawIconPill(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: MockupAn
   ctx.fillStyle = doc.canvas.accent;
   ctx.beginPath(); ctx.arc(icx, cy, iconR, 0, Math.PI * 2); ctx.fill();
   if (isIconId(a.glyph)) {
-    drawIcon(ctx, a.glyph, icx, cy, iconR * 0.62, '#ffffff');
+    const pulse = a.glyphPulse ? 1 + 0.14 * Math.sin((t ?? 0) * Math.PI * 6) : 1;
+    drawIcon(ctx, a.glyph, icx, cy, iconR * 0.62 * pulse, a.glyphColor ?? '#ffffff');
   } else {
     ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = `${Math.round(iconR * 1.15)}px -apple-system, system-ui, sans-serif`;
@@ -2000,11 +2002,19 @@ function drawFormListRows(ctx: CanvasRenderingContext2D, doc: MockupDoc, im: Moc
     const cy = y + (rowH * sf) / 2 - 4 * sf;
     const rev = t != null ? revealFor('callout', i, n, t) : null;
     withReveal(ctx, rev, im.x + im.w / 2, cy, () => {
+      const hasIcon = isIconId(f.icon);
+      const tx = hasIcon ? 76 * sf : 40 * sf;
+      if (hasIcon) {
+        ctx.fillStyle = hexToRgba(doc.canvas.accent, 0.1);
+        ctx.beginPath(); ctx.arc(im.x + 40 * sf, cy + 5 * sf, 18 * sf, 0, Math.PI * 2); ctx.fill();
+        const pulse = f.iconPulse ? 1 + 0.14 * Math.sin((t ?? 0) * Math.PI * 6) : 1;
+        drawIcon(ctx, f.icon!, im.x + 40 * sf, cy + 5 * sf, 10 * sf * pulse, f.iconColor ?? doc.canvas.accent);
+      }
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
       ctx.fillStyle = '#171a1f'; ctx.font = `600 ${17 * sf}px -apple-system, system-ui, sans-serif`;
-      ctx.fillText(f.q, im.x + 40 * sf, cy - 6 * sf);
+      ctx.fillText(f.q, im.x + tx, cy - 6 * sf);
       ctx.fillStyle = '#8a8f98'; ctx.font = `${13 * sf}px -apple-system, system-ui, sans-serif`;
-      ctx.fillText(f.sub, im.x + 40 * sf, cy + 16 * sf);
+      ctx.fillText(f.sub, im.x + tx, cy + 16 * sf);
       ctx.fillStyle = doc.canvas.accent2; ctx.font = `${20 * sf}px -apple-system, system-ui, sans-serif`; ctx.textAlign = 'center';
       ctx.fillText('›', im.x + im.w - 36 * sf, cy + 6 * sf);
     });
@@ -2046,12 +2056,19 @@ function drawDeviceChecklist(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev:
     const cx = lx(34), cy = ly(y);
     const rev = t != null ? revealFor('callout', i, n, t) : null;
     withReveal(ctx, rev, cx, cy, () => {
-      const fill = it.done ? primary : '#ffffff';
-      ctx.fillStyle = fill; ctx.strokeStyle = it.done ? primary : '#d1d5db'; ctx.lineWidth = Math.max(1, 2 * scale);
-      ctx.beginPath(); ctx.arc(cx, cy, 15 * scale, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      if (it.done) {
-        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, 3 * scale); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        ctx.beginPath(); ctx.moveTo(lx(28), ly(y + 5)); ctx.lineTo(lx(33), ly(y + 10)); ctx.lineTo(lx(42), ly(y - 5)); ctx.stroke();
+      if (isIconId(it.icon)) {
+        ctx.fillStyle = hexToRgba(primary, 0.1);
+        ctx.beginPath(); ctx.arc(cx, cy, 15 * scale, 0, Math.PI * 2); ctx.fill();
+        const pulse = it.iconPulse ? 1 + 0.14 * Math.sin((t ?? 0) * Math.PI * 6) : 1;
+        drawIcon(ctx, it.icon!, cx, cy, 10 * scale * pulse, it.iconColor ?? primary);
+      } else {
+        const fill = it.done ? primary : '#ffffff';
+        ctx.fillStyle = fill; ctx.strokeStyle = it.done ? primary : '#d1d5db'; ctx.lineWidth = Math.max(1, 2 * scale);
+        ctx.beginPath(); ctx.arc(cx, cy, 15 * scale, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        if (it.done) {
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, 3 * scale); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+          ctx.beginPath(); ctx.moveTo(lx(28), ly(y + 5)); ctx.lineTo(lx(33), ly(y + 10)); ctx.lineTo(lx(42), ly(y - 5)); ctx.stroke();
+        }
       }
       ctx.fillStyle = it.done ? '#171a1f' : '#9aa0a8'; ctx.font = `${it.done ? 600 : 500} ${17 * scale}px -apple-system, system-ui, sans-serif`;
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
@@ -2151,7 +2168,7 @@ function drawAnnotations(ctx: CanvasRenderingContext2D, doc: MockupDoc, scale: n
   callouts.forEach((a, i) => { const c = annCenter(doc, a); withReveal(ctx, a.noReveal || t == null ? null : revealFor('callout', i, callouts.length, t), c.x, c.y, () => drawCallout(ctx, doc, a)); });
   loupes.forEach((a, i) => { const lx = (a.lensX ?? 0.86) * doc.canvas.w, ly = (a.lensY ?? 0.82) * doc.canvas.h; withReveal(ctx, a.noReveal || t == null ? null : revealFor('loupe', i, loupes.length, t), lx, ly, () => drawLoupe(ctx, doc, a, scale, sampleSource)); });
   steps.forEach((a) => drawStepBadge(ctx, doc, a));
-  pills.forEach((a) => drawIconPill(ctx, doc, a));
+  pills.forEach((a) => drawIconPill(ctx, doc, a, t));
 }
 
 // ── Produkt-mind map (native render av Mermaid-syntaks, merkevare-stylet) ────

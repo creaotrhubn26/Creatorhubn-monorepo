@@ -1239,6 +1239,10 @@ function IllustrationInspector() {
               <label style={{ fontSize: 11, color: C.inkSoft, display: 'block', marginBottom: 6 }}>Størrelse: {Math.round((a.scale ?? 1) * 100)}%
                 <input type="range" min={0.5} max={2} step={0.05} value={a.scale ?? 1} onChange={(e) => patchAnnotation(a.id, { scale: Number(e.target.value) })} style={{ width: '100%' }} />
               </label>
+              <label style={{ fontSize: 11, color: C.inkSoft, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                Farge
+                <input type="color" value={a.color ?? doc.canvas.accent} onChange={(e) => patchAnnotation(a.id, { color: e.target.value })} style={{ width: 28, height: 28, border: 'none', background: 'none', padding: 0, cursor: 'pointer', borderRadius: 6 }} />
+              </label>
             </>
           )}
 
@@ -1246,9 +1250,21 @@ function IllustrationInspector() {
             <>
               <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
                 <IconPickerButton value={a.glyph ?? ''} onSelect={(icon) => patchAnnotation(a.id, { glyph: icon })} />
+                <input
+                  type="color"
+                  value={a.glyphColor ?? '#ffffff'}
+                  onChange={(e) => patchAnnotation(a.id, { glyphColor: e.target.value })}
+                  title="Ikonfarge" style={{ width: 30, height: 30, border: 'none', background: 'none', padding: 0, cursor: 'pointer', borderRadius: 6, flexShrink: 0 }}
+                />
                 <input value={a.label ?? ''} onChange={(e) => patchAnnotation(a.id, { label: e.target.value })} placeholder="Tittel" style={{ ...textInput, flex: 1 }} />
               </div>
               <input value={a.label2 ?? ''} onChange={(e) => patchAnnotation(a.id, { label2: e.target.value })} placeholder="Undertekst" style={{ ...textInput, width: '100%', marginBottom: 6 }} />
+              {isIconId(a.glyph) && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, marginBottom: 6, cursor: 'pointer' }} title="Ikonet pulserer jevnt under avspilling/eksport">
+                  <input type="checkbox" checked={!!a.glyphPulse} onChange={(e) => patchAnnotation(a.id, { glyphPulse: e.target.checked })} />
+                  {' '}Pulser ikon
+                </label>
+              )}
             </>
           )}
 
@@ -1267,6 +1283,10 @@ function IllustrationInspector() {
               </label>
               <label style={{ fontSize: 11, color: C.inkSoft, display: 'block', marginBottom: 6 }}>Størrelse (linje + prikk): {Math.round((a.scale ?? 1) * 100)}%
                 <input type="range" min={0.5} max={2} step={0.05} value={a.scale ?? 1} onChange={(e) => patchAnnotation(a.id, { scale: Number(e.target.value) })} style={{ width: '100%' }} />
+              </label>
+              <label style={{ fontSize: 11, color: C.inkSoft, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                Farge
+                <input type="color" value={a.color ?? doc.canvas.accent2} onChange={(e) => patchAnnotation(a.id, { color: e.target.value })} style={{ width: 28, height: 28, border: 'none', background: 'none', padding: 0, cursor: 'pointer', borderRadius: 6 }} />
               </label>
             </>
           )}
@@ -1642,6 +1662,65 @@ function PreVisitInfoCardEditor({ content, onChange, primary }: { content: PreVi
   );
 }
 
+/** Redigerer for det genererte «skjema-liste»-kortet (previsitFormListCardImage) — spørsmål/
+ *  undertekst-liste (m/ valgfritt ikon+farge+puls, samme universelle ikon-mønster som info-kortet),
+ *  knappetekst. Regenererer SVG-en live på hver endring. */
+function PreVisitFormListEditor({ content, onChange, primary }: { content: PreVisitFormListContent; onChange: (c: PreVisitFormListContent) => void; primary: string }) {
+  return (
+    <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
+      <SectionLabel>Skjema-kort (falsk skjerm)</SectionLabel>
+      <Field label="Knappetekst">
+        <input value={content.buttonText} onChange={(e) => onChange({ ...content, buttonText: e.target.value })} style={{ ...textInput, width: '100%' }} />
+      </Field>
+      <Field label={`Spørsmål (${content.fields.length})`}>
+        {content.fields.map((f, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6, padding: 6, background: C.panelSoft, borderRadius: 6 }}>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <IconPickerButton value={f.icon ?? ''} onSelect={(icon) => onChange({ ...content, fields: content.fields.map((x, j) => (j === i ? { ...x, icon } : x)) })} />
+              <input
+                type="color"
+                value={f.iconColor ?? primary}
+                onChange={(e) => onChange({ ...content, fields: content.fields.map((x, j) => (j === i ? { ...x, iconColor: e.target.value } : x)) })}
+                title="Ikonfarge" style={{ width: 30, height: 30, border: 'none', background: 'none', padding: 0, cursor: 'pointer', borderRadius: 6, flexShrink: 0 }}
+              />
+              <input
+                value={f.q}
+                onChange={(e) => onChange({ ...content, fields: content.fields.map((x, j) => (j === i ? { ...x, q: e.target.value } : x)) })}
+                placeholder="Spørsmål" style={{ ...textInput, flex: 1 }}
+              />
+              <button
+                onClick={() => onChange({ ...content, fields: content.fields.filter((_, j) => j !== i) })}
+                disabled={content.fields.length <= 1}
+                style={{ ...listBtn, width: 26, textAlign: 'center', padding: '4px 0', opacity: content.fields.length <= 1 ? 0.4 : 1 }}
+                title="Fjern spørsmål" aria-label="Fjern spørsmål"
+              >✕</button>
+            </div>
+            <input
+              value={f.sub}
+              onChange={(e) => onChange({ ...content, fields: content.fields.map((x, j) => (j === i ? { ...x, sub: e.target.value } : x)) })}
+              placeholder="Undertekst" style={{ ...textInput, width: '100%' }}
+            />
+            {isIconId(f.icon) && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, cursor: 'pointer' }} title="Ikonet pulserer jevnt under avspilling/eksport">
+                <input type="checkbox" checked={!!f.iconPulse} onChange={(e) => onChange({ ...content, fields: content.fields.map((x, j) => (j === i ? { ...x, iconPulse: e.target.checked } : x)) })} />
+                {' '}Pulser ikon
+              </label>
+            )}
+          </div>
+        ))}
+        <button
+          onClick={() => onChange({ ...content, fields: [...content.fields, { q: 'Nytt spørsmål', sub: 'Undertekst' }] })}
+          style={{ ...listBtn, width: '100%' }}
+        >+ Spørsmål</button>
+      </Field>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: FS_SM, color: C.inkSoft, marginTop: 6, cursor: 'pointer' }}>
+        <input type="checkbox" checked={!!content.animateRows} onChange={(e) => onChange({ ...content, animateRows: e.target.checked })} />
+        {' '}Animer rader (flyt — hver rad popper inn étt og étt langs tidslinjen)
+      </label>
+    </div>
+  );
+}
+
 function ImageInspector({ image }: { image: import('./mockupStudioModel').MockupImageSlot }) {
   const patchImage = useMockupStudio((s) => s.patchImage);
   const removeImage = useMockupStudio((s) => s.removeImage);
@@ -1768,20 +1847,11 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
         />
       )}
       {image.formListContent && (
-        <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
-          <SectionLabel>Skjema-kort</SectionLabel>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: FS_SM, color: C.inkSoft, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={!!image.formListContent.animateRows}
-              onChange={(e) => {
-                const content: PreVisitFormListContent = { ...image.formListContent!, animateRows: e.target.checked };
-                patchImage(image.id, { formListContent: content, image: previsitFormListCardImage(content.fields, content.buttonText, doc.canvas.accent, doc.canvas.accent2, content.animateRows) });
-              }}
-            />
-            {' '}Animer rader (flyt — hver rad popper inn étt og étt langs tidslinjen)
-          </label>
-        </div>
+        <PreVisitFormListEditor
+          content={image.formListContent}
+          primary={doc.canvas.accent}
+          onChange={(content) => patchImage(image.id, { formListContent: content, image: previsitFormListCardImage(content.fields, content.buttonText, doc.canvas.accent, doc.canvas.accent2, content.animateRows) })}
+        />
       )}
       {image.solidColor && (
         <Field label="Farge">
@@ -1882,6 +1952,110 @@ function ArrangeRow({ kind, id }: { kind: 'device' | 'text' | 'image'; id: strin
   );
 }
 
+/** Redigerer for det genererte falske sjekkliste-skjermbildet (previsitPhoneScreenImage) —
+ *  punkt-tekst + fullført-status, valgfritt ikon (m/ farge+puls, samme universelle mønster)
+ *  som overstyrer standard hake/sirkel-glyphen. */
+function PreVisitChecklistEditor({ content, onChange, primary }: { content: PreVisitChecklistContent; onChange: (c: PreVisitChecklistContent) => void; primary: string }) {
+  return (
+    <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
+      <SectionLabel>Sjekkliste-skjerm (falsk skjerm)</SectionLabel>
+      <Field label={`Punkter (${content.items.length})`}>
+        {content.items.map((it, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6, padding: 6, background: C.panelSoft, borderRadius: 6 }}>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <IconPickerButton value={it.icon ?? ''} onSelect={(icon) => onChange({ ...content, items: content.items.map((x, j) => (j === i ? { ...x, icon } : x)) })} />
+              <input
+                type="color"
+                value={it.iconColor ?? primary}
+                onChange={(e) => onChange({ ...content, items: content.items.map((x, j) => (j === i ? { ...x, iconColor: e.target.value } : x)) })}
+                title="Ikonfarge (overstyrer hake/sirkel)" style={{ width: 30, height: 30, border: 'none', background: 'none', padding: 0, cursor: 'pointer', borderRadius: 6, flexShrink: 0 }}
+              />
+              <input
+                value={it.label}
+                onChange={(e) => onChange({ ...content, items: content.items.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })}
+                placeholder="Punkt" style={{ ...textInput, flex: 1 }}
+              />
+              <button
+                onClick={() => onChange({ ...content, items: content.items.filter((_, j) => j !== i) })}
+                disabled={content.items.length <= 1}
+                style={{ ...listBtn, width: 26, textAlign: 'center', padding: '4px 0', opacity: content.items.length <= 1 ? 0.4 : 1 }}
+                title="Fjern punkt" aria-label="Fjern punkt"
+              >✕</button>
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              {!isIconId(it.icon) && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={it.done} onChange={(e) => onChange({ ...content, items: content.items.map((x, j) => (j === i ? { ...x, done: e.target.checked } : x)) })} />
+                  {' '}Fullført
+                </label>
+              )}
+              {isIconId(it.icon) && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, cursor: 'pointer' }} title="Ikonet pulserer jevnt under avspilling/eksport">
+                  <input type="checkbox" checked={!!it.iconPulse} onChange={(e) => onChange({ ...content, items: content.items.map((x, j) => (j === i ? { ...x, iconPulse: e.target.checked } : x)) })} />
+                  {' '}Pulser ikon
+                </label>
+              )}
+            </div>
+          </div>
+        ))}
+        <button
+          onClick={() => onChange({ ...content, items: [...content.items, { label: 'Nytt punkt', done: false }] })}
+          style={{ ...listBtn, width: '100%' }}
+        >+ Punkt</button>
+      </Field>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: FS_SM, color: C.inkSoft, marginTop: 6, cursor: 'pointer' }}>
+        <input type="checkbox" checked={!!content.animate} onChange={(e) => onChange({ ...content, animate: e.target.checked })} />
+        {' '}Animer sjekkliste (flyt — hver rad popper inn étt og étt langs tidslinjen)
+      </label>
+    </div>
+  );
+}
+
+/** Redigerer for det genererte falske dashboard-skjermbildet (previsitDashboardScreenImage) —
+ *  pasient-banner + etikett/verdi-felt-grid. */
+function PreVisitDashboardEditor({ content, onChange }: { content: PreVisitDashboardContent; onChange: (c: PreVisitDashboardContent) => void }) {
+  return (
+    <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
+      <SectionLabel>Dashboard-skjerm (falsk skjerm)</SectionLabel>
+      <Field label="Pasient-banner">
+        <input value={content.patient} onChange={(e) => onChange({ ...content, patient: e.target.value })} style={{ ...textInput, width: '100%' }} />
+      </Field>
+      <Field label={`Felt (${content.fields.length})`}>
+        {content.fields.map((f, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6, padding: 6, background: C.panelSoft, borderRadius: 6 }}>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <input
+                value={f.label}
+                onChange={(e) => onChange({ ...content, fields: content.fields.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })}
+                placeholder="Etikett" style={{ ...textInput, flex: 1 }}
+              />
+              <button
+                onClick={() => onChange({ ...content, fields: content.fields.filter((_, j) => j !== i) })}
+                disabled={content.fields.length <= 1}
+                style={{ ...listBtn, width: 26, textAlign: 'center', padding: '4px 0', opacity: content.fields.length <= 1 ? 0.4 : 1 }}
+                title="Fjern felt" aria-label="Fjern felt"
+              >✕</button>
+            </div>
+            <input
+              value={f.value}
+              onChange={(e) => onChange({ ...content, fields: content.fields.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)) })}
+              placeholder="Verdi" style={{ ...textInput, width: '100%' }}
+            />
+          </div>
+        ))}
+        <button
+          onClick={() => onChange({ ...content, fields: [...content.fields, { label: 'Nytt felt', value: 'Verdi' }] })}
+          style={{ ...listBtn, width: '100%' }}
+        >+ Felt</button>
+      </Field>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: FS_SM, color: C.inkSoft, marginTop: 6, cursor: 'pointer' }}>
+        <input type="checkbox" checked={!!content.animate} onChange={(e) => onChange({ ...content, animate: e.target.checked })} />
+        {' '}Animer felt-grid (flyt — hvert felt popper inn étt og étt langs tidslinjen)
+      </label>
+    </div>
+  );
+}
+
 function DeviceInspector({ device, onUpload, advanced }: { device: import('./mockupStudioModel').MockupDeviceSlot; onUpload: () => void; advanced: boolean }) {
   const doc = useMockupStudio((s) => s.doc);
   const patchDevice = useMockupStudio((s) => s.patchDevice);
@@ -1922,36 +2096,17 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
         {simMsg && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 6 }}>{simMsg}</div>}
       </Field>
       {device.checklistContent && (
-        <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
-          <SectionLabel>Sjekkliste-skjerm</SectionLabel>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: FS_SM, color: C.inkSoft, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={!!device.checklistContent.animate}
-              onChange={(e) => {
-                const content: PreVisitChecklistContent = { ...device.checklistContent!, animate: e.target.checked };
-                patchDevice(device.id, { checklistContent: content, image: previsitPhoneScreenImage(content, doc.canvas.accent) });
-              }}
-            />
-            {' '}Animer sjekkliste (flyt — hver rad popper inn étt og étt langs tidslinjen)
-          </label>
-        </div>
+        <PreVisitChecklistEditor
+          content={device.checklistContent}
+          primary={doc.canvas.accent}
+          onChange={(content) => patchDevice(device.id, { checklistContent: content, image: previsitPhoneScreenImage(content, doc.canvas.accent) })}
+        />
       )}
       {device.dashboardContent && (
-        <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
-          <SectionLabel>Dashboard-skjerm</SectionLabel>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: FS_SM, color: C.inkSoft, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={!!device.dashboardContent.animate}
-              onChange={(e) => {
-                const content: PreVisitDashboardContent = { ...device.dashboardContent!, animate: e.target.checked };
-                patchDevice(device.id, { dashboardContent: content, image: previsitDashboardScreenImage(content, doc.canvas.accent, doc.canvas.accent2) });
-              }}
-            />
-            {' '}Animer felt-grid (flyt — hvert felt popper inn étt og étt langs tidslinjen)
-          </label>
-        </div>
+        <PreVisitDashboardEditor
+          content={device.dashboardContent}
+          onChange={(content) => patchDevice(device.id, { dashboardContent: content, image: previsitDashboardScreenImage(content, doc.canvas.accent, doc.canvas.accent2) })}
+        />
       )}
       {device.image && (
         <Field label="Utsnitt">

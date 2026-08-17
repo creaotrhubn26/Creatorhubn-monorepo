@@ -84,7 +84,8 @@ export interface MockupDeviceSlot {
 }
 
 export interface PreVisitChecklistContent {
-  items: { label: string; done: boolean }[];
+  /** icon (valgfri): overstyrer standard hake/sirkel-glyphen med et ikon fra mockupIcons-banken. */
+  items: { label: string; done: boolean; icon?: string; iconColor?: string; iconPulse?: boolean }[];
   animate?: boolean;
 }
 
@@ -549,11 +550,16 @@ export interface MockupAnnotation {
   fy2?: number;
   /** connector: sidelengs bue-forskyvning (-1..1, lerret-bredde-fraksjon) — 0 = rett strek. */
   curve?: number;
-  // pill: ikon-glyph (unicode) + tittel (label) + undertekst (label2), sentrert på fx/fy.
+  // pill: ikon-glyph (unicode ELLER mockupIcons-id) + tittel (label) + undertekst (label2), sentrert på fx/fy.
   glyph?: string;
   label2?: string;
+  /** pill: ikon-fargen (kun mockupIcons-id'er) + valgfri puls — samme universelle mønster som kort-punktene. */
+  glyphColor?: string;
+  glyphPulse?: boolean;
   /** step/connector: størrelses-multiplikator (badge-boks+tall / linje-tykkelse+prikk). Default 1. */
   scale?: number;
+  /** step: badge-bakgrunn (default doc.canvas.accent). connector: linje/prikk-farge (default doc.canvas.accent2). */
+  color?: string;
   /** marker/callout/loupe: hopp over avslørings-animasjonen — alltid fullt synlig ved avspilling. */
   noReveal?: boolean;
 }
@@ -677,7 +683,8 @@ export interface PreVisitInfoCardContent {
 }
 
 export interface PreVisitFormListContent {
-  fields: { q: string; sub: string }[];
+  /** icon (valgfri): vises som sirkel til venstre i raden, samme mønster som info-kortet. */
+  fields: { q: string; sub: string; icon?: string; iconColor?: string; iconPulse?: boolean }[];
   buttonText: string;
   animateRows?: boolean;
 }
@@ -1612,7 +1619,7 @@ export function previsitInfoCardImage(opts: {
 
 /** «Skjema-liste»-kort SVG: rad pr. spørsmål m/ undertekst + høyre-pil, CTA-knapp nederst.
  *  Brukes i kampanje-mal 2 («Fortell hva du kommer for»). Statisk generert, se note over. */
-export function previsitFormListCardImage(fields: { q: string; sub: string }[], buttonText: string, primary: string, accent: string, animateRows?: boolean): string {
+export function previsitFormListCardImage(fields: { q: string; sub: string; icon?: string; iconColor?: string }[], buttonText: string, primary: string, accent: string, animateRows?: boolean): string {
   const W = 600;
   const headerH = 84;
   const rowH = 76;
@@ -1620,9 +1627,12 @@ export function previsitFormListCardImage(fields: { q: string; sub: string }[], 
   let y = headerH;
   const rowsSvg = fields.map((f) => {
     const cy = y + rowH / 2 - 4;
+    const hasIcon = isIconId(f.icon);
+    const tx = hasIcon ? 76 : 40;
     const svg = animateRows ? '' : `
-      <text x="40" y="${cy - 6}" font-family="-apple-system,system-ui,sans-serif" font-size="17" font-weight="600" fill="#171a1f">${escXml(f.q)}</text>
-      <text x="40" y="${cy + 16}" font-family="-apple-system,system-ui,sans-serif" font-size="13" fill="#8a8f98">${escXml(f.sub)}</text>
+      ${hasIcon ? `<circle cx="40" cy="${cy + 5}" r="18" fill="${primary}" fill-opacity="0.1"/>${iconToSvg(f.icon!, 40, cy + 5, 10, f.iconColor ?? primary)}` : ''}
+      <text x="${tx}" y="${cy - 6}" font-family="-apple-system,system-ui,sans-serif" font-size="17" font-weight="600" fill="#171a1f">${escXml(f.q)}</text>
+      <text x="${tx}" y="${cy + 16}" font-family="-apple-system,system-ui,sans-serif" font-size="13" fill="#8a8f98">${escXml(f.sub)}</text>
       <text x="${W - 36}" y="${cy + 6}" font-family="-apple-system,system-ui,sans-serif" font-size="20" fill="${accent}" text-anchor="middle">&#8250;</text>
       <line x1="0" y1="${y + rowH - 1}" x2="${W}" y2="${y + rowH - 1}" stroke="#eef0f3" stroke-width="1"/>`;
     y += rowH;
@@ -1652,6 +1662,11 @@ export function previsitPhoneScreenImage(content: PreVisitChecklistContent, prim
   const { items, animate } = content;
   const rowsSvg = animate ? '' : items.map((it, i) => {
     const y = 210 + i * 84;
+    if (isIconId(it.icon)) {
+      const circ = `<circle cx="34" cy="${y}" r="15" fill="${primary}" fill-opacity="0.1"/>${iconToSvg(it.icon!, 34, y, 10, it.iconColor ?? primary)}`;
+      return `${circ}
+      <text x="64" y="${y + 6}" font-family="-apple-system,system-ui,sans-serif" font-size="17" font-weight="600" fill="#171a1f">${escXml(it.label)}</text>`;
+    }
     const fill = it.done ? primary : '#ffffff';
     const stroke = it.done ? primary : '#d1d5db';
     const mark = it.done ? `<path d="M28 ${y + 5} l5 5 l9 -10" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>` : '';
