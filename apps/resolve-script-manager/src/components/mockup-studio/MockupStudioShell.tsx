@@ -2143,13 +2143,23 @@ function PreVisitQuestionEditor({ content, onChange }: { content: PreVisitQuesti
 }
 
 /** Redigerer for det genererte falske PreVisit-notat-skjermbildet (previsitNoteScreenImage) —
- *  legens KI-genererte anamnesenotat. Chatlogg-fanen er dekorativ, ikke redigerbar (trimmet scope). */
+ *  legens KI-genererte anamnesenotat + ekte Chatlogg-fane (spørsmål/svar-par fra PreVisit-samtalen).
+ *  Fane-bryteren styrer hvilken av de to som er bakt inn i skjermbildet (statisk, samme mønster
+ *  som resten av «falske skjermer» — ingen klikk-interaksjon inne i selve SVG-en). */
 function PreVisitNoteEditor({ content, onChange }: { content: PreVisitNoteContent; onChange: (c: PreVisitNoteContent) => void }) {
+  const chatLog = content.chatLog ?? [];
   return (
     <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
       <SectionLabel>PreVisit-notat (falsk skjerm)</SectionLabel>
       <Field label="Pasientlinje">
         <input value={content.patientLine} onChange={(e) => onChange({ ...content, patientLine: e.target.value })} style={{ ...textInput, width: '100%' }} />
+      </Field>
+      <Field label="Vist fane">
+        <Segmented<'note' | 'chat'>
+          options={[['note', 'Anamnesenotat'], ['chat', 'Chatlogg']]}
+          value={content.activeTab ?? 'note'}
+          onChange={(v) => onChange({ ...content, activeTab: v })}
+        />
       </Field>
       <Field label={`Notat-avsnitt (${content.paragraphs.length})`}>
         {content.paragraphs.map((p, i) => (
@@ -2168,6 +2178,30 @@ function PreVisitNoteEditor({ content, onChange }: { content: PreVisitNoteConten
           </div>
         ))}
         <button onClick={() => onChange({ ...content, paragraphs: [...content.paragraphs, 'Nytt avsnitt.'] })} style={{ ...listBtn, width: '100%' }}>+ Avsnitt</button>
+      </Field>
+      <Field label={`Chatlogg — spørsmål/svar (${chatLog.length})`}>
+        {chatLog.map((qa, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6, padding: 6, background: C.panelSoft, borderRadius: 6 }}>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <input
+                value={qa.question}
+                onChange={(e) => onChange({ ...content, chatLog: chatLog.map((x, j) => (j === i ? { ...x, question: e.target.value } : x)) })}
+                placeholder="Spørsmål" style={{ ...textInput, flex: 1 }}
+              />
+              <button
+                onClick={() => onChange({ ...content, chatLog: chatLog.filter((_, j) => j !== i) })}
+                style={{ ...listBtn, width: 26, textAlign: 'center', padding: '4px 0' }}
+                title="Fjern spørsmål/svar" aria-label="Fjern spørsmål/svar"
+              >✕</button>
+            </div>
+            <input
+              value={qa.answer}
+              onChange={(e) => onChange({ ...content, chatLog: chatLog.map((x, j) => (j === i ? { ...x, answer: e.target.value } : x)) })}
+              placeholder="Svar" style={{ ...textInput, width: '100%' }}
+            />
+          </div>
+        ))}
+        <button onClick={() => onChange({ ...content, chatLog: [...chatLog, { question: 'Nytt spørsmål?', answer: 'Svar.' }] })} style={{ ...listBtn, width: '100%' }}>+ Spørsmål/svar</button>
       </Field>
       <Field label="Fotnotat">
         <input value={content.footerNote} onChange={(e) => onChange({ ...content, footerNote: e.target.value })} style={{ ...textInput, width: '100%' }} />

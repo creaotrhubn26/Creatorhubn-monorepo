@@ -112,6 +112,10 @@ export interface PreVisitNoteContent {
   patientLine: string;
   paragraphs: string[];
   footerNote: string;
+  /** Spørsmål/svar-par fra pasientens PreVisit-samtale — vises i Chatlogg-fanen. */
+  chatLog?: { question: string; answer: string }[];
+  /** Hvilken fane som er aktiv/bakt inn i skjermbildet. Default 'note'. */
+  activeTab?: 'note' | 'chat';
 }
 
 /** Skrive-animasjon: humanisert tempo + felt-kontekst + payoff. */
@@ -1476,6 +1480,12 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
           'Pasienten er bekymret for at tilstanden kan være alvorlig og ønsker utredning med MR av hodet.',
         ],
         footerNote: 'Når du har limt notatet inn i journalen, marker det som hentet – da slettes samtalen og notatet.',
+        chatLog: [
+          { question: 'Hva er grunnen til at du bestilte time i dag?', answer: 'Jeg har hatt vondt i hodet i noen uker.' },
+          { question: 'Kan du fortelle om det du opplever?', answer: 'Vondt i hodet nesten hver dag. Våkner med det. Er også kvalm på morgenen.' },
+          { question: 'Hvordan påvirker det deg i hverdagen?', answer: 'Vanskelig å jobbe.' },
+          { question: 'Hvordan har det utviklet seg?', answer: 'Blir gradvis verre. Begynte helt smått i bakhodet og har blitt mer og mer.' },
+        ],
       };
       const base = doc('PreVisit kampanje 6', 'previsit_campaign_6', canvas, [
         makeDevice('iphone', { x: 60, y: 420, w: 230, image: previsitQuestionScreenImage(questionContent, canvas.accent, canvas.accent2), fit: 'cover', questionContent }),
@@ -1767,27 +1777,40 @@ export function previsitQuestionScreenImage(content: PreVisitQuestionContent, pr
 }
 
 /** Falsk laptop-skjerm SVG: legens PreVisit-notat (KI-generert anamnesenotat). Kampanje-mal 6
- *  (legens tidsklemme-variant). Chatlogg-fanen er dekorativ (ikke redigerbart innhold — trimmet scope). */
+ *  (legens tidsklemme-variant). activeTab styrer hvilken av de to fanene som er bakt inn i
+ *  skjermbildet — svaret er statisk (samme mønster som resten av «falske skjermer»), så bytte
+ *  av fane skjer via editoren (previsitNoteEditor-segmentert kontroll), ikke klikk på selve SVG-en. */
 export function previsitNoteScreenImage(content: PreVisitNoteContent, primary: string, accent: string): string {
-  const { patientLine, paragraphs, footerNote } = content;
+  const { patientLine, paragraphs, footerNote, chatLog, activeTab } = content;
+  const showChat = activeTab === 'chat' && !!chatLog?.length;
   let y = 218;
-  const paraSvg = paragraphs.map((p) => {
-    const lines = wrapByChars(p, 92);
-    const block = lines.map((l, i) => `<text x="64" y="${y + i * 24}" font-family="-apple-system,system-ui,sans-serif" font-size="14" fill="#3c4453">${escXml(l)}</text>`).join('');
-    y += lines.length * 24 + 22;
-    return block;
-  }).join('');
+  const bodySvg = showChat
+    ? chatLog!.map((qa) => {
+      const qLines = wrapByChars(`Spørsmål: ${qa.question}`, 92);
+      const aLines = wrapByChars(`Svar: ${qa.answer}`, 92);
+      const qBlock = qLines.map((l, i) => `<text x="64" y="${y + i * 21}" font-family="-apple-system,system-ui,sans-serif" font-size="13" font-weight="700" fill="#171a1f">${escXml(l)}</text>`).join('');
+      y += qLines.length * 21 + 4;
+      const aBlock = aLines.map((l, i) => `<text x="64" y="${y + i * 21}" font-family="-apple-system,system-ui,sans-serif" font-size="13" fill="#3c4453">${escXml(l)}</text>`).join('');
+      y += aLines.length * 21 + 22;
+      return qBlock + aBlock;
+    }).join('')
+    : paragraphs.map((p) => {
+      const lines = wrapByChars(p, 92);
+      const block = lines.map((l, i) => `<text x="64" y="${y + i * 24}" font-family="-apple-system,system-ui,sans-serif" font-size="14" fill="#3c4453">${escXml(l)}</text>`).join('');
+      y += lines.length * 24 + 22;
+      return block;
+    }).join('');
   const boxH = Math.min(400, y - 218 + 30);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="880" height="620">
     <rect width="880" height="620" fill="#f7f6f3"/>
     <rect width="880" height="90" fill="${primary}"/>
     <text x="40" y="45" font-family="Georgia,'Iowan Old Style',serif" font-size="22" font-weight="700" fill="#ffffff">PreVisit-notat</text>
     <text x="40" y="72" font-family="-apple-system,system-ui,sans-serif" font-size="13" fill="#ffffff" fill-opacity="0.75">${escXml(patientLine)}</text>
-    <rect x="40" y="112" width="180" height="36" rx="18" fill="${accent}" fill-opacity="0.18"/>
-    <text x="130" y="135" font-family="-apple-system,system-ui,sans-serif" font-size="13" font-weight="700" fill="${primary}" text-anchor="middle">Anamnesenotat</text>
-    <text x="256" y="135" font-family="-apple-system,system-ui,sans-serif" font-size="13" fill="#9aa0a8">Chatlogg</text>
+    <rect x="${showChat ? 226 : 40}" y="112" width="180" height="36" rx="18" fill="${accent}" fill-opacity="0.18"/>
+    <text x="130" y="135" font-family="-apple-system,system-ui,sans-serif" font-size="13" font-weight="${showChat ? 400 : 700}" fill="${showChat ? '#9aa0a8' : primary}" text-anchor="middle">Anamnesenotat</text>
+    <text x="316" y="135" font-family="-apple-system,system-ui,sans-serif" font-size="13" font-weight="${showChat ? 700 : 400}" fill="${showChat ? primary : '#9aa0a8'}" text-anchor="middle">Chatlogg</text>
     <rect x="40" y="170" width="800" height="${boxH}" rx="16" fill="#ffffff" stroke="#eef0f3"/>
-    ${paraSvg}
+    ${bodySvg}
     <rect x="40" y="${170 + boxH + 20}" width="800" height="56" rx="14" fill="${accent}" fill-opacity="0.14"/>
     ${wrapByChars(footerNote, 70).slice(0, 2).map((l, i) => `<text x="60" y="${170 + boxH + (wrapByChars(footerNote, 70).length > 1 ? 33 : 53) + i * 18}" font-family="-apple-system,system-ui,sans-serif" font-size="12" fill="#6b7280">${escXml(l)}</text>`).join('')}
     <rect x="640" y="${170 + boxH + 32}" width="184" height="32" rx="16" fill="${primary}"/>
