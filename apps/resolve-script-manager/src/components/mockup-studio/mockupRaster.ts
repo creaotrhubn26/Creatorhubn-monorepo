@@ -1946,7 +1946,8 @@ function drawInfoCardRows(ctx: CanvasRenderingContext2D, doc: MockupDoc, im: Moc
       ctx.fillStyle = hexToRgba(navy, 0.1);
       ctx.beginPath(); ctx.arc(im.x + 46 * sf, cy, 19 * sf, 0, Math.PI * 2); ctx.fill();
       if (isIconId(r.icon)) {
-        drawIcon(ctx, r.icon, im.x + 46 * sf, cy, 11 * sf, r.iconColor ?? navy);
+        const pulse = r.iconPulse ? 1 + 0.14 * Math.sin((t ?? 0) * Math.PI * 6) : 1;
+        drawIcon(ctx, r.icon, im.x + 46 * sf, cy, 11 * sf * pulse, r.iconColor ?? navy);
       } else {
         ctx.fillStyle = '#171a1f'; // fillStyle over var fortsatt satt til den svake sirkel-bakgrunnen — usynlig emoji ellers
         ctx.font = `${18 * sf}px -apple-system, system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -1972,7 +1973,8 @@ function drawInfoCardRows(ctx: CanvasRenderingContext2D, doc: MockupDoc, im: Moc
       roundRectPath(ctx, im.x + 24 * sf, y + 8 * sf, im.w - 48 * sf, highlightH * sf - 16 * sf, 14 * sf); ctx.fill();
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
       if (isIconId(hr.icon)) {
-        drawIcon(ctx, hr.icon, im.x + 52 * sf, cy + 1 * sf, 9 * sf, hr.iconColor ?? navy);
+        const pulse = hr.iconPulse ? 1 + 0.14 * Math.sin((t ?? 0) * Math.PI * 6) : 1;
+        drawIcon(ctx, hr.icon, im.x + 52 * sf, cy + 1 * sf, 9 * sf * pulse, hr.iconColor ?? navy);
       } else {
         ctx.font = `${17 * sf}px -apple-system, system-ui, sans-serif`; ctx.fillStyle = '#000';
         ctx.fillText(hr.icon, im.x + 52 * sf, cy + 6 * sf);

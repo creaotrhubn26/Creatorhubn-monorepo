@@ -669,8 +669,8 @@ export interface PreVisitInfoCardContent {
   title: string;
   checkHeader?: boolean;
   /** iconColor: valgfri per-rad-overstyring — mangler → doc.canvas.accent (primary). */
-  rows: { icon: string; label: string; value: string; quote?: boolean; iconColor?: string }[];
-  highlightRow?: { icon: string; label: string; iconColor?: string };
+  rows: { icon: string; label: string; value: string; quote?: boolean; iconColor?: string; iconPulse?: boolean }[];
+  highlightRow?: { icon: string; label: string; iconColor?: string; iconPulse?: boolean };
   footer?: string;
   /** Se PreVisitCardContent.animateSteps — samme flyt-mønster, radene her i stedet for steg. */
   animateRows?: boolean;
@@ -1566,8 +1566,8 @@ export function previsitInfoCardImage(opts: {
   primary: string;
   accent: string;
   checkHeader?: boolean;
-  rows: { icon: string; label: string; value: string; quote?: boolean; iconColor?: string }[];
-  highlightRow?: { icon: string; label: string; iconColor?: string };
+  rows: { icon: string; label: string; value: string; quote?: boolean; iconColor?: string; iconPulse?: boolean }[];
+  highlightRow?: { icon: string; label: string; iconColor?: string; iconPulse?: boolean };
   footer?: string;
   animateRows?: boolean;
 }): string {

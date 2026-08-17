@@ -1580,10 +1580,16 @@ function PreVisitInfoCardEditor({ content, onChange, primary }: { content: PreVi
               onChange={(e) => onChange({ ...content, rows: content.rows.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)) })}
               placeholder="Verdi" style={{ ...textInput, width: '100%' }}
             />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, cursor: 'pointer' }}>
-              <input type="checkbox" checked={!!r.quote} onChange={(e) => onChange({ ...content, rows: content.rows.map((x, j) => (j === i ? { ...x, quote: e.target.checked } : x)) })} />
-              {' '}Vis som sitat
-            </label>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!r.quote} onChange={(e) => onChange({ ...content, rows: content.rows.map((x, j) => (j === i ? { ...x, quote: e.target.checked } : x)) })} />
+                {' '}Vis som sitat
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, cursor: 'pointer' }} title="Ikonet pulserer jevnt under avspilling/eksport">
+                <input type="checkbox" checked={!!r.iconPulse} onChange={(e) => onChange({ ...content, rows: content.rows.map((x, j) => (j === i ? { ...x, iconPulse: e.target.checked } : x)) })} />
+                {' '}Pulser ikon
+              </label>
+            </div>
           </div>
         ))}
         <button
@@ -1610,6 +1616,12 @@ function PreVisitInfoCardEditor({ content, onChange, primary }: { content: PreVi
           </div>
         ) : (
           <button onClick={() => onChange({ ...content, highlightRow: { icon: '✓', label: 'Klar' } })} style={{ ...listBtn, width: '100%' }}>+ Uthevet rad</button>
+        )}
+        {content.highlightRow && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, marginTop: 4, cursor: 'pointer' }} title="Ikonet pulserer jevnt under avspilling/eksport">
+            <input type="checkbox" checked={!!content.highlightRow.iconPulse} onChange={(e) => onChange({ ...content, highlightRow: { ...content.highlightRow!, iconPulse: e.target.checked } })} />
+            {' '}Pulser ikon
+          </label>
         )}
       </Field>
       <Field label="Fotnote (valgfri)">
