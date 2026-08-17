@@ -112,9 +112,11 @@ def create_humanoid_body(armature_name: str, name: str | None = None) -> dict:
     head_top = tail("spine.006") or tail("spine.005") or torso_top
 
     parts = [
-        # Tapered i stedet for rett rør: smalere midje, bredere skuldre — leser
-        # umiddelbart mer menneskelig enn en uniform sylinder.
-        _cone_between(head("spine"), torso_top, r_torso * 0.72, r_torso * 1.18, "Torso"),
+        # NB: en tapered cone her (smal midje/bred skulder) ble prøvd, men
+        # skapte et "volang"-artefakt der cone-bunnen møter lår-toppene —
+        # bevel-modifieren roter på den ikke-boolske overlappen. Rett sylinder
+        # er trygt; taper kan gjeninnføres senere med en boolsk union i stedet.
+        _cylinder_between(head("spine"), torso_top, r_torso, "Torso"),
         _cylinder_between(torso_top, head_top, r_neck, "Neck"),
         # Hodet: egg-form (høyere enn bredt) i stedet for perfekt kule.
         _sphere_at(head_top + Vector((0, 0, r_head * 0.8)), r_head, "Head", scale=(1.0, 0.94, 1.16)),
