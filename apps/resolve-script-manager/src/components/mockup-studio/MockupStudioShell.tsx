@@ -1478,6 +1478,15 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
   const removeImage = useMockupStudio((s) => s.removeImage);
   const playT = useMockupStudio((s) => s.playT);
   const doc = useMockupStudio((s) => s.doc);
+  const imgFileInputRef = useRef<HTMLInputElement>(null);
+  const onImageFilePicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => { if (typeof r.result === 'string') patchImage(image.id, { image: r.result }); };
+    r.readAsDataURL(f);
+  };
   const [seedPrompt, setSeedPrompt] = useState('cheese-pull');
   const [seedBusy, setSeedBusy] = useState(false);
   const [seedErr, setSeedErr] = useState<string | null>(null);
@@ -1546,7 +1555,11 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
           🏥 {image.illustration === 'waiting-room-backdrop' ? 'Venteværelse' : 'Legekontor'}-bakgrunn — tegnet direkte på lerretet, ligger alltid bak personer.
         </div>
       ) : (
-        <img src={image.image} alt="" style={{ width: '100%', borderRadius: 8, marginBottom: 10, maxHeight: 130, objectFit: 'cover', display: 'block' }} />
+        <>
+          <img src={image.image} alt="" style={{ width: '100%', borderRadius: 8, marginBottom: 10, maxHeight: 130, objectFit: 'cover', display: 'block' }} />
+          <button onClick={() => imgFileInputRef.current?.click()} style={{ ...listBtn, width: '100%', marginBottom: 10 }}>Bytt bilde</button>
+          <input ref={imgFileInputRef} type="file" accept="image/*" onChange={onImageFilePicked} style={{ display: 'none' }} />
+        </>
       )}
       {image.cardContent && (
         <>
