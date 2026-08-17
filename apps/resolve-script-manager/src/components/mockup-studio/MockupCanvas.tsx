@@ -473,7 +473,7 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
         {/* Seedance-klipp: spilles i posisjon over poster-bildet (preview). Eksport bruker poster. */}
         {doc.images?.filter((im) => im.video).map((im) => (
           <video key={`vid_${im.id}`} src={safeFileSrc(im.video as string)} autoPlay loop muted playsInline
-            style={{ position: 'absolute', left: pct(im.x, W), top: pct(im.y, H), width: pct(im.w, W), height: pct(im.h, H), transform: `rotate(${im.rotation}deg)`, transformOrigin: 'center', objectFit: im.fit === 'contain' ? 'contain' : 'cover', borderRadius: pct(im.radius, W), pointerEvents: 'none' }} />
+            style={{ position: 'absolute', left: pct(im.x, W), top: pct(im.y, H), width: pct(im.w, W), height: pct(im.h, H), transform: `rotate(${im.rotation}deg)`, transformOrigin: 'center', objectFit: im.fit === 'contain' ? 'contain' : 'cover', objectPosition: `${(im.focusX ?? 0.5) * 100}% ${(im.focusY ?? 0.5) * 100}%`, borderRadius: pct(im.radius, W), pointerEvents: 'none' }} />
         ))}
 
         {/* Frittstående bilde-elementer — dra for å flytte (nederst i overlay-stacken) */}
