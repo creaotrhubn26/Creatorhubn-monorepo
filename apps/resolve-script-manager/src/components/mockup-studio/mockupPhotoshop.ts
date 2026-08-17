@@ -32,6 +32,8 @@ function canvasToPngBase64(canvas: HTMLCanvasElement): string {
 export interface EditablePsdResult {
   output_path: string;
   layers: number;
+  /** Fonter Photoshop måtte erstatte (ikke installert) — { requested → used }. */
+  fontWarnings: Array<{ requested: string; used: string }>;
 }
 
 /** Er Photoshop-broen tilkoblet akkurat nå? */
@@ -117,5 +119,5 @@ export async function buildEditablePsdViaBridge(doc: MockupDoc, outputPath: stri
     },
   });
 
-  return { output_path: res.output_path, layers: res.created_layers.length };
+  return { output_path: res.output_path, layers: res.created_layers.length, fontWarnings: res.font_warnings ?? [] };
 }

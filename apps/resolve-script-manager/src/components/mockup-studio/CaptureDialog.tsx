@@ -21,6 +21,7 @@ const C = {
 
 const DEV_LABEL: Record<MockupDeviceVariant, string> = {
   macbook: 'MacBook', ipad: 'iPad', ipad_landscape: 'iPad (liggende)', iphone: 'iPhone', watch: 'Apple Watch',
+  android: 'Android', browser: 'Nettleser', tablet: 'Nettbrett',
 };
 
 /** Forhåndsvis et skjermbilde slik det beskjæres inn i en enhets-skjerm. */

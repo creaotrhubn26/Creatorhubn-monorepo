@@ -890,10 +890,10 @@ function pwSettings(): { base: string; token: string | null } {
   try {
     const s = JSON.parse(localStorage.getItem('trrpa.settings') || '{}');
     return {
-      base: (s.RR_POST_AGENT_BASE_URL || 'https://creatorhubn.com/api/post-agent').replace(/\/$/, ''),
+      base: (s.RR_POST_AGENT_BASE_URL || 'https://www.creatorhubn.com/api/post-agent').replace(/\/$/, ''),
       token: (s.RR_BEARER_TOKEN || '').trim() || null,
     };
-  } catch { return { base: 'https://creatorhubn.com/api/post-agent', token: null }; }
+  } catch { return { base: 'https://www.creatorhubn.com/api/post-agent', token: null }; }
 }
 function pushLearnedToBackend(url: string, label: string, t: LearnedTarget): void {
   const { base, token } = pwSettings();

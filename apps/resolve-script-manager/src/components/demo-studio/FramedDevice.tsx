@@ -19,6 +19,7 @@ import { checkUrlEmbeddable } from '../../api';
  *  responsiv layout (mobil/tablet/desktop) — ikke desktop-layout overalt. */
 export const VIEWPORT_W: Record<FrameVariant, number> = {
   iphone: 390, ipad: 834, ipad_landscape: 1194, macbook: 1440,
+  android: 412, browser: 1440, tablet: 834,
 };
 
 export function FramedDevice({ variant, url, width, shadow, iframeRef, overlay, onScreenClick, onScreenDraw, editRect, onEditRect, focusZoom, screenshot, scrollPct }: {

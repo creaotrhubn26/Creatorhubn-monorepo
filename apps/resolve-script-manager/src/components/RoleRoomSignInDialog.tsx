@@ -40,7 +40,7 @@ function getBaseUrl(): string {
   } catch {
     // fall through
   }
-  return "https://creatorhubn.com/api/post-agent";
+  return "https://www.creatorhubn.com/api/post-agent";
 }
 
 async function saveBearerToSettings(token: string): Promise<void> {

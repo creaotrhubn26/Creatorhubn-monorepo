@@ -1490,6 +1490,8 @@ export const photoshop = {
     send<{
       output_path: string;
       created_layers: Array<{ key: string; type: string; layer_name: string }>;
+      /** Fonter som ble erstattet fordi de ikke var installert i Photoshop. */
+      font_warnings?: Array<{ requested: string; used: string }>;
       notes: string;
     }>("template.scaffold", params),
 };

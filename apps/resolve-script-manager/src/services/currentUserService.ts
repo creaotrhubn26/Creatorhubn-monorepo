@@ -14,7 +14,7 @@ function getBaseUrl(): string {
       if (s.RR_POST_AGENT_BASE_URL) return s.RR_POST_AGENT_BASE_URL.replace(/\/$/, '');
     }
   } catch { /* fall through */ }
-  return 'https://creatorhubn.com/api/post-agent';
+  return 'https://www.creatorhubn.com/api/post-agent';
 }
 
 function getBearer(): string | null {

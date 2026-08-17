@@ -1,3 +1,6 @@
+// VIKTIG: browser-shim FØRST (self-installerer ved import) → må evaluere før App-modulen
+// leser sine module-consts (IS_BROWSER_TEST). No-op i native app (ekte Tauri finnes).
+import "./lib/browserTauriShim";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
