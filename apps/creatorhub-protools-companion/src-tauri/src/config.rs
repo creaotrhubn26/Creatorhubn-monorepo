@@ -28,12 +28,17 @@ pub struct AppConfig {
     #[serde(default)]
     pub bounce_dir: Option<String>,
     #[serde(default)]
+    pub voice_notes_dir: Option<String>,
+    #[serde(default)]
     pub easeverse_track_id: Option<String>,
     #[serde(default)]
     pub audio_room_id: Option<String>,
     /// Storage-nøkler vi allerede har lastet opp (dedup mot re-bounce av samme fil).
     #[serde(default)]
     pub uploaded_bounces: Vec<String>,
+    /// Storage-nøkler for allerede opplastede lydnotater (dedup).
+    #[serde(default)]
+    pub uploaded_voice_notes: Vec<String>,
 }
 
 fn default_api_base() -> String {
@@ -50,9 +55,11 @@ impl Default for AppConfig {
             session_name: None,
             session_info_path: None,
             bounce_dir: None,
+            voice_notes_dir: None,
             easeverse_track_id: None,
             audio_room_id: None,
             uploaded_bounces: Vec::new(),
+            uploaded_voice_notes: Vec::new(),
         }
     }
 }
@@ -107,6 +114,20 @@ mod tests {
         let c: AppConfig = serde_json::from_str("{}").unwrap();
         assert_eq!(c.api_base, DEFAULT_API_BASE);
         assert!(c.uploaded_bounces.is_empty());
+        assert!(c.voice_notes_dir.is_none());
+        assert!(c.uploaded_voice_notes.is_empty());
+    }
+
+    /// Config saved by an older companion build (before voice notes existed)
+    /// must still load — the whole point of `#[serde(default)]` everywhere.
+    #[test]
+    fn config_without_voice_note_fields_still_loads() {
+        let old = r#"{"api_base":"https://x","device_token":"t","bounce_dir":"/bounces","uploaded_bounces":["k1"]}"#;
+        let c: AppConfig = serde_json::from_str(old).unwrap();
+        assert_eq!(c.bounce_dir.as_deref(), Some("/bounces"));
+        assert_eq!(c.uploaded_bounces, vec!["k1".to_string()]);
+        assert!(c.voice_notes_dir.is_none());
+        assert!(c.uploaded_voice_notes.is_empty());
     }
 
     #[test]

@@ -10,6 +10,7 @@ import PlayArrow from "@mui/icons-material/PlayArrow";
 import Stop from "@mui/icons-material/Stop";
 import Sync from "@mui/icons-material/Sync";
 import LinkOff from "@mui/icons-material/LinkOff";
+import Mic from "@mui/icons-material/Mic";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import * as api from "./api";
@@ -33,6 +34,7 @@ export default function App() {
   const [name, setName] = useState("");
   const [infoPath, setInfoPath] = useState<string | null>(null);
   const [bounceDir, setBounceDir] = useState<string | null>(null);
+  const [voiceNotesDir, setVoiceNotesDir] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -41,6 +43,7 @@ export default function App() {
       setApiBase((prev) => prev || s.api_base);
       if (s.session_info_path) setInfoPath(s.session_info_path);
       if (s.bounce_dir) setBounceDir(s.bounce_dir);
+      if (s.voice_notes_dir) setVoiceNotesDir(s.voice_notes_dir);
       if (s.paired && !s.session_id) {
         try { setTracks(await api.listTracks()); } catch { /* */ }
       }
@@ -54,7 +57,7 @@ export default function App() {
       const entry: ActivityEntry = { ts: new Date().toISOString(), kind: e.payload.kind, message: e.payload.message };
       setActivity((a) => [entry, ...a].slice(0, 200));
       // Aktivitet kan endre sesjons-status (ny bounce / markører) → refresh lett
-      if (e.payload.kind === "bounce") refresh();
+      if (e.payload.kind === "bounce" || e.payload.kind === "voice_note") refresh();
     });
     return () => { un.then((f) => f()); };
   }, [refresh]);
@@ -82,6 +85,10 @@ export default function App() {
     const d = await open({ directory: true, multiple: false });
     if (typeof d === "string") setBounceDir(d);
   };
+  const pickVoiceNotes = async () => {
+    const d = await open({ directory: true, multiple: false });
+    if (typeof d === "string") setVoiceNotesDir(d);
+  };
 
   const doSetup = async () => {
     if (!name.trim()) { logLocal("error", "Gi sesjonen et navn"); return; }
@@ -95,6 +102,7 @@ export default function App() {
         audioRoomId: track?.review_id || null,
         sessionInfoPath: infoPath,
         bounceDir,
+        voiceNotesDir,
       });
       logLocal("info", r.linked_review ? `Sesjon koblet til Sound Room` : `Sesjon opprettet (ikke koblet til track)`);
       await refresh();
@@ -182,6 +190,8 @@ export default function App() {
               hint="Pro Tools → File → Export → Session Info as Text. Velg den eksporterte .txt-fila." />
             <FilePick icon={<FolderOpen />} label="«Bounced Files»-mappe" value={bounceDir} onPick={pickBounce}
               hint="Mappen Pro Tools bouncer til. Nye WAV-er blir nye review-versjoner." />
+            <FilePick icon={<Mic />} label="«Voice Notes»-mappe (valgfritt)" value={voiceNotesDir} onPick={pickVoiceNotes}
+              hint="Egen mappe for korte lydnotater (f.eks. uttale-tilbakemelding). Nye lydfiler her blir tidskodede kommentarer — ikke nye versjoner." />
             <Button variant="contained" onClick={doSetup} disabled={busy || !name.trim()}
               sx={{ bgcolor: ORANGE, fontWeight: 700, "&:hover": { bgcolor: "#e07e00" } }}>Opprett kobling</Button>
           </Stack>
@@ -198,6 +208,7 @@ export default function App() {
             </Stack>
             <Row label="Session Info" value={state.session_info_path} />
             <Row label="Bounced Files" value={state.bounce_dir} />
+            <Row label="Voice Notes" value={state.voice_notes_dir} />
             <Stack direction="row" spacing={1}>
               <Button variant="contained" startIcon={state.watching ? <Stop /> : <PlayArrow />} onClick={toggleWatch} disabled={busy}
                 sx={{ bgcolor: state.watching ? "#e0606a" : ORANGE, fontWeight: 700, "&:hover": { bgcolor: state.watching ? "#c84f58" : "#e07e00" } }}>
@@ -218,7 +229,7 @@ export default function App() {
             {activity.map((a, i) => (
               <Stack key={i} direction="row" spacing={1} alignItems="baseline">
                 <Typography sx={{ fontSize: 10.5, color: "text.secondary", minWidth: 60, fontVariantNumeric: "tabular-nums" }}>{new Date(a.ts).toLocaleTimeString()}</Typography>
-                <Box sx={{ width: 7, height: 7, borderRadius: "50%", mt: 0.6, flexShrink: 0, bgcolor: a.kind === "error" ? "#e0606a" : a.kind === "bounce" ? "#5fb88a" : a.kind === "marker" ? ORANGE : "#3fa7d6" }} />
+                <Box sx={{ width: 7, height: 7, borderRadius: "50%", mt: 0.6, flexShrink: 0, bgcolor: a.kind === "error" ? "#e0606a" : a.kind === "bounce" ? "#5fb88a" : a.kind === "marker" ? ORANGE : a.kind === "voice_note" ? "#c77dff" : "#3fa7d6" }} />
                 <Typography sx={{ fontSize: 12.5 }}>{a.message}</Typography>
               </Stack>
             ))}

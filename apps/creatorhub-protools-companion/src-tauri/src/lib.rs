@@ -17,7 +17,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::{AppHandle, State};
 
-use processing::{BounceResult, SyncResult};
+use processing::{BounceResult, SyncResult, VoiceNoteResult};
 use state::{snapshot, SharedConfig, SharedWatcher, WatcherCtl};
 
 #[derive(Serialize)]
@@ -29,6 +29,7 @@ struct AppStateDto {
     session_name: Option<String>,
     session_info_path: Option<String>,
     bounce_dir: Option<String>,
+    voice_notes_dir: Option<String>,
     easeverse_track_id: Option<String>,
     audio_room_id: Option<String>,
     watching: bool,
@@ -62,6 +63,7 @@ fn get_state(cfg: State<'_, SharedConfig>, w: State<'_, SharedWatcher>) -> AppSt
         session_name: c.session_name.clone(),
         session_info_path: c.session_info_path.clone(),
         bounce_dir: c.bounce_dir.clone(),
+        voice_notes_dir: c.voice_notes_dir.clone(),
         easeverse_track_id: c.easeverse_track_id.clone(),
         audio_room_id: c.audio_room_id.clone(),
         watching: watcher::is_running(w.inner()),
@@ -113,6 +115,7 @@ async fn setup_session(
     audio_room_id: Option<String>,
     session_info_path: Option<String>,
     bounce_dir: Option<String>,
+    voice_notes_dir: Option<String>,
     cfg: State<'_, SharedConfig>,
 ) -> Result<SessionInfoDto, String> {
     let snap = snapshot(cfg.inner());
@@ -134,6 +137,7 @@ async fn setup_session(
         c.session_name = Some(name.clone());
         c.session_info_path = session_info_path;
         c.bounce_dir = bounce_dir;
+        c.voice_notes_dir = voice_notes_dir;
         c.easeverse_track_id = easeverse_track_id;
         c.audio_room_id = linked.clone();
         config::save(&c)?;
@@ -149,6 +153,11 @@ async fn sync_session_info(app: AppHandle, cfg: State<'_, SharedConfig>) -> Resu
 #[tauri::command]
 async fn upload_bounce(path: String, app: AppHandle, cfg: State<'_, SharedConfig>) -> Result<BounceResult, String> {
     processing::upload_bounce(cfg.inner(), &app, std::path::Path::new(&path)).await
+}
+
+#[tauri::command]
+async fn upload_voice_note(path: String, app: AppHandle, cfg: State<'_, SharedConfig>) -> Result<VoiceNoteResult, String> {
+    processing::upload_voice_note(cfg.inner(), &app, std::path::Path::new(&path)).await
 }
 
 #[tauri::command]
@@ -181,6 +190,7 @@ pub fn run() {
             setup_session,
             sync_session_info,
             upload_bounce,
+            upload_voice_note,
             start_watching,
             stop_watching
         ])

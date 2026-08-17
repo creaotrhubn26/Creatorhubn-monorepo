@@ -27,6 +27,13 @@ pub struct BounceResult {
     pub sections_synced: i64,
 }
 
+#[derive(Serialize, Clone)]
+pub struct VoiceNoteResult {
+    pub comment_id: Option<String>,
+    pub review_version_id: Option<String>,
+    pub timecode_seconds: Option<f64>,
+}
+
 fn require<'a>(opt: &'a Option<String>, what: &str) -> Result<&'a str, String> {
     opt.as_deref().filter(|s| !s.is_empty()).ok_or_else(|| format!("{} mangler", what))
 }
@@ -150,4 +157,64 @@ pub async fn upload_bounce(cfg: &SharedConfig, app: &AppHandle, path: &Path) -> 
     );
 
     Ok(BounceResult { review_version_id, version_number, sections_synced })
+}
+
+/// Last opp et lydnotat (f.eks. uttale-tilbakemelding til vokalisten) → tidskodet
+/// kommentar på gjeldende review-versjon. Samme opplastingssti som bounces (presign
+/// → PUT → complete), bare mot voice-note-endepunktene og uten å opprette en ny
+/// versjon. Idempotent på storage-key i config, akkurat som bounces.
+pub async fn upload_voice_note(cfg: &SharedConfig, app: &AppHandle, path: &Path) -> Result<VoiceNoteResult, String> {
+    if !is_audio_file(path) {
+        return Err("Ikke en lydfil".into());
+    }
+    let snap = snapshot(cfg);
+    let token = require(&snap.token, "device-token")?;
+    let session_id = require(&snap.session_id, "sesjon")?;
+
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("voice-note.wav")
+        .to_string();
+
+    let bytes = tokio::fs::read(path)
+        .await
+        .map_err(|e| format!("Kunne ikke lese {}: {}", file_name, e))?;
+    let size = bytes.len() as u64;
+    if size == 0 {
+        return Err("Tom fil".into());
+    }
+
+    emit_activity(app, "info", &format!("Laster opp lydnotat «{}»…", file_name));
+
+    let (upload_url, file_url, storage_key) =
+        api_client::presign_voice_note(&snap.api_base, token, session_id, &file_name, size).await?;
+    api_client::put_bytes(&upload_url, bytes).await?;
+
+    let payload = json!({
+        "fileUrl": file_url,
+        "storageKey": storage_key,
+        "fileName": file_name,
+    });
+    let res = api_client::complete_voice_note(&snap.api_base, token, session_id, payload).await?;
+    let comment_id = res.get("commentId").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let review_version_id = res.get("reviewVersionId").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let timecode_seconds = res.get("timecodeSeconds").and_then(|v| v.as_f64());
+
+    // Marker storage-key som lastet opp (dedup), egen liste fra bounces.
+    {
+        let mut c = cfg.lock().unwrap();
+        if !storage_key.is_empty() && !c.uploaded_voice_notes.contains(&storage_key) {
+            c.uploaded_voice_notes.push(storage_key);
+        }
+        let _ = config::save(&c);
+    }
+
+    emit_activity(
+        app,
+        "voice_note",
+        &format!("Lydnotat «{}» → kommentar i Sound Room", file_name),
+    );
+
+    Ok(VoiceNoteResult { comment_id, review_version_id, timecode_seconds })
 }

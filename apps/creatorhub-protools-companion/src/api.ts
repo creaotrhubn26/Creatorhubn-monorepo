@@ -8,6 +8,7 @@ export interface AppState {
   session_name: string | null;
   session_info_path: string | null;
   bounce_dir: string | null;
+  voice_notes_dir: string | null;
   easeverse_track_id: string | null;
   audio_room_id: string | null;
   watching: boolean;
@@ -46,9 +47,15 @@ export interface BounceResult {
   sections_synced: number;
 }
 
+export interface VoiceNoteResult {
+  comment_id: string | null;
+  review_version_id: string | null;
+  timecode_seconds: number | null;
+}
+
 export interface ActivityEntry {
   ts: string;
-  kind: "info" | "marker" | "bounce" | "error";
+  kind: "info" | "marker" | "bounce" | "voice_note" | "error";
   message: string;
 }
 
@@ -64,8 +71,10 @@ export const setupSession = (args: {
   audioRoomId: string | null;
   sessionInfoPath: string | null;
   bounceDir: string | null;
+  voiceNotesDir: string | null;
 }) => invoke<SessionInfo>("setup_session", args);
 export const syncSessionInfo = () => invoke<SyncResult>("sync_session_info");
 export const uploadBounce = (path: string) => invoke<BounceResult>("upload_bounce", { path });
+export const uploadVoiceNote = (path: string) => invoke<VoiceNoteResult>("upload_voice_note", { path });
 export const startWatching = () => invoke<void>("start_watching");
 export const stopWatching = () => invoke<void>("stop_watching");

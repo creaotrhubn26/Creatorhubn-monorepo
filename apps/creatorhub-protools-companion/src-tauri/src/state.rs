@@ -39,6 +39,7 @@ pub struct Snapshot {
     pub session_id: Option<String>,
     pub session_info_path: Option<String>,
     pub bounce_dir: Option<String>,
+    pub voice_notes_dir: Option<String>,
 }
 
 pub fn snapshot(cfg: &SharedConfig) -> Snapshot {
@@ -49,5 +50,6 @@ pub fn snapshot(cfg: &SharedConfig) -> Snapshot {
         session_id: c.session_id.clone(),
         session_info_path: c.session_info_path.clone(),
         bounce_dir: c.bounce_dir.clone(),
+        voice_notes_dir: c.voice_notes_dir.clone(),
     }
 }

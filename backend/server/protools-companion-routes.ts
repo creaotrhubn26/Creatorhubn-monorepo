@@ -3,12 +3,17 @@
  *
  * Den native Tauri-companionen (apps/creatorhub-protools-companion) kjører ved
  * siden av Pro Tools på produsentens maskin, overvåker «Export Session Info as
- * Text»-eksporter (markører + metadata) og «Bounced Files»-mappen (ferdige WAV),
- * og pusher dette inn i CreatorHub via disse endepunktene. Når companion-sesjonen
+ * Text»-eksporter (markører + metadata), «Bounced Files»-mappen (ferdige WAV) og
+ * en «Voice Notes»-mappe (korte lydnotater, f.eks. uttale-tilbakemelding), og
+ * pusher dette inn i CreatorHub via disse endepunktene. Når companion-sesjonen
  * er koblet til en EaseVerse-track / Sound Room (audio_review_project):
- *   - markører  → audio_review_sections på gjeldende review-versjon
- *   - bounce    → ny audio_review_versjon (review starter automatisk)
- *   - playhead  → lagres for live-visning i Sound Room-panelet (best-effort)
+ *   - markører    → audio_review_sections på gjeldende review-versjon
+ *   - bounce      → ny audio_review_versjon (review starter automatisk)
+ *   - voice-note  → tidskodet kommentar (audio_note_url) på gjeldende versjon,
+ *                   tidsstemplet med sesjonens siste kjente playhead-posisjon —
+ *                   samme kommentarfeed/-tabell som nettleser-innspilte lydnotater
+ *                   (Sound Room), så begge kilder holder seg naturlig i synk.
+ *   - playhead    → lagres for live-visning i Sound Room-panelet (best-effort)
  *
  * NB: De gamle `protools_*`-tabellene har dobbel skjema-drift (id:uuid+id:varchar,
  * sessionid+session_id) fra motstridende migrasjoner og er ikke brukbare. Vi bruker
@@ -17,19 +22,21 @@
  *
  * Endepunkter:
  *   Web (requireUserSession):
- *     POST /api/protools/pair/start                  → 6-sifret paringskode
- *     GET  /api/protools/web/status?audioRoomId=     → companion-status for Sound Room-panelet
- *     POST /api/protools/web/unlink-device           → revoker companion-device
+ *     POST /api/protools/pair/start                     → 6-sifret paringskode
+ *     GET  /api/protools/web/status?audioRoomId=        → companion-status for Sound Room-panelet
+ *     POST /api/protools/web/unlink-device               → revoker companion-device
  *   Companion (Bearer device-token):
- *     POST /api/protools/pair/claim   { code }       → bytter kode mot device-token
- *     GET  /api/protools/me                          → bruker + koblingsbare Sound Rooms
- *     GET  /api/protools/sessions                    → companion-sesjoner
- *     POST /api/protools/sessions     { ... }        → opprett/koble sesjon
- *     POST /api/protools/sessions/:id/markers        → markører (→ review-seksjoner)
- *     POST /api/protools/sessions/:id/metadata       → tempo/key/spor
- *     POST /api/protools/sessions/:id/playhead       → playhead (best-effort)
- *     POST /api/protools/sessions/:id/bounce/presign → presignert opplastings-URL
- *     POST /api/protools/sessions/:id/bounce/complete→ registrer bounce → review-versjon
+ *     POST /api/protools/pair/claim   { code }          → bytter kode mot device-token
+ *     GET  /api/protools/me                              → bruker + koblingsbare Sound Rooms
+ *     GET  /api/protools/sessions                        → companion-sesjoner
+ *     POST /api/protools/sessions     { ... }            → opprett/koble sesjon
+ *     POST /api/protools/sessions/:id/markers            → markører (→ review-seksjoner)
+ *     POST /api/protools/sessions/:id/metadata           → tempo/key/spor
+ *     POST /api/protools/sessions/:id/playhead           → playhead (best-effort)
+ *     POST /api/protools/sessions/:id/bounce/presign      → presignert opplastings-URL
+ *     POST /api/protools/sessions/:id/bounce/complete     → registrer bounce → review-versjon
+ *     POST /api/protools/sessions/:id/voice-note/presign  → presignert opplastings-URL
+ *     POST /api/protools/sessions/:id/voice-note/complete → registrer lydnotat → kommentar
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -156,6 +163,21 @@ async function ensureSchema(pool: any): Promise<void> {
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS idx_ptc_bounces_session ON protools_companion_bounces(session_id, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS protools_companion_voice_notes (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        session_id UUID NOT NULL,
+        file_name TEXT,
+        file_url TEXT,
+        storage_key TEXT,
+        size_bytes BIGINT,
+        duration_seconds DOUBLE PRECISION,
+        review_version_id UUID,
+        comment_id UUID,
+        timecode_seconds DOUBLE PRECISION,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_ptc_voice_notes_session ON protools_companion_voice_notes(session_id, created_at DESC);
     `).catch((e: any) => { console.error("[protools-companion] ensureSchema:", e?.message || e); });
   })();
   return schemaReady;
@@ -493,6 +515,58 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     res.status(201).json({ bounceId: b.rows[0]?.id || null, reviewVersionId: versionId, versionNumber, sectionsSynced, linkedReview: reviewId });
   });
 
+  // POST /api/protools/sessions/:id/voice-note/presign — { fileName, sizeBytes?, mimeType? } → presignert PUT
+  app.post("/api/protools/sessions/:id/voice-note/presign", async (req, res) => {
+    const d = await deviceAuth(req, res); if (!d) return;
+    const sess = await ownedSession(d.userId, req.params.id); if (!sess) return res.status(404).json({ error: "session_not_found" });
+    const fileName = sanitizeName(String(req.body?.fileName || "voice-note.wav"));
+    const key = `protools-voice-notes/${d.userId}/${sess.id}/${Date.now()}-${crypto.randomUUID()}-${fileName}`;
+    const r2 = getR2();
+    if (!r2) return res.status(503).json({ error: "storage_not_configured" });
+    const { client, cfg } = r2;
+    const finalUrl = cfg.publicBaseUrl ? `${cfg.publicBaseUrl.replace(/\/+$/, "")}/${key}` : `${cfg.endpoint.replace(/\/+$/, "")}/${cfg.bucket}/${key}`;
+    const cmd = new PutObjectCommand({ Bucket: cfg.bucket, Key: key, ContentType: String(req.body?.mimeType || "audio/wav"), ContentLength: intOrNull(req.body?.sizeBytes) || undefined });
+    const uploadUrl = await getSignedUrl(client, cmd, { expiresIn: UPLOAD_URL_TTL_SEC }).catch(() => null);
+    if (!uploadUrl) return res.status(500).json({ error: "presign_failed" });
+    res.json({ uploadUrl, fileUrl: finalUrl, storageKey: key, expiresInSeconds: UPLOAD_URL_TTL_SEC });
+  });
+
+  // POST /api/protools/sessions/:id/voice-note/complete — { fileUrl, storageKey?, fileName?, sizeBytes?, durationSeconds?, note? }
+  // Oppretter en tidskodet kommentar (audio_note_url) på gjeldende review-versjon —
+  // SAMME audio_review_comments-tabell som nettleser-innspilte lydnotater i Sound
+  // Room, så begge kilder vises i én, alltid samstemt liste (ingen egen sync-jobb).
+  // Tidskoden hentes fra sesjonens siste kjente playhead (satt via /playhead), eller
+  // 0 hvis ingen er mottatt ennå.
+  app.post("/api/protools/sessions/:id/voice-note/complete", async (req, res) => {
+    const d = await deviceAuth(req, res); if (!d) return;
+    const sess = await ownedSession(d.userId, req.params.id); if (!sess) return res.status(404).json({ error: "session_not_found" });
+    const fileUrl = String(req.body?.fileUrl || "").trim();
+    if (!fileUrl) return res.status(400).json({ error: "fileUrl_required" });
+    const fileName = req.body?.fileName ? String(req.body.fileName).slice(0, 300) : null;
+    let reviewId: string | null = sess.audio_review_project_id || null;
+    if (!reviewId && sess.easeverse_track_id) {
+      reviewId = await resolveReviewForTrack(d.userId, String(sess.easeverse_track_id));
+      if (reviewId) await pool.query(`UPDATE protools_companion_sessions SET audio_review_project_id = $2::uuid WHERE id = $1::uuid`, [sess.id, reviewId]).catch(() => {});
+    }
+    if (!reviewId) return res.status(409).json({ error: "no_linked_review" });
+    const versionId = await currentVersionId(reviewId);
+    if (!versionId) return res.status(409).json({ error: "no_version_to_attach_to" });
+    const timecodeSeconds = numOrNull(req.body?.timecodeSeconds) ?? Number(sess.playhead?.seconds) ?? 0;
+    const c = await pool.query(
+      `INSERT INTO audio_review_comments (version_id, user_id, author, timecode_seconds, body, category, audio_note_url)
+       VALUES ($1::uuid,$2,$3,$4,$5,'pronunciation',$6) RETURNING id`,
+      [versionId, d.userId, "Pro Tools Companion", timecodeSeconds, strOrNull(req.body?.note, 4000) || "", fileUrl],
+    ).catch((e: any) => { console.error("[protools-companion] create voice-note comment:", e?.message); return { rows: [] }; });
+    const commentId = c.rows[0]?.id || null;
+    const vn = await pool.query(
+      `INSERT INTO protools_companion_voice_notes (session_id, file_name, file_url, storage_key, size_bytes, duration_seconds, review_version_id, comment_id, timecode_seconds)
+       VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      [sess.id, fileName, fileUrl, strOrNull(req.body?.storageKey, 500), intOrNull(req.body?.sizeBytes), numOrNull(req.body?.durationSeconds), versionId, commentId, timecodeSeconds],
+    ).catch(() => ({ rows: [] }));
+    await pool.query(`UPDATE protools_companion_sessions SET last_activity = NOW() WHERE id = $1::uuid`, [sess.id]).catch(() => {});
+    res.status(201).json({ voiceNoteId: vn.rows[0]?.id || null, commentId, reviewVersionId: versionId, timecodeSeconds });
+  });
+
   // ════════════════════════ WEB (Sound Room-panel) ════════════════════════════════
 
   // GET /api/protools/web/status?audioRoomId= — paret companion? siste playhead? sesjon? markører? bounces?
@@ -505,7 +579,7 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
         WHERE user_id = $1 AND label = 'Pro Tools Companion' AND revoked_at IS NULL AND expires_at > now()
         ORDER BY created_at DESC LIMIT 1`, [s.userId],
     ).catch(() => ({ rows: [] }));
-    let session: any = null; let markers: any[] = []; let bounces: any[] = [];
+    let session: any = null; let markers: any[] = []; let bounces: any[] = []; let voiceNotes: any[] = [];
     const sq = audioRoomId
       ? await pool.query(`SELECT * FROM protools_companion_sessions WHERE user_id = $1 AND audio_review_project_id = $2::uuid ORDER BY last_activity DESC LIMIT 1`, [s.userId, audioRoomId]).catch(() => ({ rows: [] }))
       : await pool.query(`SELECT * FROM protools_companion_sessions WHERE user_id = $1 ORDER BY last_activity DESC LIMIT 1`, [s.userId]).catch(() => ({ rows: [] }));
@@ -513,11 +587,12 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     if (session) {
       markers = (await pool.query(`SELECT name, start_seconds, end_seconds, timecode, color FROM protools_companion_markers WHERE session_id = $1::uuid ORDER BY order_index ASC, start_seconds ASC`, [session.id]).catch(() => ({ rows: [] }))).rows;
       bounces = (await pool.query(`SELECT id, file_name, file_url, duration_seconds, review_version_id, created_at FROM protools_companion_bounces WHERE session_id = $1::uuid ORDER BY created_at DESC LIMIT 10`, [session.id]).catch(() => ({ rows: [] }))).rows;
+      voiceNotes = (await pool.query(`SELECT id, file_name, comment_id, timecode_seconds, created_at FROM protools_companion_voice_notes WHERE session_id = $1::uuid ORDER BY created_at DESC LIMIT 10`, [session.id]).catch(() => ({ rows: [] }))).rows;
     }
     res.json({
       paired: dev.rows.length > 0,
       device: dev.rows[0] || null,
-      session, markers, bounces,
+      session, markers, bounces, voiceNotes,
       playhead: session?.playhead || null,
     });
   });

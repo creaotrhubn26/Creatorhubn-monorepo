@@ -5,6 +5,10 @@ synker arbeidet inn i den koblede EaseVerse-låtens **Sound Room** i CreatorHub:
 
 - **Markører** (fra «Export Session Info as Text») → `audio_review_sections` på gjeldende review-versjon
 - **Bounces** (nye filer i «Bounced Files»-mappa) → nye `audio_review_versjoner` (review starter automatisk)
+- **Voice notes** (nye lydfiler i en egen «Voice Notes»-mappe, valgfritt) → tidskodet
+  kommentar på gjeldende versjon (samme kommentarfelt som nettleser-innspilte
+  lydnotater i Sound Room) — f.eks. en rask uttale-tilbakemelding til vokalisten,
+  tidsstemplet med sesjonens siste kjente playhead
 - **Metadata** (samplerate/bitdybde/spor, og tempo/key der det finnes) → review + EaseVerse-track
 
 ## Hvorfor «Session Info as Text»?
@@ -26,7 +30,9 @@ nye lydfiler.
 
 1. I CreatorHub: åpne **Sound Room → «Pro Tools Companion»** og lag en paringskode.
 2. I companionen: skriv inn den 6-sifrede koden → **Koble til**.
-3. Velg **EaseVerse-låt** (Sound Room), **Session Info-fila** og **Bounced Files-mappa**.
+3. Velg **EaseVerse-låt** (Sound Room), **Session Info-fila**, **Bounced Files-mappa**
+   og eventuelt en egen **Voice Notes-mappe** (må være en annen mappe enn Bounced
+   Files — filer der blir kommentarer, ikke nye versjoner).
 4. **Start overvåking.** Eksporter Session Info / bounce i Pro Tools som vanlig — det
    dukker opp i Sound Room automatisk.
 
@@ -57,6 +63,7 @@ cd src-tauri && cargo test
 | `src/App.tsx` | Paring → sesjons-oppsett → dashboard + aktivitetslogg |
 
 Backend: `backend/server/protools-companion-routes.ts` (paring, sesjoner, markører,
-metadata, bounce-presign/complete). Companion-auth gjenbruker `desktop_device_tokens`.
+metadata, bounce- og voice-note-presign/complete). Companion-auth gjenbruker
+`desktop_device_tokens`.
 
 > Ikonene er midlertidig kopiert fra One Desk — bytt til egne før release.

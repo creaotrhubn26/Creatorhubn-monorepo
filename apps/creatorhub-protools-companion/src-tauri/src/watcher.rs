@@ -56,8 +56,8 @@ async fn wait_until_stable(path: &Path) -> bool {
 
 pub fn start(app: AppHandle, cfg: SharedConfig, watcher_state: SharedWatcher) -> Result<(), String> {
     let snap = snapshot(&cfg);
-    if snap.session_info_path.is_none() && snap.bounce_dir.is_none() {
-        return Err("Velg «Session Info»-fil og/eller «Bounced Files»-mappe først".into());
+    if snap.session_info_path.is_none() && snap.bounce_dir.is_none() && snap.voice_notes_dir.is_none() {
+        return Err("Velg «Session Info»-fil og/eller «Bounced Files»-/«Voice Notes»-mappe først".into());
     }
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<notify::Result<notify::Event>>();
@@ -78,17 +78,35 @@ pub fn start(app: AppHandle, cfg: SharedConfig, watcher_state: SharedWatcher) ->
             .watch(Path::new(bd), RecursiveMode::NonRecursive)
             .map_err(|e| format!("Overvåk bounce-mappe: {}", e))?;
     }
+    // Voice-notes-mappa overvåkes separat, med mindre den er nøyaktig samme mappe
+    // som bounce-mappa (notify feiler på å watch()e samme path to ganger).
+    if let Some(vd) = &snap.voice_notes_dir {
+        if snap.bounce_dir.as_deref() != Some(vd.as_str()) {
+            watcher
+                .watch(Path::new(vd), RecursiveMode::NonRecursive)
+                .map_err(|e| format!("Overvåk voice-notes-mappe: {}", e))?;
+        }
+    }
 
     // Hold watcheren i live i delt state. Dropp → stopp.
     watcher_state.lock().unwrap().watcher = Some(watcher);
 
     let info_path = snap.session_info_path.clone();
+    // Voice-notes-mappa er en EGEN, distinkt mappe fra bounce-mappa (satt opp separat
+    // i sesjonsoppsettet) — filer her blir ALDRI review-versjoner, kun tidskodede
+    // kommentarer. Skiller fra bounce_dir på path, ikke innhold, så en produsent som
+    // (feilaktig) peker begge til samme mappe fortsatt får ett, forutsigbart utfall
+    // (bounce vinner — sjekket først under).
+    let voice_notes_dir = snap.voice_notes_dir.clone();
     let cfg2 = cfg.clone();
     let app2 = app.clone();
 
     tauri::async_runtime::spawn(async move {
-        // (path → (size, mtime)) for å unngå å laste opp samme uendrede bounce flere ganger.
+        // (path → (size, mtime)) for å unngå å laste opp samme uendrede fil flere ganger.
+        // Egne kart for bounces vs. voice notes — et dedup-treff i den ene skal ikke
+        // hindre en fil med samme navn i den andre mappa fra å bli behandlet.
         let mut seen_bounces: HashMap<PathBuf, (u64, SystemTime)> = HashMap::new();
+        let mut seen_voice_notes: HashMap<PathBuf, (u64, SystemTime)> = HashMap::new();
 
         while let Some(res) = rx.recv().await {
             let event = match res {
@@ -113,7 +131,31 @@ pub fn start(app: AppHandle, cfg: SharedConfig, watcher_state: SharedWatcher) ->
                     }
                 }
 
-                // 2) Ny/endret bounce → last opp som review-versjon.
+                let in_voice_notes_dir = voice_notes_dir
+                    .as_deref()
+                    .map(|vd| path.parent() == Some(Path::new(vd)))
+                    .unwrap_or(false);
+
+                // 2) Ny/endret lyd i voice-notes-mappa → tidskodet kommentar (ikke versjon).
+                if in_voice_notes_dir && is_audio(path) {
+                    let meta = match file_meta(path) {
+                        Some(m) => m,
+                        None => continue,
+                    };
+                    if seen_voice_notes.get(path) == Some(&meta) {
+                        continue;
+                    }
+                    if wait_until_stable(path).await {
+                        let final_meta = file_meta(path).unwrap_or(meta);
+                        seen_voice_notes.insert(path.clone(), final_meta);
+                        if let Err(e) = processing::upload_voice_note(&cfg2, &app2, path).await {
+                            emit_activity(&app2, "error", &format!("Lydnotat-opplasting feilet: {}", e));
+                        }
+                    }
+                    continue;
+                }
+
+                // 3) Ny/endret bounce → last opp som review-versjon.
                 if is_audio(path) {
                     let meta = match file_meta(path) {
                         Some(m) => m,

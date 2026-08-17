@@ -158,3 +158,43 @@ pub async fn complete_bounce(api_base: &str, token: &str, session_id: &str, payl
     }
     resp.json().await.map_err(|e| format!("Ugyldig svar: {}", e))
 }
+
+/// POST /api/protools/sessions/:id/voice-note/presign → (upload_url, file_url, storage_key)
+pub async fn presign_voice_note(
+    api_base: &str,
+    token: &str,
+    session_id: &str,
+    file_name: &str,
+    size_bytes: u64,
+) -> Result<(String, String, String), String> {
+    let resp = client()
+        .post(format!("{}/api/protools/sessions/{}/voice-note/presign", base(api_base), session_id))
+        .bearer_auth(token)
+        .json(&json!({ "fileName": file_name, "sizeBytes": size_bytes, "mimeType": "audio/wav" }))
+        .send()
+        .await
+        .map_err(|e| format!("Nettverksfeil: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(err_body(resp).await);
+    }
+    let v: Value = resp.json().await.map_err(|e| format!("Ugyldig svar: {}", e))?;
+    let upload = v.get("uploadUrl").and_then(|x| x.as_str()).ok_or("Mangler uploadUrl")?;
+    let file = v.get("fileUrl").and_then(|x| x.as_str()).ok_or("Mangler fileUrl")?;
+    let key = v.get("storageKey").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    Ok((upload.to_string(), file.to_string(), key))
+}
+
+/// POST /api/protools/sessions/:id/voice-note/complete
+pub async fn complete_voice_note(api_base: &str, token: &str, session_id: &str, payload: Value) -> Result<Value, String> {
+    let resp = client()
+        .post(format!("{}/api/protools/sessions/{}/voice-note/complete", base(api_base), session_id))
+        .bearer_auth(token)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Nettverksfeil: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(err_body(resp).await);
+    }
+    resp.json().await.map_err(|e| format!("Ugyldig svar: {}", e))
+}
