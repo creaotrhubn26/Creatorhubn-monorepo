@@ -17,7 +17,7 @@ const EASES: { id: KfEase; label: string }[] = [
   { id: 'hold', label: 'Hold' },
 ];
 const EASE_COLOR: Record<KfEase, string> = { linear: '#38bdf8', smooth: '#eef1f6', in: '#f59e0b', out: '#a855f7', hold: '#ef4444' };
-const PROPS: { id: string; label: string; min: number; max: number }[] = [
+const DEVICE_PROPS: { id: string; label: string; min: number; max: number }[] = [
   { id: 'rotY', label: 'Snu (rotY)', min: -60, max: 60 },
   { id: 'rotX', label: 'Vipp (rotX)', min: -55, max: 55 },
   { id: 'rotZ', label: 'Rull (rotZ)', min: -45, max: 45 },
@@ -25,11 +25,11 @@ const PROPS: { id: string; label: string; min: number; max: number }[] = [
 ];
 const W = 260, H = 120, PAD = 8;
 
-export function MockupKeyframeGraph({ value, playT, onChange }: { value: KfMap | undefined; playT: number | null; onChange: (kf: KfMap | undefined) => void }) {
-  const [prop, setProp] = useState('rotY');
+export function MockupKeyframeGraph({ value, playT, onChange, props = DEVICE_PROPS }: { value: KfMap | undefined; playT: number | null; onChange: (kf: KfMap | undefined) => void; props?: { id: string; label: string; min: number; max: number }[] }) {
+  const [prop, setProp] = useState(props[0].id);
   const [selIdx, setSelIdx] = useState<number | null>(null); // valgt keyframe (for ease/retime)
   const svgRef = useRef<SVGSVGElement>(null);
-  const spec = PROPS.find((p) => p.id === prop)!;
+  const spec = props.find((p) => p.id === prop) ?? props[0];
   const kfs = (value?.[prop] ?? []).slice().sort((a, b) => a.t - b.t);
   const selKf = selIdx != null ? kfs[selIdx] : null;
   const setEase = (mode: KfEase) => { if (selIdx == null) return; write(kfs.map((k, i) => (i === selIdx ? { ...k, e: mode } : k))); };
@@ -80,7 +80,7 @@ export function MockupKeyframeGraph({ value, playT, onChange }: { value: KfMap |
     <div>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
         <select value={prop} onChange={(e) => setProp(e.target.value)} style={selStyle}>
-          {PROPS.map((p) => <option key={p.id} value={p.id}>{p.label}{value?.[p.id]?.length ? ' •' : ''}</option>)}
+          {props.map((p) => <option key={p.id} value={p.id}>{p.label}{value?.[p.id]?.length ? ' •' : ''}</option>)}
         </select>
         {kfs.length > 0 && <button onClick={() => write([])} style={clrStyle} title="Fjern keyframes for denne">Nullstill</button>}
       </div>

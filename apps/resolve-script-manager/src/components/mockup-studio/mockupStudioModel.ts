@@ -16,6 +16,7 @@
  */
 
 import type { FrameVariant } from '../demo-studio/deviceFrames';
+import { MEDSIDE_COLORS, MEDSIDE_LOGO_DATA_URL } from './medsideBrand';
 
 /**
  * Device-varianter = demo-studio-rammene (iphone/ipad/ipad_landscape/macbook)
@@ -55,6 +56,10 @@ export interface MockupDeviceSlot {
   reflection?: boolean;
   /** Ren status-bar (09:41 + signal/wifi/batteri) over skjermbildet (kun telefoner). */
   cleanStatusBar?: boolean;
+  /** Chat-skrive-animasjon OPPÅ skjermen (typing-prikker → tekst-for-tekst) —
+   *  «noen chatter»-effekt inne i enhets-mocken. Samme mekanikk som
+   *  MockupImageSlot.chatType, klippet til enhetens skjerm-rect (deviceScreenRect). */
+  chatType?: ChatTypeConfig;
   /** Ekte 3D-render (WebGL, bakt til 2D-lag). Kun iphone/android i fase 1. Default av. */
   threeD?: {
     rotX: number; rotY: number; rotZ: number; light?: string; zoom?: number; kbLayout?: 'mac' | 'windows';
@@ -80,7 +85,7 @@ export interface TimelineClip {
   track: number;                 // rad-indeks (spor)
   start: number;                 // sekunder fra 0
   len: number;                   // varighet i sekunder
-  kind: 'type' | 'reveal';       // skrive-animasjon eller inntoning
+  kind: 'type' | 'reveal' | 'rig'; // skrive-animasjon, inntoning, eller figur-rigg-visning (read-only)
   ref?: string;                  // device/text-id klippet styrer
   ease?: 'linear' | 'smooth' | 'in' | 'out';
 }
@@ -123,27 +128,54 @@ export function clipLocalT(tl: MockupTimeline, ref: string, kind: TimelineClip['
   return e === 'smooth' ? local * local * (3 - 2 * local) : e === 'in' ? local * local : e === 'out' ? 1 - (1 - local) * (1 - local) : local;
 }
 
-/** Utled default-klipp fra dokumentets animerbare elementer (om ingen timeline). */
+/**
+ * Utled default-klipp fra dokumentets animerbare elementer (om ingen timeline).
+ * Tekst FØRST, enheter ETTER: hook-og-avslør-rekkefølge (påstanden leses før
+ * skjermbildet vises som bevis) — matcher 2026-praksis for social-annonser
+ * (LinkedIn/Meta-video: hook i første 0-3s, ikke logo/produkt-først). Var
+ * tidligere omvendt (enhet momentant, tekst fra 0.8s) — se docs/superpowers.
+ */
 export function deriveTimeline(doc: MockupDoc): MockupTimeline {
   if (doc.timeline?.clips.length) return doc.timeline;
   const clips: TimelineClip[] = [];
-  let t = 0;
+  doc.texts.forEach((tx, i) => clips.push({ id: `rev_${tx.id}`, label: 'tekst inn', track: 2, start: i * 0.2, len: 0.7, kind: 'reveal', ref: tx.id }));
+  const textsEnd = doc.texts.length ? (doc.texts.length - 1) * 0.2 + 0.7 : 0;
+  let t = textsEnd + 0.15;
   doc.devices.forEach((d, i) => {
-    clips.push({ id: `rev_${d.id}`, label: `${d.variant} inn`, track: 0, start: i * 0.25, len: 0.8, kind: 'reveal', ref: d.id });
+    const devStart = t + i * 0.25, devLen = 0.8;
+    clips.push({ id: `rev_${d.id}`, label: `${d.variant} inn`, track: 0, start: devStart, len: devLen, kind: 'reveal', ref: d.id });
     if (d.typeAnim?.text && d.threeD) {
       const len = Math.max(1.2, d.typeAnim.text.length * 0.14);
       clips.push({ id: `type_${d.id}`, label: `skriv: ${d.typeAnim.text.slice(0, 16)}`, track: 1, start: t + 0.6, len, kind: 'type', ref: d.id, ease: 'smooth' });
       t += len + 0.4;
     }
+    // Chat-typing på skjermen (uavhengig av 3D-typeAnim ovenfor) — starter etter enhetens egen avsløring.
+    if (d.chatType?.turns?.length) {
+      clips.push({ id: `chat_${d.id}`, label: `chat: ${d.chatType.turns[0]?.question.slice(0, 16) ?? ''}`, track: 4, start: devStart + devLen + 0.15, len: chatClipDuration(d.chatType), kind: 'type', ref: d.id, ease: 'linear' });
+    }
   });
   if (doc.canvas.scene?.typeAnim?.text) {
     const len = Math.max(1.2, doc.canvas.scene.typeAnim.text.length * 0.14);
-    clips.push({ id: 'type_scene', label: `skriv: ${doc.canvas.scene.typeAnim.text.slice(0, 16)}`, track: 1, start: 0.4, len, kind: 'type', ref: 'scene', ease: 'smooth' });
-    t = Math.max(t, len + 0.4);
+    clips.push({ id: 'type_scene', label: `skriv: ${doc.canvas.scene.typeAnim.text.slice(0, 16)}`, track: 1, start: t + 0.4, len, kind: 'type', ref: 'scene', ease: 'smooth' });
   }
-  doc.texts.forEach((tx, i) => clips.push({ id: `rev_${tx.id}`, label: 'tekst inn', track: 2, start: 0.8 + i * 0.2, len: 0.7, kind: 'reveal', ref: tx.id }));
-  // Frie bilder (grid/collage): stagger-reveal → «reel»-inntoning av menyen.
-  (doc.images ?? []).forEach((im, i) => clips.push({ id: `rev_${im.id}`, label: 'bilde inn', track: 3, start: 0.1 + i * 0.12, len: 0.7, kind: 'reveal', ref: im.id }));
+  // Frie bilder (grid/collage): stagger-reveal fra start → «reel»-inntoning av
+  // menyen (ingen konkurrerende hook-tekst i den komposisjonstypen — uendret).
+  (doc.images ?? []).forEach((im, i) => {
+    const revStart = 0.1 + i * 0.12, revLen = 0.7;
+    clips.push({ id: `rev_${im.id}`, label: 'bilde inn', track: 3, start: revStart, len: revLen, kind: 'reveal', ref: im.id });
+    // Chat-typing: starter ETTER at bildet/kortet er avslørt (typing-prikker → tekst).
+    if (im.chatType?.turns?.length) {
+      clips.push({ id: `chat_${im.id}`, label: `chat: ${im.chatType.turns[0]?.question.slice(0, 16) ?? ''}`, track: 4, start: revStart + revLen + 0.15, len: chatClipDuration(im.chatType), kind: 'type', ref: im.id, ease: 'linear' });
+    }
+    // Figur-rigg (person-laptop m/ keyframe-kurver): read-only visnings-klipp — kurvene selv er
+    // keyet mot global t (0..1), ikke klipp-relativ tid, så klippet kan IKKE dras/trimmes ennå.
+    // Spenner fra scene-start til der resten av scenen ender så langt, som en enkel indikasjon
+    // på at figuren «er med» gjennom klippet.
+    if (im.illustration === 'person-laptop' && im.kf && Object.keys(im.kf).length) {
+      const knownEnd = Math.max(3, ...clips.map((c) => c.start + c.len));
+      clips.push({ id: `rig_${im.id}`, label: 'rigg: figur', track: 5, start: 0, len: knownEnd, kind: 'rig', ref: im.id });
+    }
+  });
   const duration = Math.max(3, ...clips.map((c) => c.start + c.len)) + 0.5;
   return { duration, clips };
 }
@@ -215,12 +247,12 @@ export type MockupBgStyle = 'clean' | 'gradient' | 'atmospheric';
 /** Dekor-lag: designer-elementer bak innholdet (visuell dybde). */
 export type MockupDecor =
   | 'none' | 'orbs' | 'mesh' | 'grid' | 'shapes'
-  | 'rings' | 'stripes' | 'waves' | 'spotlight' | 'confetti' | 'halftone' | 'band';
+  | 'rings' | 'stripes' | 'waves' | 'spotlight' | 'confetti' | 'halftone' | 'band' | 'arc';
 
 export const DECOR_LABELS: Record<MockupDecor, string> = {
   none: 'Ingen', orbs: 'Glød-orber', mesh: 'Gradient-mesh', grid: 'Rutenett', shapes: 'Former',
   rings: 'Radar-ringer', stripes: 'Diagonale striper', waves: 'Bølger', spotlight: 'Spotlight',
-  confetti: 'Konfetti', halftone: 'Halvtone', band: 'Diagonalt bånd',
+  confetti: 'Konfetti', halftone: 'Halvtone', band: 'Diagonalt bånd', arc: 'Myk bue',
 };
 
 /** Typografi-stil (kuraterte font-paringer, macOS-system-fonter). */
@@ -449,7 +481,7 @@ export function deviceHeight(slot: Pick<MockupDeviceSlot, 'variant' | 'w'>): num
 // følger produktskjermen; uten deviceId er den lerret-relativ. Tegnes øverst av
 // kompositoren og følger med i alle eksporter.
 
-export type MockupAnnotationKind = 'callout' | 'loupe' | 'marker';
+export type MockupAnnotationKind = 'callout' | 'loupe' | 'marker' | 'step' | 'connector' | 'pill';
 export type MockupCalloutSide = 'left' | 'right' | 'top' | 'bottom';
 
 export interface MockupAnnotation {
@@ -472,6 +504,12 @@ export interface MockupAnnotation {
   // markør (uthev-rektangel): bredde/høyde i skjerm-fraksjon
   fw?: number;
   fh?: number;
+  // connector: andre endepunkt (lerret-fraksjon) — fx/fy er første endepunkt.
+  fx2?: number;
+  fy2?: number;
+  // pill: ikon-glyph (unicode) + tittel (label) + undertekst (label2), sentrert på fx/fy.
+  glyph?: string;
+  label2?: string;
 }
 
 /** Lag en ny annotasjon med fornuftige standardverdier. */
@@ -479,7 +517,10 @@ export function makeAnnotation(kind: MockupAnnotationKind, deviceId: string | un
   const base: MockupAnnotation = { id: uid('ann'), kind, deviceId, fx: 0.5, fy: 0.4 };
   if (kind === 'callout') return { ...base, n, label: 'Ny funksjon', side: 'right' };
   if (kind === 'loupe') return { ...base, fx: 0.5, fy: 0.5, zoom: 2.4, lensX: 0.86, lensY: 0.82, radius: 150 };
-  return { ...base, fx: 0.4, fy: 0.35, fw: 0.22, fh: 0.14 }; // marker
+  if (kind === 'marker') return { ...base, fx: 0.4, fy: 0.35, fw: 0.22, fh: 0.14 };
+  if (kind === 'step') return { ...base, deviceId: undefined, fx: 0.035, fy: 0.035, n };
+  if (kind === 'pill') return { ...base, deviceId: undefined, fx: 0.5, fy: 0.9, glyph: '✓', label: 'Ny pill', label2: 'Kort forklaring' };
+  return { ...base, deviceId: undefined, fx: 0.3, fy: 0.6, fx2: 0.5, fy2: 0.55 }; // connector
 }
 
 export function makeDevice(variant: MockupDeviceVariant, partial: Partial<MockupDeviceSlot> = {}): MockupDeviceSlot {
@@ -512,6 +553,11 @@ export interface MockupImageSlot {
   /** Seedance i2v-klipp (mp4-sti): craveable bevegelse (cheese-pull/damp) generert FRA `image`.
    *  Preview spiller klippet i posisjon; statisk render/eksport bruker `image` som poster. */
   video?: string;
+  /** Sprite-sekvens (transparente PNG-rammer, f.eks. fra Sorceress 3D Studio sitt 3D→2D-verktøy,
+   *  eller et hvilket som helst ekte 3D-render eksportert som frame-sekvens) — ekte 3D-animasjon
+   *  avspilt som stillbilde-frames i stedet for video. `image` bør være frames[0] som statisk
+   *  fallback/poster. Rammene bytter kun under videoeksport (opts.videoTime); statisk visning = frame 0. */
+  sprite?: { frames: string[]; fps: number };
   x: number;
   y: number;
   w: number;
@@ -522,6 +568,208 @@ export interface MockupImageSlot {
   shadow: boolean;
   /** Eid av en galleri-fremvisning (arrangeLibrary). Ryddes ved neste fremvisning → ingen stabling. */
   genArrange?: boolean;
+  /** Chat-skrive-animasjon OPPÅ bildet (typing-prikker → tekst-for-tekst) —
+   *  «noen chatter»-effekt for skjermbilde-/kort-elementer uten en 3D-enhet å
+   *  feste typeAnim til. Kjøres av animasjons-tidslinjen (egen 'type'-klipp). */
+  chatType?: ChatTypeConfig;
+  /** Prosedural flat-illustrasjon tegnet direkte på canvas (Storyset-aktig figur) — ingen
+   *  ekstern asset, `image` ignoreres når satt. 'office-backdrop'/'waiting-room-backdrop' er
+   *  BAKGRUNNER (tegnes alltid bak personer uansett doc.images-rekkefølge, se rasterizeMockup). */
+  illustration?: 'person-laptop' | 'office-backdrop' | 'waiting-room-backdrop';
+  /** After Effects-aktige keyframe-kurver (samme motor som enhetenes 3D-rotasjon, se sampleKf) —
+   *  x/y/rotation/scale/opacity for hele elementet, pluss rigg-egenskaper når illustration er satt
+   *  (armSwing/blink/headTilt, se PERSON_RIG_PROPS i mockupRaster.ts). Mangler en egenskap sin
+   *  kurve → faller tilbake på statisk verdi (evt. automatisk idle-animasjon for rigg-egenskaper). */
+  kf?: Record<string, Keyframe[]>;
+  /** Farge-overstyring for person-laptop-illustrasjonen (klær/hud/hår/aksent) — mangler felt → standardpalett. */
+  personStyle?: PersonStyle;
+  /** Satt → dette bildet er et generert falsk-app-skjermbilde (previsitUiCardImage) —
+   *  `image` er en KOPI av siste genererte SVG (kjørt gjennom `renderPreVisitCard`);
+   *  redigering av feltene her og re-generering holder dem i sync. Uten dette
+   *  feltet er `image` en vanlig statisk bilde-URL uten inspektør-redigering. */
+  cardContent?: PreVisitCardContent;
+}
+
+export type PreVisitStepState = 'done' | 'active' | 'todo';
+export interface PreVisitCardContent {
+  title: string;
+  subtitle: string;
+  buttonText: string;
+  steps: { label: string; state: PreVisitStepState }[];
+}
+
+/** Farge-tilpasning for person-laptop-figuren. Alle felt valgfrie — mangler felt bruker standardpaletten. */
+export interface PersonStyle {
+  skin?: string;
+  hair?: string;
+  /** Klær-farge. */
+  shirt?: string;
+  /** Aksent (pult-kant + skjerm-markør). */
+  accent?: string;
+  /** Antrekk-silhuett — mangler felt → 'genser'. legefrakk/sykepleier gir egen silhuett
+   *  (hvit åpen frakk+stetoskop / scrubs+lue), ikke bare farge, så roller skiller seg visuelt. */
+  outfit?: 'genser' | 'skjorte' | 'hettegenser' | 'legefrakk' | 'sykepleier';
+  /** Hår-silhuett — mangler felt → 'kort'. */
+  hairStyle?: 'kort' | 'buffert' | 'krøller';
+  /** Tilbehør — mangler felt → 'ingen'. */
+  accessory?: 'ingen' | 'briller' | 'hodetelefoner' | 'munnbind' | 'id-kort' | 'stetoskop';
+  /** Scenario — hva figuren gjør (armmål+rekvisitt endres, IK løser albuebøyen for hver).
+   *  'walk' viser hele kroppen (bein) og går; øvrige er beskåret ved hoftehøyde.
+   *  Mangler felt → 'laptop' (dagens standardscene, uendret). */
+  scenario?: 'laptop' | 'stand' | 'phone' | 'presenter' | 'walk';
+}
+
+export const PERSON_SCENARIO_LABELS: Record<NonNullable<PersonStyle['scenario']>, string> = {
+  laptop: 'Ved laptop', stand: 'Stående', phone: 'På telefon', presenter: 'Presenterer', walk: 'Går inn',
+};
+
+export const PERSON_OUTFIT_LABELS: Record<NonNullable<PersonStyle['outfit']>, string> = {
+  genser: 'Genser', skjorte: 'Skjorte', hettegenser: 'Hettegenser', legefrakk: 'Legefrakk', sykepleier: 'Sykepleier',
+};
+
+/** Navngitt, kollisjonsfri plassering i en bakgrunn (fx/fy/fw/fh = 0..1 av bakgrunnens egen boks) —
+ *  løser at figurer havner oppå møbler man ikke ser koordinatene til (f.eks. bokhylla i kontoret).
+ *  «Plasser ved anker» i inspektøren skriver disse om til faktiske px basert på bakgrunnens x/y/w/h
+ *  i det gjeldende dokumentet. */
+export interface BackdropAnchor { id: string; label: string; fx: number; fy: number; fw: number; fh: number; }
+export const BACKDROP_ANCHORS: Record<'office-backdrop' | 'waiting-room-backdrop', BackdropAnchor[]> = {
+  'office-backdrop': [
+    { id: 'desk', label: 'Ved pulten', fx: 0.0, fy: 0.22, fw: 0.22, fh: 0.62 },
+    { id: 'seated', label: 'Sittende (åpen vegg)', fx: 0.42, fy: 0.15, fw: 0.22, fh: 0.8 },
+    { id: 'window', label: 'Ved vinduet', fx: 0.68, fy: 0.1, fw: 0.26, fh: 0.85 },
+    { id: 'door', label: 'Ved døra', fx: 0.2, fy: 0.15, fw: 0.24, fh: 0.8 },
+  ],
+  'waiting-room-backdrop': [
+    { id: 'chair1', label: 'Stol 1', fx: 0.02, fy: 0.4, fw: 0.18, fh: 0.5 },
+    { id: 'chair2', label: 'Stol 2', fx: 0.13, fy: 0.4, fw: 0.18, fh: 0.5 },
+    { id: 'chair3', label: 'Stol 3', fx: 0.24, fy: 0.4, fw: 0.18, fh: 0.5 },
+    { id: 'reception', label: 'Resepsjon', fx: 0.4, fy: 0.1, fw: 0.24, fh: 0.85 },
+    { id: 'entrance', label: 'Inngang', fx: 0.72, fy: 0.08, fw: 0.26, fh: 0.9 },
+  ],
+};
+
+/** Rolle-snarveier — setter en hel antrekk+farge-bunt samlet (fortsatt overstyrbart etterpå per felt),
+ *  samme mønster som EXPRESSION_PRESETS. Gjør figurene visuelt forskjellige (pasient/lege/sykepleier),
+ *  ikke bare samme silhuett i ny farge. */
+export const PERSON_ROLE_PRESETS: { id: string; label: string; style: PersonStyle }[] = [
+  { id: 'pasient', label: 'Pasient', style: { outfit: 'genser', shirt: '#1b294b', accessory: 'ingen' } },
+  { id: 'lege', label: 'Lege', style: { outfit: 'legefrakk', shirt: '#ffffff', accessory: 'id-kort' } },
+  { id: 'sykepleier', label: 'Sykepleier', style: { outfit: 'sykepleier', shirt: '#5fb8c9', accessory: 'id-kort' } },
+];
+export const PERSON_HAIR_LABELS: Record<NonNullable<PersonStyle['hairStyle']>, string> = {
+  kort: 'Kort', buffert: 'Buffert', krøller: 'Krøller',
+};
+export const PERSON_ACCESSORY_LABELS: Record<NonNullable<PersonStyle['accessory']>, string> = {
+  ingen: 'Ingen', briller: 'Briller', hodetelefoner: 'Hodetelefoner',
+  munnbind: 'Munnbind', 'id-kort': 'ID-kort', stetoskop: 'Stetoskop',
+};
+
+/** Rigg-parametre for person-laptop-illustrasjonen (mockupRaster.ts sin drawPersonLaptop) —
+ *  hver enkelt keyframebar via MockupImageSlot.kf, samme kurve-motor som enhetenes 3D-rotasjon. */
+export interface PersonRigPose {
+  /** -1 (hender nede/hvile) .. 1 (hender oppe) — kontinuerlig, ikke bare 2 faste posisjoner. */
+  armSwing: number;
+  /** 0 (øyne åpne) .. 1 (øyne lukket/blunk). */
+  blink: number;
+  /** Hode-vipp i grader, roterer hode+hår rundt nakke-pivot. */
+  headTilt: number;
+  /** 0..1 loop-fase for fingertapping (hver finger faseforskjøvet). */
+  fingerTap: number;
+  /** 0..1 loop-fase for skjerm-innhold (linje-bredder + blinkende markør). */
+  screenActivity: number;
+  /** -1 (bekymret/frown) .. 1 (smil) — munn-kurvatur, 0 = nøytral rett strek. Tenner vises når > 0.2. */
+  mouthCurve: number;
+  /** Øye-størrelse, multiplikator på basis-radius (1 = standard). */
+  eyeSize: number;
+  /** 0..1 loop-fase for gange (bein+armer svinger motfase) — kun tegnet/synlig ved scenario 'walk'. */
+  legSwing: number;
+  /** Kropp-bob (idle pust/sway), px y-forskyvning av torso+hode. */
+  bodyBob: number;
+  /** Overkropp-lene i grader, roterer torso+hode rundt hofte-pivot. */
+  leanX: number;
+  /** Øyenbryn-løft, -1 (rynket) .. 1 (overrasket). */
+  browRaise: number;
+  /** 0..1 — tåre-dråpe under øyet (frustrasjon/gråt), 0 = ingen. */
+  tears: number;
+}
+
+/** Keyframebare rigg-egenskaper for person-laptop-illustrasjonen, brukt av MockupKeyframeGraph
+ *  (samme kurve-editor som enhetenes 3D-rotasjon) — After Effects-aktig per-del-animasjon. */
+export const PERSON_RIG_PROPS: { id: keyof PersonRigPose; label: string; min: number; max: number }[] = [
+  { id: 'armSwing', label: 'Hender (skriving)', min: -1, max: 1 },
+  { id: 'fingerTap', label: 'Fingre (tapping)', min: 0, max: 1 },
+  { id: 'screenActivity', label: 'Skjerm-innhold', min: 0, max: 1 },
+  { id: 'blink', label: 'Blunk', min: 0, max: 1 },
+  { id: 'headTilt', label: 'Hode-vipp', min: -20, max: 20 },
+  { id: 'mouthCurve', label: 'Uttrykk (munn)', min: -1, max: 1 },
+  { id: 'eyeSize', label: 'Øye-størrelse', min: 0.5, max: 2 },
+  { id: 'bodyBob', label: 'Kropp-bob', min: -8, max: 8 },
+  { id: 'leanX', label: 'Overkropp-lene', min: -10, max: 10 },
+  { id: 'browRaise', label: 'Øyenbryn', min: -1, max: 1 },
+  { id: 'tears', label: 'Tårer', min: 0, max: 1 },
+  { id: 'legSwing', label: 'Gange (bein)', min: 0, max: 1 },
+];
+
+/** Rolig hvilepose — brukt av PersonThumbnail som basisverdi før preset/keyframe-overstyring. */
+export const DEFAULT_RIG_POSE: PersonRigPose = {
+  armSwing: -1, fingerTap: 0, screenActivity: 0, blink: 0, headTilt: 0,
+  mouthCurve: 1, eyeSize: 1, bodyBob: 0, leanX: 0, browRaise: 0, tears: 0, legSwing: 0,
+};
+
+/** Navngitte uttrykk — setter flere rigg-egenskaper samtidig som ETT klikk, fortsatt overstyrbart
+ *  etterpå per egenskap i keyframe-grafen (skriver bare enkelt-keyframe ved t=0, ikke en kurve). */
+export const EXPRESSION_PRESETS: { id: string; label: string; values: Partial<PersonRigPose> }[] = [
+  { id: 'noytral', label: 'Nøytral', values: { mouthCurve: 0, browRaise: 0, eyeSize: 1, tears: 0 } },
+  { id: 'glad', label: 'Glad', values: { mouthCurve: 1, browRaise: 0.3, eyeSize: 1, tears: 0 } },
+  { id: 'fokusert', label: 'Fokusert', values: { mouthCurve: 0.1, browRaise: -0.3, eyeSize: 0.85, tears: 0 } },
+  { id: 'frustrert', label: 'Frustrert', values: { mouthCurve: -0.6, browRaise: -0.6, eyeSize: 0.9, tears: 0.3 } },
+  { id: 'overrasket', label: 'Overrasket', values: { mouthCurve: 0.2, browRaise: 1, eyeSize: 1.5, tears: 0 } },
+];
+
+/** Keyframebare transform-egenskaper for ETHVERT bilde-element (offset fra base x/y/rotation,
+ *  multiplikator for scale, absolutt for opacity) — samme mekanisme som PERSON_RIG_PROPS. */
+export const IMAGE_TRANSFORM_PROPS: { id: string; label: string; min: number; max: number }[] = [
+  { id: 'x', label: 'X-forskyvning', min: -200, max: 200 },
+  { id: 'y', label: 'Y-forskyvning', min: -200, max: 200 },
+  { id: 'rotation', label: 'Rotasjon', min: -45, max: 45 },
+  { id: 'scale', label: 'Skalering', min: 0.5, max: 1.5 },
+  { id: 'opacity', label: 'Synlighet', min: 0, max: 1 },
+];
+
+/** Skrivehastighet-presets (tegn/sek) for chatType. */
+export type ChatTypeSpeed = 'slow' | 'normal' | 'fast';
+export const CHAT_TYPE_SPEEDS: Record<ChatTypeSpeed, number> = { slow: 7, normal: 13, fast: 20 };
+export const CHAT_TYPE_SPEED_LABELS: Record<ChatTypeSpeed, string> = { slow: 'Sakte', normal: 'Normal', fast: 'Rask' };
+
+/** Ett spørsmål-svar-par i en chatType-samtale. `reply` valgfri (spørsmål uten svar = venter). */
+export interface ChatTurn { question: string; reply?: string; }
+
+/** Chat-typing-konfig, delt av MockupImageSlot og MockupDeviceSlot. Flere
+ *  `turns` spilles av etter hverandre (som medside.no sitt PreVisit-intervju:
+ *  «SPØRSMÅL 1 AV 9» osv.) — kortet auto-scroller så aktiv runde alltid er
+ *  synlig, akkurat som en ekte chat. */
+export interface ChatTypeConfig {
+  turns: ChatTurn[];
+  speed: ChatTypeSpeed;
+  /** Hode-rad-tekst. Default 'PreVisit-assistent' — overstyr for gjenbruk utafor chat-kontekst (f.eks. «Anamnesenotat» for en notat-genereringsscene). */
+  label?: string;
+}
+
+export const CHAT_TURN_GAP = 0.35; // pause (sek) mellom runder
+
+/** Varighet (sek) for ÉN runde: prikker → spørsmål → (pause → svar). MÅ speile fase-inndelingen i mockupRaster.ts. */
+export function chatTurnDuration(turn: ChatTurn, cps: number): number {
+  const dotsLen = 0.6;
+  const qLen = Math.max(0.5, turn.question.length / cps);
+  const pauseLen = turn.reply ? 0.3 : 0;
+  const replyLen = turn.reply ? Math.max(0.4, turn.reply.length / cps) : 0;
+  return dotsLen + qLen + pauseLen + replyLen;
+}
+
+/** Total klipp-varighet (sek) for alle runder i en chatType-animasjon. */
+function chatClipDuration(chat: ChatTypeConfig): number {
+  const cps = CHAT_TYPE_SPEEDS[chat.speed] ?? CHAT_TYPE_SPEEDS.normal;
+  return chat.turns.reduce((sum, turn, i) => sum + chatTurnDuration(turn, cps) + (i > 0 ? CHAT_TURN_GAP : 0), 0);
 }
 
 export function makeImage(image: string, partial: Partial<MockupImageSlot> = {}): MockupImageSlot {
@@ -728,7 +976,8 @@ export type MockupTemplateCategory =
   | 'funksjonslansering'
   | 'salgspitch'
   | 'nokkeltall'
-  | 'kundecase';
+  | 'kundecase'
+  | 'kampanje';
 
 export const CATEGORY_LABELS: Record<MockupTemplateCategory, string> = {
   produktoversikt: 'Produktoversikt',
@@ -736,6 +985,7 @@ export const CATEGORY_LABELS: Record<MockupTemplateCategory, string> = {
   salgspitch: 'Salgspitch',
   nokkeltall: 'Nøkkeltall',
   kundecase: 'Kundecase',
+  kampanje: 'Kampanje',
 };
 
 /** Formål → anbefalte kategorier (onboarding §3-skjerm 2). */
@@ -871,7 +1121,136 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
       makeText('body', { text: 'Den nye versjonen er her.', x: 0, y: 310, w: BASE_W, align: 'center', color: t.body }),
     ]); },
   },
+  {
+    id: 'chat_hook_laptop', name: 'Chat-hook — MacBook', category: 'kundecase', variant: 'light', devices: 1,
+    description: 'Sitat-drevet hook: en flerrunders chat-samtale (hode + spørsmål/svar-bobler, auto-scroll) som skriver seg selv inn — prikker → tegn-for-tegn — inni en ekte MacBook-mock. Overskrift/brødtekst til venstre. God for bruker-/kunde-sitat-annonser (se chatType på enheten for fart-presets og flere runder).',
+    build: () => {
+      const t = ink('light');
+      return doc('Chat-hook', 'chat_hook_laptop', baseCanvas({ background: 'light', bgStyle: 'clean', accent: '#b5793a', accent2: '#faf6ee', typography: 'editorial' }), [
+        makeDevice('macbook', {
+          x: 700, y: 250, w: 820, shadow: true,
+          chatType: { speed: 'normal', turns: [{ question: 'Skriv spørsmålet som skal "skrives" inn på skjermen…', reply: 'Skriv svaret her (valgfritt)…' }] },
+        }),
+      ], [
+        makeText('eyebrow', { text: 'DET DE IKKE FIKK SAGT', x: 120, y: 300, w: 520, color: '#b5793a' }),
+        makeText('title', { text: 'Overskrift som selger', x: 120, y: 345, w: 560, color: t.title }),
+        makeText('body', { text: 'Kort verdiløfte i én til to setninger.', x: 120, y: 560, w: 520, color: t.body }),
+        makeText('tag', { text: 'creatorhubn.com', x: 120, y: 720, w: 520, color: t.tag }),
+      ]);
+    },
+  },
+  {
+    id: 'previsit_campaign_1', name: 'PreVisit kampanje — foto + UI-kort', category: 'kampanje', variant: 'light', devices: 0,
+    description: 'Kvadratisk (1080×1080) sosial annonse: nummerert steg-badge, MedSide-logo, serif-overskrift m/ gull-aksent, foto-plassholder + rundet UI-kort koblet med en prikket linje, bunn-pill med kort forklaring. Bytt ut foto-plassholderne med ekte bilder.',
+    build: () => {
+      const canvas = baseCanvas({
+        w: 1080, h: 1080,
+        accent: MEDSIDE_COLORS.navy, accent2: MEDSIDE_COLORS.gold,
+        background: 'light', bgStyle: 'clean', decor: 'arc', typography: 'editorial',
+        logo: { image: MEDSIDE_LOGO_DATA_URL, x: 860, y: 44, w: 176 },
+      });
+      const base = doc('PreVisit kampanje', 'previsit_campaign_1', canvas, [], [
+        makeText('title', { text: 'Timen starter', x: 70, y: 150, w: 700, size: 56, color: MEDSIDE_COLORS.navy }),
+        makeText('title', { text: 'før pasienten', x: 70, y: 216, w: 700, size: 56, color: MEDSIDE_COLORS.gold }),
+        makeText('title', { text: 'kommer inn.', x: 70, y: 282, w: 700, size: 56, color: MEDSIDE_COLORS.navy }),
+      ]);
+      return {
+        ...base,
+        images: [
+          makeImage(placeholderImage('PASIENT-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 40, y: 470, w: 460, h: 570, radius: 24 }),
+          makeImage(placeholderImage('LEGE-FOTO', MEDSIDE_COLORS.cream, MEDSIDE_COLORS.navy), { x: 580, y: 470, w: 460, h: 570, radius: 24 }),
+          makeImage(previsitUiCardImage(DEFAULT_PREVISIT_CARD_CONTENT), { x: 350, y: 540, w: 380, h: 340, radius: 20, cardContent: DEFAULT_PREVISIT_CARD_CONTENT }),
+        ],
+        annotations: [
+          { id: uid('ann'), kind: 'step', fx: 0.035, fy: 0.035, n: 1 },
+          // to connector-linjer: hvert foto → sin nærmeste kort-kant. Ankrene MÅ ligge
+          // utenfor kortets eget rektangel (x:350-730,y:540-880) — forrige versjon endte
+          // begge punktene inni kortet (dermed usynlig "i" knappen), fikset her.
+          { id: uid('ann'), kind: 'connector', fx: 0.231, fy: 0.602, fx2: 0.324, fy2: 0.546 },
+          { id: uid('ann'), kind: 'connector', fx: 0.787, fy: 0.602, fx2: 0.676, fy2: 0.546 },
+          // bunn-pills, én pr. foto (ikke én sentrert pill).
+          { id: uid('ann'), kind: 'pill', fx: 0.25, fy: 0.945, glyph: '⌂', label: 'Pasienten fyller ut', label2: '– hjemme i ro og fred' },
+          { id: uid('ann'), kind: 'pill', fx: 0.75, fy: 0.945, glyph: '✓', label: 'Klinikeren er forberedt', label2: '– før pasienten kommer' },
+        ],
+      };
+    },
+  },
 ];
+
+/** UTF-8-trygg base64 (btoa alene feiler på ikke-Latin1-tegn som "→"/norske bokstaver). */
+function utf8ToBase64(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  bytes.forEach((b) => { binary += String.fromCharCode(b); });
+  return btoa(binary);
+}
+
+/** Enkel plassholder-bakgrunn (SVG data-URL) — sentrert label på flatfarge, ingen ekstern fil.
+ *  Brukes til «bytt ut senere»-foto-slots i kampanje-maler. */
+export function placeholderImage(label: string, bg: string, ink: string): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600">
+    <rect width="600" height="600" fill="${bg}"/>
+    <text x="300" y="300" font-family="-apple-system,system-ui,sans-serif" font-size="30" font-weight="600"
+      fill="${ink}" fill-opacity="0.55" text-anchor="middle" dominant-baseline="middle">${label}</text>
+  </svg>`;
+  return `data:image/svg+xml;base64,${utf8ToBase64(svg)}`;
+}
+
+export const DEFAULT_PREVISIT_CARD_CONTENT: PreVisitCardContent = {
+  title: 'Spørreskjema',
+  subtitle: 'Del din helseinformasjon',
+  buttonText: 'Start PreVisit',
+  steps: [
+    { label: 'Invitasjon', state: 'done' },
+    { label: 'Spørreskjema', state: 'done' },
+    { label: 'Forberedelser', state: 'active' },
+    { label: 'Klar', state: 'todo' },
+  ],
+};
+
+/** Enkel XML-escaping for tekst satt inn i genererte SVG-er (bruker-redigerbare felt). */
+function escXml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** Falsk PreVisit-app-skjermbilde (SVG data-URL): logo-mark, N-stegs fremdriftsrad,
+ *  overskrift+undertekst, CTA-knapp — samme «kort inni foto»-look som referanse-annonsene.
+ *  Redigerbar via `content` (se PreVisitCardContent) — regenereres når inspektøren endrer felt.
+ *  Ikke en ekte app-eksport, men leser riktig i miniatyr; bytt ut med ekte skjermbilde senere. */
+export function previsitUiCardImage(content: PreVisitCardContent = DEFAULT_PREVISIT_CARD_CONTENT): string {
+  const navy = MEDSIDE_COLORS.navy, gold = MEDSIDE_COLORS.gold;
+  const n = Math.max(1, content.steps.length);
+  const margin = 76;
+  const usable = 600 - margin * 2;
+  const steps = content.steps.map((s, i) => ({ ...s, cx: n === 1 ? 300 : margin + (usable * i) / (n - 1) }));
+  const stepCircle = (s: (typeof steps)[number]) => {
+    const fill = s.state === 'todo' ? '#ffffff' : s.state === 'active' ? gold : navy;
+    const stroke = s.state === 'todo' ? '#d1d5db' : fill;
+    const mark = s.state === 'done'
+      ? `<path d="M${s.cx - 6} 150 l5 5 l9 -10" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
+      : '';
+    return `<circle cx="${s.cx}" cy="150" r="15" fill="${fill}" stroke="${stroke}" stroke-width="2"/>${mark}
+      <text x="${s.cx}" y="182" font-family="-apple-system,system-ui,sans-serif" font-size="13" fill="#6b7280" text-anchor="middle">${escXml(s.label)}</text>`;
+  };
+  const connectorLines = steps.slice(0, -1).map((s, i) => {
+    const next = steps[i + 1];
+    const done = s.state === 'done';
+    return `<line x1="${s.cx + 15}" y1="150" x2="${next.cx - 15}" y2="150" stroke="${done ? navy : '#d1d5db'}" stroke-width="2"/>`;
+  }).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="536">
+    <rect width="600" height="536" fill="#ffffff"/>
+    <circle cx="40" cy="46" r="10" fill="${navy}"/>
+    <path d="M40 36 l16 10 l-16 10 z" fill="${gold}" opacity="0.9"/>
+    <text x="64" y="53" font-family="Georgia,'Iowan Old Style',serif" font-size="24" font-weight="700" fill="${navy}">PreVisit</text>
+    ${connectorLines}
+    ${steps.map(stepCircle).join('')}
+    <text x="60" y="240" font-family="-apple-system,system-ui,sans-serif" font-size="24" font-weight="700" fill="#101317">${escXml(content.title)}</text>
+    <text x="60" y="270" font-family="-apple-system,system-ui,sans-serif" font-size="16" fill="#6b7280">${escXml(content.subtitle)}</text>
+    <rect x="60" y="320" width="480" height="56" rx="28" fill="${navy}"/>
+    <text x="300" y="354" font-family="-apple-system,system-ui,sans-serif" font-size="18" font-weight="700" fill="#ffffff" text-anchor="middle">${escXml(content.buttonText)}  &#8594;</text>
+  </svg>`;
+  return `data:image/svg+xml;base64,${utf8ToBase64(svg)}`;
+}
 
 const DEV_LABEL: Record<MockupDeviceVariant, string> = { macbook: 'MacBook', ipad: 'iPad', ipad_landscape: 'iPad', iphone: 'iPhone', watch: 'Apple Watch', android: 'Android', browser: 'Nettleser', tablet: 'Nettbrett' };
 const ROLE_LABEL: Record<MockupTextRole, string> = { eyebrow: 'Etikett', title: 'Overskrift', body: 'Brødtekst', tag: 'Liten tekst' };
@@ -1006,8 +1385,46 @@ export const APPSTORE_FORMATS: MockupFormat[] = [
   { id: 'play_tablet', label: 'Play nettbrett', w: 1600, h: 2560 },
 ];
 
-/** Grovt anslag på tekst-høyde (px) uten canvas (for reflow-stabling). */
-function estTextHeight(t: MockupTextSlot, w: number): number {
+// Lazy singleton 2D-kontekst for EKTE tekst-måling i reflow-stabling — unngår
+// at estTextHeight sitt char-count-anslag bommer på bredere/serif-fonter
+// (Editorial/Georgia) og lar neste tekstblokk overlappe forrige (observert bug).
+let measureCtx: CanvasRenderingContext2D | null = null;
+function getMeasureCtx(): CanvasRenderingContext2D | null {
+  if (measureCtx) return measureCtx;
+  if (typeof document === 'undefined') return null;
+  measureCtx = document.createElement('canvas').getContext('2d');
+  return measureCtx;
+}
+
+/** Reelt ombrukket linje-antall — speiler wrapLines() i mockupRaster.ts (samme greedy ordbrekk). */
+function wrapLineCount(ctx: CanvasRenderingContext2D, text: string, maxW: number): number {
+  let n = 0;
+  for (const para of text.split('\n')) {
+    const words = para.split(/\s+/).filter(Boolean);
+    if (words.length === 0) { n += 1; continue; }
+    let line = words[0];
+    for (let i = 1; i < words.length; i++) {
+      const test = `${line} ${words[i]}`;
+      if (ctx.measureText(test).width > maxW && line) { n += 1; line = words[i]; }
+      else line = test;
+    }
+    n += 1;
+  }
+  return n;
+}
+
+/**
+ * Tekst-høyde (px) for reflow-stabling. Måler EKTE ombrekking via canvas når
+ * `canvas`-specen er gitt (nøyaktig — matcher faktisk rendering). Faller
+ * tilbake til et grovt char-count-anslag uten canvas (SSR/test-miljø).
+ */
+function estTextHeight(t: MockupTextSlot, w: number, canvas?: MockupCanvasSpec): number {
+  const ctx = canvas ? getMeasureCtx() : null;
+  if (ctx) {
+    ctx.font = `${t.weight} ${t.size}px ${fontFamilyFor(t.role, canvas!)}`;
+    const lines = wrapLineCount(ctx, t.uppercase ? t.text.toUpperCase() : t.text, w);
+    return lines * t.size * t.lineHeight;
+  }
   const hard = Math.max(1, t.text.split('\n').length);
   const wrapped = Math.max(hard, Math.ceil((t.text.length * t.size * 0.5) / Math.max(1, w)));
   return wrapped * t.size * t.lineHeight;
@@ -1038,7 +1455,7 @@ function reflowAuto(doc: MockupDoc, fmt: MockupFormat): MockupDoc {
   const texts = doc.texts.map((t) => {
     const size = Math.max(11, Math.round(t.size * fscale));
     const nt: MockupTextSlot = { ...t, x: Math.round(txX), w: Math.round(txW), align, size, y: Math.round(ty) };
-    ty += estTextHeight(nt, txW) + size * 0.35;
+    ty += estTextHeight(nt, txW, doc.canvas) + size * 0.35;
     return nt;
   });
   const textBottom = ty;

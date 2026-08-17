@@ -10,8 +10,8 @@ import { useMockupStudio } from './mockupStudioStore';
 import { deriveTimeline, type TimelineClip, type MockupTimeline } from './mockupStudioModel';
 
 const TRACK_H = 32;
-const TRACK_LABELS = ['Enheter', 'Skriving', 'Tekst'];
-const CLIP_COLORS: Record<TimelineClip['kind'], string> = { type: '#2563eb', reveal: '#7c3aed' };
+const TRACK_LABELS = ['Enheter', 'Skriving', 'Tekst', 'Bilder', 'Chat', 'Rigg'];
+const CLIP_COLORS: Record<TimelineClip['kind'], string> = { type: '#2563eb', reveal: '#7c3aed', rig: '#16a34a' };
 // Responsiv skalering for NLE-tett timeline (litt tettere enn shell-chromet).
 const TL_FS = 'clamp(10px, 0.72vw, 12.5px)';   // labels / klipp / knapper
 const TL_FS_SM = 'clamp(8px, 0.58vw, 10px)';   // linjal-ticks
@@ -22,6 +22,7 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
   const doc = useMockupStudio((s) => s.doc);
   const setDocSilent = useMockupStudio((s) => s.setDocSilent);
   const pushHistory = useMockupStudio((s) => s.pushHistory);
+  const select = useMockupStudio((s) => s.select);
   const tl: MockupTimeline = deriveTimeline(doc);
   const railRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -196,7 +197,29 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
             <div key={i} style={{ position: 'relative', height: TRACK_H, borderBottom: '1px solid rgba(255,255,255,0.05)', background: i % 2 ? 'rgba(255,255,255,0.015)' : 'transparent' }} />
           ))}
           {/* Klipp */}
-          {tl.clips.map((c) => (
+          {tl.clips.map((c) => {
+            // Rigg-klipp er read-only visning (kurvene er keyet mot global t, ikke klipp-tid) —
+            // klikk hopper til figurens inspektør istedenfor å starte en dra/trim-handling.
+            if (c.kind === 'rig') {
+              return (
+                <div
+                  key={c.id}
+                  onPointerDown={(e) => { e.stopPropagation(); if (c.ref) select({ kind: 'image', id: c.ref }); }}
+                  title={`${c.label} — klikk for å åpne figurens rigg-panel`}
+                  style={{
+                    position: 'absolute', left: `${(c.start / dur) * 100}%`, width: `${(c.len / dur) * 100}%`,
+                    top: 16 + c.track * TRACK_H + 3, height: TRACK_H - 6,
+                    background: 'repeating-linear-gradient(135deg, #16a34a, #16a34a 6px, #15803d 6px, #15803d 12px)',
+                    borderRadius: 4, border: '1px dashed rgba(255,255,255,0.4)',
+                    display: 'flex', alignItems: 'center', paddingLeft: 8, overflow: 'hidden', whiteSpace: 'nowrap',
+                    color: '#fff', fontSize: TL_FS, cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+                  }}
+                >
+                  {c.label}
+                </div>
+              );
+            }
+            return (
             <div
               key={c.id}
               onPointerDown={(e) => { setSelClip(c.id); beginClipDrag(c, e); }}
@@ -222,7 +245,8 @@ export function MockupTimelinePanel({ playT, onScrub, inT, outT, onSetIn, onSetO
                 style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize', background: 'rgba(255,255,255,0.25)' }}
               />
             </div>
-          ))}
+            );
+          })}
           {/* Inn/ut-region: mørkne utenfor [inT, outT] */}
           {inT > 0 && <div style={{ position: 'absolute', left: 0, width: `${inT * 100}%`, top: 16, bottom: 0, background: 'rgba(0,0,0,0.5)', pointerEvents: 'none' }} />}
           {outT < 1 && <div style={{ position: 'absolute', left: `${outT * 100}%`, right: 0, top: 16, bottom: 0, background: 'rgba(0,0,0,0.5)', pointerEvents: 'none' }} />}

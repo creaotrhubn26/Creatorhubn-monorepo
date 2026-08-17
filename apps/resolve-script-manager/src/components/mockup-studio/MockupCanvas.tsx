@@ -84,7 +84,10 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const [renderError, setRenderError] = useState<string | null>(null);
 
   // ── Skrive-animasjon: timeline (scrubber + hastighet + easing/speed-ramp) ──
-  const [playT, setPlayT] = useState<number | null>(null);
+  // Delt m/ inspektørens keyframe-grafer (mockupStudioStore) — så playheaden er ÉN kilde,
+  // ikke isolert lokal state, og rigg-kurvene kan vise hvor du er i forhåndsvisningen.
+  const playT = useMockupStudio((s) => s.playT);
+  const setPlayT = useMockupStudio((s) => s.setPlayT);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);          // 0.5×–2× hastighet
   const [timelineH, setTimelineH] = useState(200); // brukerjusterbar timeline-høyde

@@ -58,7 +58,27 @@ import {
   type MockupDecor,
   buildMindmapDoc,
   TYPE_PRESETS,
+  CHAT_TYPE_SPEEDS,
+  CHAT_TYPE_SPEED_LABELS,
+  type ChatTypeSpeed,
+  PERSON_RIG_PROPS,
+  IMAGE_TRANSFORM_PROPS,
+  PERSON_OUTFIT_LABELS,
+  PERSON_HAIR_LABELS,
+  PERSON_ACCESSORY_LABELS,
+  PERSON_SCENARIO_LABELS,
+  BACKDROP_ANCHORS,
+  DEFAULT_RIG_POSE,
+  EXPRESSION_PRESETS,
+  PERSON_ROLE_PRESETS,
+  sampleKf,
+  type PersonStyle,
+  type PersonRigPose,
+  previsitUiCardImage,
+  type PreVisitCardContent,
+  type PreVisitStepState,
 } from './mockupStudioModel';
+import { drawPersonLaptop } from './mockupRaster';
 import { RECOMMENDED_MAX } from './mockupPreflight';
 import {
   captureSiteShots,
@@ -136,6 +156,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
   const store = useMockupStudio();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const spriteInputRef = useRef<HTMLInputElement>(null);
   const [pendingDeviceId, setPendingDeviceId] = useState<string | null>(null);
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   const [showExport, setShowExport] = useState(false);
@@ -207,6 +229,54 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
       setPendingDeviceId(null);
     };
     reader.readAsDataURL(file);
+  };
+
+  const triggerVideoUpload = () => videoInputRef.current?.click();
+  // Manuell video-import (f.eks. et Autodesk Flow Studio-render) — INGEN AI-generering skjer her,
+  // bare fest en ferdig video-fil til et bilde-element. `video` avspilles i preview/eksport;
+  // `image` (poster fra første frame) er statisk fallback (Bilde-fanen, statisk PNG-eksport).
+  // Blob-URL: varer kun denne økten (overlever ikke omstart) — kjent begrensning, ikke en bug.
+  const onVideoPicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const v = document.createElement('video');
+    v.src = url; v.muted = true; v.playsInline = true;
+    await new Promise<void>((resolve, reject) => {
+      v.onloadeddata = () => resolve();
+      v.onerror = () => reject(new Error('Kunne ikke lese videofilen'));
+    });
+    v.currentTime = 0;
+    await new Promise<void>((resolve) => { v.onseeked = () => resolve(); });
+    const canvas = document.createElement('canvas');
+    canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+    canvas.getContext('2d')?.drawImage(v, 0, 0);
+    const poster = canvas.toDataURL('image/jpeg', 0.85);
+    const targetW = 400, targetH = Math.round(targetW * (v.videoHeight / v.videoWidth));
+    store.addImage(poster, { video: url, w: targetW, h: targetH, fit: 'cover' });
+  };
+
+  const triggerSpriteUpload = () => spriteInputRef.current?.click();
+  // Sprite-sekvens import (f.eks. transparente PNG-rammer fra Sorceress 3D Studio sitt
+  // 3D→2D-verktøy) — velg ALLE rammene i én fildialog, sorteres naturlig på filnavn (frame_001,
+  // frame_002...) så rekkefølgen blir riktig uansett hvilken rekkefølge OS-en leverer filene i.
+  const onSpritePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    if (!files.length) return;
+    const naturalCmp = (a: File, b: File) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    const sorted = files.sort(naturalCmp);
+    const frames = await Promise.all(sorted.map((f) => new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => (typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Kunne ikke lese rammen')));
+      reader.onerror = () => reject(new Error('Kunne ikke lese rammen'));
+      reader.readAsDataURL(f);
+    })));
+    const img = new Image();
+    await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = () => reject(new Error('Kunne ikke lese første ramme')); img.src = frames[0]; });
+    const targetW = 400, targetH = Math.round(targetW * (img.naturalHeight / img.naturalWidth));
+    store.addImage(frames[0], { sprite: { frames, fps: 12 }, w: targetW, h: targetH, fit: 'contain' });
   };
 
   const triggerLogoUpload = () => logoInputRef.current?.click();
@@ -657,6 +727,43 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
           ))}
 
           </Collapsible>
+          <Collapsible title="Illustrasjon">
+          <button
+            onClick={() => store.addImage('', { illustration: 'person-laptop', w: 220, h: 279, radius: 0, fit: 'contain', shadow: false })}
+            style={{ ...listBtn, marginBottom: 6 }}
+            title="Prosedural flat-illustrasjon tegnet direkte på lerretet — ingen ekstern fil, animeres automatisk (typing-bounce) i videoeksport"
+          >
+            + Person ved laptop
+          </button>
+          <button
+            onClick={() => store.addImage('', { illustration: 'office-backdrop', x: 0, y: 0, w: store.doc.canvas.w, h: store.doc.canvas.h, radius: 0, fit: 'contain', shadow: false })}
+            style={{ ...listBtn, marginBottom: 6 }}
+            title="Legekontor-bakgrunn (vindu, pult, plante, klokke) — tegnes alltid bak personer, uansett rekkefølge"
+          >
+            + Legekontor (bakgrunn)
+          </button>
+          <button
+            onClick={() => store.addImage('', { illustration: 'waiting-room-backdrop', x: 0, y: 0, w: store.doc.canvas.w, h: store.doc.canvas.h, radius: 0, fit: 'contain', shadow: false })}
+            style={{ ...listBtn, marginBottom: 6 }}
+            title="Venteværelse-bakgrunn (stolrad, resepsjon, sofabord) — tegnes alltid bak personer, uansett rekkefølge"
+          >
+            + Venteværelse (bakgrunn)
+          </button>
+          <button
+            onClick={triggerVideoUpload}
+            style={{ ...listBtn, marginBottom: 6 }}
+            title="Last opp en ferdig video (f.eks. et Autodesk Flow Studio-render) som et bilde-element — spilles i preview/eksport, ingen AI-generering her"
+          >
+            + Last opp video (3D-figur)
+          </button>
+          <button
+            onClick={triggerSpriteUpload}
+            style={{ ...listBtn, marginBottom: 6 }}
+            title="Velg ALLE PNG-rammene i én dialog (f.eks. fra Sorceress 3D Studio sitt 3D→2D/Auto-Sprite-verktøy) — ekte 3D-render avspilt som bytte-frames, ingen AI-generering her"
+          >
+            + Last opp sprite-sekvens (3D-render)
+          </button>
+          </Collapsible>
           <Collapsible title="Kits" defaultOpen={false}>
           <input
             value={kitName}
@@ -732,6 +839,8 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
 
       <input ref={fileInputRef} type="file" accept="image/*" onChange={onFilePicked} style={{ display: 'none' }} />
       <input ref={logoInputRef} type="file" accept="image/*" onChange={onLogoPicked} style={{ display: 'none' }} />
+      <input ref={videoInputRef} type="file" accept="video/*" onChange={(e) => void onVideoPicked(e)} style={{ display: 'none' }} />
+      <input ref={spriteInputRef} type="file" accept="image/*" multiple onChange={(e) => void onSpritePicked(e)} style={{ display: 'none' }} />
 
       {showExport && <ExportDialog onClose={() => setShowExport(false)} />}
       {showOnboarding && <OnboardingDialog onClose={() => setShowOnboarding(false)} onDone={() => setView('editor')} />}
@@ -804,11 +913,18 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
       </Field>
       <Field label="Logo">
         {canvas.logo?.image ? (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <img src={canvas.logo.image} alt="logo" style={{ height: 34, maxWidth: 96, objectFit: 'contain', background: 'rgba(255,255,255,0.06)', borderRadius: 6, padding: 4 }} />
-            <button onClick={onUploadLogo} style={{ ...listBtn, flex: 1 }}>Bytt</button>
-            <button onClick={() => patchCanvas({ logo: undefined })} style={{ ...listBtn, width: 30, textAlign: 'center' }} title="Fjern logo" aria-label="Fjern logo">✕</button>
-          </div>
+          <>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+              <img src={canvas.logo.image} alt="logo" style={{ height: 34, maxWidth: 96, objectFit: 'contain', background: 'rgba(255,255,255,0.06)', borderRadius: 6, padding: 4 }} />
+              <button onClick={onUploadLogo} style={{ ...listBtn, flex: 1 }}>Bytt</button>
+              <button onClick={() => patchCanvas({ logo: undefined })} style={{ ...listBtn, width: 30, textAlign: 'center' }} title="Fjern logo" aria-label="Fjern logo">✕</button>
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <NumberBox label="X" value={Math.round(canvas.logo.x)} onChange={(n) => patchCanvas({ logo: { ...canvas.logo!, x: n } })} />
+              <NumberBox label="Y" value={Math.round(canvas.logo.y)} onChange={(n) => patchCanvas({ logo: { ...canvas.logo!, y: n } })} />
+              <NumberBox label="Bredde" value={Math.round(canvas.logo.w)} onChange={(n) => patchCanvas({ logo: { ...canvas.logo!, w: Math.max(20, n) } })} />
+            </div>
+          </>
         ) : (
           <button onClick={onUploadLogo} style={listBtn}>Last opp logo</button>
         )}
@@ -975,7 +1091,7 @@ function IllustrationInspector() {
     }
   };
 
-  const KIND_LABEL: Record<string, string> = { callout: 'Callout', loupe: 'Lupe', marker: 'Markør' };
+  const KIND_LABEL: Record<string, string> = { callout: 'Callout', loupe: 'Lupe', marker: 'Markør', step: 'Trinn-badge', connector: 'Kobling', pill: 'Pill' };
   const devName = (id?: string) => {
     if (!id) return 'Lerret';
     const i = doc.devices.findIndex((d) => d.id === id);
@@ -1028,10 +1144,16 @@ function IllustrationInspector() {
           </select>
         </Field>
       )}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
         <button onClick={() => addAnnotation('callout', devTarget)} style={{ ...listBtn, flex: 1 }}>+ Callout</button>
         <button onClick={() => addAnnotation('loupe', devTarget)} style={{ ...listBtn, flex: 1 }}>+ Lupe</button>
         <button onClick={() => addAnnotation('marker', devTarget)} style={{ ...listBtn, flex: 1 }}>+ Markør</button>
+      </div>
+      <p style={{ fontSize: 11, color: C.inkSoft, margin: '0 0 6px' }}>Kampanje-elementer (hjørne-badge/pill/koblingslinje — lerret-relative, ikke festet til en enhet):</p>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        <button onClick={() => addAnnotation('step', undefined)} style={{ ...listBtn, flex: 1 }}>+ Trinn</button>
+        <button onClick={() => addAnnotation('pill', undefined)} style={{ ...listBtn, flex: 1 }}>+ Pill</button>
+        <button onClick={() => addAnnotation('connector', undefined)} style={{ ...listBtn, flex: 1 }}>+ Kobling</button>
       </div>
 
       {anns.length === 0 && <p style={{ fontSize: FS_SM, color: C.inkSoft }}>Ingen annotasjoner ennå.</p>}
@@ -1076,6 +1198,33 @@ function IllustrationInspector() {
             </div>
           )}
 
+          {a.kind === 'step' && (
+            <label style={{ fontSize: 11, color: C.inkSoft, display: 'block', marginBottom: 6 }}>Tall i badge
+              <input type="number" min={1} value={a.n ?? 1} onChange={(e) => patchAnnotation(a.id, { n: Math.max(1, Number(e.target.value)) })} style={{ ...textInput, width: 56, display: 'block', marginTop: 2 }} />
+            </label>
+          )}
+
+          {a.kind === 'pill' && (
+            <>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                <input value={a.glyph ?? ''} onChange={(e) => patchAnnotation(a.id, { glyph: e.target.value })} placeholder="Ikon (f.eks. ✓ ⌂ 📋)" style={{ ...textInput, width: 70 }} title="Ikon-glyph (unicode)" />
+                <input value={a.label ?? ''} onChange={(e) => patchAnnotation(a.id, { label: e.target.value })} placeholder="Tittel" style={{ ...textInput, flex: 1 }} />
+              </div>
+              <input value={a.label2 ?? ''} onChange={(e) => patchAnnotation(a.id, { label2: e.target.value })} placeholder="Undertekst" style={{ ...textInput, width: '100%', marginBottom: 6 }} />
+            </>
+          )}
+
+          {a.kind === 'connector' && (
+            <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
+              <label style={{ fontSize: 11, color: C.inkSoft, flex: 1 }}>X2: {Math.round((a.fx2 ?? a.fx) * 100)}%
+                <input type="range" min={0} max={1} step={0.01} value={a.fx2 ?? a.fx} onChange={(e) => patchAnnotation(a.id, { fx2: Number(e.target.value) })} style={{ width: '100%' }} />
+              </label>
+              <label style={{ fontSize: 11, color: C.inkSoft, flex: 1 }}>Y2: {Math.round((a.fy2 ?? a.fy) * 100)}%
+                <input type="range" min={0} max={1} step={0.01} value={a.fy2 ?? a.fy} onChange={(e) => patchAnnotation(a.id, { fy2: Number(e.target.value) })} style={{ width: '100%' }} />
+              </label>
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 6 }}>
             <label style={{ fontSize: 11, color: C.inkSoft, flex: 1 }}>X: {Math.round(a.fx * 100)}%
               <input type="range" min={0} max={1} step={0.01} value={a.fx} onChange={(e) => patchAnnotation(a.id, { fx: Number(e.target.value) })} style={{ width: '100%' }} />
@@ -1107,9 +1256,179 @@ function NumberBox({ label, value, onChange }: { label: string; value: number; o
 }
 
 /** Frittstående bilde-element: størrelse, radius, tilpasning, rotasjon, skygge, lag, slett. */
+/** Delt av ImageInspector og DeviceInspector: chat-samtale-editor (flere spørsmål/svar-runder, auto-scroll i motion-eksport). */
+function ChatTypeField({ chatType, onChange }: { chatType: import('./mockupStudioModel').ChatTypeConfig | undefined; onChange: (v: import('./mockupStudioModel').ChatTypeConfig | undefined) => void }) {
+  const patchTurn = (i: number, patch: Partial<import('./mockupStudioModel').ChatTurn>) => {
+    if (!chatType) return;
+    onChange({ ...chatType, turns: chatType.turns.map((t, idx) => (idx === i ? { ...t, ...patch } : t)) });
+  };
+  return (
+    <Field label="Chat-samtale (spørsmål → svar, prikker → tekst, auto-scroll)">
+      <label style={checkRow}>
+        <input type="checkbox" checked={!!chatType} onChange={(e) => onChange(e.target.checked ? { speed: 'normal', turns: [{ question: 'Kan du fortelle litt om...', reply: 'Ja, det er...' }] } : undefined)} />
+        Spill av som chat i motion-eksport
+      </label>
+      {chatType && (
+        <>
+          {chatType.turns.map((turn, i) => (
+            <div key={i} style={{ marginTop: 8, paddingTop: 8, borderTop: i > 0 ? `1px solid ${C.border}` : 'none' }}>
+              <div style={{ fontSize: FS_SM, color: C.inkSoft, marginBottom: 4 }}>Runde {i + 1}</div>
+              <textarea value={turn.question} onChange={(e) => patchTurn(i, { question: e.target.value })}
+                rows={2} style={{ ...textInput, width: '100%', resize: 'vertical' }} placeholder="Spørsmål (innkommende, venstre)…" />
+              <textarea value={turn.reply ?? ''} onChange={(e) => patchTurn(i, { reply: e.target.value || undefined })}
+                rows={2} style={{ ...textInput, width: '100%', resize: 'vertical', marginTop: 4 }} placeholder="Svar (utgående, høyre — valgfritt)…" />
+              {chatType.turns.length > 1 && (
+                <button onClick={() => onChange({ ...chatType, turns: chatType.turns.filter((_, idx) => idx !== i) })}
+                  style={{ ...listBtn, marginTop: 4, fontSize: FS_SM }}>✕ Fjern runde</button>
+              )}
+            </div>
+          ))}
+          <button onClick={() => onChange({ ...chatType, turns: [...chatType.turns, { question: '', reply: '' }] })}
+            style={{ ...listBtn, width: '100%', marginTop: 8 }}>+ Legg til runde</button>
+          <div style={{ marginTop: 8 }}>
+            <Segmented<ChatTypeSpeed>
+              options={(Object.keys(CHAT_TYPE_SPEEDS) as ChatTypeSpeed[]).map((sp) => [sp, CHAT_TYPE_SPEED_LABELS[sp]])}
+              value={chatType.speed}
+              onChange={(v) => onChange({ ...chatType, speed: v })}
+            />
+          </div>
+        </>
+      )}
+    </Field>
+  );
+}
+
+type PersonColorKey = 'skin' | 'hair' | 'shirt' | 'accent';
+const PERSON_STYLE_DEFAULTS: Record<PersonColorKey, string> = { skin: '#e0a878', hair: '#2a2f3d', shirt: '#1b294b', accent: '#c9963b' };
+const PERSON_STYLE_LABELS: Record<PersonColorKey, string> = { skin: 'Hud', hair: 'Hår', shirt: 'Klær', accent: 'Aksent' };
+
+/** Live miniatyr av person-laptop-riggen — sampler image.kf ved t=0 og redraw ved hver endring
+ *  (style ELLER keyframe), så du ser figuren mens du drar i kurvene istedenfor å gjette tall. */
+function PersonThumbnail({ kf, style }: { kf: Record<string, import('./mockupStudioModel').Keyframe[]> | undefined; style: PersonStyle | undefined }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const kfv = <K extends keyof PersonRigPose>(prop: K, def: number): number => (kf ? (sampleKf(kf[prop], 0) ?? def) : def);
+    const pose: PersonRigPose = {
+      armSwing: kfv('armSwing', DEFAULT_RIG_POSE.armSwing),
+      fingerTap: kfv('fingerTap', DEFAULT_RIG_POSE.fingerTap),
+      screenActivity: kfv('screenActivity', DEFAULT_RIG_POSE.screenActivity),
+      blink: kfv('blink', DEFAULT_RIG_POSE.blink),
+      headTilt: kfv('headTilt', DEFAULT_RIG_POSE.headTilt),
+      mouthCurve: kfv('mouthCurve', DEFAULT_RIG_POSE.mouthCurve),
+      eyeSize: kfv('eyeSize', DEFAULT_RIG_POSE.eyeSize),
+      bodyBob: kfv('bodyBob', DEFAULT_RIG_POSE.bodyBob),
+      leanX: kfv('leanX', DEFAULT_RIG_POSE.leanX),
+      browRaise: kfv('browRaise', DEFAULT_RIG_POSE.browRaise),
+      tears: kfv('tears', DEFAULT_RIG_POSE.tears),
+      legSwing: kfv('legSwing', DEFAULT_RIG_POSE.legSwing),
+    };
+    drawPersonLaptop(ctx, 0, 0, canvas.width, canvas.height, pose, style);
+  }, [kf, style]);
+  return <canvas ref={canvasRef} width={100} height={127} style={{ borderRadius: 8, background: '#faf6ee', display: 'block', margin: '0 auto' }} />;
+}
+
+/** Fargevelgere for person-laptop-riggen (hud/hår/klær/aksent) — hvert felt valgfritt, mangler felt → standardpalett. */
+function PersonStylePicker({ style, onChange }: { style: PersonStyle | undefined; onChange: (v: PersonStyle | undefined) => void }) {
+  const set = (key: keyof PersonStyle, v: string) => {
+    const next = { ...style, [key]: v };
+    onChange(next);
+  };
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+        {(Object.keys(PERSON_STYLE_DEFAULTS) as PersonColorKey[]).map((key) => (
+          <label key={key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, fontSize: FS_SM, color: C.inkSoft }}>
+            {PERSON_STYLE_LABELS[key]}
+            <input type="color" value={style?.[key] || PERSON_STYLE_DEFAULTS[key]} onChange={(e) => set(key, e.target.value)}
+              style={{ width: 32, height: 24, padding: 0, border: `1px solid ${C.border}`, borderRadius: 4, background: 'none', cursor: 'pointer' }} />
+          </label>
+        ))}
+      </div>
+      <Segmented<NonNullable<PersonStyle['outfit']>>
+        options={(Object.keys(PERSON_OUTFIT_LABELS) as NonNullable<PersonStyle['outfit']>[]).map((o) => [o, PERSON_OUTFIT_LABELS[o]])}
+        value={style?.outfit || 'genser'}
+        onChange={(outfit) => onChange({ ...style, outfit })}
+      />
+      <div style={{ height: 6 }} />
+      <Segmented<NonNullable<PersonStyle['hairStyle']>>
+        options={(Object.keys(PERSON_HAIR_LABELS) as NonNullable<PersonStyle['hairStyle']>[]).map((o) => [o, PERSON_HAIR_LABELS[o]])}
+        value={style?.hairStyle || 'kort'}
+        onChange={(hairStyle) => onChange({ ...style, hairStyle })}
+      />
+      <div style={{ height: 6 }} />
+      <Segmented<NonNullable<PersonStyle['accessory']>>
+        options={(Object.keys(PERSON_ACCESSORY_LABELS) as NonNullable<PersonStyle['accessory']>[]).map((o) => [o, PERSON_ACCESSORY_LABELS[o]])}
+        value={style?.accessory || 'ingen'}
+        onChange={(accessory) => onChange({ ...style, accessory })}
+      />
+      <div style={{ height: 6 }} />
+      <Segmented<NonNullable<PersonStyle['scenario']>>
+        options={(Object.keys(PERSON_SCENARIO_LABELS) as NonNullable<PersonStyle['scenario']>[]).map((o) => [o, PERSON_SCENARIO_LABELS[o]])}
+        value={style?.scenario || 'laptop'}
+        onChange={(scenario) => onChange({ ...style, scenario })}
+      />
+    </div>
+  );
+}
+
+const STEP_STATE_LABEL: Record<PreVisitStepState, string> = { done: 'Fullført', active: 'Aktiv', todo: 'Ikke startet' };
+
+/** Redigerer for det genererte falske PreVisit-kortet: tittel/undertekst/knapp-tekst
+ *  + stegliste (legg til/fjern/endre navn+status). Regenererer SVG-en live på hver endring. */
+function PreVisitCardEditor({ content, onChange }: { content: PreVisitCardContent; onChange: (c: PreVisitCardContent) => void }) {
+  return (
+    <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
+      <SectionLabel>PreVisit-kort (falsk skjerm)</SectionLabel>
+      <Field label="Overskrift">
+        <input value={content.title} onChange={(e) => onChange({ ...content, title: e.target.value })} style={{ ...textInput, width: '100%' }} />
+      </Field>
+      <Field label="Undertekst">
+        <input value={content.subtitle} onChange={(e) => onChange({ ...content, subtitle: e.target.value })} style={{ ...textInput, width: '100%' }} />
+      </Field>
+      <Field label="Knappetekst">
+        <input value={content.buttonText} onChange={(e) => onChange({ ...content, buttonText: e.target.value })} style={{ ...textInput, width: '100%' }} />
+      </Field>
+      <Field label={`Steg (${content.steps.length})`}>
+        {content.steps.map((s, i) => (
+          <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 4, alignItems: 'center' }}>
+            <input
+              value={s.label}
+              onChange={(e) => onChange({ ...content, steps: content.steps.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })}
+              style={{ ...textInput, flex: 1 }}
+            />
+            <select
+              value={s.state}
+              onChange={(e) => onChange({ ...content, steps: content.steps.map((x, j) => (j === i ? { ...x, state: e.target.value as PreVisitStepState } : x)) })}
+              style={{ ...textInput, width: 92 }}
+            >
+              {(Object.keys(STEP_STATE_LABEL) as PreVisitStepState[]).map((st) => <option key={st} value={st}>{STEP_STATE_LABEL[st]}</option>)}
+            </select>
+            <button
+              onClick={() => onChange({ ...content, steps: content.steps.filter((_, j) => j !== i) })}
+              disabled={content.steps.length <= 1}
+              style={{ ...listBtn, width: 26, textAlign: 'center', padding: '4px 0', opacity: content.steps.length <= 1 ? 0.4 : 1 }}
+              title="Fjern steg" aria-label="Fjern steg"
+            >✕</button>
+          </div>
+        ))}
+        <button
+          onClick={() => onChange({ ...content, steps: [...content.steps, { label: 'Nytt steg', state: 'todo' }] })}
+          style={{ ...listBtn, width: '100%' }}
+        >+ Steg</button>
+      </Field>
+    </div>
+  );
+}
+
 function ImageInspector({ image }: { image: import('./mockupStudioModel').MockupImageSlot }) {
   const patchImage = useMockupStudio((s) => s.patchImage);
   const removeImage = useMockupStudio((s) => s.removeImage);
+  const playT = useMockupStudio((s) => s.playT);
+  const doc = useMockupStudio((s) => s.doc);
   const [seedPrompt, setSeedPrompt] = useState('cheese-pull');
   const [seedBusy, setSeedBusy] = useState(false);
   const [seedErr, setSeedErr] = useState<string | null>(null);
@@ -1120,10 +1439,69 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
       patchImage(image.id, { video: path });
     } catch (e) { setSeedErr(String(e instanceof Error ? e.message : e)); } finally { setSeedBusy(false); }
   };
+  const isIllustration = !!image.illustration;
+  const isPersonRig = image.illustration === 'person-laptop';
+  const isBackdrop = image.illustration === 'office-backdrop' || image.illustration === 'waiting-room-backdrop';
   return (
     <div>
-      <SectionLabel>Bilde</SectionLabel>
-      <img src={image.image} alt="" style={{ width: '100%', borderRadius: 8, marginBottom: 10, maxHeight: 130, objectFit: 'cover', display: 'block' }} />
+      <SectionLabel>{isBackdrop ? 'Bakgrunn' : isIllustration ? 'Illustrasjon' : 'Bilde'}</SectionLabel>
+      {isPersonRig ? (
+        <>
+          <div style={{ borderRadius: 8, marginBottom: 10, padding: '10px 0', background: C.panelSoft }}>
+            <PersonThumbnail kf={image.kf} style={image.personStyle} />
+          </div>
+          {(() => {
+            const backdrop = doc.images?.find((im) => im.illustration === 'office-backdrop' || im.illustration === 'waiting-room-backdrop');
+            const anchors = backdrop ? BACKDROP_ANCHORS[backdrop.illustration as 'office-backdrop' | 'waiting-room-backdrop'] : undefined;
+            if (!backdrop || !anchors) return null;
+            return (
+              <Field label="Plasser ved anker (unngår møbel-kollisjon)">
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {anchors.map((a) => (
+                    <button key={a.id} onClick={() => patchImage(image.id, {
+                      x: Math.round(backdrop.x + a.fx * backdrop.w),
+                      y: Math.round(backdrop.y + a.fy * backdrop.h),
+                      w: Math.round(a.fw * backdrop.w),
+                      h: Math.round(a.fh * backdrop.h),
+                    })} style={{ ...listBtn, flex: '1 1 auto', fontSize: FS_SM }}>{a.label}</button>
+                  ))}
+                </div>
+              </Field>
+            );
+          })()}
+          <Field label="Rolle (setter antrekk/farge/tilbehør samlet — overstyrbart etterpå)">
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {PERSON_ROLE_PRESETS.map((p) => (
+                <button key={p.id} onClick={() => patchImage(image.id, { personStyle: { ...image.personStyle, ...p.style } })}
+                  style={{ ...listBtn, flex: '1 1 auto', fontSize: FS_SM }}>{p.label}</button>
+              ))}
+            </div>
+          </Field>
+          <Field label="Uttrykk (setter munn/bryn/øyne/tårer samlet — overstyrbart etterpå)">
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {EXPRESSION_PRESETS.map((p) => (
+                <button key={p.id} onClick={() => {
+                  const next = { ...(image.kf ?? {}) };
+                  (Object.keys(p.values) as (keyof PersonRigPose)[]).forEach((k) => { next[k] = [{ t: 0, v: p.values[k]! }]; });
+                  patchImage(image.id, { kf: next });
+                }} style={{ ...listBtn, flex: '1 1 auto', fontSize: FS_SM }}>{p.label}</button>
+              ))}
+            </div>
+          </Field>
+          <Field label="Klær og farger">
+            <PersonStylePicker style={image.personStyle} onChange={(personStyle) => patchImage(image.id, { personStyle })} />
+          </Field>
+        </>
+      ) : isBackdrop ? (
+        <div style={{ width: '100%', borderRadius: 8, marginBottom: 10, padding: '18px 10px', textAlign: 'center', background: C.panelSoft, fontSize: FS_SM, color: C.inkSoft }}>
+          🏥 {image.illustration === 'waiting-room-backdrop' ? 'Venteværelse' : 'Legekontor'}-bakgrunn — tegnet direkte på lerretet, ligger alltid bak personer.
+        </div>
+      ) : (
+        <img src={image.image} alt="" style={{ width: '100%', borderRadius: 8, marginBottom: 10, maxHeight: 130, objectFit: 'cover', display: 'block' }} />
+      )}
+      {image.cardContent && (
+        <PreVisitCardEditor content={image.cardContent} onChange={(content) => patchImage(image.id, { cardContent: content, image: previsitUiCardImage(content) })} />
+      )}
       <Field label="Størrelse (px)">
         <div style={{ display: 'flex', gap: 6 }}>
           <NumberBox label="B" value={Math.round(image.w)} onChange={(n) => patchImage(image.id, { w: Math.max(20, n) })} />
@@ -1133,25 +1511,47 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
       <Field label={`Hjørne-radius (${Math.round(image.radius)}px)`}>
         <input type="range" min={0} max={120} value={image.radius} onChange={(e) => patchImage(image.id, { radius: Number(e.target.value) })} style={{ width: '100%' }} />
       </Field>
-      <Field label="Tilpasning">
-        <Segmented<'cover' | 'contain'> options={[['cover', 'Fyll'], ['contain', 'Hele bildet']]} value={image.fit} onChange={(v) => patchImage(image.id, { fit: v })} />
-      </Field>
+      {!isIllustration && (
+        <Field label="Tilpasning">
+          <Segmented<'cover' | 'contain'> options={[['cover', 'Fyll'], ['contain', 'Hele bildet']]} value={image.fit} onChange={(v) => patchImage(image.id, { fit: v })} />
+        </Field>
+      )}
       <Field label={`Rotasjon (${Math.round(image.rotation)}°)`}>
         <input type="range" min={-45} max={45} value={image.rotation} onChange={(e) => patchImage(image.id, { rotation: Number(e.target.value) })} style={{ width: '100%' }} />
       </Field>
       <label style={checkRow}><input type="checkbox" checked={image.shadow} onChange={(e) => patchImage(image.id, { shadow: e.target.checked })} /> Skygge</label>
-      <Field label="Animer (Seedance i2v — craveable)">
-        <select value={seedPrompt} onChange={(e) => setSeedPrompt(e.target.value)} style={textInput}>
-          {SEEDANCE_PROMPTS.map((pr) => <option key={pr.id} value={pr.id}>{pr.label}</option>)}
-        </select>
-        <button onClick={() => void runSeedance()} disabled={seedBusy || !aiAvailable()}
-          style={{ ...actionBtn, width: '100%', marginTop: 6, opacity: seedBusy || !aiAvailable() ? 0.6 : 1 }}
-          title={aiAvailable() ? `Seedance i2v fra dette fotoet → craveable klipp · ~${seedanceCreditEstimate('720p', 3)} kreditter (3s 720p)` : 'Krever innlogget AI (RR-token) + kreditter'}>
-          {seedBusy ? 'Genererer klipp…' : image.video ? '↻ Regenerer klipp' : '🎬 Animer'}
-        </button>
-        {image.video && <div style={{ fontSize: FS_SM, color: '#4ade80', marginTop: 4 }}>✓ Klipp koblet — spilles i preview{'. '}<button onClick={() => patchImage(image.id, { video: undefined })} style={{ background: 'none', border: 'none', color: C.inkSoft, cursor: 'pointer', textDecoration: 'underline', padding: 0, fontSize: FS_SM }}>fjern</button></div>}
-        {seedErr && <div style={{ fontSize: 11.5, color: '#e0b060', marginTop: 4 }}>{seedErr}</div>}
+      <Field label="Animasjon — posisjon/rotasjon/skala/synlighet">
+        <MockupKeyframeGraph value={image.kf} playT={playT} props={IMAGE_TRANSFORM_PROPS} onChange={(kf) => patchImage(image.id, { kf })} />
       </Field>
+      {isPersonRig && (
+        <Field label="Animasjon — figur-rigg (hender, fingre, blunk, skjerm)">
+          <MockupKeyframeGraph value={image.kf} playT={playT} props={PERSON_RIG_PROPS} onChange={(kf) => patchImage(image.id, { kf })} />
+        </Field>
+      )}
+      {image.sprite && (
+        <Field label="Sprite-sekvens (ekte 3D-render)">
+          <div style={{ fontSize: FS_SM, color: '#4ade80' }}>
+            ✓ {image.sprite.frames.length} rammer @ {image.sprite.fps} fps — bytter frame under videoeksport{'. '}
+            <button onClick={() => patchImage(image.id, { sprite: undefined })} style={{ background: 'none', border: 'none', color: C.inkSoft, cursor: 'pointer', textDecoration: 'underline', padding: 0, fontSize: FS_SM }}>fjern</button>
+          </div>
+          <NumberBox label="fps" value={image.sprite.fps} onChange={(n) => patchImage(image.id, { sprite: { ...image.sprite!, fps: Math.max(1, n) } })} />
+        </Field>
+      )}
+      {!isIllustration && <ChatTypeField chatType={image.chatType} onChange={(chatType) => patchImage(image.id, { chatType })} />}
+      {!isIllustration && (
+        <Field label="Animer (Seedance i2v — craveable)">
+          <select value={seedPrompt} onChange={(e) => setSeedPrompt(e.target.value)} style={textInput}>
+            {SEEDANCE_PROMPTS.map((pr) => <option key={pr.id} value={pr.id}>{pr.label}</option>)}
+          </select>
+          <button onClick={() => void runSeedance()} disabled={seedBusy || !aiAvailable()}
+            style={{ ...actionBtn, width: '100%', marginTop: 6, opacity: seedBusy || !aiAvailable() ? 0.6 : 1 }}
+            title={aiAvailable() ? `Seedance i2v fra dette fotoet → craveable klipp · ~${seedanceCreditEstimate('720p', 3)} kreditter (3s 720p)` : 'Krever innlogget AI (RR-token) + kreditter'}>
+            {seedBusy ? 'Genererer klipp…' : image.video ? '↻ Regenerer klipp' : '🎬 Animer'}
+          </button>
+          {image.video && <div style={{ fontSize: FS_SM, color: '#4ade80', marginTop: 4 }}>✓ Klipp koblet — spilles i preview{'. '}<button onClick={() => patchImage(image.id, { video: undefined })} style={{ background: 'none', border: 'none', color: C.inkSoft, cursor: 'pointer', textDecoration: 'underline', padding: 0, fontSize: FS_SM }}>fjern</button></div>}
+          {seedErr && <div style={{ fontSize: 11.5, color: '#e0b060', marginTop: 4 }}>{seedErr}</div>}
+        </Field>
+      )}
       <div style={{ height: 8 }} />
       <ArrangeRow kind="image" id={image.id} />
       <button onClick={() => removeImage(image.id)} style={{ ...dangerBtn, marginTop: 8 }}>Slett bilde</button>
@@ -1181,6 +1581,7 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
   const patchDevice = useMockupStudio((s) => s.patchDevice);
   const setDeviceImage = useMockupStudio((s) => s.setDeviceImage);
   const removeDevice = useMockupStudio((s) => s.removeDevice);
+  const playT = useMockupStudio((s) => s.playT);
   const [simBusy, setSimBusy] = useState(false);
   const [simMsg, setSimMsg] = useState<string | null>(null);
   // Fang skjermen fra en bootet iOS-simulator som device-innhold (ekte app-skjerm).
@@ -1233,6 +1634,7 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
           </Field>
         </>
       )}
+      <ChatTypeField chatType={device.chatType} onChange={(chatType) => patchDevice(device.id, { chatType })} />
       {advanced && (
         <>
           <Field label={`Bredde: ${Math.round(device.w)} px`}>
@@ -1272,7 +1674,7 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
           )}
           {device.threeD && (
             <Field label="Keyframe-animasjon (kurve over tid)">
-              <MockupKeyframeGraph value={device.threeD.kf} playT={null} onChange={(kf) => patchDevice(device.id, { threeD: { ...device.threeD!, kf } })} />
+              <MockupKeyframeGraph value={device.threeD.kf} playT={playT} onChange={(kf) => patchDevice(device.id, { threeD: { ...device.threeD!, kf } })} />
             </Field>
           )}
           {device.threeD && device.variant === 'macbook' && (

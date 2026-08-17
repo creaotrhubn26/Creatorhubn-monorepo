@@ -57,6 +57,11 @@ interface MockupStudioState {
   /** Angre/gjør-om-stakker (fulle doc-snapshots). */
   past: MockupDoc[];
   future: MockupDoc[];
+  /** Delt playhead (0..1, eller null = ikke i animert forhåndsvisning) — eid av MockupCanvas sin
+   *  scrubber, lest av MockupKeyframeGraph i inspektøren så kurve-editoren følger playheaden i
+   *  stedet for å stå isolert. Ephemeral UI-state, IKKE del av doc (ingen undo/redo/persistens). */
+  playT: number | null;
+  setPlayT: (t: number | null | ((prev: number | null) => number | null)) => void;
 
   // Livssyklus
   newFromTemplate: (templateId: string) => void;
@@ -156,6 +161,8 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
   selection: { kind: 'canvas' },
   past: [],
   future: [],
+  playT: null,
+  setPlayT: (v) => set((s) => ({ playT: typeof v === 'function' ? v(s.playT) : v })),
 
   newFromTemplate: (templateId) => {
     const next = buildTemplate(templateId);
@@ -312,7 +319,7 @@ export const useMockupStudio = create<MockupStudioState>((set, get) => ({
   addAnnotation: (kind, deviceId) => {
     const dev = deviceId ?? get().doc.devices[0]?.id;
     commit(set, (d) => {
-      const nextN = (d.annotations?.filter((x) => x.kind === 'callout').length ?? 0) + 1;
+      const nextN = (d.annotations?.filter((x) => x.kind === kind).length ?? 0) + 1;
       const a = makeAnnotation(kind, dev, nextN);
       return { ...d, annotations: [...(d.annotations ?? []), a] };
     });
