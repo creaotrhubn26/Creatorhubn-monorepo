@@ -547,6 +547,8 @@ export interface MockupAnnotation {
   // pill: ikon-glyph (unicode) + tittel (label) + undertekst (label2), sentrert på fx/fy.
   glyph?: string;
   label2?: string;
+  /** step/connector: størrelses-multiplikator (badge-boks+tall / linje-tykkelse+prikk). Default 1. */
+  scale?: number;
 }
 
 /** Lag en ny annotasjon med fornuftige standardverdier. */

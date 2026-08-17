@@ -1783,7 +1783,7 @@ function drawCallout(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: MockupAnn
  *  chip (se drawCallout) — for kampanje-sekvensnummerering (1/2/3…) i et fast hjørne. */
 function drawStepBadge(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: MockupAnnotation): void {
   const W = doc.canvas.w;
-  const size = Math.max(40, W * 0.052);
+  const size = Math.max(40, W * 0.052) * (a.scale ?? 1);
   const x = a.fx * W, y = a.fy * doc.canvas.h;
   const r = size * 0.22;
   ctx.save();
@@ -1814,13 +1814,14 @@ function drawConnectorLine(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: Moc
   const nx = -dy / len, ny = dx / len;
   const bend = (a.curve ?? 0) * W;
   const cx = mx + nx * bend, cy = my + ny * bend;
+  const sc = a.scale ?? 1;
   ctx.save();
   ctx.strokeStyle = doc.canvas.accent2;
-  ctx.lineWidth = Math.max(1.5, W * 0.0018);
-  ctx.setLineDash([W * 0.007, W * 0.009]);
+  ctx.lineWidth = Math.max(1.5, W * 0.0018) * sc;
+  ctx.setLineDash([W * 0.007 * sc, W * 0.009 * sc]);
   ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(cx, cy, x2, y2); ctx.stroke();
   ctx.setLineDash([]);
-  const dotR = Math.max(3, W * 0.006);
+  const dotR = Math.max(3, W * 0.006) * sc;
   // Glød-punktet sitter PÅ kurven (bezier-midtpunkt ved t=0.5), ikke på den rette linja.
   const qx = 0.25 * x1 + 0.5 * cx + 0.25 * x2, qy = 0.25 * y1 + 0.5 * cy + 0.25 * y2;
   const glow = ctx.createRadialGradient(qx, qy, 0, qx, qy, dotR * 3.2);

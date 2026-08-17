@@ -1227,9 +1227,14 @@ function IllustrationInspector() {
           )}
 
           {a.kind === 'step' && (
-            <label style={{ fontSize: 11, color: C.inkSoft, display: 'block', marginBottom: 6 }}>Tall i badge
-              <input type="number" min={1} value={a.n ?? 1} onChange={(e) => patchAnnotation(a.id, { n: Math.max(1, Number(e.target.value)) })} style={{ ...textInput, width: 56, display: 'block', marginTop: 2 }} />
-            </label>
+            <>
+              <label style={{ fontSize: 11, color: C.inkSoft, display: 'block', marginBottom: 6 }}>Tall i badge
+                <input type="number" min={1} value={a.n ?? 1} onChange={(e) => patchAnnotation(a.id, { n: Math.max(1, Number(e.target.value)) })} style={{ ...textInput, width: 56, display: 'block', marginTop: 2 }} />
+              </label>
+              <label style={{ fontSize: 11, color: C.inkSoft, display: 'block', marginBottom: 6 }}>Størrelse: {Math.round((a.scale ?? 1) * 100)}%
+                <input type="range" min={0.5} max={2} step={0.05} value={a.scale ?? 1} onChange={(e) => patchAnnotation(a.id, { scale: Number(e.target.value) })} style={{ width: '100%' }} />
+              </label>
+            </>
           )}
 
           {a.kind === 'pill' && (
@@ -1254,6 +1259,9 @@ function IllustrationInspector() {
               </div>
               <label style={{ fontSize: 11, color: C.inkSoft, display: 'block', marginBottom: 4 }}>Bue: {Math.round((a.curve ?? 0) * 1000) / 10}%
                 <input type="range" min={-0.15} max={0.15} step={0.005} value={a.curve ?? 0} onChange={(e) => patchAnnotation(a.id, { curve: Number(e.target.value) })} style={{ width: '100%' }} />
+              </label>
+              <label style={{ fontSize: 11, color: C.inkSoft, display: 'block', marginBottom: 6 }}>Størrelse (linje + prikk): {Math.round((a.scale ?? 1) * 100)}%
+                <input type="range" min={0.5} max={2} step={0.05} value={a.scale ?? 1} onChange={(e) => patchAnnotation(a.id, { scale: Number(e.target.value) })} style={{ width: '100%' }} />
               </label>
             </>
           )}
