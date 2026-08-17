@@ -1278,6 +1278,12 @@ function IllustrationInspector() {
               <input type="range" min={0} max={1} step={0.01} value={a.fy} onChange={(e) => patchAnnotation(a.id, { fy: Number(e.target.value) })} style={{ width: '100%' }} />
             </label>
           </div>
+          {(a.kind === 'marker' || a.kind === 'callout' || a.kind === 'loupe') && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: C.inkSoft, marginTop: 6, cursor: 'pointer' }} title="Elementet er alltid fullt synlig ved avspilling/eksport — deltar ikke i inn-avsløringen">
+              <input type="checkbox" checked={!!a.noReveal} onChange={(e) => patchAnnotation(a.id, { noReveal: e.target.checked })} />
+              Ikke animer (alltid synlig)
+            </label>
+          )}
         </div>
       ))}
       </Collapsible>
@@ -1487,6 +1493,26 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
     r.onload = () => { if (typeof r.result === 'string') patchImage(image.id, { image: r.result }); };
     r.readAsDataURL(f);
   };
+  const videoFileInputRef = useRef<HTMLInputElement>(null);
+  // Manuell video-import PÅ dette eksisterende bilde-elementet (i motsetning til
+  // Shell sin onVideoPicked, som legger til et HELT NYTT element) — beholder
+  // x/y/w/h/fit. `image` (poster fra første frame) er statisk fallback.
+  const onVideoFilePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const v = document.createElement('video');
+    v.src = url; v.muted = true; v.playsInline = true;
+    await new Promise<void>((resolve, reject) => { v.onloadeddata = () => resolve(); v.onerror = () => reject(new Error('Kunne ikke lese videofilen')); });
+    v.currentTime = 0;
+    await new Promise<void>((resolve) => { v.onseeked = () => resolve(); });
+    const canvas = document.createElement('canvas');
+    canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+    canvas.getContext('2d')?.drawImage(v, 0, 0);
+    const poster = canvas.toDataURL('image/jpeg', 0.85);
+    patchImage(image.id, { video: url, image: poster });
+  };
   const [seedPrompt, setSeedPrompt] = useState('cheese-pull');
   const [seedBusy, setSeedBusy] = useState(false);
   const [seedErr, setSeedErr] = useState<string | null>(null);
@@ -1626,6 +1652,9 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
         <input type="range" min={-45} max={45} value={image.rotation} onChange={(e) => patchImage(image.id, { rotation: Number(e.target.value) })} style={{ width: '100%' }} />
       </Field>
       <label style={checkRow}><input type="checkbox" checked={image.shadow} onChange={(e) => patchImage(image.id, { shadow: e.target.checked })} /> Skygge</label>
+      <label style={checkRow} title="Elementet er alltid fullt synlig ved avspilling/eksport — deltar ikke i inn-avsløringen">
+        <input type="checkbox" checked={!!image.noReveal} onChange={(e) => patchImage(image.id, { noReveal: e.target.checked })} /> Ikke animer (alltid synlig)
+      </label>
       <Field label="Animasjon — posisjon/rotasjon/skala/synlighet">
         <MockupKeyframeGraph value={image.kf} playT={playT} props={IMAGE_TRANSFORM_PROPS} onChange={(kf) => patchImage(image.id, { kf })} />
       </Field>
@@ -1644,6 +1673,12 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
         </Field>
       )}
       {!isIllustration && <ChatTypeField chatType={image.chatType} onChange={(chatType) => patchImage(image.id, { chatType })} />}
+      {!isIllustration && (
+        <Field label="Video">
+          <button onClick={() => videoFileInputRef.current?.click()} style={{ ...listBtn, width: '100%' }}>{image.video ? 'Bytt video' : '📼 Last opp video'}</button>
+          <input ref={videoFileInputRef} type="file" accept="video/*" onChange={(e) => void onVideoFilePicked(e)} style={{ display: 'none' }} />
+        </Field>
+      )}
       {!isIllustration && (
         <Field label="Animer (Seedance i2v — craveable)">
           <select value={seedPrompt} onChange={(e) => setSeedPrompt(e.target.value)} style={textInput}>
@@ -1870,6 +1905,10 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
         <input type="checkbox" checked={device.reflection ?? false} onChange={(e) => patchDevice(device.id, { reflection: e.target.checked })} />
         Refleksjon
       </label>
+      <label style={checkRow} title="Elementet er alltid fullt synlig ved avspilling/eksport — deltar ikke i inn-avsløringen">
+        <input type="checkbox" checked={!!device.noReveal} onChange={(e) => patchDevice(device.id, { noReveal: e.target.checked })} />
+        Ikke animer (alltid synlig)
+      </label>
       {(device.variant === 'iphone' || device.variant === 'android') && (
         <label style={checkRow}>
           <input type="checkbox" checked={device.cleanStatusBar ?? false} onChange={(e) => patchDevice(device.id, { cleanStatusBar: e.target.checked })} />
@@ -1974,6 +2013,10 @@ function TextInspector({ text, advanced }: { text: import('./mockupStudioModel')
       <label style={checkRow}>
         <input type="checkbox" checked={text.uppercase} onChange={(e) => patchText(text.id, { uppercase: e.target.checked })} />
         Store bokstaver
+      </label>
+      <label style={checkRow} title="Elementet er alltid fullt synlig ved avspilling/eksport — deltar ikke i inn-avsløringen">
+        <input type="checkbox" checked={!!text.noReveal} onChange={(e) => patchText(text.id, { noReveal: e.target.checked })} />
+        Ikke animer (alltid synlig)
       </label>
       <div style={{ fontSize: 11, color: contrastOk ? C.inkSoft : '#e0b060', margin: '2px 0 10px' }} title="WCAG AA krever ≥ 4.5:1 for brødtekst. Målt mot lerret-bakgrunnen.">
         Kontrast mot bakgrunn: {contrast.toFixed(1)}:1{contrastOk ? ' ✓' : ' · lav (mål ≥ 4.5:1)'}

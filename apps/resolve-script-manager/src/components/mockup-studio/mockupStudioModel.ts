@@ -73,6 +73,8 @@ export interface MockupDeviceSlot {
    * Drives av animasjons-tidslinjen (anim.t). Tom/udefinert = ingen animasjon.
    */
   typeAnim?: TypeAnimCfg;
+  /** Hopp over avslørings-animasjonen ved avspilling/eksport — alltid fullt synlig. */
+  noReveal?: boolean;
   /** Satt → skjermbildet er et generert falsk sjekkliste-skjermbilde (previsitPhoneScreenImage) —
    *  samme sync-mønster som MockupImageSlot.cardContent. animate skiller statisk vs. live flyt-tegning. */
   checklistContent?: PreVisitChecklistContent;
@@ -248,6 +250,8 @@ export interface MockupTextSlot {
   /** For arrange-labels: navn og pris lagret separat → «Med priser»-bryteren kan skru pris av/på live. */
   baseText?: string;
   priceText?: string;
+  /** Hopp over avslørings-animasjonen ved avspilling/eksport — alltid fullt synlig. */
+  noReveal?: boolean;
 }
 
 /** Pen-formater et bibliotek-filnavn til label: «kebab-detroit» → «Kebab Detroit». */
@@ -549,6 +553,8 @@ export interface MockupAnnotation {
   label2?: string;
   /** step/connector: størrelses-multiplikator (badge-boks+tall / linje-tykkelse+prikk). Default 1. */
   scale?: number;
+  /** marker/callout/loupe: hopp over avslørings-animasjonen — alltid fullt synlig ved avspilling. */
+  noReveal?: boolean;
 }
 
 /** Lag en ny annotasjon med fornuftige standardverdier. */
@@ -638,6 +644,8 @@ export interface MockupImageSlot {
    *  foto-elementer) — `image` regenereres fra denne fargen via `placeholderImage`
    *  når inspektøren endrer den. Uten dette feltet er `image` statisk. */
   solidColor?: string;
+  /** Hopp over avslørings-animasjonen ved avspilling/eksport — alltid fullt synlig. */
+  noReveal?: boolean;
 }
 
 export type PreVisitStepState = 'done' | 'active' | 'todo';

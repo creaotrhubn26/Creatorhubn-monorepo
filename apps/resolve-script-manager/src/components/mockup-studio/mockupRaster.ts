@@ -2123,9 +2123,9 @@ function drawAnnotations(ctx: CanvasRenderingContext2D, doc: MockupDoc, scale: n
   const pills = anns.filter((a) => a.kind === 'pill');
   // Rekkefølge: connector først (linje under kortene den kobler), så badge/pills øverst.
   connectors.forEach((a) => drawConnectorLine(ctx, doc, a));
-  markers.forEach((a, i) => { const c = annCenter(doc, a); withReveal(ctx, t != null ? revealFor('marker', i, markers.length, t) : null, c.x, c.y, () => drawMarker(ctx, doc, a)); });
-  callouts.forEach((a, i) => { const c = annCenter(doc, a); withReveal(ctx, t != null ? revealFor('callout', i, callouts.length, t) : null, c.x, c.y, () => drawCallout(ctx, doc, a)); });
-  loupes.forEach((a, i) => { const lx = (a.lensX ?? 0.86) * doc.canvas.w, ly = (a.lensY ?? 0.82) * doc.canvas.h; withReveal(ctx, t != null ? revealFor('loupe', i, loupes.length, t) : null, lx, ly, () => drawLoupe(ctx, doc, a, scale, sampleSource)); });
+  markers.forEach((a, i) => { const c = annCenter(doc, a); withReveal(ctx, a.noReveal || t == null ? null : revealFor('marker', i, markers.length, t), c.x, c.y, () => drawMarker(ctx, doc, a)); });
+  callouts.forEach((a, i) => { const c = annCenter(doc, a); withReveal(ctx, a.noReveal || t == null ? null : revealFor('callout', i, callouts.length, t), c.x, c.y, () => drawCallout(ctx, doc, a)); });
+  loupes.forEach((a, i) => { const lx = (a.lensX ?? 0.86) * doc.canvas.w, ly = (a.lensY ?? 0.82) * doc.canvas.h; withReveal(ctx, a.noReveal || t == null ? null : revealFor('loupe', i, loupes.length, t), lx, ly, () => drawLoupe(ctx, doc, a, scale, sampleSource)); });
   steps.forEach((a) => drawStepBadge(ctx, doc, a));
   pills.forEach((a) => drawIconPill(ctx, doc, a));
 }
@@ -2282,7 +2282,8 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
   const typeTFor = (ref: string): number | undefined =>
     tl ? (clipLocalT(tl, ref, 'type', t as number) ?? undefined) : (t ?? undefined);
   // Reveal per-klipp om timelinen har et reveal-klipp for elementet; ellers global stagger.
-  const revealOf = (ref: string, kind: 'device' | 'text' | 'image', i: number, total: number): Reveal | null => {
+  const revealOf = (ref: string, kind: 'device' | 'text' | 'image', i: number, total: number, noReveal?: boolean): Reveal | null => {
+    if (noReveal) return null; // «Ikke animer» — alltid fullt synlig, uansett avspillings-t
     if (t == null) return null;
     if (tl) { const lt = clipLocalT(tl, ref, 'reveal', t); if (lt != null) return revealFromLocal(kind, lt); }
     return revealFor(kind, i, total, t);
@@ -2328,7 +2329,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
       .map((im, i) => ({ im, i }))
       .sort((a, b) => (isBackdropIllustration(a.im.illustration) ? 0 : 1) - (isBackdropIllustration(b.im.illustration) ? 0 : 1));
     for (const { im: im0, i } of drawOrder) {
-      const rev = t != null ? revealOf(im0.id, 'image', i, doc.images.length) : null;
+      const rev = revealOf(im0.id, 'image', i, doc.images.length, im0.noReveal);
       if (rev && rev.alpha <= 0.001) continue;
       // Keyframe-kurver (samme motor som enhetenes 3D-rotasjon, se sampleKf) — x/y/rotation/scale
       // faller tilbake på 0/0/0/1 (ingen endring) når elementet ikke har en kurve for egenskapen.
@@ -2413,7 +2414,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
   // Enheter i dokument-rekkefølge (senere = øverst), animert avsløring om t satt.
   for (let i = 0; i < doc.devices.length; i++) {
     const dev = doc.devices[i];
-    const rev = revealOf(dev.id, 'device', i, doc.devices.length);
+    const rev = revealOf(dev.id, 'device', i, doc.devices.length, dev.noReveal);
     if (rev && rev.alpha <= 0.001) continue;
     ctx.save();
     if (rev) {
@@ -2430,7 +2431,7 @@ export async function rasterizeMockup(doc: MockupDoc, scale = 1, opts?: { skipAn
     ctx.restore();
   }
   doc.texts.forEach((tx, i) => {
-    const rev = revealOf(tx.id, 'text', i, doc.texts.length);
+    const rev = revealOf(tx.id, 'text', i, doc.texts.length, tx.noReveal);
     // Pris-count-up: tall teller 0→pris under reveal (kun genArrange-labels m/ synlig numerisk pris).
     let drawTx = tx;
     if (t != null && tx.genArrange && tx.baseText != null && tx.priceText && /^\d+$/.test(tx.priceText) && tx.text.endsWith(tx.priceText)) {
