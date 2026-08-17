@@ -1,6 +1,9 @@
-# characters.py — stilisert kroppsmesh bygget fra primitiver, størrelsestilpasset
-# en Rigify humanoid_metarig sine faktiske bein. Ingen eksterne assets: kapsel-
-# figur (sylindre + kuler), bevel+shade_smooth gir den avrundede "premium"-looken.
+# characters.py — organisk kroppsmesh bygget av Blenders innebygde Metaball
+# (bpy.types.MetaElement), størrelsestilpasset en Rigify humanoid_metarig sine
+# faktiske bein. Ingen eksterne assets. Metaballs SMELTER SAMMEN der elementer
+# overlapper (ekte "kjøtt", ingen harde skjøter ved skulder/hofte/nakke — helt
+# annerledes enn separate sylindre limt sammen), konverteres så til vanlig mesh
+# (bpy.ops.object.convert) for automatic-weights skinning som normalt.
 
 from __future__ import annotations
 
@@ -17,28 +20,42 @@ except ImportError:
     import assets as _assets
 
 
-def _cylinder_between(head: Vector, tail: Vector, radius: float, name: str) -> "bpy.types.Object":
+def _meta_capsule(mdata, head: Vector, tail: Vector, radius: float, stiffness: float = 2.0):
+    """Metaball-kapsel mellom to punkter — smelter sammen med andre elementer
+    som overlapper (ekte organisk skjøt, ikke et hardt sylinder-møte)."""
+    head, tail = Vector(head), Vector(tail)
     direction = tail - head
-    length = max(direction.length, 0.01)
-    bpy.ops.mesh.primitive_cylinder_add(radius=radius, depth=length, location=(head + tail) / 2)
-    obj = bpy.context.active_object
-    obj.rotation_mode = "QUATERNION"
-    obj.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(direction.normalized())
-    obj.name = name
-    return obj
+    length = direction.length
+    el = mdata.elements.new()
+    el.co = (head + tail) / 2
+    el.type = "CAPSULE"
+    el.radius = radius
+    el.size_x = max(length / 2 - radius * 0.6, 0.01)
+    el.stiffness = stiffness
+    if length > 1e-6:
+        el.rotation = Vector((1, 0, 0)).rotation_difference(direction.normalized())
+    return el
 
 
-def _cone_between(head: Vector, tail: Vector, radius1: float, radius2: float, name: str) -> "bpy.types.Object":
-    """Som _cylinder_between, men med to radier (tapered) — radius1 ved
-    `head`, radius2 ved `tail`. Gir skuldre/midje-taper i stedet for et rør."""
-    direction = tail - head
-    length = max(direction.length, 0.01)
-    bpy.ops.mesh.primitive_cone_add(radius1=radius1, radius2=radius2, depth=length, location=(head + tail) / 2)
-    obj = bpy.context.active_object
-    obj.rotation_mode = "QUATERNION"
-    obj.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(direction.normalized())
-    obj.name = name
-    return obj
+def _meta_ball(mdata, center: Vector, radius: float, stiffness: float = 2.0):
+    el = mdata.elements.new()
+    el.co = Vector(center)
+    el.type = "BALL"
+    el.radius = radius
+    el.stiffness = stiffness
+    return el
+
+
+def _pull_inward(point: Vector, center: Vector, amount: float) -> Vector:
+    """Flytt `point` et stykke mot `center` — brukes til å dra skulder/hofte-
+    festet inn i torso-feltet så metaball-elementene faktisk overlapper og
+    smelter sammen, i stedet for å møtes akkurat på overflaten (som ofte gir
+    for svak/ingen fusjon)."""
+    point, center = Vector(point), Vector(center)
+    d = center - point
+    if d.length < 1e-6:
+        return point
+    return point + d.normalized() * min(amount, d.length * 0.95)
 
 
 def _sphere_at(location: Vector, radius: float, name: str, scale: tuple | None = None) -> "bpy.types.Object":
@@ -110,46 +127,61 @@ def create_humanoid_body(armature_name: str, name: str | None = None) -> dict:
 
     torso_top = tail("spine.004") or tail("spine.003") or tail("spine.002")
     head_top = tail("spine.006") or tail("spine.005") or torso_top
+    torso_bottom = head("spine")
+    torso_center = (Vector(torso_bottom) + Vector(torso_top)) / 2
 
-    parts = [
-        # NB: en tapered cone her (smal midje/bred skulder) ble prøvd, men
-        # skapte et "volang"-artefakt der cone-bunnen møter lår-toppene —
-        # bevel-modifieren roter på den ikke-boolske overlappen. Rett sylinder
-        # er trygt; taper kan gjeninnføres senere med en boolsk union i stedet.
-        _cylinder_between(head("spine"), torso_top, r_torso, "Torso"),
-        _cylinder_between(torso_top, head_top, r_neck, "Neck"),
-        # Hodet: egg-form (høyere enn bredt) i stedet for perfekt kule.
-        _sphere_at(head_top + Vector((0, 0, r_head * 0.8)), r_head, "Head", scale=(1.0, 0.94, 1.16)),
-    ]
+    mesh_name = name or "Body"
+    mdata = bpy.data.metaballs.new(mesh_name + "Meta")
+    # Fin nok oppløsning til at tynne ledd (håndledd/ankel) ikke blir stykkevise
+    # klosser — grovere enn dette og armer/bein render som terninger, ikke rør.
+    mdata.resolution = 0.035
+    mdata.render_resolution = 0.018
+    mobj = bpy.data.objects.new(mdata.name, mdata)
+    bpy.context.scene.collection.objects.link(mobj)
+
+    _meta_capsule(mdata, torso_bottom, torso_top, r_torso, stiffness=2.5)
+    _meta_capsule(mdata, torso_top, head_top, r_neck, stiffness=2.2)
+    _meta_ball(mdata, head_top + Vector((0, 0, r_head * 0.8)), r_head, stiffness=2.2)
+    # "Hofte-hub": liten kule ved torso-bunnen — uten denne smelter beina
+    # dårlig sammen med torso og det blir et gap ved skrittet.
+    _meta_ball(mdata, torso_bottom, r_torso * 0.85, stiffness=2.0)
+
     for side in ("L", "R"):
-        if head(f"upper_arm.{side}"):
-            parts.append(_cylinder_between(head(f"upper_arm.{side}"), tail(f"upper_arm.{side}"), r_upper_arm, f"UpperArm.{side}"))
+        shoulder = head(f"upper_arm.{side}")
+        if shoulder:
+            shoulder_adj = _pull_inward(shoulder, torso_center, r_torso * 0.55)
+            _meta_capsule(mdata, shoulder_adj, tail(f"upper_arm.{side}"), r_upper_arm, stiffness=2.0)
+        forearm_tail = tail(f"forearm.{side}")
         if head(f"forearm.{side}"):
-            parts.append(_cylinder_between(head(f"forearm.{side}"), tail(f"forearm.{side}"), r_forearm, f"Forearm.{side}"))
-        hand_pt = tail(f"hand.{side}") or tail(f"forearm.{side}")
-        if hand_pt:
-            # Flatet i stedet for en perfekt kule — leser mer som en hånd, mindre som et kuleledd.
-            parts.append(_sphere_at(hand_pt, r_hand, f"Hand.{side}", scale=(1.15, 0.85, 0.7)))
-        if head(f"thigh.{side}"):
-            parts.append(_cylinder_between(head(f"thigh.{side}"), tail(f"thigh.{side}"), r_thigh, f"Thigh.{side}"))
+            _meta_capsule(mdata, head(f"forearm.{side}"), forearm_tail, r_forearm, stiffness=2.0)
+        # Hånd-ballen sentreres PÅ underarmens tuppunkt (ikke det egne hand-
+        # bein-tuppunktet, som ligger et stykke UTENFOR og ikke overlapper —
+        # ga en løsrevet, flytende hånd i første forsøk).
+        if forearm_tail:
+            _meta_ball(mdata, forearm_tail, r_hand, stiffness=1.8)
+        hip = head(f"thigh.{side}")
+        if hip:
+            hip_adj = _pull_inward(hip, torso_bottom, r_torso * 0.5)
+            _meta_capsule(mdata, hip_adj, tail(f"thigh.{side}"), r_thigh, stiffness=2.2)
         if head(f"shin.{side}"):
-            parts.append(_cylinder_between(head(f"shin.{side}"), tail(f"shin.{side}"), r_shin, f"Shin.{side}"))
+            _meta_capsule(mdata, head(f"shin.{side}"), tail(f"shin.{side}"), r_shin, stiffness=2.0)
         foot_pt = head(f"foot.{side}")
         if foot_pt:
-            parts.append(_sphere_at(foot_pt, r_foot, f"Foot.{side}", scale=(1.0, 1.4, 0.75)))
+            _meta_ball(mdata, foot_pt, r_foot, stiffness=1.8)
+
+    element_count = len(mdata.elements)
+    bpy.context.view_layer.update()
 
     for o in bpy.context.selected_objects:
         o.select_set(False)
-    for p in parts:
-        p.select_set(True)
-    bpy.context.view_layer.objects.active = parts[0]
-    bpy.ops.object.join()
+    mobj.select_set(True)
+    bpy.context.view_layer.objects.active = mobj
+    bpy.ops.object.convert(target="MESH")
     body = bpy.context.active_object
     if name:
         body.name = name
-    _assets.add_modifier(body.name, "bevel", {"width": height * 0.012, "segments": 3})
     _assets.shade_smooth(body.name)
-    return {"created": body.name, "type": body.type, "armature": armature_name, "parts": len(parts)}
+    return {"created": body.name, "type": body.type, "armature": armature_name, "parts": element_count}
 
 
 def attach_face_and_hair(rig_name: str, name_prefix: str = "", hair_color: list | None = None) -> dict:
