@@ -73,6 +73,22 @@ export interface MockupDeviceSlot {
    * Drives av animasjons-tidslinjen (anim.t). Tom/udefinert = ingen animasjon.
    */
   typeAnim?: TypeAnimCfg;
+  /** Satt → skjermbildet er et generert falsk sjekkliste-skjermbilde (previsitPhoneScreenImage) —
+   *  samme sync-mønster som MockupImageSlot.cardContent. animate skiller statisk vs. live flyt-tegning. */
+  checklistContent?: PreVisitChecklistContent;
+  /** Satt → skjermbildet er et generert falsk dashboard-skjermbilde (previsitDashboardScreenImage). */
+  dashboardContent?: PreVisitDashboardContent;
+}
+
+export interface PreVisitChecklistContent {
+  items: { label: string; done: boolean }[];
+  animate?: boolean;
+}
+
+export interface PreVisitDashboardContent {
+  patient: string;
+  fields: { label: string; value: string }[];
+  animate?: boolean;
 }
 
 /** Skrive-animasjon: humanisert tempo + felt-kontekst + payoff. */
@@ -1404,9 +1420,30 @@ export const MOCKUP_TEMPLATES: MockupTemplate[] = [
         background: 'light', bgColor: MEDSIDE_COLORS.cream, bgStyle: 'clean', decor: 'arc', typography: 'editorial',
         logo: { image: MEDSIDE_LOGO_DATA_URL, x: 860, y: 44, w: 176 },
       });
+      const checklistContent: PreVisitChecklistContent = {
+        items: [
+          { label: 'Invitasjon sendt', done: true },
+          { label: 'Spørreskjema besvart', done: true },
+          { label: 'Svar mottatt', done: true },
+          { label: 'Klar for timen', done: false },
+        ],
+        animate: true,
+      };
+      const dashboardContent: PreVisitDashboardContent = {
+        patient: 'Kari Nordmann · Time i dag 10:30',
+        fields: [
+          { label: 'Hovedårsak', value: 'Vedvarende hodepine' },
+          { label: 'Symptomer', value: 'Svimmelhet, lysfølsomhet' },
+          { label: 'Varighet', value: 'Ca. 3 uker' },
+          { label: 'Viktig for deg å vite', value: 'Stressende periode på jobb' },
+          { label: 'Tidligere sykdommer', value: 'Migrene (2019)' },
+          { label: 'Medisiner', value: 'Paracetamol ved behov' },
+        ],
+        animate: true,
+      };
       const base = doc('PreVisit kampanje 6', 'previsit_campaign_6', canvas, [
-        makeDevice('iphone', { x: 60, y: 420, w: 230, image: previsitPhoneScreenImage(canvas.accent, canvas.accent2), fit: 'cover' }),
-        makeDevice('macbook', { x: 330, y: 480, w: 680, image: previsitDashboardScreenImage(canvas.accent, canvas.accent2), fit: 'cover' }),
+        makeDevice('iphone', { x: 60, y: 420, w: 230, image: previsitPhoneScreenImage(checklistContent, canvas.accent), fit: 'cover', checklistContent }),
+        makeDevice('macbook', { x: 330, y: 480, w: 680, image: previsitDashboardScreenImage(dashboardContent, canvas.accent, canvas.accent2), fit: 'cover', dashboardContent }),
       ], [
         makeText('title', { text: 'PreVisit', x: 70, y: 140, w: 700, size: 60, color: MEDSIDE_COLORS.navy }),
         makeText('title', { text: 'by MedSide', x: 70, y: 205, w: 700, size: 34, color: MEDSIDE_COLORS.gold }),
@@ -1590,14 +1627,14 @@ export function previsitFormListCardImage(fields: { q: string; sub: string }[], 
 }
 
 /** Falsk telefon-skjerm SVG: sjekkliste m/ hvilke steg som er fullført. Kampanje-mal 6. */
-function previsitPhoneScreenImage(primary: string, _accent: string): string {
-  const items = [
-    { label: 'Invitasjon sendt', done: true },
-    { label: 'Spørreskjema besvart', done: true },
-    { label: 'Svar mottatt', done: true },
-    { label: 'Klar for timen', done: false },
-  ];
-  const rowsSvg = items.map((it, i) => {
+export const PREVISIT_SCREEN_W = { phone: 600, dashboard: 880 } as const;
+
+/** Falsk telefon-skjerm SVG: sjekkliste m/ hvilke steg som er fullført. Kampanje-mal 6.
+ *  animate → sjekkliste-radene bakes IKKE inn (drawDeviceChecklist tegner dem live i stedet,
+ *  samme flyt-mønster som cardContent.animateSteps). Geometri MÅ matche drawDeviceChecklist. */
+export function previsitPhoneScreenImage(content: PreVisitChecklistContent, primary: string): string {
+  const { items, animate } = content;
+  const rowsSvg = animate ? '' : items.map((it, i) => {
     const y = 210 + i * 84;
     const fill = it.done ? primary : '#ffffff';
     const stroke = it.done ? primary : '#d1d5db';
@@ -1617,27 +1654,21 @@ function previsitPhoneScreenImage(primary: string, _accent: string): string {
   return `data:image/svg+xml;base64,${utf8ToBase64(svg)}`;
 }
 
-/** Falsk laptop-dashboard SVG: pasientkort + felt-grid. Kampanje-mal 6. */
-function previsitDashboardScreenImage(primary: string, accent: string): string {
-  const fields: [string, string][] = [
-    ['Hovedårsak', 'Vedvarende hodepine'],
-    ['Symptomer', 'Svimmelhet, lysfølsomhet'],
-    ['Varighet', 'Ca. 3 uker'],
-    ['Viktig for deg å vite', 'Stressende periode på jobb'],
-    ['Tidligere sykdommer', 'Migrene (2019)'],
-    ['Medisiner', 'Paracetamol ved behov'],
-  ];
+/** Falsk laptop-dashboard SVG: pasientkort + felt-grid. Kampanje-mal 6.
+ *  animate → felt-gridet bakes IKKE inn (drawDeviceDashboard tegner det live i stedet). */
+export function previsitDashboardScreenImage(content: PreVisitDashboardContent, primary: string, accent: string): string {
+  const { patient, fields, animate } = content;
   const col = (i: number) => (i % 2 === 0 ? 40 : 460);
   const row = (i: number) => 210 + Math.floor(i / 2) * 130;
-  const fieldsSvg = fields.map(([label, value], i) => `
-    <text x="${col(i)}" y="${row(i)}" font-family="-apple-system,system-ui,sans-serif" font-size="14" fill="#8a8f98">${escXml(label)}</text>
-    <text x="${col(i)}" y="${row(i) + 26}" font-family="-apple-system,system-ui,sans-serif" font-size="17" font-weight="600" fill="#171a1f">${escXml(value)}</text>`).join('');
+  const fieldsSvg = animate ? '' : fields.map((f, i) => `
+    <text x="${col(i)}" y="${row(i)}" font-family="-apple-system,system-ui,sans-serif" font-size="14" fill="#8a8f98">${escXml(f.label)}</text>
+    <text x="${col(i)}" y="${row(i) + 26}" font-family="-apple-system,system-ui,sans-serif" font-size="17" font-weight="600" fill="#171a1f">${escXml(f.value)}</text>`).join('');
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="880" height="620">
     <rect width="880" height="620" fill="#f7f6f3"/>
     <rect width="880" height="90" fill="${primary}"/>
     <text x="40" y="55" font-family="Georgia,'Iowan Old Style',serif" font-size="22" font-weight="700" fill="#ffffff">PreVisit — pasientsammendrag</text>
     <rect x="40" y="120" width="800" height="60" rx="14" fill="${accent}" fill-opacity="0.16"/>
-    <text x="64" y="157" font-family="-apple-system,system-ui,sans-serif" font-size="18" font-weight="700" fill="${primary}">Kari Nordmann · Time i dag 10:30</text>
+    <text x="64" y="157" font-family="-apple-system,system-ui,sans-serif" font-size="18" font-weight="700" fill="${primary}">${escXml(patient)}</text>
     ${fieldsSvg}
   </svg>`;
   return `data:image/svg+xml;base64,${utf8ToBase64(svg)}`;

@@ -77,11 +77,15 @@ import {
   previsitUiCardImage,
   previsitInfoCardImage,
   previsitFormListCardImage,
+  previsitPhoneScreenImage,
+  previsitDashboardScreenImage,
   placeholderImage,
   type PreVisitCardContent,
   type PreVisitStepState,
   type PreVisitInfoCardContent,
   type PreVisitFormListContent,
+  type PreVisitChecklistContent,
+  type PreVisitDashboardContent,
 } from './mockupStudioModel';
 import { drawPersonLaptop } from './mockupRaster';
 import { RECOMMENDED_MAX } from './mockupPreflight';
@@ -1655,6 +1659,7 @@ function ArrangeRow({ kind, id }: { kind: 'device' | 'text' | 'image'; id: strin
 }
 
 function DeviceInspector({ device, onUpload, advanced }: { device: import('./mockupStudioModel').MockupDeviceSlot; onUpload: () => void; advanced: boolean }) {
+  const doc = useMockupStudio((s) => s.doc);
   const patchDevice = useMockupStudio((s) => s.patchDevice);
   const setDeviceImage = useMockupStudio((s) => s.setDeviceImage);
   const removeDevice = useMockupStudio((s) => s.removeDevice);
@@ -1692,6 +1697,38 @@ function DeviceInspector({ device, onUpload, advanced }: { device: import('./moc
         </div>
         {simMsg && <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 6 }}>{simMsg}</div>}
       </Field>
+      {device.checklistContent && (
+        <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
+          <SectionLabel>Sjekkliste-skjerm</SectionLabel>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: FS_SM, color: C.inkSoft, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={!!device.checklistContent.animate}
+              onChange={(e) => {
+                const content: PreVisitChecklistContent = { ...device.checklistContent!, animate: e.target.checked };
+                patchDevice(device.id, { checklistContent: content, image: previsitPhoneScreenImage(content, doc.canvas.accent) });
+              }}
+            />
+            {' '}Animer sjekkliste (flyt — hver rad popper inn étt og étt langs tidslinjen)
+          </label>
+        </div>
+      )}
+      {device.dashboardContent && (
+        <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 4, paddingTop: 10, marginBottom: 10 }}>
+          <SectionLabel>Dashboard-skjerm</SectionLabel>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: FS_SM, color: C.inkSoft, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={!!device.dashboardContent.animate}
+              onChange={(e) => {
+                const content: PreVisitDashboardContent = { ...device.dashboardContent!, animate: e.target.checked };
+                patchDevice(device.id, { dashboardContent: content, image: previsitDashboardScreenImage(content, doc.canvas.accent, doc.canvas.accent2) });
+              }}
+            />
+            {' '}Animer felt-grid (flyt — hvert felt popper inn étt og étt langs tidslinjen)
+          </label>
+        </div>
+      )}
       {device.image && (
         <Field label="Utsnitt">
           <Segmented<'cover' | 'contain'>

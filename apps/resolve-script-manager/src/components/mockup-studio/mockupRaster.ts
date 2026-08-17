@@ -44,6 +44,7 @@ import {
   CHAT_TYPE_SPEEDS,
   CHAT_TURN_GAP,
   chatTurnDuration,
+  PREVISIT_SCREEN_W,
 } from './mockupStudioModel';
 
 // ── Bilde-lasting (cache per src) ───────────────────────────────────────────
@@ -560,6 +561,12 @@ async function drawDevice(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: Mo
 
   // Selve enheten.
   ctx.drawImage(layer, dev.x, dev.y, w, h);
+
+  if (dev.checklistContent?.animate || dev.dashboardContent?.animate) {
+    const screen = { x: dev.x + spec.screen.x * w, y: dev.y + spec.screen.y * h, w: spec.screen.w * w, h: spec.screen.h * h };
+    if (dev.checklistContent?.animate) drawDeviceChecklist(ctx, doc, dev, screen, t);
+    if (dev.dashboardContent?.animate) drawDeviceDashboard(ctx, doc, dev, screen, t);
+  }
 
   ctx.restore();
 }
@@ -1979,6 +1986,80 @@ function drawFormListRows(ctx: CanvasRenderingContext2D, doc: MockupDoc, im: Moc
     ctx.strokeStyle = '#eef0f3'; ctx.lineWidth = Math.max(1, sf);
     ctx.beginPath(); ctx.moveTo(im.x, y + rowH * sf - sf); ctx.lineTo(im.x + im.w, y + rowH * sf - sf); ctx.stroke();
     y += rowH * sf;
+  });
+  ctx.restore();
+}
+
+/** Samme crop+skalering som drawFitted() sin 'cover'-gren (senter-fokus), men returnerer
+ *  transform-parametre i stedet for å tegne — slik at enhets-skjerm-overlays (checklist/
+ *  dashboard) kan plassere elementer PRESIS der den bakte SVG-en faktisk endte opp etter
+ *  cover-beskjæringen inn i skjerm-hullet. srcW/srcH = kilde-SVG-ens egen piksel-str. */
+function coverFit(srcW: number, srcH: number, dw: number, dh: number): { sx: number; sy: number; scale: number } {
+  const targetAspect = dw / dh, imgAspect = srcW / srcH;
+  let cropW = srcW, cropH = srcH, sx = 0, sy = 0;
+  if (imgAspect > targetAspect) { cropW = Math.round(srcH * targetAspect); sx = Math.round((srcW - cropW) * 0.5); }
+  else { cropH = Math.round(srcW / targetAspect); sy = Math.round((srcH - cropH) * 0.5); }
+  return { sx, sy, scale: dw / cropW };
+}
+
+/** Live-tegnet sjekkliste for telefon-skjermen (dev.checklistContent.animate) — samme
+ *  flyt-mønster som drawCardSteps. Geometri speiler previsitPhoneScreenImage nøyaktig,
+ *  mappet gjennom coverFit() siden skjermbildet cover-beskjæres inn i telefon-rammens hull. */
+function drawDeviceChecklist(ctx: CanvasRenderingContext2D, doc: MockupDoc, dev: MockupDeviceSlot, screen: { x: number; y: number; w: number; h: number }, t?: number): void {
+  const content = dev.checklistContent;
+  if (!content?.animate || content.items.length === 0) return;
+  const srcW = PREVISIT_SCREEN_W.phone, srcH = 1160;
+  const { sx, sy, scale } = coverFit(srcW, srcH, screen.w, screen.h);
+  const lx = (localX: number) => screen.x + (localX - sx) * scale;
+  const ly = (localY: number) => screen.y + (localY - sy) * scale;
+  const primary = doc.canvas.accent;
+  const n = content.items.length;
+  ctx.save();
+  roundRectPath(ctx, screen.x, screen.y, screen.w, screen.h, 0); ctx.clip();
+  content.items.forEach((it, i) => {
+    const y = 210 + i * 84;
+    const cx = lx(34), cy = ly(y);
+    const rev = t != null ? revealFor('callout', i, n, t) : null;
+    withReveal(ctx, rev, cx, cy, () => {
+      const fill = it.done ? primary : '#ffffff';
+      ctx.fillStyle = fill; ctx.strokeStyle = it.done ? primary : '#d1d5db'; ctx.lineWidth = Math.max(1, 2 * scale);
+      ctx.beginPath(); ctx.arc(cx, cy, 15 * scale, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      if (it.done) {
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, 3 * scale); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath(); ctx.moveTo(lx(28), ly(y + 5)); ctx.lineTo(lx(33), ly(y + 10)); ctx.lineTo(lx(42), ly(y - 5)); ctx.stroke();
+      }
+      ctx.fillStyle = it.done ? '#171a1f' : '#9aa0a8'; ctx.font = `${it.done ? 600 : 500} ${17 * scale}px -apple-system, system-ui, sans-serif`;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText(it.label, lx(64), ly(y + 6));
+    });
+  });
+  ctx.restore();
+}
+
+/** Live-tegnet felt-grid for laptop-dashboardet (dev.dashboardContent.animate) — samme
+ *  flyt-mønster. Geometri speiler previsitDashboardScreenImage, mappet via coverFit(). */
+function drawDeviceDashboard(ctx: CanvasRenderingContext2D, _doc: MockupDoc, dev: MockupDeviceSlot, screen: { x: number; y: number; w: number; h: number }, t?: number): void {
+  const content = dev.dashboardContent;
+  if (!content?.animate || content.fields.length === 0) return;
+  const srcW = PREVISIT_SCREEN_W.dashboard, srcH = 620;
+  const { sx, sy, scale } = coverFit(srcW, srcH, screen.w, screen.h);
+  const lx = (localX: number) => screen.x + (localX - sx) * scale;
+  const ly = (localY: number) => screen.y + (localY - sy) * scale;
+  const n = content.fields.length;
+  const col = (i: number) => (i % 2 === 0 ? 40 : 460);
+  const row = (i: number) => 210 + Math.floor(i / 2) * 130;
+  ctx.save();
+  roundRectPath(ctx, screen.x, screen.y, screen.w, screen.h, 0); ctx.clip();
+  content.fields.forEach((f, i) => {
+    const cx = lx(col(i)), cy = ly(row(i));
+    const rev = t != null ? revealFor('callout', i, n, t) : null;
+    withReveal(ctx, rev, cx, cy, () => {
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = '#8a8f98'; ctx.font = `${14 * scale}px -apple-system, system-ui, sans-serif`;
+      ctx.fillText(f.label, cx, cy);
+      ctx.fillStyle = '#171a1f'; ctx.font = `600 ${17 * scale}px -apple-system, system-ui, sans-serif`;
+      ctx.fillText(f.value, cx, ly(row(i) + 26));
+    });
   });
   ctx.restore();
 }
