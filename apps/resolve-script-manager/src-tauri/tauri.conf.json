@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "The Role Room Post Agent",
-  "version": "0.3.89",
+  "version": "0.3.90",
   "identifier": "no.creatorhubn.roleroom-post-agent",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:5001",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
@@ -40,7 +40,7 @@
     },
     "shortDescription": "DaVinci Resolve pipeline automation for videographers",
     "longDescription": "Run the full post-production pipeline — import, organize, timeline-build, sync, rough cut, render queue, backup — as scripted DaVinci Resolve actions with dry-run safety and live logs.",
-    "resources": ["../python/**/*"],
+    "resources": ["../python/**/*", "../scripts/blender/**/*"],
     "createUpdaterArtifacts": "v1Compatible",
     "macOS": {
       "entitlements": "entitlements.plist",

@@ -19,10 +19,11 @@ export const MOTION_PRESETS: { id: string; label: string; cfg: MotionConfig }[] 
   { id: 'story', label: 'Story (6s)', cfg: { seconds: 6, fps: 30 } },
   { id: 'reel', label: 'Reel (4s)', cfg: { seconds: 4, fps: 30 } },
   { id: 'long', label: 'Detaljert (9s)', cfg: { seconds: 9, fps: 30 } },
+  { id: 'full', label: 'Full lengde (90s)', cfg: { seconds: 90, fps: 30 } },
 ];
 export const DEFAULT_MOTION: MotionConfig = MOTION_PRESETS[0].cfg;
 
-export type RevealKind = 'device' | 'text' | 'marker' | 'callout' | 'loupe' | 'mindmap';
+export type RevealKind = 'device' | 'text' | 'marker' | 'callout' | 'loupe' | 'mindmap' | 'image';
 
 export interface Reveal {
   /** 0 = usynlig, 1 = fullt inne. */
@@ -52,18 +53,30 @@ function windowFor(kind: RevealKind, i: number, total: number): [number, number]
     }
     case 'loupe': return [0.82, 1.0];
     case 'mindmap': return [0.05, 0.62];
+    case 'image': {
+      // Grid-elementer popper inn ÉN ETTER ÉN (stagger), tuned for reel-tempo.
+      const span = Math.min(0.1, total > 0 ? 0.55 / Math.max(1, total) : 0.09);
+      const s = 0.04 + i * span;
+      return [Math.min(0.85, s), Math.min(0.95, s + 0.3)];
+    }
   }
 }
 
 /** Beregn avsløring for et element ved fremdrift t. */
 export function revealFor(kind: RevealKind, i: number, total: number, t: number): Reveal {
   const [s, e] = windowFor(kind, i, total);
-  const local = clamp01((t - s) / Math.max(0.0001, e - s));
-  const pop = kind === 'callout' || kind === 'loupe';
+  return revealFromLocal(kind, (t - s) / Math.max(0.0001, e - s));
+}
+
+/** Samme inntoning som revealFor, men fra en direkte lokal progresjon (0..1) —
+ *  brukes av multi-spor timelinen (hvert element følger sitt reveal-klipp). */
+export function revealFromLocal(kind: RevealKind, local: number): Reveal {
+  local = clamp01(local);
+  const pop = kind === 'callout' || kind === 'loupe' || kind === 'image';
   const eased = pop ? easeOutBack(local) : easeOutCubic(local);
   const alpha = clamp01(local * 1.15); // litt raskere opasitet enn bevegelse
   if (kind === 'callout' || kind === 'loupe' || kind === 'marker' || kind === 'mindmap') {
-    const from = kind === 'callout' ? 0.4 : kind === 'loupe' ? 0.55 : kind === 'mindmap' ? 0.9 : 0.9;
+    const from = kind === 'callout' ? 0.4 : kind === 'loupe' ? 0.55 : 0.9;
     return { p: local, alpha, ty: 0, scale: from + (1 - from) * eased };
   }
   // device / text: glir opp + svak skalering

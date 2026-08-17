@@ -8,7 +8,7 @@ import { loadSettings } from "../components/SettingsModal";
 
 function getBaseUrl(): string {
   const s = loadSettings();
-  const base = s.RR_POST_AGENT_BASE_URL || "https://creatorhubn.com/api/post-agent";
+  const base = s.RR_POST_AGENT_BASE_URL || "https://www.creatorhubn.com/api/post-agent";
   return base.replace(/\/api\/post-agent\/?$/, "");
 }
 function getBearer(): string | null {

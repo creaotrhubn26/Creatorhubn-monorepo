@@ -114,6 +114,9 @@ function isDemoTestMode(): boolean {
   return new URLSearchParams(window.location.search).get("test") === "demo";
 }
 
+// Browser-test-modus (satt av browserTauriShim når Tauri mangler). Umulig i native/prod.
+const IS_BROWSER_TEST = typeof window !== "undefined" && !!(window as unknown as { __BROWSER_TEST__?: boolean }).__BROWSER_TEST__;
+
 export default function App() {
   if (isStoryTestMode()) {
     return <StoryTestHarness />;
@@ -131,7 +134,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [pendingDialog, setPendingDialog] = useState<{ script: ScriptMeta; dryRun: boolean } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [view, setView] = useState<"pipeline" | "cull" | "audio" | "color" | "demo" | "infographic" | "mockup">("pipeline");
+  const [view, setView] = useState<"pipeline" | "cull" | "audio" | "color" | "demo" | "infographic" | "mockup">(IS_BROWSER_TEST ? "mockup" : "pipeline");
   const [showSetup, setShowSetup] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [runningScripts, setRunningScripts] = useState<Record<string, RunningScript>>({});
@@ -577,7 +580,7 @@ export default function App() {
       return;
     }
     try {
-      const base = (s.RR_POST_AGENT_BASE_URL || "https://creatorhubn.com/api/post-agent").replace(/\/$/, "");
+      const base = (s.RR_POST_AGENT_BASE_URL || "https://www.creatorhubn.com/api/post-agent").replace(/\/$/, "");
       const res = await fetch(`${base}/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -884,7 +887,7 @@ export default function App() {
       {/* Mockup Studio — produkt-one-pagere med device-mockups (samme
           demo_studio-modul som Demo/Infographic). Egen editor-chrome. */}
       {view === "mockup" &&
-        (authStatus === "ok" && entitledModules.includes("demo_studio") ? (
+        ((IS_BROWSER_TEST || (authStatus === "ok" && entitledModules.includes("demo_studio"))) ? (
           <div style={{ minHeight: 0, overflow: "hidden", display: "flex" }}>
             <MockupStudioShell onClose={() => setView("pipeline")} />
           </div>
