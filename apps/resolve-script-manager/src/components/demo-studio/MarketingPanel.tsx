@@ -21,9 +21,10 @@ import {
   suggestMarketingBrief, generateMarketingFlow, generateVariants, fetchSiteContext,
   ocrDetectElements, analyzeProductEvidence, buildProductBrain, draftOnePager as aiDraftOnePager,
   gatherSiteContext, readScreenVision, critiqueOnePager, improveOnePager,
-  generateInfographic, INFOGRAPHIC_LABELS,
-  type GeneratedVariant, type VariantSpec, type OnePagerCritique, type InfographicKind,
+  generateInfographic, INFOGRAPHIC_LABELS, analyzeBrandTactics,
+  type GeneratedVariant, type VariantSpec, type OnePagerCritique, type InfographicKind, type BrandTacticFinding,
 } from './demoStudioAI';
+import { OverlayPreviewBox } from './OverlayPreviewBox';
 import {
   CHANNEL_PRESETS, FRAMEWORKS, FUNNEL_LABELS, emptyMarketingBrief, recordVoicePref,
   MARKETING_OBJECTIVES, applyObjectiveToBrief, BRAIN_KIND_LABELS, VERIFICATION_META,
@@ -69,6 +70,8 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
   const [picked, setPicked] = useState<Record<string, boolean>>(
     () => Object.fromEntries(VARIANT_PRESETS.map((v) => [v.label, v.channel === 'reels'])),
   );
+  const [tacticFindings, setTacticFindings] = useState<BrandTacticFinding[] | null>(null);
+  const [tacticBusy, setTacticBusy] = useState(false);
 
   if (!project) return <div style={{ padding: 24, color: C.inkSoft }}>Opprett en demo først.</div>;
   const aiReady = isAiConnected();
@@ -182,6 +185,19 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
       setMsg(`✓ Tankekart: ${verified} verifisert, ${b.gaps.length} gap, ${b.coveragePath.length} steg. Anbefalt: ${FRAMEWORKS[b.recommendedFramework].label.split(' (')[0]}.`);
     } catch (e) { setMsg('Feil: ' + (e as Error).message); }
     finally { setBusy(null); }
+  };
+
+  const runTacticAnalysis = async () => {
+    if (!project || tacticBusy) return;
+    if (!isAiConnected()) { onOpenSignIn(); return; }
+    setTacticBusy(true);
+    try {
+      const { siteContext } = await scanContext();
+      const result = await analyzeBrandTactics({ domain: project.url, pageText: siteContext ?? '' });
+      setTacticFindings(result?.findings ?? []);
+    } finally {
+      setTacticBusy(false);
+    }
   };
 
   const applyBrainRecommendation = () => {
@@ -334,6 +350,9 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
           <button style={{ ...btn, opacity: busy ? 0.6 : 1 }} disabled={!!busy || !onePager.trim()} onClick={() => void critiqueDraft()}
             title="La AI score utkastet og peke på svakheter + spørsmål å besvare">
             {busy === 'critique' ? 'Vurderer…' : '★ Vurder kvalitet'}
+          </button>
+          <button style={{ ...btn, opacity: tacticBusy ? 0.6 : 1 }} disabled={tacticBusy} onClick={() => void runTacticAnalysis()}>
+            {tacticBusy ? 'Analyserer…' : '◆ Analyser merkevare & taktikk'}
           </button>
         </div>
 
@@ -644,6 +663,33 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
           </div>
         </section>
       )}
+
+      {tacticFindings && <BrandTacticModal findings={tacticFindings} onClose={() => setTacticFindings(null)} />}
+    </div>
+  );
+}
+
+function BrandTacticModal({ findings, onClose }: { findings: BrandTacticFinding[]; onClose: () => void }) {
+  const accent = '#e0673e';
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'grid', placeItems: 'center', zIndex: 200 }}>
+      <div style={{ background: '#fff', borderRadius: 14, padding: 20, maxWidth: 560, width: '90%', maxHeight: '80vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <h3 style={{ margin: 0, fontSize: 16 }}>Merkevare & taktikk-funn</h3>
+          <span onClick={onClose} style={{ cursor: 'pointer' }}>✕</span>
+        </div>
+        {findings.length === 0 && <div style={{ color: '#8a8178' }}>Ingen tydelige taktikker funnet.</div>}
+        {findings.map((f, i) => (
+          <div key={i} style={{ display: 'flex', gap: 12, marginBottom: 14, alignItems: 'flex-start' }}>
+            <OverlayPreviewBox kind="highlight" overlayText={f.tactic} accent={accent} />
+            <div style={{ fontSize: 12.5 }}>
+              <div style={{ fontWeight: 700, marginBottom: 2 }}>{f.tactic}</div>
+              <div style={{ color: '#6b6259', marginBottom: 4 }}>{f.evidence}</div>
+              <div style={{ color: accent }}>{f.exampleBrand}: {f.exampleDescription}</div>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
