@@ -18782,9 +18782,11 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   // Public Stats — no auth, used on landing page stats bar
   // ═══════════════════════════════════════════════════════════
 
-  const ROLE_ROOM_NON_LIVE_PROJECT_NAME_PATTERN = '(demo|test|verification|null|playwright|holy crust|invite test|storyboard test|subtabproject|ui-to-api|producer demo|content producer demo|troll project)';
-  const ROLE_ROOM_NON_LIVE_PROJECT_ID_PATTERN = '(demo|test|verification|invite-test|holy-crust|troll-project|producer-demo|content-producer-demo|null)';
-  const ROLE_ROOM_NON_LIVE_CREATOR_PATTERN = '^(e2e-test-user|dev-local-user|producer-verification|phase2-producer-)';
+  // e2e / seed / «Proj 1001» / timestamp-navn (13 sifre) lakk gjennom det gamle
+  // mønsteret og blåste opp admin-dashbordets «live»-tall (revisjon 2026-08-19).
+  const ROLE_ROOM_NON_LIVE_PROJECT_NAME_PATTERN = '(demo|test|verification|null|playwright|holy crust|invite test|storyboard test|subtabproject|ui-to-api|producer demo|content producer demo|troll project|e2e|seed project|^proj [0-9]+$|[0-9]{13})';
+  const ROLE_ROOM_NON_LIVE_PROJECT_ID_PATTERN = '(demo|test|verification|invite-test|holy-crust|troll-project|producer-demo|content-producer-demo|null|e2e|seed)';
+  const ROLE_ROOM_NON_LIVE_CREATOR_PATTERN = '^(e2e-test-user|dev-local-user|producer-verification|phase2-producer-|demo-user|dev-|guest)';
 
   const getRoleRoomStatsSummary = async () => {
     // Live-projects definert som rader som IKKE matcher test-/demo-mønstre
@@ -20185,22 +20187,38 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const summary = await getRoleRoomStatsSummary();
+      // Revisjon 2026-08-19: ikke overskriv summarys testfiltrerte kandidater-
+      // tall med rå COUNT(*), filtrer «Siste produksjoner» med samme live-
+      // mønster, og hold auto-genererte e2e-/guest-nøkler utenfor API-tallet.
+      const livePatternArgs = [
+        ROLE_ROOM_NON_LIVE_PROJECT_NAME_PATTERN,
+        ROLE_ROOM_NON_LIVE_PROJECT_ID_PATTERN,
+        ROLE_ROOM_NON_LIVE_CREATOR_PATTERN,
+      ];
       const [
-        candidatesRes,
         marketplaceRes,
         activeKeysRes,
         recentProjectsRes,
         professionRes,
       ] = await Promise.all([
-        pool.query(`SELECT COUNT(*) AS n FROM casting_candidates`),
         pool.query(
           `SELECT COUNT(*) AS n FROM marketplace_installations
            WHERE is_active = TRUE AND (app_id ILIKE '%role%' OR app_id ILIKE '%casting%' OR app_id = 'role-room')`
         ),
-        pool.query(`SELECT COUNT(*) AS n FROM role_room_api_keys WHERE is_active = TRUE`),
+        pool.query(
+          `SELECT COUNT(*) AS n FROM role_room_api_keys
+           WHERE is_active = TRUE
+             AND COALESCE(name, '') NOT ILIKE 'auto-e2e%'
+             AND COALESCE(name, '') NOT ILIKE 'auto-guest%'`
+        ),
         pool.query(
           `SELECT id, name, status, created_at FROM casting_projects
-           ORDER BY created_at DESC LIMIT 5`
+           WHERE COALESCE(name, '') !~* $1
+             AND COALESCE(id, '') !~* $2
+             AND COALESCE(created_by, '') <> ''
+             AND COALESCE(created_by, '') !~* $3
+           ORDER BY created_at DESC LIMIT 5`,
+          livePatternArgs
         ),
         pool.query(
           `SELECT cur.role, COUNT(*) AS n
@@ -20212,7 +20230,6 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
       res.json({
         ...summary,
-        kandidater:          parseInt(candidatesRes.rows[0]?.n     ?? '0', 10),
         marketplaceInstalls: parseInt(marketplaceRes.rows[0]?.n    ?? '0', 10),
         activeApiKeys:       parseInt(activeKeysRes.rows[0]?.n     ?? '0', 10),
         recentProjects:      recentProjectsRes.rows,
