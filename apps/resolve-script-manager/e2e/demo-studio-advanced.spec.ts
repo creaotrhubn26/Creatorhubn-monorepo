@@ -160,6 +160,8 @@ test('mal-bytte uten opptak reseeder uten bekreftelse', async ({ page }) => {
   let dialogShown = false;
   page.removeAllListeners('dialog');
   page.on('dialog', (d) => { dialogShown = true; void d.accept(); });
+  // Demo-type-chips ligger bak det sammenleggbare «Demo-type & visning»-panelet.
+  await page.getByRole('button', { name: /Demo-type & visning/ }).click();
   await page.getByText('Tutorial', { exact: true }).first().click();
   await expect(page.getByText('Mål', { exact: true })).toBeVisible(); // tutorial scene 1
   expect(dialogShown).toBe(false); // ingen opptak → ingen confirm
@@ -170,6 +172,9 @@ test('mal-bytte MED opptak krever bekreftelse — Cancel beholder flowen', async
   // Bygg capture-scener (status 'in_progress' teller IKKE som opptak), så vi
   // tvinger 'done' via Guided Recorder: start opptak + Mark as Done →
   // hasRecordedWork=true → mal-bytte krever da confirm.
+  // «Klikk-capture fra side» ligger bak det sammenleggbare «Verktøy»-panelet.
+  await page.getByTitle('Åpne AI Director').click();
+  await page.getByText('Verktøy', { exact: true }).click();
   await page.getByText('Klikk-capture', { exact: false }).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
@@ -184,6 +189,7 @@ test('mal-bytte MED opptak krever bekreftelse — Cancel beholder flowen', async
   // Nå: bytt mal og velg Cancel i confirm → flowen skal IKKE byttes.
   page.removeAllListeners('dialog');
   page.on('dialog', (d) => void d.dismiss());
+  await page.getByRole('button', { name: /Demo-type & visning/ }).click();
   await page.getByText('Tutorial', { exact: true }).first().click();
   // Tutorial-malens scene «Mål» skal IKKE finnes (vi avbrøt byttet).
   await expect(page.getByText('Mål', { exact: true })).toHaveCount(0);
@@ -194,6 +200,9 @@ test('mal-bytte MED opptak krever bekreftelse — Cancel beholder flowen', async
 test('capture avbrutt (cancelled=true) bygger ingen scener', async ({ page }) => {
   await seedDemo(page);
   await expect(page.getByText('6 scener')).toBeVisible();
+  // Ligger bak det sammenleggbare «Verktøy»-panelet.
+  await page.getByTitle('Åpne AI Director').click();
+  await page.getByText('Verktøy', { exact: true }).click();
   await page.getByText('Klikk-capture', { exact: false }).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
@@ -209,7 +218,9 @@ test('capture avbrutt (cancelled=true) bygger ingen scener', async ({ page }) =>
 
 test('verify med avvikende selector gir Warning (ikke Match)', async ({ page }) => {
   await seedDemo(page);
-  // Bygg én capture-scene med targetSelector='#start' (Expected).
+  // Bygg én capture-scene med targetSelector='#start' (Expected) — ligger bak «Verktøy».
+  await page.getByTitle('Åpne AI Director').click();
+  await page.getByText('Verktøy', { exact: true }).click();
   await page.getByText('Klikk-capture', { exact: false }).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
@@ -234,6 +245,9 @@ test('verify med avvikende selector gir Warning (ikke Match)', async ({ page }) 
 
 test('auto-execute som ikke finner element setter needs_review', async ({ page }) => {
   await seedDemo(page);
+  // Ligger bak det sammenleggbare «Verktøy»-panelet.
+  await page.getByTitle('Åpne AI Director').click();
+  await page.getByText('Verktøy', { exact: true }).click();
   await page.getByText('Klikk-capture', { exact: false }).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
@@ -355,6 +369,9 @@ test('interaktiv guide skriver HTML med korrekte steg', async ({ page }) => {
 test('startScrollPct-felt redigeres og klemmes til 0–100', async ({ page }) => {
   await seedDemo(page);
   // Capture en scene med scroll (0.2) → startScrollPct=20 settes deterministisk.
+  // Ligger bak det sammenleggbare «Verktøy»-panelet.
+  await page.getByTitle('Åpne AI Director').click();
+  await page.getByText('Verktøy', { exact: true }).click();
   await page.getByText(/Klikk-capture/).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
@@ -411,6 +428,9 @@ test('Create Demo med eksisterende prosjekt krever confirm før erstatning', asy
 test('AI self-healing reparerer brutt selector og fullfører auto', async ({ page }) => {
   await seedDemo(page);
   // Capture en scene med en BRUTT selector (#broken-1) → auto vil feile først.
+  // Ligger bak det sammenleggbare «Verktøy»-panelet.
+  await page.getByTitle('Åpne AI Director').click();
+  await page.getByText('Verktøy', { exact: true }).click();
   await page.getByText(/Klikk-capture/).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;

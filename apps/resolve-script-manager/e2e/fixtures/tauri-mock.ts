@@ -61,6 +61,10 @@ export function installTauriMock(opts: MockOptions = {}) {
 
   // localStorage for tests
   localStorage.setItem("trrpa.firstRunComplete", "skipped");
+  // Unngår Photoshop-onboarding-tour-modalen (full-screen, blokkerer alle
+  // klikk på Home) for tester som goto() en rå Home-skjerm i stedet for å
+  // bruke ?test=demo/?test=story-snarveiene som aldri render den.
+  localStorage.setItem("trrpa.photoshopTourCompleted", "1");
   localStorage.setItem(
     "trrpa.settings",
     JSON.stringify({ RR_BEARER_TOKEN: "test-token" }),

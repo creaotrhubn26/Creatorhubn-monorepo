@@ -24,7 +24,13 @@ test.describe("claudeProxyService støtter AbortSignal", () => {
   });
 
   test("fetch får signal videresendt", () => {
-    expect(svc).toMatch(/signal:\s*opts\.signal/);
+    // Implementasjonen kombinerer nå ekstern opts.signal + intern timeout-
+    // AbortController (unngår listener-lekkasje, tillater intern timeout
+    // uavhengig av ekstern cancel) — fetch får ctrl.signal, og opts.signal
+    // lytter til abort for å trigge ctrl.abort(). Testet var mot en eldre,
+    // enklere «send opts.signal rett til fetch»-form.
+    expect(svc).toMatch(/signal:\s*ctrl\.signal/);
+    expect(svc).toMatch(/opts\.signal\?\.addEventListener\(\s*["']abort["']/);
   });
 });
 

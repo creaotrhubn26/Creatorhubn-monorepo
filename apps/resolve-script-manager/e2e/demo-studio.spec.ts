@@ -85,6 +85,8 @@ test('tom tilstand: tilgivende URL + opprett demo', async ({ page }) => {
 
 test('demo-typer reformer flowen', async ({ page }) => {
   await seedDemo(page);
+  // Demo-type-chips ligger bak det sammenleggbare «Demo-type & visning»-panelet.
+  await page.getByRole('button', { name: /Demo-type & visning/ }).click();
   await page.getByText('Tutorial', { exact: true }).first().click();
   await expect(page.getByText('Mål', { exact: true })).toBeVisible(); // tutorial-mal scene 1
 });
@@ -99,12 +101,18 @@ test('AI Director genererer flow bundet til elementer', async ({ page }) => {
 
 test('AI fullfør demoen fyller hull', async ({ page }) => {
   await seedDemo(page);
+  // Ligger bak det sammenleggbare «Verktøy»-panelet.
+  await page.getByTitle('Åpne AI Director').click();
+  await page.getByText('Verktøy', { exact: true }).click();
   await page.getByText(/Fullfør demoen/).click();
   await expect(page.getByText(/Fylte \d+ scene/)).toBeVisible({ timeout: 10000 });
 });
 
 test('klikk-capture bygger scener fra steg', async ({ page }) => {
   await seedDemo(page);
+  // Ligger bak det sammenleggbare «Verktøy»-panelet.
+  await page.getByTitle('Åpne AI Director').click();
+  await page.getByText('Verktøy', { exact: true }).click();
   await page.getByText(/Klikk-capture/).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
@@ -117,7 +125,9 @@ test('klikk-capture bygger scener fra steg', async ({ page }) => {
 
 test('Validation-modal viser Expected ↔ Detected', async ({ page }) => {
   await seedDemo(page);
-  // bygg capture-scener (har detectedSelector → Match)
+  // bygg capture-scener (har detectedSelector → Match) — ligger bak «Verktøy».
+  await page.getByTitle('Åpne AI Director').click();
+  await page.getByText('Verktøy', { exact: true }).click();
   await page.getByText(/Klikk-capture/).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
@@ -163,6 +173,9 @@ test('Script Builder viser ekte innlogget bruker', async ({ page }) => {
 
 test('Director Critic gir score + forbedringer', async ({ page }) => {
   await seedDemo(page);
+  // Ligger bak det sammenleggbare «Verktøy»-panelet.
+  await page.getByTitle('Åpne AI Director').click();
+  await page.getByText('Verktøy', { exact: true }).click();
   await page.getByRole('button', { name: /Vurder demoen/ }).click();
   await expect(page.getByText('Director Critic')).toBeVisible({ timeout: 10000 });
   await expect(page.getByText('72')).toBeVisible();
@@ -203,6 +216,9 @@ test('vision auto-annotering fyller overlay fra skjermbilde', async ({ page }) =
 
 test('CTA-bank klassifiserer capture-elementer', async ({ page }) => {
   await seedDemo(page);
+  // Ligger bak det sammenleggbare «Verktøy»-panelet.
+  await page.getByTitle('Åpne AI Director').click();
+  await page.getByText('Verktøy', { exact: true }).click();
   await page.getByText(/Klikk-capture/).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;

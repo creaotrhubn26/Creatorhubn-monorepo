@@ -15,6 +15,10 @@ function anthropic(textOrObj: unknown) {
 async function setupRoutes(page: Page) {
   await page.route('**/api/post-agent/me', (route) =>
     route.fulfill({ json: { id: 'u1', email: 't@test.no', name: 'Test', role: 'producer' } }));
+  // Marketing er en à-la-carte-entitlement (hasModule('marketing')) — uten
+  // denne mocken forblir cachedModules tom og panelet viser «MODUL LÅST».
+  await page.route('**/api/post-agent/modules/entitlements', (route) =>
+    route.fulfill({ json: { modules: ['demo_studio', 'marketing'] } }));
   await page.route('**/api/post-agent/anthropic/messages', (route) => {
     const body = route.request().postDataJSON() as { messages?: Array<{ content: unknown }> };
     const last = body.messages?.[body.messages.length - 1];
@@ -71,7 +75,10 @@ test('manus-drevne visuelle uthevinger med preview', async ({ page }) => {
   await page.getByPlaceholder('https://example.com').first().fill('theroleroom.com');
   await page.getByText('Generér demo-flow →').click();
   await expect(page.getByText('Demo-flow')).toBeVisible();
-  // AI Director-kortet: foreslå visuelle uthevinger.
+  // AI Director-kortet: «Foreslå visuelle uthevinger» ligger bak det
+  // sammenleggbare «Verktøy»-panelet (lukket som default) — må åpnes først.
+  await page.getByTitle('Åpne AI Director').click();
+  await page.getByText('Verktøy', { exact: true }).click();
   await page.getByRole('button', { name: /Foreslå visuelle uthevinger/ }).click();
   await expect(page.getByRole('heading', { name: 'Visuelle uthevinger fra manuset' })).toBeVisible({ timeout: 15000 });
   await expect(page.getByText('Stat-callout')).toBeVisible();
