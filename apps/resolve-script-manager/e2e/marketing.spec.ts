@@ -73,6 +73,11 @@ async function setupRoutes(page: Page) {
     }
     return route.fulfill({ json: payload });
   });
+
+  await page.route('**/api/post-agent/marketing/tactic-analysis', (route) =>
+    route.fulfill({ json: { domain: 'theroleroom.com', cached: false, findings: [
+      { tactic: 'Knapphet', evidence: 'Kun 3 plasser igjen', exampleBrand: 'Booking.com', exampleDescription: 'Viser antall rom igjen for å presse beslutning.' },
+    ] } }));
 }
 
 async function gotoMarketing(page: Page) {
@@ -138,4 +143,12 @@ test('Marketing Director genererer målrettet flow + variant', async ({ page }) 
   // Variant-motor lager et målrettet kutt.
   await page.getByRole('button', { name: 'Generér valgte varianter' }).click();
   await expect(page.getByRole('button', { name: 'Sett som aktiv' }).first()).toBeVisible({ timeout: 15000 });
+});
+
+test('merkevare & taktikk-analyse viser funn med eksempel', async ({ page }) => {
+  await gotoMarketing(page);
+  await page.getByRole('button', { name: /Analyser merkevare & taktikk/ }).click();
+  await expect(page.getByRole('heading', { name: 'Merkevare & taktikk-funn' })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('Knapphet')).toBeVisible();
+  await expect(page.getByText(/Booking\.com/)).toBeVisible();
 });
