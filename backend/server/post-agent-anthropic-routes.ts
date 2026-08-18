@@ -38,6 +38,8 @@ import { safeAppBaseUrl, safeReturnPath } from './web-origin-allowlist.js';
 import { sendEmail } from './casting-reminder-sender.js';
 import { presignTakeReadUrl } from './coverage-take-service.js';
 import { presignRoleRoomB2Download } from './b2-archive-helper.js';
+import { embedText } from './reference-archive-embeddings.js';
+import { findCachedTactics, storeTacticFindings, recordTacticFeedback, type TacticFinding } from './marketing-tactic-cache.js';
 import {
   POST_AGENT_MODULES,
   getUserModules,
@@ -352,6 +354,19 @@ export function createPostAgentRouter(
 
   // ---- Anthropic proxy ----
 
+  const TACTIC_TAXONOMY = [
+    'Knapphet', 'Sosialt bevis', 'Forankring', 'Autoritet', 'Gjensidighet',
+    'Hastverk-press', 'Kontrast-prising', 'Storytelling', 'Tap-aversjon', 'Eksklusivitet',
+  ] as const;
+
+  const TACTIC_SYSTEM_PROMPT = `Du analyserer en nettsides tekst for markedsføringstaktikker.
+Sjekk kun mot denne taksonomien: ${TACTIC_TAXONOMY.join(', ')}.
+For hvert funn: oppgi taktikk-navn, konkret bevis fra teksten (evidence),
+hvilket element/setning på siden det gjelder (targetElementLabel), og ETT
+navngitt merke-eksempel med kort forklaring (exampleBrand, exampleDescription)
+fra din egen kunnskap — ikke søk på nett. Svar KUN med JSON:
+{"findings": [{"tactic": "...", "evidence": "...", "targetElementLabel": "...", "exampleBrand": "...", "exampleDescription": "..."}]}`;
+
   router.post(
     '/anthropic/messages',
     postAgentAuth,
@@ -414,6 +429,76 @@ export function createPostAgentRouter(
         console.error('[post-agent] anthropic proxy error:', code, message);
         res.status(status).json({ error: code, detail: message });
       }
+    },
+  );
+
+  // ---- Marketing: merkevare & taktikk-analyse ----
+
+  router.post(
+    '/marketing/tactic-analysis',
+    postAgentAuth,
+    aiRateLimit({ windowMs: 60_000, max: 30, label: 'post-agent-marketing-tactics' }),
+    async (req: Request, res: Response): Promise<void> => {
+      const userId = (req as AuthedRequest).userId;
+      const session = activeSessions?.get((req as AuthedRequest).bearerToken);
+      const entitlement = await checkAgentEntitlement(pool, userId, session?.role);
+      if (!entitlement.allowed) {
+        res.status(402).json({ error: 'subscription_required', detail: entitlement.reason, upsell: entitlement.upsell });
+        return;
+      }
+
+      const { domain, pageText } = (req.body ?? {}) as { domain?: string; pageText?: string };
+      if (!domain || !pageText) {
+        res.status(400).json({ error: 'invalid_request', detail: 'domain + pageText required' });
+        return;
+      }
+
+      try {
+        const embedded = await embedText(pageText);
+        const embedding = 'embedding' in embedded ? embedded.embedding : null;
+
+        if (embedding) {
+          const cached = await findCachedTactics(pool, { embedding });
+          if (cached) {
+            res.json({ domain: cached.domain, findings: cached.findings, cached: true });
+            return;
+          }
+        }
+
+        const client = await getClient();
+        const response = (await client.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1500,
+          system: TACTIC_SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: `Domene: ${domain}\n\nSidetekst:\n${pageText.slice(0, 6000)}` }],
+        })) as { content: Array<{ type: string; text?: string }> };
+
+        const textBlock = response.content.find((b) => b.type === 'text');
+        const parsed = JSON.parse(textBlock?.text ?? '{}') as { findings?: TacticFinding[] };
+        const findings = parsed.findings ?? [];
+
+        void storeTacticFindings(pool, { domain, pageText, embedding, findings });
+        res.json({ domain, findings, cached: false });
+      } catch (err) {
+        const status = (err as { status?: number }).status ?? 502;
+        const message = (err as Error).message ?? 'Tactic analysis failed';
+        console.error('[post-agent] marketing tactic-analysis error:', message);
+        res.status(status).json({ error: 'upstream_error', detail: message });
+      }
+    },
+  );
+
+  router.post(
+    '/marketing/tactic-feedback',
+    postAgentAuth,
+    async (req: Request, res: Response): Promise<void> => {
+      const { id, feedback } = (req.body ?? {}) as { id?: string; feedback?: Record<string, 'accepted' | 'rejected' | 'edited'> };
+      if (!id || !feedback) {
+        res.status(400).json({ error: 'invalid_request', detail: 'id + feedback required' });
+        return;
+      }
+      await recordTacticFeedback(pool, { id, feedback });
+      res.json({ ok: true });
     },
   );
 
