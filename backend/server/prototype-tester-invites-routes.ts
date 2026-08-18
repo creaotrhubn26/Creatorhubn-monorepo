@@ -122,7 +122,24 @@ function getMailer(): ReturnType<typeof nodemailer.createTransport> | null {
   return nodemailer.createTransport({ service: "gmail", auth: { user: mailUser, pass: mailPass } });
 }
 
-function buildInviteEmailHtml(name: string, inviteUrl: string, personalMessage: string | null): string {
+// Open/click-tracking: pixel + klikk-redirect skriver invite_email_opened_at /
+// invite_link_clicked_at på den koblede invite_requests-raden (admin-dashbordets
+// Email Conversion-widget). Manuelle invitasjoner uten invite_request_id no-op'er.
+function buildInviteTrackUrls(baseUrl: string, token: string): { openPixelUrl: string; clickUrl: string } {
+  const t = encodeURIComponent(token);
+  return {
+    openPixelUrl: `${baseUrl}/api/prototype-tester-invites/track/open/${t}`,
+    clickUrl: `${baseUrl}/api/prototype-tester-invites/track/click/${t}`,
+  };
+}
+
+function buildInviteEmailHtml(
+  name: string,
+  inviteUrl: string,
+  personalMessage: string | null,
+  track?: { openPixelUrl: string; clickUrl: string },
+): string {
+  const linkUrl = track?.clickUrl || inviteUrl;
   return `
     <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a1a1a;">
       <h2 style="margin:0 0 16px;">Hei ${escapeHtml(name)},</h2>
@@ -135,17 +152,18 @@ function buildInviteEmailHtml(name: string, inviteUrl: string, personalMessage: 
         min. 4 feedback per måned) og signere en NDA.
       </p>
       <div style="text-align:center;margin:32px 0;">
-        <a href="${inviteUrl}" style="display:inline-block;background:#ffba6c;color:#150d05;padding:14px 28px;border-radius:999px;text-decoration:none;font-weight:700;">Les vilkår og signer</a>
+        <a href="${linkUrl}" style="display:inline-block;background:#ffba6c;color:#150d05;padding:14px 28px;border-radius:999px;text-decoration:none;font-weight:700;">Les vilkår og signer</a>
       </div>
       <p style="font-size:13px;color:#666;line-height:1.5;">
         Lenken er gyldig i ${INVITE_EXPIRES_DAYS} dager. Hvis knappen ikke fungerer:<br>
-        <a href="${inviteUrl}" style="color:#1976d2;word-break:break-all;">${inviteUrl}</a>
+        <a href="${linkUrl}" style="color:#1976d2;word-break:break-all;">${inviteUrl}</a>
       </p>
       <hr style="border:none;border-top:1px solid #eee;margin:32px 0 16px;">
       <p style="font-size:12px;color:#999;">
         Du får denne fordi du søkte om å bli prototype-tester via creatorhubn.com.
         Hvis dette er en feil, kan du ignorere e-posten.
       </p>
+      ${track ? `<img src="${track.openPixelUrl}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0;">` : ""}
     </div>
   `;
 }
@@ -294,7 +312,7 @@ export async function createInviteFromApprovedRequest(
         from: `"Creatorhubn" <${mailUser}>`,
         to: email,
         subject: "Du er godkjent som prototype-tester i Creatorhubn",
-        html: buildInviteEmailHtml(name, inviteUrl, null),
+        html: buildInviteEmailHtml(name, inviteUrl, null, buildInviteTrackUrls(baseUrl, token)),
       }).catch((err: unknown) => console.error("[prototype-tester-invite] mail failed:", (err as { message?: string })?.message || err));
     } else {
       console.warn("[prototype-tester-invite] Mailer not configured — invitasjon opprettet uten e-post");
@@ -309,6 +327,56 @@ export async function createInviteFromApprovedRequest(
 
 export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDeps): void {
   const { app, pool, getPricingUserId, requireUserSession, requireAdminSession, provisionTesterAccount } = deps;
+
+  // ─── Open/click-tracking (public, ingen auth — kalles fra e-postklienter) ───
+  // 1×1 transparent GIF; første åpning stemples, senere åpninger beholdes ikke.
+  const TRACK_PIXEL_GIF = Buffer.from(
+    "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+    "base64",
+  );
+
+  app.get("/api/prototype-tester-invites/track/open/:token", async (req, res) => {
+    try {
+      await pool.query(
+        `UPDATE invite_requests
+            SET invite_email_opened_at = COALESCE(invite_email_opened_at, NOW()),
+                updated_at = NOW()
+          WHERE id = (SELECT invite_request_id::text FROM prototype_tester_invites WHERE token = $1 LIMIT 1)`,
+        [req.params.token],
+      );
+    } catch (err) {
+      console.error("[invite-track] open failed:", (err as { message?: string })?.message || err);
+    }
+    res
+      .set({
+        "Content-Type": "image/gif",
+        "Content-Length": String(TRACK_PIXEL_GIF.length),
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        Pragma: "no-cache",
+      })
+      .end(TRACK_PIXEL_GIF);
+  });
+
+  // Klikk stempler både klikk og åpning (klikk uten pixel-last = åpnet uansett),
+  // og redirecter alltid til accept-siden — frontend håndterer ugyldig/utløpt token.
+  app.get("/api/prototype-tester-invites/track/click/:token", async (req, res) => {
+    const token = String(req.params.token);
+    try {
+      await pool.query(
+        `UPDATE invite_requests
+            SET invite_email_opened_at = COALESCE(invite_email_opened_at, NOW()),
+                invite_link_clicked_at = COALESCE(invite_link_clicked_at, NOW()),
+                updated_at = NOW()
+          WHERE id = (SELECT invite_request_id::text FROM prototype_tester_invites WHERE token = $1 LIMIT 1)`,
+        [token],
+      );
+    } catch (err) {
+      console.error("[invite-track] click failed:", (err as { message?: string })?.message || err);
+    }
+    res.redirect(
+      `${safeAppBaseUrl(req)}/prototype-tester/accept-invite?token=${encodeURIComponent(token)}`,
+    );
+  });
 
   // ─── POST /api/prototype-tester-invites ─────────────────────
   // Admin oppretter invitasjon manuelt (push-modell, i tillegg til
@@ -372,7 +440,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
           from: `"Creatorhubn" <${mailUser}>`,
           to: email,
           subject: "Du er invitert som prototype-tester i Creatorhubn",
-          html: buildInviteEmailHtml(name, inviteUrl, personalMessage),
+          html: buildInviteEmailHtml(name, inviteUrl, personalMessage, buildInviteTrackUrls(baseUrl, row.token)),
         }).catch((err: unknown) => console.error("[prototype-tester-invite] mail failed:", (err as { message?: string })?.message || err));
       }
 
@@ -726,6 +794,7 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
             memberName,
             inviteUrl,
             `Du har blitt invitert som team-medlem. Når du signerer NDA-en blir du del av det aktive prototype-tester-teamet (program slutter ${new Date(master.program_ends_at).toLocaleDateString("nb-NO")}).`,
+            buildInviteTrackUrls(baseUrl, token),
           ),
         }).catch((err) => console.error("[team-invite] mail failed:", err?.message || err));
       }
