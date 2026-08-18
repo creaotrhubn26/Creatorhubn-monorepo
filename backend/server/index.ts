@@ -45598,10 +45598,11 @@ async function getAdminSubscriptionSnapshot(): Promise<{
   if (await hasTable("user_subscriptions")) {
     const subscriptionRows = await queryExistingTableRows(
       "user_subscriptions",
-      `SELECT plan_id, COUNT(*)::int AS count
-         FROM user_subscriptions
-        WHERE LOWER(COALESCE(status, 'active')) = 'active'
-        GROUP BY plan_id
+      `SELECT s.plan_id, COUNT(*)::int AS count
+         FROM user_subscriptions s
+         JOIN users u ON u.id = s.user_id
+        WHERE LOWER(COALESCE(s.status, 'active')) = 'active'
+        GROUP BY s.plan_id
         ORDER BY count DESC, plan_id ASC`,
     );
 
