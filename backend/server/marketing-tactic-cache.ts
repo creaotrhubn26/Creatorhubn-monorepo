@@ -1,4 +1,5 @@
 import type { Pool } from 'pg';
+import { vectorToPg } from './reference-archive-embeddings.js';
 
 export const SIMILARITY_THRESHOLD = 0.92;
 
@@ -9,10 +10,6 @@ export interface TacticFinding {
   hotspot?: { x: number; y: number; w: number; h: number };
   exampleBrand: string;
   exampleDescription: string;
-}
-
-function vectorToPg(vector: number[]): string {
-  return `[${vector.join(',')}]`;
 }
 
 export async function findCachedTactics(
