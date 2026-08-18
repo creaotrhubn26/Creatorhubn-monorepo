@@ -443,8 +443,17 @@ fra din egen kunnskap — ikke søk på nett. Svar KUN med JSON:
       const session = activeSessions?.get((req as AuthedRequest).bearerToken);
       const entitlement = await checkAgentEntitlement(pool, userId, session?.role);
       if (!entitlement.allowed) {
-        res.status(402).json({ error: 'subscription_required', detail: entitlement.reason, upsell: entitlement.upsell });
-        return;
+        // Try the team-seat fallback before returning 402
+        const teamAccess = await userHasActiveTeamSeat(pool, userId);
+        if (!teamAccess) {
+          res.status(402).json({
+            error: 'subscription_required',
+            detail: entitlement.reason,
+            upsell: entitlement.upsell,
+          });
+          return;
+        }
+        // User has team-seat — allow and log for usage tracking
       }
 
       const { domain, pageText } = (req.body ?? {}) as { domain?: string; pageText?: string };
