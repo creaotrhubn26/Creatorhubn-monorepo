@@ -17,4 +17,14 @@ describe('findCachedTactics', () => {
     const result = await findCachedTactics(pool, { embedding: [0.1, 0.2] });
     expect(result).toEqual({ domain: 'example.com', findings: [{ tactic: 'Knapphet' }], similarity: 0.95 });
   });
+
+  it('returns null when the top row exists but is below the similarity threshold', async () => {
+    const pool = {
+      query: vi.fn().mockResolvedValue({
+        rows: [{ domain: 'unrelated.com', raw_findings: [{ tactic: 'Knapphet' }], similarity: 0.5 }],
+      }),
+    } as any;
+    const result = await findCachedTactics(pool, { embedding: [0.1, 0.2] });
+    expect(result).toBeNull();
+  });
 });

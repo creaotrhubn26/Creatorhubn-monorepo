@@ -39,7 +39,7 @@ import { sendEmail } from './casting-reminder-sender.js';
 import { presignTakeReadUrl } from './coverage-take-service.js';
 import { presignRoleRoomB2Download } from './b2-archive-helper.js';
 import { embedText } from './reference-archive-embeddings.js';
-import { findCachedTactics, storeTacticFindings, recordTacticFeedback, type TacticFinding } from './marketing-tactic-cache.js';
+import { findCachedTactics, storeTacticFindings, type TacticFinding } from './marketing-tactic-cache.js';
 import {
   POST_AGENT_MODULES,
   getUserModules,
@@ -465,11 +465,14 @@ fra din egen kunnskap — ikke søk på nett. Svar KUN med JSON:
       try {
         const embedded = await embedText(pageText);
         const embedding = 'embedding' in embedded ? embedded.embedding : null;
+        if (!embedding) {
+          console.warn('[post-agent] marketing tactic-analysis: embedding not configured, cache disabled for this request');
+        }
 
         if (embedding) {
           const cached = await findCachedTactics(pool, { embedding });
           if (cached) {
-            res.json({ domain: cached.domain, findings: cached.findings, cached: true });
+            res.json({ domain, findings: cached.findings, cached: true });
             return;
           }
         }
@@ -483,31 +486,20 @@ fra din egen kunnskap — ikke søk på nett. Svar KUN med JSON:
         })) as { content: Array<{ type: string; text?: string }> };
 
         const textBlock = response.content.find((b) => b.type === 'text');
-        const parsed = JSON.parse(textBlock?.text ?? '{}') as { findings?: TacticFinding[] };
-        const findings = parsed.findings ?? [];
+        const parsed = JSON.parse(textBlock?.text ?? '{}') as { findings?: unknown };
+        const findings: TacticFinding[] = Array.isArray(parsed.findings)
+          ? parsed.findings.filter((f): f is TacticFinding => Boolean(f) && typeof f.tactic === 'string' && typeof f.exampleBrand === 'string')
+          : [];
 
         void storeTacticFindings(pool, { domain, pageText, embedding, findings });
         res.json({ domain, findings, cached: false });
       } catch (err) {
         const status = (err as { status?: number }).status ?? 502;
+        const code = (err as { code?: string }).code ?? 'upstream_error';
         const message = (err as Error).message ?? 'Tactic analysis failed';
-        console.error('[post-agent] marketing tactic-analysis error:', message);
-        res.status(status).json({ error: 'upstream_error', detail: message });
+        console.error('[post-agent] marketing tactic-analysis error:', code, message);
+        res.status(status).json({ error: code, detail: message });
       }
-    },
-  );
-
-  router.post(
-    '/marketing/tactic-feedback',
-    postAgentAuth,
-    async (req: Request, res: Response): Promise<void> => {
-      const { id, feedback } = (req.body ?? {}) as { id?: string; feedback?: Record<string, 'accepted' | 'rejected' | 'edited'> };
-      if (!id || !feedback) {
-        res.status(400).json({ error: 'invalid_request', detail: 'id + feedback required' });
-        return;
-      }
-      await recordTacticFeedback(pool, { id, feedback });
-      res.json({ ok: true });
     },
   );
 

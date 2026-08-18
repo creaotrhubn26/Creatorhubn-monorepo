@@ -149,6 +149,6 @@ test('merkevare & taktikk-analyse viser funn med eksempel', async ({ page }) => 
   await gotoMarketing(page);
   await page.getByRole('button', { name: /Analyser merkevare & taktikk/ }).click();
   await expect(page.getByRole('heading', { name: 'Merkevare & taktikk-funn' })).toBeVisible({ timeout: 15000 });
-  await expect(page.getByText('Knapphet')).toBeVisible();
+  await expect(page.getByText('Kun 3 plasser igjen')).toBeVisible();
   await expect(page.getByText(/Booking\.com/)).toBeVisible();
 });

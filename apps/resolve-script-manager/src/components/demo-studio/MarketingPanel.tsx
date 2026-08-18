@@ -194,8 +194,10 @@ export function MarketingPanel({ onOpenSignIn }: { onOpenSignIn: () => void }) {
     try {
       const { siteContext } = await scanContext();
       const result = await analyzeBrandTactics({ domain: project.url, pageText: siteContext ?? '' });
-      setTacticFindings(result?.findings ?? []);
-    } finally {
+      if (!result) { setMsg('Kunne ikke analysere siden — prøv igjen.'); return; }
+      setTacticFindings(result.findings ?? []);
+    } catch (e) { setMsg('Feil: ' + (e as Error).message); }
+    finally {
       setTacticBusy(false);
     }
   };
