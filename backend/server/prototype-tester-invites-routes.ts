@@ -335,13 +335,17 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
     "base64",
   );
 
+  // Token er enten en prototype_tester_invites.token ELLER en invite_requests.id
+  // direkte (generiske invitasjoner fra /send-invite har ingen tester-rad).
   app.get("/api/prototype-tester-invites/track/open/:token", async (req, res) => {
     try {
       await pool.query(
         `UPDATE invite_requests
             SET invite_email_opened_at = COALESCE(invite_email_opened_at, NOW()),
                 updated_at = NOW()
-          WHERE id = (SELECT invite_request_id::text FROM prototype_tester_invites WHERE token = $1 LIMIT 1)`,
+          WHERE id = COALESCE(
+            (SELECT invite_request_id::text FROM prototype_tester_invites WHERE token = $1 LIMIT 1),
+            $1)`,
         [req.params.token],
       );
     } catch (err) {
@@ -361,20 +365,31 @@ export function setupPrototypeTesterInvitesRoutes(deps: PrototypeTesterInvitesDe
   // og redirecter alltid til accept-siden — frontend håndterer ugyldig/utløpt token.
   app.get("/api/prototype-tester-invites/track/click/:token", async (req, res) => {
     const token = String(req.params.token);
+    let isTesterToken = false;
     try {
+      const match = await pool.query(
+        `SELECT 1 FROM prototype_tester_invites WHERE token = $1 LIMIT 1`,
+        [token],
+      );
+      isTesterToken = match.rows.length > 0;
       await pool.query(
         `UPDATE invite_requests
             SET invite_email_opened_at = COALESCE(invite_email_opened_at, NOW()),
                 invite_link_clicked_at = COALESCE(invite_link_clicked_at, NOW()),
                 updated_at = NOW()
-          WHERE id = (SELECT invite_request_id::text FROM prototype_tester_invites WHERE token = $1 LIMIT 1)`,
+          WHERE id = COALESCE(
+            (SELECT invite_request_id::text FROM prototype_tester_invites WHERE token = $1 LIMIT 1),
+            $1)`,
         [token],
       );
     } catch (err) {
       console.error("[invite-track] click failed:", (err as { message?: string })?.message || err);
     }
+    const base = safeAppBaseUrl(req);
     res.redirect(
-      `${safeAppBaseUrl(req)}/prototype-tester/accept-invite?token=${encodeURIComponent(token)}`,
+      isTesterToken
+        ? `${base}/prototype-tester/accept-invite?token=${encodeURIComponent(token)}`
+        : `${base}/login`,
     );
   });
 

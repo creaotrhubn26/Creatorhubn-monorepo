@@ -2,6 +2,10 @@ import express from "express";
 import type { Pool } from "pg";
 import { notifyAdmins } from "./admin-notify";
 import { safeAppBaseUrl } from "./web-origin-allowlist";
+import {
+  sendTransactionalEmail,
+  isTransactionalEmailConfigured,
+} from "./transactional-email-service";
 
 const _inviteRateBuckets = new Map<string, number[]>();
 function _inviteRateLimited(ip: string): boolean {
@@ -866,19 +870,89 @@ export function setupInviteRequestsRoutes(
     "/api/invites/admin/requests/:inviteId/send-invite",
     async (req, res) => {
       try {
-        if (!requireInviteRequestApproverSession(req, res)) return;
+        const session = requireInviteRequestApproverSession(req, res);
+        if (!session) return;
         const { inviteId } = req.params;
+        const rowR = await pool.query(
+          `SELECT * FROM invite_requests WHERE id = $1 LIMIT 1`,
+          [inviteId],
+        );
+        if (rowR.rowCount === 0) {
+          return res.status(404).json({ error: "Invite request not found" });
+        }
+        const row = rowR.rows[0];
+        if (!isTransactionalEmailConfigured()) {
+          return res.status(503).json({
+            error:
+              "E-post er ikke konfigurert (Resend/Gmail). Invitasjonen ble IKKE sendt.",
+          });
+        }
+
+        // Tracket lenke + åpnings-pixel: token = invite_requests.id (uuid) —
+        // track-endepunktene i prototype-tester-invites-routes faller tilbake
+        // til den når tokenet ikke finnes i prototype_tester_invites.
+        const baseUrl = safeAppBaseUrl(req);
+        const t = encodeURIComponent(String(row.id));
+        const clickUrl = `${baseUrl}/api/prototype-tester-invites/track/click/${t}`;
+        const openPixelUrl = `${baseUrl}/api/prototype-tester-invites/track/open/${t}`;
+        const loginUrl = `${baseUrl}/login`;
+        const name =
+          [row.first_name, row.last_name].filter(Boolean).join(" ") ||
+          String(row.email);
+        const esc = (s: unknown) =>
+          String(s ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+
+        const emailResult = await sendTransactionalEmail({
+          pool,
+          to: String(row.email),
+          subject: "Du er godkjent i Creatorhubn — kom i gang",
+          fromLabel: "Creatorhubn",
+          kind: "invite_request_invite",
+          sentByUserId: session.userId,
+          text: `Hei ${name},\n\nSøknaden din om tilgang til Creatorhubn er godkjent. Logg inn her: ${loginUrl}\n\nHilsen Creatorhubn`,
+          html: `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a1a1a;">
+      <h2 style="margin:0 0 16px;">Hei ${esc(name)},</h2>
+      <p style="font-size:15px;line-height:1.6;">
+        Søknaden din om tilgang til Creatorhubn er <b>godkjent</b>! Kontoen din er klar.
+      </p>
+      <div style="text-align:center;margin:32px 0;">
+        <a href="${clickUrl}" style="display:inline-block;background:#ffba6c;color:#150d05;padding:14px 28px;border-radius:999px;text-decoration:none;font-weight:700;">Logg inn og kom i gang</a>
+      </div>
+      <p style="font-size:13px;color:#666;line-height:1.5;">
+        Hvis knappen ikke fungerer:<br>
+        <a href="${clickUrl}" style="color:#1976d2;word-break:break-all;">${esc(loginUrl)}</a>
+      </p>
+      <hr style="border:none;border-top:1px solid #eee;margin:32px 0 16px;">
+      <p style="font-size:12px;color:#999;">
+        Du får denne fordi du søkte om tilgang via creatorhubn.com.
+        Hvis dette er en feil, kan du ignorere e-posten.
+      </p>
+      <img src="${openPixelUrl}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0;">
+    </div>`,
+        });
+
+        if (!emailResult.sent) {
+          return res.status(502).json({
+            error: `E-post kunne ikke sendes (${emailResult.reason || "ukjent feil"}). invite_sent_at er IKKE stemplet.`,
+          });
+        }
+
         const result = await pool.query(
           `UPDATE invite_requests SET invite_sent_at = NOW(), invite_sent_count = COALESCE(invite_sent_count, 0) + 1, updated_at = NOW() WHERE id = $1 RETURNING *`,
           [inviteId],
         );
-        if (result.rowCount === 0) {
-          return res.status(404).json({ error: "Invite request not found" });
-        }
-        console.log(`📧 Invite email sent to ${result.rows[0].email}`);
+        console.log(
+          `📧 Invite email sent to ${row.email} via ${emailResult.provider}`,
+        );
         res.json({
           success: true,
           message: "Invite email sent",
+          provider: emailResult.provider,
           request: mapInviteRow(result.rows[0]),
         });
       } catch (error) {
