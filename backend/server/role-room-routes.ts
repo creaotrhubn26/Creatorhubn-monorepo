@@ -18461,8 +18461,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
   // e2e / seed / «Proj 1001» / timestamp-navn (13 sifre) lakk gjennom det gamle
   // mønsteret og blåste opp admin-dashbordets «live»-tall (revisjon 2026-08-19).
-  const ROLE_ROOM_NON_LIVE_PROJECT_NAME_PATTERN = '(demo|test|verification|null|playwright|holy crust|invite test|storyboard test|subtabproject|ui-to-api|producer demo|content producer demo|troll project|e2e|seed project|^proj [0-9]+$|[0-9]{13})';
-  const ROLE_ROOM_NON_LIVE_PROJECT_ID_PATTERN = '(demo|test|verification|invite-test|holy-crust|troll-project|producer-demo|content-producer-demo|null|e2e|seed)';
+  // TROLL er bevisst demo-innhold (komplett produksjon modellert på Netflix-
+  // filmen) — skal se ekte ut i appen, men holdes utenfor live-tallene.
+  const ROLE_ROOM_NON_LIVE_PROJECT_NAME_PATTERN = '(demo|test|verification|null|playwright|holy crust|invite test|storyboard test|subtabproject|ui-to-api|producer demo|content producer demo|troll project|e2e|seed project|^proj [0-9]+$|[0-9]{13}|^troll$)';
+  const ROLE_ROOM_NON_LIVE_PROJECT_ID_PATTERN = '(demo|test|verification|invite-test|holy-crust|troll-project|producer-demo|content-producer-demo|null|e2e|seed|^troll-)';
   const ROLE_ROOM_NON_LIVE_CREATOR_PATTERN = '^(e2e-test-user|dev-local-user|producer-verification|phase2-producer-|demo-user|dev-|guest)';
 
   const getRoleRoomStatsSummary = async () => {
