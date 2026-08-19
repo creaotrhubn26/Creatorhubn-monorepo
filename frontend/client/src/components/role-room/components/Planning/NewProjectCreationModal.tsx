@@ -2272,11 +2272,15 @@ export default function NewProjectCreationModal({
       // + manuscript + scenes + shotLists + equipment + production days
       // + consents. Idempotent (DELETE før INSERT).
       //
-      // Hver demo-kjøring får sin egen prosjekt-ID så man kan ha flere
-      // TROLL-kopier samtidig uten data-kollisjon. Backend scoper alle
-      // entity-IDer (role-nora, cand-ine, ...) per projectId via eid()-
-      // helper i seedTrollDemo.
-      const trollNewProjectId = `troll-${Date.now()}`;
+      // Stabil per-bruker demo-ID: gjenbruk samme TROLL-prosjekt i stedet for
+      // å akkumulere en ny kopi per demo-kjøring (Date.now()-ID-er ga 42
+      // TROLL-duplikater i prod). Seeden er idempotent (DELETE før INSERT),
+      // så å kjøre demoen på nytt = ren reset av samme prosjekt. Backend
+      // scoper alle entity-IDer (role-nora, cand-ine, ...) per projectId.
+      const demoOwnerRaw =
+        (typeof window !== 'undefined' ? window.localStorage.getItem('userId') : null) || 'anon';
+      const demoOwnerSlug = demoOwnerRaw.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 40) || 'anon';
+      const trollNewProjectId = `troll-demo-${demoOwnerSlug}`;
       const response = await fetch('/api/demo/troll/seed-all', {
         method: 'POST',
         headers: {
