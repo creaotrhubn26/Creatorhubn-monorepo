@@ -1,20 +1,18 @@
 /**
  * MVA-melding mot Skatteetaten.
  *
- * 🔴 VIKTIG AUTENTISERINGS-FUNN (2026-07-30, verifisert mot ekte prod-endepunkt +
- * skatteetaten.github.io/mva-meldingen/documentation/implementasjonsguide):
- * Skatteetatens validerings- OG innsendings-API-er (idporten.api.skatteetaten.no)
- * krever **ID-PORTEN-token** — en pålogget SLUTTBRUKER (BankID, OIDC authorization-
- * code-flyt) — IKKE Maskinporten (maskin-til-maskin). Denne klassen ble bygd rundt
- * Maskinporten og får derfor **401** mot valideringstjenesten selv med gyldig
- * Maskinporten-token for scope skatteetaten:mvameldingvalidering. For å ta i bruk
- * API-ene på ekte må det bygges en ID-porten-innlogging (egen ID-porten-klient i
- * Samarbeidsportalen m/ redirect-URL + token-cache), og validate/submit må bruke
- * ID-porten-aksesstokenet. Til da: last ned XSD-gyldig XML og last opp i Altinn.
+ * 🔴 AUTENTISERING (bekreftet av Skatteetaten MVA-produksjon, 2026-08-19):
+ * MVA-melding — både VALIDERING og INNSENDING — går KUN via **ID-porten** (pålogget
+ * bruker/fnr m/ MVA-fullmakt som representerer virksomheten), IKKE Maskinporten.
+ * API-laget bruker de frie funksjonene `validateMvaMeldingWithToken` og
+ * `submitMvaMeldingWithToken`, som tar ID-porten-access-tokenet fra sesjonen.
+ * Innsending: ID-porten-token → veksles til Altinn-token (`exchange/id-porten`) →
+ * Altinn 3-instansflyt (app skd/mva-melding-innsending-v1 prod / -test tt02).
+ * `SkatteetatenVatSubmissionClient` (Maskinporten-veien) er deprecated for MVA og
+ * kalles ikke lenger fra endepunktet; beholdes for test/bakoverkompatibilitet.
  *
- * XML-byggingen (`buildMvaMeldingXml`) er derimot korrekt og XSD-validert (se
- * test/vat-submission.test.ts mot vendor/mva/…v1.0.xsd) og gjenbrukes uansett
- * auth-vei. VAT_SUBMISSION_ENDPOINTS er nå bekreftede prod/test-hoster.
+ * XML-byggingen (`buildMvaMeldingXml`) er XSD-validert (test/vat-submission.test.ts mot
+ * vendor/mva/…v1.0.xsd) og gjenbrukes uansett auth-vei.
  *
  * Penger holdes som bigint øre helt til XML-formatering; ingen flyttall i kjeden.
  */
@@ -32,14 +30,15 @@ export const VAT_SUBMISSION_ENDPOINTS: Record<
     // Bekreftet mot skatteetaten.github.io/api-dokumentasjon/api/mvameldingvalidering.
     validateBase: 'https://idporten-api-test.sits.no',
     altinnPlatform: 'https://platform.tt02.altinn.no',
-    // 🔑 app-ID (evt. -etmN-suffiks) bekreftes mot TT02 ved første testkjøring.
-    altinnApp: 'https://skd.apps.tt02.altinn.no/skd/mva-melding-innsending-etm2',
+    // App-navn bekreftet av Skatteetaten (MVA-produksjon, 2026-08-19).
+    altinnApp: 'https://skd.apps.tt02.altinn.no/skd/mva-melding-innsending-test',
   },
   prod: {
     // Bekreftet: valideringstjenesten ligger på idporten.api.skatteetaten.no.
     validateBase: 'https://idporten.api.skatteetaten.no',
     altinnPlatform: 'https://platform.altinn.no',
-    altinnApp: 'https://skd.apps.altinn.no/skd/mva-melding-innsending',
+    // App-navn bekreftet av Skatteetaten (MVA-produksjon, 2026-08-19).
+    altinnApp: 'https://skd.apps.altinn.no/skd/mva-melding-innsending-v1',
   },
 };
 
@@ -191,6 +190,138 @@ function findDataElementId(instance: AltinnInstance | null, dataType: string): s
   return el?.id;
 }
 
+/** fetch med timeout/abort. Delt av klienten og de token-baserte funksjonene. */
+async function callWithTimeout(
+  fetchImpl: FetchLike,
+  timeoutMs: number,
+  url: string,
+  init: Parameters<FetchLike>[1],
+) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetchImpl(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Veksler et kilde-token til et Altinn-token. MVA-innsending bruker 'id-porten'
+ * (pålogget bruker m/ MVA-fullmakt representerer virksomheten) — bekreftet av
+ * Skatteetaten 2026-08-19. 'maskinporten' beholdes for den eldre system-veien.
+ */
+async function exchangeForAltinnToken(params: {
+  fetchImpl: FetchLike;
+  timeoutMs: number;
+  altinnPlatform: string;
+  sourceToken: string;
+  source: 'id-porten' | 'maskinporten';
+  test: boolean;
+}): Promise<string> {
+  const testFlag = params.test ? '?test=true' : '';
+  const res = await callWithTimeout(
+    params.fetchImpl,
+    params.timeoutMs,
+    `${params.altinnPlatform}/authentication/api/v1/exchange/${params.source}${testFlag}`,
+    { method: 'GET', headers: { authorization: `Bearer ${params.sourceToken}`, accept: 'application/json' } },
+  );
+  if (!res.ok) throw new MaskinportenError(`Altinn-token-veksling feilet (${res.status}).`);
+  const body = (await res.text()).trim();
+  return body.replace(/^"|"$/g, ''); // Altinn returnerer token som (evt. sitert) streng
+}
+
+/**
+ * Kjører Altinn 3-innsendingsflyten med et ferdig Altinn-token:
+ *  1) opprett instans (eier = virksomheten)  2) last opp mva-melding
+ *  3) last opp innsendings-konvolutt  4) fullfør (process/next ×2)  5) kvittering
+ */
+async function runAltinnInstanceFlow(params: {
+  fetchImpl: FetchLike;
+  timeoutMs: number;
+  app: string;
+  altinnToken: string;
+  report: VatReport;
+  options: { orgNumber: string };
+}): Promise<VatSubmissionReceipt> {
+  const { fetchImpl, timeoutMs, app, altinnToken, report, options } = params;
+  const auth = { authorization: `Bearer ${altinnToken}` };
+  const call = (url: string, init: Parameters<FetchLike>[1]) => callWithTimeout(fetchImpl, timeoutMs, url, init);
+
+  // 1) Opprett instans — eier er virksomheten meldingen gjelder.
+  const created = await call(`${app}/instances`, {
+    method: 'POST',
+    headers: { ...auth, 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ instanceOwner: { organisationNumber: options.orgNumber } }),
+  });
+  if (!created.ok) throw new MaskinportenError(`Klarte ikke å opprette Altinn-instans (${created.status}).`);
+  const instance = (await safeJson(created)) as AltinnInstance;
+  const instanceId = instance?.id; // «{partyId}/{instanceGuid}»
+  if (!instanceId) throw new MaskinportenError('Altinn returnerte ingen instans-id.');
+  const instanceUrl = `${app}/instances/${instanceId}`;
+
+  // 2) Last opp selve mva-meldingen.
+  const upMelding = await call(`${instanceUrl}/data?dataType=mvamelding`, {
+    method: 'POST',
+    headers: { ...auth, 'content-type': 'application/xml' },
+    body: buildMvaMeldingXml(report, options),
+  });
+  if (!upMelding.ok) throw new MaskinportenError(`Opplasting av mva-melding feilet (${upMelding.status}).`);
+
+  // 3) Last opp innsendings-konvolutten (PUT til forhåndsopprettet element, ellers POST).
+  const envId = findDataElementId(instance, 'mvameldinginnsending');
+  const envXml = buildInnsendingXml(report);
+  if (envId) {
+    await call(`${instanceUrl}/data/${envId}`, { method: 'PUT', headers: { ...auth, 'content-type': 'application/xml' }, body: envXml });
+  } else {
+    await call(`${instanceUrl}/data?dataType=mvameldinginnsending`, { method: 'POST', headers: { ...auth, 'content-type': 'application/xml' }, body: envXml });
+  }
+
+  // 4) Fullfør: to prosess-steg (fullfør opplasting → fullfør innsending).
+  await call(`${instanceUrl}/process/next`, { method: 'PUT', headers: { ...auth, accept: 'application/json' } });
+  await call(`${instanceUrl}/process/next`, { method: 'PUT', headers: { ...auth, accept: 'application/json' } });
+
+  // 5) Hent Skatteetatens kvittering (synkron feedback).
+  const fb = await call(`${instanceUrl}/feedback/status`, { method: 'GET', headers: { ...auth, accept: 'application/json' } });
+  const fbRaw = await safeJson(fb);
+  const status =
+    fbRaw && typeof fbRaw === 'object' && typeof (fbRaw as Record<string, unknown>)['status'] === 'string'
+      ? ((fbRaw as Record<string, unknown>)['status'] as string)
+      : fb.ok
+        ? 'submitted'
+        : 'pending';
+  return { reference: instanceId, status, submittedAt: new Date().toISOString() };
+}
+
+/**
+ * Sender inn mva-meldingen via Altinn 3 med et FERDIG ID-porten access-token
+ * (pålogget bruker m/ MVA-fullmakt som representerer virksomheten). Veksler
+ * ID-porten-tokenet til et Altinn-token og kjører instans-flyten. Auth-vei-agnostisk
+ * som `validateMvaMeldingWithToken` — kalleren skaffer ID-porten-tokenet fra sesjonen.
+ * Bekreftet av Skatteetaten (MVA-produksjon, 2026-08-19): MVA-innsending = ID-porten.
+ */
+export async function submitMvaMeldingWithToken(params: {
+  report: VatReport;
+  orgNumber: string;
+  accessToken: string;
+  env: MaskinportenEnv;
+  fetchImpl?: FetchLike;
+  timeoutMs?: number;
+}): Promise<VatSubmissionReceipt> {
+  const ep = VAT_SUBMISSION_ENDPOINTS[params.env];
+  const fetchImpl = params.fetchImpl ?? (fetch as unknown as FetchLike);
+  const timeoutMs = params.timeoutMs ?? 15000;
+  const altinnToken = await exchangeForAltinnToken({
+    fetchImpl,
+    timeoutMs,
+    altinnPlatform: ep.altinnPlatform,
+    sourceToken: params.accessToken,
+    source: 'id-porten',
+    test: params.env === 'test',
+  });
+  return runAltinnInstanceFlow({ fetchImpl, timeoutMs, app: ep.altinnApp, altinnToken, report: params.report, options: { orgNumber: params.orgNumber } });
+}
+
 export class SkatteetatenVatSubmissionClient implements VatSubmissionPort {
   private readonly ep: (typeof VAT_SUBMISSION_ENDPOINTS)[MaskinportenEnv];
 
@@ -233,88 +364,23 @@ export class SkatteetatenVatSubmissionClient implements VatSubmissionPort {
   }
 
   /**
-   * Sender inn mva-meldingen via Altinn 3-appen (skd/mva-melding-innsending):
-   *  1) veksle Maskinporten-token → Altinn-token
-   *  2) opprett instans (eier = virksomheten)
-   *  3) last opp mva-melding + innsendings-konvolutt (+ evt. vedlegg)
-   *  4) fullfør prosessen (process/next ×2)
-   *  5) hent Skatteetatens kvittering (feedback)
-   *
-   * 🔑 Kall-sekvensen og endepunktene er fra Skatteetatens API-dok. De EKSAKTE
-   * payload-formene (konvoluttens XML, dataType-navn) bekreftes ved første kjøring
-   * mot TT02 — derfor `validate()` som fasit på XML-en underveis.
+   * ⚠️ DEPRECATED for MVA: Skatteetaten bekreftet 2026-08-19 at MVA-innsending KUN går
+   * via ID-porten (pålogget bruker m/ MVA-fullmakt), IKKE Maskinporten. Bruk den frie
+   * funksjonen `submitMvaMeldingWithToken` fra API-laget. Denne Maskinporten-veien
+   * beholdes kun for bakoverkompatibilitet/test og kalles ikke lenger fra endepunktet.
+   * Deler instans-flyten (`runAltinnInstanceFlow`) med den ID-porten-baserte veien.
    */
   async submit(report: VatReport, options: { orgNumber: string }): Promise<VatSubmissionReceipt> {
     const mpToken = await this.token(); // Maskinporten (kaster uten legitimasjon)
-    const altinnToken = await this.exchangeToken(mpToken);
-    const auth = { authorization: `Bearer ${altinnToken}` };
-    const app = this.ep.altinnApp;
-
-    // 1) Opprett instans — eier er virksomheten meldingen gjelder.
-    const created = await this.call(`${app}/instances`, {
-      method: 'POST',
-      headers: { ...auth, 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ instanceOwner: { organisationNumber: options.orgNumber } }),
+    const altinnToken = await exchangeForAltinnToken({
+      fetchImpl: this.fetchImpl,
+      timeoutMs: this.timeoutMs,
+      altinnPlatform: this.ep.altinnPlatform,
+      sourceToken: mpToken,
+      source: 'maskinporten',
+      test: this.maskinporten.env === 'test',
     });
-    if (!created.ok) throw new MaskinportenError(`Klarte ikke å opprette Altinn-instans (${created.status}).`);
-    const instance = (await safeJson(created)) as AltinnInstance;
-    const instanceId = instance?.id; // «{partyId}/{instanceGuid}»
-    if (!instanceId) throw new MaskinportenError('Altinn returnerte ingen instans-id.');
-    const instanceUrl = `${app}/instances/${instanceId}`;
-
-    // 2) Last opp selve mva-meldingen.
-    const upMelding = await this.call(`${instanceUrl}/data?dataType=mvamelding`, {
-      method: 'POST',
-      headers: { ...auth, 'content-type': 'application/xml' },
-      body: buildMvaMeldingXml(report, options),
-    });
-    if (!upMelding.ok) throw new MaskinportenError(`Opplasting av mva-melding feilet (${upMelding.status}).`);
-
-    // 3) Last opp innsendings-konvolutten. Data-elementet er forhåndsopprettet av
-    //    appen; finnes det, PUT-er vi innholdet, ellers POST-er vi et nytt.
-    const envId = findDataElementId(instance, 'mvameldinginnsending');
-    const envXml = buildInnsendingXml(report);
-    if (envId) {
-      await this.call(`${instanceUrl}/data/${envId}`, {
-        method: 'PUT',
-        headers: { ...auth, 'content-type': 'application/xml' },
-        body: envXml,
-      });
-    } else {
-      await this.call(`${instanceUrl}/data?dataType=mvameldinginnsending`, {
-        method: 'POST',
-        headers: { ...auth, 'content-type': 'application/xml' },
-        body: envXml,
-      });
-    }
-
-    // 4) Fullfør: to prosess-steg (fullfør opplasting → fullfør innsending).
-    await this.call(`${instanceUrl}/process/next`, { method: 'PUT', headers: { ...auth, accept: 'application/json' } });
-    await this.call(`${instanceUrl}/process/next`, { method: 'PUT', headers: { ...auth, accept: 'application/json' } });
-
-    // 5) Hent Skatteetatens kvittering (synkron feedback).
-    const fb = await this.call(`${instanceUrl}/feedback/status`, { method: 'GET', headers: { ...auth, accept: 'application/json' } });
-    const fbRaw = await safeJson(fb);
-    const status =
-      (fbRaw && typeof fbRaw === 'object' && typeof (fbRaw as Record<string, unknown>)['status'] === 'string'
-        ? ((fbRaw as Record<string, unknown>)['status'] as string)
-        : fb.ok
-          ? 'submitted'
-          : 'pending');
-
-    return { reference: instanceId, status, submittedAt: new Date().toISOString() };
-  }
-
-  /** Veksler et Maskinporten-token til et Altinn-token (Altinn 3 platform). */
-  private async exchangeToken(maskinportenToken: string): Promise<string> {
-    const testFlag = this.maskinporten.env === 'test' ? '?test=true' : '';
-    const res = await this.call(`${this.ep.altinnPlatform}/authentication/api/v1/exchange/maskinporten${testFlag}`, {
-      method: 'GET',
-      headers: { authorization: `Bearer ${maskinportenToken}`, accept: 'application/json' },
-    });
-    if (!res.ok) throw new MaskinportenError(`Altinn-token-veksling feilet (${res.status}).`);
-    const body = (await res.text()).trim();
-    return body.replace(/^"|"$/g, ''); // Altinn returnerer token som (evt. sitert) streng
+    return runAltinnInstanceFlow({ fetchImpl: this.fetchImpl, timeoutMs: this.timeoutMs, app: this.ep.altinnApp, altinnToken, report, options });
   }
 
   private async token(): Promise<string> {
@@ -323,13 +389,7 @@ export class SkatteetatenVatSubmissionClient implements VatSubmissionPort {
   }
 
   private async call(url: string, init: Parameters<FetchLike>[1]) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-    try {
-      return await this.fetchImpl(url, { ...init, signal: controller.signal });
-    } finally {
-      clearTimeout(timer);
-    }
+    return callWithTimeout(this.fetchImpl, this.timeoutMs, url, init);
   }
 }
 

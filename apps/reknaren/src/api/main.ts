@@ -79,8 +79,9 @@ const app = createApiServer({
   // Lovdata: åpne bulk-datasett uten nøkkel; per-paragraf lovtekst krever
   // X-API-Key (REKNAREN_LOVDATA_API_KEY). Status rapporteres ærlig.
   legalText: new LovdataApiClient(config.lovdataApiKey),
-  // MVA-melding-innsending via Maskinporten. Uten MASKINPORTEN_*-legitimasjon
-  // er den ikke aktiv (rapporteres ærlig); MVA-rapporten forblir kladd.
+  // @deprecated for MVA: Skatteetaten bekreftet 2026-08-19 at MVA-innsending går via
+  // ID-porten (se submit-endepunktet + `submitMvaMeldingWithToken`), ikke Maskinporten.
+  // Feltet leses ikke lenger; wiringen beholdes for test/bakoverkompatibilitet.
   vatSubmission: new SkatteetatenVatSubmissionClient(new MaskinportenClient(config.maskinporten)),
   // Feilovervåking (Sentry). No-op uten SENTRY_DSN.
   errorMonitor,

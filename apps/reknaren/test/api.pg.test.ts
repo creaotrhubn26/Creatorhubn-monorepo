@@ -10,6 +10,7 @@ import { buildNorwegianRuleRegister } from '../src/rules/no/rules.js';
 import { StaticLovdataStub } from '../src/integrations/lovdata.js';
 import { MaskinportenClient } from '../src/integrations/maskinporten.js';
 import { SkatteetatenVatSubmissionClient } from '../src/integrations/vat-submission.js';
+import { IdPortenClient } from '../src/integrations/idporten.js';
 import { setupTestDb, truncateAll } from './helpers.js';
 
 let db: Db;
@@ -36,7 +37,9 @@ beforeAll(async () => {
     db,
     rules: buildNorwegianRuleRegister(),
     legalText: new StaticLovdataStub({}, [], { hasApiKey: false }),
-    // Ingen Maskinporten-legitimasjon: MVA-melding-innsending kodet, men ikke aktiv.
+    // Ingen ID-porten-legitimasjon: MVA-melding-innsending kodet, men ikke aktiv
+    // (Skatteetaten bekreftet 2026-08-19 at innsending går via ID-porten, ikke Maskinporten).
+    idporten: new IdPortenClient(undefined),
     vatSubmission: new SkatteetatenVatSubmissionClient(new MaskinportenClient(undefined)),
   });
   ownerToken = await login('eier@example.com', 'Eier');
@@ -323,8 +326,8 @@ describe('Vertikal flyt over HTTP', () => {
     expect(res.body.lovdata.mode).toBe('public_data_only');
     expect(res.body.lovdata.active).toBe(false);
     expect(res.body.lovdata.openPublicData).toBe(true);
-    // MVA-melding-innsending er kodet men uten Maskinporten-legitimasjon: ærlig inaktiv.
-    expect(res.body.altinn.mode).toBe('awaiting_maskinporten');
+    // MVA-melding-innsending er kodet men uten ID-porten-legitimasjon: ærlig inaktiv.
+    expect(res.body.altinn.mode).toBe('awaiting_idporten');
     expect(res.body.altinn.active).toBe(false);
     // Feilovervåking: ingen errorMonitor wiret i testen ⇒ ærlig not_configured.
     expect(res.body.sentry.active).toBe(false);

@@ -13,6 +13,7 @@ import {
   SkatteetatenVatSubmissionClient,
   StubVatSubmission,
   buildMvaMeldingXml,
+  submitMvaMeldingWithToken,
 } from '../src/integrations/vat-submission.js';
 import type { VatReport } from '../src/vat/engine.js';
 
@@ -163,6 +164,47 @@ describe('SkatteetatenVatSubmissionClient — ærlig aktivering', () => {
     const f = fakeFetch((url) => (url.includes('/exchange') ? { status: 200, text: 'tok' } : { status: 403, body: {} }));
     const client = new SkatteetatenVatSubmissionClient(new StaticMaskinportenStub(), f.impl);
     await expect(client.submit(report, { orgNumber: '910023764' })).rejects.toBeInstanceOf(MaskinportenError);
+  });
+});
+
+describe('submitMvaMeldingWithToken — ID-porten-veien (bekreftet av Skatteetaten 2026-08-19)', () => {
+  it('veksler ID-porten-token → Altinn-token og kjører instans-flyten mot mva-melding-innsending-test (tt02)', async () => {
+    const f = fakeFetch((url, method) => {
+      if (url.includes('/exchange/id-porten')) return { status: 200, text: '"altinn-token"' };
+      if (url.endsWith('/instances') && method === 'POST')
+        return { status: 201, body: { id: '51234/abcd-guid', data: [{ id: 'env-1', dataType: 'mvameldinginnsending' }] } };
+      if (url.includes('/data?dataType=mvamelding')) return { status: 201, body: {} };
+      if (url.includes('/data/env-1')) return { status: 200, body: {} };
+      if (url.endsWith('/process/next')) return { status: 200, body: {} };
+      if (url.endsWith('/feedback/status')) return { status: 200, body: { status: 'godkjent' } };
+      return { status: 404, body: {} };
+    });
+    const receipt = await submitMvaMeldingWithToken({
+      report,
+      orgNumber: '910023764',
+      accessToken: 'idporten-user-token',
+      env: 'test',
+      fetchImpl: f.impl,
+    });
+    expect(receipt.reference).toBe('51234/abcd-guid');
+    expect(receipt.status).toBe('godkjent');
+    // ID-porten-tokenet (ikke Maskinporten) ble brukt i vekslingen, med ?test=true mot tt02
+    const exchange = f.calls.find((c) => c.url.includes('/exchange/'))!;
+    expect(exchange.url).toContain('/exchange/id-porten?test=true');
+    expect(exchange.url).toContain('platform.tt02.altinn.no');
+    expect(exchange.headers['authorization']).toBe('Bearer idporten-user-token');
+    // instansen ble opprettet mot riktig app-navn, med virksomheten som eier + Altinn-token
+    const create = f.calls.find((c) => c.url.endsWith('/instances') && c.method === 'POST')!;
+    expect(create.url).toContain('/skd/mva-melding-innsending-test/instances');
+    expect(create.body).toContain('910023764');
+    expect(create.headers['authorization']).toBe('Bearer altinn-token');
+  });
+
+  it('melder feil (MaskinportenError) hvis instansopprettelse feiler', async () => {
+    const f = fakeFetch((url) => (url.includes('/exchange/') ? { status: 200, text: 'tok' } : { status: 403, body: {} }));
+    await expect(
+      submitMvaMeldingWithToken({ report, orgNumber: '910023764', accessToken: 'tok', env: 'test', fetchImpl: f.impl }),
+    ).rejects.toBeInstanceOf(MaskinportenError);
   });
 });
 

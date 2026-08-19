@@ -68,7 +68,7 @@ import { convertToNok, money } from '../shared/money.js';
 import { assessCompanyRisk } from '../ledger/company-risk.js';
 import { answerQuestion } from '../ledger/ask.js';
 import type { LovdataPort } from '../integrations/lovdata.js';
-import { buildMvaMeldingXml, MaskinportenError, validateMvaMeldingWithToken, type VatSubmissionPort } from '../integrations/vat-submission.js';
+import { buildMvaMeldingXml, MaskinportenError, submitMvaMeldingWithToken, validateMvaMeldingWithToken, type VatSubmissionPort } from '../integrations/vat-submission.js';
 import type { ErrorMonitor } from '../ops/sentry.js';
 import type { StripeReadPort } from '../integrations/stripe.js';
 import { syncStripeRevenue } from '../integrations/stripe-sync.js';
@@ -206,8 +206,9 @@ export interface ApiDeps {
    */
   legalText?: LovdataPort | undefined;
   /**
-   * MVA-melding-innsending mot Skatteetaten via Maskinporten. Uten legitimasjon
-   * er den ikke aktiv; status rapporteres ærlig.
+   * @deprecated for MVA. Skatteetaten bekreftet 2026-08-19 at MVA-innsending KUN går via
+   * ID-porten (se submit-endepunktet, som bruker `submitMvaMeldingWithToken` med bruker-
+   * tokenet). Dette feltet leses ikke lenger; beholdt for wiring/bakoverkompatibilitet.
    */
   vatSubmission?: VatSubmissionPort | undefined;
   /** Feilovervåking (Sentry) for uventede serverfeil. Uten denne rapporteres den ærlig som ikke aktiv. */
@@ -1209,7 +1210,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
       lovdataPublicData: Boolean(deps.legalText),
       ocr: Boolean(deps.ocrStatus?.tesseract),
       aiExtraction: Boolean(deps.aiExtraction),
-      mvaSubmission: Boolean(deps.vatSubmission?.active),
+      mvaSubmission: Boolean(deps.idporten?.configured),
       errorMonitoring: Boolean(deps.errorMonitor?.active),
       stripeSync: Boolean(deps.stripe?.hasApiKey),
       bankFeed: Boolean(deps.bankFeed?.configured),
@@ -1299,19 +1300,21 @@ export function createApiServer(deps: ApiDeps): express.Express {
             active: true,
             note: 'EHF (PEPPOL BIS Billing 3.0) UBL-XML kan genereres og lastes ned (…/invoices/:id/ehf). Overføring via aksesspunkt er ikke konfigurert — last opp XML-en hos ditt aksesspunkt.',
           },
-      altinn: deps.vatSubmission
-        ? deps.vatSubmission.active
+      // MVA-innsending går via ID-porten (bekreftet av Skatteetaten 2026-08-19): pålogget
+      // bruker m/ MVA-fullmakt representerer virksomheten → Altinn 3-appen. Aktiv når
+      // ID-porten-klienten er konfigurert (scopes altinn:instances.read/write + validering).
+      altinn: deps.idporten
+        ? deps.idporten.configured
           ? {
-              mode: 'maskinporten',
+              mode: 'idporten',
               active: true,
-              note: `MVA-melding-innsending via Maskinporten (${deps.vatSubmission.env}) er konfigurert. Meldinger valideres mot Skatteetatens grensesnittstøtte før innsending.`,
+              note: `MVA-melding-innsending via ID-porten (${deps.idporten.env}) er konfigurert. En person med MVA-fullmakt logger inn (BankID) og representerer virksomheten; meldingen valideres mot Skatteetatens grensesnittstøtte før innsending.`,
             }
           : {
-              // Maskinporten-legitimasjon mangler ⇒ vat.submit-gapet er IKKE lukket.
-              // Ingen sandbox utgis for aktiv tilkobling.
-              mode: 'awaiting_maskinporten',
+              // ID-porten-legitimasjon mangler ⇒ vat.submit-gapet er IKKE lukket.
+              mode: 'awaiting_idporten',
               active: false,
-              note: 'MVA-melding-innsending er kodet, men ikke aktiv: Maskinporten-legitimasjon (MASKINPORTEN_CLIENT_ID/SCOPE/PRIVATE_KEY/KEY_ID) mangler. MVA-rapporten forblir kladd til dette er på plass.',
+              note: 'MVA-melding-innsending er kodet, men ikke aktiv: ID-porten-legitimasjon (IDPORTEN_CLIENT_ID/KEY_ID/PRIVATE_KEY + scopes altinn:instances.read/write) mangler. MVA-rapporten forblir kladd til dette er på plass.',
             }
         : { mode: 'not_implemented', active: false },
       sentry: deps.errorMonitor
@@ -1791,7 +1794,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
           toJson({
             ...threshold,
             vatStatus: org.rows[0]?.vat_status ?? 'not_registered',
-            altinnActive: Boolean(deps.vatSubmission?.active),
+            altinnActive: Boolean(deps.idporten?.configured),
           }),
         );
       } catch (err) {
@@ -1801,7 +1804,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
   );
 
   // MVA-meldingen som XML (Skatteetatens format). Alltid tilgjengelig — kan lastes ned
-  // og lastes opp manuelt i Altinn, eller sendes automatisk via Maskinporten når aktiv.
+  // og lastes opp manuelt i Altinn, eller sendes automatisk via ID-porten når aktiv.
   app.get(
     '/api/organizations/:orgId/vat/mva-melding/xml',
     requireAuth,
@@ -1891,20 +1894,27 @@ export function createApiServer(deps: ApiDeps): express.Express {
     } catch (err) { next(err); }
   });
 
-  // Send inn MVA-meldingen til Skatteetaten (Altinn 3 via Maskinporten).
+  // Send inn MVA-meldingen til Skatteetaten (Altinn 3 via ID-porten). Bekreftet av
+  // Skatteetaten 2026-08-19: MVA-innsending krever ID-porten-token (pålogget bruker
+  // m/ MVA-fullmakt som representerer virksomheten) — IKKE Maskinporten.
   app.post(
     '/api/organizations/:orgId/vat/mva-melding/submit',
     requireAuth,
     requireOrgPermission('vat.submit'),
     async (req: AuthedRequest, res, next) => {
       try {
-        if (!deps.vatSubmission || !deps.vatSubmission.active) {
+        if (!deps.idporten || !deps.idporten.configured) {
           res.status(503).json({
             error: {
               code: 'INTEGRATION_UNAVAILABLE',
-              message: 'MVA-melding-innsending er ikke aktivert (Maskinporten-tilgang mangler).',
+              message: 'MVA-melding-innsending er ikke aktivert (ID-porten er ikke konfigurert). Last ned XML og last opp i Altinn i mellomtiden.',
             },
           });
+          return;
+        }
+        const token = await getValidAccessToken(deps.db, deps.idporten, req.params.orgId!);
+        if (!token) {
+          res.status(401).json({ error: { code: 'IDPORTEN_LOGIN_REQUIRED', message: 'Logg inn hos Skatteetaten (BankID) med en person som har MVA-fullmakt for virksomheten først.' } });
           return;
         }
         const body = z
@@ -1918,7 +1928,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
         }
         const report = await buildVatReport(deps.db, req.params.orgId!, body.from, body.to);
         try {
-          const receipt = await deps.vatSubmission.submit(report, { orgNumber });
+          const receipt = await submitMvaMeldingWithToken({ report, orgNumber, accessToken: token, env: deps.idporten.env });
           await withTransaction(deps.db, (client) =>
             recordAuditEvent(client, {
               organizationId: req.params.orgId!,
