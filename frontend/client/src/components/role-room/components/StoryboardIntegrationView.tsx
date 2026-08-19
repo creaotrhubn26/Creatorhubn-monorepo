@@ -1324,11 +1324,13 @@ const ScriptView: React.FC<{
 }> = ({ scene, scriptContent, onScriptChange }) => {
   const hasScriptEditor = typeof scriptContent === 'string';
   return (
-    <Paper sx={{ p: 3, fontFamily: 'Courier, monospace', bgcolor: '#FFFFF8' }}>
+    // Papir-look er alltid lys — tekstfarge må settes eksplisitt, ellers arver
+    // typografien mørk modus sin nesten-hvite text.primary (hvitt på hvitt).
+    <Paper sx={{ p: 3, fontFamily: 'Courier, monospace', bgcolor: '#FFFFF8', color: '#1a1a1a', '& .MuiTypography-root': { color: 'inherit' }, '& .MuiInputBase-input': { color: '#1a1a1a' } }}>
       <Stack spacing={3}>
         {hasScriptEditor && (
           <Stack spacing={1.5}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'text.primary' }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: 'inherit' }}>
               Manus for scenen
             </Typography>
             <TextField
@@ -1381,7 +1383,7 @@ const ScriptView: React.FC<{
                     maxWidth: '60%',
                     mx: 'auto',
                     fontStyle: 'italic',
-                    color: 'text.secondary',
+                    color: 'rgba(26,26,26,0.6)',
                   }}
                 >
                   (eksempel dialog for {char})
