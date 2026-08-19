@@ -2645,7 +2645,12 @@ struct CanvasView: View {
 
     /// Ekte PDF-håndtering: originaldokumentet lagres tapsfritt, sidene
     /// rendres vektor-skarpt via PDFKit — aldri som bilder.
-    private func importerPDFData(_ data: Data, navn: String) {
+    ///
+    /// `internal` (ikke `private`) med vilje: dette er handoff-punktet for
+    /// «Åpne i Canvas» fra andre faner (f.eks. Leadbook Innsikt-rapport) —
+    /// caller må selv navigere til `Destination.canvas` (entitlement-gatet,
+    /// egen NavigationStack) FØR denne kalles; se FullInsiktReportSheet.
+    func importerPDFData(_ data: Data, navn: String) {
         guard let dok = PDFDocument(data: data) else { return }
         guard data.count <= 10_000_000 else {
             feilVedImport = "PDF-en er over 10 MB — komprimer den og prøv igjen."

@@ -645,6 +645,7 @@ import { registerLeadgridEmailBrandingRoutes } from "./leadgrid-email-branding-r
 import { registerLeadgridChannelOnboardingRoutes } from "./leadgrid-channel-onboarding-routes.js";
 import { registerLeadAcceptanceRoutes } from "./lead-acceptance-routes.js";
 import { registerLeadAssignmentRoutes } from "./lead-assignment-routes.js";
+import { registerLeadbookRecordingConsentRoutes } from "./leadbook-recording-consent-routes.js";
 import { registerLeadStatusRoutes } from "./lead-status-routes.js";
 import { registerLeadExportRoutes } from "./lead-export-routes.js";
 import { registerLeadgridScheduledReportsRoutes } from "./leadgrid-scheduled-reports-routes.js";
@@ -25459,6 +25460,10 @@ registerOrgSelfOnboardRoutes({ app, pool });
 registerPlanRoutes({ app, pool, activeSessions });
 // Leadgrid billing: Customer Portal-link, invoice-liste, superadmin payments-overview
 registerLeadgridBillingRoutes({ app, pool, activeSessions, stripe: getCreatorHubStripeClient() });
+// Leadbook lydopptak fase 2 — §7 GDPR-samtykke-sjekkliste + selv-service-sletting
+// (2026-08-16). Registreringen falt ut av en tidligere kontekst-komprimering
+// i samme økt — endepunktene fantes, men var uregistrert/404 (2026-08-19).
+registerLeadbookRecordingConsentRoutes({ app, pool, requireUserSession });
 // Leadgrid partners (dynamisk landing-strip + superadmin CRUD)
 registerLeadgridPartnersRoutes({ app, pool, activeSessions });
 // Partner-søknader: bruker-initiert + superadmin-invitasjon m/ samtykke

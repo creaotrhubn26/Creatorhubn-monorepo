@@ -129,7 +129,7 @@ struct PondusTabView: View {
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: toast)
-        .sheet(isPresented: $showNewMal) { NewTemplateSheet() }
+        .sheet(isPresented: $showNewMal) { PondusTemplateEditor(store: appState.pondusStore) }
         .sheet(isPresented: $showExport) { PondusExportSheet(template: selected) }
         .sheet(isPresented: $showPublish) { PondusPublishSheet(template: selected) }
         .fullScreenCover(isPresented: $showAcademy) {
@@ -1747,10 +1747,13 @@ struct CommunicationCheatNote: View {
 
 struct PondusTeamUsageModal: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var period: Period = .d30
     @State private var search: String = ""
     @State private var sort: SortField = .conversion
-    @State private var selectedTemplate: PondusTemplate?
+    @State private var selectedTemplate: PondusTemplateDTO?
+    @State private var usageStats: PondusUsageStatsDTO?
+    @State private var isLoadingStats = false
 
     enum Period: String, CaseIterable, Identifiable {
         case d7 = "7 dager"
@@ -1758,6 +1761,14 @@ struct PondusTeamUsageModal: View {
         case d90 = "90 dager"
         case ytd = "Hittil i år"
         var id: String { rawValue }
+        var apiValue: String {
+            switch self {
+            case .d7: return "7d"
+            case .d30: return "30d"
+            case .d90: return "90d"
+            case .ytd: return "ytd"
+            }
+        }
     }
 
     enum SortField: String, CaseIterable, Identifiable {
@@ -1778,30 +1789,53 @@ struct PondusTeamUsageModal: View {
         }
     }
 
-    private var sortedTemplates: [PondusTemplate] {
-        let base = PondusData.templates
+    // MARK: - Ekte data (2026-08-16) — PondusStore-maler + usage/stats(period:)
+    // erstatter PondusData.templates-mocken. Ingen forrige-periode-delta:
+    // backend sammenligner ikke mot forrige vindu, så trend-pilene fra
+    // mockup-en er droppet i stedet for oppdiktet.
+
+    private var statsByTemplate: [String: PondusTemplateUsageStatDTO] {
+        Dictionary(uniqueKeysWithValues: (usageStats?.templates ?? []).map { ($0.templateId.lowercased(), $0) })
+    }
+
+    private func stat(for t: PondusTemplateDTO) -> PondusTemplateUsageStatDTO? {
+        statsByTemplate[t.id.uuidString.lowercased()]
+    }
+
+    private var sortedTemplates: [PondusTemplateDTO] {
+        let base = appState.pondusStore.templates
         let f = search.isEmpty ? base : base.filter { $0.name.localizedCaseInsensitiveContains(search) }
         switch sort {
-        case .brukt:      return f.sorted { $0.usage.brukt > $1.usage.brukt }
-        case .svarrate:   return f.sorted { $0.usage.svarrate > $1.usage.svarrate }
-        case .moeterate:  return f.sorted { $0.usage.moeterate > $1.usage.moeterate }
-        case .conversion: return f.sorted { $0.usage.konvertering > $1.usage.konvertering }
+        case .brukt:      return f.sorted { (stat(for: $0)?.usedTotal ?? 0) > (stat(for: $1)?.usedTotal ?? 0) }
+        case .svarrate:   return f.sorted { (stat(for: $0)?.responseRate ?? 0) > (stat(for: $1)?.responseRate ?? 0) }
+        case .moeterate:  return f.sorted { (stat(for: $0)?.meetingRate ?? 0) > (stat(for: $1)?.meetingRate ?? 0) }
+        case .conversion: return f.sorted { (stat(for: $0)?.conversionRate ?? 0) > (stat(for: $1)?.conversionRate ?? 0) }
         case .name:       return f.sorted { $0.name < $1.name }
         }
     }
 
-    private var totalUse: Int { PondusData.templates.map(\.usage.brukt).reduce(0, +) }
+    /// Kun maler med logget bruk i perioden — snitt over 0-brukte ville
+    /// dratt tallene urettferdig ned.
+    private var usedTemplates: [(PondusTemplateDTO, PondusTemplateUsageStatDTO)] {
+        appState.pondusStore.templates.compactMap { t in stat(for: t).map { (t, $0) } }.filter { $0.1.usedTotal > 0 }
+    }
+
+    private var totalUse: Int { usedTemplates.map(\.1.usedTotal).reduce(0, +) }
     private var avgResponse: Double {
-        PondusData.templates.map(\.usage.svarrate).reduce(0, +) / Double(max(1, PondusData.templates.count))
+        usedTemplates.isEmpty ? 0 : usedTemplates.map(\.1.responseRate).reduce(0, +) / Double(usedTemplates.count)
     }
     private var avgMeeting: Double {
-        PondusData.templates.map(\.usage.moeterate).reduce(0, +) / Double(max(1, PondusData.templates.count))
+        usedTemplates.isEmpty ? 0 : usedTemplates.map(\.1.meetingRate).reduce(0, +) / Double(usedTemplates.count)
     }
     private var avgConv: Double {
-        PondusData.templates.map(\.usage.konvertering).reduce(0, +) / Double(max(1, PondusData.templates.count))
+        usedTemplates.isEmpty ? 0 : usedTemplates.map(\.1.conversionRate).reduce(0, +) / Double(usedTemplates.count)
     }
-    private var best: PondusTemplate? { PondusData.templates.max { $0.usage.konvertering < $1.usage.konvertering } }
-    private var worst: PondusTemplate? { PondusData.templates.min { $0.usage.konvertering < $1.usage.konvertering } }
+    private var best: (PondusTemplateDTO, PondusTemplateUsageStatDTO)? {
+        usedTemplates.max { $0.1.conversionRate < $1.1.conversionRate }
+    }
+    private var worst: (PondusTemplateDTO, PondusTemplateUsageStatDTO)? {
+        usedTemplates.min { $0.1.conversionRate < $1.1.conversionRate }
+    }
 
     var body: some View {
         NavigationStack {
@@ -1811,9 +1845,17 @@ struct PondusTeamUsageModal: View {
                     VStack(alignment: .leading, spacing: 16) {
                         kpiRow
                         filterBar
-                        tableHeader
-                        VStack(spacing: 7) {
-                            ForEach(sortedTemplates) { t in usageRow(t) }
+                        if isLoadingStats && usageStats == nil {
+                            ProgressView().tint(LBrand.purpleLight)
+                                .frame(maxWidth: .infinity).padding(.vertical, 40)
+                        } else {
+                            tableHeader
+                            VStack(spacing: 7) {
+                                ForEach(sortedTemplates) { t in
+                                    Button { selectedTemplate = t } label: { usageRow(t) }
+                                        .buttonStyle(.plain)
+                                }
+                            }
                         }
                         aiInsight
                         Color.clear.frame(height: 16)
@@ -1830,8 +1872,18 @@ struct PondusTeamUsageModal: View {
                 // Eksport-menyen (CSV/PDF/Del rapport) fjernet 2026-07-17:
                 // var døde knapper — ingen eksport-flate for bruksrapporten.
             }
-            .sheet(item: $selectedTemplate) { _ in EmptyView() }  // placeholder for per-mal drill-down
+            .task { await appState.pondusStore.load(api: appState.api) }
+            .task(id: period) { await loadStats() }
+            .sheet(item: $selectedTemplate) { t in
+                PondusDrillDownSheet(template: t, stat: stat(for: t))
+            }
         }
+    }
+
+    private func loadStats() async {
+        isLoadingStats = true
+        defer { isLoadingStats = false }
+        usageStats = try? await appState.api?.pondusUsageStats(period: period.apiValue)
     }
 
     private var kpiRow: some View {
@@ -1924,14 +1976,26 @@ struct PondusTeamUsageModal: View {
         .padding(.horizontal, 14).padding(.bottom, 2)
     }
 
-    private func usageRow(_ t: PondusTemplate) -> some View {
-        HStack(spacing: 0) {
+    private func kindIcon(_ kind: String) -> String {
+        switch PondusKind(rawValue: kind) {
+        case .telephone: return "phone.fill"
+        case .video: return "video.fill"
+        case .email: return "envelope.fill"
+        case .meeting: return "person.2.fill"
+        case .field: return "figure.walk"
+        case nil: return "doc.text.fill"
+        }
+    }
+
+    private func usageRow(_ t: PondusTemplateDTO) -> some View {
+        let s = stat(for: t)
+        return HStack(spacing: 0) {
             HStack(spacing: 10) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 8).fill(t.channel.color.opacity(0.22))
-                    Image(systemName: t.channel.icon)
+                    RoundedRectangle(cornerRadius: 8).fill(LBrand.purpleLight.opacity(0.22))
+                    Image(systemName: kindIcon(t.kind))
                         .font(.appScaled(size: 12, weight: .bold))
-                        .foregroundStyle(t.channel.color)
+                        .foregroundStyle(LBrand.purpleLight)
                 }
                 .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 2) {
@@ -1944,7 +2008,7 @@ struct PondusTeamUsageModal: View {
                             .font(.appScaled(size: 10, weight: .bold))
                             .foregroundStyle(LBrand.purpleLight)
                         Text("·").foregroundStyle(LBrand.textTertiary)
-                        Text(t.channel.rawValue)
+                        Text(t.kind.capitalized)
                             .font(.appScaled(size: 10))
                             .foregroundStyle(LBrand.textSecondary)
                     }
@@ -1953,13 +2017,13 @@ struct PondusTeamUsageModal: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Text("\(t.usage.brukt)")
+            Text("\(s?.usedTotal ?? 0)")
                 .font(.appScaled(size: 13, weight: .bold, design: .rounded))
                 .foregroundStyle(.white).monospacedDigit()
                 .frame(width: 70, alignment: .trailing)
-            metricCell(value: t.usage.svarrate, delta: t.usage.svarrateDelta).frame(width: 110, alignment: .trailing)
-            metricCell(value: t.usage.moeterate, delta: t.usage.moerateDelta).frame(width: 110, alignment: .trailing)
-            metricCell(value: t.usage.konvertering, delta: t.usage.konverteringDelta).frame(width: 100, alignment: .trailing)
+            metricCell(s?.responseRate ?? 0).frame(width: 110, alignment: .trailing)
+            metricCell(s?.meetingRate ?? 0).frame(width: 110, alignment: .trailing)
+            metricCell(s?.conversionRate ?? 0).frame(width: 100, alignment: .trailing)
             Image(systemName: "chevron.right")
                 .font(.appScaled(size: 10, weight: .bold))
                 .foregroundStyle(LBrand.textTertiary)
@@ -1970,19 +2034,13 @@ struct PondusTeamUsageModal: View {
         .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
     }
 
-    private func metricCell(value: Double, delta: Double) -> some View {
-        HStack(spacing: 5) {
-            Text(percent(value))
-                .font(.appScaled(size: 12, weight: .bold, design: .rounded))
-                .foregroundStyle(.white).monospacedDigit()
-                .lineLimit(1).fixedSize()
-            HStack(spacing: 2) {
-                Image(systemName: delta >= 0 ? "arrow.up" : "arrow.down").font(.appScaled(size: 8, weight: .black))
-                Text(percent(abs(delta))).font(.appScaled(size: 9, weight: .bold, design: .rounded)).monospacedDigit()
-                    .lineLimit(1).fixedSize()
-            }
-            .foregroundStyle(delta >= 0 ? LBrand.green : LBrand.red)
-        }
+    /// Ingen trend-piler — backend sammenligner ikke mot forrige periode
+    /// (se kommentar over `statsByTemplate`). Kun rå rate for perioden.
+    private func metricCell(_ value: Double) -> some View {
+        Text(percent(value))
+            .font(.appScaled(size: 12, weight: .bold, design: .rounded))
+            .foregroundStyle(.white).monospacedDigit()
+            .lineLimit(1).fixedSize()
     }
 
     private var aiInsight: some View {
@@ -1993,15 +2051,18 @@ struct PondusTeamUsageModal: View {
                     .foregroundStyle(LBrand.purpleLight).tracking(0.8)
                 Spacer()
             }
-            if let best, let worst {
+            if let best, let worst, best.0.id != worst.0.id {
                 (Text("Best presterende: ").foregroundStyle(LBrand.textSecondary)
-                 + Text("\(best.name) ").foregroundStyle(.white).bold()
-                 + Text("(\(percent(best.usage.konvertering)) konv.). ").foregroundStyle(LBrand.green)
+                 + Text("\(best.0.name) ").foregroundStyle(.white).bold()
+                 + Text("(\(percent(best.1.conversionRate)) konv.). ").foregroundStyle(LBrand.green)
                  + Text("Lavest: ").foregroundStyle(LBrand.textSecondary)
-                 + Text(worst.name).foregroundStyle(.white).bold()
+                 + Text(worst.0.name).foregroundStyle(.white).bold()
                  + Text(" — vurder å forsterke åpningsreplikken med kundecase-tall.").foregroundStyle(LBrand.textSecondary)
                 )
                 .font(.appScaled(size: 13))
+            } else {
+                Text("Ikke nok bruk logget i perioden ennå til å sammenligne maler.")
+                    .font(.appScaled(size: 13)).foregroundStyle(LBrand.textSecondary)
             }
         }
         .padding(14)
@@ -2013,5 +2074,181 @@ struct PondusTeamUsageModal: View {
         let p = v * 100
         if p.truncatingRemainder(dividingBy: 1) == 0 { return "\(Int(p)) %" }
         return String(format: "%.1f %%", p).replacingOccurrences(of: ".", with: ",")
+    }
+}
+
+// MARK: - PondusDrillDownSheet (per-mal drill-down, 2026-08-16)
+
+/// Erstatter EmptyView-placeholderen i PondusTeamUsageModal. Viser
+/// utfalls-fordeling + per-selger + siste 20 logger for én mal, hentet
+/// fra GET /pondus/templates/:id/usage-detail.
+struct PondusDrillDownSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
+    let template: PondusTemplateDTO
+    /// Fra samme usage/stats-kall PondusTeamUsageModal allerede gjorde —
+    /// unngår å vente på et ekstra kall for tallene som allerede vises i
+    /// tabellraden.
+    let stat: PondusTemplateUsageStatDTO?
+
+    @State private var detail: PondusTemplateUsageDetailDTO?
+    @State private var isLoading = false
+    @State private var loadError: String?
+
+    private static let outcomeOrder = ["used", "meeting_booked", "proposal_sent", "won", "lost", "no_answer"]
+
+    private func outcomeLabel(_ o: String) -> String {
+        switch o {
+        case "used": return "Brukt"
+        case "meeting_booked": return "Møte booket"
+        case "proposal_sent": return "Tilbud sendt"
+        case "won": return "Vunnet"
+        case "lost": return "Tapt"
+        case "no_answer": return "Ikke svar"
+        default: return o.capitalized
+        }
+    }
+
+    private func outcomeColor(_ o: String) -> Color {
+        switch o {
+        case "won": return LBrand.green
+        case "lost": return LBrand.red
+        case "meeting_booked", "proposal_sent": return LBrand.blue
+        case "no_answer": return LBrand.textTertiary
+        default: return LBrand.purpleLight
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                LBrand.bg.ignoresSafeArea()
+                if isLoading {
+                    ProgressView().tint(LBrand.purpleLight)
+                } else if let loadError {
+                    VStack(spacing: 10) {
+                        Text(loadError).font(.appScaled(size: 13)).foregroundStyle(LBrand.textSecondary)
+                        Button("Prøv igjen") { Task { await load() } }
+                            .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
+                            .padding(.horizontal, 14).padding(.vertical, 8)
+                            .background(LBrand.purple, in: Capsule())
+                    }
+                } else if let detail {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            headerStats
+                            outcomeSection(detail)
+                            if !detail.bySeller.isEmpty { sellerSection(detail) }
+                            if !detail.recent.isEmpty { recentSection(detail) }
+                        }
+                        .padding(20)
+                    }
+                } else {
+                    Text("Ingen bruk logget for denne malen ennå.")
+                        .font(.appScaled(size: 13)).foregroundStyle(LBrand.textSecondary)
+                }
+            }
+            .navigationTitle(template.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Lukk") { dismiss() }.tint(LBrand.textSecondary)
+                }
+            }
+            .task { await load() }
+        }
+    }
+
+    private func load() async {
+        isLoading = true
+        loadError = nil
+        defer { isLoading = false }
+        guard let result = await appState.pondusStore.usageDetail(templateId: template.id, api: appState.api) else {
+            loadError = appState.pondusStore.lastError ?? "Kunne ikke hente detaljer."
+            return
+        }
+        detail = result
+    }
+
+    private var headerStats: some View {
+        HStack(spacing: 12) {
+            statTile("Brukt", "\(stat?.usedTotal ?? 0)", LBrand.purpleLight)
+            statTile("Svarrate", percentText(stat?.responseRate), LBrand.blue)
+            statTile("Møterate", percentText(stat?.meetingRate), LBrand.orange)
+            statTile("Konvertering", percentText(stat?.conversionRate), LBrand.green)
+        }
+    }
+
+    private func statTile(_ label: String, _ value: String, _ tint: Color) -> some View {
+        VStack(spacing: 3) {
+            Text(value).font(.appScaled(size: 16, weight: .black, design: .rounded)).foregroundStyle(tint)
+            Text(label).font(.appScaled(size: 9)).foregroundStyle(LBrand.textSecondary)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 10)
+        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func outcomeSection(_ d: PondusTemplateUsageDetailDTO) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader("UTFALLS-FORDELING")
+            let total = max(1, d.outcomes.values.reduce(0, +))
+            VStack(spacing: 6) {
+                ForEach(Self.outcomeOrder.filter { (d.outcomes[$0] ?? 0) > 0 }, id: \.self) { o in
+                    let n = d.outcomes[o] ?? 0
+                    HStack {
+                        Circle().fill(outcomeColor(o)).frame(width: 8, height: 8)
+                        Text(outcomeLabel(o)).font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(.white)
+                        Spacer()
+                        Text("\(n) (\(Int(Double(n) / Double(total) * 100)) %)")
+                            .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
+                    }
+                    .padding(10).background(LBrand.card, in: RoundedRectangle(cornerRadius: 9))
+                }
+            }
+        }
+    }
+
+    private func sellerSection(_ d: PondusTemplateUsageDetailDTO) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader("PER SELGER")
+            VStack(spacing: 6) {
+                ForEach(d.bySeller) { row in
+                    HStack {
+                        Text(row.name).font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
+                        Spacer()
+                        Text("\(row.used) brukt · \(row.meetings) møter")
+                            .font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
+                    }
+                    .padding(10).background(LBrand.card, in: RoundedRectangle(cornerRadius: 9))
+                }
+            }
+        }
+    }
+
+    private func recentSection(_ d: PondusTemplateUsageDetailDTO) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader("SISTE LOGGER")
+            VStack(spacing: 6) {
+                ForEach(d.recent) { row in
+                    HStack {
+                        Circle().fill(outcomeColor(row.outcome)).frame(width: 7, height: 7)
+                        Text(row.userName).font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(.white)
+                        Spacer()
+                        Text(outcomeLabel(row.outcome)).font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
+                    }
+                    .padding(10).background(LBrand.card, in: RoundedRectangle(cornerRadius: 9))
+                }
+            }
+        }
+    }
+
+    private func sectionHeader(_ t: String) -> some View {
+        Text(t).font(.appScaled(size: 11, weight: .black)).foregroundStyle(LBrand.purpleLight).tracking(0.8)
+    }
+
+    private func percentText(_ v: Double?) -> String {
+        guard let v else { return "—" }
+        let p = v * 100
+        return p.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(p)) %" : String(format: "%.1f %%", p)
     }
 }

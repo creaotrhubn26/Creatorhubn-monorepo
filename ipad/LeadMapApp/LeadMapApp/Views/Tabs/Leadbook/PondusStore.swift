@@ -111,6 +111,22 @@ final class PondusStore {
         }
     }
 
+    /// Legg samme innvending til alle maler i én kategori. Returnerer
+    /// antall oppdaterte maler (0 = ingen maler i kategorien ennå — ikke
+    /// en feil, bare et ærlig tomt resultat).
+    @discardableResult
+    func bulkAttachObjection(category: String, prompt: String, response: String, api: APIClient?) async -> Int? {
+        guard let api else { return nil }
+        do {
+            let updated = try await api.pondusBulkAttachObjection(category: category, prompt: prompt, response: response)
+            for t in updated { replace(t) }
+            return updated.count
+        } catch {
+            lastError = String(describing: error)
+            return nil
+        }
+    }
+
     func delete(id: UUID, api: APIClient?) async {
         guard let api else { return }
         do {
@@ -120,6 +136,17 @@ final class PondusStore {
             await load(api: api)
         } catch {
             lastError = String(describing: error)
+        }
+    }
+
+    /// Per-mal drill-down (utfalls-fordeling/per-selger/siste logger).
+    func usageDetail(templateId: UUID, api: APIClient?) async -> PondusTemplateUsageDetailDTO? {
+        guard let api else { return nil }
+        do {
+            return try await api.pondusTemplateUsageDetail(templateId: templateId.uuidString.lowercased())
+        } catch {
+            lastError = String(describing: error)
+            return nil
         }
     }
 

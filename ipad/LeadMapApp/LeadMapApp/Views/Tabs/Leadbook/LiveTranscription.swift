@@ -300,6 +300,18 @@ struct LiveTranscriptionSheet: View {
     @State private var savedSource: String?
     @State private var isSaving = false
     @State private var saveError: String?
+    /// §4 GDPR-gate: kun relevant i «lagre som Eksempel»-modus (onUse ==
+    /// nil, dvs. kundesamtale) — LogActivitySheet sin egen-diktering
+    /// (onUse satt) er ikke en tredjepart-opptak-situasjon og gates ikke.
+    @State private var showConsentGate = false
+    @State private var consentedThisSession = false
+    @State private var showComplianceSheet = false
+
+    /// Kun kundesamtale-modus krever entitlement+samtykke.
+    private var requiresRecordingConsent: Bool { onUse == nil }
+    private var lydopptakLocked: Bool {
+        requiresRecordingConsent && !EntitlementStore.shared.isExplicitlyEnabled(.leadbookLydopptak)
+    }
 
     var body: some View {
         NavigationStack {
@@ -308,7 +320,9 @@ struct LiveTranscriptionSheet: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         statusBanner
-                        if engine.permissionStatus != .authorized {
+                        if lydopptakLocked {
+                            lydopptakLockedState
+                        } else if engine.permissionStatus != .authorized {
                             permissionGate
                         } else {
                             recorderControls
@@ -397,7 +411,41 @@ struct LiveTranscriptionSheet: View {
                     await engine.requestPermissions()
                 }
             }
+            .sheet(isPresented: $showConsentGate) {
+                RecordingConsentGateSheet {
+                    consentedThisSession = true
+                    engine.start()
+                }
+            }
         }
+    }
+
+    private var canConfirmLydopptakCompliance: Bool {
+        appState.isSuperAdmin || ["admin", "salgssjef", "teamleder"].contains(appState.roleInOrg ?? "")
+    }
+
+    private var lydopptakLockedState: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "lock.shield.fill")
+                .font(.appScaled(size: 40, weight: .semibold))
+                .foregroundStyle(LBrand.textTertiary)
+            Text("Lydopptak er ikke åpnet for organisasjonen din")
+                .font(.appScaled(size: 16, weight: .heavy)).foregroundStyle(.white)
+            Text("Org-admin må bekrefte GDPR-sjekklisten (ansatt-drøfting, skriftlig rutine, informasjonsskriv) før denne funksjonen kan brukes.")
+                .font(.appScaled(size: 13)).foregroundStyle(LBrand.textSecondary)
+                .multilineTextAlignment(.center).padding(.horizontal, 20)
+            if canConfirmLydopptakCompliance {
+                Button { showComplianceSheet = true } label: {
+                    Text("Gjennomgå sjekkliste").font(.appScaled(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(LBrand.purple, in: Capsule())
+                }.buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 50)
+        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 14))
+        .sheet(isPresented: $showComplianceSheet) { LeadbookLydopptakComplianceSheet() }
     }
 
     // MARK: Status banner
@@ -480,7 +528,13 @@ struct LiveTranscriptionSheet: View {
                         .animation(.easeInOut(duration: 0.15), value: engine.audioLevel)
                 }
                 Button {
-                    if engine.isRecording { engine.stop() } else { engine.start() }
+                    if engine.isRecording {
+                        engine.stop()
+                    } else if requiresRecordingConsent && !consentedThisSession {
+                        showConsentGate = true
+                    } else {
+                        engine.start()
+                    }
                 } label: {
                     ZStack {
                         Circle()

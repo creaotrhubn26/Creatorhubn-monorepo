@@ -13,6 +13,7 @@ import MapKit
 
 struct AssignAreaSheet: View {
     let preselectedMember: TeamMember?         // hvis åpnet fra SellerPerformanceModal
+    let preselectedTeam: LeadgridSalesTeam?    // hvis åpnet ved trykk på teamets område på kartet (rediger)
     @Environment(\.dismiss) private var dismiss
 
     @Environment(AppState.self) private var appState
@@ -33,9 +34,14 @@ struct AssignAreaSheet: View {
     @State private var kommuneSearch: String = ""
     @State private var loadingKommuner: Bool = true
 
-    init(preselectedMember: TeamMember? = nil) {
+    init(preselectedMember: TeamMember? = nil, preselectedTeam: LeadgridSalesTeam? = nil) {
         self.preselectedMember = preselectedMember
+        self.preselectedTeam = preselectedTeam
         _selectedMember = State(initialValue: preselectedMember)
+        _selectedTeam = State(initialValue: preselectedTeam)
+        if let nr = preselectedTeam?.areaKommunenummer, let navn = preselectedTeam?.areaKommuneNavn {
+            _selectedKommune = State(initialValue: KartverketService.KommuneInfo(nummer: nr, navn: navn))
+        }
     }
 
     enum Mode: String, CaseIterable, Hashable {

@@ -33,6 +33,7 @@ private enum AlBrand {
 struct LeadsAddLeadSheet: View {
     let onSave: (NewLeadData) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
 
     @State private var mode: InputMode = .ai
     enum InputMode: String, CaseIterable {
@@ -60,16 +61,19 @@ struct LeadsAddLeadSheet: View {
     @State private var website: String = ""
     @State private var phone: String = ""
     @State private var email: String = ""
-    @State private var industry: String = "Elektro"
-    @State private var employees: String = "25-50"
-    @State private var revenue: String = "10-20 mill."
+    @State private var industry: String = ""
+    @State private var employees: String = ""
+    @State private var revenue: String = ""
     @State private var notat: String = ""
+    @State private var scanError: String?
 
     @State private var contactName: String = ""
     @State private var contactRole: String = ""
 
     @State private var status: MapLeadMock.PinStatus = .new
-    @State private var assignTo: String = "Lars Kristensen"
+    // Selv-tildeling er default — «Lars Kristensen» var hardkodet mock-navn
+    // (samme feilklasse som scan-mocken; 2026-08-16).
+    @State private var assignTo: String = "Meg"
 
     @State private var pinCoord = CLLocationCoordinate2D(latitude: 59.9139, longitude: 10.7522)
 
@@ -78,6 +82,8 @@ struct LeadsAddLeadSheet: View {
         let address: String
         let status: MapLeadMock.PinStatus
         let coord: CLLocationCoordinate2D
+        let phone: String
+        let email: String
     }
 
     var body: some View {
@@ -214,14 +220,15 @@ struct LeadsAddLeadSheet: View {
             }
 
             HStack(spacing: 6) {
-                Image(systemName: scanComplete ? "checkmark.seal.fill" : "info.circle")
+                Image(systemName: scanError != nil ? "exclamationmark.triangle.fill" : (scanComplete ? "checkmark.seal.fill" : "info.circle"))
                     .font(.appScaled(size: 11))
-                    .foregroundStyle(scanComplete ? AlBrand.green : AlBrand.textTertiary)
-                Text(scanComplete
-                     ? "Auto-fylt fra nettside + Brønnøysund. Sjekk feltene under."
-                     : "Henter: nettside-meta, kontakt-info, org.nr, koord., bransje, omsetning, ansatte.")
+                    .foregroundStyle(scanError != nil ? AlBrand.orange : (scanComplete ? AlBrand.green : AlBrand.textTertiary))
+                Text(scanError
+                     ?? (scanComplete
+                         ? "Hentet fra Brønnøysundregisteret. Telefon/e-post/kontaktperson må fylles inn manuelt."
+                         : "Slår opp org.nr, bedriftsnavn eller nettside-domene i Brønnøysundregisteret."))
                     .font(.appScaled(size: 11))
-                    .foregroundStyle(AlBrand.textSecondary)
+                    .foregroundStyle(scanError != nil ? AlBrand.orange : AlBrand.textSecondary)
                 Spacer()
             }
         }
@@ -233,26 +240,39 @@ struct LeadsAddLeadSheet: View {
         )
     }
 
+    /// Ekte BRREG-oppslag (2026-08-16) — se AddLeadSheet.swift for samme fiks.
     private func runScan() {
         scanning = true
-        // Mocket: fyller felter etter 1.2s
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-            companyName = "Nordic Elektro AS"
-            orgNumber = "912 345 678"
-            address = "Storgata 12"
-            postalCode = ""
-            city = "Oslo"
-            website = "nordicelektro.no"
-            phone = "+47 22 33 44 55"
-            email = "post@nordicelektro.no"
-            industry = "Elektro"
-            employees = "25-50"
-            revenue = "10-20 mill."
-            contactName = "Anders Johansen"
-            contactRole = "Daglig leder"
-            notat = "Interessert i nytt el-anlegg til kontorbygg. Følge opp prisforslag og referanseprosjekter."
-            scanning = false
-            scanComplete = true
+        scanError = nil
+        Task {
+            defer { scanning = false }
+            guard let api = appState.api else {
+                scanError = "Ikke innlogget mot backend."
+                return
+            }
+            do {
+                let result = try await api.lookupCompany(query: urlOrSearch)
+                guard result.found, let c = result.company else {
+                    scanError = "Fant ingen bedrift i Brønnøysundregisteret for «\(urlOrSearch)». Fyll inn manuelt."
+                    return
+                }
+                companyName = c.name
+                orgNumber = c.orgNr
+                address = c.address ?? ""
+                postalCode = c.postalCode ?? ""
+                city = c.city ?? city
+                website = c.website ?? website
+                industry = c.naceDescription ?? ""
+                employees = c.employees.map { "\($0)" } ?? ""
+                // 2026-08-16: se AddLeadSheet.swift for samme fiks — pinnen
+                // stod hardkodet på Oslo sentrum for alle scan-leads.
+                if let lat = c.latitude, let lon = c.longitude {
+                    pinCoord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                }
+                scanComplete = true
+            } catch {
+                scanError = "Oppslag feilet — prøv igjen. (\(error.localizedDescription))"
+            }
         }
     }
 
@@ -459,7 +479,9 @@ struct LeadsAddLeadSheet: View {
                     companyName: companyName.isEmpty ? "Ny lead" : companyName,
                     address: "\(address), \(postalCode) \(city)",
                     status: status,
-                    coord: pinCoord
+                    coord: pinCoord,
+                    phone: phone,
+                    email: email
                 ))
             } label: {
                 HStack(spacing: 6) {

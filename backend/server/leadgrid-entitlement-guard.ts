@@ -168,3 +168,9 @@ export const CANVAS_ANALYSE_FEATURE_KEYS = ["canvasAnalyse", "moteBrief"];
  *  Kostnadsbærende AI — matcher LeadgridFeature.moteBrief. */
 export const MOTE_BRIEF_FEATURE_KEYS = ["moteBrief"];
 
+/** Leadbook lydopptak fase 2 (2026-08-16, docs/leadgrid-gdpr-lydopptak.md).
+ *  DEFAULT AV som leadbookAIStrukturering — fail-CLOSED, ikke standard
+ *  fail-open — org må eksplisitt bekrefte §7-sjekklisten (se
+ *  leadbook-recording-consent-routes.ts) før nøkkelen åpnes. */
+export const LEADBOOK_LYDOPPTAK_FEATURE_KEY = "leadbookLydopptak";
+
