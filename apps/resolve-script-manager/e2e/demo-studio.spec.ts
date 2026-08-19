@@ -106,7 +106,6 @@ test('AI fullfør demoen fyller hull', async ({ page }) => {
   await seedDemo(page);
   // Ligger bak det sammenleggbare «Verktøy»-panelet.
   await page.getByTitle('Åpne AI Director').click();
-  await page.getByText('Verktøy', { exact: false }).click();
   await page.getByText(/Fullfør demoen/).click();
   await expect(page.getByText(/Fylte \d+ scene/)).toBeVisible({ timeout: 10000 });
 });
@@ -115,7 +114,6 @@ test('klikk-capture bygger scener fra steg', async ({ page }) => {
   await seedDemo(page);
   // Ligger bak det sammenleggbare «Verktøy»-panelet.
   await page.getByTitle('Åpne AI Director').click();
-  await page.getByText('Verktøy', { exact: false }).click();
   await page.getByText(/Klikk-capture/).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
@@ -130,7 +128,6 @@ test('Validation-modal viser Expected ↔ Detected', async ({ page }) => {
   await seedDemo(page);
   // bygg capture-scener (har detectedSelector → Match) — ligger bak «Verktøy».
   await page.getByTitle('Åpne AI Director').click();
-  await page.getByText('Verktøy', { exact: false }).click();
   await page.getByText(/Klikk-capture/).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
@@ -185,7 +182,6 @@ test('Director Critic gir score + forbedringer', async ({ page }) => {
   await seedDemo(page);
   // Ligger bak det sammenleggbare «Verktøy»-panelet.
   await page.getByTitle('Åpne AI Director').click();
-  await page.getByText('Verktøy', { exact: false }).click();
   await page.getByRole('button', { name: /Vurder demoen/ }).click();
   await expect(page.getByText('Director Critic')).toBeVisible({ timeout: 10000 });
   await expect(page.getByText('72')).toBeVisible();
@@ -238,7 +234,6 @@ test('CTA-bank klassifiserer capture-elementer', async ({ page }) => {
   await seedDemo(page);
   // Ligger bak det sammenleggbare «Verktøy»-panelet.
   await page.getByTitle('Åpne AI Director').click();
-  await page.getByText('Verktøy', { exact: false }).click();
   await page.getByText(/Klikk-capture/).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;

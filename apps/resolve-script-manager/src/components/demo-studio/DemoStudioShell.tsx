@@ -178,7 +178,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   // «Forstå siden først»: Claudes forståelse av produkt + målgruppe, vist som
   // en brief før noe lages — grunnlag for diskusjon/justering.
   const [understanding, setUnderstanding] = useState<SiteUnderstanding | null>(null);
-  const [showTools, setShowTools] = useState(false); // sammenleggbare sekundære verktøy
+  const [showTools, setShowTools] = useState(true); // sammenleggbare sekundære verktøy — default åpen (var skjult, funnet i e2e-arbeid at Klikk-capture/Critic/Fullfør demoen sjelden ble oppdaget)
   const [showAdvanced, setShowAdvanced] = useState(false); // sammenleggbart «Avansert» i Beskriv-steget
   const [generated, setGenerated] = useState(false); // har vi generert en demo i denne sesjonen?
   // «Generér ferdig demo» (autonom): TTS → Playwright-opptak → mux til ferdig mp4.
@@ -971,7 +971,10 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         {saveStatus === 'error' ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#dc2626', fontWeight: 600 }} title="localStorage er full — siste endringer er ikke persistert. Eksporter eller slett gamle demoer.">Ikke lagret</div>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: C.inkSoft }}><span style={{ color: saveStatus === 'saved_partial' ? '#f59e0b' : C.green }}>✓</span> {saveStatus === 'saved_partial' ? 'Delvis lagret' : 'Lagret'}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: C.inkSoft }}
+            title={lastSavedAt ? `Sist lagret ${new Date(lastSavedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : undefined}>
+            <span style={{ color: saveStatus === 'saved_partial' ? '#f59e0b' : C.green }}>✓</span> {saveStatus === 'saved_partial' ? 'Delvis lagret' : 'Lagret'}
+          </div>
         )}
         <button style={recording ? { ...btn, background: '#ef4444', color: '#fff', borderColor: '#ef4444' } : btn}
           onClick={async () => {
@@ -1019,6 +1022,12 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
 
         {/* ── AI Director — modal som hentes frem fra status-stripen ── */}
         {aiModalOpen && (
+        <>
+        {/* Usynlig backdrop: klikk utenfor lukker panelet (det overlapper
+            scene-kortene i Flow Builder, og har ingen annen lukk-vei enn ✕).
+            zIndex under andre modaler (VisualBeatsModal m.fl. bruker 50) så
+            resultat-dialoger som åpnes FRA AI Director fortsatt er klikkbare. */}
+        <div onClick={() => setAiModalOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 10 }} />
         <div onClick={(e) => e.stopPropagation()}
           style={{ position: 'fixed', left: 16, bottom: 62, width: 372, maxWidth: '92vw', maxHeight: '72vh', background: C.panel, borderRadius: 16, boxShadow: '0 20px 50px rgba(31,27,23,0.26), 0 0 0 1px rgba(31,27,23,0.07)', overflowY: 'auto', padding: '16px 16px 20px', zIndex: 60 }}>
           <div onClick={() => setAiModalOpen(false)} title="Lukk"
@@ -1254,6 +1263,12 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                           <span onClick={() => { setUnderstanding(null); setGenerated(false); }} style={{ cursor: 'pointer', color: C.accent, fontSize: 10.5, whiteSpace: 'nowrap' }}>endre</span>
                         </div>
                       )}
+                      {/* Mål er kun redigerbart i Beskriv-steget (over) inntil scenene har
+                          narrasjon — som skjer med det samme for maler med forhåndsutfylt
+                          manus. Duplisert her så målet forblir redigerbart etter det steget. */}
+                      <div style={fldLabel}>Mål</div>
+                      <input style={{ ...field, marginBottom: 10 }} value={project.goal ?? ''} placeholder="f.eks. «få flere til å booke demo»"
+                        onChange={(e) => setProjectField('goal', e.target.value)} />
                       {cmdRow('Si til AI: «lag en voiceover»…')}
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
                         {['Lag en voiceover', 'Responsive check', 'Lag veiledning for innlogging'].map((q) => (
@@ -1348,6 +1363,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             )}
           </div>
         </div>
+        </>
         )}
 
         {/* ── STORY-modus: gjenbruk StoryView ── */}
