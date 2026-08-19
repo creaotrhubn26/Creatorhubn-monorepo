@@ -897,6 +897,11 @@ struct KartView: View {
     @State private var measureMode: Bool = false
     @State private var measurePointA: CLLocationCoordinate2D?
     @State private var measurePointB: CLLocationCoordinate2D?
+    /// Ekte kjøretid via MKDirections (2026-08-17) — erstatter tidligere
+    /// `km * 2`-gjetning. Nil mens den regnes ut eller hvis ingen bilrute
+    /// finnes (øy/ferje) — banneret faller da tilbake til luftlinje-visning.
+    @State private var measureDriveMinutes: Int?
+    @State private var measureRouteTask: Task<Void, Never>?
 
     // MARK: - Dørsalg-modus (2026-07-18)
     // Husstandsadresser fra Kartverket som EGEN kartflate for dørsalg-org-er.
@@ -1313,7 +1318,26 @@ struct KartView: View {
         .sheet(isPresented: $addLeadOpen) {
             AddLeadSheet { newLead in
                 addLeadOpen = false
-                // I prod ville vi sende dette til APIClient.createLead
+                // 2026-08-16: kallet manglet helt — leaden ble aldri lagret
+                // noe sted (kun lukket sheeten). Ekte create-kall nå.
+                guard let api = appState.api, !DemoModeManager.isActiveNonisolated else {
+                    showToast(DemoModeManager.isActiveNonisolated ? "Demo-modus — ikke lagret" : "Ikke innlogget")
+                    return
+                }
+                Task {
+                    do {
+                        _ = try await api.createLeadAtPin(
+                            name: newLead.companyName, company: newLead.companyName,
+                            phone: newLead.phone, email: newLead.email,
+                            industryId: nil, leadTemperature: nil,
+                            latitude: newLead.coord.latitude, longitude: newLead.coord.longitude,
+                            address: newLead.address
+                        )
+                        showToast("«\(newLead.companyName)» lagt til")
+                    } catch {
+                        showToast("Kunne ikke lagre lead — prøv igjen")
+                    }
+                }
             }
         }
         // Kjøregodtgjørelse (statens sats) — ekte km fra nav-ruta.
@@ -2379,6 +2403,11 @@ struct KartView: View {
     private var mapCard: some View {
         ZStack(alignment: .bottomTrailing) {
             // Selve kart-flate
+            // 2026-08-17: mål-verktøyet kunne KUN plukke punkt ved å treffe en
+            // eksisterende lead-pin (ingen generisk trykk-hvor-som-helst-
+            // håndtering fantes) — ubrukelig med få/ingen leads i synsfeltet.
+            // MapReader lar oss konvertere ethvert kart-trykk til koordinat.
+            MapReader { proxy in
             Map(position: $camera, interactionModes: [.pan, .zoom]) {
                 // "Meg her"-annotasjon: profil-avatar på user-location.
                 // Vises kun når CLLocationManager har fått en fix.
@@ -2475,6 +2504,42 @@ struct KartView: View {
                         .stroke(KrBrand.green, style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [8, 6]))
                 }
 
+                // Drabare håndtak for punkt A/B (2026-08-17) — punktene var
+                // usynlige utenom polylinjen, umulig å justere presist uten
+                // å trykke helt på nytt. Egne markører + dra-gest via
+                // MapReader-proxyen (koordinat-rom "kartMalRom" delt med
+                // Map-viewet under).
+                if measureMode, let a = measurePointA {
+                    Annotation("", coordinate: a) {
+                        measureHandle()
+                            .gesture(
+                                DragGesture(coordinateSpace: .named("kartMalRom"))
+                                    .onChanged { value in
+                                        if let coord = proxy.convert(value.location, from: .named("kartMalRom")) {
+                                            measurePointA = coord
+                                        }
+                                    }
+                                    // Kjøretid (MKDirections) hentes kun ved slipp — ellers
+                                    // spammes nettverket på hvert dra-frame.
+                                    .onEnded { _ in scheduleDriveTimeFetch() }
+                            )
+                    }
+                }
+                if measureMode, let b = measurePointB {
+                    Annotation("", coordinate: b) {
+                        measureHandle()
+                            .gesture(
+                                DragGesture(coordinateSpace: .named("kartMalRom"))
+                                    .onChanged { value in
+                                        if let coord = proxy.convert(value.location, from: .named("kartMalRom")) {
+                                            measurePointB = coord
+                                        }
+                                    }
+                                    .onEnded { _ in scheduleDriveTimeFetch() }
+                            )
+                    }
+                }
+
                 // Navigasjon: solid «casing»-rute (ekte nav-vei-design).
                 navRouteMapContent
 
@@ -2520,6 +2585,15 @@ struct KartView: View {
             }
             .environment(\.colorScheme, .dark)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .coordinateSpace(.named("kartMalRom"))
+            // Fritt trykk hvor som helst på kartet i mål-modus — pin-
+            // annotasjonene fanger fortsatt sine egne trykk først (presist
+            // punkt på leaden), dette er kun bakgrunnen/basiskartet.
+            .onTapGesture { screenPoint in
+                guard measureMode, let coord = proxy.convert(screenPoint, from: .local) else { return }
+                pickMeasurePoint(coord)
+            }
+            } // MapReader
 
             // FAB-stack bunn-HØYRE. Knappene fungerer nå:
             //   + / − manipulerer span på currentRegion (zoom 2x/0.5x)
@@ -3333,15 +3407,18 @@ struct KartView: View {
 
     private func mapFAB(icon: String) -> some View {
         Image(systemName: icon)
-            .font(.appScaled(size: 13, weight: .semibold))
+            .font(.appScaled(size: 15, weight: .semibold))
             .foregroundStyle(.white)
-            .frame(width: 32, height: 32)
+            // 2026-08-17: 32pt var under Apples 44pt touch-mål-minimum
+            // (samme bug som Team-fanens kart-kontroller).
+            .frame(width: 44, height: 44)
     }
 
     /// Tappbar versjon av mapFAB — wraps Image i en Button m/ plain-style.
     private func mapFABButton(icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             mapFAB(icon: icon)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .macCatalystHover()
@@ -3473,14 +3550,34 @@ struct KartView: View {
         showToast("Pin droppet — fyller ut lead...")
     }
 
+    /// Drabart håndtak for mål-verktøyets punkt A/B.
+    private func measureHandle() -> some View {
+        Circle()
+            .fill(KrBrand.green)
+            .frame(width: 22, height: 22)
+            .overlay(Circle().stroke(.white, lineWidth: 3))
+            .shadow(color: .black.opacity(0.4), radius: 3, y: 1)
+            .contentShape(Circle().inset(by: -12))  // større dra-treffflate enn synlig sirkel
+    }
+
     /// Toggle mål-modus. Resetter punkter når avskrudd.
+    /// 2026-08-17 (Daniel-feedback): A/B plasseres nå med én gang ved
+    /// aktivering (kart-senter + ~500 m unna) i stedet for tom «trykk
+    /// punkt A»-tilstand — begge håndtak er drabare fra første stund.
     private func toggleMeasureMode() {
         measureMode.toggle()
         if !measureMode {
             measurePointA = nil
             measurePointB = nil
+            measureRouteTask?.cancel()
+            measureDriveMinutes = nil
         } else {
-            showToast("Tap to pins på kartet for å måle")
+            let center = currentRegion.center
+            let lonDelta = 0.5 / (111.32 * cos(center.latitude * .pi / 180))
+            measurePointA = center
+            measurePointB = CLLocationCoordinate2D(latitude: center.latitude, longitude: center.longitude + lonDelta)
+            showToast("Dra punktene for å justere, eller trykk et nytt sted")
+            scheduleDriveTimeFetch()
         }
     }
 
@@ -3494,6 +3591,37 @@ struct KartView: View {
             // 3. tap = restart
             measurePointA = coord
             measurePointB = nil
+        }
+        scheduleDriveTimeFetch()
+    }
+
+    /// Ekte kjøretid via MKDirections (2026-08-17, Daniel-feedback) —
+    /// erstatter tidligere `km * 2`-gjetning (falsk presisjon, ingen
+    /// hensyn til vei/ferje/bru). Debounced 400 ms + kansellerer forrige
+    /// forespørsel, så kontinuerlig dra ikke spammer nettverket.
+    /// `measureDriveMinutes` forblir nil (banneret faller tilbake til
+    /// luftlinje) hvis ingen bilrute finnes, f.eks. rent øy-til-øy.
+    private func scheduleDriveTimeFetch() {
+        measureRouteTask?.cancel()
+        guard let a = measurePointA, let b = measurePointB else {
+            measureDriveMinutes = nil
+            return
+        }
+        measureDriveMinutes = nil
+        measureRouteTask = Task {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
+            let request = MKDirections.Request()
+            request.source = MKMapItem(placemark: MKPlacemark(coordinate: a))
+            request.destination = MKMapItem(placemark: MKPlacemark(coordinate: b))
+            request.transportType = .automobile
+            let minutes: Int? = try? await {
+                let response = try await MKDirections(request: request).calculate()
+                guard let route = response.routes.first else { return nil }
+                return Int((route.expectedTravelTime / 60).rounded())
+            }()
+            guard !Task.isCancelled else { return }
+            measureDriveMinutes = minutes
         }
     }
 
@@ -3534,16 +3662,21 @@ struct KartView: View {
                     .foregroundStyle(.white)
                 if let a = measurePointA, let b = measurePointB {
                     let km = distanceKm(a, b)
-                    let drive = Int(km * 2)
-                    Text(String(format: "%.2f km · %d min kjøring", km, drive))
-                        .font(.appScaled(size: 11, weight: .semibold))
-                        .foregroundStyle(KrBrand.green)
+                    if let drive = measureDriveMinutes {
+                        Text(String(format: "%.2f km · %d min kjøring", km, drive))
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(KrBrand.green)
+                    } else {
+                        Text(String(format: "%.2f km · beregner kjøretid…", km))
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(KrBrand.green)
+                    }
                 } else if measurePointA != nil {
-                    Text("Tap pin B")
+                    Text("Trykk punkt B")
                         .font(.appScaled(size: 11))
                         .foregroundStyle(KrBrand.textSecondary)
                 } else {
-                    Text("Tap pin A")
+                    Text("Trykk punkt A")
                         .font(.appScaled(size: 11))
                         .foregroundStyle(KrBrand.textSecondary)
                 }

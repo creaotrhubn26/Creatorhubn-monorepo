@@ -1,11 +1,22 @@
-// LeadbookCards.swift — 5 hovedkort + NewTemplateSheet
+// LeadbookCards.swift — hovedkort + Leadbook-sheets
 //
-//   TemplateLibraryCard   — tabell over maler (5 rader)
+// Ryddet 2026-08-16:
+// - TemplateLibraryCard/TemplateFilterSheet/AllTemplatesSheet fjernet —
+//   udupliserte, aldri instansiert (dødt siden Pondus-fanen overtok som
+//   ekte mal-bibliotek). PerformanceCard/VersionsCard fjernet samtidig —
+//   trivielle pass-through-wrappere uten kall-steder.
+// - NewTemplateSheet fjernet — feltene (Kategori/Steg/Type/Mål/delte
+//   filer) matchet ikke pondus_templates-skjemaet i det hele tatt.
+//   Alle 4 kall-steder peker nå på PondusTemplateEditor (samme ekte
+//   opprett/rediger-flyt SuperAdmin allerede brukte).
+// - NewObjectionSheet: "steg"-plukkeren var fiksjon uten backend-felt —
+//   erstattet med ekte PondusCategory + nytt bulk-attach-endepunkt
+//   (POST /pondus/objections/bulk-attach) som faktisk legger
+//   innvendingen til alle maler i kategorien.
+//
 //   SelectedLeadbookCard  — sidebar m/ 4 steg + steg-innhold
 //   ObjectionsCard        — 3 vanlige innvendinger m/ anbefalt respons
-//   PerformanceCard       — ytelse per mal m/ to lilla bar-charts
-//   VersionsCard          — 4 versjon-rader m/ status
-//   NewTemplateSheet      — opprett ny mal
+//   PerformanceModal/VersionsModal — nås via LeadbookView, ikke via kort
 
 import SwiftUI
 
@@ -553,324 +564,10 @@ struct TemplatePreviewSheet: View {
     }
 }
 
-// MARK: - 1. TemplateLibraryCard
-
-struct TemplateLibraryCard: View {
-    @Binding var selected: LeadbookTemplate
-    @State private var search: String = ""
-    @State private var sortBy: SortKey = .name
-    @State private var sortAscending: Bool = true
-    @State private var showFilter = false
-    @State private var showAll = false
-    @State private var actionToast: String?
-    @State private var menuTemplate: LeadbookTemplate?
-
-    // Filter state
-    @State private var filterChannels: Set<LeadbookTemplate.Channel> = []
-    @State private var filterStatuses: Set<LeadbookTemplate.Status> = []
-
-    enum SortKey: String, CaseIterable, Hashable {
-        case name = "MALNAVN"
-        case channel = "KANAL"
-        case step = "STEG"
-        case used = "BRUKT"
-        case conversion = "KONVERTERING"
-        case status = "STATUS"
-    }
-
-    private var filteredAndSorted: [LeadbookTemplate] {
-        var items = LeadbookData.templates
-        if !search.isEmpty {
-            let q = search.lowercased()
-            items = items.filter { $0.name.lowercased().contains(q) || $0.channel.rawValue.lowercased().contains(q) }
-        }
-        if !filterChannels.isEmpty {
-            items = items.filter { filterChannels.contains($0.channel) }
-        }
-        if !filterStatuses.isEmpty {
-            items = items.filter { filterStatuses.contains($0.status) }
-        }
-        items.sort { a, b in
-            let asc: Bool
-            switch sortBy {
-            case .name:       asc = a.name < b.name
-            case .channel:    asc = a.channel.rawValue < b.channel.rawValue
-            case .step:       asc = a.step < b.step
-            case .used:       asc = a.used < b.used
-            case .conversion: asc = a.conversion < b.conversion
-            case .status:     asc = a.status.rawValue < b.status.rawValue
-            }
-            return sortAscending ? asc : !asc
-        }
-        return items
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 11) {
-                Text("Maler i biblioteket")
-                    .font(.appScaled(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
-                Spacer()
-                searchBar
-                Button { showFilter = true } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "line.3.horizontal.decrease")
-                            .font(.appScaled(size: 11, weight: .semibold))
-                            .foregroundStyle(LBrand.purpleLight)
-                        Text("Filter")
-                            .font(.appScaled(size: 12, weight: .semibold))
-                            .foregroundStyle(.white)
-                        if !filterChannels.isEmpty || !filterStatuses.isEmpty {
-                            Text("\(filterChannels.count + filterStatuses.count)")
-                                .font(.appScaled(size: 9, weight: .black))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 5).padding(.vertical, 1)
-                                .background(LBrand.purple, in: Capsule())
-                        }
-                    }
-                    .padding(.horizontal, 11).padding(.vertical, 8)
-                    .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
-                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(LBrand.stroke, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 13)
-
-            // Tabell-header (klikkbar sortering)
-            HStack(spacing: 0) {
-                sortHeader(.name).frame(maxWidth: .infinity, alignment: .leading)
-                sortHeader(.channel).frame(width: 70, alignment: .leading)
-                sortHeader(.step).frame(width: 60, alignment: .leading)
-                sortHeader(.used).frame(width: 60, alignment: .leading)
-                sortHeader(.conversion).frame(width: 130, alignment: .leading)
-                sortHeader(.status).frame(width: 110, alignment: .leading)
-                Color.clear.frame(width: 28)
-            }
-            .padding(.horizontal, 16).padding(.bottom, 8)
-
-            VStack(spacing: 0) {
-                ForEach(filteredAndSorted) { t in
-                    templateRow(t)
-                    if t.id != filteredAndSorted.last?.id {
-                        Divider().overlay(LBrand.stroke).padding(.horizontal, 16)
-                    }
-                }
-                if filteredAndSorted.isEmpty { emptyState }
-            }
-
-            Button { showAll = true } label: {
-                HStack(spacing: 5) {
-                    Text("Se alle maler")
-                        .font(.appScaled(size: 12, weight: .semibold))
-                    Image(systemName: "arrow.up.right")
-                        .font(.appScaled(size: 10, weight: .bold))
-                }
-                .foregroundStyle(LBrand.purpleLight)
-                .padding(.vertical, 13)
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.plain)
-        }
-        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(LBrand.stroke, lineWidth: 1))
-        .sheet(isPresented: $showFilter) {
-            TemplateFilterSheet(channels: $filterChannels, statuses: $filterStatuses)
-        }
-        .sheet(isPresented: $showAll) {
-            AllTemplatesSheet(selected: $selected)
-        }
-        .overlay(alignment: .top) {
-            if let t = actionToast {
-                Label(t, systemImage: "checkmark.circle.fill")
-                    .font(.appScaled(size: 11, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 11).padding(.vertical, 7)
-                    .background(LBrand.green, in: Capsule())
-                    .padding(.top, 14)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: actionToast)
-    }
-
-    private func sortHeader(_ key: SortKey) -> some View {
-        Button {
-            if sortBy == key { sortAscending.toggle() }
-            else { sortBy = key; sortAscending = true }
-        } label: {
-            HStack(spacing: 3) {
-                Text(key.rawValue)
-                    .font(.appScaled(size: 9, weight: .black))
-                    .tracking(0.5)
-                    .foregroundStyle(sortBy == key ? LBrand.purpleLight : LBrand.textTertiary)
-                if sortBy == key {
-                    Image(systemName: sortAscending ? "arrow.up" : "arrow.down")
-                        .font(.appScaled(size: 8, weight: .black))
-                        .foregroundStyle(LBrand.purpleLight)
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 7) {
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.appScaled(size: 22))
-                .foregroundStyle(LBrand.textTertiary)
-            Text("Ingen maler matcher")
-                .font(.appScaled(size: 12, weight: .bold))
-                .foregroundStyle(.white)
-            Text("Prøv annet søk eller filter")
-                .font(.appScaled(size: 10))
-                .foregroundStyle(LBrand.textSecondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 26)
-    }
-
-    private func flashToast(_ text: String) {
-        actionToast = text
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
-            if actionToast == text { actionToast = nil }
-        }
-    }
-
-    private var searchBar: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
-                .font(.appScaled(size: 11, weight: .semibold))
-                .foregroundStyle(LBrand.textSecondary)
-            ZStack(alignment: .leading) {
-                TextField("", text: $search)
-                    .foregroundStyle(.white)
-                    .font(.appScaled(size: 12))
-                if search.isEmpty {
-                    Text("Søk maler…")
-                        .font(.appScaled(size: 12))
-                        .foregroundStyle(LBrand.textTertiary)
-                        .allowsHitTesting(false)
-                }
-            }
-            .frame(width: 150)
-        }
-        .padding(.horizontal, 11).padding(.vertical, 8)
-        .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).stroke(LBrand.stroke, lineWidth: 1))
-    }
-
-    private func templateRow(_ t: LeadbookTemplate) -> some View {
-        let isSelected = selected.id == t.id
-        return Button {
-            selected = t
-        } label: {
-            HStack(spacing: 0) {
-                // MALNAVN m/ kanal-ikon
-                HStack(spacing: 10) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 8).fill(t.channel.color.opacity(0.22))
-                        Image(systemName: t.channel.icon)
-                            .font(.appScaled(size: 12, weight: .bold))
-                            .foregroundStyle(t.channel.color)
-                    }
-                    .frame(width: 30, height: 30)
-                    Text(t.name)
-                        .font(.appScaled(size: 13, weight: .bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                // KANAL
-                Text(t.channel.rawValue)
-                    .font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
-                    .frame(width: 70, alignment: .leading)
-
-                // STEG
-                Text("\(t.step) / \(t.stepTotal)")
-                    .font(.appScaled(size: 12, design: .rounded)).foregroundStyle(.white)
-                    .monospacedDigit()
-                    .frame(width: 60, alignment: .leading)
-
-                // BRUKT
-                Text("\(t.used)")
-                    .font(.appScaled(size: 12, design: .rounded)).foregroundStyle(.white)
-                    .monospacedDigit()
-                    .frame(width: 60, alignment: .leading)
-
-                // KONVERTERING
-                HStack(spacing: 7) {
-                    Text("\(Int(t.conversion * 100))%")
-                        .font(.appScaled(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .monospacedDigit()
-                        .frame(width: 32, alignment: .leading)
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(LBrand.cardHi).frame(height: 5)
-                            Capsule()
-                                .fill(LinearGradient(colors: [LBrand.green, LBrand.green.opacity(0.6)],
-                                                     startPoint: .leading, endPoint: .trailing))
-                                .frame(width: max(4, geo.size.width * t.conversion), height: 5)
-                        }
-                    }
-                    .frame(height: 5)
-                }
-                .frame(width: 130, alignment: .leading)
-
-                // STATUS
-                statusBadge(t.status)
-                    .frame(width: 110, alignment: .leading)
-
-                // ELLIPSIS
-                Menu {
-                    Button {
-                        selected = t
-                        LeadbookLiveStore.shared.logUsage(t)
-                        flashToast("\(t.name) er valgt — bruk mal i sidebar")
-                    } label: { Label("Bruk mal", systemImage: "play.fill") }
-                    // «Rediger» + «Dupliser» + «Eksporter PDF» + «Arkiver»
-                    // fjernet 2026-07-17: var døde knapper — kun toast uten
-                    // editor/kopi/eksport/arkiv bak.
-                    Button {
-                        UIPasteboard.general.string = "leadgrid://leadbook/\(t.id.uuidString.prefix(8))"
-                        flashToast("Lenke kopiert til utklippstavlen")
-                    } label: { Label("Kopier lenke", systemImage: "link") }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.appScaled(size: 13, weight: .bold))
-                        .foregroundStyle(LBrand.textSecondary)
-                        .frame(width: 28, height: 28)
-                        .contentShape(Rectangle())
-                }
-            }
-            .padding(.horizontal, 16).padding(.vertical, 11)
-            .background(isSelected ? LBrand.purple.opacity(0.10) : Color.clear)
-            .overlay(
-                isSelected
-                    ? Rectangle().fill(LBrand.purpleLight).frame(width: 3).padding(.vertical, 3)
-                    : nil,
-                alignment: .leading
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func statusBadge(_ s: LeadbookTemplate.Status) -> some View {
-        Text(s.rawValue)
-            .font(.appScaled(size: 10, weight: .bold))
-            .foregroundStyle(s.color)
-            .padding(.horizontal, 9).padding(.vertical, 4)
-            .background(s.color.opacity(0.18), in: Capsule())
-            .overlay(Capsule().stroke(s.color.opacity(0.4), lineWidth: 1))
-    }
-}
-
 // MARK: - 2. SelectedLeadbookCard
 
 struct SelectedLeadbookCard: View {
+    @Environment(AppState.self) private var appState
     let template: LeadbookTemplate
     @Binding var currentStep: Int
     @State private var showUseMal = false
@@ -882,8 +579,35 @@ struct SelectedLeadbookCard: View {
     @State private var copiedTitle: String?
     @State private var importToast: String?
 
+    /// Ekte pondus-DTO for valgt mal, nil for demo-mocks. Kilde for
+    /// per-mal steg-titler + manus (2026-08-16 — tidligere alltid de
+    /// samme 20 hardkodede radene uansett hvilken mal som var valgt).
+    private var dto: PondusTemplateDTO? {
+        LeadbookLiveStore.shared.templateDTO(for: template)
+    }
+
+    private var stepsForTemplate: [LeadbookStep] {
+        guard let dto else { return LeadbookData.steps }
+        let real = dto.orderedSteps.map { LeadbookStep(number: $0.order, title: $0.title) }
+        return real.isEmpty ? LeadbookData.steps : real
+    }
+
     private var contentForCurrentStep: [LeadbookContent] {
-        LeadbookData.contentByStep[currentStep] ?? []
+        guard let dto else { return LeadbookData.contentByStep[currentStep] ?? [] }
+        guard let step = dto.orderedSteps.first(where: { $0.order == currentStep }) else { return [] }
+        var rows: [LeadbookContent] = []
+        if let subtitle = step.subtitle, !subtitle.isEmpty {
+            rows.append(LeadbookContent(
+                icon: step.icon ?? "target", iconColor: LBrand.purpleLight,
+                title: "Om steget", body: subtitle
+            ))
+        }
+        let prompt = step.prompt?.isEmpty == false ? step.prompt! : "Ingen manus lagt inn for dette steget ennå."
+        rows.append(LeadbookContent(
+            icon: step.icon ?? "bubble.left.fill", iconColor: LBrand.blue,
+            title: "Manus", body: prompt
+        ))
+        return rows
     }
 
     var body: some View {
@@ -1031,7 +755,7 @@ struct SelectedLeadbookCard: View {
             Button("Tapt", role: .destructive) { LeadbookLiveStore.shared.logOutcome(template, outcome: "lost") }
             Button("Registrer senere", role: .cancel) {}
         }
-        .sheet(isPresented: $showNewTemplate) { NewTemplateSheet() }
+        .sheet(isPresented: $showNewTemplate) { PondusTemplateEditor(store: appState.pondusStore) }
         .sheet(isPresented: $showNewObjection) { NewObjectionSheet() }
         .sheet(isPresented: $showImportTemplate) {
             ImportTemplateSheet { name in
@@ -1040,7 +764,7 @@ struct SelectedLeadbookCard: View {
             }
         }
         .sheet(item: $expandedContent) { c in
-            ContentDetailSheet(content: c, stepTitle: LeadbookData.steps[currentStep - 1].title)
+            ContentDetailSheet(content: c, stepTitle: stepsForTemplate.first { $0.number == currentStep }?.title ?? "Steg \(currentStep)")
         }
         .overlay(alignment: .top) {
             if let title = copiedTitle {
@@ -1067,7 +791,7 @@ struct SelectedLeadbookCard: View {
 
     private var stepsColumn: some View {
         VStack(alignment: .leading, spacing: 7) {
-            ForEach(LeadbookData.steps) { s in
+            ForEach(stepsForTemplate) { s in
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) { currentStep = s.number }
                 } label: {
@@ -1277,14 +1001,6 @@ struct ObjectionsCard: View {
             if toast == text { toast = nil }
         }
     }
-}
-
-// MARK: - 4. PerformanceCard
-
-struct PerformanceCard: View {
-    @State private var range = "Siste 30 dager"
-
-    var body: some View { PerformanceModal(initialRange: range) }
 }
 
 struct PerformanceModal: View {
@@ -1641,12 +1357,6 @@ struct PerformanceDetailSheet: View {
     }
 }
 
-// MARK: - 5. VersionsCard
-
-struct VersionsCard: View {
-    var body: some View { VersionsModal() }
-}
-
 struct VersionsModal: View {
     @Environment(\.dismiss) private var dismiss
     @State private var filter: VersionFilter = .all
@@ -1890,348 +1600,6 @@ struct VersionsModal: View {
         .padding(.horizontal, 8).padding(.vertical, 4)
         .background(s.color.opacity(0.18), in: Capsule())
         .overlay(Capsule().stroke(s.color.opacity(0.4), lineWidth: 1))
-    }
-}
-
-// MARK: - NewTemplateSheet (pixel-perfect 2-kolonne fra mockup)
-
-struct NewTemplateSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var title = ""
-    @State private var category: Category?
-    @State private var stage: Stage?
-    @State private var templateType: TemplateType = .script
-    @State private var description = ""
-    @State private var goal = ""
-    @State private var shareWithTeam = true
-    @State private var attachedFiles: [String] = []
-
-    enum Category: String, CaseIterable, Hashable {
-        case firstContact = "Første kontakt"
-        case followUp = "Oppfølging"
-        case meetingBooking = "Møtebooking"
-        case needsAnalysis = "Behovsavdekking"
-        case proposal = "Tilbud & forslag"
-        case objections = "Innvendinger"
-        case closing = "Avslutning"
-        case lostLead = "Tapt lead"
-    }
-
-    enum Stage: String, CaseIterable, Hashable {
-        case prospecting = "Prospektering"
-        case qualifying = "Kvalifisering"
-        case discovery = "Discovery"
-        case demo = "Demo"
-        case proposal = "Tilbud"
-        case negotiation = "Forhandling"
-        case closing = "Lukking"
-        case retention = "Retensjon"
-    }
-
-    enum TemplateType: String, CaseIterable, Hashable, Identifiable {
-        case script = "Samtalemanus"
-        case email = "E-post mal"
-        case objection = "Innvendingshåndtering"
-        case other = "Annen mal"
-        var id: String { rawValue }
-        var icon: String {
-            switch self {
-            case .script:    return "checkmark.circle.fill"
-            case .email:     return "envelope.fill"
-            case .objection: return "shield.fill"
-            case .other:     return "doc.fill"
-            }
-        }
-        var subtitle: String {
-            switch self {
-            case .script:    return "Fullt manus med ordrett dialog."
-            case .email:     return "Ferdig e-postmal som kan sendes."
-            case .objection: return "Svar på innvendinger og motforestillinger."
-            case .other:     return "Annet innhold (mal, sjekkliste osv.)."
-            }
-        }
-    }
-
-    private var canSave: Bool { !title.isEmpty && category != nil && stage != nil }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            header
-            ScrollView {
-                HStack(alignment: .top, spacing: 28) {
-                    leftColumn
-                        .frame(maxWidth: .infinity, alignment: .top)
-                    rightColumn
-                        .frame(maxWidth: .infinity, alignment: .top)
-                }
-                .padding(.horizontal, 24).padding(.top, 18).padding(.bottom, 80)
-            }
-            footer
-        }
-        .background(LBrand.bg.ignoresSafeArea())
-        .frame(maxWidth: 920)              // matche mockup-bredde
-    }
-
-    // MARK: Header
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .top) {
-                Text("Ny mal")
-                    .font(.appScaled(size: 22, weight: .bold))
-                    .foregroundStyle(.white)
-                Spacer()
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark")
-                        .font(.appScaled(size: 13, weight: .bold))
-                        .foregroundStyle(LBrand.textSecondary)
-                        .frame(width: 32, height: 32)
-                        .background(LBrand.cardHi, in: Circle())
-                }
-                .buttonStyle(.plain)
-            }
-            Text("Opprett en ny salgsmal fra bunnen av.")
-                .font(.appScaled(size: 12))
-                .foregroundStyle(LBrand.textSecondary)
-        }
-        .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 10)
-    }
-
-    // MARK: Left column
-
-    private var leftColumn: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            textField(label: "Maltittel", required: true,
-                      binding: $title, placeholder: "F.eks. Oppfølging etter møte")
-            categoryDropdown
-            stageDropdown
-            typePicker
-        }
-    }
-
-    private var categoryDropdown: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            labelWithRequired("Kategori", required: true)
-            Menu {
-                ForEach(Category.allCases, id: \.self) { c in
-                    Button(c.rawValue) { category = c }
-                }
-            } label: {
-                HStack {
-                    Text(category?.rawValue ?? "Velg kategori")
-                        .font(.appScaled(size: 13))
-                        .foregroundStyle(category == nil ? LBrand.textTertiary : .white)
-                    Spacer()
-                    Image(systemName: "chevron.down")
-                        .font(.appScaled(size: 11, weight: .semibold))
-                        .foregroundStyle(LBrand.textTertiary)
-                }
-                .padding(.horizontal, 13).padding(.vertical, 12)
-                .background(LBrand.card, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
-            }
-        }
-    }
-
-    private var stageDropdown: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            labelWithRequired("Bruksområde (steg)", required: true)
-            Menu {
-                ForEach(Stage.allCases, id: \.self) { s in
-                    Button(s.rawValue) { stage = s }
-                }
-            } label: {
-                HStack {
-                    Text(stage?.rawValue ?? "Velg steg i salgsprosessen")
-                        .font(.appScaled(size: 13))
-                        .foregroundStyle(stage == nil ? LBrand.textTertiary : .white)
-                    Spacer()
-                    Image(systemName: "chevron.down")
-                        .font(.appScaled(size: 11, weight: .semibold))
-                        .foregroundStyle(LBrand.textTertiary)
-                }
-                .padding(.horizontal, 13).padding(.vertical, 12)
-                .background(LBrand.card, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
-            }
-        }
-    }
-
-    private var typePicker: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            labelWithRequired("Type mal", required: true)
-            VStack(spacing: 8) {
-                ForEach(TemplateType.allCases) { t in
-                    typeCard(t)
-                }
-            }
-        }
-    }
-
-    private func typeCard(_ t: TemplateType) -> some View {
-        let isSelected = templateType == t
-        return Button {
-            withAnimation(.easeInOut(duration: 0.15)) { templateType = t }
-        } label: {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(isSelected ? LBrand.purple : LBrand.cardHi)
-                    Image(systemName: t.icon)
-                        .font(.appScaled(size: 13, weight: .bold))
-                        .foregroundStyle(isSelected ? .white : LBrand.textSecondary)
-                }
-                .frame(width: 32, height: 32)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(t.rawValue)
-                        .font(.appScaled(size: 13, weight: .bold))
-                        .foregroundStyle(.white)
-                    Text(t.subtitle)
-                        .font(.appScaled(size: 11))
-                        .foregroundStyle(LBrand.textSecondary)
-                }
-                Spacer()
-            }
-            .padding(12)
-            .background(
-                isSelected ? LBrand.purple.opacity(0.08) : LBrand.card,
-                in: RoundedRectangle(cornerRadius: 11)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 11)
-                    .stroke(isSelected ? LBrand.purpleLight : LBrand.stroke,
-                            lineWidth: isSelected ? 1.5 : 1)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: Right column
-
-    private var rightColumn: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            textArea(label: "Beskrivelse", binding: $description,
-                     placeholder: "Beskriv når og hvordan denne malen skal brukes…",
-                     minHeight: 110)
-            textArea(label: "Mål med malen", binding: $goal,
-                     placeholder: "Hva er målet med denne malen?",
-                     minHeight: 76)
-            // «Tilknyttede ressurser»-seksjonen (fileUploadCard) fjernet
-            // 2026-07-17: var død knapp — «klikk for å velge» hadde ingen
-            // fil-velger eller lagringsflate bak (tom closure).
-            shareToggle
-        }
-    }
-
-    private var shareToggle: some View {
-        HStack(alignment: .center, spacing: 14) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Del med teamet")
-                    .font(.appScaled(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-                Text("Gjør malen tilgjengelig for hele teamet.")
-                    .font(.appScaled(size: 11))
-                    .foregroundStyle(LBrand.textSecondary)
-            }
-            Spacer()
-            Toggle("", isOn: $shareWithTeam)
-                .labelsHidden()
-                .tint(LBrand.purple)
-        }
-    }
-
-    // MARK: Helpers
-
-    private func labelWithRequired(_ text: String, required: Bool) -> some View {
-        HStack(spacing: 3) {
-            Text(text)
-                .font(.appScaled(size: 12, weight: .semibold))
-                .foregroundStyle(LBrand.textSecondary)
-            if required {
-                Text("*")
-                    .font(.appScaled(size: 12, weight: .bold))
-                    .foregroundStyle(LBrand.purpleLight)
-            }
-        }
-    }
-
-    private func textField(label: String, required: Bool, binding: Binding<String>, placeholder: String) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            labelWithRequired(label, required: required)
-            ZStack(alignment: .leading) {
-                TextField("", text: binding)
-                    .foregroundStyle(.white)
-                    .font(.appScaled(size: 13))
-                    .padding(.horizontal, 13).padding(.vertical, 12)
-                    .background(LBrand.card, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
-                if binding.wrappedValue.isEmpty {
-                    Text(placeholder)
-                        .font(.appScaled(size: 13))
-                        .foregroundStyle(LBrand.textTertiary)
-                        .padding(.horizontal, 14)
-                        .allowsHitTesting(false)
-                }
-            }
-        }
-    }
-
-    private func textArea(label: String, binding: Binding<String>, placeholder: String, minHeight: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(label)
-                .font(.appScaled(size: 12, weight: .semibold))
-                .foregroundStyle(LBrand.textSecondary)
-            ZStack(alignment: .topLeading) {
-                TextEditor(text: binding)
-                    .scrollContentBackground(.hidden)
-                    .foregroundStyle(.white)
-                    .font(.appScaled(size: 13))
-                    .frame(minHeight: minHeight)
-                    .padding(8)
-                    .background(LBrand.card, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
-                if binding.wrappedValue.isEmpty {
-                    Text(placeholder)
-                        .font(.appScaled(size: 13))
-                        .foregroundStyle(LBrand.textTertiary)
-                        .padding(.horizontal, 12).padding(.vertical, 14)
-                        .allowsHitTesting(false)
-                }
-            }
-        }
-    }
-
-    // MARK: Footer
-
-    private var footer: some View {
-        HStack(spacing: 10) {
-            Spacer()
-            Button { dismiss() } label: {
-                Text("Avbryt")
-                    .font(.appScaled(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 22).padding(.vertical, 11)
-                    .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-            Button { dismiss() } label: {
-                Text("Opprett mal")
-                    .font(.appScaled(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 24).padding(.vertical, 11)
-                    .background(
-                        LinearGradient(colors: canSave ? [LBrand.purple, LBrand.purpleLight] : [LBrand.cardHi, LBrand.cardHi],
-                                       startPoint: .leading, endPoint: .trailing),
-                        in: RoundedRectangle(cornerRadius: 10)
-                    )
-                    .opacity(canSave ? 1 : 0.55)
-            }
-            .buttonStyle(.plain)
-            .disabled(!canSave)
-        }
-        .padding(.horizontal, 24).padding(.vertical, 14)
-        .background(LBrand.bg.opacity(0.95).overlay(Rectangle().fill(LBrand.stroke).frame(height: 1), alignment: .top))
     }
 }
 
@@ -2543,285 +1911,6 @@ struct ContentDetailSheet: View {
             // «Del»-knappen fjernet 2026-07-17: var død knapp — tom closure
             // uten dele-flate.
         }
-    }
-}
-
-// MARK: - TemplateFilterSheet
-
-struct TemplateFilterSheet: View {
-    @Binding var channels: Set<LeadbookTemplate.Channel>
-    @Binding var statuses: Set<LeadbookTemplate.Status>
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    section("Kanal") {
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                            ForEach(LeadbookTemplate.Channel.allCases, id: \.self) { c in
-                                channelChip(c)
-                            }
-                        }
-                    }
-                    section("Status") {
-                        VStack(spacing: 7) {
-                            ForEach(LeadbookTemplate.Status.allCases, id: \.self) { s in
-                                statusChip(s)
-                            }
-                        }
-                    }
-                    Color.clear.frame(height: 80)
-                }
-                .padding(20)
-            }
-            .background(LBrand.bg.ignoresSafeArea())
-            .navigationTitle("Filter")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Lukk") { dismiss() }.foregroundStyle(LBrand.purpleLight)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Nullstill") {
-                        channels.removeAll()
-                        statuses.removeAll()
-                    }
-                    .font(.appScaled(size: 13, weight: .bold))
-                    .foregroundStyle(channels.isEmpty && statuses.isEmpty ? LBrand.textTertiary : LBrand.purpleLight)
-                    .disabled(channels.isEmpty && statuses.isEmpty)
-                }
-            }
-            .toolbarBackground(LBrand.bg, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .safeAreaInset(edge: .bottom, spacing: 0) { applyBar }
-        }
-    }
-
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
-                .font(.appScaled(size: 9, weight: .black))
-                .foregroundStyle(LBrand.textTertiary)
-                .tracking(0.5)
-            content()
-        }
-    }
-
-    private func channelChip(_ c: LeadbookTemplate.Channel) -> some View {
-        let isOn = channels.contains(c)
-        return Button {
-            withAnimation { if isOn { channels.remove(c) } else { _ = channels.insert(c) } }
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: c.icon)
-                    .font(.appScaled(size: 12, weight: .bold))
-                    .foregroundStyle(isOn ? .white : c.color)
-                Text(c.rawValue).font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
-                Spacer()
-                if isOn {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.appScaled(size: 13))
-                        .foregroundStyle(.white)
-                }
-            }
-            .padding(10)
-            .background(
-                isOn ? AnyShapeStyle(c.color) : AnyShapeStyle(LBrand.card),
-                in: RoundedRectangle(cornerRadius: 11)
-            )
-            .overlay(RoundedRectangle(cornerRadius: 11).stroke(isOn ? Color.clear : LBrand.stroke, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func statusChip(_ s: LeadbookTemplate.Status) -> some View {
-        let isOn = statuses.contains(s)
-        return Button {
-            withAnimation { if isOn { statuses.remove(s) } else { _ = statuses.insert(s) } }
-        } label: {
-            HStack(spacing: 8) {
-                Circle().fill(s.color).frame(width: 9, height: 9)
-                Text(s.rawValue).font(.appScaled(size: 12, weight: .semibold)).foregroundStyle(.white)
-                Spacer()
-                Image(systemName: isOn ? "largecircle.fill.circle" : "circle")
-                    .font(.appScaled(size: 15))
-                    .foregroundStyle(isOn ? s.color : LBrand.stroke)
-            }
-            .padding(10)
-            .background(
-                isOn ? s.color.opacity(0.10) : LBrand.card,
-                in: RoundedRectangle(cornerRadius: 11)
-            )
-            .overlay(RoundedRectangle(cornerRadius: 11).stroke(isOn ? s.color.opacity(0.4) : LBrand.stroke, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var applyBar: some View {
-        Button { dismiss() } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.appScaled(size: 13, weight: .bold))
-                Text("Bruk filter (\(channels.count + statuses.count))")
-                    .font(.appScaled(size: 14, weight: .bold))
-            }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(
-                LinearGradient(colors: [LBrand.purple, LBrand.purpleLight],
-                               startPoint: .leading, endPoint: .trailing),
-                in: RoundedRectangle(cornerRadius: 12)
-            )
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 20).padding(.vertical, 12)
-        .background(LBrand.bg.opacity(0.95).overlay(Rectangle().fill(LBrand.stroke).frame(height: 1), alignment: .top))
-    }
-}
-
-// MARK: - AllTemplatesSheet
-
-struct AllTemplatesSheet: View {
-    @Binding var selected: LeadbookTemplate
-    @Environment(\.dismiss) private var dismiss
-    @State private var search = ""
-
-    private var filtered: [LeadbookTemplate] {
-        if search.isEmpty { return LeadbookData.templates }
-        let q = search.lowercased()
-        return LeadbookData.templates.filter { $0.name.lowercased().contains(q) }
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 14) {
-                    summaryCard
-                    searchBar
-                    VStack(spacing: 7) {
-                        ForEach(filtered) { t in templateCard(t) }
-                    }
-                    Color.clear.frame(height: 24)
-                }
-                .padding(20)
-            }
-            .background(LBrand.bg.ignoresSafeArea())
-            .navigationTitle("Alle maler (\(LeadbookData.templates.count))")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Lukk") { dismiss() }.foregroundStyle(LBrand.purpleLight)
-                }
-                // Ellipsis-menyen («Eksporter alle» / «Importer maler» /
-                // «Sortér etter ytelse») fjernet 2026-07-17: var døde knapper
-                // (tomme closures).
-            }
-            .toolbarBackground(LBrand.bg, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-        }
-    }
-
-    private var summaryCard: some View {
-        HStack(spacing: 0) {
-            sumStat("Maler totalt", "\(LeadbookData.templates.count)", LBrand.purpleLight)
-            divider
-            sumStat("Aktive", "\(LeadbookData.templates.filter { $0.status == .active }.count)", LBrand.green)
-            divider
-            sumStat("Høy ytelse", "\(LeadbookData.templates.filter { $0.status == .highPerf }.count)", LBrand.orange)
-            divider
-            sumStat("Under review", "\(LeadbookData.templates.filter { $0.status == .underReview }.count)", LBrand.yellow)
-        }
-        .padding(.vertical, 13)
-        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 13))
-        .overlay(RoundedRectangle(cornerRadius: 13).stroke(LBrand.stroke, lineWidth: 1))
-    }
-
-    private func sumStat(_ label: String, _ value: String, _ color: Color) -> some View {
-        VStack(spacing: 3) {
-            Text(value)
-                .font(.appScaled(size: 17, weight: .black, design: .rounded))
-                .foregroundStyle(color)
-                .monospacedDigit()
-            Text(label).font(.appScaled(size: 10)).foregroundStyle(LBrand.textSecondary)
-        }
-        .frame(maxWidth: .infinity)
-    }
-    private var divider: some View { Rectangle().fill(LBrand.stroke).frame(width: 1, height: 28) }
-
-    private var searchBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.appScaled(size: 12, weight: .semibold))
-                .foregroundStyle(LBrand.textSecondary)
-            ZStack(alignment: .leading) {
-                TextField("", text: $search)
-                    .foregroundStyle(.white).font(.appScaled(size: 13))
-                if search.isEmpty {
-                    Text("Søk i alle maler…")
-                        .font(.appScaled(size: 13))
-                        .foregroundStyle(LBrand.textTertiary)
-                        .allowsHitTesting(false)
-                }
-            }
-        }
-        .padding(.horizontal, 12).padding(.vertical, 11)
-        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
-        .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.stroke, lineWidth: 1))
-    }
-
-    private func templateCard(_ t: LeadbookTemplate) -> some View {
-        Button {
-            selected = t
-            dismiss()
-        } label: {
-            HStack(spacing: 11) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 9).fill(t.channel.color.opacity(0.22))
-                    Image(systemName: t.channel.icon)
-                        .font(.appScaled(size: 14, weight: .bold))
-                        .foregroundStyle(t.channel.color)
-                }
-                .frame(width: 38, height: 38)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(t.name)
-                        .font(.appScaled(size: 13, weight: .bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    HStack(spacing: 5) {
-                        Text("\(t.channel.rawValue) · Steg \(t.step)/\(t.stepTotal)")
-                            .font(.appScaled(size: 11))
-                            .foregroundStyle(LBrand.textSecondary)
-                        Text("·").foregroundStyle(LBrand.textTertiary)
-                        Text("\(t.used) brukt")
-                            .font(.appScaled(size: 11))
-                            .foregroundStyle(LBrand.textSecondary)
-                    }
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text("\(Int(t.conversion * 100)) %")
-                        .font(.appScaled(size: 13, weight: .black, design: .rounded))
-                        .foregroundStyle(LBrand.green)
-                        .monospacedDigit()
-                    Text(t.status.rawValue)
-                        .font(.appScaled(size: 9, weight: .bold))
-                        .foregroundStyle(t.status.color)
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(t.status.color.opacity(0.18), in: Capsule())
-                }
-                Image(systemName: "chevron.right")
-                    .font(.appScaled(size: 11, weight: .bold))
-                    .foregroundStyle(LBrand.textTertiary)
-            }
-            .padding(11)
-            .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(LBrand.stroke, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
     }
 }
 
@@ -3286,56 +2375,35 @@ struct AllObjectionsSheet: View {
 
 struct NewObjectionSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var title: String = ""
     @State private var response: String = ""
-    @State private var category: ObjCategory = .price
-    @State private var iconColor: ObjColor = .yellow
-    @State private var stage: TemplateStage = .discovery
-    @State private var addToTemplate = true
-    @State private var triggerAI = false
+    /// Ekte Pondus-kategori (matcher pondus_templates.category — IKKE en
+    /// egen "steg"-taksonomi). Innvendingen legges til alle publiserte
+    /// maler i denne kategorien (bulk-attach, mig 2026-08-16).
+    @State private var category: String = PondusCategory.priceObjection
+    @State private var isSaving = false
+    @State private var errorText: String?
+    /// 2026-08-17: «AI-foreslå» togglet et @State ingen leste — ren
+    /// dekorasjon, ingen respons ble noensinne foreslått. Nå et ekte
+    /// kall mot /objections/ai-suggest (Claude, samme gating som
+    /// mal-editorens «AI-foreslå sterkere»).
+    @State private var aiSuggesting = false
 
-    enum ObjCategory: String, CaseIterable, Hashable {
-        case price = "Pris / verdi"
-        case timing = "Timing"
-        case authority = "Beslutning"
-        case need = "Behov"
-        case competitor = "Konkurrent"
-        case other = "Annet"
-        var icon: String {
-            switch self {
-            case .price:       return "norwegiankronesign.circle.fill"
-            case .timing:      return "clock.fill"
-            case .authority:   return "person.crop.circle.badge.questionmark"
-            case .need:        return "questionmark.circle.fill"
-            case .competitor:  return "shield.fill"
-            case .other:       return "ellipsis.circle.fill"
-            }
-        }
+    private static let categoryOptions: [(value: String, label: String)] = [
+        (PondusCategory.firstContact, "Første kontakt"),
+        (PondusCategory.meetingOpen, "Møteåpning"),
+        (PondusCategory.priceObjection, "Prisinnvending"),
+        (PondusCategory.decisionMaker, "Beslutningstaker"),
+        (PondusCategory.followUp, "Oppfølging"),
+        (PondusCategory.custom, "Egendefinert"),
+    ]
+
+    private var categoryLabel: String {
+        Self.categoryOptions.first { $0.value == category }?.label ?? category
     }
 
-    enum ObjColor: String, CaseIterable, Hashable {
-        case green, blue, yellow, orange, pink, red
-        var color: Color {
-            switch self {
-            case .green: return LBrand.green
-            case .blue: return LBrand.blue
-            case .yellow: return LBrand.yellow
-            case .orange: return LBrand.orange
-            case .pink: return LBrand.pink
-            case .red: return LBrand.red
-            }
-        }
-    }
-
-    enum TemplateStage: String, CaseIterable, Hashable {
-        case discovery = "Discovery"
-        case demo = "Demo"
-        case proposal = "Tilbud"
-        case negotiation = "Forhandling"
-        case anyStage = "Hvilket som helst steg"
-    }
-
-    private var canSave: Bool { !title.isEmpty && !response.isEmpty }
+    private var canSave: Bool { !title.isEmpty && !response.isEmpty && !isSaving }
 
     var body: some View {
         NavigationStack {
@@ -3344,10 +2412,12 @@ struct NewObjectionSheet: View {
                     livePreview
                     titleField
                     responseField
-                    categoryGrid
-                    colorPicker
-                    stageDropdown
-                    optionsCard
+                    categoryDropdown
+                    if let errorText {
+                        Text(errorText)
+                            .font(.appScaled(size: 12, weight: .semibold))
+                            .foregroundStyle(LBrand.red)
+                    }
                     Color.clear.frame(height: 100)
                 }
                 .padding(20)
@@ -3367,6 +2437,40 @@ struct NewObjectionSheet: View {
         }
     }
 
+    private func save() async {
+        isSaving = true
+        errorText = nil
+        let updated = await appState.pondusStore.bulkAttachObjection(
+            category: category, prompt: title, response: response, api: appState.api
+        )
+        isSaving = false
+        guard let updated else {
+            errorText = appState.pondusStore.lastError ?? "Kunne ikke lagre innvendingen."
+            return
+        }
+        await LeadbookLiveStore.shared.refresh()
+        if updated == 0 {
+            errorText = "Ingen maler i «\(categoryLabel)» ennå — innvendingen ble ikke lagt til noen steder."
+            return
+        }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        dismiss()
+    }
+
+    /// Foreslår en respons via Claude basert på tittel-feltet (innvendingen
+    /// selv). Krever tittel utfylt — knappen er disabled inntil da.
+    private func suggestAI() async {
+        guard !title.isEmpty, let api = appState.api else { return }
+        aiSuggesting = true
+        errorText = nil
+        do {
+            response = try await api.suggestObjectionResponse(objection: title, category: categoryLabel)
+        } catch {
+            errorText = "AI-forslag feilet — prøv igjen, eller skriv responsen selv."
+        }
+        aiSuggesting = false
+    }
+
     private var livePreview: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("FORHÅNDSVISNING")
@@ -3375,10 +2479,10 @@ struct NewObjectionSheet: View {
                 .tracking(0.6)
             HStack(alignment: .top, spacing: 10) {
                 ZStack {
-                    Circle().fill(iconColor.color.opacity(0.22))
-                    Image(systemName: category.icon)
+                    Circle().fill(LBrand.green.opacity(0.22))
+                    Image(systemName: "shield.fill")
                         .font(.appScaled(size: 11, weight: .bold))
-                        .foregroundStyle(iconColor.color)
+                        .foregroundStyle(LBrand.green)
                 }
                 .frame(width: 30, height: 30)
                 VStack(alignment: .leading, spacing: 2) {
@@ -3395,7 +2499,7 @@ struct NewObjectionSheet: View {
             }
             .padding(11)
             .background(LBrand.cardHi.opacity(0.6), in: RoundedRectangle(cornerRadius: 11))
-            .overlay(RoundedRectangle(cornerRadius: 11).stroke(iconColor.color.opacity(0.30), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 11).stroke(LBrand.green.opacity(0.30), lineWidth: 1))
         }
     }
 
@@ -3424,10 +2528,14 @@ struct NewObjectionSheet: View {
             HStack {
                 label("Anbefalt respons *")
                 Spacer()
-                Button { triggerAI.toggle() } label: {
+                Button { Task { await suggestAI() } } label: {
                     HStack(spacing: 4) {
-                        Image(systemName: "sparkles")
-                            .font(.appScaled(size: 10, weight: .bold))
+                        if aiSuggesting {
+                            ProgressView().scaleEffect(0.6).tint(LBrand.purpleLight)
+                        } else {
+                            Image(systemName: "sparkles")
+                                .font(.appScaled(size: 10, weight: .bold))
+                        }
                         Text("AI-foreslå")
                             .font(.appScaled(size: 10, weight: .semibold))
                     }
@@ -3436,6 +2544,7 @@ struct NewObjectionSheet: View {
                     .background(LBrand.purple.opacity(0.18), in: Capsule())
                 }
                 .buttonStyle(.plain)
+                .disabled(title.isEmpty || aiSuggesting)
             }
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $response)
@@ -3456,78 +2565,16 @@ struct NewObjectionSheet: View {
         }
     }
 
-    private var categoryGrid: some View {
+    private var categoryDropdown: some View {
         VStack(alignment: .leading, spacing: 7) {
-            label("Kategori")
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 7) {
-                ForEach(ObjCategory.allCases, id: \.self) { c in
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) { category = c }
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: c.icon)
-                                .font(.appScaled(size: 11, weight: .bold))
-                                .foregroundStyle(category == c ? .white : iconColor.color)
-                            Text(c.rawValue)
-                                .font(.appScaled(size: 11, weight: .bold))
-                                .foregroundStyle(.white)
-                                .lineLimit(1)
-                            Spacer()
-                            if category == c {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.appScaled(size: 12)).foregroundStyle(.white)
-                            }
-                        }
-                        .padding(.horizontal, 10).padding(.vertical, 9)
-                        .background(
-                            category == c ? AnyShapeStyle(iconColor.color) : AnyShapeStyle(LBrand.card),
-                            in: RoundedRectangle(cornerRadius: 10)
-                        )
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(category == c ? Color.clear : LBrand.stroke, lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    private var colorPicker: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            label("Farge")
-            HStack(spacing: 8) {
-                ForEach(ObjColor.allCases, id: \.self) { c in
-                    Button {
-                        withAnimation { iconColor = c }
-                    } label: {
-                        ZStack {
-                            Circle().fill(c.color)
-                            if iconColor == c {
-                                Image(systemName: "checkmark")
-                                    .font(.appScaled(size: 11, weight: .black))
-                                    .foregroundStyle(.white)
-                            }
-                        }
-                        .frame(width: 30, height: 30)
-                        .overlay(Circle().stroke(.white.opacity(iconColor == c ? 0.85 : 0), lineWidth: 1.5))
-                        .scaleEffect(iconColor == c ? 1.1 : 1)
-                    }
-                    .buttonStyle(.plain)
-                }
-                Spacer()
-            }
-        }
-    }
-
-    private var stageDropdown: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            label("Tilhører salgs-steg")
+            label("Legg til i alle maler i kategorien")
             Menu {
-                ForEach(TemplateStage.allCases, id: \.self) { s in
-                    Button(s.rawValue) { stage = s }
+                ForEach(Self.categoryOptions, id: \.value) { opt in
+                    Button(opt.label) { category = opt.value }
                 }
             } label: {
                 HStack {
-                    Text(stage.rawValue)
+                    Text(categoryLabel)
                         .font(.appScaled(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                     Spacer()
@@ -3539,33 +2586,10 @@ struct NewObjectionSheet: View {
                 .background(LBrand.card, in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(LBrand.stroke, lineWidth: 1))
             }
+            Text("Legges til på alle publiserte maler i denne kategorien — for din org, eller globalt hvis du er SuperAdmin.")
+                .font(.appScaled(size: 10))
+                .foregroundStyle(LBrand.textSecondary)
         }
-    }
-
-    private var optionsCard: some View {
-        Toggle(isOn: $addToTemplate) {
-            HStack(spacing: 9) {
-                ZStack {
-                    Circle().fill(LBrand.green.opacity(0.22))
-                    Image(systemName: "doc.text.fill")
-                        .font(.appScaled(size: 11, weight: .bold))
-                        .foregroundStyle(LBrand.green)
-                }
-                .frame(width: 30, height: 30)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Legg til i alle relevante maler")
-                        .font(.appScaled(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Text("Innvendingen vises automatisk i alle maler for valgt steg")
-                        .font(.appScaled(size: 10))
-                        .foregroundStyle(LBrand.textSecondary)
-                }
-            }
-        }
-        .tint(LBrand.purple)
-        .padding(11)
-        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(LBrand.stroke, lineWidth: 1))
     }
 
     private func label(_ t: String) -> some View {
@@ -3575,11 +2599,15 @@ struct NewObjectionSheet: View {
     }
 
     private var saveBar: some View {
-        Button { dismiss() } label: {
+        Button { Task { await save() } } label: {
             HStack(spacing: 7) {
-                Image(systemName: "shield.fill")
-                    .font(.appScaled(size: 13, weight: .bold))
-                Text(canSave ? "Opprett innvending" : "Fyll inn tittel og respons")
+                if isSaving {
+                    ProgressView().tint(.white)
+                } else {
+                    Image(systemName: "shield.fill")
+                        .font(.appScaled(size: 13, weight: .bold))
+                }
+                Text(isSaving ? "Lagrer …" : (canSave ? "Legg til innvending" : "Fyll inn tittel og respons"))
                     .font(.appScaled(size: 14, weight: .bold))
                     .lineLimit(1).minimumScaleFactor(0.85)
             }
@@ -3587,7 +2615,7 @@ struct NewObjectionSheet: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
             .background(
-                LinearGradient(colors: canSave ? [iconColor.color, iconColor.color.opacity(0.7)] : [LBrand.cardHi, LBrand.cardHi],
+                LinearGradient(colors: canSave ? [LBrand.green, LBrand.green.opacity(0.7)] : [LBrand.cardHi, LBrand.cardHi],
                                startPoint: .leading, endPoint: .trailing),
                 in: RoundedRectangle(cornerRadius: 12)
             )

@@ -369,6 +369,7 @@ struct LeadsView: View {
     @State private var detailTab: DetailTab = .details
     @State private var logActivityOpen: Bool = false
     @State private var addLeadOpen: Bool = false
+    @State private var addLeadToast: String?
     @State private var kpiDrillDown: KPIKind?
     @State private var showStatsModal = false
     @State private var followUpOpen: Bool = false
@@ -451,10 +452,44 @@ struct LeadsView: View {
         .sheet(isPresented: $addLeadOpen) {
             // Samme modal som "+ Legg til lead" i Kart-fanen.
             // Gjenbrukt fra _AddLeadSheet.swift for konsistens.
-            LeadsAddLeadSheet { _ in
+            LeadsAddLeadSheet { newLead in
                 addLeadOpen = false
+                // 2026-08-16: kallet manglet helt — se KartView.swift for samme fiks.
+                guard let api = appState.api, !DemoModeManager.isActiveNonisolated else {
+                    addLeadToast = DemoModeManager.isActiveNonisolated ? "Demo-modus — ikke lagret" : "Ikke innlogget"
+                    return
+                }
+                Task {
+                    do {
+                        _ = try await api.createLeadAtPin(
+                            name: newLead.companyName, company: newLead.companyName,
+                            phone: newLead.phone, email: newLead.email,
+                            industryId: nil, leadTemperature: nil,
+                            latitude: newLead.coord.latitude, longitude: newLead.coord.longitude,
+                            address: newLead.address
+                        )
+                        addLeadToast = "«\(newLead.companyName)» lagt til"
+                    } catch {
+                        addLeadToast = "Kunne ikke lagre lead — prøv igjen"
+                    }
+                }
             }
         }
+        .overlay(alignment: .top) {
+            if let toast = addLeadToast {
+                Text(toast)
+                    .font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.top, 12)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .task {
+                        try? await Task.sleep(nanoseconds: 2_500_000_000)
+                        addLeadToast = nil
+                    }
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 1.0), value: addLeadToast)
         .sheet(item: $kpiDrillDown) { kind in
             KPIDetailSheet(kind: kind)
         }

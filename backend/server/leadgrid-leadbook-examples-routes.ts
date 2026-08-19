@@ -124,6 +124,37 @@ function jsonArr(v: unknown): unknown[] {
   return Array.isArray(v) ? v : [];
 }
 
+// Regex-basert PII-maskering (§6 i docs/leadgrid-gdpr-lydopptak.md) — kjøres
+// automatisk ved draft→published-overgang. Fanger STRUKTURERT PII (telefon,
+// e-post, org.nr) pålitelig; navn/adresser er for fuzzy for regex alene —
+// doc-en forutsetter et LLM-pass i tillegg (kjøres on-device i appen, se
+// LeadbookAnonymizer.swift, FØR denne PATCH-en sendes). Denne backend-
+// regex-en er sikkerhetsnettet som alltid kjører, uansett om klienten
+// hadde on-device AI tilgjengelig.
+const PII_PATTERNS: [RegExp, string][] = [
+  // Norske telefonnumre: +47 XXX XX XXX, 8 sammenhengende siffer, med/uten mellomrom.
+  [/(\+?47[\s.-]?)?\b\d{2}[\s.-]?\d{2}[\s.-]?\d{2}[\s.-]?\d{2}\b/g, "[telefon]"],
+  [/[\w.+-]+@[\w-]+\.[a-zA-Z]{2,}/g, "[e-post]"],
+  // Org.nr: 9 siffer, evt. gruppert 3-3-3.
+  [/\b\d{3}[\s]?\d{3}[\s]?\d{3}\b/g, "[org.nr]"],
+];
+
+export function anonymizeText(t: string): string {
+  let out = t;
+  for (const [re, replacement] of PII_PATTERNS) out = out.replace(re, replacement);
+  return out;
+}
+
+export function anonymizeTranscript(transcript: unknown): unknown[] {
+  return jsonArr(transcript).map((line) => {
+    if (line && typeof line === "object" && "text" in line) {
+      const l = line as Record<string, unknown>;
+      return { ...l, text: typeof l.text === "string" ? anonymizeText(l.text) : l.text };
+    }
+    return line;
+  });
+}
+
 export function registerLeadgridLeadbookExamplesRoutes(
   deps: LeadbookExamplesRoutesDeps,
 ): void {
@@ -540,6 +571,90 @@ ${text.slice(0, 2000)}`;
     }
   });
 
+  // ── POST /api/leadgrid/leadbook/objections/ai-suggest ─────────────
+  // Ekte AI bak Leadbook «AI-foreslå»-knappen i innvending-editoren
+  // (2026-08-17 — knappen togglet et @State ingen leste; ren dekorasjon,
+  // ingen respons ble foreslått i det hele tatt). Samme mønster/gating
+  // som /templates/strengthen: leder-rolle + eksplisitt åpnet AI-
+  // entitlement (fail-closed), samme kostnadslogg (feature 'objection').
+  app.post("/api/leadgrid/leadbook/objections/ai-suggest", async (req, res) => {
+    const g = await guard(req, res);
+    if (!g) return;
+    if (g.role == null || !WRITE_ROLES.has(g.role)) {
+      return res.status(403).json({ error: "krever_leder_rolle" });
+    }
+    try {
+      const aiRow = await pool.query<{ state: string }>(
+        `SELECT state FROM leadgrid_org_entitlements
+          WHERE organization_id = $1 AND feature_key = $2 LIMIT 1`,
+        [g.orgId, LEADBOOK_AI_STRUKTUR_FEATURE_KEYS[0]],
+      );
+      const aiState = aiRow.rows[0]?.state ?? null;
+      if (aiState == null || aiState === "locked") {
+        return res.status(403).json({
+          error: "entitlement_locked",
+          features: LEADBOOK_AI_STRUKTUR_FEATURE_KEYS,
+        });
+      }
+    } catch (e) {
+      console.warn("[leadbook-examples] ai-entitlement-sjekk feilet:", (e as Error).message);
+      return res.status(503).json({ error: "entitlement_utilgjengelig" });
+    }
+    const objection = str((req.body ?? {}).objection).trim();
+    if (objection.length < 3) {
+      return res.status(400).json({ error: "for_kort_tekst" });
+    }
+    const category = str((req.body ?? {}).category).trim();
+    if (!ANTHROPIC_API_KEY) {
+      return res.status(503).json({ error: "ai_ikke_konfigurert" });
+    }
+    try {
+      const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+      const prompt = `Du er en norsk salgscoach. En selger skal lære å håndtere en kunde-innvending. Foreslå en konkret, trygg og kort respons selgeren kan bruke — anerkjenn innvendingen først, snu den så mot verdi/neste steg. Ikke pushy, ikke generisk. 2-4 setninger. Svar KUN med selve responsen — ingen forklaring, ingen anførselstegn.
+
+Innvending${category ? ` (kategori: ${category})` : ""}:
+${objection.slice(0, 500)}`;
+      const msg = await withAIQuota("claude", null, () =>
+        client.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 400,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      );
+      const out = msg.content
+        .filter((c): c is { type: "text"; text: string } => c.type === "text")
+        .map((c) => c.text)
+        .join("")
+        .trim();
+
+      // Kostnadssporing — best effort, velter aldri svaret.
+      try {
+        const inTok = msg.usage?.input_tokens ?? null;
+        const outTok = msg.usage?.output_tokens ?? null;
+        const cost = inTok != null && outTok != null
+          ? (inTok * 3 + outTok * 15) / 1_000_000
+          : null;
+        await pool.query(
+          `INSERT INTO leadbook_ai_usage
+             (id, organization_id, user_id, user_name, feature, model,
+              input_chars, input_tokens, output_tokens, cost_usd)
+           VALUES ($1,$2,$3,$4,'objection',$5,$6,$7,$8,$9)`,
+          [randomUUID(), g.orgId, g.session.userId, g.session.name ?? "",
+           "claude-sonnet-4-6", objection.length, inTok, outTok, cost],
+        );
+      } catch (e) {
+        console.warn("[leadbook-examples] ai-usage-logg feilet:", (e as Error).message);
+      }
+
+      const suggestion = out.replace(/^["«]+|["»]+$/g, "").trim();
+      if (!suggestion) return res.status(502).json({ error: "ai_svar_tomt" });
+      return res.json({ suggestion });
+    } catch (err) {
+      console.warn("[leadbook-examples] objection ai-suggest failed:", (err as Error).message);
+      return res.status(500).json({ error: "ai_suggest_failed" });
+    }
+  });
+
   // ── GET /api/leadgrid/leadbook/examples/ai-usage ──────────────────
   // Kostnadsoversikt for AI-struktureringen (kun ledere): totalt + denne
   // måneden + per bruker. cost_usd er estimat fra offisiell prisliste.
@@ -769,6 +884,15 @@ ${text.slice(0, 2000)}`;
       );
       if (r.rowCount === 0) return res.status(404).json({ error: "ikke_funnet" });
 
+      // §6 anonymisering — regex-sikkerhetsnett på draft→published (kjøres
+      // ALLTID her, uavhengig av om appen alt gjorde et on-device LLM-pass
+      // FØR denne PATCH-en). Best effort — feiler aldri selve publiseringen.
+      if (publishing && oldStatus !== "published") {
+        anonymizeOnPublish(g.orgId, req.params.id)
+          .catch((e) => console.warn(
+            "[leadbook-examples] anonymize feilet:", (e as Error).message));
+      }
+
       // «Ukens samtale»-digest: nytt publisert eksempel → varsle hele
       // org-en (unntatt publisereren). Best effort — velter aldri patchen.
       if (publishing && oldStatus !== "published") {
@@ -782,6 +906,29 @@ ${text.slice(0, 2000)}`;
       return res.status(500).json({ error: "patch_failed" });
     }
   });
+
+  /// §6 anonymisering — kjøres på draft→published. Maskerer transcript
+  /// (per replikk) + customer_label; summary/key_learnings er ledernes
+  /// egne kuraterte tekst, ikke rå kunde-sitat — røres ikke.
+  async function anonymizeOnPublish(orgId: string, exampleId: string): Promise<void> {
+    const row = await pool.query<{ transcript: unknown; customer_label: string }>(
+      `SELECT transcript, customer_label FROM leadbook_examples
+        WHERE id = $1::uuid AND organization_id = $2 LIMIT 1`,
+      [exampleId, orgId],
+    );
+    const r = row.rows[0];
+    if (!r) return;
+    await pool.query(
+      `UPDATE leadbook_examples
+          SET transcript = $1::jsonb, customer_label = $2, anonymized_at = NOW()
+        WHERE id = $3::uuid AND organization_id = $4`,
+      [
+        JSON.stringify(anonymizeTranscript(r.transcript)),
+        anonymizeText(r.customer_label ?? ""),
+        exampleId, orgId,
+      ],
+    );
+  }
 
   /// Publiserings-varsel til alle org-medlemmer: «Ny vinnersamtale fra
   /// Marte — 340K, sterk på Trygghet». Kjøres asynkront etter patch-svaret.

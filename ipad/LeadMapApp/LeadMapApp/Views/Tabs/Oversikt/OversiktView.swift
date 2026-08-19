@@ -1848,8 +1848,26 @@ private struct LeadsInAreaCard: View {
             )
         }
         .sheet(isPresented: $showMiniAddLead) {
-            AddLeadSheet { _ in
-                miniShowToast("Lead lagt til på \(miniCurrentRegion.center.latitude), \(miniCurrentRegion.center.longitude)")
+            AddLeadSheet { newLead in
+                // 2026-08-16: kallet manglet helt — se KartView.swift for samme fiks.
+                guard let api = appState.api, !DemoModeManager.isActiveNonisolated else {
+                    miniShowToast(DemoModeManager.isActiveNonisolated ? "Demo-modus — ikke lagret" : "Ikke innlogget")
+                    return
+                }
+                Task {
+                    do {
+                        _ = try await api.createLeadAtPin(
+                            name: newLead.companyName, company: newLead.companyName,
+                            phone: newLead.phone, email: newLead.email,
+                            industryId: nil, leadTemperature: nil,
+                            latitude: newLead.coord.latitude, longitude: newLead.coord.longitude,
+                            address: newLead.address
+                        )
+                        miniShowToast("«\(newLead.companyName)» lagt til")
+                    } catch {
+                        miniShowToast("Kunne ikke lagre lead — prøv igjen")
+                    }
+                }
             }
         }
         // MeMapPin tap-actions (2026-07-02) — inline HUD-overlay på selve

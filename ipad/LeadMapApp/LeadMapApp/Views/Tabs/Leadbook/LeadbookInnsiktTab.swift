@@ -121,7 +121,12 @@ struct LeadbookInnsiktView: View {
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: toast)
-        .sheet(isPresented: $showFullReport) { FullInsiktReportSheet() }
+        .sheet(isPresented: $showFullReport) {
+            FullInsiktReportSheet(
+                innsikt: DemoModeManager.isActiveNonisolated ? nil : innsikt,
+                periodLabel: period.rawValue
+            )
+        }
         .sheet(item: $openExample) { ex in LeadbookExampleDetailSheet(example: ex) }
     }
 
@@ -174,8 +179,10 @@ struct LeadbookInnsiktView: View {
                 }
                 // «Send rapport» fjernet 2026-07-17: var død knapp — kun
                 // toast, ingen rapport-utsendelse bak.
-                // «Full rapport» er fortsatt ren mock → kun demo.
-                if DemoModeManager.isActiveNonisolated {
+                // «Full rapport» + PDF-eksport (2026-08-16): ekte i begge
+                // moduser nå — demo viser eksempeldata, ekte modus krever
+                // at innsikt faktisk er lastet (samme datakrav som kortene).
+                if DemoModeManager.isActiveNonisolated || (innsikt?.totals.examples ?? 0) > 0 {
                 Button { showFullReport = true } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "doc.text.fill").font(.appScaled(size: 11, weight: .bold))
@@ -1114,43 +1121,252 @@ struct LeadbookInnsiktView: View {
 
 // MARK: - FullInsiktReportSheet
 
+/// Full innsikt-rapport + PDF-eksport (2026-08-16). `innsikt == nil` betyr
+/// demo-modus — viser en tydelig merket eksempelrapport (samme tall som
+/// før, men ikke lenger fremstilt som om de er ekte). Ekte modus bygger
+/// alle tall fra samme `LeadbookInnsiktDTO` som kortene på selve fanen.
 struct FullInsiktReportSheet: View {
     @Environment(\.dismiss) private var dismiss
+    let innsikt: APIClient.LeadbookInnsiktDTO?
+    let periodLabel: String
+    @State private var isExporting = false
+    @State private var exportedPDFURL: URL?
+    @State private var showShareSheet = false
+    @State private var exportError: String?
+
+    private static let pdfPageWidth: CGFloat = 612 // US Letter, 72pt/inch
 
     var body: some View {
         NavigationStack {
             ZStack {
                 LBrand.bg.ignoresSafeArea()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Full insikt-rapport").font(.appScaled(size: 22, weight: .heavy))
-                            .foregroundStyle(.white)
-                        Text("Q2 2026 · Leadgrid AS")
-                            .font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
-                        Text("📈 EXECUTIVE SUMMARY")
-                            .font(.appScaled(size: 11, weight: .black))
-                            .foregroundStyle(LBrand.purpleLight).tracking(0.8)
-                        Text("Pondus-snittet steg fra 78 til 82 i Q2 (+5 %). Hovedtrenden er at teamet har internalisert pause-mønsteret etter prisinnvendinger. Vinn-raten følger med, fra 25,2 % til 28,6 %. Møtebooking-malen er klar markedsleder med 41 % konvertering.")
-                            .font(.appScaled(size: 13))
-                            .foregroundStyle(.white)
-                            .padding(14)
-                            .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
-                        Text("Hele rapporten porteres til PDF-eksport i prod. Her er bare en placeholder for å vise modal-mønsteret.")
-                            .font(.appScaled(size: 11)).foregroundStyle(LBrand.textTertiary)
-                            .padding(.top, 30)
-                    }
-                    .padding(20)
-                }
+                ScrollView { reportBody.padding(20) }
             }
-            .navigationTitle("Q2-rapport")
+            .navigationTitle(innsikt == nil ? "Eksempelrapport" : "Innsiktsrapport")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Lukk") { dismiss() }.tint(LBrand.textSecondary)
                 }
-                // «Eksporter PDF» fjernet 2026-07-17: var død knapp —
-                // rapporten er placeholder uten PDF-eksport.
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { Task { await exportPDF() } } label: {
+                        if isExporting {
+                            ProgressView().tint(LBrand.purpleLight)
+                        } else {
+                            Label("Eksporter PDF", systemImage: "square.and.arrow.up")
+                        }
+                    }
+                    .disabled(isExporting)
+                }
+            }
+            .sheet(isPresented: $showShareSheet) {
+                if let exportedPDFURL { ShareSheet(items: [exportedPDFURL]) }
+            }
+            .alert("Kunne ikke eksportere PDF", isPresented: .init(
+                get: { exportError != nil }, set: { if !$0 { exportError = nil } }
+            )) {
+                Button("OK") { exportError = nil }
+            } message: {
+                Text(exportError ?? "")
             }
         }
+    }
+
+    // MARK: - Report content (delt mellom skjerm og PDF-render)
+
+    @ViewBuilder
+    private var reportBody: some View {
+        if let inn = innsikt {
+            realReport(inn)
+        } else {
+            demoReport
+        }
+    }
+
+    private func realReport(_ inn: APIClient.LeadbookInnsiktDTO) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Innsiktsrapport").font(.appScaled(size: 22, weight: .heavy)).foregroundStyle(.white)
+            Text(periodLabel).font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
+
+            sectionHeader("EXECUTIVE SUMMARY")
+            Text(executiveSummary(inn))
+                .font(.appScaled(size: 13)).foregroundStyle(.white)
+                .padding(14).background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
+
+            sectionHeader("NØKKELTALL")
+            reportStatGrid(inn)
+
+            if !inn.bySeller.isEmpty {
+                sectionHeader("SELGER-LEADERBOARD")
+                reportRows(inn.bySeller.prefix(10).map { s in
+                    (s.name, "\(s.count) samtaler · \(pondusText(s.avgPondus)) · \(percentText(s.winRate))")
+                })
+            }
+            if !inn.byDimension.isEmpty {
+                sectionHeader("PER DIMENSJON")
+                reportRows(inn.byDimension.map { ($0.dimension, "\($0.count) · \(pondusText($0.avgPondus))") })
+            }
+            if !inn.byChannel.isEmpty {
+                sectionHeader("PER KANAL")
+                reportRows(inn.byChannel.map { c in
+                    let decided = c.won + c.lost
+                    let rate = decided > 0 ? Double(c.won) / Double(decided) : nil
+                    return (c.channel, "\(c.count) · \(percentText(rate)) vunnet")
+                })
+            }
+            if let top = inn.topExample {
+                sectionHeader("BESTE EKSEMPEL")
+                caseCard(top, tint: LBrand.green)
+            }
+            if let bottom = inn.bottomExample {
+                sectionHeader("LÆRINGSEKSEMPEL")
+                caseCard(bottom, tint: LBrand.orange)
+            }
+            Text("Basert på \(inn.totals.examples) publiserte eksempler i perioden.")
+                .font(.appScaled(size: 10)).foregroundStyle(LBrand.textTertiary)
+                .padding(.top, 10)
+        }
+    }
+
+    private var demoReport: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Eksempelrapport").font(.appScaled(size: 22, weight: .heavy)).foregroundStyle(.white)
+            Label("Demo-data — ikke faktiske tall for din organisasjon", systemImage: "sparkles")
+                .font(.appScaled(size: 11, weight: .semibold)).foregroundStyle(LBrand.purpleLight)
+            sectionHeader("EXECUTIVE SUMMARY")
+            Text("Pondus-snittet steg fra 78 til 82 i perioden (+5 %). Hovedtrenden er at teamet har internalisert pause-mønsteret etter prisinnvendinger. Vinn-raten følger med, fra 25,2 % til 28,6 %. Møtebooking-malen er klar markedsleder med 41 % konvertering.")
+                .font(.appScaled(size: 13)).foregroundStyle(.white)
+                .padding(14).background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
+            Text("Slå av demo-modus for å se din organisasjons ekte rapport her.")
+                .font(.appScaled(size: 11)).foregroundStyle(LBrand.textTertiary)
+                .padding(.top, 10)
+        }
+    }
+
+    // MARK: - Building blocks
+
+    private func sectionHeader(_ t: String) -> some View {
+        Text(t).font(.appScaled(size: 11, weight: .black)).foregroundStyle(LBrand.purpleLight).tracking(0.8)
+    }
+
+    private func reportStatGrid(_ inn: APIClient.LeadbookInnsiktDTO) -> some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+            reportStat("Eksempler", "\(inn.totals.examples)")
+            reportStat("Vunnet", "\(inn.totals.won)")
+            reportStat("Tapt", "\(inn.totals.lost)")
+            reportStat("Pågår", "\(inn.totals.ongoing)")
+            reportStat("Snitt Pondus", pondusText(inn.totals.avgPondus))
+            reportStat("Vinn-rate", percentText(inn.totals.winRate))
+        }
+    }
+
+    private func reportStat(_ label: String, _ value: String) -> some View {
+        VStack(spacing: 3) {
+            Text(value).font(.appScaled(size: 16, weight: .black, design: .rounded)).foregroundStyle(.white)
+            Text(label).font(.appScaled(size: 9)).foregroundStyle(LBrand.textSecondary)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 10)
+        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func reportRows(_ rows: [(String, String)]) -> some View {
+        VStack(spacing: 6) {
+            ForEach(rows, id: \.0) { row in
+                HStack {
+                    Text(row.0).font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
+                    Spacer()
+                    Text(row.1).font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary)
+                }
+                .padding(10).background(LBrand.card, in: RoundedRectangle(cornerRadius: 9))
+            }
+        }
+    }
+
+    private func caseCard(_ c: APIClient.LeadbookInnsiktDTO.CaseRow, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(c.title).font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
+            if let summary = c.summary { Text(summary).font(.appScaled(size: 11)).foregroundStyle(LBrand.textSecondary) }
+            if let score = c.pondusScore {
+                Text("Pondus \(score)").font(.appScaled(size: 10, weight: .bold)).foregroundStyle(tint)
+            }
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(LBrand.card, in: RoundedRectangle(cornerRadius: 11))
+        .overlay(RoundedRectangle(cornerRadius: 11).stroke(tint.opacity(0.3), lineWidth: 1))
+    }
+
+    // MARK: - Formatting
+
+    private func percentText(_ v: Double?) -> String {
+        guard let v else { return "—" }
+        let p = v * 100
+        return p.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(p)) %" : String(format: "%.1f %%", p)
+    }
+
+    private func pondusText(_ v: Int?) -> String { v.map { "\($0)" } ?? "—" }
+
+    private func executiveSummary(_ inn: APIClient.LeadbookInnsiktDTO) -> String {
+        let t = inn.totals, p = inn.previous
+        var parts: [String] = []
+        if let cur = t.avgPondus, let prev = p.avgPondus, prev > 0 {
+            let delta = cur - prev
+            parts.append(delta == 0
+                ? "Pondus-snittet holdt seg stabilt på \(cur) i perioden."
+                : "Pondus-snittet \(delta > 0 ? "steg" : "falt") fra \(prev) til \(cur) (\(delta > 0 ? "+" : "")\(delta)).")
+        } else if let cur = t.avgPondus {
+            parts.append("Snitt Pondus-score i perioden: \(cur).")
+        }
+        if let curRate = t.winRate {
+            if let prevRate = p.winRate {
+                parts.append("Vinn-raten er \(percentText(curRate)), mot \(percentText(prevRate)) forrige periode.")
+            } else {
+                parts.append("Vinn-raten i perioden er \(percentText(curRate)).")
+            }
+        }
+        if let best = inn.bySeller.max(by: { ($0.winRate ?? 0) < ($1.winRate ?? 0) }) {
+            parts.append("\(best.name) leder leaderboardet med \(percentText(best.winRate)) vinn-rate.")
+        }
+        if parts.isEmpty { parts.append("Ikke nok data ennå til å oppsummere trender for perioden.") }
+        return parts.joined(separator: " ")
+    }
+
+    // MARK: - PDF export (native ImageRenderer → PDF-context, WWDC22-mønster)
+    //
+    // «Åpne i Canvas» (ikke bygget ennå — Daniel ba om at veien holdes åpen):
+    // `exportedPDFURL` sin Data kan sendes rett til `CanvasView.importerPDFData`
+    // (nå internal med vilje). Mangler: navigere til `Destination.canvas`
+    // (entitlement-gatet, egen NavigationStack et hakk unna Leadbook) FØR
+    // kallet — ikke forsøkt her uten å kunne verifisere navigasjonen live.
+
+    @MainActor
+    private func exportPDF() async {
+        isExporting = true
+        defer { isExporting = false }
+        let content = reportBody
+            .padding(24)
+            .frame(width: Self.pdfPageWidth, alignment: .leading)
+            .background(LBrand.bg)
+        let renderer = ImageRenderer(content: content)
+        renderer.proposedSize = ProposedViewSize(width: Self.pdfPageWidth, height: nil)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("leadbook-innsiktsrapport-\(Int(Date().timeIntervalSince1970)).pdf")
+
+        var didWrite = false
+        renderer.render { size, renderInContext in
+            var box = CGRect(origin: .zero, size: size)
+            guard let consumer = CGDataConsumer(url: url as CFURL),
+                  let ctx = CGContext(consumer: consumer, mediaBox: &box, nil) else { return }
+            ctx.beginPDFPage(nil)
+            renderInContext(ctx)
+            ctx.endPDFPage()
+            ctx.closePDF()
+            didWrite = true
+        }
+        guard didWrite else {
+            exportError = "Kunne ikke opprette PDF-fil."
+            return
+        }
+        exportedPDFURL = url
+        showShareSheet = true
     }
 }

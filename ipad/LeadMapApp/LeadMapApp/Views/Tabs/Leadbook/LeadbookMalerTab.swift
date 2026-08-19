@@ -96,7 +96,7 @@ struct LeadbookMalerView: View {
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: toast)
-        .sheet(isPresented: $showNewTemplate) { NewTemplateSheet() }
+        .sheet(isPresented: $showNewTemplate) { PondusTemplateEditor(store: appState.pondusStore) }
         .fullScreenCover(item: $editingTemplate) { t in
             MalEditorSheet(
                 template: t,

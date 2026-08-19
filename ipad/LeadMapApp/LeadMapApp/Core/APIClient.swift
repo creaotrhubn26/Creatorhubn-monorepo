@@ -734,6 +734,17 @@ actor APIClient {
         return r.suggestion
     }
 
+    /// Ekte AI bak Leadbook «AI-foreslå»-knappen i innvending-editoren
+    /// (2026-08-17). Samme gating som strengthen: leder + AI-entitlement.
+    func suggestObjectionResponse(objection: String, category: String?) async throws -> String {
+        struct Resp: Codable { let suggestion: String }
+        var body: [String: Any] = ["objection": objection]
+        if let category, !category.isEmpty { body["category"] = category }
+        let r: Resp = try await post(
+            "/api/leadgrid/leadbook/objections/ai-suggest", body: body)
+        return r.suggestion
+    }
+
     /// AI-kostnadsoversikt (kun ledere). cost_usd kommer som streng fra
     /// pg NUMERIC — lenient decoding.
     struct AIUsageBucketDTO: Codable {
@@ -1121,6 +1132,35 @@ actor APIClient {
         if !extracted.website.isEmpty { body["website"] = extracted.website }
         if !extracted.raw.isEmpty { body["raw_text"] = extracted.raw }
         return try await post("/api/admin-room/lead-map/leads/from-card", body: body)
+    }
+
+    // MARK: - Company lookup for «Legg til lead» (2026-08-16)
+
+    struct CompanyLookupResult: Decodable {
+        struct Company: Decodable {
+            let name: String
+            let orgNr: String
+            let naceDescription: String?
+            let employees: Int?
+            let address: String?
+            let postalCode: String?
+            let city: String?
+            let website: String?
+            let isBankrupt: Bool
+            let latitude: Double?
+            let longitude: Double?
+        }
+        let found: Bool
+        let company: Company?
+    }
+
+    /// Ekte BRREG-oppslag — org.nr (9 siffer), bedriftsnavn, eller nettside
+    /// (best-effort domenegjetning, BRREG støtter ikke hjemmeside-søk).
+    func lookupCompany(query: String) async throws -> CompanyLookupResult {
+        guard let enc = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            return CompanyLookupResult(found: false, company: nil)
+        }
+        return try await get("/api/admin-room/lead-map/company-lookup?q=\(enc)")
     }
 
     // MARK: - Drop-pin lead-create (PR feat/leadmap-ipad-center-fab-droppin)
