@@ -45,7 +45,9 @@ export interface MaskinportenConfig {
   env: MaskinportenEnv;
   /** client_id fra Maskinporten-klienten (Digdir Samarbeidsportal). */
   clientId: string;
-  /** Rettigheter/scopes, mellomromsseparert, f.eks. 'skatteetaten:mvameldinginnsending'. */
+  /** Rettigheter/scopes, mellomromsseparert. MVA-innsending via Altinn 3-appen krever
+   * 'altinn:instances.read altinn:instances.write' (Skatteetaten 2026-08-19: det gamle
+   * 'skatteetaten:mvameldinginnsending' er utfasa). */
   scope: string;
   /** Privat nøkkel i PEM (PKCS#8/PKCS#1) som matcher registrert JWK. */
   privateKeyPem: string;
@@ -190,7 +192,7 @@ export class StaticMaskinportenStub implements MaskinportenPort {
       accessToken: 'stub-access-token',
       tokenType: 'Bearer',
       expiresIn: 120,
-      scope: 'skatteetaten:mvameldinginnsending',
+      scope: 'altinn:instances.read altinn:instances.write',
     },
     opts: { env?: MaskinportenEnv; configured?: boolean } = {},
   ) {

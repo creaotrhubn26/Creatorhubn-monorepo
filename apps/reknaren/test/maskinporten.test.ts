@@ -15,7 +15,7 @@ const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString(
 const cfg: MaskinportenConfig = {
   env: 'test',
   clientId: 'test-client-id',
-  scope: 'skatteetaten:mvameldinginnsending',
+  scope: 'altinn:instances.read altinn:instances.write',
   privateKeyPem,
   keyId: 'kid-1',
 };
@@ -54,7 +54,7 @@ describe('Maskinporten grant-assertion', () => {
     expect(header['kid']).toBe('kid-1');
     expect(claims['iss']).toBe('test-client-id');
     expect(claims['aud']).toBe('https://test.maskinporten.no/');
-    expect(claims['scope']).toBe('skatteetaten:mvameldinginnsending');
+    expect(claims['scope']).toBe('altinn:instances.read altinn:instances.write');
     expect(claims['iat']).toBe(now);
     expect(claims['exp']).toBe(now + 120); // Maskinporten: maks 120 s
     expect(typeof claims['jti']).toBe('string');
