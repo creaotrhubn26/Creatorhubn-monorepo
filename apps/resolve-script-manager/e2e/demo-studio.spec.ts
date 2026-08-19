@@ -93,7 +93,10 @@ test('demo-typer reformer flowen', async ({ page }) => {
 
 test('AI Director genererer flow bundet til elementer', async ({ page }) => {
   await seedDemo(page);
-  await page.getByText('Generér hele demoen').click();
+  // «Generér hele demoen» ble omdøpt til «Generér scener på nytt» (samme
+  // runDirector-handling, nå inni AI Director-modalen).
+  await page.getByTitle('Åpne AI Director').click();
+  await page.getByText('Generér scener på nytt').click();
   // runDirector → replaceScenes + setNav('script') → Script Builder
   await expect(page.getByText('Generate Script').first()).toBeVisible({ timeout: 10000 });
   await expect(page.getByText('AI Intro').first()).toBeVisible();
@@ -103,7 +106,7 @@ test('AI fullfør demoen fyller hull', async ({ page }) => {
   await seedDemo(page);
   // Ligger bak det sammenleggbare «Verktøy»-panelet.
   await page.getByTitle('Åpne AI Director').click();
-  await page.getByText('Verktøy', { exact: true }).click();
+  await page.getByText('Verktøy', { exact: false }).click();
   await page.getByText(/Fullfør demoen/).click();
   await expect(page.getByText(/Fylte \d+ scene/)).toBeVisible({ timeout: 10000 });
 });
@@ -112,7 +115,7 @@ test('klikk-capture bygger scener fra steg', async ({ page }) => {
   await seedDemo(page);
   // Ligger bak det sammenleggbare «Verktøy»-panelet.
   await page.getByTitle('Åpne AI Director').click();
-  await page.getByText('Verktøy', { exact: true }).click();
+  await page.getByText('Verktøy', { exact: false }).click();
   await page.getByText(/Klikk-capture/).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
@@ -127,7 +130,7 @@ test('Validation-modal viser Expected ↔ Detected', async ({ page }) => {
   await seedDemo(page);
   // bygg capture-scener (har detectedSelector → Match) — ligger bak «Verktøy».
   await page.getByTitle('Åpne AI Director').click();
-  await page.getByText('Verktøy', { exact: true }).click();
+  await page.getByText('Verktøy', { exact: false }).click();
   await page.getByText(/Klikk-capture/).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
@@ -135,6 +138,10 @@ test('Validation-modal viser Expected ↔ Detected', async ({ page }) => {
     emit('demo-capture://done', false);
   });
   await expect(page.getByText('Start free trial').first()).toBeVisible();
+  // «Validér handlinger» ligger i «Demo-type & visning»-panelet, ikke AI
+  // Director-modalen — lukk modalen (den overlapper) og åpne det andre.
+  await page.getByTitle('Lukk').click();
+  await page.getByRole('button', { name: /Demo-type & visning/ }).click();
   await page.getByText('Validér handlinger').click();
   await expect(page.getByText('Validation & status')).toBeVisible();
   await expect(page.getByText('Expected').first()).toBeVisible();
@@ -143,6 +150,8 @@ test('Validation-modal viser Expected ↔ Detected', async ({ page }) => {
 
 test('Responsive Check viser status + Godta forslag', async ({ page }) => {
   await seedDemo(page);
+  // Ligger bak «Demo-type & visning»-panelet (ikke AI Director-modalen).
+  await page.getByRole('button', { name: /Demo-type & visning/ }).click();
   await page.getByRole('button', { name: /Responsive Check/ }).click();
   await expect(page.getByText('All good').first()).toBeVisible({ timeout: 10000 });
   await expect(page.getByText(/Godta forslag/)).toBeVisible();
@@ -151,7 +160,8 @@ test('Responsive Check viser status + Godta forslag', async ({ page }) => {
 test('faner: Create Demo + Device Preview er distinkte', async ({ page }) => {
   await seedDemo(page);
   await page.getByText('Create Demo').click();
-  await expect(page.getByText('Start ny demo')).toBeVisible();
+  // Omdøpt: «Start ny demo» → «Start en ny video».
+  await expect(page.getByText('Start en ny video')).toBeVisible();
   await page.getByText('Device Preview').click();
   await expect(page.getByText(/Neste/)).toBeVisible();
 });
@@ -175,7 +185,7 @@ test('Director Critic gir score + forbedringer', async ({ page }) => {
   await seedDemo(page);
   // Ligger bak det sammenleggbare «Verktøy»-panelet.
   await page.getByTitle('Åpne AI Director').click();
-  await page.getByText('Verktøy', { exact: true }).click();
+  await page.getByText('Verktøy', { exact: false }).click();
   await page.getByRole('button', { name: /Vurder demoen/ }).click();
   await expect(page.getByText('Director Critic')).toBeVisible({ timeout: 10000 });
   await expect(page.getByText('72')).toBeVisible();
@@ -185,8 +195,18 @@ test('Director Critic gir score + forbedringer', async ({ page }) => {
 
 test('mål-drevet Director: mål-input lagres', async ({ page }) => {
   await seedDemo(page);
-  await page.getByPlaceholder(/Mål\?/).fill('få flere til å booke demo');
-  await expect(page.getByPlaceholder(/Mål\?/)).toHaveValue('få flere til å booke demo');
+  // Mål-feltet vises kun i AI Director sin «describe»-fase (hasGenerated===
+  // false — ingen scene har narrasjon). product_demo-malen har forhåndsutfylt
+  // narrasjon, så vi tømmer den via storen for å nå fasen.
+  await page.evaluate(() => {
+    const store = (window as unknown as { __DEMO_STUDIO_STORE__: { getState: () => { project: { scenes: Array<{ id: string }> } | null; updateScene: (id: string, patch: Record<string, unknown>) => void } } }).__DEMO_STUDIO_STORE__;
+    const st = store.getState();
+    st.project?.scenes.forEach((s) => st.updateScene(s.id, { narration: '' }));
+  });
+  await page.getByTitle('Åpne AI Director').click();
+  const mal = page.getByPlaceholder('f.eks. «få flere til å booke demo»');
+  await mal.fill('få flere til å booke demo');
+  await expect(mal).toHaveValue('få flere til å booke demo');
 });
 
 test('lesbarhets-score (LIX) vises i Script Builder', async ({ page }) => {
@@ -218,19 +238,21 @@ test('CTA-bank klassifiserer capture-elementer', async ({ page }) => {
   await seedDemo(page);
   // Ligger bak det sammenleggbare «Verktøy»-panelet.
   await page.getByTitle('Åpne AI Director').click();
-  await page.getByText('Verktøy', { exact: true }).click();
+  await page.getByText('Verktøy', { exact: false }).click();
   await page.getByText(/Klikk-capture/).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
     emit('demo-capture://step', { url: 'x', selector: '#start', targetLabel: 'Start free trial', actionType: 'click', hotspot: { x: 0.4, y: 0.3, w: 0.2, h: 0.08 }, scrollPct: 0 });
     emit('demo-capture://done', false);
   });
+  await page.getByTitle('Lukk').click(); // lukk AI Director-modalen — den overlapper scene-kortene og blokkerer klikk
   await page.getByText('Start free trial').first().click();
   await expect(page.getByText('CTA: Prøveperiode')).toBeVisible({ timeout: 10000 });
 });
 
 test('AI-kommando spør tilbake om stemme før voiceover', async ({ page }) => {
   await seedDemo(page);
+  await page.getByTitle('Åpne AI Director').click();
   const cmd = page.getByPlaceholder(/Si til AI/);
   await cmd.fill('lag en voiceover');
   await cmd.press('Enter');
@@ -243,6 +265,7 @@ test('quick-kommando: egen kommando kan legges til', async ({ page }) => {
   await seedDemo(page);
   page.removeAllListeners('dialog');
   page.on('dialog', (d) => d.accept('min egen kommando'));
+  await page.getByTitle('Åpne AI Director').click();
   await page.getByText('+ Egen').click();
   await expect(page.getByText('min egen kommando')).toBeVisible();
 });

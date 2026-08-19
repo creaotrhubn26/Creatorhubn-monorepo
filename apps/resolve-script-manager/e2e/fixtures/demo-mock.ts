@@ -38,6 +38,20 @@ export function installDemoMock() {
 
   const later = (fn: () => void) => setTimeout(fn, 30);
 
+  // Tauri API v2.11 flyttet unregisterListener til en egen global
+  // (__TAURI_EVENT_PLUGIN_INTERNALS__) — @tauri-apps/api/event.js sin
+  // _unlisten() kaller denne direkte (ikke via invoke). Uten denne krasjer
+  // React StrictMode sin mount→unmount→mount-dobbeltkjøring i dev (unmount-
+  // cleanup kaller unlisten → Cannot read properties of undefined), som
+  // ødelegger event-lytterne for resten av testen (klikk-capture, verify,
+  // auto-execute m.fl. henger da for alltid).
+  (window as unknown as { __TAURI_EVENT_PLUGIN_INTERNALS__: unknown }).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+    unregisterListener(event: string, id: number) {
+      const idx = listeners.findIndex((l) => l.event === event && l.id === id);
+      if (idx !== -1) listeners.splice(idx, 1);
+    },
+  };
+
   (window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
     transformCallback(cb: (e: unknown) => void) { const id = ++idc; cbs.set(id, cb); return id; },
     convertFileSrc(p: string) { return `file://${p}`; },
@@ -54,6 +68,13 @@ export function installDemoMock() {
         // Selector-bevisst: «broken/missing»-selektorer feiler → trigger self-healing.
         case 'demo_auto_execute': { const found = !/broken|missing/.test(String(args.selector || '')); later(() => emit('demo-capture://auto', { ok: found, found, selector: args.selector })); return null; }
         case 'demo_screenshot': later(() => emit('demo-capture://shot', { ok: true, dataUrl: TINY_JPEG })); return null;
+        // «Session»-kommandosurfacet (Guided Recorder, G22) — samme event-lag
+        // som de eldre demo_*-kommandoene over, bare andre invoke-navn.
+        case 'demo_session_open': later(() => emit('demo-capture://session-nav', {})); return 'opened';
+        case 'demo_session_exec': { const found = !/broken|missing/.test(String(args.selector || '')); later(() => emit('demo-capture://auto', { ok: found, found, selector: args.selector })); return null; }
+        case 'demo_session_verify': later(() => emit('demo-capture://verify', { cancelled: false, selector: '#start', label: 'Start free trial' })); return null;
+        case 'demo_session_shot': later(() => emit('demo-capture://shot', { ok: true, dataUrl: TINY_JPEG })); return null;
+        case 'demo_session_close': return null;
         case 'execute_script': return { succeeded: true, run_id: 'mock', events: [], exit_code: 0 };
         case 'demo_fetch_site_context': return 'Tittel: Test\nKlikkbare elementer: Start free trial · Request a demo';
         case 'demo_write_text': return args.path;

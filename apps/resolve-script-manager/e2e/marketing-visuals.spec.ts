@@ -78,7 +78,7 @@ test('manus-drevne visuelle uthevinger med preview', async ({ page }) => {
   // AI Director-kortet: «Foreslå visuelle uthevinger» ligger bak det
   // sammenleggbare «Verktøy»-panelet (lukket som default) — må åpnes først.
   await page.getByTitle('Åpne AI Director').click();
-  await page.getByText('Verktøy', { exact: true }).click();
+  await page.getByText('Verktøy', { exact: false }).click();
   await page.getByRole('button', { name: /Foreslå visuelle uthevinger/ }).click();
   await expect(page.getByRole('heading', { name: 'Visuelle uthevinger fra manuset' })).toBeVisible({ timeout: 15000 });
   await expect(page.getByText('Stat-callout')).toBeVisible();

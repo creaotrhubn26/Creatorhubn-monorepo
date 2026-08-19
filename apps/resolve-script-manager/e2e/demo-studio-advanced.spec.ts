@@ -73,18 +73,27 @@ async function seedDemo(page: Page) {
 
 /** Overstyr invoke for spesifikke capture-kommandoer (verify/auto) per test, så
  *  vi kan styre Match/Warning/needs_review uavhengig av mockens default-utfall. */
-async function overrideCaptureInvoke(page: Page, opts: { verifySelector?: string; verifyCancelled?: boolean; autoOk?: boolean; autoFound?: boolean }) {
+async function overrideCaptureInvoke(page: Page, opts: { verifySelector?: string; verifyCancelled?: boolean; autoOk?: boolean; autoFound?: boolean; scanEmpty?: boolean }) {
   await page.evaluate((o) => {
     const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args: Record<string, unknown>) => Promise<unknown> } }).__TAURI_INTERNALS__;
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
     const orig = internals.invoke.bind(internals);
     internals.invoke = async (cmd: string, args: Record<string, unknown> = {}) => {
-      if (cmd === 'demo_verify_action') {
+      // Kjør automatisk/Verifiser handling-knappene bruker «session»-kommando-
+      // surfacet (demo_session_*), ikke de eldre demo_verify_action/
+      // demo_auto_execute — overstyr begge navnesettene for sikkerhets skyld.
+      if (cmd === 'demo_verify_action' || cmd === 'demo_session_verify') {
         setTimeout(() => emit('demo-capture://verify', { cancelled: o.verifyCancelled ?? false, selector: o.verifySelector ?? '#start', label: 'Start free trial' }), 30);
         return null;
       }
-      if (cmd === 'demo_auto_execute') {
+      if (cmd === 'demo_auto_execute' || cmd === 'demo_session_exec') {
         setTimeout(() => emit('demo-capture://auto', { ok: o.autoOk ?? true, found: o.autoFound ?? true, selector: args.selector }), 30);
+        return null;
+      }
+      // Tomt scan → self-healing finner ingen kandidater → needs_review i
+      // stedet for at healing utilsiktet "reparerer" til samme element.
+      if (o.scanEmpty && cmd === 'demo_scan_dom') {
+        setTimeout(() => emit('demo-capture://dom', { url: args.url, title: 'Test', elements: [], pageText: '', branding: null }), 30);
         return null;
       }
       return orig(cmd, args);
@@ -146,10 +155,12 @@ test('slett scener til siste — slett-knapp deaktiveres ved 1 scene igjen', asy
   await expect(deleteBtn).toBeEnabled();
   // Slett gjentatte ganger til kun én scene gjenstår.
   for (let n = 6; n > 1; n--) {
-    await expect(page.getByText(`${n} scener`)).toBeVisible();
+    // exact:true — «N scener» matcher ellers også advarselbanneret «1 av N
+    // scener er stående, men...».
+    await expect(page.getByText(`${n} scener`, { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Slett scene' }).click();
   }
-  await expect(page.getByText('1 scener')).toBeVisible();
+  await expect(page.getByText('1 scener', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Slett scene' })).toBeDisabled();
 });
 
@@ -174,7 +185,7 @@ test('mal-bytte MED opptak krever bekreftelse — Cancel beholder flowen', async
   // hasRecordedWork=true → mal-bytte krever da confirm.
   // «Klikk-capture fra side» ligger bak det sammenleggbare «Verktøy»-panelet.
   await page.getByTitle('Åpne AI Director').click();
-  await page.getByText('Verktøy', { exact: true }).click();
+  await page.getByText('Verktøy', { exact: false }).click();
   await page.getByText('Klikk-capture', { exact: false }).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
@@ -182,6 +193,7 @@ test('mal-bytte MED opptak krever bekreftelse — Cancel beholder flowen', async
     emit('demo-capture://done', false);
   });
   await expect(page.getByText('Start free trial').first()).toBeVisible({ timeout: 10000 });
+  await page.getByTitle('Lukk').click(); // lukk AI Director-modalen — den overlapper scene-kortene og blokkerer klikk
   await page.getByText('Start free trial').first().click();
   // Start opptak fra topbar Record → høyre panel viser teleprompter med Mark as Done.
   await page.getByRole('button', { name: /Record/ }).first().click();
@@ -199,10 +211,10 @@ test('mal-bytte MED opptak krever bekreftelse — Cancel beholder flowen', async
 
 test('capture avbrutt (cancelled=true) bygger ingen scener', async ({ page }) => {
   await seedDemo(page);
-  await expect(page.getByText('6 scener')).toBeVisible();
+  await expect(page.getByText('6 scener', { exact: true })).toBeVisible();
   // Ligger bak det sammenleggbare «Verktøy»-panelet.
   await page.getByTitle('Åpne AI Director').click();
-  await page.getByText('Verktøy', { exact: true }).click();
+  await page.getByText('Verktøy', { exact: false }).click();
   await page.getByText('Klikk-capture', { exact: false }).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
@@ -210,7 +222,7 @@ test('capture avbrutt (cancelled=true) bygger ingen scener', async ({ page }) =>
     emit('demo-capture://done', true); // avbrutt
   });
   // Stegene forkastes → original product_demo-flow (6 scener) er intakt.
-  await expect(page.getByText('6 scener')).toBeVisible();
+  await expect(page.getByText('6 scener', { exact: true })).toBeVisible();
   await expect(page.getByText('Start free trial')).toHaveCount(0);
 });
 
@@ -220,7 +232,7 @@ test('verify med avvikende selector gir Warning (ikke Match)', async ({ page }) 
   await seedDemo(page);
   // Bygg én capture-scene med targetSelector='#start' (Expected) — ligger bak «Verktøy».
   await page.getByTitle('Åpne AI Director').click();
-  await page.getByText('Verktøy', { exact: true }).click();
+  await page.getByText('Verktøy', { exact: false }).click();
   await page.getByText('Klikk-capture', { exact: false }).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
@@ -231,11 +243,14 @@ test('verify med avvikende selector gir Warning (ikke Match)', async ({ page }) 
   // La verify returnere en ANNEN selector enn forventet → Warning.
   await overrideCaptureInvoke(page, { verifySelector: '#completely-other' });
   // Gå inn i opptak og verifiser gjeldende scene.
+  await page.getByTitle('Lukk').click(); // lukk AI Director-modalen — den overlapper scene-kortene og blokkerer klikk
   await page.getByText('Start free trial').first().click();
   await page.getByRole('button', { name: /Record/ }).first().click();
   await page.getByRole('button', { name: /Verifiser handling/ }).click();
   // Åpne validering og bekreft Warning.
   await page.getByRole('button', { name: 'Avslutt opptak' }).click();
+  // «Validér handlinger» ligger i «Demo-type & visning»-panelet.
+  await page.getByRole('button', { name: /Demo-type & visning/ }).click();
   await page.getByRole('button', { name: /Validér handlinger/ }).click();
   await expect(page.getByText('Validation & status')).toBeVisible();
   await expect(page.getByText('Warning', { exact: true }).first()).toBeVisible();
@@ -247,7 +262,7 @@ test('auto-execute som ikke finner element setter needs_review', async ({ page }
   await seedDemo(page);
   // Ligger bak det sammenleggbare «Verktøy»-panelet.
   await page.getByTitle('Åpne AI Director').click();
-  await page.getByText('Verktøy', { exact: true }).click();
+  await page.getByText('Verktøy', { exact: false }).click();
   await page.getByText('Klikk-capture', { exact: false }).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
@@ -256,16 +271,19 @@ test('auto-execute som ikke finner element setter needs_review', async ({ page }
   });
   await expect(page.getByText('Start free trial').first()).toBeVisible({ timeout: 10000 });
   // La auto returnere ok=false, found=false → scene skal merkes needs_review + alert.
-  await overrideCaptureInvoke(page, { autoOk: false, autoFound: false });
+  await overrideCaptureInvoke(page, { autoOk: false, autoFound: false, scanEmpty: true });
   let alertSeen = false;
   page.removeAllListeners('dialog');
   page.on('dialog', (d) => { if (/Fant ikke elementet|klarte ikke å reparere/.test(d.message())) alertSeen = true; void d.accept(); });
+  await page.getByTitle('Lukk').click(); // lukk AI Director-modalen — den overlapper scene-kortene og blokkerer klikk
   await page.getByText('Start free trial').first().click();
   await page.getByRole('button', { name: /Record/ }).first().click();
   await page.getByRole('button', { name: /Kjør automatisk/ }).click();
   await expect.poll(() => alertSeen, { timeout: 10000 }).toBe(true);
   // Verifiser status via Validation-panelet (needs_review).
   await page.getByRole('button', { name: 'Avslutt opptak' }).click();
+  // «Validér handlinger» ligger i «Demo-type & visning»-panelet.
+  await page.getByRole('button', { name: /Demo-type & visning/ }).click();
   await page.getByRole('button', { name: /Validér handlinger/ }).click();
   await expect(page.getByText('Validation & status')).toBeVisible();
   await expect(page.getByText(/scener mangler felt|Needs Review|Trenger gjennomgang/).first()).toBeVisible();
@@ -275,6 +293,8 @@ test('auto-execute som ikke finner element setter needs_review', async ({ page }
 
 test('Responsive Check «Godta forslag» anvender start-scroll på scenen', async ({ page }) => {
   await seedDemo(page);
+  // Ligger bak «Demo-type & visning»-panelet.
+  await page.getByRole('button', { name: /Demo-type & visning/ }).click();
   await page.getByRole('button', { name: /Responsive Check/ }).click();
   await expect(page.getByText('All good').first()).toBeVisible({ timeout: 10000 });
   await page.getByText(/Godta forslag/).click();
@@ -371,7 +391,7 @@ test('startScrollPct-felt redigeres og klemmes til 0–100', async ({ page }) =>
   // Capture en scene med scroll (0.2) → startScrollPct=20 settes deterministisk.
   // Ligger bak det sammenleggbare «Verktøy»-panelet.
   await page.getByTitle('Åpne AI Director').click();
-  await page.getByText('Verktøy', { exact: true }).click();
+  await page.getByText('Verktøy', { exact: false }).click();
   await page.getByText(/Klikk-capture/).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
@@ -379,6 +399,7 @@ test('startScrollPct-felt redigeres og klemmes til 0–100', async ({ page }) =>
     emit('demo-capture://done', false);
   });
   await expect(page.getByText('Start free trial').first()).toBeVisible({ timeout: 10000 });
+  await page.getByTitle('Lukk').click(); // lukk AI Director-modalen — den overlapper scene-kortene og blokkerer klikk
   await page.getByText('Start free trial').first().click();
   // Capture satte startScrollPct=20; feltet (max=100) vises i scene-innstillinger.
   const field = page.locator('input[type="number"][max="100"]').first();
@@ -399,12 +420,17 @@ test('reload beholder prosjektet (localStorage-persistens)', async ({ page }) =>
   const titleField = page.locator('input[value="Untitled Demo"]').first();
   await titleField.fill('Edge Persist Demo');
   await expect(page.locator('input[value="Edge Persist Demo"]').first()).toBeVisible();
+  // localStorage-skrivingen er debounced ~500ms (demoStudioStore.ts persist()).
+  // «Lagret»-teksten er allerede synlig fra seedDemo() sin egen lagring, så
+  // den er ikke et pålitelig «denne redigeringen er lagret»-signal — vent i
+  // stedet på selve debounce-vinduet.
+  await page.waitForTimeout(700);
   // Reload → loadExisting() skal gjenopprette prosjektet (ikke tom-tilstand).
   await page.reload();
   await expect(page.getByText('Demo-flow')).toBeVisible();
   await expect(page.getByText('Hva vil du vise frem?')).toHaveCount(0);
   await expect(page.locator('input[value="Edge Persist Demo"]').first()).toBeVisible();
-  await expect(page.getByText('6 scener')).toBeVisible();
+  await expect(page.getByText('6 scener', { exact: true })).toBeVisible();
 });
 
 // ── Create Demo erstatter eksisterende (confirm) ──
@@ -412,15 +438,16 @@ test('reload beholder prosjektet (localStorage-persistens)', async ({ page }) =>
 test('Create Demo med eksisterende prosjekt krever confirm før erstatning', async ({ page }) => {
   await seedDemo(page);
   await page.getByText('Create Demo').click();
-  await expect(page.getByText('Start ny demo')).toBeVisible();
+  // Overskrift/knapp/url-placeholder ble omdøpt: «Start ny demo» → «Start en
+  // ny video», «Opprett ny demo →» → «Lag ny video →», example.com →
+  // din-side.no (eget felt i denne visningen, ikke topbar-feltet).
+  await expect(page.getByText('Start en ny video')).toBeVisible();
   await expect(page.getByText('Nåværende demo')).toBeVisible();
-  // Skriv ny URL i Create Demo-feltet (ikke topbar-feltet → bruk .last()) og
-  // start → confirm aksepteres (beforeEach) → ny demo opprettes.
-  await page.getByPlaceholder('https://example.com').last().fill('annetdomene.no');
-  await page.getByRole('button', { name: 'Opprett ny demo →' }).click();
+  await page.getByPlaceholder('https://din-side.no').fill('annetdomene.no');
+  await page.getByRole('button', { name: 'Lag ny video →' }).click();
   // Tilbake i Flow Builder med nytt prosjekt (default product_demo, 6 scener).
   await expect(page.getByText('Demo-flow')).toBeVisible();
-  await expect(page.getByText('6 scener')).toBeVisible();
+  await expect(page.getByText('6 scener', { exact: true })).toBeVisible();
 });
 
 // ── AI self-healing av brutt selector ──
@@ -430,7 +457,7 @@ test('AI self-healing reparerer brutt selector og fullfører auto', async ({ pag
   // Capture en scene med en BRUTT selector (#broken-1) → auto vil feile først.
   // Ligger bak det sammenleggbare «Verktøy»-panelet.
   await page.getByTitle('Åpne AI Director').click();
-  await page.getByText('Verktøy', { exact: true }).click();
+  await page.getByText('Verktøy', { exact: false }).click();
   await page.getByText(/Klikk-capture/).click();
   await page.evaluate(() => {
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
@@ -441,6 +468,7 @@ test('AI self-healing reparerer brutt selector og fullfører auto', async ({ pag
   let healed = false;
   page.removeAllListeners('dialog');
   page.on('dialog', (d) => { if (/AI reparerte/.test(d.message())) healed = true; void d.accept(); });
+  await page.getByTitle('Lukk').click(); // lukk AI Director-modalen — den overlapper scene-kortene og blokkerer klikk
   await page.getByText('Start free trial').first().click();
   await page.getByRole('button', { name: /Record/ }).first().click();
   await page.getByRole('button', { name: /Kjør automatisk/ }).click();
