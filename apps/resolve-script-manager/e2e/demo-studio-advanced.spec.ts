@@ -79,14 +79,15 @@ async function overrideCaptureInvoke(page: Page, opts: { verifySelector?: string
     const emit = (window as unknown as { __demoEmit: (e: string, p: unknown) => void }).__demoEmit;
     const orig = internals.invoke.bind(internals);
     internals.invoke = async (cmd: string, args: Record<string, unknown> = {}) => {
-      // Kjør automatisk/Verifiser handling-knappene bruker «session»-kommando-
-      // surfacet (demo_session_*), ikke de eldre demo_verify_action/
-      // demo_auto_execute — overstyr begge navnesettene for sikkerhets skyld.
-      if (cmd === 'demo_verify_action' || cmd === 'demo_session_verify') {
+      // Kjør automatisk/Verifiser handling kaller demo_session_exec/
+      // demo_session_verify — bekreftet mot src-tauri/src/demo_capture.rs at
+      // dette er de eneste ekte kommandoene (demo_auto_execute/
+      // demo_verify_action finnes ikke i Rust-backenden).
+      if (cmd === 'demo_session_verify') {
         setTimeout(() => emit('demo-capture://verify', { cancelled: o.verifyCancelled ?? false, selector: o.verifySelector ?? '#start', label: 'Start free trial' }), 30);
         return null;
       }
-      if (cmd === 'demo_auto_execute' || cmd === 'demo_session_exec') {
+      if (cmd === 'demo_session_exec') {
         setTimeout(() => emit('demo-capture://auto', { ok: o.autoOk ?? true, found: o.autoFound ?? true, selector: args.selector }), 30);
         return null;
       }

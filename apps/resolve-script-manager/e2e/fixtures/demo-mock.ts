@@ -64,13 +64,13 @@ export function installDemoMock() {
         case 'start_demo_capture': return null; // spec styrer steg via __demoEmit
         case 'demo_capture_done': return null;
         case 'demo_scan_dom': later(() => emit('demo-capture://dom', { url: args.url, title: 'Test', elements: SCAN_ELEMENTS, pageText: 'Test-side: Start free trial. Request a demo. Pricing.', branding: { brandName: 'TestMerke', brandColor: '#3366ff', logoUrl: 'https://example.test/logo.png', palette: ['#3366ff', '#ff6633'] } })); return null;
-        case 'demo_verify_action': later(() => emit('demo-capture://verify', { cancelled: false, selector: '#start', label: 'Start free trial' })); return null;
-        // Selector-bevisst: «broken/missing»-selektorer feiler → trigger self-healing.
-        case 'demo_auto_execute': { const found = !/broken|missing/.test(String(args.selector || '')); later(() => emit('demo-capture://auto', { ok: found, found, selector: args.selector })); return null; }
         case 'demo_screenshot': later(() => emit('demo-capture://shot', { ok: true, dataUrl: TINY_JPEG })); return null;
-        // «Session»-kommandosurfacet (Guided Recorder, G22) — samme event-lag
-        // som de eldre demo_*-kommandoene over, bare andre invoke-navn.
+        // «Session»-kommandosurfacet (Guided Recorder, G22) — dette ER de
+        // ekte kommandoene Kjør automatisk/Verifiser handling kaller (verifisert
+        // mot src-tauri/src/demo_capture.rs: demo_auto_execute/demo_verify_action
+        // finnes ikke i Rust-backenden, kun demo_session_exec/demo_session_verify).
         case 'demo_session_open': later(() => emit('demo-capture://session-nav', {})); return 'opened';
+        // Selector-bevisst: «broken/missing»-selektorer feiler → trigger self-healing.
         case 'demo_session_exec': { const found = !/broken|missing/.test(String(args.selector || '')); later(() => emit('demo-capture://auto', { ok: found, found, selector: args.selector })); return null; }
         case 'demo_session_verify': later(() => emit('demo-capture://verify', { cancelled: false, selector: '#start', label: 'Start free trial' })); return null;
         case 'demo_session_shot': later(() => emit('demo-capture://shot', { ok: true, dataUrl: TINY_JPEG })); return null;
