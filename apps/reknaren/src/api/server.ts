@@ -104,7 +104,7 @@ import {
 import { DeterministicSuggestionEngine } from '../pipeline/suggest.js';
 import { computeDocumentImpact } from '../pipeline/impact.js';
 import { createBankAccount, importBankTransactions, parseBankCsv } from '../bank/import.js';
-import type { BankFeedProvider } from '../bank/feed.js';
+import type { BankFeedProvider, BankAccountDetails } from '../bank/feed.js';
 import { approveMatch, rejectMatch, suggestMatches } from '../bank/matching.js';
 import { reconciliationStatus } from '../bank/reconciliation.js';
 import { bankCategoriesFor, categorizeBankTransaction } from '../bank/categorize.js';
@@ -4517,6 +4517,139 @@ export function createApiServer(deps: ApiDeps): express.Express {
     },
   );
 
+  // ── Automatisk bank-tilkobling (anbefalt) ────────────────────────────────
+  // Ett klikk: velg bank → BankID → kontoene oppdages og opprettes automatisk.
+  // Ingen manuell konto/IBAN først. Org-nivå samtykke mellomlagres i bank_feed_pending.
+  app.post(
+    '/api/organizations/:orgId/bank-feed/connect-auto',
+    requireAuth,
+    requireOrgPermission('bank.reconcile'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        if (bankFeedUnavailable(res)) return;
+        const body = z
+          .object({ institutionId: z.string().min(1).max(200), redirectUrl: z.string().url().optional() })
+          .parse(req.body);
+        const pend = await deps.db.query(
+          `INSERT INTO bank_feed_pending (organization_id, institution_id) VALUES ($1, $2) RETURNING id`,
+          [req.params.orgId, body.institutionId],
+        );
+        const pendingId = pend.rows[0].id as string;
+        const redirectUrl = body.redirectUrl ?? `${(deps.appBaseUrl ?? 'https://ledgerly-coss.onrender.com').replace(/\/$/, '')}/bank/callback`;
+        const reqn = await deps.bankFeed!.createRequisition({
+          institutionId: body.institutionId,
+          redirectUrl,
+          reference: `auto:${pendingId}`,
+        });
+        await deps.db.query(`UPDATE bank_feed_pending SET requisition_id = $2 WHERE id = $1`, [pendingId, reqn.requisitionId]);
+        res.status(201).json({ link: reqn.link, pendingId, requisitionId: reqn.requisitionId });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Fullfør automatisk tilkobling: fullfør samtykket, oppdag kontoene (IBAN + navn)
+  // og opprett dem + koble feed + hent transaksjoner. Idempotent: en konto som
+  // allerede er koblet (feed_connection_id) opprettes ikke på nytt.
+  app.post(
+    '/api/organizations/:orgId/bank-feed/finalize',
+    requireAuth,
+    requireOrgPermission('bank.reconcile'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        if (bankFeedUnavailable(res)) return;
+        const body = z.object({ pendingId: z.string().uuid() }).parse(req.body);
+        const pend = await deps.db.query(
+          `SELECT requisition_id, pending_code FROM bank_feed_pending WHERE id = $1 AND organization_id = $2`,
+          [body.pendingId, req.params.orgId],
+        );
+        if (!pend.rowCount) throw new NotFoundError('Fant ingen påbegynt bank-tilkobling.');
+        const requisitionId = pend.rows[0].requisition_id as string | null;
+        const code = pend.rows[0].pending_code as string | null;
+        if (!requisitionId && !code) {
+          throw new ValidationError('Bank-innloggingen er ikke fullført enda. Fullfør samtykket i banken og prøv igjen.');
+        }
+        const { status, accountIds } = await deps.bankFeed!.completeConsent({
+          ...(requisitionId ? { requisitionId } : {}),
+          ...(code ? { code } : {}),
+        });
+        if (!accountIds.length) {
+          res.status(409).json({ error: { code: 'CONSENT_NOT_READY', message: `Samtykket er ikke fullført enda (status ${status}).` }, status });
+          return;
+        }
+        const created: Array<{ bankAccountId: string; name: string; accountNumber: string; imported: number; alreadyLinked: boolean }> = [];
+        for (const accId of accountIds) {
+          const existing = await deps.db.query(
+            `SELECT id, name, iban_or_account FROM bank_accounts WHERE organization_id = $1 AND feed_connection_id = $2 AND status = 'active'`,
+            [req.params.orgId, accId],
+          );
+          let bankAccountId: string;
+          let name = 'Bankkonto';
+          let accountNumber = '';
+          let alreadyLinked = false;
+          if (existing.rowCount) {
+            bankAccountId = existing.rows[0].id;
+            name = existing.rows[0].name ?? name;
+            accountNumber = existing.rows[0].iban_or_account ?? '';
+            alreadyLinked = true;
+          } else {
+            let details: BankAccountDetails = {};
+            try {
+              details = deps.bankFeed!.getAccountDetails ? await deps.bankFeed!.getAccountDetails(accId) : {};
+            } catch {
+              /* detaljer er valgfritt — faller tilbake til plassholder */
+            }
+            accountNumber = details.iban ?? details.accountNumber ?? '';
+            if (!/^[A-Z0-9 .]{8,34}$/i.test(accountNumber.replace(/\s/g, ''))) {
+              accountNumber = `UKJENT${Date.now().toString().slice(-11)}`;
+            }
+            name = details.name ?? 'Bankkonto';
+            bankAccountId = await createBankAccount(deps.db, {
+              organizationId: req.params.orgId!,
+              actor: { userId: req.auth!.userId, role: req.orgRole! },
+              name,
+              ibanOrAccount: accountNumber,
+            });
+            await withTransaction(deps.db, async (client) => {
+              await client.query(
+                `UPDATE bank_accounts SET feed_connection_id = $3, feed_requisition_id = $4 WHERE id = $1 AND organization_id = $2`,
+                [bankAccountId, req.params.orgId, accId, requisitionId],
+              );
+              await recordAuditEvent(client, {
+                organizationId: req.params.orgId!,
+                actor: { userId: req.auth!.userId, role: req.orgRole! },
+                action: 'bank_feed.account_auto_created',
+                entityType: 'bank_account',
+                entityId: bankAccountId,
+                newValue: { connectionId: accId, name, accountNumber },
+              });
+            });
+          }
+          let imported = 0;
+          try {
+            const feed = await deps.bankFeed!.fetchTransactions({ connectionId: accId });
+            const r = await importBankTransactions(deps.db, {
+              organizationId: req.params.orgId!,
+              actor: { userId: req.auth!.userId, role: req.orgRole! },
+              bankAccountId,
+              transactions: feed.transactions,
+            });
+            imported = r.imported;
+            await suggestMatches(deps.db, { organizationId: req.params.orgId!, bankAccountId });
+          } catch {
+            /* synk kan feile isolert; kontoen er uansett koblet og kan synkes senere */
+          }
+          created.push({ bankAccountId, name, accountNumber, imported, alreadyLinked });
+        }
+        await deps.db.query(`DELETE FROM bank_feed_pending WHERE id = $1`, [body.pendingId]);
+        res.status(201).json(toJson({ accounts: created, status }));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
   // Steg 2: start samtykkeflyten mot valgt bank for en konkret bankkonto → lenke
   // brukeren besøker for å logge inn i banken. Requisition-ID lagres på kontoen.
   app.post(
@@ -4737,7 +4870,15 @@ export function createApiServer(deps: ApiDeps): express.Express {
       const state = typeof q.state === 'string' ? q.state : typeof q.ref === 'string' ? q.ref : undefined;
       const error = typeof q.error === 'string' ? q.error : undefined;
       let stored = false;
-      if (!error && code && state && /^[0-9a-f-]{36}:[0-9a-f-]{36}$/i.test(state)) {
+      const autoMatch = state ? /^auto:([0-9a-f-]{36})$/i.exec(state) : null;
+      if (!error && code && autoMatch) {
+        // Automatisk org-nivå flyt: mellomlagre code på pending-raden.
+        const upd = await deps.db.query(
+          `UPDATE bank_feed_pending SET pending_code = $2 WHERE id = $1`,
+          [autoMatch[1], code],
+        );
+        stored = (upd.rowCount ?? 0) > 0;
+      } else if (!error && code && state && /^[0-9a-f-]{36}:[0-9a-f-]{36}$/i.test(state)) {
         const [orgId, bankAccountId] = state.split(':');
         // Bare mellomlagre når det finnes en påbegynt samtykkeflyt for kontoen.
         const upd = await deps.db.query(

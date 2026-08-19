@@ -63,6 +63,16 @@ export interface RequisitionAccounts {
   accountIds: string[];
 }
 
+/** Metadata om en tilkoblet konto — brukes til å auto-opprette bankkontoen. */
+export interface BankAccountDetails {
+  iban?: string;
+  /** Kontonummer/BBAN når IBAN mangler. */
+  accountNumber?: string;
+  /** Visningsnavn (produkt/eier) fra banken. */
+  name?: string;
+  currency?: string;
+}
+
 /**
  * Det aggregatoren trenger for å fullføre samtykket etter bank-redirect. Ulike
  * leverandører bruker ulike token: GoCardless slår opp på server-lagret
@@ -89,6 +99,12 @@ export interface BankFeedProvider {
   completeConsent(params: ConsentCompletion): Promise<RequisitionAccounts>;
   /** Henter normaliserte transaksjoner for en tilkoblet konto. */
   fetchTransactions(params: { connectionId: string; sinceDate?: string }): Promise<BankFeedResult>;
+  /**
+   * Henter kontodetaljer (IBAN + navn) for en tilkoblet konto, til automatisk
+   * oppretting av bankkontoen. Valgfri — leverandører uten støtte utelater den,
+   * og kalleren faller tilbake til id-basert navngivning.
+   */
+  getAccountDetails?(accountId: string): Promise<BankAccountDetails>;
 }
 
 type FetchLike = (
@@ -275,6 +291,23 @@ export class GoCardlessBankFeedProvider implements BankFeedProvider {
       .map(mapGcTransaction)
       .filter((t): t is BankTransactionInput => t !== null);
     return { transactions, ...(params.sinceDate ? { sinceDate: params.sinceDate } : {}) };
+  }
+
+  async getAccountDetails(accountId: string): Promise<BankAccountDetails> {
+    this.ensureConfigured();
+    const token = await this.ensureToken();
+    // GoCardless: GET /accounts/{id}/details/ → { account: { iban, name, ownerName, currency } }.
+    const body = (await this.request(`/accounts/${encodeURIComponent(accountId)}/details/`, {
+      method: 'GET',
+      headers: { authorization: `Bearer ${token}` },
+    })) as { account?: { iban?: string; bban?: string; name?: string; ownerName?: string; currency?: string } };
+    const a = body.account ?? {};
+    return {
+      ...(a.iban ? { iban: a.iban } : {}),
+      ...(!a.iban && a.bban ? { accountNumber: a.bban } : {}),
+      ...(a.name || a.ownerName ? { name: a.name ?? a.ownerName } : {}),
+      ...(a.currency ? { currency: a.currency } : {}),
+    };
   }
 }
 
@@ -477,5 +510,31 @@ export class EnableBankingBankFeedProvider implements BankFeedProvider {
       .map(mapEnableTransaction)
       .filter((t): t is BankTransactionInput => t !== null);
     return { transactions, ...(params.sinceDate ? { sinceDate: params.sinceDate } : {}) };
+  }
+
+  async getAccountDetails(accountId: string): Promise<BankAccountDetails> {
+    this.ensureConfigured();
+    // Enable Banking: GET /accounts/{uid}/details → kontoressursen (IBAN/BBAN + navn).
+    const body = (await this.request(`/accounts/${encodeURIComponent(accountId)}/details`, {
+      method: 'GET',
+    })) as {
+      account_id?: { iban?: string; other?: { identification?: string } };
+      all_account_ids?: Array<{ scheme_name?: string; identification?: string }>;
+      name?: string;
+      product?: string;
+      currency?: string;
+    };
+    const iban =
+      body.account_id?.iban ??
+      body.all_account_ids?.find((a) => (a.scheme_name ?? '').toUpperCase() === 'IBAN')?.identification;
+    const bban =
+      body.account_id?.other?.identification ??
+      body.all_account_ids?.find((a) => (a.scheme_name ?? '').toUpperCase() === 'BBAN')?.identification;
+    return {
+      ...(iban ? { iban } : {}),
+      ...(!iban && bban ? { accountNumber: bban } : {}),
+      ...(body.name || body.product ? { name: body.name ?? body.product } : {}),
+      ...(body.currency ? { currency: body.currency } : {}),
+    };
   }
 }

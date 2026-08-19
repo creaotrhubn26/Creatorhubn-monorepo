@@ -1352,6 +1352,16 @@ export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: strin
   const [csv, setCsv] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Automatisk tilkobling: pendingId må overleve bank-redirecten → localStorage.
+  const autoKey = `reknaren:bankfeed:pending:${orgId}`;
+  const [autoInstitutionId, setAutoInstitutionId] = useState('');
+  const [autoPendingId, setAutoPendingId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(autoKey);
+    } catch {
+      return null;
+    }
+  });
 
   const accountList = accounts.data ?? [];
   const bankAccountId = selectedId ?? accountList[0]?.id ?? null;
@@ -1408,6 +1418,62 @@ export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: strin
       toast(res.linked ? 'Banken er koblet ✓' : `Samtykke ikke fullført (${res.status})`, res.linked ? 'ok' : 'info');
       await accounts.reload();
     } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const connectAuto = async () => {
+    if (!autoInstitutionId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api<{ link: string; pendingId: string }>(
+        'POST',
+        `/api/organizations/${orgId}/bank-feed/connect-auto`,
+        { institutionId: autoInstitutionId },
+      );
+      try {
+        localStorage.setItem(autoKey, res.pendingId);
+      } catch {
+        /* localStorage kan være blokkert — pendingId holdes i state uansett */
+      }
+      setAutoPendingId(res.pendingId);
+      window.open(res.link, '_blank', 'noopener');
+      toast('Logg inn i banken med BankID i den nye fanen. Kom tilbake hit og trykk «Fullfør automatisk kobling».', 'info');
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const finalizeAuto = async () => {
+    if (!autoPendingId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api<{ accounts: Array<{ name: string; accountNumber: string; imported: number }>; status: string }>(
+        'POST',
+        `/api/organizations/${orgId}/bank-feed/finalize`,
+        { pendingId: autoPendingId },
+      );
+      const n = res.accounts.length;
+      const imported = res.accounts.reduce((s, a) => s + (a.imported ?? 0), 0);
+      toast(`Koblet ${n} konto${n === 1 ? '' : 'er'} · importerte ${imported} transaksjoner`, 'ok');
+      try {
+        localStorage.removeItem(autoKey);
+      } catch {
+        /* ignore */
+      }
+      setAutoPendingId(null);
+      await accounts.reload();
+      txs.reload();
+      matches.reload();
+      recon.reload();
+    } catch (err) {
+      // 409 CONSENT_NOT_READY: behold pendingId så brukeren kan prøve igjen etter samtykke.
       setError((err as Error).message);
     } finally {
       setBusy(false);
@@ -1560,6 +1626,49 @@ export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: strin
             </div>
           );
         })()}
+
+      {feed.data?.available && (
+        <div className="panel">
+          <h2>Koble bank automatisk</h2>
+          <p className="subtitle">
+            Velg banken din, logg inn med BankID og gi samtykke — så oppdager og oppretter Reknaren
+            kontoene dine automatisk og henter transaksjonene. Du slipper å taste kontonummer.
+            Ingenting bokføres uten din godkjenning.
+          </p>
+          <div className="row">
+            <div>
+              <label htmlFor="autoinst">Bank</label>
+              <select id="autoinst" value={autoInstitutionId} onChange={(e) => setAutoInstitutionId(e.target.value)}>
+                <option value="">Velg bank…</option>
+                {(feed.data?.institutions ?? []).map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.name}
+                    {i.bic ? ` (${i.bic})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <button className="primary" disabled={busy || !autoInstitutionId} onClick={connectAuto}>
+                Koble bank automatisk
+              </button>
+            </div>
+            {autoPendingId && (
+              <div>
+                <button className="primary" disabled={busy} onClick={finalizeAuto} title="Trykk her etter at du har gitt samtykke i banken">
+                  {busy ? 'Fullfører…' : 'Fullfør automatisk kobling'}
+                </button>
+              </div>
+            )}
+          </div>
+          {autoPendingId && (
+            <p className="subtitle">
+              Har du logget inn og gitt samtykke i banken? Trykk «Fullfør automatisk kobling», så
+              hentes kontoene og transaksjonene inn.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="panel">
         <h2>Bankkontoer</h2>

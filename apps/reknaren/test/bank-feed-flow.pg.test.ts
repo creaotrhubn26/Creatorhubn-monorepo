@@ -45,6 +45,12 @@ class StubBankFeed implements BankFeedProvider {
       ],
     };
   }
+  async getAccountDetails(accountId: string): Promise<{ iban?: string; name?: string }> {
+    return {
+      iban: accountId === 'acc-1' ? 'NO0011122233344' : 'NO0055566677788',
+      name: `Brukskonto ${accountId}`,
+    };
+  }
 }
 
 let db: Db;
@@ -231,5 +237,78 @@ describe('Bank-callback (redirect etter samtykke)', () => {
       .query({ code: 'orphan-code', state: '00000000-0000-0000-0000-000000000000:11111111-1111-1111-1111-111111111111' })
       .expect(200);
     expect(cb.text).toContain('orphan-code'); // fallback: vis code til manuell liming
+  });
+});
+
+describe('Automatisk bank-tilkobling (connect-auto → callback → finalize)', () => {
+  let autoOrgId: string;
+  let pendingId: string;
+
+  it('oppretter en egen org for auto-flyten', async () => {
+    const org = await request(app)
+      .post('/api/organizations')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Auto AS', orgForm: 'AS', vatStatus: 'not_registered' })
+      .expect(201);
+    autoOrgId = org.body.id;
+  });
+
+  it('connect-auto lager pending + samtykkelenke med auto:-referanse (ingen konto først)', async () => {
+    const res = await request(app)
+      .post(`/api/organizations/${autoOrgId}/bank-feed/connect-auto`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ institutionId: 'DNB_DNBANOKK' })
+      .expect(201);
+    pendingId = res.body.pendingId;
+    expect(pendingId).toBeTruthy();
+    expect(res.body.link).toContain('req-1');
+    expect(feed.lastReference).toBe(`auto:${pendingId}`);
+    const row = await db.query(`SELECT requisition_id, institution_id FROM bank_feed_pending WHERE id = $1`, [pendingId]);
+    expect(row.rows[0]).toMatchObject({ requisition_id: 'req-1', institution_id: 'DNB_DNBANOKK' });
+  });
+
+  it('callback mellomlagrer code på pending-raden', async () => {
+    const cb = await request(app)
+      .get('/bank/callback')
+      .query({ code: 'auto-code-123', state: `auto:${pendingId}` })
+      .expect(200);
+    expect(cb.text).toContain('Banken er koblet');
+    expect(cb.text).not.toContain('auto-code-123');
+    const row = await db.query(`SELECT pending_code FROM bank_feed_pending WHERE id = $1`, [pendingId]);
+    expect(row.rows[0].pending_code).toBe('auto-code-123');
+  });
+
+  it('finalize oppretter kontoene automatisk (IBAN + navn), importerer transaksjoner og sletter pending', async () => {
+    const res = await request(app)
+      .post(`/api/organizations/${autoOrgId}/bank-feed/finalize`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ pendingId })
+      .expect(201);
+    expect(res.body.accounts).toHaveLength(2);
+    expect(res.body.accounts.every((a: { alreadyLinked: boolean }) => a.alreadyLinked === false)).toBe(true);
+
+    const created = await db.query(
+      `SELECT name, iban_or_account, feed_connection_id FROM bank_accounts
+       WHERE organization_id = $1 ORDER BY feed_connection_id`,
+      [autoOrgId],
+    );
+    expect(created.rows.map((r: { feed_connection_id: string }) => r.feed_connection_id)).toEqual(['acc-1', 'acc-2']);
+    // IBAN + navn hentet automatisk fra getAccountDetails — ingen manuell inntasting
+    expect(created.rows[0]).toMatchObject({ iban_or_account: 'NO0011122233344', name: 'Brukskonto acc-1' });
+    expect(created.rows[1]).toMatchObject({ iban_or_account: 'NO0055566677788', name: 'Brukskonto acc-2' });
+
+    const imported = res.body.accounts.reduce((s: number, a: { imported: number }) => s + a.imported, 0);
+    expect(imported).toBe(4); // 2 transaksjoner × 2 kontoer
+
+    const pend = await db.query(`SELECT 1 FROM bank_feed_pending WHERE id = $1`, [pendingId]);
+    expect(pend.rowCount).toBe(0);
+  });
+
+  it('finalize svarer 404 for ukjent pendingId', async () => {
+    await request(app)
+      .post(`/api/organizations/${autoOrgId}/bank-feed/finalize`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ pendingId: '00000000-0000-0000-0000-000000000000' })
+      .expect(404);
   });
 });
