@@ -135,15 +135,17 @@ describe('SkatteetatenVatSubmissionClient — ærlig aktivering', () => {
     expect(res.valid).toBe(false);
   });
 
-  it('submit() kjører Altinn 3-flyten: veksle token → opprett instans → last opp → fullfør → kvittering', async () => {
+  it('submit() kjører Altinn 3-flyten: veksle token → opprett instans → konvolutt → mva-melding → fullfør → kvittering', async () => {
     const f = fakeFetch((url, method) => {
       if (url.includes('/exchange/maskinporten')) return { status: 200, text: '"altinn-token"' };
       if (url.endsWith('/instances') && method === 'POST')
         return { status: 201, body: { id: '51234/abcd-guid', data: [{ id: 'env-1', dataType: 'mvameldinginnsending' }] } };
-      if (url.includes('/data?dataType=mvamelding')) return { status: 201, body: {} };
-      if (url.includes('/data/env-1')) return { status: 200, body: {} };
+      if (url.includes('/data/env-1') && method === 'PUT') return { status: 200, body: {} };
+      if (url.includes('/data?datatype=mvamelding')) return { status: 201, body: {} };
       if (url.endsWith('/process/next')) return { status: 200, body: {} };
-      if (url.endsWith('/feedback/status')) return { status: 200, body: { status: 'godkjent' } };
+      // Re-henting av instansen etter fullført innsending: kvittering + process ferdig.
+      if (url.endsWith('/instances/51234/abcd-guid') && method === 'GET')
+        return { status: 200, body: { id: '51234/abcd-guid', data: [{ id: 'kv-1', dataType: 'kvittering' }], process: { currentTask: null } } };
       return { status: 404, body: {} };
     });
     const client = new SkatteetatenVatSubmissionClient(new StaticMaskinportenStub(), f.impl);
@@ -154,8 +156,12 @@ describe('SkatteetatenVatSubmissionClient — ærlig aktivering', () => {
     const create = f.calls.find((c) => c.url.endsWith('/instances') && c.method === 'POST')!;
     expect(create.body).toContain('910023764');
     expect(create.headers['authorization']).toBe('Bearer altinn-token');
-    // konvolutten ble PUT-et til det forhåndsopprettede data-elementet
+    // konvolutten (MvaMeldingInnsending) ble PUT-et til det forhåndsopprettede data-elementet
     expect(f.calls.some((c) => c.url.includes('/data/env-1') && c.method === 'PUT')).toBe(true);
+    // mva-meldingen ble lastet opp som text/xml med filnavn (jf. API-dok)
+    const melding = f.calls.find((c) => c.url.includes('/data?datatype=mvamelding'))!;
+    expect(melding.headers['content-type']).toBe('text/xml');
+    expect(melding.headers['content-disposition']).toContain('mvaMelding.xml');
     // to prosess-steg (fullfør)
     expect(f.calls.filter((c) => c.url.endsWith('/process/next')).length).toBe(2);
   });
@@ -173,10 +179,11 @@ describe('submitMvaMeldingWithToken — ID-porten-veien (bekreftet av Skatteetat
       if (url.includes('/exchange/id-porten')) return { status: 200, text: '"altinn-token"' };
       if (url.endsWith('/instances') && method === 'POST')
         return { status: 201, body: { id: '51234/abcd-guid', data: [{ id: 'env-1', dataType: 'mvameldinginnsending' }] } };
-      if (url.includes('/data?dataType=mvamelding')) return { status: 201, body: {} };
-      if (url.includes('/data/env-1')) return { status: 200, body: {} };
+      if (url.includes('/data/env-1') && method === 'PUT') return { status: 200, body: {} };
+      if (url.includes('/data?datatype=mvamelding')) return { status: 201, body: {} };
       if (url.endsWith('/process/next')) return { status: 200, body: {} };
-      if (url.endsWith('/feedback/status')) return { status: 200, body: { status: 'godkjent' } };
+      if (url.endsWith('/instances/51234/abcd-guid') && method === 'GET')
+        return { status: 200, body: { id: '51234/abcd-guid', data: [{ id: 'kv-1', dataType: 'kvittering' }], process: { currentTask: null } } };
       return { status: 404, body: {} };
     });
     const receipt = await submitMvaMeldingWithToken({

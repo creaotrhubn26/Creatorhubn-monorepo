@@ -182,6 +182,8 @@ export function buildInnsendingXml(report: VatReport): string {
 interface AltinnInstance {
   id?: string;
   data?: Array<{ id?: string; dataType?: string }>;
+  /** Altinn prosess-status: ferdig behandlet når currentTask == null. */
+  process?: { currentTask?: { name?: string } | null } | null;
 }
 
 /** Finner data-elementets id i en Altinn-instans etter dataType (case-insensitivt). */
@@ -248,6 +250,10 @@ async function runAltinnInstanceFlow(params: {
   const auth = { authorization: `Bearer ${altinnToken}` };
   const call = (url: string, init: Parameters<FetchLike>[1]) => callWithTimeout(fetchImpl, timeoutMs, url, init);
 
+  // Sekvensen følger Skatteetatens API-dok (mvameldinginnsending, «Om tjenesten»):
+  // opprett instans → last opp MvaMeldingInnsending → last opp mva-melding →
+  // fullfør utfylling → fullfør innsending → hent tilbakemelding (kvittering).
+
   // 1) Opprett instans — eier er virksomheten meldingen gjelder.
   const created = await call(`${app}/instances`, {
     method: 'POST',
@@ -260,36 +266,36 @@ async function runAltinnInstanceFlow(params: {
   if (!instanceId) throw new MaskinportenError('Altinn returnerte ingen instans-id.');
   const instanceUrl = `${app}/instances/${instanceId}`;
 
-  // 2) Last opp selve mva-meldingen.
-  const upMelding = await call(`${instanceUrl}/data?dataType=mvamelding`, {
+  // 2) Last opp innsendings-konvolutten (MvaMeldingInnsending) FØRST. Appen
+  //    forhåndsoppretter data-elementet → PUT innholdet dit; ellers POST nytt.
+  const envId = findDataElementId(instance, 'mvameldinginnsending');
+  const envXml = buildInnsendingXml(report);
+  const envUp = envId
+    ? await call(`${instanceUrl}/data/${envId}`, { method: 'PUT', headers: { ...auth, 'content-type': 'application/xml' }, body: envXml })
+    : await call(`${instanceUrl}/data?dataType=mvameldinginnsending`, { method: 'POST', headers: { ...auth, 'content-type': 'application/xml' }, body: envXml });
+  if (!envUp.ok) throw new MaskinportenError(`Opplasting av MvaMeldingInnsending feilet (${envUp.status}).`);
+
+  // 3) Last opp selve mva-meldingen. Jf. API-dok: text/xml + Content-Disposition-filnavn.
+  const upMelding = await call(`${instanceUrl}/data?datatype=mvamelding`, {
     method: 'POST',
-    headers: { ...auth, 'content-type': 'application/xml' },
+    headers: { ...auth, 'content-type': 'text/xml', 'content-disposition': 'attachment; filename=mvaMelding.xml' },
     body: buildMvaMeldingXml(report, options),
   });
   if (!upMelding.ok) throw new MaskinportenError(`Opplasting av mva-melding feilet (${upMelding.status}).`);
 
-  // 3) Last opp innsendings-konvolutten (PUT til forhåndsopprettet element, ellers POST).
-  const envId = findDataElementId(instance, 'mvameldinginnsending');
-  const envXml = buildInnsendingXml(report);
-  if (envId) {
-    await call(`${instanceUrl}/data/${envId}`, { method: 'PUT', headers: { ...auth, 'content-type': 'application/xml' }, body: envXml });
-  } else {
-    await call(`${instanceUrl}/data?dataType=mvameldinginnsending`, { method: 'POST', headers: { ...auth, 'content-type': 'application/xml' }, body: envXml });
-  }
+  // 4) Fullfør: to prosess-steg (fullfør utfylling → fullfør innsending).
+  await call(`${instanceUrl}/process/next`, { method: 'PUT', headers: { ...auth, 'content-type': 'application/json', accept: 'application/json' } });
+  await call(`${instanceUrl}/process/next`, { method: 'PUT', headers: { ...auth, 'content-type': 'application/json', accept: 'application/json' } });
 
-  // 4) Fullfør: to prosess-steg (fullfør opplasting → fullfør innsending).
-  await call(`${instanceUrl}/process/next`, { method: 'PUT', headers: { ...auth, accept: 'application/json' } });
-  await call(`${instanceUrl}/process/next`, { method: 'PUT', headers: { ...auth, accept: 'application/json' } });
+  // 5) Hent tilbakemelding. Etter innsending har instansen et data-element med
+  //    dataType=kvittering; ferdig behandlet av Skatteetaten når process.currentTask==null.
+  //    Vi re-henter instansen for å finne kvitterings-elementet.
+  const refreshed = await call(instanceUrl, { method: 'GET', headers: { ...auth, accept: 'application/json' } });
+  const refInst = (await safeJson(refreshed)) as AltinnInstance | null;
+  const kvitteringId = findDataElementId(refInst, 'kvittering');
+  const done = !!refInst && (refInst.process?.currentTask ?? null) === null;
+  const status = kvitteringId ? (done ? 'godkjent' : 'tilbakemelding') : done ? 'submitted' : 'pending';
 
-  // 5) Hent Skatteetatens kvittering (synkron feedback).
-  const fb = await call(`${instanceUrl}/feedback/status`, { method: 'GET', headers: { ...auth, accept: 'application/json' } });
-  const fbRaw = await safeJson(fb);
-  const status =
-    fbRaw && typeof fbRaw === 'object' && typeof (fbRaw as Record<string, unknown>)['status'] === 'string'
-      ? ((fbRaw as Record<string, unknown>)['status'] as string)
-      : fb.ok
-        ? 'submitted'
-        : 'pending';
   return { reference: instanceId, status, submittedAt: new Date().toISOString() };
 }
 
