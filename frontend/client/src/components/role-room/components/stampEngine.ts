@@ -433,6 +433,29 @@ export function createSeededRng(seed: number): () => number {
   };
 }
 
+// Papirtann låst til LERRETET (Procreate «Texturized» grain / Krita Texture
+// multiply): tekstur samples på dab-POSISJON, så kornet er kontinuerlig på
+// tvers av strøk — som å gni blyant over samme papir. To oktaver value-noise.
+function valueNoise1(x: number, y: number): number {
+  const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+  return n - Math.floor(n);
+}
+
+function smoothValueNoise(x: number, y: number): number {
+  const ix = Math.floor(x); const iy = Math.floor(y);
+  const fx = x - ix; const fy = y - iy;
+  const ux = fx * fx * (3 - 2 * fx); const uy = fy * fy * (3 - 2 * fy);
+  const a = valueNoise1(ix, iy);
+  const b = valueNoise1(ix + 1, iy);
+  const c = valueNoise1(ix, iy + 1);
+  const d = valueNoise1(ix + 1, iy + 1);
+  return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
+}
+
+function paperTooth(x: number, y: number): number {
+  return 0.65 * smoothValueNoise(x, y) + 0.35 * smoothValueNoise(x * 2.7 + 11.3, y * 2.7 + 5.1);
+}
+
 function hexToRgbTriplet(hex: string): [number, number, number] {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if (!m) return [0, 0, 0];
@@ -571,11 +594,17 @@ function renderDabAt(
   const size = baseSize * pressureSizeFactor * (0.6 + brush.pressureSensitivity * 0.4);
 
   const pressureAlphaFactor = 1 - config.pressureToOpacity + pressure * config.pressureToOpacity;
-  // Grain = korn: alpha-variasjon per dab rundt samme snitt — grovere tekstur
-  // ved høy grain, IKKE blekere strøk.
+  // Grain = papirtann i CANVAS-space (Procreate «Texturized» / Krita Texture
+  // multiply): tekstur samples på posisjon, så kornet er kontinuerlig på
+  // tvers av strøk. Grovere ved høy grain, aldri blekere snitt. En liten
+  // rng-komponent gir dab-variasjon (Procreate «Moving»-følelse) på toppen.
   const grain = typeof brush.grain === 'number' ? Math.min(1, Math.max(0, brush.grain)) : 0;
-  const grainJitter = grain > 0 ? 1 - grain * 0.45 + rng() * grain * 0.9 : 1;
-  const alpha = Math.min(1, brush.opacity * config.flow * pressureAlphaFactor * grainJitter);
+  let grainFactor = 1;
+  if (grain > 0) {
+    const tooth = paperTooth(sample.x * 0.22, sample.y * 0.22);
+    grainFactor = (1 - grain * (1 - tooth) * 0.85) * (1 - grain * 0.12 + rng() * grain * 0.24);
+  }
+  const alpha = Math.min(1, brush.opacity * config.flow * pressureAlphaFactor * grainFactor);
 
   // Scatter — radial jitter; grain øker spredningen litt (papirtann)
   let x = sample.x;
