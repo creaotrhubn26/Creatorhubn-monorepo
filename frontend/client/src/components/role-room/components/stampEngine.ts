@@ -408,6 +408,31 @@ export function shouldUseStampPreview(type: ProBrushType): boolean {
 // Stamp rendering
 // ============================================================================
 
+// ============================================================================
+// Seeded RNG — commit-rendering må være deterministisk: samme strøk skal se
+// identisk ut ved hver redraw (undo, lagbytte, eksport). mulberry32.
+// ============================================================================
+
+export function hashStringToSeed(key: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+export function createSeededRng(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function hexToRgbTriplet(hex: string): [number, number, number] {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if (!m) return [0, 0, 0];
@@ -482,9 +507,12 @@ function drawSingleDab(
   const scale = size / DAB_CANVAS_SIZE;
   const cos = Math.cos(rotation) * scale;
   const sin = Math.sin(rotation) * scale;
-  ctx.setTransform(cos, sin, -sin, cos, x, y);
+  // transform (ikke setTransform) — bevarer basen (f.eks. devicePixelRatio)
+  ctx.save();
+  ctx.transform(cos, sin, -sin, cos, x, y);
   ctx.globalAlpha = alpha;
   ctx.drawImage(dab, -DAB_CANVAS_SIZE / 2, -DAB_CANVAS_SIZE / 2);
+  ctx.restore();
 }
 
 /**
@@ -499,6 +527,7 @@ export function stampSegment(
   brush: ProBrushSettings,
   config: StampConfig,
   carryDistance: number,
+  rng: () => number = Math.random,
 ): number {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
@@ -518,7 +547,7 @@ export function stampSegment(
     traveled += spacingPx;
     const t = traveled / dist;
     const sample = interpolatePoint(from, to, t);
-    renderDabAt(ctx, tinted, sample, brush, config, dx, dy);
+    renderDabAt(ctx, tinted, sample, brush, config, dx, dy, rng);
   }
 
   // Returnér uforbrukt rest så neste segment fortsetter rytmen
@@ -533,6 +562,7 @@ function renderDabAt(
   config: StampConfig,
   dirX: number,
   dirY: number,
+  rng: () => number = Math.random,
 ): void {
   const pressure = Math.max(0.05, sample.pressure);
   // pressureToSize: 0=ingen effekt (full size), 1=lineær med pressure
@@ -541,14 +571,19 @@ function renderDabAt(
   const size = baseSize * pressureSizeFactor * (0.6 + brush.pressureSensitivity * 0.4);
 
   const pressureAlphaFactor = 1 - config.pressureToOpacity + pressure * config.pressureToOpacity;
-  const alpha = Math.min(1, brush.opacity * config.flow * pressureAlphaFactor);
+  // Grain = korn: alpha-variasjon per dab rundt samme snitt — grovere tekstur
+  // ved høy grain, IKKE blekere strøk.
+  const grain = typeof brush.grain === 'number' ? Math.min(1, Math.max(0, brush.grain)) : 0;
+  const grainJitter = grain > 0 ? 1 - grain * 0.45 + rng() * grain * 0.9 : 1;
+  const alpha = Math.min(1, brush.opacity * config.flow * pressureAlphaFactor * grainJitter);
 
-  // Scatter — radial jitter
+  // Scatter — radial jitter; grain øker spredningen litt (papirtann)
   let x = sample.x;
   let y = sample.y;
-  if (config.scatter > 0) {
-    const jitterMag = Math.random() * config.scatter * baseSize;
-    const jitterAngle = Math.random() * Math.PI * 2;
+  const scatter = config.scatter * (1 + grain * 0.6);
+  if (scatter > 0) {
+    const jitterMag = rng() * scatter * baseSize;
+    const jitterAngle = rng() * Math.PI * 2;
     x += Math.cos(jitterAngle) * jitterMag;
     y += Math.sin(jitterAngle) * jitterMag;
   }
@@ -564,7 +599,7 @@ function renderDabAt(
     rotation = Math.atan2(dirY, dirX);
   }
   if (config.jitterAngle > 0) {
-    rotation += ((Math.random() * 2 - 1) * config.jitterAngle * Math.PI) / 180;
+    rotation += ((rng() * 2 - 1) * config.jitterAngle * Math.PI) / 180;
   }
 
   drawSingleDab(ctx, tinted, x, y, size, rotation, alpha);
@@ -579,6 +614,7 @@ export function stampPolyline(
   points: PencilPoint[],
   brush: ProBrushSettings,
   config: StampConfig,
+  rng: () => number = Math.random,
 ): void {
   if (points.length < 2) {
     if (points.length === 1) {
@@ -587,28 +623,39 @@ export function stampPolyline(
       const dab = cache[config.preset];
       const rgb = hexToRgbTriplet(brush.color);
       const tinted = getTintedDab(config.preset, dab, rgb);
-      ctx.save();
-      renderDabAt(ctx, tinted, points[0], brush, config, 1, 0);
-      ctx.restore();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      renderDabAt(ctx, tinted, points[0], brush, config, 1, 0, rng);
       ctx.globalAlpha = 1;
     }
     return;
   }
-  ctx.save();
   let carry = 0;
   for (let i = 0; i < points.length - 1; i++) {
-    carry = stampSegment(ctx, points[i], points[i + 1], brush, config, carry);
+    carry = stampSegment(ctx, points[i], points[i + 1], brush, config, carry, rng);
   }
-  ctx.restore();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = 1;
 }
 
 /**
- * Reset ctx transform/alpha — caller bør kalle denne etter en serie stamp-kall.
+ * Deterministisk commit-rendering av et helt strøk: samme strokeId gir
+ * identisk resultat ved hver redraw (undo, lagbytte, eksport). Dette er
+ * motoren det persisterte laget skal bruke — samme dabs som preview.
+ */
+export function renderStrokeStamped(
+  ctx: CanvasRenderingContext2D,
+  points: PencilPoint[],
+  brush: ProBrushSettings,
+  config: StampConfig,
+  strokeId: string,
+): void {
+  const rng = createSeededRng(hashStringToSeed(strokeId || 'stroke'));
+  stampPolyline(ctx, points, brush, config, rng);
+}
+
+/**
+ * Reset ctx alpha — caller bør kalle denne etter en serie stamp-kall.
+ * (Transform røres ikke lenger — dabs bruker save/restore og bevarer
+ * basen, f.eks. devicePixelRatio-skalering.)
  */
 export function resetCtxAfterStamp(ctx: CanvasRenderingContext2D): void {
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = 1;
 }

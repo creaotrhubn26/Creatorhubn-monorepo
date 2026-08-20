@@ -26,6 +26,7 @@ export type AdvancedBrushType =
   | 'watercolor'    // Wet watercolor with blending
   | 'ink'           // Ink with feathering
   | 'highlighter'   // Transparent overlay
+  | 'smudge'        // Tone-utviskning — drar eksisterende piksler
   | 'eraser';
 
 // Alias for external usage
@@ -130,6 +131,12 @@ export const BRUSH_PRESETS: Record<AdvancedBrushType, Partial<BrushConfig>> = {
     flow: 1,
     grain: 0,
   },
+  smudge: {
+    hardness: 0.2,
+    flow: 0.6,
+    grain: 0,
+    pressureSensitivity: 0.8,
+  },
   eraser: {
     hardness: 0.5,
     flow: 1,
@@ -196,18 +203,39 @@ export class AdvancedBrushEngine {
   private config: BrushConfig;
   private lastPoint: PencilPoint | null = null;
   private strokeBuffer: ImageData | null = null;
-  
+  // Deterministisk ved seedStroke() — samme strøk ser likt ut ved hver redraw
+  private rng: () => number = Math.random;
+
   constructor(ctx: CanvasRenderingContext2D, config: BrushConfig = DEFAULT_BRUSH_CONFIG) {
     this.ctx = ctx;
     this.config = { ...DEFAULT_BRUSH_CONFIG, ...config };
   }
 
+  /** Seed partikkel-randomisering for neste renderStroke (mulberry32). */
+  seedStroke(key: string) {
+    let h = 2166136261;
+    for (let i = 0; i < key.length; i++) {
+      h ^= key.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    let a = h >>> 0;
+    this.rng = () => {
+      a |= 0;
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
   setConfig(config: Partial<BrushConfig>) {
-    this.config = { ...this.config, ...config };
-    // Apply brush preset if type changed
-    if (config.type) {
-      const preset = BRUSH_PRESETS[config.type];
-      this.config = { ...this.config, ...preset };
+    // Preset er BASE når type byttes; eksplisitte settings (f.eks. strøkets
+    // lagrede grain/hardness/flow) skal alltid vinne over preset.
+    if (config.type && config.type !== this.config.type) {
+      const preset = BRUSH_PRESETS[config.type] ?? {};
+      this.config = { ...this.config, ...preset, ...config };
+    } else {
+      this.config = { ...this.config, ...config };
     }
   }
 
@@ -298,20 +326,19 @@ export class AdvancedBrushEngine {
       // Draw multiple particles for pencil texture
       const particles = Math.ceil(strokeSize * 2);
       for (let p = 0; p < particles; p++) {
-        const angle = Math.random() * Math.PI * 2;
-        const radius = Math.random() * strokeSize * 0.5;
+        const angle = this.rng() * Math.PI * 2;
+        const radius = this.rng() * strokeSize * 0.5;
         const px = x + Math.cos(angle) * radius;
         const py = y + Math.sin(angle) * radius;
         
-        // Apply grain noise
+        // Grain = kornkontrast: noise demper alpha der papirtannen er lav.
+        // Høy grain gir grovere strøk, aldri blekere snitt (ingen partikkel-drop).
         const noiseVal = noise2D(px * 0.5, py * 0.5);
-        if (noiseVal < grain * 0.5) continue;
-        
-        const particleOpacity = strokeOpacity * (0.3 + noiseVal * 0.7);
+        const particleOpacity = strokeOpacity * (0.3 + noiseVal * 0.7) * (1 - grain * (1 - noiseVal) * 0.7);
         
         this.ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${particleOpacity})`;
         this.ctx.beginPath();
-        this.ctx.arc(px, py, 0.5 + Math.random() * 0.5, 0, Math.PI * 2);
+        this.ctx.arc(px, py, 0.5 + this.rng() * 0.5, 0, Math.PI * 2);
         this.ctx.fill();
       }
     }
@@ -329,10 +356,10 @@ export class AdvancedBrushEngine {
     const dist = Math.hypot(to.x - from.x, to.y - from.y);
     const steps = Math.max(1, Math.ceil(dist / 1.5));
     // Tilt utvider strøken sideveis — emulerer at man holder graphiten flatt.
-    // PencilPoint har tiltX + tiltY (radianer); vi summerer magnitude.
+    // PointerEvent-tilt er GRADER (−90..90) — normaliser til 0..1 før bruk.
     const tiltFrom = Math.hypot(from.tiltX ?? 0, from.tiltY ?? 0);
     const tiltTo = Math.hypot(to.tiltX ?? 0, to.tiltY ?? 0);
-    const tilt = (tiltFrom + tiltTo) / 2;
+    const tilt = Math.min(1, ((tiltFrom + tiltTo) / 2) / 90);
     const tiltBroaden = 1 + tilt * tiltSensitivity * 1.2;
 
     for (let i = 0; i <= steps; i++) {
@@ -347,18 +374,16 @@ export class AdvancedBrushEngine {
       // Tettere partikler enn pencil — gir solid graphite-tone.
       const particles = Math.ceil(strokeSize * 3.5);
       for (let p = 0; p < particles; p++) {
-        const angle = Math.random() * Math.PI * 2;
-        const radius = Math.random() * strokeSize * 0.7;
+        const angle = this.rng() * Math.PI * 2;
+        const radius = this.rng() * strokeSize * 0.7;
         const px = x + Math.cos(angle) * radius;
         const py = y + Math.sin(angle) * radius;
 
         const noiseVal = noise2D(px * 0.35, py * 0.35);
-        if (noiseVal < grain * 0.25) continue;
-
-        const particleOpacity = strokeOpacity * (0.45 + noiseVal * 0.55);
+        const particleOpacity = strokeOpacity * (0.45 + noiseVal * 0.55) * (1 - grain * (1 - noiseVal) * 0.55);
         this.ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${particleOpacity})`;
         this.ctx.beginPath();
-        this.ctx.arc(px, py, 0.6 + Math.random() * 0.6, 0, Math.PI * 2);
+        this.ctx.arc(px, py, 0.6 + this.rng() * 0.6, 0, Math.PI * 2);
         this.ctx.fill();
       }
     }
@@ -388,22 +413,21 @@ export class AdvancedBrushEngine {
       // Bredere spread enn pencil/graphite for kornete charcoal-følelse.
       const particles = Math.ceil(strokeSize * 4);
       for (let p = 0; p < particles; p++) {
-        const angle = Math.random() * Math.PI * 2;
+        const angle = this.rng() * Math.PI * 2;
         // Spread går litt utenfor radius for fluffy edges.
-        const radius = Math.random() * strokeSize * 1.0;
+        const radius = this.rng() * strokeSize * 1.0;
         const px = x + Math.cos(angle) * radius;
         const py = y + Math.sin(angle) * radius;
 
         const noiseVal = noise2D(px * 0.6, py * 0.6);
-        // Hopper over flere partikler enn pencil = mer brutt overflate.
-        if (noiseVal < grain * 0.65) continue;
-
-        // Mer variabel opacity gir myk charcoal-overgang.
-        const particleOpacity = strokeOpacity * (0.2 + noiseVal * 0.8) * (0.6 + Math.random() * 0.4);
+        // Grain modulerer alpha (brutt overflate) i stedet for å droppe
+        // partikler — høy grain gir grovere strøk, ikke blekere.
+        const particleOpacity = strokeOpacity * (0.2 + noiseVal * 0.8)
+          * (0.6 + this.rng() * 0.4) * (1 - grain * (1 - noiseVal) * 0.75);
         this.ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${particleOpacity})`;
         this.ctx.beginPath();
         // Større, mer varierende partikkel-størrelse.
-        this.ctx.arc(px, py, 0.7 + Math.random() * 1.2, 0, Math.PI * 2);
+        this.ctx.arc(px, py, 0.7 + this.rng() * 1.2, 0, Math.PI * 2);
         this.ctx.fill();
       }
     }
@@ -432,19 +456,17 @@ export class AdvancedBrushEngine {
 
       const particles = Math.ceil(strokeSize * 3);
       for (let p = 0; p < particles; p++) {
-        const angle = Math.random() * Math.PI * 2;
-        const radius = Math.random() * strokeSize * 0.65;
+        const angle = this.rng() * Math.PI * 2;
+        const radius = this.rng() * strokeSize * 0.65;
         const px = x + Math.cos(angle) * radius;
         const py = y + Math.sin(angle) * radius;
 
         const noiseVal = noise2D(px * 0.45, py * 0.45);
-        if (noiseVal < grain * 0.4) continue;
-
         // Conté er tett — mindre opacity-variasjon enn charcoal.
-        const particleOpacity = strokeOpacity * (0.5 + noiseVal * 0.5);
+        const particleOpacity = strokeOpacity * (0.5 + noiseVal * 0.5) * (1 - grain * (1 - noiseVal) * 0.45);
         this.ctx.fillStyle = `rgba(${rgb.r},${rgb.g},${rgb.b},${particleOpacity})`;
         this.ctx.beginPath();
-        this.ctx.arc(px, py, 0.55 + Math.random() * 0.7, 0, Math.PI * 2);
+        this.ctx.arc(px, py, 0.55 + this.rng() * 0.7, 0, Math.PI * 2);
         this.ctx.fill();
       }
     }
@@ -594,11 +616,11 @@ export class AdvancedBrushEngine {
       this.ctx.fillStyle = gradient;
       this.ctx.beginPath();
       this.ctx.ellipse(
-        x + flowNoise * (Math.random() - 0.5),
-        y + flowNoise * (Math.random() - 0.5),
-        strokeSize * (0.8 + Math.random() * 0.4),
-        strokeSize * (0.8 + Math.random() * 0.4),
-        Math.random() * Math.PI,
+        x + flowNoise * (this.rng() - 0.5),
+        y + flowNoise * (this.rng() - 0.5),
+        strokeSize * (0.8 + this.rng() * 0.4),
+        strokeSize * (0.8 + this.rng() * 0.4),
+        this.rng() * Math.PI,
         0, Math.PI * 2
       );
       this.ctx.fill();
@@ -700,13 +722,18 @@ export class AdvancedBrushEngine {
    * @param points - Array of pencil points forming the stroke
    * @param settings - Brush settings to apply
    */
-  renderStroke(ctx: CanvasRenderingContext2D, points: PencilPoint[], settings?: Partial<BrushConfig>) {
+  renderStroke(ctx: CanvasRenderingContext2D, points: PencilPoint[], settings?: Partial<BrushConfig>, seedKey?: string) {
     if (points.length < 2) return;
 
     // Temporarily switch context
     const originalCtx = this.ctx;
     this.ctx = ctx;
-    
+
+    // Deterministisk partikkel-randomisering: samme strøk = samme utseende
+    // ved hver redraw (undo, lagbytte, eksport). Fallback-seed fra punktdata.
+    const p0 = points[0];
+    this.seedStroke(seedKey ?? `${p0.x.toFixed(1)},${p0.y.toFixed(1)},${points.length}`);
+
     // Apply settings if provided
     if (settings) {
       this.setConfig(settings);
