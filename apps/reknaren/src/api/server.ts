@@ -46,7 +46,7 @@ import {
 import { buildForecast } from '../ledger/planning.js';
 import { assessPeriodClose, assessYearClose } from '../ledger/period-close.js';
 import { buildTaxAdvisories } from '../ledger/tax-advisor.js';
-import { bookDocumentAsUtlegg, huntDocuments, linkPaymentToDocument, previewPaymentLink, previewUtlegg, receiptCandidatesForTransaction, receiptsWithoutPayment } from '../ingestion/document-hunt.js';
+import { autoApproveTrustedVendorMatches, bookDocumentAsUtlegg, huntDocuments, linkPaymentToDocument, previewPaymentLink, previewUtlegg, receiptCandidatesForTransaction, receiptsWithoutPayment } from '../ingestion/document-hunt.js';
 import { buildDashboard } from '../ledger/dashboard.js';
 import { getActivationStatus } from '../ledger/onboarding.js';
 import { ingestForwardedEmail, inboundEmailFor } from '../ingestion/inbound-email.js';
@@ -4352,6 +4352,40 @@ export function createApiServer(deps: ApiDeps): express.Express {
     } catch (err) { next(err); }
   });
 
+  // Leverandører m/ auto-godkjenn-status (til «faste leverandører du stoler på»).
+  app.get('/api/organizations/:orgId/vendors', requireAuth, requireOrgPermission('reports.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      const rows = (await deps.db.query(
+        `SELECT id, name, org_number, auto_approve FROM vendors WHERE organization_id = $1 AND status = 'active' ORDER BY name`,
+        [req.params.orgId],
+      )).rows;
+      res.json(toJson(rows.map((r) => ({ id: r.id, name: r.name, orgNumber: r.org_number, autoApprove: r.auto_approve === true }))));
+    } catch (err) { next(err); }
+  });
+
+  // Slå auto-godkjenn av/på for en leverandør (auto-kobler kvittering↔betaling ved synk).
+  app.post('/api/organizations/:orgId/vendors/:vendorId/auto-approve', requireAuth, requireOrgPermission('journal.post'), async (req: AuthedRequest, res, next) => {
+    try {
+      const vendorId = z.string().uuid().parse(req.params.vendorId);
+      const body = z.object({ enabled: z.boolean() }).parse(req.body);
+      const upd = await deps.db.query(
+        `UPDATE vendors SET auto_approve = $3, updated_at = now(), version = version + 1
+         WHERE id = $1 AND organization_id = $2 AND status = 'active' RETURNING id`,
+        [vendorId, req.params.orgId, body.enabled],
+      );
+      if (!upd.rowCount) throw new NotFoundError('Leverandøren finnes ikke.');
+      await withTransaction(deps.db, (client) => recordAuditEvent(client, {
+        organizationId: req.params.orgId!,
+        actor: { userId: req.auth!.userId, role: req.orgRole! },
+        action: 'vendor.auto_approve_changed',
+        entityType: 'vendor',
+        entityId: vendorId,
+        newValue: { autoApprove: body.enabled },
+      }));
+      res.json(toJson({ id: vendorId, autoApprove: body.enabled }));
+    } catch (err) { next(err); }
+  });
+
   // ── Utbetalingsfil (pain.001) — betal leverandørfakturaer via nettbank ────
   app.get('/api/organizations/:orgId/payments/payable', requireAuth, requireOrgPermission('bank.reconcile'), async (req: AuthedRequest, res, next) => {
     try {
@@ -4929,7 +4963,20 @@ export function createApiServer(deps: ApiDeps): express.Express {
           errors.push({ bankAccountId: acct.id, message: err instanceof Error ? err.message : 'ukjent feil' });
         }
       }
-      res.json(toJson({ configured: true, since, accounts: accounts.length, synced, imported: importedTotal, failed, errors: errors.slice(0, 10) }));
+      // Auto-godkjenn faste leverandører (per org): auto-koble høy-konfidens
+      // kvittering↔betaling for leverandører brukeren har merket. Reversibelt, logget.
+      let autoApproved = 0;
+      const seenOrgs = new Map<string, string>(); // orgId → created_by (actor)
+      for (const acct of accounts) if (!seenOrgs.has(acct.organization_id)) seenOrgs.set(acct.organization_id, acct.created_by);
+      for (const [orgId, createdBy] of seenOrgs) {
+        try {
+          const r = await autoApproveTrustedVendorMatches(deps.db, deps.rules, { organizationId: orgId, actor: { userId: createdBy, role: 'owner' } });
+          autoApproved += r.approved;
+        } catch {
+          /* auto-godkjenn er best-effort; feiler den, står nudgene igjen til manuell godkjenning */
+        }
+      }
+      res.json(toJson({ configured: true, since, accounts: accounts.length, synced, imported: importedTotal, autoApproved, failed, errors: errors.slice(0, 10) }));
     } catch (err) { next(err); }
   });
 

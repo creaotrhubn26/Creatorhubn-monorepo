@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db/pool.js';
 import { createBankAccount, importBankTransactions } from '../src/bank/import.js';
-import { bookDocumentAsUtlegg, huntDocuments, linkPaymentToDocument, previewPaymentLink, receiptCandidatesForTransaction, receiptsWithoutPayment } from '../src/ingestion/document-hunt.js';
+import { autoApproveTrustedVendorMatches, bookDocumentAsUtlegg, huntDocuments, linkPaymentToDocument, previewPaymentLink, receiptCandidatesForTransaction, receiptsWithoutPayment } from '../src/ingestion/document-hunt.js';
 import { buildNorwegianRuleRegister } from '../src/rules/no/rules.js';
 import { createOrganization, ensureUser } from '../src/orgs/service.js';
 import { newId } from '../src/shared/ids.js';
@@ -199,6 +199,30 @@ describe('utlegg — kvittering uten betaling («betalte du privat?»)', () => {
     const asDoc = await orphanDoc(as.id, 'Clas Ohlson', '2025-07-10', 49900n);
     const r2 = await bookDocumentAsUtlegg(db, rules, { organizationId: as.id, actor: actor(), documentId: asDoc });
     expect(r2.ownerAccount).toBe('2900');
+  });
+
+  it('auto-godkjenn kobler høy-konfidens match KUN for betrodde leverandører', async () => {
+    const org = await createOrganization(db, { name: 'Auto AS', orgForm: 'AS', vatStatus: 'registered', createdByUserId: userId });
+    const acc = await createBankAccount(db, { organizationId: org.id, actor: actor(), name: 'Drift', ibanOrAccount: 'NO9386011117947' });
+    await importBankTransactions(db, {
+      organizationId: org.id, actor: actor(), bankAccountId: acc,
+      transactions: [{ externalId: 't-adobe', bookedDate: '2025-07-17', amountMinor: -124900n, description: 'ADOBE SYSTEMS SOFTWARE' }],
+    });
+    await orphanDoc(org.id, 'Adobe Systems Software AS', '2025-07-14', 124900n);
+
+    // Uten betrodd leverandør: ingen auto-godkjenning.
+    const none = await autoApproveTrustedVendorMatches(db, rules, { organizationId: org.id, actor: actor() });
+    expect(none.approved).toBe(0);
+
+    // Merk leverandøren auto-godkjenn → høy-konfidens match kobles automatisk.
+    await db.query(
+      `INSERT INTO vendors (id, organization_id, name, created_by, auto_approve) VALUES ($1,$2,'Adobe Systems Software AS',$3,true)`,
+      [newId(), org.id, userId],
+    );
+    const r = await autoApproveTrustedVendorMatches(db, rules, { organizationId: org.id, actor: actor() });
+    expect(r.approved).toBe(1);
+    const tx = await db.query(`SELECT status FROM bank_transactions WHERE external_id='t-adobe' AND organization_id=$1`, [org.id]);
+    expect(tx.rows[0].status).toBe('reconciled');
   });
 
   it('bilag som HAR en matchende betaling regnes ikke som utlegg', async () => {

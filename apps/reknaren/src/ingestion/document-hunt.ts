@@ -406,6 +406,43 @@ export async function linkPaymentToDocument(
   return { entryNumber: entry.entryNumber, accountNumber, vatCode: vatCodeStr };
 }
 
+/**
+ * Auto-godkjenn for FASTE leverandører brukeren stoler på (vendors.auto_approve).
+ * Kobler automatisk kvittering↔betaling når (a) leverandøren er merket auto-godkjenn og
+ * (b) match-scoren er høy (≥80: samme beløp + leverandør/dato). Bokføring er reversibel og
+ * revisjonslogget. Sender ALDRI penger automatisk. Kjøres etter bank-synk.
+ */
+export async function autoApproveTrustedVendorMatches(
+  db: Db,
+  rules: RuleRegister,
+  params: { organizationId: string; actor: Actor },
+): Promise<{ approved: number; entries: Array<{ transactionId: string; documentId: string; vendor: string | null }> }> {
+  const org = params.organizationId;
+  const vres = await db.query(
+    `SELECT lower(name) AS name FROM vendors WHERE organization_id = $1 AND auto_approve = true AND status = 'active'`,
+    [org],
+  );
+  const trusted = vres.rows.map((r) => r.name as string).filter(Boolean);
+  if (trusted.length === 0) return { approved: 0, entries: [] };
+
+  const hunt = await huntDocuments(db, { organizationId: org, asOf: new Date().toISOString().slice(0, 10) });
+  const entries: Array<{ transactionId: string; documentId: string; vendor: string | null }> = [];
+  for (const gap of hunt.gaps) {
+    const top = gap.candidates[0];
+    if (!top || top.score < 80) continue;
+    const vendorLower = (top.vendor ?? '').toLowerCase();
+    const isTrusted = vendorLower !== '' && trusted.some((t) => vendorLower.includes(t) || t.includes(vendorLower));
+    if (!isTrusted) continue;
+    try {
+      await linkPaymentToDocument(db, rules, { organizationId: org, actor: params.actor, transactionId: gap.transactionId, documentId: top.documentId });
+      entries.push({ transactionId: gap.transactionId, documentId: top.documentId, vendor: top.vendor });
+    } catch {
+      /* en enkelt auto-kobling kan feile (f.eks. race) — hopp over, ikke stopp resten */
+    }
+  }
+  return { approved: entries.length, entries };
+}
+
 // ── Utlegg: kvittering uten betaling («betalte du privat / med et annet kort?») ──
 
 export interface OrphanReceipt {
