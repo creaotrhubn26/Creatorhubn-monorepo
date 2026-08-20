@@ -107,7 +107,7 @@ import { createBankAccount, importBankTransactions, parseBankCsv } from '../bank
 import type { BankFeedProvider, BankAccountDetails } from '../bank/feed.js';
 import { approveMatch, rejectMatch, suggestMatches } from '../bank/matching.js';
 import { reconciliationStatus } from '../bank/reconciliation.js';
-import { bankCategoriesFor, categorizeBankTransaction, suggestBankCategory } from '../bank/categorize.js';
+import { bankCategoriesFor, categorizeBankTransaction, purchaseGuidanceFor, suggestBankCategory } from '../bank/categorize.js';
 import { createCreditNote, createInvoiceDraft, issueInvoice } from '../invoicing/service.js';
 import { createDimension, dimensionResultReport, listDimensions } from '../dimensions/service.js';
 import { buildSafTXml } from '../saft/export.js';
@@ -5048,14 +5048,19 @@ export function createApiServer(deps: ApiDeps): express.Express {
           (await deps.db.query(`SELECT org_form FROM organizations WHERE id = $1`, [req.params.orgId])).rows[0]
             ?.org_form ?? 'AS';
         const enriched = rows.rows.map((t) => {
-          if (t.status !== 'unmatched') return { ...t, suggestion: null };
+          if (t.status !== 'unmatched') return { ...t, suggestion: null, guidance: null };
           const suggestion = suggestBankCategory({
             description: t.description,
             counterparty: t.counterparty,
             amountMinor: BigInt(t.amount_minor),
             orgForm,
           });
-          return { ...t, suggestion };
+          const guidance = purchaseGuidanceFor({
+            description: t.description,
+            counterparty: t.counterparty,
+            amountMinor: BigInt(t.amount_minor),
+          });
+          return { ...t, suggestion, guidance };
         });
         res.json(toJson(enriched));
       } catch (err) {

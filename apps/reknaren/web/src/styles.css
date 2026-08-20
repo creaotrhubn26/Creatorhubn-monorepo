@@ -500,3 +500,10 @@ td.tx-amount.out { color: var(--text); }
   font-size: 12px; background: var(--gold-soft); color: var(--gold);
   padding: 1px 6px; border-radius: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+.purchase-guidance {
+  margin: 0; display: flex; flex-direction: column; gap: 3px;
+  font-size: 12.5px; line-height: 1.45; color: var(--text);
+  background: var(--warn-soft); border-radius: 8px; padding: 8px 10px;
+}
+.purchase-guidance .suggest-eyebrow { color: var(--warn); }

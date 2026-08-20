@@ -1293,6 +1293,7 @@ export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: strin
     kid: string | null;
     status: string;
     suggestion: { key: string; label: string; account: string; reason: string; explanation: string } | null;
+    guidance: string | null;
   }
   interface Match {
     id: string;
@@ -1935,6 +1936,12 @@ export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: strin
                     <td>
                       {t.status === 'unmatched' ? (
                         <div className="suggest-cell">
+                          {t.guidance && (
+                            <p className="purchase-guidance">
+                              <span className="suggest-eyebrow">Spørsmål</span>
+                              {t.guidance}
+                            </p>
+                          )}
                           {t.suggestion ? (
                             <div className="suggest-hint">
                               <span className="suggest-eyebrow">Forslag</span>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { suggestBankCategory } from '../src/bank/categorize.js';
+import { purchaseGuidanceFor, suggestBankCategory } from '../src/bank/categorize.js';
 
 describe('suggestBankCategory — deterministisk «hva dette kan være»', () => {
   it('gjenkjenner bankgebyr på utbetaling', () => {
@@ -37,5 +37,21 @@ describe('suggestBankCategory — deterministisk «hva dette kan være»', () =>
 
   it('returnerer null (ærlig, ingen gjetning) når ingenting treffer', () => {
     expect(suggestBankCategory({ description: 'Vipps til Ola', counterparty: 'Ola Nordmann', amountMinor: -25000n, orgForm: 'AS' })).toBeNull();
+  });
+});
+
+describe('purchaseGuidanceFor — guidet spørsmål for tvetydige butikkjøp', () => {
+  it('stiller spørsmål for dagligvare/servering-kjøp (utbetaling)', () => {
+    for (const desc of ['REMA 1000 OSLO', 'KIWI MINIPRIS', 'Coop Extra', 'Vinmonopolet', 'Restaurant Louise']) {
+      const g = purchaseGuidanceFor({ description: desc, amountMinor: -19900n });
+      expect(g).toBeTruthy();
+      expect(g).toContain('bedriftskjøp');
+      expect(g).toContain('privat');
+    }
+  });
+
+  it('ingen guidance for tydelige ikke-butikk-tekster eller innbetalinger', () => {
+    expect(purchaseGuidanceFor({ description: 'Transpris Nettbank Bedrift', amountMinor: -4900n })).toBeNull();
+    expect(purchaseGuidanceFor({ description: 'KIWI MINIPRIS', amountMinor: 19900n })).toBeNull(); // innbetaling
   });
 });

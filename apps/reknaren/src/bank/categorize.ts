@@ -65,7 +65,7 @@ const CATEGORIES: CategoryDef[] = [
     label: 'Annen utbetaling (uten kvittering)',
     direction: 'out',
     account: '7790',
-    explanation: 'En utbetaling du ikke har kvittering for ennå. Føres midlertidig som annen kostnad (konto 7790) — finn bilaget når du kan.',
+    explanation: 'En utbetaling du ikke har kvittering for. Føres som annen kostnad (konto 7790). Uten kvittering kan du IKKE trekke fra mva, og bokføringsloven krever egentlig et bilag — finn/last opp kvitteringen når du kan, så flyttes den til riktig konto med fradrag.',
   },
   {
     key: 'renteinntekt',
@@ -145,6 +145,26 @@ const SUGGESTION_RULES: Array<{ key: string; direction: CategoryDirection; test:
  * når ingen regel treffer trygt (ærlig: ingen gjetning uten grunnlag). Kontoen er den
  * samme faste koblingen som `categorizeBankTransaction` bruker, så «Bokfør» blir korrekt.
  */
+// Kjøpesteder som ofte er PRIVATE, men kan være bedriftskjøp — dagligvare, kiosk,
+// bensin, servering, vinmonopol. Da skal vi spørre, ikke gjette.
+const AMBIGUOUS_MERCHANT = /rema|kiwi|\bcoop\b|\bmeny\b|\bextra\b|bunnpris|\bspar\b|\bjoker\b|matbutikk|dagligvare|narvesen|7-eleven|circle ?k|\besso\b|shell|uno-?x|\bymber\b|restaurant|kafe|caf[eé]|\bbar\b|vinmonopol|\bkiosk\b|mcdonald|burger|pizza|deli/i;
+
+/**
+ * Guidet spørsmål for tvetydige kortkjøp (typisk butikk/servering). Returnerer et
+ * ja/nei-spørsmål i klartekst når kjøpsstedet kan være både privat og bedrift — så
+ * brukeren avgjør i stedet for at vi gjetter feil. null når teksten ikke er tvetydig.
+ */
+export function purchaseGuidanceFor(params: {
+  description?: string | null;
+  counterparty?: string | null;
+  amountMinor: bigint;
+}): string | null {
+  if (params.amountMinor >= 0n) return null; // kun utbetalinger
+  const hay = `${params.description ?? ''} ${params.counterparty ?? ''}`;
+  if (!AMBIGUOUS_MERCHANT.test(hay)) return null;
+  return 'Var dette et bedriftskjøp, eller privat (feil kort)? Er det bedrift: har du kvitteringen? Uten kvittering kan ikke mva trekkes fra, og kjøpet må føres på riktig konto. Er det privat, føres det som privatuttak — ikke en kostnad.';
+}
+
 export function suggestBankCategory(params: {
   description?: string | null;
   counterparty?: string | null;
