@@ -174,6 +174,21 @@ interface StoryboardFrameComment {
 
 const COMMENT_ROLE_OPTIONS = ['Director', 'DP', 'Producer', 'Editor', 'Artist'];
 
+// Versjonslogg (mockup 1, Versions-panelet): lettvekts-snapshot per lagring —
+// metadata + thumbnails, ikke full frame-kopi. ponytail: compare/restore av
+// full snapshot kommer når backend får versjons-endepunkter.
+interface StoryboardVersionEntry {
+  v: number;
+  at: string;
+  author?: string;
+  summary: string;
+  frameCount: number;
+  totalDurationSec: number;
+  thumbnails: string[];
+}
+
+type SceneWithVersionLog = SceneBreakdown & { storyboardVersionLog?: StoryboardVersionEntry[] };
+
 type StoryboardBeatTag = 'ESTABLISHING' | 'TENSION' | 'BEAT' | 'ACTION' | 'DIALOGUE' | 'RESOLUTION';
 type StoryboardFrameStatus = 'planned' | 'in_review' | 'needs_work' | 'done';
 
@@ -1121,6 +1136,27 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
     return () => window.clearTimeout(timeoutId);
   }, [storyboardFrames]);
 
+  const handleSaveVersion = useCallback((summary: string) => {
+    const sceneNow = latestSceneRef.current as SceneWithVersionLog;
+    const log = Array.isArray(sceneNow.storyboardVersionLog) ? sceneNow.storyboardVersionLog : [];
+    const entry: StoryboardVersionEntry = {
+      v: log.length + 1,
+      at: new Date().toISOString(),
+      summary: summary.trim() || `Versjon ${log.length + 1}`,
+      frameCount: storyboardFrames.length,
+      totalDurationSec: storyboardFrames.reduce((sum, frame) => sum + (frame.duration || 0), 0),
+      thumbnails: storyboardFrames
+        .map((frame) => frame.thumbnailUrl || frame.imageUrl)
+        .filter((url): url is string => typeof url === 'string')
+        .slice(0, 3),
+    };
+    onUpdateRef.current({
+      ...sceneNow,
+      storyboardFrames: toModelFrames(storyboardFrames, sceneNow.id),
+      storyboardVersionLog: [...log, entry],
+    } as SceneBreakdown);
+  }, [storyboardFrames]);
+
   const handleSplitResizeStart = useCallback((event: React.MouseEvent) => {
     event.preventDefault();
     setSplitDragging(true);
@@ -1339,6 +1375,8 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
             sceneDialogue={sceneDialogue}
             projectCinemaFormat={projectCinemaFormat}
             showCreativeStudio={showCreativeStudio}
+            versionLog={(scene as SceneWithVersionLog).storyboardVersionLog}
+            onSaveVersion={handleSaveVersion}
           />
         )}
         {!storyboardPanelOnly && viewMode === 'split' && (
@@ -1407,6 +1445,8 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
                 sceneDialogue={sceneDialogue}
                 projectCinemaFormat={projectCinemaFormat}
                 showCreativeStudio={showCreativeStudio}
+                versionLog={(scene as SceneWithVersionLog).storyboardVersionLog}
+                onSaveVersion={handleSaveVersion}
               />
             </Box>
           </Box>
@@ -1522,6 +1562,8 @@ const StoryboardView: React.FC<{
   sceneDialogue?: import('../models/casting').DialogueLine[];
   projectCinemaFormat?: '16:9' | '4:3' | '2.39:1' | '2.35:1' | '1.85:1' | '2.76:1' | '1:1' | '9:16';
   showCreativeStudio?: boolean;
+  versionLog?: StoryboardVersionEntry[];
+  onSaveVersion?: (summary: string) => void;
 }> = ({
   frames,
   onUpdate,
@@ -1538,11 +1580,15 @@ const StoryboardView: React.FC<{
   sceneDialogue,
   projectCinemaFormat,
   showCreativeStudio = true,
+  versionLog,
+  onSaveVersion,
 }) => {
   const device = useDeviceDetection();
   const { showSuccess, showInfo, showError } = useToast();
   const { user } = useAuth();
   const [workspaceMode, setWorkspaceMode] = useState<StoryboardWorkspaceMode>('thumbnail');
+  const [versionsDialogOpen, setVersionsDialogOpen] = useState(false);
+  const [versionSummary, setVersionSummary] = useState('');
   const [drawingFrameId, setDrawingFrameId] = useState<string | null>(null);
   const [pendingPoseStrokes, setPendingPoseStrokes] = useState<PencilStroke[] | null>(null);
   const [pendingReferenceSrc, setPendingReferenceSrc] = useState<string | null>(null);
@@ -2415,6 +2461,18 @@ const StoryboardView: React.FC<{
                 </ToggleButton>
               ))}
             </ToggleButtonGroup>
+
+            {onSaveVersion && (
+              <Button
+                size="small"
+                variant="outlined"
+                data-testid="storyboard-versions-button"
+                onClick={() => setVersionsDialogOpen(true)}
+                sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#a78bfa', textTransform: 'none', flexShrink: 0 }}
+              >
+                Versions ({versionLog?.length ?? 0})
+              </Button>
+            )}
 
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="stretch" sx={{ flex: 1 }}>
               <Button
@@ -3876,6 +3934,92 @@ const StoryboardView: React.FC<{
           >
             Lagre
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={versionsDialogOpen} onClose={() => setVersionsDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Versions</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.25} sx={{ mt: 0.5 }}>
+            {(versionLog ?? []).length === 0 && (
+              <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.85)' }}>
+                Ingen versjoner lagret ennå. Lagre en versjon for å kunne spore endringer i scenen.
+              </Typography>
+            )}
+            {[...(versionLog ?? [])].reverse().map((entry, reversedIndex) => (
+              <Box
+                key={entry.v}
+                sx={{
+                  display: 'flex',
+                  gap: 1.25,
+                  p: 1.25,
+                  borderRadius: 1.5,
+                  border: reversedIndex === 0 ? '1px solid rgba(139,92,246,0.55)' : '1px solid rgba(148,163,184,0.2)',
+                  bgcolor: reversedIndex === 0 ? 'rgba(139,92,246,0.08)' : 'rgba(13,17,23,0.7)',
+                }}
+              >
+                <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
+                  {entry.thumbnails.map((thumb, thumbIndex) => (
+                    <Box
+                      key={thumbIndex}
+                      sx={{
+                        width: 48,
+                        height: 30,
+                        borderRadius: 0.5,
+                        backgroundImage: `url(${thumb})`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        border: '1px solid rgba(148,163,184,0.25)',
+                      }}
+                    />
+                  ))}
+                </Stack>
+                <Box sx={{ minWidth: 0 }}>
+                  <Stack direction="row" spacing={1} alignItems="baseline">
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                      v{entry.v}
+                    </Typography>
+                    {reversedIndex === 0 && (
+                      <Chip label="Current Version" size="small" sx={{ height: 18, fontSize: '0.6rem', bgcolor: 'rgba(139,92,246,0.25)', color: '#c4b5fd' }} />
+                    )}
+                    <Typography variant="caption" sx={{ color: 'rgba(148,163,184,0.85)' }}>
+                      {relativeTime(entry.at)}{entry.author ? ` · ${entry.author}` : ''}
+                    </Typography>
+                  </Stack>
+                  <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.9)' }}>
+                    {entry.summary}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(148,163,184,0.8)' }}>
+                    {entry.frameCount} frames · {entry.totalDurationSec}s
+                  </Typography>
+                </Box>
+              </Box>
+            ))}
+            <Stack direction="row" spacing={1}>
+              <TextField
+                size="small"
+                fullWidth
+                placeholder="Hva endret du? (f.eks. «Adjusted timing on 12B»)"
+                value={versionSummary}
+                onChange={(event) => setVersionSummary(event.target.value)}
+                data-testid="storyboard-version-summary-input"
+              />
+              <Button
+                variant="contained"
+                data-testid="storyboard-save-version-button"
+                onClick={() => {
+                  onSaveVersion?.(versionSummary);
+                  setVersionSummary('');
+                }}
+                sx={{ bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' }, flexShrink: 0 }}
+              >
+                Lagre versjon
+              </Button>
+            </Stack>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setVersionsDialogOpen(false)}>Lukk</Button>
         </DialogActions>
       </Dialog>
 
