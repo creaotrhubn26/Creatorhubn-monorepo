@@ -21,6 +21,7 @@ import {
 import PublicSocialLinks from '@/components/common/PublicSocialLinks';
 import { getPublicSocialProfiles } from '@/lib/publicBrandLinks';
 import LoginDialog from './LoginDialog';
+import BookDemoModal from '../BookDemoModal';
 import { ROLE_ROOM_BRAND_ASSETS } from '../config/branding';
 import { getRoleRoomVideoStillUrl } from '../utils/roleRoomMedia';
 import BlockRenderer from '../cms/BlockRenderer';
@@ -38,15 +39,15 @@ export default function RoleRoomEducationPartnershipPage(
   const cmsBlocks = useCmsBlocks('utdanningsinstitusjon');
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
   const [loginDialogVariant, setLoginDialogVariant] = useState<'landing' | 'admin'>('landing');
+  // 2026-08-20: "Be om institusjonssamtale" åpnet feilaktig LoginDialog
+  // (kontoopprettelse) — samme feil som på hovedsiden (theroleroom-
+  // landing.tsx). Retter til faktisk demo-booking her også.
+  const [bookDemoOpen, setBookDemoOpen] = useState(false);
   const backdropStillUrl = getRoleRoomVideoStillUrl(
     '/role-room-assets/landing_backdrop.mp4',
     '/role-room-assets/landing_backdrop.webp',
   );
 
-  const handleEducationLoginOpen = () => {
-    setLoginDialogVariant('landing');
-    setLoginDialogOpen(true);
-  };
   const handleAdminLoginOpen = () => {
     setLoginDialogVariant('admin');
     setLoginDialogOpen(true);
@@ -55,6 +56,13 @@ export default function RoleRoomEducationPartnershipPage(
     setLoginDialogOpen(false);
     setLoginDialogVariant('landing');
   };
+
+  // 2026-08-20: tittel/meta for denne siden settes IKKE her — det finnes
+  // allerede et sentralt SEO-system (lib/siteSeo.ts, syncSiteSeo() kalt
+  // fra casting-main.tsx) med en egen '/utdanningsinstitusjon'-case. En
+  // component-lokal tittel-effekt her ville konkurrert med den (usikker
+  // effekt-rekkefølge på tvers av søskenkomponenter) — oppdater
+  // siteSeo.ts sin case i stedet for å endre tittel/meta for denne siden.
 
   if (cmsBlocks) {
     return (
@@ -226,10 +234,16 @@ export default function RoleRoomEducationPartnershipPage(
                     {item}
                   </Typography>
                 ))}
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} sx={{ pt: 1 }}>
+                {/* 2026-08-20: direction="row" ved sm-viewport klippet
+                    knappetekst — kortet er fast 360px på lg uansett
+                    viewport-bredde, og to fullbredde-piller rekker ikke
+                    side om side der. Kolonne på både xs og lg (kortet er
+                    smalt uansett); rad kun i det midtre båndet der kortet
+                    fortsatt er 100%-bredt. */}
+                <Stack direction={{ xs: 'column', sm: 'row', lg: 'column' }} spacing={1.25} sx={{ pt: 1 }}>
                   <Button
                     type="button"
-                    onClick={handleEducationLoginOpen}
+                    onClick={() => setBookDemoOpen(true)}
                     endIcon={<ArrowForwardRounded />}
                     sx={{
                       flex: 1,
@@ -239,6 +253,7 @@ export default function RoleRoomEducationPartnershipPage(
                       fontWeight: 700,
                       color: '#0d1018',
                       bgcolor: '#f6c358',
+                      whiteSpace: 'nowrap',
                       '&:hover': {
                         bgcolor: '#ffd787',
                       },
@@ -258,6 +273,7 @@ export default function RoleRoomEducationPartnershipPage(
                       color: 'rgba(248,245,239,0.92)',
                       bgcolor: 'rgba(255,255,255,0.05)',
                       border: '1px solid rgba(255,255,255,0.1)',
+                      whiteSpace: 'nowrap',
                       '&:hover': {
                         bgcolor: 'rgba(255,255,255,0.1)',
                       },
@@ -321,7 +337,7 @@ export default function RoleRoomEducationPartnershipPage(
               display: 'grid',
               gridTemplateColumns: { xs: '1fr', lg: '1.1fr 0.9fr' },
               gap: 2,
-              alignItems: 'stretch',
+              alignItems: 'start',
             }}
           >
             <Box
@@ -432,7 +448,7 @@ export default function RoleRoomEducationPartnershipPage(
                 {
                   icon: <IntegrationInstructionsRounded sx={{ fontSize: 24 }} />,
                   title: 'LTI 1.3 Advantage-integrasjon',
-                  body: 'E2E-verifisert mot ekte Moodle 5.2 — SSO-launch fra LMS-et og karakter-passback rett i skolens karakterbok. Samme standard som Canvas, itslearning, Blackboard og D2L bruker. Norsk høyere utdanning innen film/media kjører i hovedsak Canvas (bl.a. Den norske filmskolen og Høyskolen Kristiania); vi er i dialog med flere Moodle-institusjoner om registrering.',
+                  body: 'E2E-verifisert mot ekte Canvas — launch, klasseliste/kull via NRPS og karakter-passback per oppgave rett i karakterboka, med en eksamens-gate som leser reelle Canvas-resultater. Samme standard er også verifisert mot Moodle 5.2 (launch/SSO), og fungerer mot itslearning, Blackboard og D2L. Norsk høyere utdanning innen film/media kjører i hovedsak Canvas (bl.a. Den norske filmskolen og Høyskolen Kristiania); vi er i dialog med flere Moodle-institusjoner om registrering.',
                 },
                 {
                   icon: <LockRounded sx={{ fontSize: 24 }} />,
@@ -500,7 +516,7 @@ export default function RoleRoomEducationPartnershipPage(
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} justifyContent="center">
               <Button
                 type="button"
-                onClick={() => setLoginDialogOpen(true)}
+                onClick={() => setBookDemoOpen(true)}
                 endIcon={<ArrowForwardRounded />}
                 sx={{
                   minHeight: 48,
@@ -587,6 +603,12 @@ export default function RoleRoomEducationPartnershipPage(
         }}
         isLandingPage={loginDialogVariant === 'landing'}
         initialPersona={loginDialogVariant === 'landing' ? 'education_institution' : ''}
+      />
+      <BookDemoModal
+        open={bookDemoOpen}
+        onClose={() => setBookDemoOpen(false)}
+        trigger="education_partnership_page"
+        initialBusinessType="Utdanningsinstitusjon"
       />
     </Box>
   );

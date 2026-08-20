@@ -143,6 +143,16 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
     const segment = SEGMENTS.has(body.segment ?? "")
       ? body.segment as string
       : "skuespillerbyrå";
+    // 2026-08-20: segment er CHECK-begrenset (skuespillerbyrå/modellbyrå/
+    // bookingbyrå/annet) — mange reelle "hva beskriver dere best?"-svar fra
+    // Book demo-modalen (Produksjonsteam, Utdanningsinstitusjon,
+    // Innholdsprodusent, Dansestudio) kollapser alle til "annet". Selve
+    // teksten overlever i request_context.business_type — bruk den i
+    // admin-varselet så salg faktisk ser hva slags bedrift det er.
+    const rawBusinessType = body.request_context?.business_type;
+    const businessType = typeof rawBusinessType === "string" && rawBusinessType.trim()
+      ? rawBusinessType.trim().slice(0, 120)
+      : null;
 
     const phone = body.phone?.trim().slice(0, 50) || null;
     const rosterSize = body.roster_size?.trim().slice(0, 60) || null;
@@ -365,7 +375,7 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
           type: "agency_lead",
           source: "theroleroom.com · /for-byraer (lead-skjema + Book demo-modal)",
           title: `${isBookDemo ? 'Demo booket' : 'Ny byrå-lead'}: ${agencyName}`,
-          summary: `${contactName}${contactTitle ? ` (${contactTitle})` : ''} <${email}> · ${segment}${teamSize || rosterSize ? ` · ${teamSize ?? rosterSize}` : ''}${preferredDemoTime ? ` · ønsket tid: ${preferredDemoTime}` : ''}${useCase ? ` · ${useCase}` : ''}`,
+          summary: `${contactName}${contactTitle ? ` (${contactTitle})` : ''} <${email}> · ${businessType ?? segment}${teamSize || rosterSize ? ` · ${teamSize ?? rosterSize}` : ''}${preferredDemoTime ? ` · ønsket tid: ${preferredDemoTime}` : ''}${useCase ? ` · ${useCase}` : ''}`,
           link: "/admin",
           cta: (req.body && req.body.cta) || null,
           page: req.get("referer") || (req.body && req.body.page) || null,

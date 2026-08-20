@@ -10,7 +10,7 @@
  * eksterne stil-avhengigheter utover MUI.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -45,6 +45,7 @@ const palette = {
 // "Hva beskriver dere best?" — mapper til agency_leads.segment (CHECK-begrenset).
 const BUSINESS_TYPES: { label: string; segment: string }[] = [
   { label: 'Produksjonsteam / produksjonsselskap', segment: 'annet' },
+  { label: 'Utdanningsinstitusjon', segment: 'annet' },
   { label: 'Innholdsprodusent / skaper', segment: 'annet' },
   { label: 'Skuespillerbyrå', segment: 'skuespillerbyrå' },
   { label: 'Modellbyrå', segment: 'modellbyrå' },
@@ -60,6 +61,14 @@ type Props = {
   onClose: () => void;
   /** Hvor brukeren trykket "Book demo" — for attribusjon/analytics. */
   trigger?: string;
+  /**
+   * Forhåndsvelg "Hva beskriver dere best?" — brukt av f.eks. utdannings-
+   * seksjonens "Book institusjonssamtale". Må matche en BUSINESS_TYPES.label
+   * eksakt. Modalen er alltid montert (åpnes/lukkes via `open`), så vanlig
+   * useState-init kun kjører én gang — denne settes derfor via effekt hver
+   * gang modalen faktisk åpnes.
+   */
+  initialBusinessType?: string;
 };
 
 function collectAttribution(trigger?: string): Record<string, unknown> {
@@ -94,7 +103,7 @@ function utmParam(key: string): string | undefined {
   }
 }
 
-export default function BookDemoModal({ open, onClose, trigger }: Props) {
+export default function BookDemoModal({ open, onClose, trigger, initialBusinessType }: Props) {
   const [form, setForm] = useState({
     agency_name: '',
     contact_name: '',
@@ -119,6 +128,13 @@ export default function BookDemoModal({ open, onClose, trigger }: Props) {
   const set = (key: keyof typeof form) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  useEffect(() => {
+    if (open && initialBusinessType) {
+      setForm((f) => ({ ...f, business_type: initialBusinessType }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialBusinessType]);
 
   const canSubmit = useMemo(
     () =>

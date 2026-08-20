@@ -283,9 +283,9 @@ function buildRoleRoomSeo(pathname: string): SeoMetadata {
     case '/utdanningsinstitusjon':
       return {
         ...base,
-        title: 'For utdanningsinstitusjoner | The Role Room',
+        title: 'The Role Room for utdanning — LTI 1.3, Canvas & Moodle, Feide',
         description:
-          'The Role Room for utdanningsinstitusjoner kobler studenter, fagmiljø og produksjonsplanlegging i en strukturert arbeidsflate.',
+          'Gi studentene samme produksjonsrom som de skal jobbe i etter studiet. LTI 1.3 Advantage E2E-verifisert mot ekte Canvas og Moodle, med Feide-innlogging på vei.',
       };
     case '/presse':
       return {
