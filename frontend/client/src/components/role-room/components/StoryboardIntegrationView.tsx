@@ -145,9 +145,51 @@ interface StoryboardFrame {
   assist?: StoryboardAssistSettings;
   variantGroupId?: string;
   variantLabel?: string;
+  // Intensjonslaget (STORYBOARD_DESIGN.md): DP-metadata + beat + status
+  shotType?: string;          // WS/MS/CU/OTS/POV/…
+  lensMm?: number;            // 14-135
+  beatTag?: StoryboardBeatTag;
+  frameStatus?: StoryboardFrameStatus;
+  location?: string;
+  timeOfDay?: string;
+  weather?: string;
+  transition?: string;        // Cut/Dissolve/…
+  focusDepth?: string;        // Shallow/Deep
+  tags?: string[];
+  continuityNotes?: string;
+  vfxNotes?: string;
+  productionNotes?: string;
   createdAt?: string;
   updatedAt?: string;
 }
+
+type StoryboardBeatTag = 'ESTABLISHING' | 'TENSION' | 'BEAT' | 'ACTION' | 'DIALOGUE' | 'RESOLUTION';
+type StoryboardFrameStatus = 'planned' | 'in_review' | 'needs_work' | 'done';
+
+const BEAT_TAG_OPTIONS: StoryboardBeatTag[] = ['ESTABLISHING', 'TENSION', 'BEAT', 'ACTION', 'DIALOGUE', 'RESOLUTION'];
+const BEAT_TAG_STYLES: Record<StoryboardBeatTag, { bg: string; fg: string }> = {
+  ESTABLISHING: { bg: 'rgba(100,116,139,0.28)', fg: 'rgba(226,232,240,0.95)' },
+  TENSION: { bg: 'rgba(245,158,11,0.22)', fg: 'rgba(253,230,138,0.98)' },
+  BEAT: { bg: 'rgba(168,85,247,0.22)', fg: 'rgba(233,213,255,0.98)' },
+  ACTION: { bg: 'rgba(239,68,68,0.22)', fg: 'rgba(254,202,202,0.98)' },
+  DIALOGUE: { bg: 'rgba(16,185,129,0.2)', fg: 'rgba(209,250,229,0.98)' },
+  RESOLUTION: { bg: 'rgba(56,189,248,0.2)', fg: 'rgba(224,242,254,0.98)' },
+};
+const FRAME_STATUS_META: Record<StoryboardFrameStatus, { label: string; color: string }> = {
+  planned: { label: 'Planned', color: 'rgba(148,163,184,0.9)' },
+  in_review: { label: 'In Review', color: 'rgba(251,191,36,0.95)' },
+  needs_work: { label: 'Needs Work', color: 'rgba(239,68,68,0.92)' },
+  done: { label: 'Done', color: 'rgba(63,164,106,0.95)' },
+};
+const SHOT_TYPE_OPTIONS = ['EWS', 'WS', 'MWS', 'MS', 'MCU', 'CU', 'BCU', 'ECU', 'OTS', 'POV', 'INSERT', 'TWO-SHOT'];
+const LENS_MM_OPTIONS = [14, 18, 24, 28, 35, 50, 85, 135];
+const TRANSITION_OPTIONS = ['Cut', 'Dissolve', 'Match Cut', 'Smash Cut', 'Wipe', 'Fade'];
+const FOCUS_DEPTH_OPTIONS = ['Shallow', 'Deep'];
+
+const isBeatTag = (value: unknown): value is StoryboardBeatTag =>
+  typeof value === 'string' && (BEAT_TAG_OPTIONS as string[]).includes(value);
+const isFrameStatus = (value: unknown): value is StoryboardFrameStatus =>
+  value === 'planned' || value === 'in_review' || value === 'needs_work' || value === 'done';
 
 const DETAIL_LEVEL_OPTIONS: Array<{
   value: StoryboardDetailLevel;
@@ -849,6 +891,19 @@ const toLocalFrames = (frames?: StoryboardFrameModel[]): StoryboardFrame[] => {
     assist: parseAssistSettings(f.assist),
     variantGroupId: typeof f.variantGroupId === 'string' ? f.variantGroupId : undefined,
     variantLabel: typeof f.variantLabel === 'string' ? f.variantLabel : undefined,
+    shotType: typeof f.shotType === 'string' ? f.shotType : undefined,
+    lensMm: typeof f.lensMm === 'number' && Number.isFinite(f.lensMm) ? f.lensMm : undefined,
+    beatTag: isBeatTag(f.beatTag) ? f.beatTag : undefined,
+    frameStatus: isFrameStatus(f.frameStatus) ? f.frameStatus : undefined,
+    location: typeof f.location === 'string' ? f.location : undefined,
+    timeOfDay: typeof f.timeOfDay === 'string' ? f.timeOfDay : undefined,
+    weather: typeof f.weather === 'string' ? f.weather : undefined,
+    transition: typeof f.transition === 'string' ? f.transition : undefined,
+    focusDepth: typeof f.focusDepth === 'string' ? f.focusDepth : undefined,
+    tags: Array.isArray(f.tags) ? f.tags.filter((t): t is string => typeof t === 'string') : undefined,
+    continuityNotes: typeof f.continuityNotes === 'string' ? f.continuityNotes : undefined,
+    vfxNotes: typeof f.vfxNotes === 'string' ? f.vfxNotes : undefined,
+    productionNotes: typeof f.productionNotes === 'string' ? f.productionNotes : undefined,
     createdAt: typeof f.createdAt === 'string' ? f.createdAt : undefined,
     updatedAt: typeof f.updatedAt === 'string' ? f.updatedAt : undefined,
   }));
@@ -878,6 +933,19 @@ const toModelFrames = (frames: StoryboardFrame[], defaultSceneId: string): Story
     assist: normalizeAssistSettings(f.assist),
     variantGroupId: f.variantGroupId,
     variantLabel: f.variantLabel,
+    shotType: f.shotType,
+    lensMm: f.lensMm,
+    beatTag: f.beatTag,
+    frameStatus: f.frameStatus,
+    location: f.location,
+    timeOfDay: f.timeOfDay,
+    weather: f.weather,
+    transition: f.transition,
+    focusDepth: f.focusDepth,
+    tags: f.tags,
+    continuityNotes: f.continuityNotes,
+    vfxNotes: f.vfxNotes,
+    productionNotes: f.productionNotes,
     createdAt: f.createdAt,
     updatedAt: f.updatedAt,
   }));
@@ -910,6 +978,19 @@ const framesEqual = (a: StoryboardFrame[], b: StoryboardFrame[]): boolean => {
       left.screenDirection !== right.screenDirection ||
       left.variantGroupId !== right.variantGroupId ||
       left.variantLabel !== right.variantLabel ||
+      left.shotType !== right.shotType ||
+      left.lensMm !== right.lensMm ||
+      left.beatTag !== right.beatTag ||
+      left.frameStatus !== right.frameStatus ||
+      left.location !== right.location ||
+      left.timeOfDay !== right.timeOfDay ||
+      left.weather !== right.weather ||
+      left.transition !== right.transition ||
+      left.focusDepth !== right.focusDepth ||
+      (left.tags ?? []).join('|') !== (right.tags ?? []).join('|') ||
+      left.continuityNotes !== right.continuityNotes ||
+      left.vfxNotes !== right.vfxNotes ||
+      left.productionNotes !== right.productionNotes ||
       serializeAssistSettings(left.assist) !== serializeAssistSettings(right.assist) ||
       !rangeEqual(left.scriptLineRange, right.scriptLineRange) ||
       left.createdAt !== right.createdAt ||
@@ -2555,6 +2636,14 @@ const StoryboardView: React.FC<{
       </Box>
       )}
 
+      {frames.length > 0 && (
+        <SceneTimelineStrip
+          frames={frames}
+          activeFrameIndex={activeFrameIndex}
+          onSelectFrame={onSelectFrame}
+        />
+      )}
+
       {/* Sprint A.7: Continuity strip — ±2 nabo-frames synlige + style-drift.
           Bruker `frames`/`activeFrameIndex`/`onSelectFrame` prop-navnene i
           StoryboardView (parent StoryboardIntegrationView's variabler
@@ -3513,6 +3602,181 @@ const StoryboardView: React.FC<{
               }
               fullWidth
             />
+            {/* Inspector-felter (mockup 2): DP-metadata + beat + status */}
+            <Stack direction="row" spacing={2}>
+              <TextField
+                select
+                label="Shot type"
+                value={editDraft?.shotType || ''}
+                onChange={(event) =>
+                  setEditDraft((prev) => (prev ? { ...prev, shotType: event.target.value || undefined } : prev))
+                }
+                fullWidth
+              >
+                <MenuItem value="">—</MenuItem>
+                {SHOT_TYPE_OPTIONS.map((option) => (
+                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                select
+                label="Linse"
+                value={editDraft?.lensMm ?? ''}
+                onChange={(event) =>
+                  setEditDraft((prev) => {
+                    if (!prev) return prev;
+                    const parsed = Number(event.target.value);
+                    return { ...prev, lensMm: Number.isFinite(parsed) && parsed > 0 ? parsed : undefined };
+                  })
+                }
+                fullWidth
+              >
+                <MenuItem value="">—</MenuItem>
+                {LENS_MM_OPTIONS.map((mm) => (
+                  <MenuItem key={mm} value={mm}>{mm}mm</MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+            <Stack direction="row" spacing={2}>
+              <TextField
+                select
+                label="Beat"
+                value={editDraft?.beatTag || ''}
+                onChange={(event) =>
+                  setEditDraft((prev) =>
+                    prev ? { ...prev, beatTag: isBeatTag(event.target.value) ? event.target.value : undefined } : prev
+                  )
+                }
+                fullWidth
+              >
+                <MenuItem value="">—</MenuItem>
+                {BEAT_TAG_OPTIONS.map((option) => (
+                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                select
+                label="Status"
+                value={editDraft?.frameStatus || ''}
+                onChange={(event) =>
+                  setEditDraft((prev) =>
+                    prev
+                      ? { ...prev, frameStatus: isFrameStatus(event.target.value) ? event.target.value : undefined }
+                      : prev
+                  )
+                }
+                fullWidth
+              >
+                <MenuItem value="">—</MenuItem>
+                {(Object.keys(FRAME_STATUS_META) as StoryboardFrameStatus[]).map((option) => (
+                  <MenuItem key={option} value={option}>{FRAME_STATUS_META[option].label}</MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+            <Stack direction="row" spacing={2}>
+              <TextField
+                select
+                label="Transition"
+                value={editDraft?.transition || ''}
+                onChange={(event) =>
+                  setEditDraft((prev) => (prev ? { ...prev, transition: event.target.value || undefined } : prev))
+                }
+                fullWidth
+              >
+                <MenuItem value="">—</MenuItem>
+                {TRANSITION_OPTIONS.map((option) => (
+                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                select
+                label="Fokus / dybde"
+                value={editDraft?.focusDepth || ''}
+                onChange={(event) =>
+                  setEditDraft((prev) => (prev ? { ...prev, focusDepth: event.target.value || undefined } : prev))
+                }
+                fullWidth
+              >
+                <MenuItem value="">—</MenuItem>
+                {FOCUS_DEPTH_OPTIONS.map((option) => (
+                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+            <Stack direction="row" spacing={2}>
+              <TextField
+                label="Lokasjon"
+                value={editDraft?.location || ''}
+                onChange={(event) =>
+                  setEditDraft((prev) => (prev ? { ...prev, location: event.target.value } : prev))
+                }
+                fullWidth
+              />
+              <TextField
+                label="Tid på døgnet"
+                value={editDraft?.timeOfDay || ''}
+                onChange={(event) =>
+                  setEditDraft((prev) => (prev ? { ...prev, timeOfDay: event.target.value } : prev))
+                }
+                fullWidth
+              />
+              <TextField
+                label="Vær"
+                value={editDraft?.weather || ''}
+                onChange={(event) =>
+                  setEditDraft((prev) => (prev ? { ...prev, weather: event.target.value } : prev))
+                }
+                fullWidth
+              />
+            </Stack>
+            <TextField
+              label="Tags (kommaseparert)"
+              value={(editDraft?.tags ?? []).join(', ')}
+              onChange={(event) =>
+                setEditDraft((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        tags: event.target.value
+                          .split(',')
+                          .map((t) => t.trim().toUpperCase())
+                          .filter(Boolean),
+                      }
+                    : prev
+                )
+              }
+              fullWidth
+            />
+            <TextField
+              label="Continuity"
+              value={editDraft?.continuityNotes || ''}
+              onChange={(event) =>
+                setEditDraft((prev) => (prev ? { ...prev, continuityNotes: event.target.value } : prev))
+              }
+              multiline
+              minRows={2}
+              fullWidth
+            />
+            <TextField
+              label="VFX"
+              value={editDraft?.vfxNotes || ''}
+              onChange={(event) =>
+                setEditDraft((prev) => (prev ? { ...prev, vfxNotes: event.target.value } : prev))
+              }
+              multiline
+              minRows={2}
+              fullWidth
+            />
+            <TextField
+              label="Production notes"
+              value={editDraft?.productionNotes || ''}
+              onChange={(event) =>
+                setEditDraft((prev) => (prev ? { ...prev, productionNotes: event.target.value } : prev))
+              }
+              multiline
+              minRows={2}
+              fullWidth
+            />
             <TextField
               label="Notater"
               value={editDraft?.notes || ''}
@@ -3546,6 +3810,19 @@ const StoryboardView: React.FC<{
                 focusPoint: editDraft.focusPoint?.trim() || undefined,
                 blockingNotes: editDraft.blockingNotes?.trim() || undefined,
                 notes: editDraft.notes?.trim() || undefined,
+                shotType: editDraft.shotType || undefined,
+                lensMm: editDraft.lensMm,
+                beatTag: editDraft.beatTag,
+                frameStatus: editDraft.frameStatus,
+                transition: editDraft.transition || undefined,
+                focusDepth: editDraft.focusDepth || undefined,
+                location: editDraft.location?.trim() || undefined,
+                timeOfDay: editDraft.timeOfDay?.trim() || undefined,
+                weather: editDraft.weather?.trim() || undefined,
+                tags: editDraft.tags?.length ? editDraft.tags : undefined,
+                continuityNotes: editDraft.continuityNotes?.trim() || undefined,
+                vfxNotes: editDraft.vfxNotes?.trim() || undefined,
+                productionNotes: editDraft.productionNotes?.trim() || undefined,
               });
               setEditingFrameId(null);
             }}
@@ -3892,9 +4169,41 @@ const StoryboardFrameCard: React.FC<{
           </Typography>
 
           <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-            <Chip label={frame.cameraAngle} size="small" sx={{ bgcolor: 'rgba(56,189,248,0.18)', color: 'rgba(224,242,254,0.95)' }} />
-            <Chip label={frame.movement} size="small" sx={{ bgcolor: 'rgba(14,165,233,0.16)', color: 'rgba(224,242,254,0.95)' }} />
+            {/* «SHOT TYPE · CAMERA MOVE» sammensatt — mockup-konvensjonen */}
+            <Chip
+              label={`${frame.shotType || frame.cameraAngle}${frame.movement ? ` · ${frame.movement}` : ''}`}
+              size="small"
+              sx={{ bgcolor: 'rgba(139,92,246,0.2)', color: 'rgba(233,213,255,0.98)', fontWeight: 600 }}
+            />
+            {typeof frame.lensMm === 'number' && (
+              <Chip label={`${frame.lensMm}mm`} size="small" sx={{ bgcolor: 'rgba(99,102,241,0.18)', color: 'rgba(224,231,255,0.95)' }} />
+            )}
             <Chip label={`${frame.duration}s`} size="small" sx={{ bgcolor: 'rgba(251,191,36,0.16)', color: 'rgba(254,243,199,0.95)' }} />
+            {frame.beatTag && (
+              <Chip
+                label={frame.beatTag}
+                size="small"
+                sx={{
+                  bgcolor: BEAT_TAG_STYLES[frame.beatTag].bg,
+                  color: BEAT_TAG_STYLES[frame.beatTag].fg,
+                  fontWeight: 700,
+                  fontSize: '0.62rem',
+                  letterSpacing: 0.8,
+                }}
+              />
+            )}
+            {frame.frameStatus && (
+              <Chip
+                label={FRAME_STATUS_META[frame.frameStatus].label}
+                size="small"
+                variant="outlined"
+                sx={{
+                  color: FRAME_STATUS_META[frame.frameStatus].color,
+                  borderColor: FRAME_STATUS_META[frame.frameStatus].color,
+                  fontSize: '0.62rem',
+                }}
+              />
+            )}
             {frame.screenDirection && (
               <Chip
                 label={getScreenDirectionLabel(frame.screenDirection)}
@@ -3985,6 +4294,110 @@ const StoryboardFrameCard: React.FC<{
   );
 };
 
+// Scene-timeline (mockup 1): thumbnails med bredde ∝ varighet + dramaturgi-
+// fase-segmenter (SETUP/TENSION/ACTION/RESOLUTION) avledet fra beat-tags.
+const BEAT_TO_PHASE: Record<StoryboardBeatTag, string> = {
+  ESTABLISHING: 'SETUP',
+  TENSION: 'TENSION',
+  BEAT: 'TENSION',
+  ACTION: 'ACTION',
+  DIALOGUE: 'ACTION',
+  RESOLUTION: 'RESOLUTION',
+};
+const PHASE_COLORS: Record<string, string> = {
+  SETUP: 'rgba(100,116,139,0.75)',
+  TENSION: 'rgba(245,158,11,0.8)',
+  ACTION: 'rgba(239,68,68,0.8)',
+  RESOLUTION: 'rgba(56,189,248,0.8)',
+};
+
+const SceneTimelineStrip: React.FC<{
+  frames: StoryboardFrame[];
+  activeFrameIndex: number;
+  onSelectFrame: (index: number) => void;
+}> = ({ frames, activeFrameIndex, onSelectFrame }) => {
+  if (frames.length === 0) return null;
+  const totalSeconds = frames.reduce((sum, frame) => sum + (frame.duration || 0), 0);
+  const totalLabel = `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(Math.round(totalSeconds % 60)).padStart(2, '0')}`;
+
+  // Fase-segmenter: påfølgende frames med samme fase slås sammen; frames
+  // uten beat-tag arver forrige fase (SETUP som start).
+  const phases: Array<{ phase: string; weight: number }> = [];
+  let currentPhase = 'SETUP';
+  frames.forEach((frame) => {
+    const phase = frame.beatTag ? BEAT_TO_PHASE[frame.beatTag] : currentPhase;
+    currentPhase = phase;
+    const weight = Math.max(0.5, frame.duration || 1);
+    const last = phases[phases.length - 1];
+    if (last && last.phase === phase) last.weight += weight;
+    else phases.push({ phase, weight });
+  });
+
+  return (
+    <Box data-testid="scene-timeline-strip" sx={{ mt: 2 }}>
+      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 0.75 }}>
+        <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.75)', letterSpacing: 1.4, fontWeight: 700 }}>
+          SCENE · {frames.length} SHOTS · {totalLabel}
+        </Typography>
+      </Stack>
+      <Stack direction="row" spacing={0.5} sx={{ overflowX: 'auto', pb: 0.5 }}>
+        {frames.map((frame, index) => {
+          const thumb = frame.thumbnailUrl || frame.imageUrl;
+          const flexGrow = Math.max(0.5, frame.duration || 1);
+          const isActive = index === activeFrameIndex;
+          return (
+            <Box
+              key={frame.id}
+              onClick={() => onSelectFrame(index)}
+              sx={{
+                flexGrow,
+                flexBasis: 0,
+                minWidth: 64,
+                cursor: 'pointer',
+                borderRadius: 1,
+                overflow: 'hidden',
+                border: isActive ? '2px solid #8b5cf6' : '1px solid rgba(148,163,184,0.25)',
+                bgcolor: 'rgba(13,17,23,0.9)',
+              }}
+            >
+              <Box
+                sx={{
+                  height: 44,
+                  backgroundImage: thumb ? `url(${thumb})` : undefined,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  bgcolor: thumb ? undefined : 'rgba(148,163,184,0.12)',
+                }}
+              />
+              <Stack direction="row" justifyContent="space-between" sx={{ px: 0.6, py: 0.2 }}>
+                <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.9)', fontSize: '0.62rem', fontWeight: 700 }}>
+                  {frame.shotNumber}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(148,163,184,0.85)', fontSize: '0.62rem' }}>
+                  {frame.duration}s
+                </Typography>
+              </Stack>
+            </Box>
+          );
+        })}
+      </Stack>
+      <Stack direction="row" spacing={0.25} sx={{ mt: 0.5 }}>
+        {phases.map((segment, index) => (
+          <Box key={`${segment.phase}-${index}`} sx={{ flexGrow: segment.weight, flexBasis: 0, minWidth: 40 }}>
+            <Box sx={{ height: 4, borderRadius: 2, bgcolor: PHASE_COLORS[segment.phase] || 'rgba(148,163,184,0.5)' }} />
+            <Typography
+              variant="caption"
+              sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.58rem', letterSpacing: 1.1, fontWeight: 700 }}
+            >
+              {segment.phase}
+            </Typography>
+          </Box>
+        ))}
+      </Stack>
+    </Box>
+  );
+};
+
 const ShotListView: React.FC<{
   frames: StoryboardFrame[];
   onUpdate: (frames: StoryboardFrame[]) => void;
@@ -4022,16 +4435,30 @@ const ShotListView: React.FC<{
     cancelEdit();
   };
 
+  const totalSeconds = frames.reduce((sum, frame) => sum + (frame.duration || 0), 0);
+  const totalLabel = `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(Math.round(totalSeconds % 60)).padStart(2, '0')}`;
+
+  const cycleStatus = (frame: StoryboardFrame) => {
+    const order: StoryboardFrameStatus[] = ['planned', 'in_review', 'needs_work', 'done'];
+    const next = order[(order.indexOf(frame.frameStatus ?? 'planned') + 1) % order.length];
+    onUpdate(frames.map((f) => (f.id === frame.id ? { ...f, frameStatus: next } : f)));
+  };
+
   return (
     <Paper>
       <Table>
         <TableHead>
           <TableRow>
             <TableCell>Shot #</TableCell>
+            <TableCell>Board</TableCell>
             <TableCell>Beskrivelse</TableCell>
-            <TableCell>Kamera</TableCell>
+            <TableCell>Type</TableCell>
             <TableCell>Bevegelse</TableCell>
+            <TableCell>Linse</TableCell>
             <TableCell>Varighet</TableCell>
+            <TableCell>Lokasjon</TableCell>
+            <TableCell>Tid</TableCell>
+            <TableCell>Status</TableCell>
             <TableCell>Notater</TableCell>
             <TableCell>Handlinger</TableCell>
           </TableRow>
@@ -4048,6 +4475,18 @@ const ShotListView: React.FC<{
                   />
                 ) : (
                   <Chip label={frame.shotNumber} size="small" />
+                )}
+              </TableCell>
+              <TableCell>
+                {(frame.thumbnailUrl || frame.imageUrl) ? (
+                  <Box
+                    component="img"
+                    src={frame.thumbnailUrl || frame.imageUrl}
+                    alt={frame.shotNumber}
+                    sx={{ width: 64, height: 36, objectFit: 'cover', borderRadius: 0.5, display: 'block' }}
+                  />
+                ) : (
+                  <Box sx={{ width: 64, height: 36, borderRadius: 0.5, bgcolor: 'rgba(148,163,184,0.15)' }} />
                 )}
               </TableCell>
               <TableCell>
@@ -4070,7 +4509,7 @@ const ShotListView: React.FC<{
                     onChange={(event) => setEditDraft((prev) => (prev ? { ...prev, cameraAngle: event.target.value } : prev))}
                   />
                 ) : (
-                  frame.cameraAngle
+                  frame.shotType || frame.cameraAngle
                 )}
               </TableCell>
               <TableCell>
@@ -4084,6 +4523,7 @@ const ShotListView: React.FC<{
                   frame.movement
                 )}
               </TableCell>
+              <TableCell>{typeof frame.lensMm === 'number' ? `${frame.lensMm}mm` : '—'}</TableCell>
               <TableCell>
                 {editingFrameId === frame.id ? (
                   <TextField
@@ -4102,6 +4542,21 @@ const ShotListView: React.FC<{
                 ) : (
                   `${frame.duration}s`
                 )}
+              </TableCell>
+              <TableCell>{frame.location || '—'}</TableCell>
+              <TableCell>{frame.timeOfDay || '—'}</TableCell>
+              <TableCell>
+                <Chip
+                  label={FRAME_STATUS_META[frame.frameStatus ?? 'planned'].label}
+                  size="small"
+                  onClick={() => cycleStatus(frame)}
+                  sx={{
+                    color: FRAME_STATUS_META[frame.frameStatus ?? 'planned'].color,
+                    borderColor: FRAME_STATUS_META[frame.frameStatus ?? 'planned'].color,
+                    cursor: 'pointer',
+                  }}
+                  variant="outlined"
+                />
               </TableCell>
               <TableCell>
                 {editingFrameId === frame.id ? (
@@ -4149,6 +4604,29 @@ const ShotListView: React.FC<{
           ))}
         </TableBody>
       </Table>
+
+      <Stack
+        direction="row"
+        spacing={2}
+        alignItems="center"
+        justifyContent="space-between"
+        sx={{ px: 2, py: 1.25, borderTop: '1px solid rgba(148,163,184,0.18)' }}
+        data-testid="shot-list-footer"
+      >
+        <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.8)' }}>
+          {frames.length} shots · Total Duration {totalLabel}
+        </Typography>
+        <Stack direction="row" spacing={1.5}>
+          {(Object.keys(FRAME_STATUS_META) as StoryboardFrameStatus[]).map((status) => (
+            <Stack key={status} direction="row" spacing={0.5} alignItems="center">
+              <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: FRAME_STATUS_META[status].color }} />
+              <Typography variant="caption" sx={{ color: 'rgba(148,163,184,0.85)' }}>
+                {FRAME_STATUS_META[status].label}
+              </Typography>
+            </Stack>
+          ))}
+        </Stack>
+      </Stack>
 
       <Box sx={{ p: 2 }}>
         <Button
