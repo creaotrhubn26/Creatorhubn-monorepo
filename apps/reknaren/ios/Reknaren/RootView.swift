@@ -27,6 +27,7 @@ enum Screen: String, CaseIterable, Identifiable {
 
 struct RootView: View {
     @Environment(Session.self) private var session
+    @Environment(AppState.self) private var app
     @State private var selection: Screen? = .overview
 
     private var sections: [(name: String, items: [Screen])] {
@@ -48,16 +49,36 @@ struct RootView: View {
             }
             .navigationTitle("Reknaren")
             .toolbar {
+                if app.orgs.count > 1 {
+                    ToolbarItem(placement: .topBarLeading) { orgPicker }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Logg ut") { Task { await session.signOut() } }
                 }
             }
         } detail: {
             switch selection {
-            case .overview, .none: OverviewView()
-            case .bank: PlaceholderView(title: "Bank og avstemming",
-                                        note: "Kommer i Fase 1: transaksjoner, «hva dette kan være», Finn kvittering, «betalte du privat?».")
+            case .overview, .none:
+                OverviewView()
+            case .bank:
+                if let orgId = app.activeOrgId {
+                    BankView(orgId: orgId)
+                } else {
+                    ContentUnavailableView("Velg en virksomhet", systemImage: "building.2",
+                                           description: Text("Opprett en virksomhet i web-appen først."))
+                }
             }
+        }
+    }
+
+    @ViewBuilder private var orgPicker: some View {
+        @Bindable var app = app
+        Menu {
+            Picker("Virksomhet", selection: $app.activeOrgId) {
+                ForEach(app.orgs) { org in Text(org.name).tag(Optional(org.id)) }
+            }
+        } label: {
+            Label(app.activeOrg?.name ?? "Virksomhet", systemImage: "building.2")
         }
     }
 }

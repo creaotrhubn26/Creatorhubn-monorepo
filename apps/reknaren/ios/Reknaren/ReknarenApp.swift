@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct ReknarenApp: App {
     @State private var session = Session()
+    @State private var app = AppState()
 
     var body: some Scene {
         WindowGroup {
@@ -13,10 +14,11 @@ struct ReknarenApp: App {
                 case .signedOut:
                     LoginView()
                 case .signedIn:
-                    RootView()
+                    RootView().task { await app.loadOrgsIfNeeded() }
                 }
             }
             .environment(session)
+            .environment(app)
             .onOpenURL { url in
                 // Universal Link / custom scheme: …/auth/verify?token=…
                 guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
