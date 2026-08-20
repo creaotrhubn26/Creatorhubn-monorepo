@@ -3,11 +3,12 @@ import SwiftUI
 /// Navigasjons-mål. Speiler web-nav; utvides fase for fase. `NavigationSplitView`
 /// gir sidebar på iPad og kollapser automatisk til stack på iPhone → universell.
 enum Screen: String, CaseIterable, Identifiable {
-    case concierge, overview, bank, pay, vendors
+    case capture, concierge, overview, bank, pay, vendors
     var id: String { rawValue }
 
     var label: String {
         switch self {
+        case .capture: return "Ny kvittering"
         case .concierge: return "Til godkjenning"
         case .overview: return "Oversikt"
         case .bank: return "Bank og avstemming"
@@ -17,6 +18,7 @@ enum Screen: String, CaseIterable, Identifiable {
     }
     var systemImage: String {
         switch self {
+        case .capture: return "camera.viewfinder"
         case .concierge: return "checkmark.circle"
         case .overview: return "square.grid.2x2"
         case .bank: return "building.columns"
@@ -26,7 +28,7 @@ enum Screen: String, CaseIterable, Identifiable {
     }
     var section: String {
         switch self {
-        case .concierge, .overview, .bank: return "Virksomhet"
+        case .capture, .concierge, .overview, .bank: return "Virksomhet"
         case .pay, .vendors: return "Betaling"
         }
     }
@@ -67,6 +69,8 @@ struct RootView: View {
             switch selection {
             case .overview:
                 OverviewView()
+            case .capture:
+                orgScoped { CaptureView(orgId: $0) }
             case .concierge, .none:
                 orgScoped { ConciergeView(orgId: $0) }
             case .bank:
