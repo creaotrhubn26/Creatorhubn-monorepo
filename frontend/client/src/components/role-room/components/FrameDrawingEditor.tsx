@@ -8819,6 +8819,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
         color: brushSettings.color,
         opacity: brushSettings.opacity,
       }}
+      streamlineOverride={(stabilizeValue / 100) * 0.92}
       showToolbar={showEmbeddedCanvasToolbar}
       showPressureIndicator={device.hasPencilSupport}
       showReferenceImageControls={boardPolishPresentationActive ? false : showWorkspaceChrome ? false : showReferenceImageControls}

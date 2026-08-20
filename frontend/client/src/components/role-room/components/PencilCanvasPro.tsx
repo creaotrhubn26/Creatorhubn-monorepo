@@ -291,6 +291,9 @@ export interface PencilCanvasProProps {
     activeLayerId: string;
   };
   brushSettings?: Partial<ProBrushSettings>;
+  /** Stabilize (mockup «Smoothing %»): overstyrer per-pensel-StreamLine.
+      0 = av, 0.92 = maks. undefined = auto (STREAMLINE_BY_TYPE). */
+  streamlineOverride?: number;
   showToolbar?: boolean;
   showPressureIndicator?: boolean;
   showReferenceImageControls?: boolean;
@@ -1476,6 +1479,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   boardPolishPreviewEffectId,
   layerState,
   brushSettings: initialBrushSettings,
+  streamlineOverride,
   showToolbar = true,
   showPressureIndicator = false,
   showReferenceImageControls = true,
@@ -2430,7 +2434,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
         )
       );
       // StreamLine live: samme EMA som commit-pathen, så preview = resultat
-      const streamlineAmount = STREAMLINE_BY_TYPE[liveStrokeBrushRef.current.type] ?? 0;
+      const streamlineAmount = streamlineOverride ?? STREAMLINE_BY_TYPE[liveStrokeBrushRef.current.type] ?? 0;
       const sl = streamlineLiveRef.current;
       if (streamlineAmount > 0 && sl) {
         const k = Math.min(0.92, streamlineAmount);
@@ -2532,7 +2536,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
             )
           )
         )),
-        STREAMLINE_BY_TYPE[brushSnapshot.type] ?? 0,
+        streamlineOverride ?? STREAMLINE_BY_TYPE[brushSnapshot.type] ?? 0,
       );
       const isShapeToolActive = activeTool === 'shape' && Boolean(selectedShapeType);
       if (isShapeToolActive && selectedShapeType) {
