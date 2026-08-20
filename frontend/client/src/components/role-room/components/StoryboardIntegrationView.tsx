@@ -159,9 +159,20 @@ interface StoryboardFrame {
   continuityNotes?: string;
   vfxNotes?: string;
   productionNotes?: string;
+  frameComments?: StoryboardFrameComment[];
   createdAt?: string;
   updatedAt?: string;
 }
+
+interface StoryboardFrameComment {
+  id: string;
+  role: string;      // Director / DP / Producer / Editor / Artist
+  author: string;
+  text: string;
+  at: string;        // ISO
+}
+
+const COMMENT_ROLE_OPTIONS = ['Director', 'DP', 'Producer', 'Editor', 'Artist'];
 
 type StoryboardBeatTag = 'ESTABLISHING' | 'TENSION' | 'BEAT' | 'ACTION' | 'DIALOGUE' | 'RESOLUTION';
 type StoryboardFrameStatus = 'planned' | 'in_review' | 'needs_work' | 'done';
@@ -904,6 +915,14 @@ const toLocalFrames = (frames?: StoryboardFrameModel[]): StoryboardFrame[] => {
     continuityNotes: typeof f.continuityNotes === 'string' ? f.continuityNotes : undefined,
     vfxNotes: typeof f.vfxNotes === 'string' ? f.vfxNotes : undefined,
     productionNotes: typeof f.productionNotes === 'string' ? f.productionNotes : undefined,
+    frameComments: Array.isArray(f.frameComments)
+      ? f.frameComments.filter(
+          (c): c is StoryboardFrameComment =>
+            !!c && typeof c === 'object'
+            && typeof (c as StoryboardFrameComment).id === 'string'
+            && typeof (c as StoryboardFrameComment).text === 'string'
+        )
+      : undefined,
     createdAt: typeof f.createdAt === 'string' ? f.createdAt : undefined,
     updatedAt: typeof f.updatedAt === 'string' ? f.updatedAt : undefined,
   }));
@@ -946,6 +965,7 @@ const toModelFrames = (frames: StoryboardFrame[], defaultSceneId: string): Story
     continuityNotes: f.continuityNotes,
     vfxNotes: f.vfxNotes,
     productionNotes: f.productionNotes,
+    frameComments: f.frameComments,
     createdAt: f.createdAt,
     updatedAt: f.updatedAt,
   }));
@@ -991,6 +1011,9 @@ const framesEqual = (a: StoryboardFrame[], b: StoryboardFrame[]): boolean => {
       left.continuityNotes !== right.continuityNotes ||
       left.vfxNotes !== right.vfxNotes ||
       left.productionNotes !== right.productionNotes ||
+      (left.frameComments?.length ?? 0) !== (right.frameComments?.length ?? 0) ||
+      (left.frameComments?.[left.frameComments.length - 1]?.id)
+        !== (right.frameComments?.[right.frameComments.length - 1]?.id) ||
       serializeAssistSettings(left.assist) !== serializeAssistSettings(right.assist) ||
       !rangeEqual(left.scriptLineRange, right.scriptLineRange) ||
       left.createdAt !== right.createdAt ||
@@ -2526,7 +2549,16 @@ const StoryboardView: React.FC<{
         </Box>
       )}
 
-      {workspaceMode !== 'moodboard' && (
+      {workspaceMode === 'review' && frames.length > 0 && (
+        <ReviewModeView
+          frames={frames}
+          activeFrameIndex={activeFrameIndex}
+          onSelectFrame={onSelectFrame}
+          onPatchFrame={(frameId, patch) => patchFrame(frameId, patch)}
+        />
+      )}
+
+      {workspaceMode !== 'moodboard' && workspaceMode !== 'review' && (
       <Box
         sx={{
           display: 'grid',
@@ -4309,6 +4341,204 @@ const PHASE_COLORS: Record<string, string> = {
   TENSION: 'rgba(245,158,11,0.8)',
   ACTION: 'rgba(239,68,68,0.8)',
   RESOLUTION: 'rgba(56,189,248,0.8)',
+};
+
+// Review Mode (mockup 1, nederst venstre): stor frame + vertikal filmstripe
+// + rollekommentarer + status + Approve/Needs Work.
+const relativeTime = (iso: string): string => {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const minutes = Math.round(diffMs / 60000);
+  if (minutes < 1) return 'nå';
+  if (minutes < 60) return `${minutes}m siden`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}t siden`;
+  return `${Math.round(hours / 24)}d siden`;
+};
+
+const ReviewModeView: React.FC<{
+  frames: StoryboardFrame[];
+  activeFrameIndex: number;
+  onSelectFrame: (index: number) => void;
+  onPatchFrame: (frameId: string, patch: Partial<StoryboardFrame>) => void;
+}> = ({ frames, activeFrameIndex, onSelectFrame, onPatchFrame }) => {
+  const [commentRole, setCommentRole] = useState<string>('Director');
+  const [commentText, setCommentText] = useState<string>('');
+  const frame = frames[activeFrameIndex];
+  if (!frame) return null;
+  const imageSrc = frame.imageUrl || frame.thumbnailUrl;
+  const status = frame.frameStatus ?? 'in_review';
+  const comments = frame.frameComments ?? [];
+
+  const addComment = () => {
+    const text = commentText.trim();
+    if (!text) return;
+    const comment: StoryboardFrameComment = {
+      id: createFrameId(),
+      role: commentRole,
+      author: commentRole,
+      text,
+      at: new Date().toISOString(),
+    };
+    onPatchFrame(frame.id, { frameComments: [...comments, comment] });
+    setCommentText('');
+  };
+
+  return (
+    <Box data-testid="storyboard-review-mode" sx={{ display: 'flex', gap: 2, alignItems: 'stretch' }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Box
+          sx={{
+            borderRadius: 1.5,
+            overflow: 'hidden',
+            border: '1px solid rgba(139,92,246,0.3)',
+            bgcolor: 'rgba(13,17,23,0.9)',
+            aspectRatio: '2.39 / 1',
+            backgroundImage: imageSrc ? `url(${imageSrc})` : undefined,
+            backgroundSize: 'contain',
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center',
+          }}
+        />
+        <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mt: 1 }}>
+          <Typography variant="subtitle2" sx={{ color: 'rgba(248,250,252,0.95)', fontWeight: 700 }}>
+            SHOT {frame.shotNumber}
+          </Typography>
+          <Typography variant="caption" sx={{ color: 'rgba(148,163,184,0.9)' }}>
+            {[frame.shotType || frame.cameraAngle, frame.movement, `${frame.duration}s`, typeof frame.lensMm === 'number' ? `${frame.lensMm}mm` : null]
+              .filter(Boolean)
+              .join(' · ')}
+          </Typography>
+          <Box sx={{ flex: 1 }} />
+          <Chip
+            label={FRAME_STATUS_META[status].label}
+            size="small"
+            variant="outlined"
+            sx={{ color: FRAME_STATUS_META[status].color, borderColor: FRAME_STATUS_META[status].color }}
+          />
+        </Stack>
+        {frame.description && (
+          <Typography variant="body2" sx={{ mt: 0.5, color: 'rgba(226,232,240,0.85)' }}>
+            {frame.description}
+          </Typography>
+        )}
+
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.7)', letterSpacing: 1.4, fontWeight: 700 }}>
+            COMMENTS ({comments.length})
+          </Typography>
+          <Stack spacing={1} sx={{ mt: 1, maxHeight: 220, overflowY: 'auto' }}>
+            {comments.map((comment) => (
+              <Box
+                key={comment.id}
+                sx={{ p: 1, borderRadius: 1, bgcolor: 'rgba(13,17,23,0.8)', border: '1px solid rgba(148,163,184,0.18)' }}
+              >
+                <Stack direction="row" spacing={1} alignItems="baseline">
+                  <Typography variant="caption" sx={{ color: '#a78bfa', fontWeight: 700 }}>
+                    {comment.role}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(148,163,184,0.75)' }}>
+                    {relativeTime(comment.at)}
+                  </Typography>
+                </Stack>
+                <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.92)' }}>
+                  {comment.text}
+                </Typography>
+              </Box>
+            ))}
+          </Stack>
+          <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+            <TextField
+              select
+              size="small"
+              value={commentRole}
+              onChange={(event) => setCommentRole(event.target.value)}
+              sx={{ width: 130 }}
+            >
+              {COMMENT_ROLE_OPTIONS.map((role) => (
+                <MenuItem key={role} value={role}>{role}</MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Skriv kommentar…"
+              value={commentText}
+              onChange={(event) => setCommentText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  addComment();
+                }
+              }}
+              data-testid="review-comment-input"
+            />
+            <Button variant="outlined" onClick={addComment} sx={{ flexShrink: 0 }}>
+              Send
+            </Button>
+          </Stack>
+        </Box>
+
+        <Stack direction="row" spacing={1.5} sx={{ mt: 2 }}>
+          <Button
+            variant="contained"
+            data-testid="review-approve-button"
+            onClick={() => onPatchFrame(frame.id, { frameStatus: 'done' })}
+            sx={{ bgcolor: '#10b981', '&:hover': { bgcolor: '#0d9668' } }}
+          >
+            Approve
+          </Button>
+          <Button
+            variant="contained"
+            data-testid="review-needs-work-button"
+            onClick={() => onPatchFrame(frame.id, { frameStatus: 'needs_work' })}
+            sx={{ bgcolor: '#ef4444', '&:hover': { bgcolor: '#dc2626' } }}
+          >
+            Needs Work
+          </Button>
+          <Box sx={{ flex: 1 }} />
+          <Typography variant="caption" sx={{ alignSelf: 'center', color: 'rgba(148,163,184,0.8)' }}>
+            {activeFrameIndex + 1} / {frames.length}
+          </Typography>
+        </Stack>
+      </Box>
+
+      {/* Vertikal filmstripe */}
+      <Stack spacing={0.75} sx={{ width: 108, flexShrink: 0, overflowY: 'auto', maxHeight: 560 }}>
+        {frames.map((stripFrame, index) => {
+          const thumb = stripFrame.thumbnailUrl || stripFrame.imageUrl;
+          const isActive = index === activeFrameIndex;
+          return (
+            <Box
+              key={stripFrame.id}
+              onClick={() => onSelectFrame(index)}
+              sx={{
+                borderRadius: 1,
+                overflow: 'hidden',
+                cursor: 'pointer',
+                border: isActive ? '2px solid #8b5cf6' : '1px solid rgba(148,163,184,0.22)',
+              }}
+            >
+              <Box
+                sx={{
+                  height: 56,
+                  backgroundImage: thumb ? `url(${thumb})` : undefined,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  bgcolor: thumb ? undefined : 'rgba(148,163,184,0.12)',
+                }}
+              />
+              <Typography
+                variant="caption"
+                sx={{ display: 'block', px: 0.5, color: 'rgba(226,232,240,0.85)', fontSize: '0.62rem', fontWeight: 700 }}
+              >
+                {stripFrame.shotNumber}
+              </Typography>
+            </Box>
+          );
+        })}
+      </Stack>
+    </Box>
+  );
 };
 
 const SceneTimelineStrip: React.FC<{
