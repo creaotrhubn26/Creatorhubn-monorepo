@@ -10,9 +10,11 @@ struct LoginView: View {
     var body: some View {
         VStack(spacing: 16) {
             Spacer()
-            Image(systemName: "leaf.circle.fill")
-                .font(.system(size: 48))
-                .foregroundStyle(Color(red: 0.12, green: 0.30, blue: 0.23))
+            Image("ReknarenMark")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 84, height: 84)
+                .accessibilityLabel("Reknaren")
             Text("Reknaren").font(.largeTitle.bold())
             Text("Regnskapet ditt, forklart på vanlig norsk.\nPassordløs innlogging med engangslenke på e-post.")
                 .font(.subheadline)
