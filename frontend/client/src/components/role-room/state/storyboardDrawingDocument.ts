@@ -1243,6 +1243,12 @@ export const createStoryboardDrawingDocument = (
   const createdAt = seed.createdAt || new Date().toISOString();
   const updatedAt = seed.updatedAt || createdAt;
   const primaryLayerId = createDocumentId('layer');
+  // Semantiske annotasjonslag (mockup 2: Notes/Dialog/Drawing/Camera/Arrows)
+  // — kamera-notasjon og røde piler ligger over tegningen, tekstlagene øverst.
+  const cameraLayerId = createDocumentId('layer');
+  const arrowsLayerId = createDocumentId('layer');
+  const dialogLayerId = createDocumentId('layer');
+  const notesLayerId = createDocumentId('layer');
   const primarySheetId = createDocumentId('sheet');
   const primaryCanvasId = createDocumentId('canvas');
   const primaryBookmarkId = createDocumentId('bookmark');
@@ -1283,24 +1289,74 @@ export const createStoryboardDrawingDocument = (
       exposure: DEFAULT_EXPOSURE,
       durationMs: Math.round((1000 / DEFAULT_FPS) * DEFAULT_EXPOSURE),
       frameStart: 0,
-      layerIds: [primaryLayerId],
+      layerIds: [primaryLayerId, cameraLayerId, arrowsLayerId, dialogLayerId, notesLayerId],
       activeLayerId: primaryLayerId,
       markerIds: [],
       createdAt,
       updatedAt,
     }],
-    layers: [{
-      id: primaryLayerId,
-      type: 'drawing',
-      name: 'Drawing Layer 1',
-      visible: true,
-      locked: false,
-      opacity: 1,
-      blendMode: 'normal',
-      strokeIds: strokeRecords.map((entry) => entry.id),
-      createdAt,
-      updatedAt,
-    }],
+    layers: [
+      {
+        id: primaryLayerId,
+        type: 'drawing',
+        name: 'Drawing',
+        visible: true,
+        locked: false,
+        opacity: 1,
+        blendMode: 'normal',
+        strokeIds: strokeRecords.map((entry) => entry.id),
+        createdAt,
+        updatedAt,
+      },
+      {
+        id: cameraLayerId,
+        type: 'drawing',
+        name: 'Camera',
+        visible: true,
+        locked: false,
+        opacity: 1,
+        blendMode: 'normal',
+        strokeIds: [],
+        createdAt,
+        updatedAt,
+      },
+      {
+        id: arrowsLayerId,
+        type: 'drawing',
+        name: 'Arrows',
+        visible: true,
+        locked: false,
+        opacity: 1,
+        blendMode: 'normal',
+        strokeIds: [],
+        createdAt,
+        updatedAt,
+      },
+      {
+        id: dialogLayerId,
+        type: 'drawing',
+        name: 'Dialog',
+        visible: true,
+        locked: false,
+        opacity: 1,
+        blendMode: 'normal',
+        strokeIds: [],
+        createdAt,
+        updatedAt,
+      },
+      {
+        id: notesLayerId,
+        type: 'drawing',
+        name: 'Notes',
+        visible: true,
+        locked: false,
+        opacity: 1,
+        blendMode: 'normal',
+        strokeIds: [],
+        createdAt,
+        updatedAt,
+      },
+    ],
     strokes: strokeRecords,
     markers: [],
     references: referenceImage,
