@@ -18,6 +18,8 @@
 import { test, expect, type Page } from '@playwright/test';
 
 const TEST_PAGE = '/e2e-test.html';
+// Kun GET-er, men default = lokal backend for konsistens med de andre suitene.
+const BACKEND_URL = process.env.E2E_BACKEND_URL ?? 'http://localhost:3003';
 
 async function gotoRoleRoom(page: Page) {
   await page.goto(TEST_PAGE, { waitUntil: 'load', timeout: 60_000 });
@@ -122,7 +124,7 @@ test.describe('Analytics-scripts deployed', () => {
 
 test.describe('Backend smoke (via fetch)', () => {
   test('Backend /api/health returnerer 200', async ({ request }) => {
-    const res = await request.get('https://creatorhub-backend-rtbl.onrender.com/api/health');
+    const res = await request.get(`${BACKEND_URL}/api/health`);
     expect(res.status()).toBe(200);
     const data = await res.json();
     expect(data.status).toBe('ok');
@@ -137,13 +139,13 @@ test.describe('Backend smoke (via fetch)', () => {
       '/api/dit/projects/test/take-status',
     ];
     for (const ep of endpoints) {
-      const res = await request.get(`https://creatorhub-backend-rtbl.onrender.com${ep}`);
+      const res = await request.get(`${BACKEND_URL}${ep}`);
       expect(res.status(), `${ep} skal være auth-gated`).toBe(401);
     }
   });
 
   test('Public stats returnerer 7 metrics', async ({ request }) => {
-    const res = await request.get('https://creatorhub-backend-rtbl.onrender.com/api/role-room/public/stats');
+    const res = await request.get(`${BACKEND_URL}/api/role-room/public/stats`);
     expect(res.status()).toBe(200);
     const data = await res.json();
     expect(data).toHaveProperty('kreative');
@@ -156,7 +158,7 @@ test.describe('Backend smoke (via fetch)', () => {
   });
 
   test('CMS public endpoint returnerer 404 ikke 500', async ({ request }) => {
-    const res = await request.get('https://creatorhub-backend-rtbl.onrender.com/api/cms/pages/for-studenter');
+    const res = await request.get(`${BACKEND_URL}/api/cms/pages/for-studenter`);
     // Etter migrasjon 145 skal dette være 404 (ingen content lagret)
     // Hvis 500: backend mangler publish_at-kolonne
     expect([200, 404]).toContain(res.status());

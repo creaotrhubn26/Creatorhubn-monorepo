@@ -33,7 +33,8 @@
 
 import { test, expect, type APIRequestContext } from '@playwright/test';
 
-const BACKEND_URL = process.env.E2E_BACKEND_URL ?? 'https://creatorhub-backend-rtbl.onrender.com';
+// Default = lokal backend (suiten skriver/laster opp — aldri prod som default).
+const BACKEND_URL = process.env.E2E_BACKEND_URL ?? 'http://localhost:3003';
 const FRONTEND_URL = process.env.E2E_BASE_URL ?? 'https://theroleroom.com';
 const ADMIN_COOKIE = process.env.E2E_ADMIN_SESSION_COOKIE ?? '';
 const R2_PUB_URL = 'https://pub-6556104b51da4540aebfd28b23c0ebea.r2.dev';
