@@ -1292,7 +1292,7 @@ export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: strin
     counterparty: string | null;
     kid: string | null;
     status: string;
-    suggestion: { key: string; label: string; account: string; reason: string } | null;
+    suggestion: { key: string; label: string; account: string; reason: string; explanation: string } | null;
   }
   interface Match {
     id: string;
@@ -1334,6 +1334,7 @@ export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: strin
     key: string;
     label: string;
     direction: 'in' | 'out';
+    explanation: string;
   }
   const cats = useLoad(() => api<BankCategory[]>('GET', `/api/organizations/${orgId}/bank/categories`), [orgId]);
   const [catChoice, setCatChoice] = useState<Record<string, string>>({});
@@ -1861,6 +1862,7 @@ export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: strin
                 const dir = BigInt(t.amount_minor) >= 0n ? 'in' : 'out';
                 const options = (cats.data ?? []).filter((c) => c.direction === dir);
                 const chosen = catChoice[t.id] ?? t.suggestion?.key ?? '';
+                const chosenCat = options.find((c) => c.key === chosen);
                 return (
                   <tr key={t.id}>
                     <td className="tx-date">{t.booked_date}</td>
@@ -1911,6 +1913,7 @@ export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: strin
                               Bokfør
                             </button>
                           </div>
+                          {chosenCat && <p className="cat-explain">{chosenCat.explanation}</p>}
                         </div>
                       ) : (
                         <span className="secondary-line">–</span>

@@ -21,6 +21,8 @@ interface CategoryDef {
   direction: CategoryDirection;
   /** Motkonto — fast, eller per organisasjonsform. */
   account: string | { ENK: string; AS: string; default: string };
+  /** Klartekst: hva dette ER + hvordan/hvorfor det bokføres. Novise-first. */
+  explanation: string;
   /** Begrens til visse organisasjonsformer (f.eks. privatuttak kun ENK). */
   orgForms?: string[];
   note?: string;
@@ -28,32 +30,72 @@ interface CategoryDef {
 
 /** Faste, dokumenterte kontokoblinger (norsk standard kontoplan). */
 const CATEGORIES: CategoryDef[] = [
-  { key: 'bankgebyr', label: 'Bankgebyr', direction: 'out', account: '7770' },
-  { key: 'rentekostnad', label: 'Rentekostnad', direction: 'out', account: '8150' },
+  {
+    key: 'bankgebyr',
+    label: 'Bankgebyr',
+    direction: 'out',
+    account: '7770',
+    explanation: 'Det banken tar betalt for konto, kort og nettbank. Føres som en driftskostnad (konto 7770) og trekkes fra i regnskapet.',
+  },
+  {
+    key: 'rentekostnad',
+    label: 'Rentekostnad',
+    direction: 'out',
+    account: '8150',
+    explanation: 'Renter du betaler på lån eller kreditt. Føres som en finanskostnad (konto 8150).',
+  },
   {
     key: 'skatt',
     label: 'Betalt skatt',
     direction: 'out',
     // ENK: eierens skatt er privatuttak (ikke firmakostnad). AS: betalbar selskapsskatt.
     account: { ENK: '2060', AS: '2500', default: '2500' },
+    explanation: 'Betaling av skatt til Skatteetaten. For AS: betalbar selskapsskatt (konto 2500). For ENK er eierens skatt et privatuttak (konto 2060), ikke en firmakostnad.',
   },
-  { key: 'privatuttak', label: 'Privatuttak (penger til deg selv)', direction: 'out', account: '2060', orgForms: ['ENK'] },
-  { key: 'annen_utbetaling', label: 'Annen utbetaling (uten kvittering)', direction: 'out', account: '7790' },
-  { key: 'renteinntekt', label: 'Renteinntekt', direction: 'in', account: '8050' },
+  {
+    key: 'privatuttak',
+    label: 'Privatuttak (penger til deg selv)',
+    direction: 'out',
+    account: '2060',
+    orgForms: ['ENK'],
+    explanation: 'Penger du tar ut av firmaet til deg selv. Er ikke en kostnad — det reduserer egenkapitalen din (konto 2060).',
+  },
+  {
+    key: 'annen_utbetaling',
+    label: 'Annen utbetaling (uten kvittering)',
+    direction: 'out',
+    account: '7790',
+    explanation: 'En utbetaling du ikke har kvittering for ennå. Føres midlertidig som annen kostnad (konto 7790) — finn bilaget når du kan.',
+  },
+  {
+    key: 'renteinntekt',
+    label: 'Renteinntekt',
+    direction: 'in',
+    account: '8050',
+    explanation: 'Renter du har fått på innskudd. Føres som en finansinntekt (konto 8050).',
+  },
   {
     key: 'eierinnskudd',
     label: 'Innskudd fra eier',
     direction: 'in',
     account: '2050',
+    explanation: 'Penger eier skyter inn i firmaet. Er ikke inntekt — det øker egenkapitalen (konto 2050).',
     note: 'Bokføres som egenkapital. For AS bør større innskudd vurderes som lån/kapitalforhøyelse.',
   },
-  { key: 'annen_innbetaling', label: 'Annen innbetaling (uten faktura)', direction: 'in', account: '3900' },
+  {
+    key: 'annen_innbetaling',
+    label: 'Annen innbetaling (uten faktura)',
+    direction: 'in',
+    account: '3900',
+    explanation: 'En innbetaling uten faktura. Føres midlertidig som annen inntekt (konto 3900) — koble mot faktura hvis den finnes.',
+  },
 ];
 
 export interface BankCategory {
   key: string;
   label: string;
   direction: CategoryDirection;
+  explanation: string;
   note?: string;
 }
 
@@ -63,6 +105,7 @@ export function bankCategoriesFor(orgForm: string): BankCategory[] {
     key: c.key,
     label: c.label,
     direction: c.direction,
+    explanation: c.explanation,
     ...(c.note ? { note: c.note } : {}),
   }));
 }
@@ -78,6 +121,8 @@ export interface CategorySuggestion {
   account: string;
   /** Plain-språk begrunnelse — «hvorfor tror vi dette». */
   reason: string;
+  /** Klartekst: hva kategorien ER + hvordan den bokføres. */
+  explanation: string;
 }
 
 /** Nøkkelord → kategori. Deterministisk, aldri AI. Rekkefølge = spesifisitet. */
@@ -114,7 +159,7 @@ export function suggestBankCategory(params: {
     const cat = CATEGORIES.find((c) => c.key === rule.key);
     if (!cat) continue;
     if (cat.orgForms && !cat.orgForms.includes(params.orgForm)) continue;
-    return { key: cat.key, label: cat.label, account: resolveAccount(cat, params.orgForm), reason: rule.reason };
+    return { key: cat.key, label: cat.label, account: resolveAccount(cat, params.orgForm), reason: rule.reason, explanation: cat.explanation };
   }
   return null;
 }
