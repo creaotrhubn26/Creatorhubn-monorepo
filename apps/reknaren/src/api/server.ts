@@ -1339,6 +1339,13 @@ export function createApiServer(deps: ApiDeps): express.Express {
               note: 'MVA-melding-innsending er kodet, men ikke aktiv: ID-porten-legitimasjon (IDPORTEN_CLIENT_ID/KEY_ID/PRIVATE_KEY + scopes altinn:instances.read/write) mangler. MVA-rapporten forblir kladd til dette er på plass.',
             }
         : { mode: 'not_implemented', active: false },
+      push: deps.apns?.configured
+        ? {
+            mode: 'apns',
+            active: true,
+            note: 'Push-varsler til iOS-appen via APNs er konfigurert. Proaktive nudges (kvittering funnet, avstemming venter) sendes til registrerte enheter.',
+          }
+        : { mode: 'not_configured', active: false, note: 'Push-varsler ikke aktive: APNS_KEY_P8/KEY_ID/TEAM_ID mangler.' },
       sentry: deps.errorMonitor
         ? {
             mode: deps.errorMonitor.active ? 'sentry' : 'not_configured',
