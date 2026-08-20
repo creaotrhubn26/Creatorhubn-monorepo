@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowBackRounded,
   ArrowForwardRounded,
@@ -55,6 +55,39 @@ export default function RoleRoomEducationPartnershipPage(
     setLoginDialogOpen(false);
     setLoginDialogVariant('landing');
   };
+
+  // 2026-08-20: siden hadde ingen egen tittel/meta — viste generisk
+  // fallback ("The Role Room - CreatorHub") i fanen og ved deling, til
+  // tross for at siden nå er lenket fra hovednav/footer.
+  useEffect(() => {
+    const previousTitle = document.title;
+    const title = 'The Role Room for utdanning — LTI 1.3, Canvas & Moodle, Feide';
+    const description = 'Gi studentene samme produksjonsrom som de skal jobbe i etter studiet. LTI 1.3 Advantage E2E-verifisert mot ekte Canvas og Moodle, med Feide-innlogging på vei.';
+    document.title = title;
+    const upsertMeta = (name: string, content: string, isProp = false) => {
+      const attr = isProp ? 'property' : 'name';
+      let tag = document.querySelector(`meta[${attr}="${name}"]`) as HTMLMetaElement | null;
+      if (!tag) {
+        tag = document.createElement('meta');
+        tag.setAttribute(attr, name);
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute('content', content);
+      return tag;
+    };
+    const tags = [
+      upsertMeta('description', description),
+      upsertMeta('og:title', title, true),
+      upsertMeta('og:description', description, true),
+      upsertMeta('og:url', 'https://theroleroom.com/utdanningsinstitusjon', true),
+      upsertMeta('twitter:title', title),
+      upsertMeta('twitter:description', description),
+    ];
+    return () => {
+      document.title = previousTitle;
+      tags.forEach((t) => t.remove?.());
+    };
+  }, []);
 
   if (cmsBlocks) {
     return (
@@ -321,7 +354,7 @@ export default function RoleRoomEducationPartnershipPage(
               display: 'grid',
               gridTemplateColumns: { xs: '1fr', lg: '1.1fr 0.9fr' },
               gap: 2,
-              alignItems: 'stretch',
+              alignItems: 'start',
             }}
           >
             <Box

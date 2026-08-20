@@ -256,8 +256,10 @@ export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps 
   // Book demo-modal — dedikert B2B-intake (erstatter /for-byraer#book-demo-anker).
   const [bookDemoOpen, setBookDemoOpen] = useState(false);
   const [bookDemoTrigger, setBookDemoTrigger] = useState('book_demo');
-  const openBookDemo = (trigger = 'book_demo') => {
+  const [bookDemoBusinessType, setBookDemoBusinessType] = useState<string | undefined>(undefined);
+  const openBookDemo = (trigger = 'book_demo', businessType?: string) => {
     setBookDemoTrigger(trigger);
+    setBookDemoBusinessType(businessType);
     setBookDemoOpen(true);
     trackModalOpen({ modalName: 'book_demo', trigger });
   };
@@ -394,7 +396,7 @@ export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps 
       <PlanSection onBookDemo={() => openBookDemo('plan_section')} />
       <FlowSection />
       <TrollCaseSection />
-      <EducationSection onBookDemo={() => openLogin('landing', 'education_institution')} />
+      <EducationSection onBookDemo={() => openBookDemo('education_section', 'Utdanningsinstitusjon')} />
       <VerticalsSection onLogin={(persona) => openLogin('landing', persona)} />
       <PillarsSection />
       <TransitionalCTASection />
@@ -411,7 +413,7 @@ export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps 
         isLandingPage={loginVariant === 'landing'}
         initialPersona={loginPersona}
       />
-      <BookDemoModal open={bookDemoOpen} onClose={closeBookDemo} trigger={bookDemoTrigger} />
+      <BookDemoModal open={bookDemoOpen} onClose={closeBookDemo} trigger={bookDemoTrigger} initialBusinessType={bookDemoBusinessType} />
     </Box>
   );
 }
