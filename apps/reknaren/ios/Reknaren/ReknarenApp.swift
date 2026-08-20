@@ -4,6 +4,7 @@ import SwiftUI
 struct ReknarenApp: App {
     @State private var session = Session()
     @State private var app = AppState()
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
         WindowGroup {
@@ -14,11 +15,15 @@ struct ReknarenApp: App {
                 case .signedOut:
                     LoginView()
                 case .signedIn:
-                    RootView().task { await app.loadOrgsIfNeeded() }
+                    RootView().task {
+                        await app.loadOrgsIfNeeded()
+                        appDelegate.requestAuthorizationAndRegister()
+                    }
                 }
             }
             .environment(session)
             .environment(app)
+            .environment(PushRouter.shared)
             .onOpenURL { url in
                 // Universal Link / custom scheme: …/auth/verify?token=…
                 guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),

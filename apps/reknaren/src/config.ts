@@ -84,6 +84,8 @@ export interface ProductConfig {
    * redirectUri utledes av appBaseUrl (/idporten/callback).
    */
   idporten?: { env: 'test' | 'prod'; clientId: string; keyId: string; privateKeyPem: string; scopes: string; redirectUri: string } | undefined;
+  /** APNs (push til iOS-appen). Uten APNS_*-nøkler: inaktiv (ingen varsler). */
+  apns?: { keyP8: string; keyId: string; teamId: string; topic: string; env: 'prod' | 'sandbox' } | undefined;
 }
 
 const ORG_FORMS: OrganizationForm[] = ['ENK', 'AS', 'ANS', 'DA', 'SA', 'NUF'];
@@ -175,6 +177,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProductConfig 
           }
         : undefined,
     idporten: loadIdPortenConfig(env),
+    apns:
+      env.APNS_KEY_P8 && env.APNS_KEY_ID && env.APNS_TEAM_ID
+        ? {
+            keyP8: env.APNS_KEY_P8,
+            keyId: env.APNS_KEY_ID,
+            teamId: env.APNS_TEAM_ID,
+            topic: env.APNS_TOPIC ?? 'com.creatorhubn.Reknaren',
+            env: env.APNS_ENV === 'prod' ? 'prod' : 'sandbox',
+          }
+        : undefined,
   };
 }
 

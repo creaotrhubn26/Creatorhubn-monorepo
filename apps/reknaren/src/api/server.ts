@@ -85,6 +85,7 @@ import { lookupPeppolParticipant } from '../invoicing/peppol-lookup.js';
 import { buildPaymentFile, listPayableInvoices, recordPaymentExports } from '../ledger/payments.js';
 import { computeDeadlines, type OrgForm } from '../ledger/deadlines.js';
 import { assessDeduction } from '../ledger/deduction-advisor.js';
+import type { ApnsPort } from '../integrations/apns.js';
 import { IdPortenClient, generatePkce, randomToken } from '../integrations/idporten.js';
 import { getStatus as idportenStatus, getValidAccessToken, saveLoginState, saveSession, takeLoginState } from '../integrations/idporten-session.js';
 import {
@@ -221,6 +222,8 @@ export interface ApiDeps {
   peppol?: PeppolAccessPoint | undefined;
   /** ID-porten OIDC for mva-melding (validering/innsending). Inaktiv uten IDPORTEN_*. */
   idporten?: IdPortenClient | undefined;
+  /** APNs push til iOS-appen. Uten APNS_*-nøkler: ingen varsler sendes. */
+  apns?: ApnsPort | undefined;
   /** Domene for virksomhetenes bilag-adresse (videresend kvitteringer hit). */
   inboundDomain?: string | undefined;
   /** Delt hemmelighet for den generiske inn-e-post-webhooken. Uten den: 503. */
@@ -505,6 +508,22 @@ export function createApiServer(deps: ApiDeps): express.Express {
       }
       const session = issueToken({ userId, email, issuedAt: Date.now() }, secret);
       res.json({ token: session, userId, email });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Registrer iOS-appens push-token (APNs) for den innloggede brukeren. Idempotent
+  // på token. Uten APNS_*-konfig lagres tokenet likevel; det sendes bare ingen varsler.
+  app.post('/api/push/register', requireAuth, async (req: AuthedRequest, res, next) => {
+    try {
+      const body = z.object({ token: z.string().min(10).max(400), platform: z.literal('ios').default('ios') }).parse(req.body);
+      await deps.db.query(
+        `INSERT INTO push_devices (user_id, token, platform) VALUES ($1, $2, $3)
+         ON CONFLICT (token) DO UPDATE SET user_id = EXCLUDED.user_id, updated_at = now()`,
+        [req.auth!.userId, body.token, body.platform],
+      );
+      res.status(201).json({ registered: true });
     } catch (err) {
       next(err);
     }
@@ -4968,15 +4987,35 @@ export function createApiServer(deps: ApiDeps): express.Express {
       let autoApproved = 0;
       const seenOrgs = new Map<string, string>(); // orgId → created_by (actor)
       for (const acct of accounts) if (!seenOrgs.has(acct.organization_id)) seenOrgs.set(acct.organization_id, acct.created_by);
+      let notified = 0;
       for (const [orgId, createdBy] of seenOrgs) {
         try {
           const r = await autoApproveTrustedVendorMatches(deps.db, deps.rules, { organizationId: orgId, actor: { userId: createdBy, role: 'owner' } });
           autoApproved += r.approved;
+          // Proaktiv konsierge: gjenstår det betalinger m/ funnet kvittering → varsle brukerne.
+          if (deps.apns?.configured) {
+            const hunt = await huntDocuments(deps.db, { organizationId: orgId, asOf: new Date().toISOString().slice(0, 10) });
+            if (hunt.gapsWithCandidates > 0) {
+              const devs = (await deps.db.query(
+                `SELECT pd.token FROM push_devices pd JOIN memberships m ON m.user_id = pd.user_id WHERE m.organization_id = $1`,
+                [orgId],
+              )).rows;
+              const n = hunt.gapsWithCandidates;
+              for (const d of devs) {
+                const out = await deps.apns.send(d.token, {
+                  title: 'Kvittering funnet',
+                  body: n === 1 ? 'Vi fant kvitteringen for en betaling — legg den i regnskapet?' : `Vi fant kvitteringer for ${n} betalinger — legg dem i regnskapet?`,
+                  data: { screen: 'concierge', organizationId: orgId },
+                });
+                if (out.sent) notified++;
+              }
+            }
+          }
         } catch {
-          /* auto-godkjenn er best-effort; feiler den, står nudgene igjen til manuell godkjenning */
+          /* auto-godkjenn/varsel er best-effort; feiler det, står nudgene igjen til manuell godkjenning */
         }
       }
-      res.json(toJson({ configured: true, since, accounts: accounts.length, synced, imported: importedTotal, autoApproved, failed, errors: errors.slice(0, 10) }));
+      res.json(toJson({ configured: true, since, accounts: accounts.length, synced, imported: importedTotal, autoApproved, notified, failed, errors: errors.slice(0, 10) }));
     } catch (err) { next(err); }
   });
 

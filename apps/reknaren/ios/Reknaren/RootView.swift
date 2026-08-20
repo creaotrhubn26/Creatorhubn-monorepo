@@ -37,6 +37,7 @@ enum Screen: String, CaseIterable, Identifiable {
 struct RootView: View {
     @Environment(Session.self) private var session
     @Environment(AppState.self) private var app
+    @Environment(PushRouter.self) private var push
     @State private var selection: Screen? = .concierge
 
     private var sections: [(name: String, items: [Screen])] {
@@ -80,6 +81,9 @@ struct RootView: View {
             case .vendors:
                 orgScoped { VendorsView(orgId: $0) }
             }
+        }
+        .onChange(of: push.pendingScreen) { _, screen in
+            if screen == "concierge" { selection = .concierge; push.pendingScreen = nil }
         }
     }
 
