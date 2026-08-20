@@ -8,6 +8,12 @@ describe('suggestBankCategory — deterministisk «hva dette kan være»', () =>
     expect(s?.reason).toContain('gebyr');
   });
 
+  it('gjenkjenner ekte SpareBank 1-tekster som bankgebyr', () => {
+    for (const desc of ['Transpris Nettbank Bedrift', 'Prisbelastning kontohold', 'Månedspris Nettbank Bedrift']) {
+      expect(suggestBankCategory({ description: desc, amountMinor: -4900n, orgForm: 'AS' })?.key).toBe('bankgebyr');
+    }
+  });
+
   it('gjenkjenner skatt før gebyr (spesifisitet)', () => {
     const s = suggestBankCategory({ description: 'Skatteetaten forskuddsskatt', counterparty: 'SKATTEETATEN', amountMinor: -1200000n, orgForm: 'AS' });
     expect(s?.key).toBe('skatt');

@@ -83,13 +83,15 @@ export interface CategorySuggestion {
 /** Nøkkelord → kategori. Deterministisk, aldri AI. Rekkefølge = spesifisitet. */
 // Delstreng-matching (ikke \b) — norske banktekster er ofte sammensatte ord
 // («månedsgebyr», «forskuddsskatt»). Rekkefølge = spesifisitet (skatt før gebyr).
+// Nøkkelordene er tunet mot EKTE norske banktekster (bl.a. SpareBank 1). Begrunnelsen
+// forklarer i klartekst HVA linja er — så en novise faktisk lærer, ikke bare får en kode.
 const SUGGESTION_RULES: Array<{ key: string; direction: CategoryDirection; test: RegExp; reason: string }> = [
-  { key: 'skatt', direction: 'out', test: /skatt|skatteetaten|forskuddsskatt|restskatt|kemner|arbeidsgiveravgift|skattetrekk|forskuddstrekk|\baga\b/i, reason: 'Teksten peker mot Skatteetaten/skatt' },
-  { key: 'bankgebyr', direction: 'out', test: /gebyr|kortavgift|serviceavgift|omkostning|bankavtale|betalingsformidling/i, reason: 'Teksten nevner et gebyr' },
-  { key: 'rentekostnad', direction: 'out', test: /rente|renter|renteberegning/i, reason: 'Renter belastet' },
-  { key: 'renteinntekt', direction: 'in', test: /rente|renter|renteberegning/i, reason: 'Renter godskrevet' },
-  { key: 'eierinnskudd', direction: 'in', test: /innskudd|egenkapital|kapitalinnskudd|aksjekapital|kapitalforh/i, reason: 'Ligner et innskudd fra eier' },
-  { key: 'privatuttak', direction: 'out', test: /privat|privatuttak/i, reason: 'Ligner et privatuttak' },
+  { key: 'skatt', direction: 'out', test: /skatt|skatteetaten|forskuddsskatt|restskatt|kemner|arbeidsgiveravgift|skattetrekk|forskuddstrekk|\baga\b/i, reason: 'Betaling til Skatteetaten (skatt eller avgift).' },
+  { key: 'bankgebyr', direction: 'out', test: /gebyr|transpris|nettbank|prisbelast|m[åa]nedspris|kortavgift|serviceavgift|omkostning|bankavtale|betalingsformidling|betalingspakke|kontohold/i, reason: 'Pris banken tar for konto/nettbank — et bankgebyr.' },
+  { key: 'rentekostnad', direction: 'out', test: /rente|renter|renteberegning/i, reason: 'Renter banken har belastet.' },
+  { key: 'renteinntekt', direction: 'in', test: /rente|renter|renteberegning/i, reason: 'Renter du har fått godskrevet.' },
+  { key: 'eierinnskudd', direction: 'in', test: /innskudd|egenkapital|kapitalinnskudd|aksjekapital|kapitalforh/i, reason: 'Penger eier har skutt inn i firmaet.' },
+  { key: 'privatuttak', direction: 'out', test: /privat|privatuttak/i, reason: 'Penger tatt ut til privat bruk.' },
 ];
 
 /**
