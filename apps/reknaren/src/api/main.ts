@@ -10,6 +10,7 @@ import { isOcrAvailable, OcrExtractor } from '../pipeline/ocr.js';
 import { ClaudeDocumentExtractor } from '../pipeline/ai-extract.js';
 import { buildNorwegianRuleRegister } from '../rules/no/rules.js';
 import { ApnsClient } from '../integrations/apns.js';
+import { EnableBankingPaymentInitiation } from '../integrations/enable-payments.js';
 import { BrregVatRegisterClient } from '../integrations/brreg.js';
 import { BrregCompanyRegistry } from '../integrations/company-registry.js';
 import { NorgesBankFxRates } from '../integrations/fx-rates.js';
@@ -103,6 +104,8 @@ const app = createApiServer({
   idporten: new IdPortenClient(config.idporten),
   // APNs push til iOS-appen. Inaktiv (ingen varsler) uten APNS_*-nøkler.
   apns: new ApnsClient(config.apns),
+  // Enable Banking PIS — ekte «betal fakturaen». Gjenbruker konto-koblingens creds.
+  paymentInit: new EnableBankingPaymentInitiation(config.bankFeedEnable),
   inboundDomain: config.inboundDomain,
   inboundSecret: config.inboundSecret,
   resendApiKey: config.resendApiKey,

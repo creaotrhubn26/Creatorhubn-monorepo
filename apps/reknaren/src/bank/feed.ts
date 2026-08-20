@@ -334,7 +334,7 @@ export class UnconfiguredBankFeedProvider implements BankFeedProvider {
 
 // ── Enable Banking (nordisk PSD2-aggregator) ─────────────────────────────────
 
-const EB_BASE = 'https://api.enablebanking.com';
+export const EB_BASE = 'https://api.enablebanking.com';
 
 export interface EnableBankingConfig {
   applicationId: string;
@@ -352,7 +352,7 @@ function base64url(input: Buffer | string): string {
  * Signeres med Nodes `crypto` — ingen ekstra avhengighet (samme mønster som
  * Maskinporten-klienten).
  */
-function signEnableJwt(cfg: EnableBankingConfig, nowSeconds: number): string {
+export function signEnableJwt(cfg: EnableBankingConfig, nowSeconds: number): string {
   const header = { typ: 'JWT', alg: 'RS256', kid: cfg.applicationId };
   const claims = { iss: 'enablebanking.com', aud: 'api.enablebanking.com', iat: nowSeconds, exp: nowSeconds + 3600 };
   const signingInput = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(claims))}`;

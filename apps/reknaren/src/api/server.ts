@@ -86,6 +86,7 @@ import { buildPaymentFile, listPayableInvoices, recordPaymentExports } from '../
 import { computeDeadlines, type OrgForm } from '../ledger/deadlines.js';
 import { assessDeduction } from '../ledger/deduction-advisor.js';
 import type { ApnsPort } from '../integrations/apns.js';
+import type { PaymentInitiationPort } from '../integrations/enable-payments.js';
 import { IdPortenClient, generatePkce, randomToken } from '../integrations/idporten.js';
 import { getStatus as idportenStatus, getValidAccessToken, saveLoginState, saveSession, takeLoginState } from '../integrations/idporten-session.js';
 import {
@@ -224,6 +225,8 @@ export interface ApiDeps {
   idporten?: IdPortenClient | undefined;
   /** APNs push til iOS-appen. Uten APNS_*-nøkler: ingen varsler sendes. */
   apns?: ApnsPort | undefined;
+  /** Enable Banking PIS — ekte betaling til nettbank. Uten creds: inaktiv. */
+  paymentInit?: PaymentInitiationPort | undefined;
   /** Domene for virksomhetenes bilag-adresse (videresend kvitteringer hit). */
   inboundDomain?: string | undefined;
   /** Delt hemmelighet for den generiske inn-e-post-webhooken. Uten den: 503. */
@@ -4441,6 +4444,47 @@ export function createApiServer(deps: ApiDeps): express.Express {
       await withTransaction(deps.db, (client) => recordAuditEvent(client, { organizationId: req.params.orgId!, actor: { userId: req.auth!.userId, role: req.orgRole! }, action: 'payments.file_exported', entityType: 'organization', entityId: req.params.orgId!, newValue: { count: payable.length, messageRef: msgId } }));
       res.setHeader('Content-Disposition', `attachment; filename="betaling_${now.toISOString().slice(0, 10)}.xml"`);
       res.type('application/xml').send(xml);
+    } catch (err) { next(err); }
+  });
+
+  // Ekte betaling (PIS): initier betaling av én leverandørfaktura via Enable Banking →
+  // returnerer en godkjennings-URL brukeren fullfører med BankID i banken. Sender ALDRI
+  // penger uten den godkjenningen. Inaktiv (503) uten Enable Banking-creds.
+  app.post('/api/organizations/:orgId/payments/:documentId/initiate', requireAuth, requireOrgPermission('bank.reconcile'), async (req: AuthedRequest, res, next) => {
+    try {
+      if (!deps.paymentInit?.configured) {
+        res.status(503).json({ error: { code: 'INTEGRATION_UNAVAILABLE', message: 'Betaling via bank er ikke aktivert. Bruk «Lag betalingsfil» i mellomtiden.' } });
+        return;
+      }
+      const documentId = z.string().uuid().parse(req.params.documentId);
+      const body = z.object({ aspspName: z.string().min(1).max(200), debtorIban: z.string().min(5).max(34).optional() }).parse(req.body);
+      const inv = (await listPayableInvoices(deps.db, req.params.orgId!)).find((p) => p.documentId === documentId);
+      if (!inv || !inv.payable || !inv.bankAccount) {
+        res.status(400).json({ error: { code: 'NOT_PAYABLE', message: 'Fakturaen mangler beløp eller mottakerkonto.' } });
+        return;
+      }
+      const redirectUrl = `${(deps.appBaseUrl ?? 'https://ledgerly-coss.onrender.com').replace(/\/$/, '')}/bank/callback`;
+      const bban = String(inv.bankAccount).replace(/\s/g, '');
+      const out = await deps.paymentInit.initiatePayment({
+        aspspName: body.aspspName,
+        creditorName: inv.vendorName ?? 'Leverandør',
+        ...(/^NO\d{13}$/i.test(bban) ? { creditorIban: bban } : { creditorBban: bban }),
+        amountMinor: inv.amountMinor,
+        currency: inv.currency,
+        ...(inv.kid ? { kid: inv.kid } : { message: inv.invoiceNumber ? `Faktura ${inv.invoiceNumber}` : 'Betaling' }),
+        ...(body.debtorIban ? { debtorIban: body.debtorIban } : {}),
+        redirectUrl,
+        state: `pay:${documentId}`,
+      });
+      await withTransaction(deps.db, (client) => recordAuditEvent(client, {
+        organizationId: req.params.orgId!,
+        actor: { userId: req.auth!.userId, role: req.orgRole! },
+        action: 'payment.initiated',
+        entityType: 'source_document',
+        entityId: documentId,
+        newValue: { paymentId: out.paymentId, amountMinor: inv.amountMinor.toString(), creditor: inv.vendorName },
+      }));
+      res.status(201).json(toJson(out));
     } catch (err) { next(err); }
   });
 
