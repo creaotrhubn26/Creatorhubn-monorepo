@@ -1,0 +1,77 @@
+name: StoryboardStudio
+options:
+  bundleIdPrefix: com.creatorhubn
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+
+settings:
+  base:
+    # Samme policy som LeadMapApp/CaptureApp: Swift 6 + strict concurrency.
+    SWIFT_VERSION: "6"
+    SWIFT_STRICT_CONCURRENCY: complete
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: "9TAUZCPK95"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    VERSIONING_SYSTEM: apple-generic
+    CURRENT_PROJECT_VERSION: "20260820"
+    MARKETING_VERSION: "0.1.0"
+
+targets:
+  StoryboardStudio:
+    type: application
+    platform: iOS
+    sources:
+      - path: StoryboardStudio
+    info:
+      path: StoryboardStudio/Generated/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDisplayName: Storyboard Studio
+        CFBundleName: StoryboardStudio
+        UILaunchScreen: {}
+        UIRequiredDeviceCapabilities: [arm64, metal]
+        # iPad-first tegneapp — alle retninger.
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIApplicationSupportsIndirectInputEvents: true
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.StoryboardStudio
+        INFOPLIST_FILE: StoryboardStudio/Generated/Info.plist
+        # iPad-only i fase 1 (artist-flaten er bygget for Pencil + stor skjerm).
+        TARGETED_DEVICE_FAMILY: "2"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+
+  StoryboardStudioTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: StoryboardStudioTests
+    dependencies:
+      - target: StoryboardStudio
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "6"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+
+schemes:
+  StoryboardStudio:
+    build:
+      targets:
+        StoryboardStudio: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - StoryboardStudioTests
+    archive:
+      config: Release
