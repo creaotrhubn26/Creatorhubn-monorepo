@@ -47,6 +47,9 @@ struct DiscoveryProgressView: View {
     let onImportMore: () -> Void
     /// "Lukk"-callback (vises i success-hero).
     let onClose: () -> Void
+    /// "Søk anbud i stedet"-callback — vises i failed-kortet når backend
+    /// foreslo CPV-koder (brede B2B-selgere uten søkbar Places-kundetype).
+    var onSearchAnbud: (([String]) -> Void)? = nil
 
     private static let brandPurple = Color(red: 0.58, green: 0.20, blue: 0.92)
 
@@ -70,8 +73,8 @@ struct DiscoveryProgressView: View {
                 stage3Card
             case .success(let summary):
                 stage4Card(summary: summary)
-            case .failed(let message):
-                failedCard(message: message)
+            case .failed(let message, let cpvSuggestion):
+                failedCard(message: message, cpvSuggestion: cpvSuggestion)
             }
         }
         .task(id: state.startedAt) {
@@ -409,7 +412,7 @@ struct DiscoveryProgressView: View {
     // MARK: - Failed
 
     @ViewBuilder
-    private func failedCard(message: String) -> some View {
+    private func failedCard(message: String, cpvSuggestion: [String]) -> some View {
         VStack(spacing: 14) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.appScaled(size: 44))
@@ -420,6 +423,16 @@ struct DiscoveryProgressView: View {
                 .font(.callout)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
+            if !cpvSuggestion.isEmpty, let onSearchAnbud {
+                Button {
+                    onSearchAnbud(cpvSuggestion)
+                } label: {
+                    Label("Søk anbud i stedet", systemImage: "doc.text.magnifyingglass")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Self.brandPurple)
+            }
             Button {
                 onClose()
             } label: {

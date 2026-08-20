@@ -68,6 +68,8 @@ import {
   readBatchProgress,
 } from "./leadgrid-url-batch-processor.js";
 import { autoAssignIndustryFromDiscoveryQuery } from "./leadgrid-industry-classify.js";
+import { lookupCompanyForNewLead } from "./lead-brreg-service.js";
+import { cpvForTekst } from "./leadgrid-cpv-routes.js";
 import Anthropic from "@anthropic-ai/sdk";
 import { withAIQuota } from "./leadgrid-ai-queue.js";
 
@@ -117,6 +119,11 @@ interface ProjectContext {
   // Tag/kategori-felt fra `brand_profile.industry` — vanligvis grov
   // (`b2b_saas`, `restaurant`); brukes som siste fallback.
   industryCategoryRaw: string | null;
+  // 2026-08-19: selgerorgens EGEN bransje (Brreg NACE), uavhengig av
+  // nettside-skann. Brukes til å grunngi Claude-ICP-utledningen når
+  // brand-scan-tekst mangler/er svak — se buildDiscoveryQuery.
+  sellerNaceDescription: string | null;
+  sellerNaceCode: string | null;
 }
 
 // =====================================================================
@@ -174,7 +181,7 @@ async function loadProjectContext(
     organization_id: string | null;
   }>(
     `SELECT id::text, name, NULL::text AS organization_id
-       FROM leadgrid_projects WHERE id = $1 LIMIT 1`,
+       FROM casting_projects WHERE id = $1 LIMIT 1`,
     [projectId],
   );
   if (pr.rows.length === 0) return null;
@@ -235,6 +242,49 @@ async function loadProjectContext(
     ms.rows[0]?.region ??
     null;
 
+  // 2026-08-19: selgerorgens egen NACE (Brreg) — `casting_projects` har
+  // ingen ekte organization_id-kobling (query over hardkoder NULL), så vi
+  // slår opp den innloggede brukerens org separat via organization_members.
+  // Lazy: skriver til DB når nace_code er NULL (aldri forsøkt) og
+  // org_number finnes. `leadgrid-backfill-cron.ts` dekker eksisterende
+  // orger i tillegg — begge skriver `nace_code = ''` (ikke NULL) når
+  // Brreg-oppslaget ikke gir treff, så vi ikke prøver samme org på nytt
+  // ved hvert discover-leads-kall.
+  let sellerNaceDescription: string | null = null;
+  let sellerNaceCode: string | null = null;
+  try {
+    const realOrgId = await resolveOrgId(pool, userId);
+    if (realOrgId) {
+      const orgR = await pool.query<{
+        org_number: string | null;
+        nace_code: string | null;
+        nace_description: string | null;
+      }>(
+        `SELECT org_number, nace_code, nace_description
+           FROM organizations WHERE id = $1 LIMIT 1`,
+        [realOrgId],
+      );
+      const org = orgR.rows[0];
+      if (org?.nace_code !== null && org?.nace_code !== undefined) {
+        // Allerede forsøkt (uansett treff eller ikke) — ikke prøv på nytt.
+        sellerNaceDescription = org.nace_description;
+        sellerNaceCode = org.nace_code || null;
+      } else if (org?.org_number) {
+        const looked = await lookupCompanyForNewLead(org.org_number);
+        if (looked.found && looked.company) {
+          sellerNaceDescription = looked.company.naceDescription;
+          sellerNaceCode = looked.company.naceCode;
+          await pool.query(
+            `UPDATE organizations SET nace_code = $1, nace_description = $2 WHERE id = $3`,
+            [looked.company.naceCode, looked.company.naceDescription, realOrgId],
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[discover-leads] seller-nace-oppslag feilet:", (err as Error).message);
+  }
+
   return {
     id: project.id,
     name: project.name,
@@ -250,6 +300,8 @@ async function loadProjectContext(
     targetAudienceHint,
     brandDescriptionHint,
     industryCategoryRaw,
+    sellerNaceDescription,
+    sellerNaceCode,
   };
 }
 
@@ -398,11 +450,14 @@ async function deriveICPWithClaude(
         model,
         max_tokens: 24,
         system:
-          "Du får en beskrivelse av hvem en bedrift selger til (målgruppe/ICP). " +
+          "Du får informasjon om en bedrift: enten en beskrivelse av hvem " +
+          "den selger til (målgruppe/ICP), og/eller bedriftens EGEN bransje " +
+          "(NACE-klassifisering fra Brreg). Hvis kun egen bransje er oppgitt, " +
+          "utled hvem som mest sannsynlig er bedriftens kunder. " +
           "Svar med ÉN kort norsk søketerm (1-3 ord) som kan brukes i Google " +
           "Places for å finne slike bedrifter, f.eks. «legekontor», " +
           "«solcelleinstallatør», «bilverksted». Svar KUN med termen. " +
-          "Hvis teksten ikke beskriver en søkbar bedriftstype: svar «UKJENT».",
+          "Hvis teksten ikke gir nok grunnlag for et søkbart bedriftskunde-begrep: svar «UKJENT».",
         messages: [{ role: "user", content: sourceText.slice(0, 1500) }],
       }),
     );
@@ -423,18 +478,43 @@ async function deriveICPWithClaude(
     ) {
       result = raw.toLowerCase();
     }
+    // 2026-08-19: cache KUN når Claude faktisk svarte (treff eller ekte
+    // «UKJENT») — ikke ved exception (timeout/5xx/rate-limit/manglende
+    // API-nøkkel). Ellers cacher en forbigående Claude-feil seg selv som
+    // permanent "ingen ICP" for denne teksten helt til 500-entry-cachen
+    // tømmes, og neste bruker med samme prosjekt-tekst får 400 selv om
+    // Claude er oppe igjen sekunder senere.
+    if (icpClaudeCache.size >= ICP_CLAUDE_CACHE_MAX) icpClaudeCache.clear();
+    icpClaudeCache.set(cacheKey, result);
   } catch (err) {
     console.warn("[discover-leads] Claude ICP-fallback feilet:", (err as Error).message);
   }
-
-  if (icpClaudeCache.size >= ICP_CLAUDE_CACHE_MAX) icpClaudeCache.clear();
-  icpClaudeCache.set(cacheKey, result);
   return result;
 }
 
 // =====================================================================
 // Bygg Places-query fra prosjekt-context + override
 // =====================================================================
+
+// 2026-08-19: NACE-divisjoner der selgerens EGEN bransje ikke gir noe
+// meningsfullt signal om HVEM som kjøper (kunden er "enhver bedrift" —
+// kontorrekvisita, generell engroshandel, renhold, transport...). Grovt,
+// ikke uttømmende — treffer kun når vi IKKE har annen kontekst (brand-scan/
+// target-audience) å basere ICP på. Unngår å kaste bort et AI-kall på en
+// gjetning som uansett blir for vag/feil.
+const BROAD_NACE_DIVISIONS = new Set([
+  "46", // Engroshandel, unntatt med motorvogner
+  "47", // Detaljhandel — kunde er sluttbruker, ikke en søkbar B2B-vertikal
+  "49", // Landtransport
+  "81", // Tjenester tilknyttet eiendomsdrift (renhold, vaktmester)
+  "82", // Kontorstøttetjenester og annen forretningsmessig tjenesteyting
+]);
+
+function isNaceTooBroadForICP(naceCode: string | null): boolean {
+  if (!naceCode) return false;
+  const division = naceCode.split(".")[0]?.trim();
+  return division ? BROAD_NACE_DIVISIONS.has(division) : false;
+}
 
 interface ResolvedDiscoveryQuery {
   query: string;
@@ -463,15 +543,32 @@ async function buildDiscoveryQuery(
 
   let industry = bodyIndustry || derivedICP || fallbackIndustry || "";
   if (!industry) {
-    const sourceText = [
+    // 2026-08-19: grunngi Claude-utledningen med selgerorgens EGEN Brreg-
+    // NACE i tillegg til nettside-skann-teksten — prosjekter uten
+    // brand-kit/website-scan kan nå likevel få en reell ICP-forslag basert
+    // kun på org.nace_description. Unntak: hvis NACE er ALT vi har OG
+    // bransjen er for bred (se BROAD_NACE_DIVISIONS) — da gjetter vi ikke,
+    // vi faller gjennom til industry_required slik at brukeren skriver inn
+    // query selv (f.eks. "IT-bedrifter i Oslo" for en kontorrekvisita-selger).
+    const otherHints = [
       ctx.targetAudienceHint,
       ctx.brandDescriptionHint,
       ctx.positioningSummary,
-    ]
-      .filter((v): v is string => typeof v === "string" && v.length > 0)
-      .join(" ");
-    if (sourceText.length > 0) {
-      industry = (await deriveICPWithClaude(sourceText, quotaKey)) ?? "";
+    ].filter((v): v is string => typeof v === "string" && v.length > 0);
+    const naceOnly = otherHints.length === 0 && !!ctx.sellerNaceDescription;
+    const skipNaceGuess = naceOnly && isNaceTooBroadForICP(ctx.sellerNaceCode);
+    if (!skipNaceGuess) {
+      const sourceText = [
+        ...otherHints,
+        ctx.sellerNaceDescription
+          ? `Bedriftens egen bransje (NACE): ${ctx.sellerNaceDescription}`
+          : null,
+      ]
+        .filter((v): v is string => typeof v === "string" && v.length > 0)
+        .join(" ");
+      if (sourceText.length > 0) {
+        industry = (await deriveICPWithClaude(sourceText, quotaKey)) ?? "";
+      }
     }
   }
 
@@ -575,12 +672,27 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
         //    Claude-fallback utleder term fra brand-scan-tekst når regex bommer.
         const resolved = await buildDiscoveryQuery(ctx, body, session.userId);
         if (!resolved) {
+          // 2026-08-19: for brede B2B-selgere (engros/detalj/renhold/
+          // transport — se BROAD_NACE_DIVISIONS) finnes ingen søkbar
+          // Places-kundetype. Foreslå anbud/CPV-veien i stedet når
+          // selgerens NACE-tekst gir treff i CPV_KART.
+          const suggestAnbudCpv = ctx.sellerNaceDescription
+            ? cpvForTekst(ctx.sellerNaceDescription)
+            : [];
           return res.status(400).json({
             error: "industry_required",
             detail:
               "Mangler bransje. Sett `industry_query` i body eller knytt et " +
               "brand-kit / market-scan til prosjektet med bransje-info. " +
               "Du kan også sende `website_url` så scanner vi nettsiden først.",
+            ...(suggestAnbudCpv.length > 0
+              ? {
+                  suggest_anbud_cpv: suggestAnbudCpv,
+                  suggest_anbud_reason:
+                    "Din bransje har ingen søkbar kundetype for kart-søk — " +
+                    "prøv i stedet Anbud-fanen med disse CPV-kodene.",
+                }
+              : {}),
           });
         }
 
@@ -924,7 +1036,7 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
         }
         if (!projectName) {
           const pn = await pool.query<{ name: string }>(
-            `SELECT name FROM leadgrid_projects WHERE id = $1 LIMIT 1`,
+            `SELECT name FROM casting_projects WHERE id = $1 LIMIT 1`,
             [projectId],
           );
           projectName = pn.rows[0]?.name ?? null;

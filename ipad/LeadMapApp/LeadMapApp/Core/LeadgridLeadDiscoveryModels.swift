@@ -24,6 +24,21 @@ struct LeadDiscoveryStartResponse: Codable, Sendable {
     let message: String?
 }
 
+/// HTTP 400 `industry_required`-respons (2026-08-19). Brede B2B-selgere
+/// (kontorrekvisita, engros, renhold, transport — se BROAD_NACE_DIVISIONS
+/// i leadgrid-project-lead-discovery-routes.ts) har ingen søkbar Places-
+/// kundetype; backend foreslår CPV-koder for Anbud-fanen i stedet.
+struct LeadDiscoveryIndustryRequiredResponse: Codable, Sendable {
+    let error: String
+    let detail: String?
+    let suggestAnbudCpv: [String]?
+    let suggestAnbudReason: String?
+}
+
+enum LeadDiscoveryError: Error, Sendable {
+    case industryRequired(cpvSuggestion: [String], reason: String?)
+}
+
 // MARK: - /discover-leads/:batchId/result (GET) respons
 
 struct LeadDiscoveryBatchInfo: Codable, Sendable, Identifiable {

@@ -2239,6 +2239,17 @@ actor APIClient {
         )
         req.httpBody = try JSONSerialization.data(withJSONObject: request.toDict())
         let (data, response) = try await session.data(for: req)
+        // 2026-08-19: HTTP 400 `industry_required` kan bære en Anbud/CPV-
+        // forslags-payload (broad-NACE-selgere) — dekod denne FØR generisk
+        // validate() kaster en tom APIError.statusCode(400) som mister den.
+        if let http = response as? HTTPURLResponse, http.statusCode == 400,
+           let errResp = try? Self.decoder.decode(LeadDiscoveryIndustryRequiredResponse.self, from: data),
+           errResp.error == "industry_required" {
+            throw LeadDiscoveryError.industryRequired(
+                cpvSuggestion: errResp.suggestAnbudCpv ?? [],
+                reason: errResp.suggestAnbudReason,
+            )
+        }
         try Self.validate(response)
         return try Self.decoder.decode(LeadDiscoveryStartResponse.self, from: data)
     }
@@ -3831,6 +3842,29 @@ extension APIClient {
     /// Hent en lagret rute med oppdaterte stopp-statuser (for innsjekk-flyt).
     func fetchRoute(_ id: String) async throws -> LeadgridRouteFullResponse {
         try await get("/api/leadgrid/routes/\(id)")
+    }
+
+    /// 2026-08-19: flerdagers "Dagsrute" — planlegger `days` dager i strekk,
+    /// geografisk kjedet (dag N+1 starter der dag N sluttet). Samme
+    /// in-grid-utvelgelse som planRoute(), bare loopet med ekskludering av
+    /// tidligere dagers leads server-side.
+    func planRouteTrip(
+        startDate: String,
+        days: Int,
+        startLat: Double,
+        startLng: Double,
+        perDayLimit: Int = 12
+    ) async throws -> LeadgridRouteTripPlanResponse {
+        try await post(
+            "/api/leadgrid/routes/plan-trip",
+            body: [
+                "start_date": startDate,
+                "days": days,
+                "start_lat": startLat,
+                "start_lng": startLng,
+                "per_day_limit": perDayLimit,
+            ]
+        )
     }
 }
 

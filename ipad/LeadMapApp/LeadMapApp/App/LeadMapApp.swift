@@ -557,6 +557,11 @@ struct MainTabView: View {
             .onChange(of: state.deepLinkNavRequestedAt) { _, newValue in
                 if newValue != nil { selection = 1 }
             }
+            // Nyopprettet lead skal vises der den havnet — bytt til Kart-fanen
+            // så KartView kan konsumere `pendingMapFocus` og zoome dit (2026-08-19).
+            .onChange(of: state.pendingMapFocus) { _, newValue in
+                if newValue != nil { selection = 1 }
+            }
         }
         .id(dynamicTypeSize)
         // AX1-AX5 (2026-07-05): cappen på xxxLarge er fjernet — layoutene
@@ -573,7 +578,7 @@ struct PhoneMerTab: View {
     @Environment(AppState.self) private var state
 
     private enum Destination: Int, Hashable {
-        case team = 5, leadbook = 6, salgsledelse = 7, leadgridGo = 8, kvalitet = 9, anbud = 10, canvas = 11
+        case team = 5, leadbook = 6, salgsledelse = 7, leadgridGo = 8, kvalitet = 9, anbud = 10, canvas = 11, hub = 12
     }
 
     @State private var path: [Destination] = {
@@ -609,6 +614,11 @@ struct PhoneMerTab: View {
                         merRow(.canvas, icon: "pencil.and.outline", color: .purple,
                                title: "Canvas", subtitle: "Pencil-notater koblet til leads")
                     }
+                    // Market Scan (ekte AI-bedrifts-discovery) + Research/
+                    // Analytics/Billing/Pipeline-Kanban m.m. — ferdig bygd,
+                    // men uoppnåelig herfra før nå (2026-08-19).
+                    merRow(.hub, icon: "magnifyingglass.circle.fill", color: .pink,
+                           title: "Verktøy", subtitle: "Market Scan, research, analyse, faktura")
                 }
             }
             .navigationTitle("Mer")
@@ -636,6 +646,11 @@ struct PhoneMerTab: View {
                 case .canvas:
                     CanvasView()
                         .toolbar(.hidden, for: .navigationBar)
+                case .hub:
+                    // I motsetning til søsknene bruker denne system-navbaren
+                    // (tittel + org-picker-toolbar), ikke egen header —
+                    // navbaren skal IKKE skjules her.
+                    LeadgridHubView(embedded: true)
                 }
             }
         }
@@ -862,6 +877,14 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
     case kvalitet
     case anbud
     case canvas
+    /// «Leadgrid CRM»-hub (2026-08-19, Daniel-feedback) — Market Scan
+    /// (ekte AI-bedrifts-discovery: Claude + Brreg + Google Places, auto-
+    /// oppretter leads) + Research/Analytics/Billing/Pipeline-Kanban/NBA/
+    /// Partner-program/AI-kost m.m. Alt var 100% ferdig bygd (LeadgridHubView
+    /// + 15 undersider) men helt uoppnåelig — ingen navigasjon linket dit,
+    /// verken på iPad-sidebar eller iPhone (kun MoreTabView pekte på den,
+    /// og MoreTabView selv ble aldri instansiert noe sted).
+    case hub
 
     var id: String { rawValue }
 
@@ -878,6 +901,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
         case .kvalitet:     return "Kvalitet"
         case .anbud:        return "Anbud"
         case .canvas:       return "Canvas"
+        case .hub:          return "Verktøy"
         }
     }
 
@@ -894,6 +918,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
         case .kvalitet:     return "checkmark.seal.fill"
         case .anbud:        return "doc.text.magnifyingglass"
         case .canvas:       return "pencil.and.outline"
+        case .hub:          return "magnifyingglass.circle.fill"
         }
     }
 }
@@ -924,6 +949,12 @@ struct MainSidebarView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .onAppear(perform: applyQATabIfNeeded)
+        // Nyopprettet lead skal vises der den havnet — bytt til Kart-fanen
+        // (2026-08-19). iPad-landscape bruker DENNE sidebaren, ikke
+        // MainTabView — samme mekanisme trengs begge steder (se MainTabView).
+        .onChange(of: state.pendingMapFocus) { _, newValue in
+            if newValue != nil { state.selectedSidebarItem = .kart }
+        }
     }
 
     /// QA-hook: iPad bruker sidebar (ikke MainTabView-selection), så
@@ -1040,6 +1071,7 @@ struct MainSidebarView: View {
         case .kvalitet:     KvalitetView()
         case .anbud:        AnbudView()
         case .canvas:       CanvasView()
+        case .hub:          LeadgridHubView(embedded: true)
         }
     }
 

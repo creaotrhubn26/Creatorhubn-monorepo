@@ -18,7 +18,7 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
-import { parseOr400, planRouteBody } from "./leadgrid-validators.js";
+import { parseOr400, planRouteBody, planRouteTripBody } from "./leadgrid-validators.js";
 import {
   loadUserTerritories, leadMatchesTerritory, type LeadGeo,
 } from "./leadgrid-territory-service.js";
@@ -58,6 +58,132 @@ interface CandidateLead extends LeadGeo {
   lead_score: number | null; expected_value: number | null;
 }
 
+interface PlannedRouteResult {
+  id: string; name: string;
+  total_distance_meters: number; total_drive_seconds: number;
+  expected_route_value: number; matrix_source: string;
+  stops: Array<{
+    position: number; lead_id: string; name: string | null;
+    latitude: number | null; longitude: number | null;
+    distance_from_previous_meters: number | null; drive_seconds_from_previous: number | null;
+  }>;
+}
+
+/**
+ * Kjernen i "Dagsrute" — kandidat-henting + territorie-filter + ordning
+ * + persistering for ÉN dag. Brukes både av POST /routes/plan (uendret
+ * enkelt-dags-oppførsel) og POST /routes/plan-trip (2026-08-19, looper
+ * denne N ganger — én uke i Nord-Norge = 7 kall med ekskludering av
+ * forrige dagers leads, se der).
+ */
+async function planSingleDayRoute(
+  pool: Pool,
+  args: {
+    orgId: string; userId: string; plannedDate: string | null;
+    startLat: number; startLng: number; limit: number;
+    excludeLeadIds?: Set<string>; tripId?: string; dayIndex?: number;
+  },
+): Promise<{ route: PlannedRouteResult } | { message: string }> {
+  const territories = await loadUserTerritories(pool, args.orgId, args.userId);
+
+  // Kandidater: mine tildelte leads med koordinater som er forfalt/høy-score.
+  // FIX (2026-06-22): crm_customers har ikke organization_id-kolonne —
+  // filtrer org via owner_user_id IN organization_members (PR #837/#848).
+  // Beholder cp.organization_id OR-alternativ for legacy casting-prosjekter.
+  const cand = await pool.query<CandidateLead & { latitude: any; longitude: any }>(
+    `SELECT c.id::text, c.name, c.latitude, c.longitude,
+            c.postal_code AS "postalCode", c.municipality_code AS "municipalityCode",
+            c.follow_up_priority, c.lead_score, c.expected_value
+       FROM crm_customers c
+       LEFT JOIN casting_projects cp ON cp.id = c.project_id
+      WHERE c.assigned_user_id = $1
+        AND (c.owner_user_id IN (
+                SELECT user_id::text FROM organization_members WHERE organization_id = $2::uuid
+             )
+             OR cp.organization_id = $2::uuid)
+        AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL
+        AND c.lead_status NOT IN ('won','lost','do_not_contact')
+        AND (COALESCE(c.follow_up_priority,0) >= 50
+             OR c.next_follow_up_at <= NOW()
+             OR c.lead_temperature IN ('hot','ready'))
+      ORDER BY COALESCE(c.follow_up_priority,0) DESC, COALESCE(c.lead_score,0) DESC
+      LIMIT 100`,
+    [args.userId, args.orgId],
+  );
+
+  // Behold kun in-grid leads (hvis selgeren har en grid; ellers alle) —
+  // og ekskluder leads allerede planlagt tidligere dager i samme tur.
+  const enforced = territories.length > 0;
+  const leads = cand.rows
+    .map((r) => ({
+      ...r,
+      latitude: r.latitude != null ? Number(r.latitude) : null,
+      longitude: r.longitude != null ? Number(r.longitude) : null,
+    }))
+    .filter((l) => !enforced || territories.some((t) => leadMatchesTerritory(l, t)))
+    .filter((l) => !args.excludeLeadIds?.has(l.id))
+    .slice(0, args.limit);
+
+  if (leads.length === 0) {
+    return { message: "Ingen aktuelle leads i din sone akkurat nå." };
+  }
+
+  // Ordne ruten.
+  const start: RoutePoint = { lat: args.startLat, lng: args.startLng };
+  const points: RoutePoint[] = [start, ...leads.map((l) => ({ lat: l.latitude as number, lng: l.longitude as number }))];
+  const matrix = await fetchGoogleMatrix(points);
+  const fns = matrixDriveFns(points, matrix);
+  const priorities = leads.map((l) => l.follow_up_priority ?? l.lead_score ?? 0);
+  const ordered = orderRoute(priorities, fns.seconds, fns.meters);
+  const expectedRouteValue = leads.reduce((s, l) => s + Number(l.expected_value ?? 0), 0);
+
+  // Persistér.
+  const routeName = `Dagsrute ${args.plannedDate ?? new Date().toISOString().slice(0, 10)}`;
+  const rRoute = await pool.query<{ id: string }>(
+    `INSERT INTO lead_routes
+       (organization_id, user_id, name, planned_date, status,
+        start_lat, start_lng, total_distance_meters, total_drive_seconds, expected_route_value,
+        trip_id, day_index)
+     VALUES ($1::uuid, $2, $3, $4, 'active', $5, $6, $7, $8, $9, $10::uuid, $11)
+     RETURNING id::text`,
+    [args.orgId, args.userId, routeName, args.plannedDate,
+     args.startLat, args.startLng, ordered.totalDistanceM, ordered.totalDriveSec, expectedRouteValue,
+     args.tripId ?? null, args.dayIndex ?? null],
+  );
+  const routeId = rRoute.rows[0].id;
+
+  for (let pos = 0; pos < ordered.order.length; pos++) {
+    const leg = ordered.legs[pos];
+    const lead = leads[leg.leadIndex];
+    await pool.query(
+      `INSERT INTO lead_route_stops
+         (route_id, lead_id, position, distance_from_previous_meters, drive_seconds_from_previous)
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5)`,
+      [routeId, lead.id, pos + 1, leg.distanceM, leg.driveSec],
+    );
+  }
+
+  return {
+    route: {
+      id: routeId, name: routeName,
+      total_distance_meters: ordered.totalDistanceM,
+      total_drive_seconds: ordered.totalDriveSec,
+      expected_route_value: expectedRouteValue,
+      matrix_source: matrix ? "google" : "estimate",
+      stops: ordered.order.map((leadIdx, pos) => {
+        const lead = leads[leadIdx];
+        const leg = ordered.legs[pos];
+        return {
+          position: pos + 1, lead_id: lead.id, name: lead.name,
+          latitude: lead.latitude, longitude: lead.longitude,
+          distance_from_previous_meters: leg.distanceM,
+          drive_seconds_from_previous: leg.driveSec,
+        };
+      }),
+    },
+  };
+}
+
 export function registerLeadgridRouteRoutes(deps: Deps): void {
   const { app, pool, activeSessions } = deps;
   const common = { pool, activeSessions, resolveOrgId: resolveOrgIdSmart };
@@ -74,105 +200,100 @@ export function registerLeadgridRouteRoutes(deps: Deps): void {
 
     const b = parseOr400(planRouteBody, req.body, res);
     if (!b) return;
-    const limit = b.limit;
 
     try {
-      const territories = await loadUserTerritories(pool, orgId, session.userId);
+      const result = await planSingleDayRoute(pool, {
+        orgId, userId: session.userId, plannedDate: b.planned_date ?? null,
+        startLat: b.start_lat, startLng: b.start_lng, limit: b.limit ?? 12,
+      });
+      if ("message" in result) return res.json({ route: null, message: result.message });
+      return res.status(201).json({ route: result.route });
+    } catch (err) {
+      return res.status(500).json({ error: "plan_failed", detail: "internal_error" });
+    }
+  });
 
-      // Kandidater: mine tildelte leads med koordinater som er forfalt/høy-score.
-      // FIX (2026-06-22): crm_customers har ikke organization_id-kolonne —
-      // filtrer org via owner_user_id IN organization_members (PR #837/#848).
-      // Beholder cp.organization_id OR-alternativ for legacy casting-prosjekter.
-      const cand = await pool.query<CandidateLead & { latitude: any; longitude: any }>(
-        `SELECT c.id::text, c.name, c.latitude, c.longitude,
-                c.postal_code AS "postalCode", c.municipality_code AS "municipalityCode",
-                c.follow_up_priority, c.lead_score, c.expected_value
-           FROM crm_customers c
-           LEFT JOIN leadgrid_projects cp ON cp.id = c.project_id
-          WHERE c.assigned_user_id = $1
-            AND (c.owner_user_id IN (
-                    SELECT user_id::text FROM organization_members WHERE organization_id = $2::uuid
-                 )
-                 OR cp.organization_id = $2::uuid)
-            AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL
-            AND c.lead_status NOT IN ('won','lost','do_not_contact')
-            AND (COALESCE(c.follow_up_priority,0) >= 50
-                 OR c.next_follow_up_at <= NOW()
-                 OR c.lead_temperature IN ('hot','ready'))
-          ORDER BY COALESCE(c.follow_up_priority,0) DESC, COALESCE(c.lead_score,0) DESC
-          LIMIT 100`,
-        [session.userId, orgId],
+  // ─── POST /api/leadgrid/routes/plan-trip (2026-08-19) ─────────────
+  // Flerdagers "Dagsrute" — planlegger `days` dager i strekk. Hver dag
+  // kjører samme enkelt-dags-logikk som over, men ekskluderer leads
+  // allerede brukt tidligere dager i turen, og starter dag N+1 der
+  // dag N sluttet (geografisk kjeding — naturlig for "kjør en uke
+  // nordover og besøk leads underveis").
+  app.post("/api/leadgrid/routes/plan-trip", permCreate, async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "Innlogging kreves" });
+    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
+    if (!orgId) return res.status(400).json({ error: "mangler_organization_id" });
+
+    const b = parseOr400(planRouteTripBody, req.body, res);
+    if (!b) return;
+
+    try {
+      const startDate = new Date(`${b.start_date}T00:00:00Z`);
+      const endDate = new Date(startDate);
+      endDate.setUTCDate(endDate.getUTCDate() + b.days - 1);
+      const tripName = `Tur ${b.start_date} (${b.days} dager)`;
+      const tripR = await pool.query<{ id: string }>(
+        `INSERT INTO lead_route_trips (organization_id, user_id, name, start_date, end_date)
+         VALUES ($1::uuid, $2, $3, $4, $5) RETURNING id::text`,
+        [orgId, session.userId, tripName, b.start_date, endDate.toISOString().slice(0, 10)],
       );
+      const tripId = tripR.rows[0].id;
 
-      // Behold kun in-grid leads (hvis selgeren har en grid; ellers alle).
-      const enforced = territories.length > 0;
-      const leads = cand.rows
-        .map((r) => ({
-          ...r,
-          latitude: r.latitude != null ? Number(r.latitude) : null,
-          longitude: r.longitude != null ? Number(r.longitude) : null,
-        }))
-        .filter((l) => !enforced || territories.some((t) => leadMatchesTerritory(l, t)))
-        .slice(0, limit);
+      const usedLeadIds = new Set<string>();
+      let cursorLat = b.start_lat;
+      let cursorLng = b.start_lng;
+      const days: Array<{ day_index: number; planned_date: string; route: PlannedRouteResult | null; message?: string }> = [];
 
-      if (leads.length === 0) {
-        return res.json({ route: null, message: "Ingen aktuelle leads i din sone akkurat nå." });
-      }
-
-      // Ordne ruten.
-      const start: RoutePoint = { lat: b.start_lat, lng: b.start_lng };
-      const points: RoutePoint[] = [start, ...leads.map((l) => ({ lat: l.latitude as number, lng: l.longitude as number }))];
-      const matrix = await fetchGoogleMatrix(points);
-      const fns = matrixDriveFns(points, matrix);
-      const priorities = leads.map((l) => l.follow_up_priority ?? l.lead_score ?? 0);
-      const ordered = orderRoute(priorities, fns.seconds, fns.meters);
-      const expectedRouteValue = leads.reduce((s, l) => s + Number(l.expected_value ?? 0), 0);
-
-      // Persistér.
-      const routeName = `Dagsrute ${b.planned_date ?? new Date().toISOString().slice(0, 10)}`;
-      const rRoute = await pool.query<{ id: string }>(
-        `INSERT INTO lead_routes
-           (organization_id, user_id, name, planned_date, status,
-            start_lat, start_lng, total_distance_meters, total_drive_seconds, expected_route_value)
-         VALUES ($1::uuid, $2, $3, $4, 'active', $5, $6, $7, $8, $9)
-         RETURNING id::text`,
-        [orgId, session.userId, routeName, b.planned_date ?? null,
-         b.start_lat, b.start_lng, ordered.totalDistanceM, ordered.totalDriveSec, expectedRouteValue],
-      );
-      const routeId = rRoute.rows[0].id;
-
-      for (let pos = 0; pos < ordered.order.length; pos++) {
-        const leg = ordered.legs[pos];
-        const lead = leads[leg.leadIndex];
-        await pool.query(
-          `INSERT INTO lead_route_stops
-             (route_id, lead_id, position, distance_from_previous_meters, drive_seconds_from_previous)
-           VALUES ($1::uuid, $2::uuid, $3, $4, $5)`,
-          [routeId, lead.id, pos + 1, leg.distanceM, leg.driveSec],
-        );
+      for (let dayIndex = 0; dayIndex < b.days; dayIndex++) {
+        const d = new Date(startDate);
+        d.setUTCDate(d.getUTCDate() + dayIndex);
+        const plannedDate = d.toISOString().slice(0, 10);
+        const result = await planSingleDayRoute(pool, {
+          orgId, userId: session.userId, plannedDate,
+          startLat: cursorLat, startLng: cursorLng, limit: b.per_day_limit ?? 12,
+          excludeLeadIds: usedLeadIds, tripId, dayIndex: dayIndex + 1,
+        });
+        if ("message" in result) {
+          days.push({ day_index: dayIndex + 1, planned_date: plannedDate, route: null, message: result.message });
+          continue; // ikke flere leads i sonen — hopp til neste dag, ikke avbryt hele turen
+        }
+        days.push({ day_index: dayIndex + 1, planned_date: plannedDate, route: result.route });
+        for (const stop of result.route.stops) usedLeadIds.add(stop.lead_id);
+        const lastStop = result.route.stops[result.route.stops.length - 1];
+        if (lastStop?.latitude != null && lastStop?.longitude != null) {
+          cursorLat = lastStop.latitude;
+          cursorLng = lastStop.longitude;
+        }
       }
 
       return res.status(201).json({
-        route: {
-          id: routeId, name: routeName,
-          total_distance_meters: ordered.totalDistanceM,
-          total_drive_seconds: ordered.totalDriveSec,
-          expected_route_value: expectedRouteValue,
-          matrix_source: matrix ? "google" : "estimate",
-          stops: ordered.order.map((leadIdx, pos) => {
-            const lead = leads[leadIdx];
-            const leg = ordered.legs[pos];
-            return {
-              position: pos + 1, lead_id: lead.id, name: lead.name,
-              latitude: lead.latitude, longitude: lead.longitude,
-              distance_from_previous_meters: leg.distanceM,
-              drive_seconds_from_previous: leg.driveSec,
-            };
-          }),
-        },
+        trip: { id: tripId, name: tripName, start_date: b.start_date, end_date: endDate.toISOString().slice(0, 10) },
+        days,
       });
     } catch (err) {
-      return res.status(500).json({ error: "plan_failed", detail: "internal_error" });
+      return res.status(500).json({ error: "plan_trip_failed", detail: "internal_error" });
+    }
+  });
+
+  // ─── GET /api/leadgrid/routes/trip/:tripId ─────────────────────────
+  app.get("/api/leadgrid/routes/trip/:tripId", permView, async (req: Request, res: Response) => {
+    try {
+      const tripR = await pool.query(
+        `SELECT id::text, name, start_date, end_date, status, created_at
+           FROM lead_route_trips WHERE id = $1::uuid LIMIT 1`,
+        [req.params.tripId],
+      );
+      if (!tripR.rows.length) return res.status(404).json({ error: "ikke_funnet" });
+      const routesR = await pool.query(
+        `SELECT id::text, day_index, planned_date, status, total_distance_meters,
+                total_drive_seconds, expected_route_value
+           FROM lead_routes WHERE trip_id = $1::uuid ORDER BY day_index ASC`,
+        [req.params.tripId],
+      );
+      return res.json({ trip: tripR.rows[0], routes: routesR.rows });
+    } catch (err) {
+      return res.status(500).json({ error: "read_failed", detail: "internal_error" });
     }
   });
 

@@ -57,6 +57,18 @@ export const planRouteBody = z.object({
 });
 export type PlanRouteBody = z.infer<typeof planRouteBody>;
 
+// ─── POST /api/leadgrid/routes/plan-trip (2026-08-19) ─────────────────
+// Flerdagers-variant — planlegger N dagsruter i strekk, kjeder dagene
+// geografisk (dag N+1 starter der dag N sluttet).
+export const planRouteTripBody = z.object({
+  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  days: z.number().int().min(1).max(14),
+  start_lat: z.number().min(-90).max(90),
+  start_lng: z.number().min(-180).max(180),
+  per_day_limit: z.number().int().min(1).max(24).default(12),
+});
+export type PlanRouteTripBody = z.infer<typeof planRouteTripBody>;
+
 // ─── PATCH /api/leadgrid/intelligence/weights ─────────────────────────
 // Tillater både flat camelCase form (categoryFit/digitalNeed/...)
 // og innpakket `{ weights: {...} }`. Verdier valideres 0..5 nedstrøms

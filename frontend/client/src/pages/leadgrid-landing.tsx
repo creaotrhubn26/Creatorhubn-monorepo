@@ -764,14 +764,18 @@ const lgField = {
 function BookDemoDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [company, setCompany] = useState('');
+  // 2026-08-19: org.nr erstatter fritekst-firmanavn — vi trenger å vite
+  // HVA slags bedrift interessenten driver (Brreg-bransje/NACE) for å
+  // kunne vise en relevant demo, ikke bare et navn.
+  const [orgNumber, setOrgNumber] = useState('');
   const [preferred, setPreferred] = useState('');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
-  const canSend = email.includes('@') && email.includes('.');
+  const orgNumberDigits = orgNumber.replace(/\D/g, '');
+  const canSend = email.includes('@') && email.includes('.') && orgNumberDigits.length === 9;
 
   async function submit() {
     setSubmitting(true);
@@ -781,13 +785,13 @@ function BookDemoDialog({ open, onClose }: { open: boolean; onClose: () => void 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: name.trim(), email: email.trim(), company: company.trim(),
+          name: name.trim(), email: email.trim(), org_number: orgNumberDigits,
           preferred: preferred.trim(), note: note.trim(),
         }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) { setError(data.error === 'invalid_email' ? 'Ugyldig e-post' : 'Noe gikk galt, prøv igjen'); setSubmitting(false); return; }
-      try { trackEvent('leadgrid_demo_requested', { has_company: !!company.trim() }); } catch { /* */ }
+      try { trackEvent('leadgrid_demo_requested', { has_org_number: orgNumberDigits.length === 9 }); } catch { /* */ }
       setDone(true);
     } catch (e: any) {
       setError(String(e?.message ?? e));
@@ -797,7 +801,7 @@ function BookDemoDialog({ open, onClose }: { open: boolean; onClose: () => void 
 
   function close() {
     setDone(false); setError(null); setSubmitting(false);
-    setName(''); setEmail(''); setCompany(''); setPreferred(''); setNote('');
+    setName(''); setEmail(''); setOrgNumber(''); setPreferred(''); setNote('');
     onClose();
   }
 
@@ -830,9 +834,12 @@ function BookDemoDialog({ open, onClose }: { open: boolean; onClose: () => void 
               <TextField fullWidth label="Navn" value={name}
                 onChange={(e) => setName(e.target.value)}
                 InputLabelProps={{ sx: { color: PALETTE.textMuted } }} sx={lgField} />
-              <TextField fullWidth label="Firma" value={company}
-                onChange={(e) => setCompany(e.target.value)}
-                InputLabelProps={{ sx: { color: PALETTE.textMuted } }} sx={lgField} />
+              <TextField fullWidth required label="Organisasjonsnummer" value={orgNumber}
+                onChange={(e) => setOrgNumber(e.target.value)} placeholder="923 456 789"
+                helperText="Vi slår opp firma og bransje automatisk i Brønnøysundregistrene"
+                InputLabelProps={{ sx: { color: PALETTE.textMuted } }}
+                FormHelperTextProps={{ sx: { color: PALETTE.textMuted } }}
+                sx={lgField} />
               <TextField fullWidth label="Ønsket tidspunkt (valgfritt)" value={preferred}
                 onChange={(e) => setPreferred(e.target.value)} placeholder="F.eks. torsdag formiddag"
                 InputLabelProps={{ sx: { color: PALETTE.textMuted } }} sx={lgField} />
