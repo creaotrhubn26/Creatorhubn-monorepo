@@ -1,0 +1,8 @@
+# Generert av XcodeGen (fra project.yml) — regenereres, ikke sjekk inn.
+Reknaren.xcodeproj/
+Reknaren/Generated/
+# Bygg-artefakter
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/

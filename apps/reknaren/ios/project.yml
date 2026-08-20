@@ -1,0 +1,39 @@
+name: Reknaren
+options:
+  bundleIdPrefix: com.creatorhubn
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  developmentLanguage: nb
+
+settings:
+  base:
+    SWIFT_VERSION: "6"
+    SWIFT_STRICT_CONCURRENCY: complete
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: "9TAUZCPK95"
+    VERSIONING_SYSTEM: apple-generic
+    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.1.0"
+    TARGETED_DEVICE_FAMILY: "1,2" # 1=iPhone, 2=iPad → universell
+
+targets:
+  Reknaren:
+    type: application
+    platform: iOS
+    sources:
+      - path: Reknaren
+    info:
+      path: Reknaren/Generated/Info.plist
+      properties:
+        CFBundleDisplayName: Reknaren
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSCameraUsageDescription: Reknaren bruker kameraet til å ta bilde av kvitteringer og bilag.
+        NSPhotoLibraryUsageDescription: Reknaren henter bilder av kvitteringer og bilag fra biblioteket ditt.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.Reknaren
