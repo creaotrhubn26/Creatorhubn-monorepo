@@ -147,28 +147,115 @@ export const StoryboardTabView: React.FC<StoryboardTabViewProps> = ({
   }
 
   return (
-    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      {selectedScene?.id && (
-        <Box sx={{ mb: 1.4 }}>
-          <EntityAttachmentsPanel
-            entityType="scene"
-            entityId={selectedScene.id}
-            projectId={currentProject.id}
-            sceneId={selectedScene.id}
-            entityLabel="Scene"
-            acceptedFileTypes="image/*,application/pdf"
-          />
-        </Box>
-      )}
-      <StoryboardIntegrationView
-        scene={selectedScene}
-        onUpdate={handleSceneUpdate}
-        projectId={currentProject.id}
-        projectCinemaFormat={projectCinemaFormat}
-        allScenes={scenes}
-        sceneDialogue={dialogueLines}
-        storyboardOnly={false}
-      />
+    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', gap: 1.5 }}>
+      {/* SCENES-panel (mockup 2, venstre): thumbnail + heading + shot-antall;
+          valgt scene = brand-fiolett ramme. */}
+      <Box
+        data-testid="storyboard-scenes-panel"
+        sx={{
+          width: 224,
+          flexShrink: 0,
+          overflowY: 'auto',
+          borderRight: '1px solid rgba(139,92,246,0.18)',
+          pr: 1.25,
+        }}
+      >
+        <Typography
+          variant="caption"
+          sx={{ display: 'block', mb: 1, color: 'rgba(226,232,240,0.7)', letterSpacing: 1.6, fontWeight: 700 }}
+        >
+          SCENES
+        </Typography>
+        {scenes.map((scene, index) => {
+          const frames = Array.isArray(scene.storyboardFrames) ? scene.storyboardFrames : [];
+          const thumb = frames.find((f) => f?.thumbnailUrl || f?.imageUrl);
+          const thumbUrl = thumb?.thumbnailUrl || thumb?.imageUrl;
+          const isSelected = scene.id === selectedScene?.id;
+          const heading = scene.heading || scene.title || scene.name || `Scene ${index + 1}`;
+          return (
+            <Box
+              key={scene.id || index}
+              data-testid={`storyboard-scene-item-${index}`}
+              onClick={() => setSelectedScene(scene)}
+              sx={{
+                display: 'flex',
+                gap: 1,
+                alignItems: 'center',
+                p: 0.75,
+                mb: 0.75,
+                borderRadius: 1.5,
+                cursor: 'pointer',
+                border: isSelected ? '2px solid #8b5cf6' : '1px solid rgba(148,163,184,0.18)',
+                bgcolor: isSelected ? 'rgba(139,92,246,0.1)' : 'rgba(13,17,23,0.7)',
+                '&:hover': { borderColor: 'rgba(139,92,246,0.6)' },
+              }}
+            >
+              <Box
+                sx={{
+                  width: 64,
+                  height: 40,
+                  flexShrink: 0,
+                  borderRadius: 1,
+                  backgroundImage: thumbUrl ? `url(${thumbUrl})` : undefined,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  bgcolor: thumbUrl ? undefined : 'rgba(148,163,184,0.12)',
+                }}
+              />
+              <Box sx={{ minWidth: 0 }}>
+                <Typography
+                  variant="caption"
+                  sx={{ display: 'block', color: 'rgba(148,163,184,0.85)', fontSize: '0.62rem', fontWeight: 700 }}
+                >
+                  {String(index + 1).padStart(2, '0')}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    display: 'block',
+                    color: 'rgba(248,250,252,0.92)',
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                  title={heading}
+                >
+                  {heading}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(148,163,184,0.8)', fontSize: '0.62rem' }}>
+                  {frames.length} {frames.length === 1 ? 'SHOT' : 'SHOTS'}
+                </Typography>
+              </Box>
+            </Box>
+          );
+        })}
+      </Box>
+
+      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        {selectedScene?.id && (
+          <Box sx={{ mb: 1.4 }}>
+            <EntityAttachmentsPanel
+              entityType="scene"
+              entityId={selectedScene.id}
+              projectId={currentProject.id}
+              sceneId={selectedScene.id}
+              entityLabel="Scene"
+              acceptedFileTypes="image/*,application/pdf"
+            />
+          </Box>
+        )}
+        <StoryboardIntegrationView
+          key={selectedScene.id}
+          scene={selectedScene}
+          onUpdate={handleSceneUpdate}
+          projectId={currentProject.id}
+          projectCinemaFormat={projectCinemaFormat}
+          allScenes={scenes}
+          sceneDialogue={dialogueLines}
+          storyboardOnly={false}
+        />
+      </Box>
     </Box>
   );
 };
