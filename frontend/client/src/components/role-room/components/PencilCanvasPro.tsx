@@ -403,6 +403,40 @@ function isProBrushType(value: string): value is ProBrushType {
   return (PRO_BRUSH_TYPES as readonly string[]).includes(value);
 }
 
+// StreamLine (Procreate) / stabilization (Krita): EMA-glatting av posisjonene
+// fjerner skjelv/wobble. Sterkest på pen/ink (linjearbeid), svak på tørrmedier
+// (skravering skal beholde håndens karakter). Trykk/tilt glattes ikke her.
+const STREAMLINE_BY_TYPE: Partial<Record<ProBrushType, number>> = {
+  pen: 0.45,
+  ink: 0.5,
+  marker: 0.3,
+  highlighter: 0.3,
+  pencil: 0.2,
+  graphite: 0.2,
+  charcoal: 0.2,
+  conte: 0.2,
+  brush: 0.2,
+  watercolor: 0.2,
+  smudge: 0.15,
+  eraser: 0.15,
+};
+
+export function applyStreamline(points: PencilPoint[], amount: number): PencilPoint[] {
+  if (amount <= 0 || points.length < 3) return points;
+  const k = Math.min(0.92, amount);
+  const out: PencilPoint[] = [points[0]];
+  let sx = points[0].x;
+  let sy = points[0].y;
+  for (let i = 1; i < points.length; i++) {
+    sx += (points[i].x - sx) * (1 - k);
+    sy += (points[i].y - sy) * (1 - k);
+    out.push({ ...points[i], x: sx, y: sy });
+  }
+  // Catch-up: strøket skal lande der pennen faktisk sluttet
+  out[out.length - 1] = { ...points[points.length - 1] };
+  return out;
+}
+
 /**
  * Polyline-fallback for highlighter + eraser (bredt jevnt strøk passer ikke
  * stamp-engine). Brukes også som siste fallback hvis stamp-config mangler.
@@ -2367,6 +2401,8 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
         )
       );
       previewLastPointRef.current = adjustedPoint;
+      // StreamLine: nullstill live-EMA på strøkets startposisjon
+      streamlineLiveRef.current = { x: adjustedPoint.x, y: adjustedPoint.y };
       // Reset stamp-engine carry — alle armer starter fra null på ny stroke
       stampCarryRef.current = [0, 0, 0, 0, 0, 0, 0, 0];
       brushEngineRef.current?.startStroke(adjustedPoint);
@@ -2388,11 +2424,20 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       const ctx = previewCanvasRef.current.getContext('2d');
       if (!ctx) return;
 
-      const adjustedPoint = applyPressureCurve(
+      let adjustedPoint = applyPressureCurve(
         snapPointWithRuler(
           mapCanvasPointToLayerPoint(point)
         )
       );
+      // StreamLine live: samme EMA som commit-pathen, så preview = resultat
+      const streamlineAmount = STREAMLINE_BY_TYPE[liveStrokeBrushRef.current.type] ?? 0;
+      const sl = streamlineLiveRef.current;
+      if (streamlineAmount > 0 && sl) {
+        const k = Math.min(0.92, streamlineAmount);
+        sl.x += (adjustedPoint.x - sl.x) * (1 - k);
+        sl.y += (adjustedPoint.y - sl.y) * (1 - k);
+        adjustedPoint = { ...adjustedPoint, x: sl.x, y: sl.y };
+      }
       const previousPoint = previewLastPointRef.current;
       if (!previousPoint) {
         previewLastPointRef.current = adjustedPoint;
@@ -2479,13 +2524,16 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       
       // Apply pressure curve to stroke points
       const brushSnapshot = { ...liveStrokeBrushRef.current };
-      const snappedPoints = stroke.points.map((entry) => (
-        applyPressureCurve(
-          snapPointWithRuler(
-            mapCanvasPointToLayerPoint(entry)
+      const snappedPoints = applyStreamline(
+        stroke.points.map((entry) => (
+          applyPressureCurve(
+            snapPointWithRuler(
+              mapCanvasPointToLayerPoint(entry)
+            )
           )
-        )
-      ));
+        )),
+        STREAMLINE_BY_TYPE[brushSnapshot.type] ?? 0,
+      );
       const isShapeToolActive = activeTool === 'shape' && Boolean(selectedShapeType);
       if (isShapeToolActive && selectedShapeType) {
         const shapePoints = createShapePointsFromGesture(snappedPoints, selectedShapeType, selectedShapeStyle);
@@ -2988,6 +3036,9 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     }
     ctx.restore();
   }, []);
+
+  // StreamLine live-EMA-state (posisjonsglatting under aktivt strøk)
+  const streamlineLiveRef = useRef<{ x: number; y: number } | null>(null);
 
   // Smudge: drar eksisterende piksler langs strøket (klassisk finger-smudge).
   // Deterministisk — ingen random — så redraw/undo gir identisk resultat.
