@@ -444,3 +444,32 @@ ul.compact li { margin: 4px 0; font-size: 14px; }
 .health-title { font-weight: 700; font-size: 14px; }
 .health-detail { font-size: 13px; color: var(--text-2); margin-top: 2px; line-height: 1.45; }
 .health-action { flex: 0 0 auto; align-self: center; white-space: nowrap; }
+
+/* ── Banktransaksjoner: rikere linjer + «hva dette kan være»-forslag ──────── */
+td.tx-date { color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.tx-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 5px; }
+.tx-party { color: var(--text-2); font-size: 12.5px; }
+.tx-kid {
+  font-size: 11.5px; font-variant-numeric: tabular-nums; letter-spacing: 0.01em;
+  color: var(--gold); background: var(--gold-soft);
+  padding: 1px 7px; border-radius: 999px;
+}
+
+.dir-pill {
+  font-size: 10.5px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 1px 7px; border-radius: 999px; line-height: 1.5;
+}
+.dir-pill.in { color: var(--ok); background: var(--ok-soft); }
+.dir-pill.out { color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); }
+
+/* Innbetalinger fremheves grønt; utbetalinger holdes nøytrale (ikke alarmerende rødt). */
+td.tx-amount { font-weight: 600; }
+td.tx-amount.in { color: var(--ok); }
+td.tx-amount.out { color: var(--text); }
+
+.suggest-cell { display: flex; flex-direction: column; gap: 8px; min-width: 240px; }
+.suggest-hint { margin: 0; font-size: 13px; color: var(--text-2); line-height: 1.4; }
+.suggest-hint strong { color: var(--accent); font-weight: 650; }
+.suggest-hint .suggest-reason { display: block; color: var(--text-3); font-size: 12px; margin-top: 2px; }
+.suggest-hint.muted { color: var(--text-3); }

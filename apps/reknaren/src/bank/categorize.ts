@@ -72,6 +72,51 @@ function resolveAccount(cat: CategoryDef, orgForm: string): string {
   return cat.account[orgForm as 'ENK' | 'AS'] ?? cat.account.default;
 }
 
+export interface CategorySuggestion {
+  key: string;
+  label: string;
+  account: string;
+  /** Plain-språk begrunnelse — «hvorfor tror vi dette». */
+  reason: string;
+}
+
+/** Nøkkelord → kategori. Deterministisk, aldri AI. Rekkefølge = spesifisitet. */
+// Delstreng-matching (ikke \b) — norske banktekster er ofte sammensatte ord
+// («månedsgebyr», «forskuddsskatt»). Rekkefølge = spesifisitet (skatt før gebyr).
+const SUGGESTION_RULES: Array<{ key: string; direction: CategoryDirection; test: RegExp; reason: string }> = [
+  { key: 'skatt', direction: 'out', test: /skatt|skatteetaten|forskuddsskatt|restskatt|kemner|arbeidsgiveravgift/i, reason: 'Teksten peker mot Skatteetaten/skatt' },
+  { key: 'bankgebyr', direction: 'out', test: /gebyr|kortavgift|serviceavgift|omkostning/i, reason: 'Teksten nevner et gebyr' },
+  { key: 'rentekostnad', direction: 'out', test: /rente|renter/i, reason: 'Renter belastet' },
+  { key: 'renteinntekt', direction: 'in', test: /rente|renter/i, reason: 'Renter godskrevet' },
+  { key: 'eierinnskudd', direction: 'in', test: /innskudd|egenkapital|kapitalinnskudd/i, reason: 'Ligner et innskudd fra eier' },
+  { key: 'privatuttak', direction: 'out', test: /privat|privatuttak/i, reason: 'Ligner et privatuttak' },
+];
+
+/**
+ * Foreslår en sannsynlig kategori for en banklinje fra teksten — til «hva dette kan
+ * være»-hintet i UI-et. Respekterer retning + organisasjonsform, og returnerer null
+ * når ingen regel treffer trygt (ærlig: ingen gjetning uten grunnlag). Kontoen er den
+ * samme faste koblingen som `categorizeBankTransaction` bruker, så «Bokfør» blir korrekt.
+ */
+export function suggestBankCategory(params: {
+  description?: string | null;
+  counterparty?: string | null;
+  amountMinor: bigint;
+  orgForm: string;
+}): CategorySuggestion | null {
+  const direction: CategoryDirection = params.amountMinor >= 0n ? 'in' : 'out';
+  const haystack = `${params.description ?? ''} ${params.counterparty ?? ''}`;
+  for (const rule of SUGGESTION_RULES) {
+    if (rule.direction !== direction) continue;
+    if (!rule.test.test(haystack)) continue;
+    const cat = CATEGORIES.find((c) => c.key === rule.key);
+    if (!cat) continue;
+    if (cat.orgForms && !cat.orgForms.includes(params.orgForm)) continue;
+    return { key: cat.key, label: cat.label, account: resolveAccount(cat, params.orgForm), reason: rule.reason };
+  }
+  return null;
+}
+
 /**
  * Konterer én banktransaksjon etter valgt kategori og markerer den som avstemt.
  * Idempotent på transaksjonen (kan ikke føres to ganger).

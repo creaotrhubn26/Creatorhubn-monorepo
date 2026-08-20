@@ -107,7 +107,7 @@ import { createBankAccount, importBankTransactions, parseBankCsv } from '../bank
 import type { BankFeedProvider, BankAccountDetails } from '../bank/feed.js';
 import { approveMatch, rejectMatch, suggestMatches } from '../bank/matching.js';
 import { reconciliationStatus } from '../bank/reconciliation.js';
-import { bankCategoriesFor, categorizeBankTransaction } from '../bank/categorize.js';
+import { bankCategoriesFor, categorizeBankTransaction, suggestBankCategory } from '../bank/categorize.js';
 import { createCreditNote, createInvoiceDraft, issueInvoice } from '../invoicing/service.js';
 import { createDimension, dimensionResultReport, listDimensions } from '../dimensions/service.js';
 import { buildSafTXml } from '../saft/export.js';
@@ -4967,7 +4967,22 @@ export function createApiServer(deps: ApiDeps): express.Express {
            ORDER BY booked_date DESC LIMIT 500`,
           args,
         );
-        res.json(toJson(rows.rows));
+        // Berik ubokførte linjer med et deterministisk «hva dette kan være»-forslag
+        // (samme faste kontokobling som bokføringen bruker) + begrunnelse.
+        const orgForm =
+          (await deps.db.query(`SELECT org_form FROM organizations WHERE id = $1`, [req.params.orgId])).rows[0]
+            ?.org_form ?? 'AS';
+        const enriched = rows.rows.map((t) => {
+          if (t.status !== 'unmatched') return { ...t, suggestion: null };
+          const suggestion = suggestBankCategory({
+            description: t.description,
+            counterparty: t.counterparty,
+            amountMinor: BigInt(t.amount_minor),
+            orgForm,
+          });
+          return { ...t, suggestion };
+        });
+        res.json(toJson(enriched));
       } catch (err) {
         next(err);
       }

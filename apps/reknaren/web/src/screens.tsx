@@ -1290,7 +1290,9 @@ export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: strin
     amount_minor: string;
     description: string;
     counterparty: string | null;
+    kid: string | null;
     status: string;
+    suggestion: { key: string; label: string; account: string; reason: string } | null;
   }
   interface Match {
     id: string;
@@ -1851,46 +1853,63 @@ export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: strin
                 <th>Beskrivelse</th>
                 <th className="num">Beløp</th>
                 <th>Status</th>
-                <th>Kategoriser (uten bilag)</th>
+                <th>Hva dette kan være</th>
               </tr>
             </thead>
             <tbody>
               {(txs.data ?? []).map((t) => {
                 const dir = BigInt(t.amount_minor) >= 0n ? 'in' : 'out';
                 const options = (cats.data ?? []).filter((c) => c.direction === dir);
+                const chosen = catChoice[t.id] ?? t.suggestion?.key ?? '';
                 return (
                   <tr key={t.id}>
-                    <td>{t.booked_date}</td>
+                    <td className="tx-date">{t.booked_date}</td>
                     <td>
                       <div className="primary-line">{t.description}</div>
-                      {t.counterparty && <div className="secondary-line">{t.counterparty}</div>}
+                      <div className="tx-meta">
+                        <span className={`dir-pill ${dir}`}>{dir === 'in' ? 'Inn' : 'Ut'}</span>
+                        {t.counterparty && <span className="tx-party">{t.counterparty}</span>}
+                        {t.kid && <span className="tx-kid">KID {t.kid}</span>}
+                      </div>
                     </td>
-                    <td className="num">{kr(t.amount_minor)}</td>
+                    <td className={`num tx-amount ${dir}`}>{kr(t.amount_minor)}</td>
                     <td>
                       <StatusBadge status={t.status} />
                     </td>
                     <td>
                       {t.status === 'unmatched' ? (
-                        <div className="actions" style={{ marginTop: 0 }}>
-                          <select
-                            value={catChoice[t.id] ?? ''}
-                            onChange={(e) => setCatChoice((p) => ({ ...p, [t.id]: e.target.value }))}
-                            aria-label="Velg kategori"
-                          >
-                            <option value="">Velg …</option>
-                            {options.map((c) => (
-                              <option key={c.key} value={c.key}>
-                                {c.label}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            className="primary"
-                            disabled={!catChoice[t.id]}
-                            onClick={() => categorize(t.id, catChoice[t.id] ?? '')}
-                          >
-                            Bokfør
-                          </button>
+                        <div className="suggest-cell">
+                          {t.suggestion ? (
+                            <p className="suggest-hint">
+                              Ser ut som <strong>{t.suggestion.label.toLowerCase()}</strong>
+                              <span className="suggest-reason">{t.suggestion.reason}</span>
+                            </p>
+                          ) : (
+                            <p className="suggest-hint muted">
+                              Ingen sikker gjetning — velg selv, eller finn bilaget.
+                            </p>
+                          )}
+                          <div className="actions" style={{ marginTop: 0 }}>
+                            <select
+                              value={chosen}
+                              onChange={(e) => setCatChoice((p) => ({ ...p, [t.id]: e.target.value }))}
+                              aria-label="Velg kategori"
+                            >
+                              <option value="">Velg …</option>
+                              {options.map((c) => (
+                                <option key={c.key} value={c.key}>
+                                  {c.label}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              className="primary"
+                              disabled={!chosen}
+                              onClick={() => categorize(t.id, chosen)}
+                            >
+                              Bokfør
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <span className="secondary-line">–</span>
