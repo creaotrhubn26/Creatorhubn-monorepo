@@ -378,7 +378,25 @@ const ASPECT_RATIOS: Record<string, number> = {
 };
 
 const STANDARD_BRUSH_OPTIONS: BrushType[] = ['pen', 'marker', 'highlighter'];
-const PRO_BRUSH_OPTIONS: ProBrushType[] = ['pen', 'marker', 'highlighter'];
+// Full tørrmedie-palett — graphite/charcoal/conté/ink/watercolor rendres av
+// stamp-motoren i commit-laget; smudge drar piksler; eraser er piksel-basert.
+const PRO_BRUSH_OPTIONS: ProBrushType[] = [
+  'pencil', 'graphite', 'charcoal', 'conte', 'pen', 'ink',
+  'marker', 'highlighter', 'watercolor', 'smudge', 'eraser',
+];
+const PRO_BRUSH_LABELS: Record<string, string> = {
+  pencil: 'Pencil',
+  graphite: 'Graphite',
+  charcoal: 'Charcoal',
+  conte: 'Conté',
+  pen: 'Pen',
+  ink: 'Ink',
+  marker: 'Marker',
+  highlighter: 'Highlight',
+  watercolor: 'Akvarell',
+  smudge: 'Smudge',
+  eraser: 'Viskelær',
+};
 const STUDIO_DECK_TABS = ['ROUGH', 'INK', 'SHADOW', 'LIGHT', 'FX', 'TEXT'] as const;
 const STUDIO_ANIMATION_OUTPUTS = ['Storyboards', 'GIFs', 'Animatics', 'Simple Anim'] as const;
 const STUDIO_GUIDE_MODES = ['Perspective', 'Isometric', '2D', 'Symmetry'] as const;
@@ -9146,9 +9164,9 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                     },
                   }}
                 >
-                  <ToggleButton value="pen">Pen</ToggleButton>
-                  <ToggleButton value="marker">Marker</ToggleButton>
-                  <ToggleButton value="highlighter">Highlight</ToggleButton>
+                  {(proMode ? PRO_BRUSH_OPTIONS : STANDARD_BRUSH_OPTIONS).map((type) => (
+                    <ToggleButton key={type} value={type}>{PRO_BRUSH_LABELS[type] ?? type}</ToggleButton>
+                  ))}
                 </ToggleButtonGroup>
               </Stack>
 
@@ -9425,9 +9443,9 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                   },
                 }}
               >
-                <ToggleButton value="pen">Pen</ToggleButton>
-                <ToggleButton value="marker">Marker</ToggleButton>
-                <ToggleButton value="highlighter">Highlight</ToggleButton>
+                {(proMode ? PRO_BRUSH_OPTIONS : STANDARD_BRUSH_OPTIONS).map((type) => (
+                  <ToggleButton key={type} value={type}>{PRO_BRUSH_LABELS[type] ?? type}</ToggleButton>
+                ))}
               </ToggleButtonGroup>
 
               <ToggleButtonGroup
@@ -9455,14 +9473,14 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
 
               <Tooltip title="Undo">
                 <span>
-                  <IconButton onClick={handleUndo} sx={{ color: 'rgba(255,255,255,0.87)' }} disabled={!strokes.length}>
+                  <IconButton onClick={handleUndo} sx={{ color: 'rgba(255,255,255,0.87)' }}>
                     <Undo />
                   </IconButton>
                 </span>
               </Tooltip>
               <Tooltip title="Redo">
                 <span>
-                  <IconButton onClick={handleRedo} sx={{ color: 'rgba(255,255,255,0.87)' }} disabled={!strokes.length}>
+                  <IconButton onClick={handleRedo} sx={{ color: 'rgba(255,255,255,0.87)' }}>
                     <Redo />
                   </IconButton>
                 </span>
