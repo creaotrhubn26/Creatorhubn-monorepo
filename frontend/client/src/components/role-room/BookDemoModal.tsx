@@ -45,6 +45,7 @@ const palette = {
 // "Hva beskriver dere best?" — mapper til agency_leads.segment (CHECK-begrenset).
 const BUSINESS_TYPES: { label: string; segment: string }[] = [
   { label: 'Produksjonsteam / produksjonsselskap', segment: 'annet' },
+  { label: 'Utdanningsinstitusjon', segment: 'annet' },
   { label: 'Innholdsprodusent / skaper', segment: 'annet' },
   { label: 'Skuespillerbyrå', segment: 'skuespillerbyrå' },
   { label: 'Modellbyrå', segment: 'modellbyrå' },

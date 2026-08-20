@@ -432,7 +432,7 @@ export default function RoleRoomEducationPartnershipPage(
                 {
                   icon: <IntegrationInstructionsRounded sx={{ fontSize: 24 }} />,
                   title: 'LTI 1.3 Advantage-integrasjon',
-                  body: 'E2E-verifisert mot ekte Moodle 5.2 — SSO-launch fra LMS-et og karakter-passback rett i skolens karakterbok. Samme standard som Canvas, itslearning, Blackboard og D2L bruker. Norsk høyere utdanning innen film/media kjører i hovedsak Canvas (bl.a. Den norske filmskolen og Høyskolen Kristiania); vi er i dialog med flere Moodle-institusjoner om registrering.',
+                  body: 'E2E-verifisert mot ekte Canvas — launch, klasseliste/kull via NRPS og karakter-passback per oppgave rett i karakterboka, med en eksamens-gate som leser reelle Canvas-resultater. Samme standard er også verifisert mot Moodle 5.2 (launch/SSO), og fungerer mot itslearning, Blackboard og D2L. Norsk høyere utdanning innen film/media kjører i hovedsak Canvas (bl.a. Den norske filmskolen og Høyskolen Kristiania); vi er i dialog med flere Moodle-institusjoner om registrering.',
                 },
                 {
                   icon: <LockRounded sx={{ fontSize: 24 }} />,

@@ -182,7 +182,7 @@ const PILLARS = [
   {
     Icon: PublicOutlinedIcon,
     title: 'Norsk- og EU-native',
-    body: 'EU-datalagring fra dag 1 (Render Frankfurt + Neon eu-west). EHF-faktura, NAV-rapport, BRREG, norsk juridisk data. BankID på vei. Internasjonale verktøy treffer ikke dette markedet på samme måte.',
+    body: 'EU-datalagring fra dag 1 (Render Frankfurt + Neon på AWS eu-central-1). EHF-faktura, NAV-rapport, BRREG, norsk juridisk data. BankID på vei. Internasjonale verktøy treffer ikke dette markedet på samme måte.',
   },
   {
     Icon: VisibilityOutlinedIcon,
@@ -984,7 +984,7 @@ function EducationSection({ onBookDemo }: { onBookDemo: () => void }) {
         {[
           {
             title: 'LTI 1.3 Advantage',
-            body: 'E2E-verifisert mot ekte Moodle 5.2 — SSO-launch + karakter-passback rett i skolens karakterbok. Samme standard som Canvas, itslearning, Blackboard og D2L bruker.',
+            body: 'E2E-verifisert mot ekte Canvas — launch, klasseliste/kull via NRPS og karakter-passback per oppgave rett i karakterboka, med en eksamens-gate som leser reelle Canvas-resultater. Samme standard fungerer mot Moodle (verifisert launch/SSO mot Moodle 5.2), itslearning, Blackboard og D2L.',
           },
           {
             title: 'Feide-innlogging',
@@ -1385,11 +1385,11 @@ function TrustStripFull() {
           sx={{ gap: 2 }}
         >
           {[
-            { Icon: PublicOutlinedIcon, t: 'EU-hostet', s: 'Render Frankfurt + Neon eu-west' },
+            { Icon: PublicOutlinedIcon, t: 'EU-hostet', s: 'Render Frankfurt + Neon på AWS eu-central-1' },
             { Icon: LockOutlinedIcon, t: 'GDPR-trygt', s: 'Artikkel 30, 17 + audit-trail' },
             { Icon: PeopleAltOutlinedIcon, t: 'Norsk team', s: 'Oslo-basert, norsk support' },
             { Icon: LayersOutlinedIcon, t: '18 faner, idé → levering', s: 'Ikke et punktverktøy — hele livsløpet' },
-            { Icon: CheckCircleOutlineIcon, t: 'LTI 1.3 mot ekte Moodle', s: 'E2E-verifisert LMS-integrasjon' },
+            { Icon: CheckCircleOutlineIcon, t: 'LTI 1.3 mot ekte Canvas & Moodle', s: 'E2E-verifisert LMS-integrasjon' },
           ].map((p) => (
             <Stack key={p.t} direction="row" alignItems="center" spacing={1.4}>
               <p.Icon sx={{ color: palette.accentBright, fontSize: 28 }} />
