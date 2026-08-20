@@ -70,7 +70,7 @@ const TRR_SITE: SiteMeta = {
 const LEADGRID_SITE: SiteMeta = {
   origin: 'https://leadgrid.no',
   siteName: 'Leadgrid',
-  ogImage: 'https://leadgrid.no/leadgrid/backdrop1.png',
+  ogImage: 'https://leadgrid.no/leadgrid/backdrop2.png',
   favicon: '/leadgrid/logo.png',
 };
 
