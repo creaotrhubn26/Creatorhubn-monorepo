@@ -1880,14 +1880,15 @@ export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: strin
                       {t.status === 'unmatched' ? (
                         <div className="suggest-cell">
                           {t.suggestion ? (
-                            <p className="suggest-hint">
-                              Ser ut som <strong>{t.suggestion.label.toLowerCase()}</strong>
+                            <div className="suggest-hint">
+                              <span className="suggest-eyebrow">Forslag</span>
+                              <span className="suggest-body">
+                                Ser ut som <strong>{t.suggestion.label.toLowerCase()}</strong>
+                              </span>
                               <span className="suggest-reason">{t.suggestion.reason}</span>
-                            </p>
+                            </div>
                           ) : (
-                            <p className="suggest-hint muted">
-                              Ingen sikker gjetning — velg selv, eller finn bilaget.
-                            </p>
+                            <p className="suggest-hint muted">Ingen sikker gjetning — velg selv, eller finn bilaget.</p>
                           )}
                           <div className="actions" style={{ marginTop: 0 }}>
                             <select

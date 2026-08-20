@@ -468,8 +468,13 @@ td.tx-amount { font-weight: 600; }
 td.tx-amount.in { color: var(--ok); }
 td.tx-amount.out { color: var(--text); }
 
-.suggest-cell { display: flex; flex-direction: column; gap: 8px; min-width: 240px; }
-.suggest-hint { margin: 0; font-size: 13px; color: var(--text-2); line-height: 1.4; }
-.suggest-hint strong { color: var(--accent); font-weight: 650; }
-.suggest-hint .suggest-reason { display: block; color: var(--text-3); font-size: 12px; margin-top: 2px; }
-.suggest-hint.muted { color: var(--text-3); }
+.suggest-cell { display: flex; flex-direction: column; gap: 10px; min-width: 240px; }
+.suggest-hint { display: flex; flex-direction: column; gap: 2px; margin: 0; }
+.suggest-eyebrow {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--gold);
+}
+.suggest-body { font-size: 13.5px; color: var(--text-2); line-height: 1.35; }
+.suggest-body strong { color: var(--accent); font-weight: 650; }
+.suggest-reason { color: var(--text-3); font-size: 12px; line-height: 1.35; }
+.suggest-hint.muted { font-size: 12.5px; color: var(--text-3); line-height: 1.4; }

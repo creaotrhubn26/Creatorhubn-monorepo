@@ -84,11 +84,11 @@ export interface CategorySuggestion {
 // Delstreng-matching (ikke \b) — norske banktekster er ofte sammensatte ord
 // («månedsgebyr», «forskuddsskatt»). Rekkefølge = spesifisitet (skatt før gebyr).
 const SUGGESTION_RULES: Array<{ key: string; direction: CategoryDirection; test: RegExp; reason: string }> = [
-  { key: 'skatt', direction: 'out', test: /skatt|skatteetaten|forskuddsskatt|restskatt|kemner|arbeidsgiveravgift/i, reason: 'Teksten peker mot Skatteetaten/skatt' },
-  { key: 'bankgebyr', direction: 'out', test: /gebyr|kortavgift|serviceavgift|omkostning/i, reason: 'Teksten nevner et gebyr' },
-  { key: 'rentekostnad', direction: 'out', test: /rente|renter/i, reason: 'Renter belastet' },
-  { key: 'renteinntekt', direction: 'in', test: /rente|renter/i, reason: 'Renter godskrevet' },
-  { key: 'eierinnskudd', direction: 'in', test: /innskudd|egenkapital|kapitalinnskudd/i, reason: 'Ligner et innskudd fra eier' },
+  { key: 'skatt', direction: 'out', test: /skatt|skatteetaten|forskuddsskatt|restskatt|kemner|arbeidsgiveravgift|skattetrekk|forskuddstrekk|\baga\b/i, reason: 'Teksten peker mot Skatteetaten/skatt' },
+  { key: 'bankgebyr', direction: 'out', test: /gebyr|kortavgift|serviceavgift|omkostning|bankavtale|betalingsformidling/i, reason: 'Teksten nevner et gebyr' },
+  { key: 'rentekostnad', direction: 'out', test: /rente|renter|renteberegning/i, reason: 'Renter belastet' },
+  { key: 'renteinntekt', direction: 'in', test: /rente|renter|renteberegning/i, reason: 'Renter godskrevet' },
+  { key: 'eierinnskudd', direction: 'in', test: /innskudd|egenkapital|kapitalinnskudd|aksjekapital|kapitalforh/i, reason: 'Ligner et innskudd fra eier' },
   { key: 'privatuttak', direction: 'out', test: /privat|privatuttak/i, reason: 'Ligner et privatuttak' },
 ];
 
