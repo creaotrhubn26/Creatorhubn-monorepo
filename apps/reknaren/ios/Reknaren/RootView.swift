@@ -3,32 +3,30 @@ import SwiftUI
 /// Navigasjons-mål. Speiler web-nav; utvides fase for fase. `NavigationSplitView`
 /// gir sidebar på iPad og kollapser automatisk til stack på iPhone → universell.
 enum Screen: String, CaseIterable, Identifiable {
-    case overview, bank
+    case concierge, overview, bank
     var id: String { rawValue }
 
     var label: String {
         switch self {
+        case .concierge: return "Til godkjenning"
         case .overview: return "Oversikt"
         case .bank: return "Bank og avstemming"
         }
     }
     var systemImage: String {
         switch self {
+        case .concierge: return "checkmark.circle"
         case .overview: return "square.grid.2x2"
         case .bank: return "building.columns"
         }
     }
-    var section: String {
-        switch self {
-        case .overview, .bank: return "Virksomhet"
-        }
-    }
+    var section: String { "Virksomhet" }
 }
 
 struct RootView: View {
     @Environment(Session.self) private var session
     @Environment(AppState.self) private var app
-    @State private var selection: Screen? = .overview
+    @State private var selection: Screen? = .concierge
 
     private var sections: [(name: String, items: [Screen])] {
         Dictionary(grouping: Screen.allCases, by: \.section)
@@ -58,16 +56,22 @@ struct RootView: View {
             }
         } detail: {
             switch selection {
-            case .overview, .none:
+            case .overview:
                 OverviewView()
+            case .concierge, .none:
+                orgScoped { ConciergeView(orgId: $0) }
             case .bank:
-                if let orgId = app.activeOrgId {
-                    BankView(orgId: orgId)
-                } else {
-                    ContentUnavailableView("Velg en virksomhet", systemImage: "building.2",
-                                           description: Text("Opprett en virksomhet i web-appen først."))
-                }
+                orgScoped { BankView(orgId: $0) }
             }
+        }
+    }
+
+    @ViewBuilder private func orgScoped<Content: View>(@ViewBuilder _ content: (String) -> Content) -> some View {
+        if let orgId = app.activeOrgId {
+            content(orgId)
+        } else {
+            ContentUnavailableView("Velg en virksomhet", systemImage: "building.2",
+                                   description: Text("Opprett en virksomhet i web-appen først."))
         }
     }
 
