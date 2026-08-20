@@ -6,6 +6,8 @@ import {
   BusinessCenterRounded,
   ChecklistRounded,
   Groups2Rounded,
+  IntegrationInstructionsRounded,
+  LockRounded,
   SchoolRounded,
   VideocamRounded,
 } from '@mui/icons-material';
@@ -426,6 +428,16 @@ export default function RoleRoomEducationPartnershipPage(
                   icon: <AutoStoriesRounded sx={{ fontSize: 24 }} />,
                   title: 'Praksisnær læring',
                   body: 'Studentene trener på faktiske arbeidsmåter, ikke bare på separate fagverktøy uten sammenheng.',
+                },
+                {
+                  icon: <IntegrationInstructionsRounded sx={{ fontSize: 24 }} />,
+                  title: 'LTI 1.3 Advantage-integrasjon',
+                  body: 'E2E-verifisert mot ekte Moodle 5.2 — SSO-launch fra LMS-et og karakter-passback rett i skolens karakterbok. Samme standard som Canvas, itslearning, Blackboard og D2L bruker. Norsk høyere utdanning innen film/media kjører i hovedsak Canvas (bl.a. Den norske filmskolen og Høyskolen Kristiania); vi er i dialog med flere Moodle-institusjoner om registrering.',
+                },
+                {
+                  icon: <LockRounded sx={{ fontSize: 24 }} />,
+                  title: 'Feide-innlogging (venter Sikt-godkjenning)',
+                  body: 'Søknad om Feide-tjenesteleverandør sendt til Sikt — norsk institusjonsidentitet for direkte innlogging på theroleroom.com, i tillegg til LTI-launch fra LMS-et.',
                 },
               ].map((item) => (
                 <Box

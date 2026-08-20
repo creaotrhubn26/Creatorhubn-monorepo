@@ -191,8 +191,8 @@ const PILLARS = [
   },
   {
     Icon: AutoAwesomeOutlinedIcon,
-    title: 'AI-lag på toppen',
-    body: 'The Role Room Agent (beta) — drevet av Claude — planlegger, lager content, gir innsikt. Bygd særlig for innholdsprodusenter, med transparent oversikt mellom partene. Skipes når den er reell-trygg.',
+    title: 'Fra skole til bransje — samme rom',
+    body: 'Studenter trener i det ekte produksjonsrommet, koblet på skolens LMS via LTI/Feide. Ingen «lignende» øvingsverktøy — samme system de møter på sin første jobb.',
   },
 ];
 
@@ -307,7 +307,7 @@ export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps 
   useEffect(() => {
     const previousTitle = document.title;
     document.title =
-      'The Role Room — Operativsystemet for film- og innholdsproduksjon';
+      'The Role Room — Fra klasserom til kino, ett system for film- og innholdsproduksjon';
 
     const upsertMeta = (name: string, content: string, isProp = false) => {
       const attr = isProp ? 'property' : 'name';
@@ -322,17 +322,17 @@ export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps 
     };
 
     const description =
-      'Operativsystemet som tar en norsk produksjon fra idé via casting og gjennomføring til den er distribuert og sett av publikum. Fire live vertikaler: Produksjons-OS, Innholdsprodusent, Dansestudio og Talent Registry. AI-Agent i beta. Pre-revenue, EU-hostet, bygget i Norge.';
+      'Operativsystemet som følger deg fra utdanning til bransje — fra idé via casting og gjennomføring til produksjonen er distribuert og sett av publikum. Fire live vertikaler for produksjonsteam, og LTI 1.3/Feide-integrasjon som kobler filmutdanning rett på samme system. EU-hostet, bygget i Norge.';
     const tags = [
       upsertMeta('description', description),
-      upsertMeta('og:title', 'The Role Room — Operativsystem for film- og innholdsproduksjon', true),
+      upsertMeta('og:title', 'The Role Room — Fra klasserom til kino, ett system for film- og innholdsproduksjon', true),
       upsertMeta('og:description', description, true),
       upsertMeta('og:type', 'website', true),
       upsertMeta('og:url', 'https://theroleroom.com', true),
       upsertMeta('og:image', PHOTOS.hero, true),
       upsertMeta('og:locale', 'nb_NO', true),
       upsertMeta('twitter:card', 'summary_large_image'),
-      upsertMeta('twitter:title', 'The Role Room — Operativsystem for film- og innholdsproduksjon'),
+      upsertMeta('twitter:title', 'The Role Room — Fra klasserom til kino, ett system for film- og innholdsproduksjon'),
       upsertMeta('twitter:description', description),
     ];
 
@@ -361,6 +361,7 @@ export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps 
         { '@type': 'Audience', audienceType: 'Dance Studio' },
         { '@type': 'Audience', audienceType: 'Casting Agency' },
         { '@type': 'Audience', audienceType: 'Actor / Talent' },
+        { '@type': 'EducationalAudience', audienceType: 'Film Education Institution' },
       ],
     };
     const script = document.createElement('script');
@@ -388,11 +389,15 @@ export default function TheRoleRoomLanding({ onEnter }: TheRoleRoomLandingProps 
         onLogin={() => openLogin('landing')}
         onBookDemo={() => openBookDemo('hero')}
       />
-      <ManifestoStrip />
+      <ProblemSection />
+      <TrustStripFull />
+      <PlanSection onBookDemo={() => openBookDemo('plan_section')} />
       <FlowSection />
+      <TrollCaseSection />
+      <EducationSection onBookDemo={() => openLogin('landing', 'education_institution')} />
       <VerticalsSection onLogin={(persona) => openLogin('landing', persona)} />
       <PillarsSection />
-      <TrustStripFull />
+      <TransitionalCTASection />
       <BlogTeaserSection />
       <FinalCTASection
         onLogin={() => openLogin('landing')}
@@ -447,6 +452,7 @@ function TopNav({ onLogin, onTalentsLogin }: { onLogin: () => void; onTalentsLog
           <Stack direction="row" spacing={3} sx={{ display: { xs: 'none', md: 'flex' } }}>
             {[
               { label: 'Produksjons-OS', href: '#vertical-production-os' },
+              { label: 'Utdanning', href: '#utdanning' },
               { label: 'Innholdsprodusent', href: '#vertical-content-producer' },
               { label: 'Dans', href: '#vertical-dance' },
               { label: 'Talents', href: '#vertical-talents' },
@@ -534,7 +540,7 @@ function Hero({ isMobile, onLogin, onBookDemo }: { isMobile: boolean; onLogin: (
         >
           <Box sx={{ flex: 1, textAlign: { xs: 'center', md: 'left' } }}>
             <Chip
-              label="Pre-launch · norsk · pre-revenue"
+              label="Fra klasserom til kino — ett system hele veien"
               sx={{
                 bgcolor: 'rgba(168,85,247,0.12)',
                 color: palette.accentBright,
@@ -553,14 +559,14 @@ function Hero({ isMobile, onLogin, onBookDemo }: { isMobile: boolean; onLogin: (
                 mb: 2.4,
               }}
             >
-              Operativsystemet for{' '}
+              Fra første studentproduksjon til{' '}
               <Box component="span" sx={{
                 background: palette.accentGradient,
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
               }}>
-                film- og innholdsproduksjon
+                ferdig film
               </Box>
               .
             </Typography>
@@ -573,11 +579,11 @@ function Hero({ isMobile, onLogin, onBookDemo }: { isMobile: boolean; onLogin: (
                 maxWidth: 600,
               }}
             >
-              Fra idé og planlegging, gjennom casting og gjennomføring, helt til produksjonen er distribuert og sett av publikum. Casting er inngangsdøra — men reisen videre er det produktet eier.
+              The Role Room er produksjonsrommet som følger deg fra utdanning til bransje — samme system, fra første øvelsesproduksjon til levering på ekte oppdrag. Fra idé og planlegging, gjennom casting og gjennomføring, helt til produksjonen er distribuert og sett av publikum.
             </Typography>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.6} sx={{ mb: 3, justifyContent: { xs: 'center', md: 'flex-start' } }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.6} sx={{ mb: 2, justifyContent: { xs: 'center', md: 'flex-start' } }}>
               <Button
-                href="#flow"
+                onClick={onBookDemo}
                 endIcon={<ArrowForwardIcon />}
                 sx={{
                   background: palette.accentGradient,
@@ -591,10 +597,10 @@ function Hero({ isMobile, onLogin, onBookDemo }: { isMobile: boolean; onLogin: (
                   '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
                 }}
               >
-                Se hele flyten
+                Book demo
               </Button>
               <Button
-                onClick={onBookDemo}
+                onClick={onLogin}
                 sx={{
                   bgcolor: 'transparent',
                   color: palette.textPrimary,
@@ -608,9 +614,26 @@ function Hero({ isMobile, onLogin, onBookDemo }: { isMobile: boolean; onLogin: (
                   '&:hover': { bgcolor: 'rgba(168,85,247,0.08)' },
                 }}
               >
-                Book demo
+                Opprett konto
               </Button>
             </Stack>
+            <Box sx={{ mb: 3, textAlign: { xs: 'center', md: 'left' } }}>
+              <Button
+                href="#flow"
+                size="small"
+                sx={{
+                  color: palette.textMuted,
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  fontSize: '0.86rem',
+                  p: 0,
+                  minWidth: 0,
+                  '&:hover': { color: palette.textSecondary, bgcolor: 'transparent' },
+                }}
+              >
+                Se hvordan det fungerer ↓
+              </Button>
+            </Box>
             <Stack direction="row" spacing={2.4} sx={{ flexWrap: 'wrap', gap: 1.2, justifyContent: { xs: 'center', md: 'flex-start' } }}>
               {TRUST_POINTS.map((p) => (
                 <Stack key={p.label} direction="row" alignItems="center" spacing={0.6}>
@@ -649,11 +672,11 @@ function Hero({ isMobile, onLogin, onBookDemo }: { isMobile: boolean; onLogin: (
 }
 
 // ──────────────────────────────────────────────────────────────────
-// ManifestoStrip — den definerende setningen (6.4)
+// ProblemSection — manifest + ekstern/filosofisk problem + stakes (SB7)
 // ──────────────────────────────────────────────────────────────────
-function ManifestoStrip() {
+function ProblemSection() {
   return (
-    <Box sx={{ bgcolor: palette.bgShell, py: { xs: 5, md: 7 }, borderTop: `1px solid ${palette.borderSubtle}`, borderBottom: `1px solid ${palette.borderSubtle}` }}>
+    <Box sx={{ bgcolor: palette.bgShell, py: { xs: 6, md: 8 }, borderTop: `1px solid ${palette.borderSubtle}`, borderBottom: `1px solid ${palette.borderSubtle}` }}>
       <Container maxWidth="md" sx={{ textAlign: 'center' }}>
         <Typography sx={{ color: palette.textMuted, fontSize: '0.86rem', fontWeight: 700, letterSpacing: 2, mb: 2, textTransform: 'uppercase' }}>
           Manifest
@@ -668,18 +691,117 @@ function ManifestoStrip() {
             fontStyle: 'italic',
             color: palette.textPrimary,
             m: 0,
-            mb: 2,
+            mb: 3,
             '&::before': { content: '"\\201C"', color: palette.accentBright, fontSize: '1.4em', verticalAlign: '-0.2em', mr: 1 },
             '&::after': { content: '"\\201D"', color: palette.accentBright, fontSize: '1.4em', verticalAlign: '-0.2em', ml: 1 },
           }}
         >
           Hver god fortelling starter med de rette menneskene i de rette rollene.
         </Typography>
-        <Typography sx={{ color: palette.textMuted, fontSize: '0.9rem' }}>
-          The Role Room — kategori-manifestet
+        <Typography sx={{ color: palette.textSecondary, fontSize: { xs: '1rem', md: '1.1rem' }, lineHeight: 1.6, mb: 2, maxWidth: 620, mx: 'auto' }}>
+          Bransjen jobber i Excel, e-post og WhatsApp. Skolen underviser i teori og
+          enkeltverktøy. Ingen av delene ligner virkeligheten på et ekte sett — og det
+          er ingen grunn til at studenter skal lære på ett system og møte et helt annet
+          på sin første jobb.
         </Typography>
+        <Box
+          sx={{
+            display: 'inline-block',
+            mt: 2,
+            px: 3,
+            py: 1.6,
+            borderRadius: 2,
+            bgcolor: palette.bgCard,
+            border: `1px solid ${palette.border}`,
+          }}
+        >
+          <Typography sx={{ color: palette.accentBright, fontWeight: 800, fontSize: '1.3rem' }}>
+            250.000 kr i året
+          </Typography>
+          <Typography sx={{ color: palette.textMuted, fontSize: '0.86rem' }}>
+            koster fragmenterte verktøy et gjennomsnittlig produksjonsbyrå — konkurrenten er ikke en annen SaaS, det er kaoset selv.
+          </Typography>
+        </Box>
       </Container>
     </Box>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+// PlanSection — kundens vei inn, delt spor fra samme første steg (SB7-plan)
+// ──────────────────────────────────────────────────────────────────
+const PLAN_STEPS = [
+  {
+    n: '1',
+    title: 'Book en demo',
+    body: 'Eller opprett konto direkte hvis du allerede vet hva du trenger.',
+  },
+  {
+    n: '2',
+    title: 'Vi setter opp rommet ditt',
+    body: 'Produksjonsteam: roller, faner og RBAC tilpasset teamet. Utdanning: LMS-en deres koblet på via LTI (Canvas/Moodle) eller Feide.',
+  },
+  {
+    n: '3',
+    title: 'Kjør i ett system',
+    body: 'Fra idé til levering for produksjonsteam. Fra første øvelsesproduksjon til bransjeklar for studenter — samme rom.',
+  },
+];
+
+function PlanSection({ onBookDemo }: { onBookDemo: () => void }) {
+  return (
+    <Container maxWidth="lg" sx={{ py: { xs: 6, md: 9 } }}>
+      <Box sx={{ textAlign: 'center', mb: { xs: 4, md: 6 } }}>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.86rem', fontWeight: 700, letterSpacing: 1, mb: 1, textTransform: 'uppercase' }}>
+          Slik begynner du
+        </Typography>
+        <Typography component="h2" sx={{ fontSize: { xs: '1.8rem', md: '2.4rem' }, fontWeight: 800, lineHeight: 1.15 }}>
+          Tre steg, samme rom hele veien
+        </Typography>
+      </Box>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: { xs: 2.4, md: 3 } }}>
+        {PLAN_STEPS.map((step) => (
+          <Box
+            key={step.n}
+            sx={{
+              bgcolor: palette.bgCard,
+              border: `1px solid ${palette.borderSubtle}`,
+              borderRadius: 3,
+              p: 3,
+            }}
+          >
+            <Typography sx={{ color: palette.accentBright, fontWeight: 800, fontSize: '1.6rem', mb: 1 }}>
+              {step.n}
+            </Typography>
+            <Typography sx={{ fontWeight: 800, fontSize: '1.06rem', mb: 1, color: palette.textPrimary }}>
+              {step.title}
+            </Typography>
+            <Typography sx={{ color: palette.textSecondary, fontSize: '0.92rem', lineHeight: 1.6 }}>
+              {step.body}
+            </Typography>
+          </Box>
+        ))}
+      </Box>
+      <Box sx={{ textAlign: 'center', mt: { xs: 3, md: 4 } }}>
+        <Button
+          onClick={onBookDemo}
+          endIcon={<ArrowForwardIcon />}
+          sx={{
+            background: palette.accentGradient,
+            color: '#fff',
+            textTransform: 'none',
+            fontWeight: 700,
+            px: 3.2,
+            py: 1.4,
+            borderRadius: 2,
+            fontSize: '1rem',
+            '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+          }}
+        >
+          Book demo
+        </Button>
+      </Box>
+    </Container>
   );
 }
 
@@ -705,7 +827,10 @@ function FlowSection() {
           Fra idé til sett
         </Typography>
         <Typography sx={{ color: palette.textSecondary, maxWidth: 720, mx: 'auto', fontSize: '1rem', lineHeight: 1.6 }}>
-          De fleste verktøy dekker bare ett trinn. The Role Room samler hele produksjonens livsløp i ett system, organisert rundt <strong>produksjonen</strong> som enhet — ikke rundt en person eller en isolert oppgave.
+          Slik ser en produksjon ut fra start til slutt — enten det er ditt første
+          skoleprosjekt eller ditt hundrede oppdrag. De fleste verktøy dekker bare ett
+          trinn. The Role Room samler hele produksjonens livsløp i ett system, organisert
+          rundt <strong>produksjonen</strong> som enhet — ikke rundt en person eller en isolert oppgave.
         </Typography>
       </Box>
       <Box
@@ -779,6 +904,155 @@ function FlowSection() {
 }
 
 // ──────────────────────────────────────────────────────────────────
+// TrollCaseSection — offentlig bevis: TROLL-demoprosjektet (ekte ende-
+// til-ende-eksempel, tidligere kun synlig internt i appen — se
+// castingService.ts TROLL_DEMO_PROJECT_ID). Eneste konkrete bevis-kilde
+// siden ekte kunde-testimonials mangler (selskapet er tidlig-fase).
+// ──────────────────────────────────────────────────────────────────
+const TROLL_CASE_STEPS = [
+  { label: 'Story Arc', detail: 'Manus og scene-breakdown for et norsk eventyr-actiondrama, versjonert fra første utkast.' },
+  { label: 'Roller', detail: 'Fullt rollegalleri, inkl. hovedrollen Nora Tidemann, med krav og status per rolle.' },
+  { label: 'Kandidater & Shotlist', detail: 'Søkere fra audition til utvelgelse, koblet direkte til scene-for-scene shotliste.' },
+  { label: 'Call Sheet', detail: 'Seks reelle opptaksdager planlagt med crew, lokasjoner og produksjonsplan i samme system.' },
+];
+
+function TrollCaseSection() {
+  return (
+    <Box sx={{ bgcolor: palette.bgShell, py: { xs: 6, md: 9 }, borderTop: `1px solid ${palette.borderSubtle}`, borderBottom: `1px solid ${palette.borderSubtle}` }}>
+      <Container maxWidth="lg">
+        <Box sx={{ textAlign: 'center', mb: { xs: 4, md: 5 } }}>
+          <Typography sx={{ color: palette.textMuted, fontSize: '0.86rem', fontWeight: 700, letterSpacing: 1, mb: 1, textTransform: 'uppercase' }}>
+            Se en ekte produksjon i systemet
+          </Typography>
+          <Typography component="h2" sx={{ fontSize: { xs: '1.8rem', md: '2.4rem' }, fontWeight: 800, lineHeight: 1.15, mb: 1.6 }}>
+            «TROLL» — fra idé til opptaksplan
+          </Typography>
+          <Typography sx={{ color: palette.textSecondary, maxWidth: 680, mx: 'auto', fontSize: '1rem', lineHeight: 1.6 }}>
+            Et fullstendig demoprosjekt — et norsk eventyr-actiondrama — kjørt gjennom
+            hele The Role Room, fra manus til opptaksplan. Se det selv i en demo.
+          </Typography>
+        </Box>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+          {TROLL_CASE_STEPS.map((s) => (
+            <Box
+              key={s.label}
+              sx={{
+                bgcolor: palette.bgCard,
+                border: `1px solid ${palette.borderSubtle}`,
+                borderRadius: 3,
+                p: 2.4,
+              }}
+            >
+              <Typography sx={{ fontWeight: 800, fontSize: '0.98rem', mb: 0.8, color: palette.textPrimary }}>
+                {s.label}
+              </Typography>
+              <Typography sx={{ color: palette.textSecondary, fontSize: '0.86rem', lineHeight: 1.55 }}>
+                {s.detail}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      </Container>
+    </Box>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+// EducationSection — utdanning/LMS-broen vevd inn i hovedhistorien.
+// Dedikert side (RoleRoomEducationPartnershipPage) beholdes for dypere
+// institusjonsspesifikt innhold, lenkes TIL herfra. NØYAKTIGHETS-VAKT:
+// Moodle-prospekter (f.eks. Noroff) er IKKE bekreftede kunder ennå —
+// ramme som markeds-kontekst/dialog, aldri som betalende kunder.
+// ──────────────────────────────────────────────────────────────────
+function EducationSection({ onBookDemo }: { onBookDemo: () => void }) {
+  return (
+    <Container id="utdanning" maxWidth="lg" sx={{ py: { xs: 6, md: 10 }, scrollMarginTop: 80 }}>
+      <Box sx={{ textAlign: 'center', mb: { xs: 4, md: 6 } }}>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.86rem', fontWeight: 700, letterSpacing: 1, mb: 1, textTransform: 'uppercase' }}>
+          For utdanningsinstitusjoner
+        </Typography>
+        <Typography component="h2" sx={{ fontSize: { xs: '1.8rem', md: '2.4rem' }, fontWeight: 800, lineHeight: 1.15, mb: 1.6 }}>
+          Gi studentene samme produksjonsrom som de skal jobbe i etter studiet
+        </Typography>
+        <Typography sx={{ color: palette.textSecondary, maxWidth: 720, mx: 'auto', fontSize: '1rem', lineHeight: 1.6 }}>
+          Studentproduksjonene kjører i det samme produksjonsrommet som profesjonelle
+          team bruker, koblet rett på skolens egen LMS — ikke et forenklet
+          øvingsverktøy som bare ligner bransjen.
+        </Typography>
+      </Box>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2.4, mb: { xs: 4, md: 5 } }}>
+        {[
+          {
+            title: 'LTI 1.3 Advantage',
+            body: 'E2E-verifisert mot ekte Moodle 5.2 — SSO-launch + karakter-passback rett i skolens karakterbok. Samme standard som Canvas, itslearning, Blackboard og D2L bruker.',
+          },
+          {
+            title: 'Feide-innlogging',
+            body: 'Søknad om Feide-tjenesteleverandør sendt til Sikt — norsk institusjonsidentitet for direkte innlogging, i tillegg til LTI-launch fra LMS-et.',
+          },
+          {
+            title: 'Ekte produksjonsroller',
+            body: 'Studenter jobber i faktiske produksjonsroller — samme 18 faner og RBAC-modell som profesjonelle team, uten å telle som betalte seter.',
+          },
+        ].map((f) => (
+          <Box key={f.title} sx={{ bgcolor: palette.bgCard, border: `1px solid ${palette.borderSubtle}`, borderRadius: 3, p: 2.8 }}>
+            <Typography sx={{ fontWeight: 800, fontSize: '1.02rem', mb: 1, color: palette.textPrimary }}>
+              {f.title}
+            </Typography>
+            <Typography sx={{ color: palette.textSecondary, fontSize: '0.9rem', lineHeight: 1.6 }}>
+              {f.body}
+            </Typography>
+          </Box>
+        ))}
+      </Box>
+      <Typography sx={{ color: palette.textMuted, fontSize: '0.86rem', textAlign: 'center', maxWidth: 680, mx: 'auto', mb: { xs: 3, md: 4 }, lineHeight: 1.6 }}>
+        Norsk høyere utdanning bruker i hovedsak Canvas (bl.a. Den norske filmskolen og
+        Høyskolen Kristiania) — vi er i dialog med flere Moodle-institusjoner om LTI-
+        registrering.
+      </Typography>
+      <Box sx={{ textAlign: 'center' }}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.6} justifyContent="center" sx={{ mb: 1.6 }}>
+          <Button
+            onClick={onBookDemo}
+            endIcon={<ArrowForwardIcon />}
+            sx={{
+              background: palette.accentGradient,
+              color: '#fff',
+              textTransform: 'none',
+              fontWeight: 700,
+              px: 3.2,
+              py: 1.4,
+              borderRadius: 2,
+              fontSize: '1rem',
+              '&:hover': { background: 'linear-gradient(135deg, #9333ea 0%, #c026d3 100%)' },
+            }}
+          >
+            Book institusjonssamtale
+          </Button>
+          <Button
+            href="/utdanningsinstitusjon"
+            sx={{
+              bgcolor: 'transparent',
+              color: palette.textPrimary,
+              textTransform: 'none',
+              fontWeight: 700,
+              px: 3.2,
+              py: 1.4,
+              borderRadius: 2,
+              fontSize: '1rem',
+              border: `1px solid ${palette.borderStrong}`,
+              '&:hover': { bgcolor: 'rgba(168,85,247,0.08)' },
+            }}
+          >
+            Les mer om utdanning
+          </Button>
+        </Stack>
+      </Box>
+    </Container>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
 // VerticalsSection — 4 live + Agent beta (2.1)
 // ──────────────────────────────────────────────────────────────────
 function VerticalsSection({ onLogin }: { onLogin: (persona: VerticalPersona) => void }) {
@@ -801,7 +1075,9 @@ function VerticalsSection({ onLogin }: { onLogin: (persona: VerticalPersona) => 
             Bygget for hvordan dere faktisk jobber
           </Typography>
           <Typography sx={{ color: palette.textSecondary, maxWidth: 700, mx: 'auto', fontSize: '1rem', lineHeight: 1.6 }}>
-            Hver vertikal har sin egen flate, sine egne workflows og sin egen pris-tier. Talents-app er den nyeste — bygget for å koble byrå og skuespiller med GDPR-trygg consent fra dag 1.
+            Uansett hvor du står i karrieren — student i dag, produsent i morgen — er
+            dette de samme flatene du møter. Hver vertikal har sin egen flate, sine egne
+            workflows og sin egen pris-tier. Talents-app er den nyeste — bygget for å koble byrå og skuespiller med GDPR-trygg consent fra dag 1.
           </Typography>
         </Box>
 
@@ -1034,11 +1310,63 @@ function PillarsSection() {
 }
 
 // ──────────────────────────────────────────────────────────────────
+// TransitionalCTASection — lavterskel-vei for besøkende som ikke er
+// klare for demo (SB7: gi dem noe å gjøre som holder dem engasjert).
+// ──────────────────────────────────────────────────────────────────
+function TransitionalCTASection() {
+  return (
+    <Container maxWidth="md" sx={{ py: { xs: 5, md: 7 } }}>
+      <Box
+        sx={{
+          textAlign: 'center',
+          p: { xs: 3.4, md: 5 },
+          bgcolor: palette.bgCard,
+          border: `1px solid ${palette.borderSubtle}`,
+          borderRadius: 4,
+        }}
+      >
+        <Typography sx={{ fontWeight: 800, fontSize: { xs: '1.3rem', md: '1.6rem' }, mb: 1.2 }}>
+          Ikke klar for en demo ennå?
+        </Typography>
+        <Typography sx={{ color: palette.textSecondary, fontSize: '0.96rem', mb: 2.4, maxWidth: 480, mx: 'auto' }}>
+          Se 90 sekunder av The Role Room i bruk — ingen skjema, ingen forpliktelse.
+        </Typography>
+        <Box
+          component="video"
+          src="/role-room-assets/the_role_room_intro.mp4"
+          controls
+          playsInline
+          preload="metadata"
+          sx={{
+            width: '100%',
+            maxWidth: 520,
+            borderRadius: 2,
+            border: `1px solid ${palette.border}`,
+            display: 'block',
+            mx: 'auto',
+          }}
+        />
+      </Box>
+    </Container>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
 // TrustStripFull
 // ──────────────────────────────────────────────────────────────────
 function TrustStripFull() {
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 4, md: 6 } }}>
+      <Box sx={{ textAlign: 'center', mb: { xs: 3, md: 4 }, maxWidth: 700, mx: 'auto' }}>
+        <Typography sx={{ color: palette.textMuted, fontSize: '0.86rem', fontWeight: 700, letterSpacing: 1, mb: 1, textTransform: 'uppercase' }}>
+          Hvorfor oss
+        </Typography>
+        <Typography sx={{ color: palette.textSecondary, fontSize: { xs: '1rem', md: '1.1rem' }, lineHeight: 1.6 }}>
+          Vi har selv stått i kaoset — regneark som ikke stemmer, crew som ikke vet hvor
+          de skal møte, studenter som lærer teori uten å noensinne røre et ekte
+          produksjonsverktøy. Derfor bygde vi ett system som holder hele veien.
+        </Typography>
+      </Box>
       <Box
         sx={{
           bgcolor: 'rgba(168,85,247,0.06)',
@@ -1049,7 +1377,8 @@ function TrustStripFull() {
         }}
       >
         <Stack
-          direction={{ xs: 'column', md: 'row' }}
+          direction="row"
+          flexWrap="wrap"
           spacing={3}
           justifyContent="space-around"
           alignItems="center"
@@ -1059,7 +1388,8 @@ function TrustStripFull() {
             { Icon: PublicOutlinedIcon, t: 'EU-hostet', s: 'Render Frankfurt + Neon eu-west' },
             { Icon: LockOutlinedIcon, t: 'GDPR-trygt', s: 'Artikkel 30, 17 + audit-trail' },
             { Icon: PeopleAltOutlinedIcon, t: 'Norsk team', s: 'Oslo-basert, norsk support' },
-            { Icon: CheckCircleOutlineIcon, t: 'Pre-revenue', s: 'Modellen er klar; kunder kommer' },
+            { Icon: LayersOutlinedIcon, t: '18 faner, idé → levering', s: 'Ikke et punktverktøy — hele livsløpet' },
+            { Icon: CheckCircleOutlineIcon, t: 'LTI 1.3 mot ekte Moodle', s: 'E2E-verifisert LMS-integrasjon' },
           ].map((p) => (
             <Stack key={p.t} direction="row" alignItems="center" spacing={1.4}>
               <p.Icon sx={{ color: palette.accentBright, fontSize: 28 }} />
@@ -1170,10 +1500,10 @@ function FinalCTASection({ onLogin, onBookDemo }: { onLogin: () => void; onBookD
         }}
       >
         <Typography sx={{ fontWeight: 800, fontSize: { xs: '1.6rem', md: '2.2rem' }, mb: 1.6, lineHeight: 1.2 }}>
-          Klar for å se hvordan din produksjon flyter?
+          Fra klasserom til kino — se det selv.
         </Typography>
         <Typography sx={{ color: palette.textSecondary, fontSize: '1rem', mb: 3, maxWidth: 540, mx: 'auto' }}>
-          30-min demo skreddersydd for din vertikal — produksjonsteam, innholdsprodusent, dansestudio eller byrå. Ingen forpliktelse.
+          30-min demo skreddersydd for din vertikal — produksjonsteam, utdanningsinstitusjon, innholdsprodusent, dansestudio eller byrå. Ingen forpliktelse, eller opprett konto direkte hvis du allerede vet hva du trenger.
         </Typography>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.6} justifyContent="center">
           <Button
@@ -1237,12 +1567,13 @@ function Footer({ onAdminLogin }: { onAdminLogin: () => void }) {
               sx={{ height: 44, width: 'auto', objectFit: 'contain', display: 'block', mb: 1 }}
             />
             <Typography sx={{ color: palette.textMuted, fontSize: '0.84rem' }}>
-              Operativsystemet for film- og innholdsproduksjon · Et produkt fra Creatorhub AS · Oslo, Norge
+              Fra klasserom til kino — ett system for film- og innholdsproduksjon · Et produkt fra Creatorhub AS · Oslo, Norge
             </Typography>
           </Box>
           <Stack direction="row" spacing={3} sx={{ flexWrap: 'wrap', gap: 1.2, alignItems: 'center' }}>
             {[
               { label: 'For byråer', href: '/for-byraer' },
+              { label: 'For utdanningsinstitusjoner', href: '/utdanningsinstitusjon' },
               { label: 'Blog', href: '/blog' },
               { label: 'FAQ', href: '/faq' },
               { label: 'Pitch', href: '/pitch' },
