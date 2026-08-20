@@ -16,6 +16,7 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import { lookupCompanyForNewLead } from "./lead-brreg-service.js";
 
 interface Deps {
   app: Express;
@@ -23,6 +24,10 @@ interface Deps {
 }
 
 const BACKFILL_BATCH_SIZE = 500;
+// Brreg-oppslag er ett HTTP-kall per org (ikke bulk-SQL som org-id-
+// backfillen over) — mindre batch + hardere cap enn org-id-varianten.
+const NACE_BACKFILL_BATCH_SIZE = 25;
+const NACE_BACKFILL_MAX_BATCHES = 20;
 
 export function registerLeadgridBackfillCron(deps: Deps): void {
   const { app, pool } = deps;
@@ -56,7 +61,7 @@ export function registerLeadgridBackfillCron(deps: Deps): void {
       let batchesProcessed = 0;
       try {
         // Loop til vi ikke finner flere rader
-        // eslint-disable-next-line no-constant-condition
+         
         while (true) {
           const r = await pool.query<{ updated: number }>(
             `WITH to_update AS (
@@ -113,6 +118,96 @@ export function registerLeadgridBackfillCron(deps: Deps): void {
             total_leads: Number(stats.rows[0].total),
           },
           duration_ms: durationMs,
+        });
+      } catch (err) {
+        res.status(500).json({
+          error: "backfill_failed",
+          detail: String(err),
+          partial_updated: totalUpdated,
+          duration_ms: Date.now() - start,
+        });
+      }
+    },
+  );
+
+  /**
+   * Backfill organizations.nace_code/nace_description (2026-08-19) for
+   * ORGER OPPRETTET FØR NACE-arbeidet — self-onboard/demo-request fyller
+   * dette lazy fremover, men eksisterende kunder med org_number satt
+   * hadde ingen NACE lagret i det hele tatt. Idempotent: kjører kun på
+   * rader hvor org_number finnes og nace_code mangler. Ett Brreg-kall per
+   * org — trygt å kalle gjentatte ganger (cron plukker opp resten neste
+   * kjøring hvis MAX_BATCHES nås).
+   */
+  app.post(
+    "/api/leadgrid/cron/backfill-organization-nace",
+    async (req: Request, res: Response): Promise<void> => {
+      const expected = process.env.LEADGRID_INTELLIGENCE_CRON_TOKEN;
+      const provided = req.headers["x-cron-trigger-token"];
+      if (!expected) {
+        res.status(503).json({ error: "cron_token_not_configured" });
+        return;
+      }
+      if (typeof provided !== "string" || provided.length !== expected.length) {
+        res.status(401).json({ error: "invalid_cron_token" });
+        return;
+      }
+      const { timingSafeEqual } = await import("crypto");
+      if (!timingSafeEqual(Buffer.from(provided), Buffer.from(expected))) {
+        res.status(401).json({ error: "invalid_cron_token" });
+        return;
+      }
+
+      const start = Date.now();
+      let totalUpdated = 0;
+      let totalAttempted = 0;
+      let batchesProcessed = 0;
+      try {
+        for (let b = 0; b < NACE_BACKFILL_MAX_BATCHES; b++) {
+          const r = await pool.query<{ id: string; org_number: string }>(
+            `SELECT id::text, org_number FROM organizations
+              WHERE org_number IS NOT NULL AND org_number != ''
+                AND nace_code IS NULL
+              LIMIT $1`,
+            [NACE_BACKFILL_BATCH_SIZE],
+          );
+          if (r.rows.length === 0) break;
+          batchesProcessed++;
+          for (const org of r.rows) {
+            totalAttempted++;
+            try {
+              const looked = await lookupCompanyForNewLead(org.org_number);
+              if (looked.found && looked.company) {
+                await pool.query(
+                  `UPDATE organizations SET nace_code = $1, nace_description = $2 WHERE id = $3`,
+                  [looked.company.naceCode, looked.company.naceDescription, org.id],
+                );
+                if (looked.company.naceCode) totalUpdated++;
+              } else {
+                // Ikke funnet i Brreg (feil org.nr, avviklet enhet o.l.) —
+                // sett nace_code til tom streng så raden ikke plukkes opp
+                // igjen hver kjøring; description forblir null (skiller
+                // «prøvd, ikke funnet» fra «aldri prøvd»).
+                await pool.query(
+                  `UPDATE organizations SET nace_code = '' WHERE id = $1`,
+                  [org.id],
+                );
+              }
+            } catch (lookupErr) {
+              console.warn(
+                "[backfill-nace] oppslag feilet for org",
+                org.id,
+                (lookupErr as Error).message,
+              );
+            }
+          }
+        }
+        res.json({
+          ok: true,
+          total_updated: totalUpdated,
+          total_attempted: totalAttempted,
+          batches: batchesProcessed,
+          duration_ms: Date.now() - start,
         });
       } catch (err) {
         res.status(500).json({

@@ -3,6 +3,10 @@ name: Leadgrid backfill organization_id
 # Daglig backfill av crm_customers.organization_id for nye leads
 # (mig 320 la til kolonnen, men nye leads kan skapes uten org_id).
 # Endpoint matcher leads ↔ organisation via owner_user_id-join.
+#
+# 2026-08-19: kjører også backfill av organizations.nace_code/
+# nace_description for eksisterende orger (self-onboard/demo-request
+# fyller dette lazy for nye orger — se leadgrid-backfill-cron.ts).
 
 on:
   workflow_dispatch:
@@ -68,3 +72,38 @@ jobs:
           UPDATED=$(jq -r '.total_updated // 0' < "$BODY")
           REMAINING=$(jq -r '.remaining.missing_organization_id // 0' < "$BODY")
           echo "✅ Backfill OK — oppdaterte $UPDATED leads, $REMAINING leads gjenstår uten org_id (typisk fordi de mangler owner_user_id)"
+
+      - name: Trigger NACE backfill
+        # 2026-08-19: organizations.nace_code/nace_description — orger
+        # opprettet FØR NACE-arbeidet mangler dette helt. Self-onboard/
+        # demo-request fyller lazy fremover; denne dekker eksisterende
+        # kundebase (maks 500 org/dag, 25 per batch × 20 batcher — resten
+        # plukkes opp neste kjøring).
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          TOKEN: ${{ secrets.LEADGRID_INTELLIGENCE_CRON_TOKEN }}
+        run: |
+          URL=$(printf '%s' "$BACKEND_URL" | tr -d '[:space:]')
+          TOK=$(printf '%s' "$TOKEN" | tr -d '[:space:]')
+          FULL_URL="${URL}/api/leadgrid/cron/backfill-organization-nace"
+          echo "POST → /api/leadgrid/cron/backfill-organization-nace"
+
+          BODY=$(mktemp)
+          CODE=$(curl -s -o "$BODY" -w "%{http_code}" -X POST "$FULL_URL" \
+            -H "x-cron-trigger-token: $TOK" \
+            --max-time 120)
+          echo "HTTP $CODE"
+          cat "$BODY"
+          echo ""
+          if [ "$CODE" != "200" ]; then
+            echo "::error::NACE-backfill feilet (HTTP $CODE)"
+            exit 1
+          fi
+          OK=$(jq -r '.ok' < "$BODY" 2>/dev/null || echo "false")
+          if [ "$OK" != "true" ]; then
+            echo "::error::Response.ok != true"
+            exit 1
+          fi
+          UPDATED=$(jq -r '.total_updated // 0' < "$BODY")
+          ATTEMPTED=$(jq -r '.total_attempted // 0' < "$BODY")
+          echo "✅ NACE-backfill OK — fant bransje for $UPDATED av $ATTEMPTED forsøkte org"

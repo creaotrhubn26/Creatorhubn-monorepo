@@ -21,6 +21,16 @@ struct AnbudView: View {
     @State private var selectedBransje: Bransje? = nil
     /// CPV-organisering: søk med KUNDENES koder (auto-satt per bedrift).
     @State private var brukKundeCpv = false
+    /// 2026-08-19: forhånds-utfylt CPV fra broad-NACE discovery-fallback
+    /// (leadgrid-project-lead-discovery-routes.ts → suggest_anbud_cpv) —
+    /// selgere uten søkbar Places-kundetype (kontorrekvisita, engros,
+    /// renhold osv.) rutes hit i stedet for et tomt kart-søk.
+    @State private var externalCpv: [String]
+
+    init(embedded: Bool = false, initialCpvOverride: [String] = []) {
+        self.embedded = embedded
+        self._externalCpv = State(initialValue: initialCpvOverride)
+    }
     @State private var status: String = "ACTIVE"
     @State private var results: [DoffinKunngjoringDTO] = []
     @State private var total = 0
@@ -139,7 +149,9 @@ struct AnbudView: View {
             }
             return koder.isEmpty ? nil : koder.prefix(6).joined(separator: ",")
         }
-        return selectedBransje?.cpv
+        if let b = selectedBransje { return b.cpv }
+        if !externalCpv.isEmpty { return externalCpv.prefix(6).joined(separator: ",") }
+        return nil
     }
 
     var body: some View {
@@ -243,6 +255,17 @@ struct AnbudView: View {
             }
             .padding(12)
             .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
+
+            if !externalCpv.isEmpty && selectedBransje == nil && !brukKundeCpv {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles").font(.appScaled(size: 10)).foregroundStyle(LBrand.textTertiary)
+                    Text("Foreslått fra din bransje (NACE)").font(.appScaled(size: 11)).foregroundStyle(LBrand.textTertiary)
+                    Spacer()
+                    Button("Fjern") { externalCpv = []; Task { await search() } }
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(LBrand.textTertiary)
+                }
+            }
 
             HStack(spacing: 8) {
                 Menu {
