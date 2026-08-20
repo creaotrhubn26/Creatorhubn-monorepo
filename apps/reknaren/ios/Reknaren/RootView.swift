@@ -3,7 +3,7 @@ import SwiftUI
 /// Navigasjons-mål. Speiler web-nav; utvides fase for fase. `NavigationSplitView`
 /// gir sidebar på iPad og kollapser automatisk til stack på iPhone → universell.
 enum Screen: String, CaseIterable, Identifiable {
-    case capture, concierge, overview, bank, pay, vendors
+    case capture, concierge, overview, bank, invoices, pay, vendors, calendar, deadlines, deduction
     var id: String { rawValue }
 
     var label: String {
@@ -12,8 +12,12 @@ enum Screen: String, CaseIterable, Identifiable {
         case .concierge: return "Til godkjenning"
         case .overview: return "Oversikt"
         case .bank: return "Bank og avstemming"
+        case .invoices: return "Salg og faktura"
         case .pay: return "Betal leverandører"
         case .vendors: return "Faste leverandører"
+        case .calendar: return "Framover"
+        case .deadlines: return "Frister"
+        case .deduction: return "Spør: fradrag"
         }
     }
     var systemImage: String {
@@ -22,14 +26,20 @@ enum Screen: String, CaseIterable, Identifiable {
         case .concierge: return "checkmark.circle"
         case .overview: return "square.grid.2x2"
         case .bank: return "building.columns"
+        case .invoices: return "doc.text"
         case .pay: return "creditcard"
         case .vendors: return "shippingbox"
+        case .calendar: return "calendar"
+        case .deadlines: return "clock.badge.exclamationmark"
+        case .deduction: return "questionmark.circle"
         }
     }
     var section: String {
         switch self {
         case .capture, .concierge, .overview, .bank: return "Virksomhet"
+        case .invoices: return "Salg"
         case .pay, .vendors: return "Betaling"
+        case .calendar, .deadlines, .deduction: return "Innsikt"
         }
     }
 }
@@ -76,10 +86,18 @@ struct RootView: View {
                 orgScoped { ConciergeView(orgId: $0) }
             case .bank:
                 orgScoped { BankView(orgId: $0) }
+            case .invoices:
+                orgScoped { InvoicesView(orgId: $0) }
             case .pay:
                 orgScoped { PayView(orgId: $0) }
             case .vendors:
                 orgScoped { VendorsView(orgId: $0) }
+            case .calendar:
+                orgScoped { CalendarView(orgId: $0) }
+            case .deadlines:
+                orgScoped { DeadlinesView(orgId: $0) }
+            case .deduction:
+                orgScoped { DeductionView(orgId: $0) }
             }
         }
         .onChange(of: push.pendingScreen) { _, screen in
