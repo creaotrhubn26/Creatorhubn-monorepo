@@ -1365,6 +1365,8 @@ export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: strin
       return null;
     }
   });
+  interface ReceiptCand { documentId: string; vendor: string | null; dateText: string | null; grossMinor: string; reasons: string[] }
+  const [receipt, setReceipt] = useState<Record<string, { loading: boolean; found?: boolean; candidates?: ReceiptCand[]; bilagAddress?: string }>>({});
 
   const accountList = accounts.data ?? [];
   const bankAccountId = selectedId ?? accountList[0]?.id ?? null;
@@ -1477,6 +1479,36 @@ export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: strin
       recon.reload();
     } catch (err) {
       // 409 CONSENT_NOT_READY: behold pendingId så brukeren kan prøve igjen etter samtykke.
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const findReceipt = async (txId: string) => {
+    setReceipt((p) => ({ ...p, [txId]: { loading: true } }));
+    try {
+      const r = await api<{ found: boolean; candidates: ReceiptCand[]; bilagAddress: string }>(
+        'GET',
+        `/api/organizations/${orgId}/bank/transactions/${txId}/receipt-candidates`,
+      );
+      setReceipt((p) => ({ ...p, [txId]: { loading: false, found: r.found, candidates: r.candidates, bilagAddress: r.bilagAddress } }));
+    } catch (err) {
+      setReceipt((p) => ({ ...p, [txId]: { loading: false } }));
+      setError((err as Error).message);
+    }
+  };
+
+  const linkReceipt = async (txId: string, documentId: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api('POST', `/api/organizations/${orgId}/document-hunt/link`, { transactionId: txId, documentId });
+      toast('Kvittering koblet og bokført ✓', 'ok');
+      txs.reload();
+      matches.reload();
+      recon.reload();
+    } catch (err) {
       setError((err as Error).message);
     } finally {
       setBusy(false);
@@ -1914,6 +1946,37 @@ export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: strin
                             </button>
                           </div>
                           {chosenCat && <p className="cat-explain">{chosenCat.explanation}</p>}
+                          {dir === 'out' && (
+                            <div className="receipt-hunt">
+                              {!receipt[t.id] ? (
+                                <button className="ghost receipt-btn" onClick={() => findReceipt(t.id)}>
+                                  Finn kvittering
+                                </button>
+                              ) : receipt[t.id]!.loading ? (
+                                <span className="suggest-reason">Søker etter kvittering…</span>
+                              ) : receipt[t.id]!.found ? (
+                                <div className="receipt-list">
+                                  {receipt[t.id]!.candidates!.map((c) => (
+                                    <div key={c.documentId} className="receipt-cand">
+                                      <div>
+                                        <strong>{c.vendor ?? 'Ukjent leverandør'}</strong> · {kr(c.grossMinor)}
+                                        <span className="suggest-reason">{c.reasons.join(' · ')}</span>
+                                      </div>
+                                      <button className="secondary" disabled={busy} onClick={() => linkReceipt(t.id, c.documentId)}>
+                                        Koble & bokfør
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="receipt-none">
+                                  Fant ingen kvittering for denne. Videresend kvitteringen til{' '}
+                                  <code>{receipt[t.id]!.bilagAddress}</code> — så finner vi den automatisk. Eller last
+                                  den opp under Bilagsinnboks.
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <span className="secondary-line">–</span>

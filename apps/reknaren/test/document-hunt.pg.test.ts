@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db/pool.js';
 import { createBankAccount, importBankTransactions } from '../src/bank/import.js';
-import { huntDocuments, linkPaymentToDocument, previewPaymentLink } from '../src/ingestion/document-hunt.js';
+import { huntDocuments, linkPaymentToDocument, previewPaymentLink, receiptCandidatesForTransaction } from '../src/ingestion/document-hunt.js';
 import { buildNorwegianRuleRegister } from '../src/rules/no/rules.js';
 import { createOrganization, ensureUser } from '../src/orgs/service.js';
 import { newId } from '../src/shared/ids.js';
@@ -144,5 +144,30 @@ describe('huntDocuments', () => {
     const h = await huntDocuments(db, { organizationId: org.id, asOf: ASOF });
     expect(h.paymentsMissingDoc).toBe(1);
     expect(h.gapsWithCandidates).toBe(0);
+  });
+});
+
+describe('receiptCandidatesForTransaction (per bank-linje)', () => {
+  it('finner kvitteringen for ÉN betaling; ærlig tomt når ingen match', async () => {
+    const org = await createOrganization(db, { name: 'Perlinje AS', orgForm: 'AS', vatStatus: 'registered', createdByUserId: userId });
+    const acc = await createBankAccount(db, { organizationId: org.id, actor: actor(), name: 'Drift', ibanOrAccount: 'NO9386011117947' });
+    await importBankTransactions(db, {
+      organizationId: org.id, actor: actor(), bankAccountId: acc,
+      transactions: [
+        { externalId: 't-adobe', bookedDate: '2025-07-17', amountMinor: -124900n, description: 'ADOBE SYSTEMS SOFTWARE' },
+        { externalId: 't-ukjent', bookedDate: '2025-07-05', amountMinor: -33300n, description: 'VIPPS OLA NORDMANN' },
+      ],
+    });
+    await orphanDoc(org.id, 'Adobe Systems Software AS', '2025-07-14', 124900n);
+
+    const adobeTx = (await db.query(`SELECT id FROM bank_transactions WHERE external_id='t-adobe' AND organization_id=$1`, [org.id])).rows[0].id as string;
+    const found = await receiptCandidatesForTransaction(db, { organizationId: org.id, transactionId: adobeTx });
+    expect(found.found).toBe(true);
+    expect(found.candidates[0]!.vendor).toContain('Adobe');
+
+    const ukjentTx = (await db.query(`SELECT id FROM bank_transactions WHERE external_id='t-ukjent' AND organization_id=$1`, [org.id])).rows[0].id as string;
+    const none = await receiptCandidatesForTransaction(db, { organizationId: org.id, transactionId: ukjentTx });
+    expect(none.found).toBe(false);
+    expect(none.candidates).toHaveLength(0);
   });
 });

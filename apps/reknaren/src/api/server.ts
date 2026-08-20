@@ -46,10 +46,10 @@ import {
 import { buildForecast } from '../ledger/planning.js';
 import { assessPeriodClose, assessYearClose } from '../ledger/period-close.js';
 import { buildTaxAdvisories } from '../ledger/tax-advisor.js';
-import { huntDocuments, linkPaymentToDocument, previewPaymentLink } from '../ingestion/document-hunt.js';
+import { huntDocuments, linkPaymentToDocument, previewPaymentLink, receiptCandidatesForTransaction } from '../ingestion/document-hunt.js';
 import { buildDashboard } from '../ledger/dashboard.js';
 import { getActivationStatus } from '../ledger/onboarding.js';
-import { ingestForwardedEmail } from '../ingestion/inbound-email.js';
+import { ingestForwardedEmail, inboundEmailFor } from '../ingestion/inbound-email.js';
 import { ingestResendEmail, verifyResendSignature, type ResendReceivedEvent } from '../ingestion/resend-inbound.js';
 import { parseSendgridMultipart, ingestSendgridEmail } from '../ingestion/sendgrid-inbound.js';
 import { createAgreement, listAgreements, reviewAgreements } from '../invoicing/agreements.js';
@@ -2350,6 +2350,32 @@ export function createApiServer(deps: ApiDeps): express.Express {
           documentId: body.documentId,
         });
         res.status(201).json(toJson(result));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // «Finn kvitteringen for denne betalingen» — kvittering-jakt for ÉN bank-linje.
+  // Søker i innhentede bilag (opplasting + bilag-adresse-innboks + e-post). Fant vi
+  // ingenting: svar ærlig med bilag-adressen, så brukeren kan videresende/koble en kilde.
+  app.get(
+    '/api/organizations/:orgId/bank/transactions/:txId/receipt-candidates',
+    requireAuth,
+    requireOrgPermission('bank.reconcile'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const txId = z.string().uuid().parse(req.params.txId);
+        const result = await receiptCandidatesForTransaction(deps.db, {
+          organizationId: req.params.orgId!,
+          transactionId: txId,
+        });
+        res.json(
+          toJson({
+            ...result,
+            bilagAddress: inboundEmailFor(req.params.orgId!, deps.inboundDomain ?? 'inbound.reknaren.no'),
+          }),
+        );
       } catch (err) {
         next(err);
       }
