@@ -109,7 +109,7 @@ interface StoryboardIntegrationViewProps {
 }
 
 type ViewMode = 'script' | 'storyboard' | 'shotlist' | 'split';
-type StoryboardWorkspaceMode = 'thumbnail' | 'scene' | 'review' | 'moodboard';
+type StoryboardWorkspaceMode = 'thumbnail' | 'scene' | 'strip' | 'review' | 'moodboard';
 type StoryboardDetailLevel = 'idea' | 'blocking' | 'shot' | 'presentation';
 type StoryboardAssistFlag =
   | 'perspectiveGrid'
@@ -217,6 +217,7 @@ const DETAIL_LEVEL_OPTIONS: Array<{
 const WORKSPACE_MODE_OPTIONS: Array<{ value: StoryboardWorkspaceMode; label: string }> = [
   { value: 'thumbnail', label: 'Thumbnails' },
   { value: 'scene', label: 'Scene' },
+  { value: 'strip', label: 'Board' },
   { value: 'review', label: 'Review' },
   { value: 'moodboard', label: 'Mood-board' },
 ];
@@ -2562,7 +2563,17 @@ const StoryboardView: React.FC<{
         />
       )}
 
-      {workspaceMode !== 'moodboard' && workspaceMode !== 'review' && (
+      {workspaceMode === 'strip' && (
+        <BoardStripView
+          frames={frames}
+          activeFrameIndex={activeFrameIndex}
+          onSelectFrame={onSelectFrame}
+          onDrawFrame={(frameId) => setDrawingFrameId(frameId)}
+          onAddFrame={handleAddFrame}
+        />
+      )}
+
+      {workspaceMode !== 'moodboard' && workspaceMode !== 'review' && workspaceMode !== 'strip' && (
       <Box
         sx={{
           display: 'grid',
@@ -4347,6 +4358,148 @@ const PHASE_COLORS: Record<string, string> = {
   RESOLUTION: 'rgba(56,189,248,0.8)',
 };
 
+// Board-strip (mockup 2, kjerne-layouten): én rad per shot — shot-kode-boks,
+// ACTION/DIALOG + NOTES i venstre kolonne, bred tegning i midten, og
+// metadata-kolonne (CAM/SHOT, LENS, MOVEMENT, DURATION) til høyre.
+const StripMetaRow: React.FC<{ label: string; value?: string | null }> = ({ label, value }) => (
+  <Box sx={{ mb: 0.9 }}>
+    <Typography
+      variant="caption"
+      sx={{ display: 'block', color: 'rgba(148,163,184,0.7)', fontSize: '0.56rem', letterSpacing: 1.2, fontWeight: 700 }}
+    >
+      {label}
+    </Typography>
+    <Typography
+      variant="caption"
+      sx={{ display: 'block', color: 'rgba(226,232,240,0.92)', fontSize: '0.72rem', fontStyle: 'italic' }}
+    >
+      {value || '—'}
+    </Typography>
+  </Box>
+);
+
+const BoardStripView: React.FC<{
+  frames: StoryboardFrame[];
+  activeFrameIndex: number;
+  onSelectFrame: (index: number) => void;
+  onDrawFrame: (frameId: string) => void;
+  onAddFrame: () => void;
+}> = ({ frames, activeFrameIndex, onSelectFrame, onDrawFrame, onAddFrame }) => (
+  <Stack data-testid="storyboard-board-strip" spacing={1.5}>
+    {frames.map((frame, index) => {
+      const isActive = index === activeFrameIndex;
+      const image = frame.imageUrl || frame.thumbnailUrl;
+      return (
+        <Box
+          key={frame.id}
+          onClick={() => onSelectFrame(index)}
+          onDoubleClick={() => onDrawFrame(frame.id)}
+          data-testid={`board-strip-row-${frame.shotNumber}`}
+          sx={{
+            display: 'flex',
+            gap: 2,
+            p: 1.5,
+            borderRadius: 1.5,
+            cursor: 'pointer',
+            border: isActive ? '2px solid #8b5cf6' : '1px solid rgba(148,163,184,0.18)',
+            bgcolor: isActive ? 'rgba(139,92,246,0.07)' : 'rgba(13,17,23,0.75)',
+            '&:hover': { borderColor: 'rgba(139,92,246,0.55)' },
+          }}
+        >
+          {/* Venstre: shot-kode + action/dialog + notes */}
+          <Box sx={{ width: 200, flexShrink: 0 }}>
+            <Box
+              sx={{
+                display: 'inline-block',
+                px: 1.1,
+                py: 0.3,
+                mb: 1,
+                borderRadius: 0.75,
+                border: '1.5px solid rgba(226,232,240,0.6)',
+                fontFamily: 'JetBrains Mono, Menlo, monospace',
+                fontWeight: 700,
+                fontSize: '0.82rem',
+                color: 'rgba(248,250,252,0.95)',
+              }}
+            >
+              {frame.shotNumber}
+            </Box>
+            <Typography
+              variant="caption"
+              sx={{ display: 'block', color: 'rgba(148,163,184,0.7)', fontSize: '0.56rem', letterSpacing: 1.2, fontWeight: 700 }}
+            >
+              ACTION / DIALOG
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.92)', fontStyle: 'italic', mb: 1 }}>
+              {frame.description}
+            </Typography>
+            {frame.notes && (
+              <>
+                <Typography
+                  variant="caption"
+                  sx={{ display: 'block', color: 'rgba(148,163,184,0.7)', fontSize: '0.56rem', letterSpacing: 1.2, fontWeight: 700 }}
+                >
+                  NOTES / DIAGRAM
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.85)', fontStyle: 'italic' }}>
+                  {frame.notes}
+                </Typography>
+              </>
+            )}
+          </Box>
+
+          {/* Midt: tegningen */}
+          <Box
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              aspectRatio: '2.39 / 1',
+              maxHeight: 300,
+              borderRadius: 1,
+              border: '1px solid rgba(148,163,184,0.25)',
+              backgroundImage: image ? `url(${image})` : undefined,
+              backgroundSize: 'contain',
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'center',
+              bgcolor: image ? 'rgba(245,242,234,0.04)' : 'rgba(148,163,184,0.08)',
+            }}
+          />
+
+          {/* Høyre: metadata-kolonnen */}
+          <Box sx={{ width: 118, flexShrink: 0 }}>
+            <StripMetaRow label="CAM / SHOT" value={frame.shotType || frame.cameraAngle} />
+            <StripMetaRow label="LENS / CAMERA" value={typeof frame.lensMm === 'number' ? `${frame.lensMm}mm` : undefined} />
+            <StripMetaRow label="MOVEMENT" value={frame.movement} />
+            <StripMetaRow label="DURATION" value={`${frame.duration} SEC`} />
+            {frame.beatTag && (
+              <Chip
+                label={frame.beatTag}
+                size="small"
+                sx={{
+                  bgcolor: BEAT_TAG_STYLES[frame.beatTag].bg,
+                  color: BEAT_TAG_STYLES[frame.beatTag].fg,
+                  fontWeight: 700,
+                  fontSize: '0.58rem',
+                  letterSpacing: 0.8,
+                }}
+              />
+            )}
+          </Box>
+        </Box>
+      );
+    })}
+    <Button
+      variant="outlined"
+      onClick={onAddFrame}
+      startIcon={<AddIcon />}
+      data-testid="board-strip-add-shot"
+      sx={{ alignSelf: 'flex-start', borderColor: 'rgba(139,92,246,0.5)', color: '#a78bfa' }}
+    >
+      Add Shot
+    </Button>
+  </Stack>
+);
+
 // Review Mode (mockup 1, nederst venstre): stor frame + vertikal filmstripe
 // + rollekommentarer + status + Approve/Needs Work.
 const relativeTime = (iso: string): string => {
@@ -4847,9 +5000,46 @@ const ShotListView: React.FC<{
         sx={{ px: 2, py: 1.25, borderTop: '1px solid rgba(148,163,184,0.18)' }}
         data-testid="shot-list-footer"
       >
-        <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.8)' }}>
-          {frames.length} shots · Total Duration {totalLabel}
-        </Typography>
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.8)' }}>
+            {frames.length} shots · Total Duration {totalLabel}
+          </Typography>
+          <Button
+            size="small"
+            variant="outlined"
+            data-testid="shot-list-export-csv"
+            sx={{ borderColor: 'rgba(139,92,246,0.5)', color: '#a78bfa', textTransform: 'none' }}
+            onClick={() => {
+              const escapeCsv = (value: unknown) => {
+                const text = String(value ?? '');
+                return /[",\n;]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+              };
+              const header = ['Shot', 'Type', 'Move', 'Lens', 'Duration (s)', 'Location', 'Time', 'Status', 'Beat', 'Description'];
+              const rows = frames.map((frame) => [
+                frame.shotNumber,
+                frame.shotType || frame.cameraAngle,
+                frame.movement,
+                typeof frame.lensMm === 'number' ? `${frame.lensMm}mm` : '',
+                frame.duration,
+                frame.location ?? '',
+                frame.timeOfDay ?? '',
+                FRAME_STATUS_META[frame.frameStatus ?? 'planned'].label,
+                frame.beatTag ?? '',
+                frame.description,
+              ]);
+              const csv = [header, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n');
+              const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = 'shot-list.csv';
+              link.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            Export Shot List
+          </Button>
+        </Stack>
         <Stack direction="row" spacing={1.5}>
           {(Object.keys(FRAME_STATUS_META) as StoryboardFrameStatus[]).map((status) => (
             <Stack key={status} direction="row" spacing={0.5} alignItems="center">
