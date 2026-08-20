@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Db } from '../src/db/pool.js';
 import { createBankAccount, importBankTransactions } from '../src/bank/import.js';
-import { huntDocuments, linkPaymentToDocument, previewPaymentLink, receiptCandidatesForTransaction } from '../src/ingestion/document-hunt.js';
+import { bookDocumentAsUtlegg, huntDocuments, linkPaymentToDocument, previewPaymentLink, receiptCandidatesForTransaction, receiptsWithoutPayment } from '../src/ingestion/document-hunt.js';
 import { buildNorwegianRuleRegister } from '../src/rules/no/rules.js';
 import { createOrganization, ensureUser } from '../src/orgs/service.js';
 import { newId } from '../src/shared/ids.js';
@@ -169,5 +169,47 @@ describe('receiptCandidatesForTransaction (per bank-linje)', () => {
     const none = await receiptCandidatesForTransaction(db, { organizationId: org.id, transactionId: ukjentTx });
     expect(none.found).toBe(false);
     expect(none.candidates).toHaveLength(0);
+  });
+});
+
+describe('utlegg — kvittering uten betaling («betalte du privat?»)', () => {
+  it('lister bilag uten betaling, og bokfører som utlegg mot eier-konto (ENK: 2060, AS: 2900)', async () => {
+    // ENK: utlegg øker egenkapitalen (privatkonto 2060).
+    const enk = await createOrganization(db, { name: 'Utlegg ENK', orgForm: 'ENK', vatStatus: 'registered', createdByUserId: userId });
+    const enkDoc = await orphanDoc(enk.id, 'Clas Ohlson', '2025-07-10', 49900n);
+
+    const orphans = await receiptsWithoutPayment(db, { organizationId: enk.id });
+    expect(orphans.map((o) => o.documentId)).toContain(enkDoc);
+
+    const r = await bookDocumentAsUtlegg(db, rules, { organizationId: enk.id, actor: actor(), documentId: enkDoc });
+    expect(r.ownerAccount).toBe('2060');
+    expect(r.entryNumber).toBeGreaterThan(0);
+    // Bilaget er bokført, og eier-kontoen er kreditert hele beløpet.
+    const doc = await db.query(`SELECT status FROM source_documents WHERE id = $1`, [enkDoc]);
+    expect(doc.rows[0].status).toBe('posted');
+    const cred = await db.query(
+      `SELECT l.credit_minor FROM journal_lines l JOIN journal_entries je ON je.id = l.entry_id
+       WHERE je.source_document_id = $1 AND l.account_number = '2060'`,
+      [enkDoc],
+    );
+    expect(cred.rows[0].credit_minor.toString()).toBe('49900');
+
+    // AS: firmaet skylder eier (gjeld 2900).
+    const as = await createOrganization(db, { name: 'Utlegg AS', orgForm: 'AS', vatStatus: 'registered', createdByUserId: userId });
+    const asDoc = await orphanDoc(as.id, 'Clas Ohlson', '2025-07-10', 49900n);
+    const r2 = await bookDocumentAsUtlegg(db, rules, { organizationId: as.id, actor: actor(), documentId: asDoc });
+    expect(r2.ownerAccount).toBe('2900');
+  });
+
+  it('bilag som HAR en matchende betaling regnes ikke som utlegg', async () => {
+    const org = await createOrganization(db, { name: 'IkkeUtlegg AS', orgForm: 'AS', vatStatus: 'registered', createdByUserId: userId });
+    const acc = await createBankAccount(db, { organizationId: org.id, actor: actor(), name: 'Drift', ibanOrAccount: 'NO9386011117947' });
+    await importBankTransactions(db, {
+      organizationId: org.id, actor: actor(), bankAccountId: acc,
+      transactions: [{ externalId: 't-clas', bookedDate: '2025-07-11', amountMinor: -49900n, description: 'CLAS OHLSON' }],
+    });
+    await orphanDoc(org.id, 'Clas Ohlson', '2025-07-10', 49900n);
+    const orphans = await receiptsWithoutPayment(db, { organizationId: org.id });
+    expect(orphans).toHaveLength(0); // har en betaling → dokumentjakt, ikke utlegg
   });
 });

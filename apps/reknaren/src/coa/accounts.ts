@@ -137,6 +137,18 @@ export const STANDARD_ACCOUNTS: LedgerAccountDef[] = [
     taxDeductible: 'no',
   },
   {
+    number: '2900',
+    name: 'Gjeld til eiere/ansatte (utlegg)',
+    friendlyName: 'Penger firmaet skylder deg',
+    type: 'liability',
+    plainExplanation:
+      'Utlegg eier eller ansatt har lagt ut for firmaet privat (eget kort/kontanter). Firmaet skylder pengene tilbake — føres som kortsiktig gjeld til dette betales ut.',
+    whenToUse: 'Når en virksomhetsutgift er betalt privat og skal refunderes (typisk AS).',
+    whenNotToUse: 'For ENK: bruk privatkonto (2060), der utlegg øker egenkapitalen i stedet.',
+    examples: ['Kontorrekvisita kjøpt med privat kort', 'Drivstoff lagt ut av ansatt'],
+    commonVatCodes: ['0'],
+  },
+  {
     number: '2400',
     name: 'Leverandørgjeld',
     friendlyName: 'Penger du skylder leverandører',

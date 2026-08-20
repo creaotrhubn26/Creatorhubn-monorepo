@@ -1330,6 +1330,13 @@ export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: strin
   const txs = useLoad(() => api<BankTx[]>('GET', `/api/organizations/${orgId}/bank/transactions`), [orgId]);
   const matches = useLoad(() => api<Match[]>('GET', `/api/organizations/${orgId}/bank/matches`), [orgId]);
   const recon = useLoad(() => api<Recon>('GET', `/api/organizations/${orgId}/bank/reconciliation-status`), [orgId]);
+  const orphanReceipts = useLoad(
+    () => api<Array<{ documentId: string; vendor: string | null; dateText: string | null; grossMinor: string }>>(
+      'GET',
+      `/api/organizations/${orgId}/receipts-without-payment`,
+    ),
+    [orgId],
+  );
   interface BankCategory {
     key: string;
     label: string;
@@ -1507,6 +1514,21 @@ export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: strin
       toast('Kvittering koblet og bokført ✓', 'ok');
       txs.reload();
       matches.reload();
+      recon.reload();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const bookUtlegg = async (documentId: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api('POST', `/api/organizations/${orgId}/documents/${documentId}/book-utlegg`, {});
+      toast('Bokført som utlegg — firmaet skylder deg beløpet ✓', 'ok');
+      orphanReceipts.reload();
       recon.reload();
     } catch (err) {
       setError((err as Error).message);
@@ -1987,6 +2009,29 @@ export function BankScreen({ orgId, onOpenDocument, onNavigate }: { orgId: strin
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {(orphanReceipts.data ?? []).length > 0 && (
+        <div className="panel">
+          <h2>Kvitteringer uten betaling</h2>
+          <p className="subtitle">
+            Vi fant disse kvitteringene, men ingen betaling i banken. Ble de betalt privat, eller med et annet
+            kort? Trykk «Ja, betalt privat», så bokfører vi dem som utlegg — firmaet skylder deg pengene tilbake.
+          </p>
+          <div className="receipt-list">
+            {(orphanReceipts.data ?? []).map((d) => (
+              <div key={d.documentId} className="receipt-cand">
+                <div>
+                  <strong>{d.vendor ?? 'Ukjent leverandør'}</strong> · {kr(d.grossMinor)}
+                  {d.dateText && <span className="suggest-reason">Kvitteringsdato {d.dateText}</span>}
+                </div>
+                <button className="secondary" disabled={busy} onClick={() => bookUtlegg(d.documentId)}>
+                  Ja, betalt privat
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

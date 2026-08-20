@@ -46,7 +46,7 @@ import {
 import { buildForecast } from '../ledger/planning.js';
 import { assessPeriodClose, assessYearClose } from '../ledger/period-close.js';
 import { buildTaxAdvisories } from '../ledger/tax-advisor.js';
-import { huntDocuments, linkPaymentToDocument, previewPaymentLink, receiptCandidatesForTransaction } from '../ingestion/document-hunt.js';
+import { bookDocumentAsUtlegg, huntDocuments, linkPaymentToDocument, previewPaymentLink, previewUtlegg, receiptCandidatesForTransaction, receiptsWithoutPayment } from '../ingestion/document-hunt.js';
 import { buildDashboard } from '../ledger/dashboard.js';
 import { getActivationStatus } from '../ledger/onboarding.js';
 import { ingestForwardedEmail, inboundEmailFor } from '../ingestion/inbound-email.js';
@@ -2376,6 +2376,55 @@ export function createApiServer(deps: ApiDeps): express.Express {
             bilagAddress: inboundEmailFor(req.params.orgId!, deps.inboundDomain ?? 'inbound.reknaren.no'),
           }),
         );
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Kvitteringer uten betaling — kandidater for utlegg («betalte du privat?»).
+  app.get(
+    '/api/organizations/:orgId/receipts-without-payment',
+    requireAuth,
+    requireOrgPermission('bank.reconcile'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        res.json(toJson(await receiptsWithoutPayment(deps.db, { organizationId: req.params.orgId! })));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // Forhåndsvisning av et utlegg — hva ja-svaret vil bokføre, uten å skrive.
+  app.get(
+    '/api/organizations/:orgId/documents/:documentId/utlegg-preview',
+    requireAuth,
+    requireOrgPermission('bank.reconcile'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const documentId = z.string().uuid().parse(req.params.documentId);
+        res.json(toJson(await previewUtlegg(deps.db, deps.rules, { organizationId: req.params.orgId!, documentId })));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  // «Ja, betalt privat» → bokfør bilaget som utlegg (kostnad DEBET, eier-gjeld KREDIT).
+  app.post(
+    '/api/organizations/:orgId/documents/:documentId/book-utlegg',
+    requireAuth,
+    requireOrgPermission('journal.post'),
+    async (req: AuthedRequest, res, next) => {
+      try {
+        const documentId = z.string().uuid().parse(req.params.documentId);
+        const result = await bookDocumentAsUtlegg(deps.db, deps.rules, {
+          organizationId: req.params.orgId!,
+          actor: { userId: req.auth!.userId, role: req.orgRole! },
+          documentId,
+        });
+        res.status(201).json(toJson(result));
       } catch (err) {
         next(err);
       }

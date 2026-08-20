@@ -405,3 +405,209 @@ export async function linkPaymentToDocument(
 
   return { entryNumber: entry.entryNumber, accountNumber, vatCode: vatCodeStr };
 }
+
+// ── Utlegg: kvittering uten betaling («betalte du privat / med et annet kort?») ──
+
+export interface OrphanReceipt {
+  documentId: string;
+  vendor: string | null;
+  dateText: string | null;
+  grossMinor: bigint;
+  documentType: string | null;
+}
+
+/**
+ * Kvitteringer/fakturaer vi har hentet inn, men som IKKE er bokført OG ikke matcher
+ * noen betaling i banken. Typisk fordi de ble betalt privat / med et annet kort →
+ * kandidater for utlegg. (Bilag som matcher en betaling håndteres av dokumentjakten.)
+ */
+export async function receiptsWithoutPayment(
+  db: Db,
+  params: { organizationId: string },
+): Promise<OrphanReceipt[]> {
+  const org = params.organizationId;
+  const docs = await loadUnlinkedDocs(db, org);
+  if (docs.length === 0) return [];
+  // Uavstemte utbetalinger — for å utelukke bilag som HAR en sannsynlig betaling.
+  const payRes = await db.query(
+    `SELECT booked_date::TEXT AS booked_date, amount_minor::TEXT AS amount_minor, description, counterparty
+     FROM bank_transactions WHERE organization_id=$1 AND status='unmatched' AND amount_minor < 0`,
+    [org],
+  );
+  const payments = payRes.rows.map((r) => ({
+    amountMinor: BigInt(r.amount_minor),
+    bookedDate: r.booked_date as string,
+    description: r.description as string,
+    counterparty: (r.counterparty as string | null) ?? null,
+  }));
+  const typeRes = await db.query(
+    `SELECT DISTINCT ON (document_id) document_id, document_type
+     FROM extracted_document_data ORDER BY document_id, extraction_version DESC`,
+  );
+  const docType = new Map<string, string | null>(typeRes.rows.map((r) => [r.document_id as string, (r.document_type as string | null) ?? null]));
+
+  const orphans: OrphanReceipt[] = [];
+  for (const doc of docs) {
+    const hasPayment = payments.some((p) => scoreCandidates(p, [doc]).length > 0);
+    if (hasPayment) continue; // dette er en dokumentjakt-sak, ikke et utlegg
+    orphans.push({ documentId: doc.id, vendor: doc.vendor, dateText: doc.dateText, grossMinor: doc.grossMinor, documentType: docType.get(doc.id) ?? null });
+  }
+  return orphans;
+}
+
+interface UtleggBooking {
+  accountNumber: string;
+  vatCodeStr: string;
+  ownerAccount: string;
+  netMinor: bigint;
+  vatMinor: bigint;
+  grossMinor: bigint;
+  vendor: string | null;
+  invoiceNumber: string | null;
+  isoDate: string;
+  lines: Parameters<typeof postJournalEntry>[1]['lines'];
+}
+
+/** Utleder (uten å skrive) et utlegg: kostnad + evt. mva DEBET, eier-mellomregning KREDIT. */
+async function deriveUtlegg(db: Db, rules: RuleRegister, org: string, documentId: string): Promise<UtleggBooking> {
+  const orgRes = await db.query(`SELECT org_form, vat_status FROM organizations WHERE id = $1`, [org]);
+  if (!orgRes.rowCount) throw new NotFoundError('Virksomheten finnes ikke.');
+  const orgForm = String(orgRes.rows[0].org_form);
+  const vatStatus = orgRes.rows[0].vat_status as 'registered' | 'not_registered' | 'pending';
+
+  const exRes = await db.query(
+    `SELECT vendor_name, vendor_org_number, invoice_number, invoice_date::TEXT AS invoice_date,
+            currency, net_minor, vat_minor, gross_minor, document_type, foreign_service
+     FROM extracted_document_data WHERE document_id = $1 ORDER BY extraction_version DESC LIMIT 1`,
+    [documentId],
+  );
+  if (!exRes.rowCount) throw new NotFoundError('Bilaget mangler tolkede data.');
+  const linked = await db.query(`SELECT 1 FROM journal_entries WHERE source_document_id = $1 LIMIT 1`, [documentId]);
+  if (linked.rowCount) throw new ConflictError('Bilaget er allerede bokført.');
+  const ex = exRes.rows[0];
+  if (ex.gross_minor === null || BigInt(ex.gross_minor) <= 0n) {
+    throw new ValidationError('Bilaget mangler et beløp — kan ikke bokføres som utlegg automatisk.');
+  }
+  const grossMinor = BigInt(ex.gross_minor);
+  const isoDate = (ex.invoice_date as string | null) ?? new Date().toISOString().slice(0, 10);
+
+  const data: ExtractedData = {
+    documentType: (ex.document_type as ExtractedData['documentType']) ?? 'receipt',
+    ...(ex.vendor_name ? { vendorName: ex.vendor_name as string } : {}),
+    ...(ex.vendor_org_number ? { vendorOrgNumber: ex.vendor_org_number as string } : {}),
+    ...(ex.currency ? { currency: ex.currency as string } : {}),
+    ...(ex.net_minor !== null ? { netMinor: BigInt(ex.net_minor) } : {}),
+    ...(ex.vat_minor !== null ? { vatMinor: BigInt(ex.vat_minor) } : {}),
+    grossMinor,
+    ...(ex.foreign_service === true ? { foreignService: true } : {}),
+  };
+  const suggestion = await new DeterministicSuggestionEngine().suggest(data, { rules, vatStatus, isoDate });
+  const accountNumber = suggestion.suggestedAccountNumber;
+  const vatCodeStr = suggestion.suggestedVatCode;
+  const vatCode = getVatCode(vatCodeStr);
+  const vendor = (ex.vendor_name as string | null) ?? null;
+  // Motpost: ENK → privatkonto (2060, øker egenkapitalen); AS → gjeld til eier (2900).
+  const ownerAccount = orgForm === 'ENK' ? '2060' : '2900';
+
+  const lines: Parameters<typeof postJournalEntry>[1]['lines'] = [];
+  let netMinor: bigint;
+  let vatMinor: bigint;
+  if (vatCode && vatCode.direction === 'input' && vatCode.deductible && !vatCode.reverseCharge) {
+    const parts = splitGrossByVatCode(rules, vatCodeStr, grossMinor, isoDate);
+    netMinor = parts.netMinor;
+    vatMinor = parts.vatMinor;
+    lines.push({ accountNumber, debitMinor: parts.netMinor, vatCode: vatCodeStr, ...(vendor ? { description: vendor } : {}) });
+    if (parts.vatMinor > 0n) lines.push({ accountNumber: '2710', debitMinor: parts.vatMinor, vatCode: vatCodeStr, description: `Inngående mva ${parts.ratePct} %` });
+  } else {
+    netMinor = grossMinor;
+    vatMinor = 0n;
+    lines.push({ accountNumber, debitMinor: grossMinor, ...(vatCode ? { vatCode: vatCodeStr } : {}), ...(vendor ? { description: vendor } : {}) });
+  }
+  lines.push({ accountNumber: ownerAccount, creditMinor: grossMinor, description: 'Betalt privat (utlegg)' });
+
+  return {
+    accountNumber,
+    vatCodeStr,
+    ownerAccount,
+    netMinor,
+    vatMinor,
+    grossMinor,
+    vendor,
+    invoiceNumber: (ex.invoice_number as string | null) ?? null,
+    isoDate,
+    lines,
+  };
+}
+
+export interface UtleggPreview {
+  accountNumber: string;
+  accountName: string;
+  vatCode: string;
+  vatCodeName: string;
+  ownerAccount: string;
+  ownerAccountName: string;
+  netMinor: bigint;
+  vatMinor: bigint;
+  grossMinor: bigint;
+  vendor: string | null;
+}
+
+/** Forhåndsvisning av et utlegg — hva det vil bokføre, uten å skrive. */
+export async function previewUtlegg(
+  db: Db,
+  rules: RuleRegister,
+  params: { organizationId: string; documentId: string },
+): Promise<UtleggPreview> {
+  const b = await deriveUtlegg(db, rules, params.organizationId, params.documentId);
+  const vat = getVatCode(b.vatCodeStr);
+  return {
+    accountNumber: b.accountNumber,
+    accountName: getAccountDef(b.accountNumber)?.name ?? b.accountNumber,
+    vatCode: b.vatCodeStr,
+    vatCodeName: vat?.name ?? b.vatCodeStr,
+    ownerAccount: b.ownerAccount,
+    ownerAccountName: getAccountDef(b.ownerAccount)?.name ?? b.ownerAccount,
+    netMinor: b.netMinor,
+    vatMinor: b.vatMinor,
+    grossMinor: b.grossMinor,
+    vendor: b.vendor,
+  };
+}
+
+/**
+ * Bokfører et bilag som utlegg (betalt privat): kostnad + evt. inngående mva DEBET,
+ * eier-mellomregning KREDIT. Ingen bank involvert. Reversibelt og revisjonslogget.
+ * Idempotent per bilag.
+ */
+export async function bookDocumentAsUtlegg(
+  db: Db,
+  rules: RuleRegister,
+  params: { organizationId: string; actor: Actor; documentId: string },
+): Promise<{ entryNumber: number; accountNumber: string; ownerAccount: string; vatCode: string }> {
+  const { organizationId: org, actor, documentId } = params;
+  const b = await deriveUtlegg(db, rules, org, documentId);
+
+  const entry = await postJournalEntry(db, {
+    organizationId: org,
+    actor,
+    entryDate: b.isoDate,
+    description: `Utlegg${b.vendor ? ` — ${b.vendor}` : ''}${b.invoiceNumber ? ` (faktura ${b.invoiceNumber})` : ''} (betalt privat)`,
+    lines: b.lines,
+    idempotencyKey: `utlegg:${documentId}`,
+    sourceDocumentId: documentId,
+  });
+
+  await withTransaction(db, async (client) => {
+    await client.query(`UPDATE source_documents SET status = 'posted', updated_at = now(), version = version + 1 WHERE id = $1 AND organization_id = $2`, [documentId, org]);
+    await recordAuditEvent(client, {
+      organizationId: org,
+      actor,
+      action: 'document.booked_as_utlegg',
+      entityType: 'source_document',
+      entityId: documentId,
+      newValue: { journalEntryId: entry.id, entryNumber: entry.entryNumber, accountNumber: b.accountNumber, ownerAccount: b.ownerAccount, vatCode: b.vatCodeStr },
+    });
+  });
+
+  return { entryNumber: entry.entryNumber, accountNumber: b.accountNumber, ownerAccount: b.ownerAccount, vatCode: b.vatCodeStr };
+}
