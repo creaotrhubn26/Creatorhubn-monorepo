@@ -59,8 +59,28 @@ struct StampConfig: Sendable {
                                jitterAngleDeg: 0, tiltRotation: true,
                                pressureToSize: 0.3, pressureToOpacity: 0.2,
                                flow: 0.55, sizeMultiplier: 2.0)
+        case .eraser:
+            // Piksel-viskelær: myk rund dab, rendres med destination-out-
+            // blending i Metal (egen pipeline) — web-paritet.
+            return StampConfig(preset: .inkRound, spacing: 0.06, scatter: 0,
+                               jitterAngleDeg: 0, tiltRotation: false,
+                               pressureToSize: 0.6, pressureToOpacity: 0.3,
+                               flow: 1.0, sizeMultiplier: 2.2)
         default:
             return nil
+        }
+    }
+}
+
+/// StreamLine-styrke per pensel — samme verdier som web STREAMLINE_BY_TYPE.
+enum Streamline {
+    static func amount(for type: BrushType) -> Double {
+        switch type {
+        case .pen: return 0.45
+        case .ink: return 0.5
+        case .marker, .highlighter: return 0.3
+        case .smudge, .eraser: return 0.15
+        default: return 0.2
         }
     }
 }

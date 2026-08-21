@@ -44,6 +44,11 @@ final class MetalCanvasUIView: UIView {
     private var activePoints: [StrokePoint] = []
     private var predictedPoints: [StrokePoint] = []
     private var strokeStartedAt = Date()
+    // StreamLine: EMA-glatting av posisjon (web-paritet, samme koeffisienter).
+    // Trykk/tilt glattes ikke. Siste råpunkt legges til ved stroke-end
+    // (catch-up) så streken lander der pennen sluttet.
+    private var streamlineState: (x: Double, y: Double)?
+    private var lastRawPoint: StrokePoint?
     // Antall strøk allerede i akkumulatoren — skiller inkrementell append
     // (vår egen commit) fra ekstern endring (undo/clear → full rebuild).
     private var committedCount = 0
@@ -108,10 +113,29 @@ final class MetalCanvasUIView: UIView {
             brush: brush)
     }
 
+    private func smoothed(_ point: StrokePoint) -> StrokePoint {
+        let amount = Streamline.amount(for: state?.brushType ?? .pencil)
+        guard amount > 0, var sl = streamlineState else {
+            streamlineState = (point.x, point.y)
+            return point
+        }
+        let k = min(0.92, amount)
+        sl.x += (point.x - sl.x) * (1 - k)
+        sl.y += (point.y - sl.y) * (1 - k)
+        streamlineState = sl
+        var smoothedPoint = point
+        smoothedPoint.x = sl.x
+        smoothedPoint.y = sl.y
+        return smoothedPoint
+    }
+
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first else { return }
         strokeStartedAt = Date()
-        activePoints = [strokePoint(from: touch)]
+        let point = strokePoint(from: touch)
+        streamlineState = (point.x, point.y)
+        lastRawPoint = point
+        activePoints = [point]
         predictedPoints = []
         redraw()
     }
@@ -119,7 +143,11 @@ final class MetalCanvasUIView: UIView {
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first else { return }
         let coalesced = event?.coalescedTouches(for: touch) ?? [touch]
-        activePoints.append(contentsOf: coalesced.map(strokePoint(from:)))
+        for sample in coalesced {
+            let raw = strokePoint(from: sample)
+            lastRawPoint = raw
+            activePoints.append(smoothed(raw))
+        }
         predictedPoints = (event?.predictedTouches(for: touch) ?? []).map(strokePoint(from:))
         redraw()
     }
@@ -134,6 +162,12 @@ final class MetalCanvasUIView: UIView {
 
     private func finishStroke() {
         predictedPoints = []
+        // Catch-up: streken skal lande der pennen faktisk sluttet.
+        if let raw = lastRawPoint, activePoints.count >= 3 {
+            activePoints.append(raw)
+        }
+        streamlineState = nil
+        lastRawPoint = nil
         guard let state, let stroke = makeStroke(points: activePoints) else {
             activePoints = []
             redraw()
