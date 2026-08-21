@@ -760,7 +760,7 @@ export const StoryboardBoardPage: React.FC<{
             {toolButton('brush', <BrushIcon sx={{ fontSize: 18 }} />, 'Pensel')}
             {toolButton('pencil', <CreateIcon sx={{ fontSize: 18 }} />, 'Blyant')}
             {toolButton('eraser', <AutoFixNormalIcon sx={{ fontSize: 18 }} />, 'Viskelær')}
-            <Box sx={{ width: 1, height: 22, bgcolor: PANEL_BORDER, mx: 0.75 }} />
+            <Box sx={{ width: '1px', height: 22, bgcolor: PANEL_BORDER, mx: 0.75 }} />
             {toolButton('shapes', <TrendingFlatIcon sx={{ fontSize: 20 }} />, 'Pil-annotasjon')}
             {toolButton('rect', <CropSquareIcon sx={{ fontSize: 18 }} />, 'Rektangel')}
             {toolButton('text', <TitleIcon sx={{ fontSize: 18 }} />, 'Tekst')}
@@ -926,7 +926,7 @@ export const StoryboardBoardPage: React.FC<{
             }}>
               <IconButton size="small" onClick={handleUndo} disabled={!frameHistory?.undo.length} data-testid="board-page-undo" sx={{ color: frameHistory?.undo.length ? '#fff' : 'rgba(255,255,255,0.25)' }}><UndoIcon sx={{ fontSize: 18 }} /></IconButton>
               <IconButton size="small" onClick={handleRedo} disabled={!frameHistory?.redo.length} data-testid="board-page-redo" sx={{ color: frameHistory?.redo.length ? '#fff' : 'rgba(255,255,255,0.25)' }}><RedoIcon sx={{ fontSize: 18 }} /></IconButton>
-              <Box sx={{ width: 1, height: 20, bgcolor: PANEL_BORDER, mx: 0.5 }} />
+              <Box sx={{ width: '1px', height: 20, bgcolor: PANEL_BORDER, mx: 0.5 }} />
               <IconButton size="small" onClick={() => setHandMode((prev) => !prev)} sx={{ color: handMode ? '#fff' : TEXT_DIM, bgcolor: handMode ? BRAND : 'transparent', borderRadius: 1.5 }}>
                 <BackHandIcon sx={{ fontSize: 17 }} />
               </IconButton>
@@ -942,7 +942,7 @@ export const StoryboardBoardPage: React.FC<{
                   <PanToolAltIcon sx={{ fontSize: 17 }} />
                 </IconButton>
               </Tooltip>
-              <Box sx={{ width: 1, height: 20, bgcolor: PANEL_BORDER, mx: 0.5 }} />
+              <Box sx={{ width: '1px', height: 20, bgcolor: PANEL_BORDER, mx: 0.5 }} />
               <IconButton size="small" onClick={() => setZoomClamped(zoom - 0.1)} sx={{ color: TEXT_DIM }}><ZoomOutIcon sx={{ fontSize: 18 }} /></IconButton>
               <Typography
                 data-testid="board-page-zoom"
