@@ -10,6 +10,7 @@ struct DabInstance {
     float  size;       // diameter i piksler
     float  rotation;   // radianer
     float  alpha;      // 0..1
+    float2 stretch;    // oval-skalering (Shade-tilt); (1,1) = rund
     float3 color;      // lineær rgb
 };
 
@@ -28,7 +29,7 @@ vertex VertexOut dab_vertex(uint vertexId [[vertex_id]],
     float2 corners[4] = { float2(-0.5, -0.5), float2(0.5, -0.5),
                           float2(-0.5, 0.5),  float2(0.5, 0.5) };
     DabInstance dab = instances[instanceId];
-    float2 corner = corners[vertexId] * dab.size;
+    float2 corner = corners[vertexId] * dab.size * dab.stretch;
     float c = cos(dab.rotation), s = sin(dab.rotation);
     float2 rotated = float2(corner.x * c - corner.y * s,
                             corner.x * s + corner.y * c);

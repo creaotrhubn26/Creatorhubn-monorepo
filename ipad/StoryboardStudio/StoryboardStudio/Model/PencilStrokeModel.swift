@@ -18,6 +18,37 @@ struct StrokePoint: Codable, Sendable, Equatable {
 enum BrushType: String, Codable, Sendable, CaseIterable {
     case pencil, graphite, charcoal, conte, pen, marker, brush
     case watercolor, ink, highlighter, smudge, eraser
+    // Story Brush Engine (storyboard-brush-engine.md §32/§55)
+    case layout        // Story Layout Pencil — lys H/HB, konstruksjon
+    case heavy         // Story Pencil Heavy — 2B/3B, konturer/silhuetter
+    case detail        // Story Detail Pencil — liten, skarp, kontrollert
+    case hatch         // Story Hatch — prosedural skravering
+    case crosshatch    // Story Cross Hatch — to lag, 35°/112°
+    case shade         // Story Shade — bred grafittside, tilt-oval
+    case graintex      // Story Grain — dry graphite scatter
+    case kneaded       // Story Kneaded Eraser — teksturert grafitt-løft
+    case lightlift     // Story Light Lift — atmosfærisk lys
+}
+
+// Spec-defaults per pensel (size px / opacity) — settes når penselen velges
+// så hvert verktøy starter med riktig fysisk karakter (§8–§11, §34–§40, §67).
+enum BrushDefaults {
+    static func sizeAndOpacity(for type: BrushType) -> (size: Double, opacity: Double)? {
+        switch type {
+        case .pencil: return (3.2, 0.48)       // Story Pencil
+        case .layout: return (2.4, 0.28)
+        case .heavy: return (4.2, 0.62)
+        case .detail: return (1.35, 0.78)
+        case .ink: return (2.4, 0.94)          // Story Ink
+        case .hatch: return (34, 0.32)
+        case .crosshatch: return (34, 0.36)
+        case .shade: return (42, 0.16)
+        case .graintex: return (72, 0.08)
+        case .kneaded: return (48, 0.24)
+        case .lightlift: return (96, 0.11)
+        default: return nil
+        }
+    }
 }
 
 struct BrushSpec: Codable, Sendable, Equatable {
@@ -59,6 +90,39 @@ struct BrushSpec: Codable, Sendable, Equatable {
             return BrushSpec(type: type, size: size, color: color, opacity: opacity,
                              hardness: 0.3, flow: 0.9, wetness: 0, grain: 0.1,
                              tiltSensitivity: 0.8, pressureSensitivity: 0.8)
+        // Story Brush Engine (grain/flow fra spec §8–§11, §34–§40, §67)
+        case .layout:
+            return BrushSpec(type: type, size: size, color: color, opacity: opacity,
+                             hardness: 0.6, flow: 0.22, wetness: 0, grain: 0.28,
+                             tiltSensitivity: 0.4, pressureSensitivity: 0.58)
+        case .heavy:
+            return BrushSpec(type: type, size: size, color: color, opacity: opacity,
+                             hardness: 0.5, flow: 0.38, wetness: 0, grain: 0.46,
+                             tiltSensitivity: 0.5, pressureSensitivity: 0.78)
+        case .detail:
+            return BrushSpec(type: type, size: size, color: color, opacity: opacity,
+                             hardness: 0.75, flow: 0.6, wetness: 0, grain: 0.22,
+                             tiltSensitivity: 0.3, pressureSensitivity: 0.88)
+        case .hatch, .crosshatch:
+            return BrushSpec(type: type, size: size, color: color, opacity: opacity,
+                             hardness: 0.7, flow: 0.4, wetness: 0, grain: 0.25,
+                             tiltSensitivity: 0.2, pressureSensitivity: 0.7)
+        case .shade:
+            return BrushSpec(type: type, size: size, color: color, opacity: opacity,
+                             hardness: 0.3, flow: 0.08, wetness: 0, grain: 0.72,
+                             tiltSensitivity: 0.9, pressureSensitivity: 0.7)
+        case .graintex:
+            return BrushSpec(type: type, size: size, color: color, opacity: opacity,
+                             hardness: 0.4, flow: 0.06, wetness: 0, grain: 0.88,
+                             tiltSensitivity: 0.3, pressureSensitivity: 0.56)
+        case .kneaded:
+            return BrushSpec(type: type, size: size, color: color, opacity: opacity,
+                             hardness: 0.4, flow: 0.12, wetness: 0, grain: 0.48,
+                             tiltSensitivity: 0.3, pressureSensitivity: 0.72)
+        case .lightlift:
+            return BrushSpec(type: type, size: size, color: color, opacity: opacity,
+                             hardness: 0.2, flow: 0.045, wetness: 0, grain: 0.32,
+                             tiltSensitivity: 0.3, pressureSensitivity: 0.58)
         default:
             return BrushSpec(type: type, size: size, color: color, opacity: opacity,
                              hardness: 0.8, flow: 1, wetness: 0, grain: 0.3,

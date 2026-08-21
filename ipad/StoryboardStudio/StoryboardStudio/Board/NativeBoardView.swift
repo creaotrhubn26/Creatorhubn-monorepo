@@ -1190,10 +1190,13 @@ struct NativeBoardView: View {
         .background(BoardBrand.panel)
     }
 
+    // Story Brush Engine-settet (spec §47/§83): DRAW / TONE / CLEAN.
     private static let brushChips: [(BrushType, String)] = [
-        (.pencil, "Blyant"), (.graphite, "Grafitt"), (.charcoal, "Kull"),
-        (.conte, "Conté"), (.pen, "Penn"), (.ink, "Tusj"), (.marker, "Marker"),
-        (.highlighter, "Highlight"), (.smudge, "Smudge"), (.eraser, "Viskelær"),
+        (.layout, "Layout"), (.pencil, "Blyant"), (.heavy, "Heavy"),
+        (.detail, "Detalj"), (.ink, "Tusj"),
+        (.hatch, "Skraver"), (.crosshatch, "Kryss"), (.shade, "Skygge"),
+        (.graintex, "Korn"), (.smudge, "Smudge"),
+        (.eraser, "Viskelær"), (.kneaded, "Kna"), (.lightlift, "Lysløft"),
     ]
 
     private var brushColorBinding: Binding<Color> {
@@ -1243,14 +1246,14 @@ struct NativeBoardView: View {
             }
             HStack(alignment: .top, spacing: 14) {
                 // Tip-glyfer i 2×5-grid (mockup) — form, ikke tekst.
-                VStack(spacing: 6) {
-                    ForEach(0..<2, id: \.self) { row in
-                        HStack(spacing: 6) {
-                            ForEach(Array(Self.brushChips[(row * 5)..<(row * 5 + 5)]), id: \.0) { type, name in
+                VStack(spacing: 5) {
+                    ForEach(0..<3, id: \.self) { row in
+                        HStack(spacing: 5) {
+                            ForEach(Array(Self.brushChips[(row * 5)..<min(row * 5 + 5, Self.brushChips.count)]), id: \.0) { type, name in
                                 let selected = canvasState.brushType == type
-                                Button { canvasState.brushType = type } label: {
+                                Button { canvasState.selectBrush(type) } label: {
                                     BrushTipGlyph(type: type)
-                                        .frame(width: 44, height: 38)
+                                        .frame(width: 44, height: 30)
                                         .background(selected ? Color.white.opacity(0.12) : Color.white.opacity(0.04),
                                                     in: RoundedRectangle(cornerRadius: 8))
                                         .overlay(RoundedRectangle(cornerRadius: 8)
@@ -1281,7 +1284,7 @@ struct NativeBoardView: View {
                 }
                 // Sliders vertikalt m/ verdi til høyre (mockup)
                 VStack(spacing: 10) {
-                    sliderRow("Size", value: $canvasState.brushSize, range: 1...48,
+                    sliderRow("Size", value: $canvasState.brushSize, range: 1...120,
                               display: "\(Int(canvasState.brushSize)) px")
                     sliderRow("Opacity", value: $canvasState.brushOpacity, range: 0.1...1,
                               display: "\(Int(canvasState.brushOpacity * 100))%")
@@ -1678,14 +1681,67 @@ private struct BrushTipGlyph: View {
             case .eraser:
                 tip.addRoundedRect(in: CGRect(x: cx - 7, y: 8, width: 14, height: 20),
                                    cornerSize: CGSize(width: 3, height: 3))
+            case .layout:
+                shaft.addRect(CGRect(x: cx - 1.5, y: 6, width: 3, height: 16))
+                tip.move(to: CGPoint(x: cx - 1.5, y: 22))
+                tip.addLine(to: CGPoint(x: cx + 1.5, y: 22))
+                tip.addLine(to: CGPoint(x: cx, y: 30))
+                tip.closeSubpath()
+            case .heavy:
+                shaft.addRect(CGRect(x: cx - 4, y: 5, width: 8, height: 15))
+                tip.move(to: CGPoint(x: cx - 4, y: 20))
+                tip.addLine(to: CGPoint(x: cx + 4, y: 20))
+                tip.addLine(to: CGPoint(x: cx, y: 31))
+                tip.closeSubpath()
+            case .detail:
+                shaft.addRect(CGRect(x: cx - 1, y: 5, width: 2, height: 19))
+                tip.move(to: CGPoint(x: cx - 1, y: 24))
+                tip.addLine(to: CGPoint(x: cx + 1, y: 24))
+                tip.addLine(to: CGPoint(x: cx, y: 31))
+                tip.closeSubpath()
+            case .hatch:
+                for i in 0..<4 {
+                    let base = CGFloat(i) * 8
+                    tip.move(to: CGPoint(x: cx - 12 + base, y: 26))
+                    tip.addLine(to: CGPoint(x: cx - 6 + base, y: 10))
+                }
+            case .crosshatch:
+                for i in 0..<3 {
+                    let base = CGFloat(i) * 9
+                    tip.move(to: CGPoint(x: cx - 11 + base, y: 26))
+                    tip.addLine(to: CGPoint(x: cx - 4 + base, y: 10))
+                    tip.move(to: CGPoint(x: cx - 4 + base, y: 26))
+                    tip.addLine(to: CGPoint(x: cx - 11 + base, y: 10))
+                }
+            case .shade:
+                tip.addEllipse(in: CGRect(x: cx - 12, y: 13, width: 24, height: 11))
+            case .graintex:
+                // Deterministisk spredning (Canvas redraw skal ikke flimre)
+                for i in 0..<14 {
+                    let px = cx - 12 + CGFloat((i * 37) % 24)
+                    let py = 10 + CGFloat((i * 23 + 7) % 16)
+                    tip.addEllipse(in: CGRect(x: px, y: py, width: 1.6, height: 1.6))
+                }
+            case .kneaded:
+                tip.addRoundedRect(in: CGRect(x: cx - 8, y: 10, width: 16, height: 16),
+                                   cornerSize: CGSize(width: 6, height: 6))
+            case .lightlift:
+                tip.addEllipse(in: CGRect(x: cx - 9, y: 9, width: 18, height: 18))
             default:
                 shaft.addRect(CGRect(x: cx - 3, y: 5, width: 6, height: 16))
                 tip.addEllipse(in: CGRect(x: cx - 3, y: 21, width: 6, height: 10))
             }
             context.fill(shaft, with: .color(white.opacity(0.5)))
-            if type == .smudge {
+            switch type {
+            case .smudge:
                 context.fill(tip, with: .color(white.opacity(0.35)))
-            } else {
+            case .hatch, .crosshatch:
+                context.stroke(tip, with: .color(white), lineWidth: 1.4)
+            case .lightlift:
+                context.stroke(tip, with: .color(white.opacity(0.6)), lineWidth: 2)
+            case .shade, .graintex, .kneaded:
+                context.fill(tip, with: .color(white.opacity(0.6)))
+            default:
                 context.fill(tip, with: .color(white))
             }
         }
