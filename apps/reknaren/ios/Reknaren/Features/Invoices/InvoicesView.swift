@@ -8,6 +8,7 @@ struct InvoiceRow: Decodable, Identifiable, Sendable {
     let invoiceDate: String?
     let dueDate: String?
     let kid: String?
+    let netMinor: Money
     let grossMinor: Money
     let paidMinor: Money
     let customerName: String?
@@ -17,6 +18,7 @@ struct InvoiceRow: Decodable, Identifiable, Sendable {
         case invoiceNumber = "invoice_number"
         case invoiceDate = "invoice_date"
         case dueDate = "due_date"
+        case netMinor = "net_minor"
         case grossMinor = "gross_minor"
         case paidMinor = "paid_minor"
         case customerName = "customer_name"
@@ -28,12 +30,19 @@ struct InvoiceRow: Decodable, Identifiable, Sendable {
 final class InvoicesViewModel {
     enum Load { case idle, loading, loaded([InvoiceRow]), failed(String) }
     var load: Load = .idle
+    /// Effektiv skattesats i promille (fra reserve-oversikten) → per-faktura «sett av».
+    var taxRatePer1000: Int?
 
     func fetch(orgId: String) async {
         load = .loading
         do {
             let rows: [InvoiceRow] = try await APIClient.shared.get("/api/organizations/\(orgId)/invoices")
             load = .loaded(rows)
+            // Best-effort: hent skattesats så vi kan vise «sett av» per faktura.
+            struct Rate: Decodable { let effectiveRatePer1000: Int }
+            if let r = try? await APIClient.shared.get("/api/organizations/\(orgId)/tax/reserve-overview") as Rate {
+                taxRatePer1000 = r.effectiveRatePer1000 > 0 ? r.effectiveRatePer1000 : 350
+            }
         } catch {
             load = .failed(error.localizedDescription)
         }
@@ -56,7 +65,7 @@ struct InvoicesView: View {
                                        description: Text("Salgsfakturaer du oppretter dukker opp her. Opprett dem i web-appen."))
             case .loaded(let rows):
                 List {
-                    ForEach(rows) { InvoiceCard(inv: $0) }
+                    ForEach(rows) { InvoiceCard(inv: $0, taxRatePer1000: model.taxRatePer1000) }
                 }
             }
         }
@@ -68,6 +77,13 @@ struct InvoicesView: View {
 
 private struct InvoiceCard: View {
     let inv: InvoiceRow
+    let taxRatePer1000: Int?
+
+    /// Skatt å sette av for denne fakturaen = netto × effektiv sats.
+    private var setAsideMinor: Int64? {
+        guard let rate = taxRatePer1000, rate > 0, inv.netMinor.minor > 0 else { return nil }
+        return inv.netMinor.minor * Int64(rate) / 1000
+    }
 
     private var statusText: String {
         switch inv.status {
@@ -105,6 +121,11 @@ private struct InvoiceCard: View {
                 if inv.paidMinor.minor > 0 && inv.status != "paid" {
                     Text("Betalt \(inv.paidMinor.kr)").font(.caption2).foregroundStyle(.secondary)
                 }
+            }
+            if let sa = setAsideMinor {
+                Label("Sett av \(Money(minor: sa).kr) til skatt", systemImage: "banknote")
+                    .font(.caption).foregroundStyle(Color.reknarenGreen)
+                    .padding(.top, 1)
             }
         }
         .padding(.vertical, 2)
