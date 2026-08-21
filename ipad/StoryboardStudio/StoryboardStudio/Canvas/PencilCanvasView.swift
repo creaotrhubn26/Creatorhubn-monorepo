@@ -437,21 +437,67 @@ final class MetalCanvasUIView: UIView {
             holdStart = point
         }
         guard last.timestamp - holdStart.timestamp > 450 else { return nil }
+        let meanPressure = stroke.points.map(\.pressure).reduce(0, +) / Double(stroke.points.count)
+        let drawn = stroke.points.filter { $0.timestamp <= holdStart.timestamp }
+        func generated(_ coords: [(Double, Double)]) -> PencilStroke {
+            let duration = holdStart.timestamp - first.timestamp
+            var snapped = stroke
+            snapped.points = coords.enumerated().map { index, xy in
+                StrokePoint(x: xy.0, y: xy.1, pressure: meanPressure, tiltX: 0, tiltY: 0,
+                            timestamp: first.timestamp
+                                + duration * Double(index) / Double(max(1, coords.count - 1)))
+            }
+            return snapped
+        }
+
+        // Lukket form (start ≈ slutt av tegnedelen) → ellipse eller rektangel.
+        let xs = drawn.map(\.x), ys = drawn.map(\.y)
+        if let minX = xs.min(), let maxX = xs.max(),
+           let minY = ys.min(), let maxY = ys.max(),
+           maxX - minX > 40, maxY - minY > 40,
+           hypot(holdStart.x - first.x, holdStart.y - first.y)
+               < 0.35 * max(maxX - minX, maxY - minY),
+           drawn.count > 12 {
+            let cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
+            let a = max(1, (maxX - minX) / 2), b = max(1, (maxY - minY) / 2)
+            // Klassifiser: snittavvik fra enhets-ellipsen vs avstand til
+            // bbox-kant — hjørnepunkter avslører rektangel.
+            let ellipseError = drawn.map { point in
+                abs(hypot((point.x - cx) / a, (point.y - cy) / b) - 1)
+            }.reduce(0, +) / Double(drawn.count)
+            let rectError = drawn.map { point in
+                min(min(abs(point.x - minX), abs(point.x - maxX)),
+                    min(abs(point.y - minY), abs(point.y - maxY))) / min(a, b)
+            }.reduce(0, +) / Double(drawn.count)
+            if ellipseError <= rectError {
+                let steps = 48
+                return generated((0...steps).map { step in
+                    let t = Double(step) / Double(steps) * .pi * 2
+                    return (cx + a * cos(t), cy + b * sin(t))
+                })
+            }
+            let corners = [(minX, minY), (maxX, minY), (maxX, maxY), (minX, maxY), (minX, minY)]
+            var coords: [(Double, Double)] = []
+            for index in 0..<(corners.count - 1) {
+                for step in 0..<12 {
+                    let t = Double(step) / 12
+                    coords.append((corners[index].0 + (corners[index + 1].0 - corners[index].0) * t,
+                                   corners[index].1 + (corners[index + 1].1 - corners[index].1) * t))
+                }
+            }
+            coords.append(corners[0])
+            return generated(coords)
+        }
+
+        // Åpen form → rett linje (som før).
         let lineLength = hypot(holdStart.x - first.x, holdStart.y - first.y)
         guard lineLength > 40 else { return nil }
-        let meanPressure = stroke.points.map(\.pressure).reduce(0, +) / Double(stroke.points.count)
         let steps = 24
-        let points = (0...steps).map { step -> StrokePoint in
+        return generated((0...steps).map { step in
             let t = Double(step) / Double(steps)
-            return StrokePoint(
-                x: first.x + (holdStart.x - first.x) * t,
-                y: first.y + (holdStart.y - first.y) * t,
-                pressure: meanPressure, tiltX: 0, tiltY: 0,
-                timestamp: first.timestamp + (holdStart.timestamp - first.timestamp) * t)
-        }
-        var snapped = stroke
-        snapped.points = points
-        return snapped
+            return (first.x + (holdStart.x - first.x) * t,
+                    first.y + (holdStart.y - first.y) * t)
+        })
     }
 
     private var lastHiddenLayers: Set<String> = []

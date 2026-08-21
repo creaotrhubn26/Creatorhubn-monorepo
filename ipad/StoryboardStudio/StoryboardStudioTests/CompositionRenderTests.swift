@@ -1,4 +1,5 @@
 import XCTest
+import AVFoundation
 @testable import StoryboardStudio
 
 // Praksis-test av Story Brush Engine: komponerer en storyboard-scene i
@@ -736,5 +737,52 @@ final class CompositionRenderTests: XCTestCase {
         print("PERF: 500 strøk rebuild + GPU-ferdig på \(String(format: "%.2f", seconds)) s")
         XCTAssertLessThan(seconds, 10, "500-strøks rebuild for treg — sjekk dab-generering/batching")
         XCTAssertNotNil(renderer.thumbnailDataURL(maxWidth: 280))
+    }
+
+    // ── Eksportveier (forbedringspunkt 9) ────────────────────────────
+
+    private func makeFrame(strokes: [PencilStroke], id: String = "test-frame",
+                           durationSec: Double = 2) -> FrameSummary {
+        FrameSummary(
+            id: id, shotNumber: "1A", detail: "",
+            strokesJSON: try? StrokeSerialization.encodeToWebJSON(strokes),
+            description: "", notes: nil, shotType: nil, lensMm: nil,
+            movement: nil, durationSec: durationSec, transition: nil,
+            focusDepth: nil, timeOfDay: nil, weather: nil, beatTag: nil,
+            tags: [], thumbnailDataURL: nil,
+            drawingWidth: 1920, drawingHeight: 1080,
+            frameStatus: nil, comments: [], updatedAt: nil,
+            underlayDataURL: nil, underlayOpacity: nil)
+    }
+
+    /// Tekst-annotasjoner skal med i eksport-render (CoreText-pass) —
+    /// bildet med annotasjon må skille seg fra bildet uten.
+    func testExportIncludesTextAnnotations() throws {
+        let base = stroke(.pencil, size: 5, opacity: 0.9, line(200, 200, 900, 700))
+        var annotation = stroke(.pencil, size: 4, opacity: 1,
+                                points([(960, 300)], pressure: 0.7), color: "#8b5cf6")
+        annotation.textAnnotation = "PUSH IN"
+        let plain = FrameRenderService.image(for: makeFrame(strokes: [base]), maxWidth: 400)
+        let annotated = FrameRenderService.image(
+            for: makeFrame(strokes: [base, annotation]), maxWidth: 400)
+        let plainPNG = try XCTUnwrap(plain?.pngData())
+        let annotatedPNG = try XCTUnwrap(annotated?.pngData())
+        XCTAssertNotEqual(plainPNG, annotatedPNG, "annotasjonen endret ikke eksport-bildet")
+    }
+
+    /// Animatic-MP4: total varighet = sum av shot-varigheter.
+    func testAnimaticVideoDuration() async throws {
+        let frameA = makeFrame(strokes: [stroke(.pencil, size: 5, opacity: 0.9,
+                                                line(100, 100, 800, 600))],
+                               id: "anim-1", durationSec: 1)
+        let frameB = makeFrame(strokes: [stroke(.ink, size: 4, opacity: 0.95,
+                                                line(300, 200, 1500, 900))],
+                               id: "anim-2", durationSec: 2)
+        let exported = await AnimaticVideoExporter.export(
+            sceneHeading: "TESTSCENE", frames: [frameA, frameB])
+        let url = try XCTUnwrap(exported)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let duration = try await AVURLAsset(url: url).load(.duration).seconds
+        XCTAssertEqual(duration, 3.0, accuracy: 0.15)
     }
 }
