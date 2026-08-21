@@ -3,7 +3,7 @@ import SwiftUI
 /// Navigasjons-mål. Speiler web-nav; utvides fase for fase. `NavigationSplitView`
 /// gir sidebar på iPad og kollapser automatisk til stack på iPhone → universell.
 enum Screen: String, CaseIterable, Identifiable {
-    case capture, concierge, overview, bank, invoices, pay, vendors, calendar, deadlines, deduction, tax, mva, fixedAssets
+    case capture, concierge, overview, bank, invoices, pay, purchase, vendors, calendar, deadlines, deduction, tax, mva, fixedAssets
     var id: String { rawValue }
 
     var label: String {
@@ -14,6 +14,7 @@ enum Screen: String, CaseIterable, Identifiable {
         case .bank: return "Bank og avstemming"
         case .invoices: return "Salg og faktura"
         case .pay: return "Betal leverandører"
+        case .purchase: return "Registrer kjøp"
         case .vendors: return "Faste leverandører"
         case .calendar: return "Framover"
         case .deadlines: return "Frister"
@@ -31,6 +32,7 @@ enum Screen: String, CaseIterable, Identifiable {
         case .bank: return "building.columns"
         case .invoices: return "doc.text"
         case .pay: return "creditcard"
+        case .purchase: return "cart.badge.plus"
         case .vendors: return "shippingbox"
         case .calendar: return "calendar"
         case .deadlines: return "clock.badge.exclamationmark"
@@ -44,7 +46,7 @@ enum Screen: String, CaseIterable, Identifiable {
         switch self {
         case .capture, .concierge, .overview, .bank: return "Virksomhet"
         case .invoices: return "Salg"
-        case .pay, .vendors: return "Betaling"
+        case .pay, .purchase, .vendors: return "Betaling"
         case .calendar, .deadlines, .deduction: return "Innsikt"
         case .tax, .mva, .fixedAssets: return "Avslutning og skatt"
         }
@@ -109,6 +111,8 @@ struct RootView: View {
                     orgScoped { InvoicesView(orgId: $0) }
                 case .pay:
                     orgScoped { PayView(orgId: $0) }
+                case .purchase:
+                    orgScoped { RegistrerKjopView(orgId: $0) }
                 case .vendors:
                     orgScoped { VendorsView(orgId: $0) }
                 case .calendar:

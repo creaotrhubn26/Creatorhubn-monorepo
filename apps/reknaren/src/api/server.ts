@@ -123,6 +123,7 @@ import { sha256Hex } from '../documents/service.js';
 import { DomainError, NotFoundError, ValidationError } from '../shared/errors.js';
 import { buildTaxEstimate } from '../tax/estimate.js';
 import { recordTaxReserve, taxReserveOverview, taxSetAsideForInvoice } from '../tax/reserve.js';
+import { commonPurchaseCategories, registerPurchase } from '../tax/purchase.js';
 import type { OrganizationForm } from '../rules/types.js';
 import { buildVatReport, listVatCodes } from '../vat/engine.js';
 import { issueToken, resolveAuthSecret, verifyToken, type AuthTokenPayload } from './auth.js';
@@ -4420,6 +4421,31 @@ export function createApiServer(deps: ApiDeps): express.Express {
       res.json(toJson(await taxSetAsideForInvoice(deps.db, deps.rules, {
         organizationId: req.params.orgId!, orgForm: row.org_form as OrganizationForm, asOf, invoiceNetMinor: BigInt(row.net),
       })));
+    } catch (err) { next(err); }
+  });
+
+  // ── Registrer kjøp (ENK uten MVA) + fradrag/skatteeffekt ──────────────────
+  app.get('/api/organizations/:orgId/purchase-categories', requireAuth, requireOrgPermission('reports.view'), async (_req: AuthedRequest, res, next) => {
+    try { res.json(toJson(commonPurchaseCategories())); } catch (err) { next(err); }
+  });
+  app.post('/api/organizations/:orgId/purchases', requireAuth, requireOrgPermission('journal.post'), async (req: AuthedRequest, res, next) => {
+    try {
+      const org = (await deps.db.query(`SELECT org_form FROM organizations WHERE id=$1`, [req.params.orgId])).rows[0];
+      if (!org) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Organisasjonen finnes ikke.' } }); return; }
+      const body = z.object({
+        amountMinor: z.string().regex(/^\d+$/),
+        description: z.string().min(1).max(200),
+        accountNumber: z.string().regex(/^\d{4}$/),
+        paidPrivately: z.boolean().default(true),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      }).parse(req.body);
+      const result = await registerPurchase(deps.db, deps.rules, {
+        organizationId: req.params.orgId!, orgForm: org.org_form as OrganizationForm,
+        actor: { userId: req.auth!.userId, role: req.orgRole! },
+        amountMinor: BigInt(body.amountMinor), description: body.description, accountNumber: body.accountNumber,
+        paidPrivately: body.paidPrivately, date: body.date ?? new Date().toISOString().slice(0, 10),
+      });
+      res.status(201).json(toJson(result));
     } catch (err) { next(err); }
   });
 
