@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import PhotosUI
 
 // Native Board Pro — mockup-flaten («Neon City», STORYBOARD_DESIGN.md §4b)
 // i SwiftUI rundt Metal-motoren, med Role Room-brand (fiolett aksent).
@@ -277,6 +278,8 @@ struct NativeBoardView: View {
     // ved shot-/scenebytte så tegning ikke mistes uten eksplisitt Synk.
     @State private var loadedFrameRef: (sceneId: String, frameId: String)?
     @State private var loadedRevision = 0
+    @State private var loadedFrameUpdatedAt: String?
+    @State private var pendingFrameIds: Set<String> = []
 
     private func loadActiveFrameIntoCanvas() {
         flushPendingStrokes()
@@ -304,6 +307,9 @@ struct NativeBoardView: View {
         loadedFrameRef = board.scene.flatMap { scene in
             board.frame.map { (scene.id, $0.id) }
         }
+        loadedFrameUpdatedAt = board.frame?.updatedAt
+        applyUnderlay(to: renderer)
+        pendingFrameIds = PendingStrokeStore.pendingFrameIds()
         canvasState.revision += 1
         loadedRevision = canvasState.revision
         if restoredPending {
@@ -312,6 +318,14 @@ struct NativeBoardView: View {
             loadedRevision = -1
             scheduleAutosync()
         }
+    }
+
+    /// Dekod frame-underlaget og sett det på gitt renderer (inline og
+    /// fullskjerm har hver sin instans).
+    private func applyUnderlay(to target: MetalStrokeRenderer?) {
+        let image = board.frame?.underlayDataURL.flatMap(decodeDataURL)
+        target?.setUnderlay(cgImage: image?.cgImage,
+                            opacity: board.frame?.underlayOpacity ?? 0.4)
     }
 
     private func flushPendingStrokes() {
@@ -338,9 +352,11 @@ struct NativeBoardView: View {
                 let json = try StrokeSerialization.encodeToWebJSON(canvasState.strokes)
                 try await RoleRoomAPIClient.shared.saveFrameStrokes(
                     manuscriptId: board.manuscript.id, sceneId: scene.id, frameId: frame.id,
-                    strokesJSON: json, thumbnailDataURL: thumbnail)
+                    strokesJSON: json, thumbnailDataURL: thumbnail,
+                    baseUpdatedAt: loadedFrameUpdatedAt)
                 loadedRevision = canvasState.revision
                 PendingStrokeStore.clear(frameId: frame.id)
+                pendingFrameIds.remove(frame.id)
                 board.syncStatus = "Synket ✓"
             } catch SyncError.unauthenticated {
                 board.syncStatus = "Token utløpt — logg inn på nytt"
@@ -357,6 +373,7 @@ struct NativeBoardView: View {
               canvasState.revision != loadedRevision,
               let json = try? StrokeSerialization.encodeToWebJSON(canvasState.strokes) else { return }
         PendingStrokeStore.save(json, frameId: frame.id)
+        pendingFrameIds.insert(frame.id)
         autosyncTask?.cancel()
         autosyncTask = Task {
             try? await Task.sleep(nanoseconds: 3_000_000_000)
@@ -396,6 +413,11 @@ struct NativeBoardView: View {
                 topTab("Animatic", icon: "play.rectangle", active: false) { showAnimatic = true }
             }
             Spacer()
+            if !pendingFrameIds.isEmpty {
+                Label("\(pendingFrameIds.count) usynket", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.orange)
+            }
             if let status = board.syncStatus {
                 Text(status).font(.system(size: 12)).foregroundStyle(BoardBrand.dim)
             }
@@ -678,6 +700,12 @@ struct NativeBoardView: View {
                             Label("Flytt ned", systemImage: "arrow.down")
                         }
                         .disabled(index == (board.scene?.frames.count ?? 1) - 1)
+                        Button {
+                            exportPDFURL = FrameRenderService.exportPNG(
+                                frame: frame, projectTitle: board.manuscript.title)
+                        } label: {
+                            Label("Eksporter PNG", systemImage: "photo")
+                        }
                         Button(role: .destructive) { pendingDeleteFrameId = frame.id } label: {
                             Label("Slett shot", systemImage: "trash")
                         }
@@ -690,6 +718,10 @@ struct NativeBoardView: View {
                             .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color(white: 0.25), lineWidth: 1.5))
                     }
                     .accessibilityLabel("Shot-meny \(frame.shotNumber)")
+                    if pendingFrameIds.contains(frame.id) {
+                        Circle().fill(Color.orange).frame(width: 7, height: 7)
+                            .accessibilityLabel("Usynkede endringer")
+                    }
                     Rectangle().fill(Color(white: 0.72)).frame(width: 24, height: 1.5)
                 }
                 Text("ACTION / DIALOG")
@@ -1131,6 +1163,47 @@ struct NativeBoardView: View {
                         .buttonStyle(.plain)
                         .disabled(tagDraft.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
+
+                    // Referanse-underlag: foto i lav opacity bak tegningen
+                    // (kun i canvas — aldri i thumbnails/PDF/PNG).
+                    panelLabel("Underlag")
+                    HStack(spacing: 6) {
+                        PhotosPicker(selection: $underlayPickerItem, matching: .images) {
+                            Label(frame.underlayDataURL == nil ? "Velg foto" : "Bytt foto",
+                                  systemImage: "photo.on.rectangle")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 8).padding(.vertical, 5)
+                                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 7))
+                        }
+                        if frame.underlayDataURL != nil {
+                            Button {
+                                board.patchActiveFrame(["underlayDataURL": NSNull(), "underlayOpacity": NSNull()])
+                                renderer?.setUnderlay(cgImage: nil, opacity: 0)
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 11)).foregroundStyle(.white)
+                                    .frame(width: 24, height: 24)
+                                    .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Fjern underlag")
+                        }
+                    }
+                    if frame.underlayDataURL != nil {
+                        HStack(spacing: 8) {
+                            Slider(value: Binding(
+                                get: { frame.underlayOpacity ?? 0.4 },
+                                set: { value in
+                                    board.patchActiveFrame(["underlayOpacity": value])
+                                    applyUnderlay(to: renderer)
+                                }), in: 0.05...0.9)
+                                .tint(BoardBrand.accent)
+                            Text("\(Int((frame.underlayOpacity ?? 0.4) * 100))%")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(BoardBrand.dim)
+                        }
+                    }
                 } else {
                     Text("Velg et shot").font(.system(size: 13)).foregroundStyle(BoardBrand.dim)
                 }
@@ -1143,6 +1216,30 @@ struct NativeBoardView: View {
             notesDraft = board.frame?.notes ?? ""
             descriptionDraft = board.frame?.description ?? ""
         }
+        .onChange(of: underlayPickerItem) {
+            guard let item = underlayPickerItem else { return }
+            underlayPickerItem = nil
+            Task {
+                guard let data = try? await item.loadTransferable(type: Data.self),
+                      let image = UIImage(data: data) else { return }
+                // Nedskalert JPEG holder scene-payloaden nede (hele scenen
+                // POSTes ved hver synk).
+                let maxSide = 1280.0
+                let scale = min(1, maxSide / max(image.size.width, image.size.height))
+                let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = 1
+                let scaled = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+                    image.draw(in: CGRect(origin: .zero, size: size))
+                }
+                guard let jpeg = scaled.jpegData(compressionQuality: 0.6) else { return }
+                let dataURL = "data:image/jpeg;base64," + jpeg.base64EncodedString()
+                board.patchActiveFrame(["underlayDataURL": dataURL,
+                                        "underlayOpacity": board.frame?.underlayOpacity ?? 0.4])
+                renderer?.setUnderlay(cgImage: scaled.cgImage,
+                                      opacity: board.frame?.underlayOpacity ?? 0.4)
+            }
+        }
         .onAppear {
             notesDraft = board.frame?.notes ?? ""
             descriptionDraft = board.frame?.description ?? ""
@@ -1152,6 +1249,7 @@ struct NativeBoardView: View {
     @State private var notesDraft = ""
     @State private var descriptionDraft = ""
     @State private var tagDraft = ""
+    @State private var underlayPickerItem: PhotosPickerItem?
 
     private func addTag(frame: FrameSummary) {
         let tag = tagDraft.trimmingCharacters(in: .whitespaces).uppercased()
@@ -1328,8 +1426,8 @@ struct NativeBoardView: View {
                               display: "\(Int(smoothingBinding.wrappedValue * 100))%")
                 }
                 .frame(maxWidth: .infinity)
-                // Strøk-forhåndsvisning (mockup: hvit kurve på svart)
-                StrokePreview(size: canvasState.brushSize, opacity: canvasState.brushOpacity)
+                // Strøk-forhåndsvisning: ekte dabs gjennom motoren
+                StrokePreview(brush: canvasState.currentBrush())
                     .frame(width: 118, height: 122)
             }
         }
@@ -1864,28 +1962,52 @@ private struct BrushTipGlyph: View {
 }
 
 // Strøk-forhåndsvisning: hvit S-kurve på svart, bredde/dekning følger valget.
+// Ekte forhåndsvisning: S-kurve med trykksvell rendret gjennom motoren
+// (samme dab-pipeline som canvasen) — viser penselens faktiske karakter.
+// Delt offscreen-renderer; siste render caches på pensel-spec.
 private struct StrokePreview: View {
-    let size: Double
-    let opacity: Double
+    let brush: BrushSpec
 
     var body: some View {
-        Canvas { context, canvasSize in
-            var path = Path()
-            let w = canvasSize.width, h = canvasSize.height
-            path.move(to: CGPoint(x: w * 0.14, y: h * 0.62))
-            path.addCurve(to: CGPoint(x: w * 0.5, y: h * 0.45),
-                          control1: CGPoint(x: w * 0.24, y: h * 0.28),
-                          control2: CGPoint(x: w * 0.4, y: h * 0.72))
-            path.addCurve(to: CGPoint(x: w * 0.86, y: h * 0.5),
-                          control1: CGPoint(x: w * 0.62, y: h * 0.2),
-                          control2: CGPoint(x: w * 0.72, y: h * 0.75))
-            context.stroke(path,
-                           with: .color(.white.opacity(opacity)),
-                           style: StrokeStyle(lineWidth: max(2, size * 0.55),
-                                              lineCap: .round, lineJoin: .round))
+        Group {
+            if let image = Self.render(brush: brush) {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                Color.white
+            }
         }
-        .background(Color.black, in: RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(BoardBrand.border, lineWidth: 1))
+    }
+
+    @MainActor private static var cache: (key: String, image: UIImage?)?
+
+    @MainActor private static func render(brush: BrushSpec) -> UIImage? {
+        let key = (try? JSONEncoder().encode(brush))
+            .map { String(decoding: $0, as: UTF8.self) } ?? UUID().uuidString
+        if let cached = cache, cached.key == key { return cached.image }
+        guard let renderer = FrameRenderService.renderer else { return nil }
+        let width = 236.0, height = 244.0
+        var points: [StrokePoint] = []
+        let sampleCount = 48
+        for i in 0...sampleCount {
+            let t = Double(i) / Double(sampleCount)
+            points.append(StrokePoint(
+                x: width * (0.1 + 0.8 * t),
+                y: height * (0.5 + 0.2 * sin(t * .pi * 2)),
+                pressure: 0.25 + 0.75 * sin(t * .pi),
+                tiltX: 30, tiltY: 20,
+                timestamp: t * 400))
+        }
+        let stroke = PencilStroke(
+            id: "brush-preview", points: points, inputType: "pencil",
+            color: brush.color, width: brush.size, opacity: brush.opacity,
+            brush: brush, boardLayer: nil, textAnnotation: nil)
+        renderer.resizeCanvas(width: Int(width), height: Int(height))
+        renderer.rebuild(strokes: [stroke], scale: 1)
+        let image = renderer.thumbnailDataURL(maxWidth: width).flatMap(decodeDataURL)
+        cache = (key, image)
+        return image
     }
 }
 
@@ -1902,6 +2024,12 @@ struct FullscreenDrawView: View {
     @Environment(\.dismiss) private var dismiss
 
     private var aspect: CGFloat { CGFloat(frame.drawingWidth / max(1, frame.drawingHeight)) }
+
+    private func applyUnderlay() {
+        let image = frame.underlayDataURL.flatMap(decodeDataURL)
+        renderer?.setUnderlay(cgImage: image?.cgImage,
+                              opacity: frame.underlayOpacity ?? 0.4)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1928,6 +2056,7 @@ struct FullscreenDrawView: View {
                                  fingerDraws: fingerDraws)
         }
         .background(Color.black)
+        .onAppear { applyUnderlay() }
     }
 }
 
@@ -2020,6 +2149,41 @@ struct ReviewSheet: View {
 
 // PDF-eksport: bransjeleveransen — A4 landskap, én scene per seksjon,
 // 3 shot-rader per side (thumb + kode + handling + metadata).
+// Delt offscreen-motor: re-rendrer frames fra strokesJSON i full oppløsning
+// (PDF/PNG-eksport og penselforhåndsvisning) — 280px-thumbs er kun for
+// scenelister. Én instans gjenbrukes; canvas resizes per kall.
+@MainActor
+enum FrameRenderService {
+    static let renderer = MetalStrokeRenderer()
+
+    /// Rendrer frame-tegningen offscreen ved gitt bredde (aspekt fra
+    /// drawingWidth/Height). nil → ingen strøk / motor utilgjengelig.
+    static func image(for frame: FrameSummary, maxWidth: CGFloat) -> UIImage? {
+        guard let renderer,
+              let json = frame.strokesJSON,
+              let strokes = try? StrokeSerialization.decodeFromWebJSON(json) else { return nil }
+        let drawable = strokes.filter { $0.textAnnotation == nil }
+        guard !drawable.isEmpty, frame.drawingWidth > 0 else { return nil }
+        let scale = maxWidth / frame.drawingWidth
+        renderer.resizeCanvas(width: Int(maxWidth),
+                              height: Int(frame.drawingHeight * scale))
+        renderer.rebuild(strokes: drawable, scale: scale)
+        guard let dataURL = renderer.thumbnailDataURL(maxWidth: maxWidth) else { return nil }
+        return decodeDataURL(dataURL)
+    }
+
+    /// PNG-fil i temp for deling (shot-menyens «Eksporter PNG»).
+    static func exportPNG(frame: FrameSummary, projectTitle: String) -> URL? {
+        guard let image = image(for: frame, maxWidth: 1920) ?? decodeDataURL(frame.thumbnailDataURL),
+              let png = image.pngData() else { return nil }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(projectTitle.replacingOccurrences(of: "/", with: "-")) \(frame.shotNumber).png")
+        try? png.write(to: url)
+        return url
+    }
+}
+
+@MainActor
 enum BoardPDFExporter {
     static func export(projectTitle: String, scenes: [SceneSummary]) -> URL? {
         let pageRect = CGRect(x: 0, y: 0, width: 842, height: 595) // A4 landskap pt
@@ -2077,7 +2241,8 @@ enum BoardPDFExporter {
         let border = UIBezierPath(rect: thumbRect)
         border.lineWidth = 1
         border.stroke()
-        if let image = decodeDataURL(frame.thumbnailDataURL) {
+        if let image = FrameRenderService.image(for: frame, maxWidth: 1120)
+            ?? decodeDataURL(frame.thumbnailDataURL) {
             image.draw(in: thumbRect)
         }
         // Metadata-kolonne
@@ -2313,6 +2478,12 @@ enum PendingStrokeStore {
 
     static func clear(frameId: String) {
         try? FileManager.default.removeItem(at: fileURL(frameId))
+    }
+
+    /// Frame-id-er med usynkede strøk på disk (indikator-grunnlag).
+    static func pendingFrameIds() -> Set<String> {
+        let files = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        return Set(files.filter { $0.hasSuffix(".json") }.map { String($0.dropLast(5)) })
     }
 }
 
