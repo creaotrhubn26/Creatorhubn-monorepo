@@ -14740,7 +14740,7 @@ let legacyCompatTableReadyPromise: Promise<boolean> | null = null;
 async function ensureLegacyCompatTable(): Promise<boolean> {
   if (legacyCompatTableReadyPromise) return legacyCompatTableReadyPromise;
 
-  legacyCompatTableReadyPromise = (async () => {
+  const attempt = (async () => {
     try {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS ${LEGACY_COMPAT_TABLE_NAME} (
@@ -14756,11 +14756,17 @@ async function ensureLegacyCompatTable(): Promise<boolean> {
         "Legacy compat store unavailable, using in-memory fallback:",
         error,
       );
+      // KRITISK: ikke cache negativen. Feiler dette under oppstart (DB
+      // ikke klar rett etter deploy) ville hele compat-storen lest tomt
+      // for resten av prosessens levetid — casting-data «forsvant» fra
+      // prod til neste restart. Nullstill så neste kall prøver igjen.
+      legacyCompatTableReadyPromise = null;
       return false;
     }
   })();
 
-  return legacyCompatTableReadyPromise;
+  legacyCompatTableReadyPromise = attempt;
+  return attempt;
 }
 
 // ── Compat-store laget ─────────────────────────────────────────────────
