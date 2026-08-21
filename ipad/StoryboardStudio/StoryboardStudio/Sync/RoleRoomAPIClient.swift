@@ -219,17 +219,61 @@ actor RoleRoomAPIClient {
         }
     }
 
-    func fetchScenes(manuscriptId: String) async throws -> [SceneSummary] {
-        let scenes: [[String: Any]]
-        do {
-            scenes = try await getJSONArray(path: "/api/casting/manuscripts/\(manuscriptId)/scenes")
-            cacheWrite(scenes, key: "scenes-\(manuscriptId)")
-        } catch {
-            guard let cached = cacheRead(key: "scenes-\(manuscriptId)") as? [[String: Any]] else { throw error }
-            scenes = cached
+    // ETag per manuskript (svarer serverens scenes-version): polling og
+    // refresh koster 304-tomt-svar i stedet for hele scenelisten (thumbs +
+    // underlag) når ingenting er endret.
+    private var scenesETag: [String: String] = [:]
+
+    /// Hent scener med If-None-Match. nil = 304 (uendret — rawScenes gjelder).
+    private func fetchScenesRaw(manuscriptId: String) async throws -> [[String: Any]]? {
+        var request = try request(path: "/api/casting/manuscripts/\(manuscriptId)/scenes", query: [:])
+        // URLCache må ikke besvare betinget GET selv — vi styrer 304 manuelt.
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        if let etag = scenesETag[manuscriptId], rawScenes[manuscriptId] != nil {
+            request.setValue(etag, forHTTPHeaderField: "If-None-Match")
         }
-        rawScenes[manuscriptId] = scenes
-        return scenes.compactMap(Self.summarize(scene:))
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let http = response as? HTTPURLResponse
+        let status = http?.statusCode ?? 0
+        if status == 304 { return nil }
+        guard status == 200 else {
+            throw status == 401 ? SyncError.unauthenticated : SyncError.http(status)
+        }
+        if let etag = http?.value(forHTTPHeaderField: "ETag") {
+            scenesETag[manuscriptId] = etag
+        }
+        let payload = try JSONSerialization.jsonObject(with: data)
+        if let list = payload as? [[String: Any]] { return list }
+        if let object = payload as? [String: Any],
+           let list = (object["scenes"] ?? object["data"]) as? [[String: Any]] {
+            return list
+        }
+        throw SyncError.malformed("scenes")
+    }
+
+    func fetchScenes(manuscriptId: String) async throws -> [SceneSummary] {
+        do {
+            if let fresh = try await fetchScenesRaw(manuscriptId: manuscriptId) {
+                rawScenes[manuscriptId] = fresh
+                cacheWrite(fresh, key: "scenes-\(manuscriptId)")
+            }
+        } catch {
+            if rawScenes[manuscriptId] == nil {
+                guard let cached = cacheRead(key: "scenes-\(manuscriptId)") as? [[String: Any]] else { throw error }
+                rawScenes[manuscriptId] = cached
+            }
+        }
+        return (rawScenes[manuscriptId] ?? []).compactMap(Self.summarize(scene:))
+    }
+
+    /// Live-polling fra boardet: har serveren en nyere sceneliste?
+    /// (Billig 304 ved uendret.) true = rawScenes ble oppdatert.
+    func pollScenesChanged(manuscriptId: String) async -> Bool {
+        guard let fresh = try? await fetchScenesRaw(manuscriptId: manuscriptId) else { return false }
+        rawScenes[manuscriptId] = fresh
+        lastRefresh[manuscriptId] = Date()
+        cacheWrite(fresh, key: "scenes-\(manuscriptId)")
+        return true
     }
 
     // MARK: Skriving
@@ -244,11 +288,12 @@ actor RoleRoomAPIClient {
         // Throttle: autosynk-serier på samme frame trenger ikke fersk kopi
         // hver gang — 15 s-vindu balanserer konfliktvern mot trafikk.
         if let last = lastRefresh[manuscriptId], Date().timeIntervalSince(last) < 15 { return }
-        if let fresh = try? await getJSONArray(path: "/api/casting/manuscripts/\(manuscriptId)/scenes") {
+        if let fresh = try? await fetchScenesRaw(manuscriptId: manuscriptId) {
             rawScenes[manuscriptId] = fresh
-            lastRefresh[manuscriptId] = Date()
             cacheWrite(fresh, key: "scenes-\(manuscriptId)")
         }
+        // 304 teller også som fersk — serveren bekreftet at vår kopi gjelder.
+        lastRefresh[manuscriptId] = Date()
     }
 
     /// Skriv strokes (web-JSON-STRENG — parseStoredStrokes-krav) tilbake på
@@ -529,6 +574,83 @@ actor RoleRoomAPIClient {
         scenes.append(scene)
         rawScenes[manuscriptId] = scenes
         return sceneId
+    }
+
+    /// Slett én scene (nytt backend-endepunkt; ingen legacy-fallback —
+    /// eldre backend gir 404 og operasjonen feiler synlig).
+    func deleteScene(manuscriptId: String, sceneId: String) async throws {
+        var request = try request(path: "/api/casting/scenes/\(sceneId)",
+                                  query: ["manuscriptId": manuscriptId])
+        request.httpMethod = "DELETE"
+        let (_, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200...299).contains(status) else {
+            throw status == 401 ? SyncError.unauthenticated : SyncError.http(status)
+        }
+        rawScenes[manuscriptId]?.removeAll { $0["id"] as? String == sceneId }
+    }
+
+    /// Dupliser scene: kopi med nye scene-/frame-id-er, «(kopi)»-tittel.
+    func duplicateScene(manuscriptId: String, sceneId: String) async throws -> String {
+        await refreshScenes(manuscriptId: manuscriptId)
+        guard var scenes = rawScenes[manuscriptId],
+              let source = scenes.first(where: { $0["id"] as? String == sceneId }) else {
+            throw SyncError.malformed("scene \(sceneId) ikke funnet")
+        }
+        let now = ISO8601DateFormatter().string(from: Date())
+        let stamp = Int(Date().timeIntervalSince1970 * 1000)
+        var copy = source
+        let newId = "scene-\(stamp)"
+        copy["id"] = newId
+        let title = (source["title"] as? String) ?? (source["sceneHeading"] as? String) ?? "Scene"
+        copy["title"] = title + " (kopi)"
+        copy["sceneHeading"] = title + " (kopi)"
+        copy["sceneNumber"] = (scenes.compactMap { $0["sceneNumber"] as? Int }.max() ?? scenes.count) + 1
+        copy["createdAt"] = now
+        copy["updatedAt"] = now
+        var frames = (source["storyboardFrames"] as? [[String: Any]]) ?? []
+        for index in frames.indices {
+            frames[index]["id"] = "frame-\(stamp)-\(index)"
+        }
+        copy["storyboardFrames"] = frames
+        try await sendJSON(path: "/api/casting/scenes", method: "POST", body: copy)
+        scenes.append(copy)
+        rawScenes[manuscriptId] = scenes
+        return newId
+    }
+
+    /// Omdøp scene (upsert av hele scenen — sjelden operasjon).
+    func renameScene(manuscriptId: String, sceneId: String, title: String) async throws {
+        await refreshScenes(manuscriptId: manuscriptId)
+        guard var scenes = rawScenes[manuscriptId],
+              let index = scenes.firstIndex(where: { $0["id"] as? String == sceneId }) else {
+            throw SyncError.malformed("scene \(sceneId) ikke funnet")
+        }
+        scenes[index]["title"] = title
+        scenes[index]["sceneHeading"] = title
+        scenes[index]["updatedAt"] = ISO8601DateFormatter().string(from: Date())
+        rawScenes[manuscriptId] = scenes
+        try await sendJSON(path: "/api/casting/scenes", method: "POST", body: scenes[index])
+    }
+
+    /// Renummerer shots i rekkefølge: prefiks (tall-delen av første shot,
+    /// ellers sceneNumber) + A, B, …, Z, AA.
+    func renumberFrames(manuscriptId: String, sceneId: String) async throws {
+        try await mutateSceneFrames(manuscriptId: manuscriptId, sceneId: sceneId) { frames in
+            guard !frames.isEmpty else { return }
+            let firstShot = (frames[0]["shotNumber"] as? String) ?? ""
+            let digits = firstShot.prefix { $0.isNumber }
+            let prefix = digits.isEmpty ? "1" : String(digits)
+            for index in frames.indices {
+                var letters = ""
+                var value = index
+                repeat {
+                    letters = String(UnicodeScalar(UInt8(65 + value % 26))) + letters
+                    value = value / 26 - 1
+                } while value >= 0
+                frames[index]["shotNumber"] = prefix + letters
+            }
+        }
     }
 
     // MARK: HTTP

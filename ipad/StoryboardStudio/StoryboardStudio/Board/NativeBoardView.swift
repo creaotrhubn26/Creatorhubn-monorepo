@@ -85,6 +85,14 @@ final class BoardState: ObservableObject {
         }
     }
 
+    /// Live-polling: 304-billig sjekk mot serveren; true = noe endret og
+    /// summaries er lastet på nytt.
+    func refreshFromServer() async -> Bool {
+        let changed = await RoleRoomAPIClient.shared.pollScenesChanged(manuscriptId: manuscript.id)
+        if changed { await reload() }
+        return changed
+    }
+
     func addShot() {
         guard let scene else { return }
         runMutation("Shot lagt til ✓") {
@@ -135,6 +143,71 @@ final class BoardState: ObservableObject {
                 syncStatus = error.localizedDescription
             }
         }
+    }
+
+    func deleteScene(sceneId: String) {
+        syncStatus = "…"
+        Task {
+            do {
+                try await RoleRoomAPIClient.shared.deleteScene(
+                    manuscriptId: manuscript.id, sceneId: sceneId)
+                await reload()
+                selectedSceneIndex = min(selectedSceneIndex, max(0, scenes.count - 1))
+                activeFrameIndex = 0
+                syncStatus = "Scene slettet ✓"
+            } catch {
+                syncStatus = error.localizedDescription
+            }
+        }
+    }
+
+    func duplicateScene(sceneId: String) {
+        syncStatus = "…"
+        Task {
+            do {
+                let newId = try await RoleRoomAPIClient.shared.duplicateScene(
+                    manuscriptId: manuscript.id, sceneId: sceneId)
+                await reload()
+                if let index = scenes.firstIndex(where: { $0.id == newId }) {
+                    selectedSceneIndex = index
+                    activeFrameIndex = 0
+                }
+                syncStatus = "Scene duplisert ✓"
+            } catch {
+                syncStatus = error.localizedDescription
+            }
+        }
+    }
+
+    func renameScene(sceneId: String, title: String) {
+        syncStatus = "…"
+        Task {
+            do {
+                try await RoleRoomAPIClient.shared.renameScene(
+                    manuscriptId: manuscript.id, sceneId: sceneId, title: title)
+                await reload()
+                syncStatus = "Omdøpt ✓"
+            } catch {
+                syncStatus = error.localizedDescription
+            }
+        }
+    }
+
+    func renumberShots() {
+        guard let scene else { return }
+        runMutation("Renummerert ✓") {
+            try await RoleRoomAPIClient.shared.renumberFrames(
+                manuscriptId: self.manuscript.id, sceneId: scene.id)
+            return nil
+        }
+    }
+
+    /// Flytt shot til eksakt posisjon (drag-reorder).
+    func moveShot(frameId: String, toIndex target: Int) {
+        guard let scene,
+              let source = scene.frames.firstIndex(where: { $0.id == frameId }),
+              source != target else { return }
+        moveShot(frameId: frameId, offset: target - source)
     }
 
     /// Kjør frame-mutasjon → reload → velg returnert frame-id (om noen).
@@ -279,6 +352,21 @@ struct NativeBoardView: View {
                 if !pendingFrameIds.isEmpty { flushAllPending() }
             }
         }
+        .task {
+            // Live-polling (30 s, 304-billig med ETag): web-endringer dukker
+            // opp uten app-restart. Aktiv frame reloades kun når vi ikke har
+            // lokale usynkede endringer.
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                guard !Task.isCancelled else { break }
+                let changed = await board.refreshFromServer()
+                if changed,
+                   canvasState.revision == loadedRevision,
+                   board.frame?.updatedAt != loadedFrameUpdatedAt {
+                    loadActiveFrameIntoCanvas()
+                }
+            }
+        }
         .onChange(of: boardTool) { selectedStrokeIds = [] }
     }
 
@@ -328,12 +416,42 @@ struct NativeBoardView: View {
         }
     }
 
-    /// Dekod frame-underlaget og sett det på gitt renderer (inline og
-    /// fullskjerm har hver sin instans).
+    /// Dekod frame-underlag + ev. onion-skin (forrige shot) og sett på
+    /// gitt renderer (inline og fullskjerm har hver sin instans).
     private func applyUnderlay(to target: MetalStrokeRenderer?) {
-        let image = board.frame?.underlayDataURL.flatMap(decodeDataURL)
-        target?.setUnderlay(cgImage: image?.cgImage,
-                            opacity: board.frame?.underlayOpacity ?? 0.4)
+        let underlayImage = board.frame?.underlayDataURL.flatMap(decodeDataURL)
+        var onionImage: UIImage?
+        if onionSkin, let scene = board.scene, board.activeFrameIndex > 0,
+           scene.frames.indices.contains(board.activeFrameIndex - 1) {
+            let previous = scene.frames[board.activeFrameIndex - 1]
+            onionImage = FrameRenderService.image(for: previous, maxWidth: 1120)
+                ?? decodeDataURL(previous.thumbnailDataURL)
+        }
+        let opacity = board.frame?.underlayOpacity ?? 0.4
+        switch (underlayImage, onionImage) {
+        case (nil, nil):
+            target?.setUnderlay(cgImage: nil, opacity: 0)
+        case (let underlay?, nil):
+            target?.setUnderlay(cgImage: underlay.cgImage, opacity: opacity)
+        default:
+            // Komponer på papirfarget flate (samlet opacity 1 i shaderen).
+            let width = 1120.0
+            let height = width * (board.frame.map { $0.drawingHeight / max(1, $0.drawingWidth) } ?? 9.0 / 16)
+            let size = CGSize(width: width, height: height)
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            let composed = UIGraphicsImageRenderer(size: size, format: format).image { context in
+                UIColor(red: 0.961, green: 0.949, blue: 0.918, alpha: 1).setFill()
+                context.fill(CGRect(origin: .zero, size: size))
+                if let underlay = underlayImage {
+                    underlay.draw(in: CGRect(origin: .zero, size: size), blendMode: .normal, alpha: opacity)
+                }
+                if let onion = onionImage {
+                    onion.draw(in: CGRect(origin: .zero, size: size), blendMode: .multiply, alpha: 0.35)
+                }
+            }
+            target?.setUnderlay(cgImage: composed.cgImage, opacity: 1)
+        }
     }
 
     private func flushPendingStrokes() {
@@ -461,6 +579,19 @@ struct NativeBoardView: View {
             }
             if let status = board.syncStatus {
                 Text(status).font(.system(size: 12)).foregroundStyle(BoardBrand.dim)
+                if status.localizedCaseInsensitiveContains("token") {
+                    // Token utløp midt i økta — re-auth uten å miste tegningen.
+                    Button {
+                        showReauth = true
+                    } label: {
+                        Text("Logg inn")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(Color.red.opacity(0.8), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             Button {
                 toneReport = renderer?.toneReport()
@@ -564,6 +695,21 @@ struct NativeBoardView: View {
                                 .stroke(selected ? BoardBrand.accent : BoardBrand.border, lineWidth: selected ? 1.5 : 1))
                         }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            Button {
+                                renameSceneId = scene.id
+                                renameSceneDraft = scene.heading
+                            } label: { Label("Omdøp", systemImage: "pencil") }
+                            Button {
+                                board.duplicateScene(sceneId: scene.id)
+                            } label: { Label("Dupliser", systemImage: "plus.square.on.square") }
+                            Button {
+                                board.renumberShots()
+                            } label: { Label("Renummerer shots", systemImage: "textformat.123") }
+                            Button(role: .destructive) {
+                                pendingDeleteSceneId = scene.id
+                            } label: { Label("Slett scene", systemImage: "trash") }
+                        }
                     }
                 }
                 .padding(.horizontal, 12)
@@ -580,6 +726,38 @@ struct NativeBoardView: View {
             ForEach([BoardTool.select, .draw, .eraser], id: \.self) { tool in toolButton(tool) }
             Rectangle().fill(BoardBrand.border).frame(width: 1, height: 20).padding(.horizontal, 4)
             ForEach([BoardTool.arrow, .rect, .text], id: \.self) { tool in toolButton(tool) }
+            Rectangle().fill(BoardBrand.border).frame(width: 1, height: 20).padding(.horizontal, 4)
+            // Onion-skin: forrige shot bak aktiv frame
+            Button {
+                onionSkin.toggle()
+                applyUnderlay(to: renderer)
+            } label: {
+                Image(systemName: "square.2.layers.3d.bottom.filled")
+                    .font(.system(size: 14))
+                    .foregroundStyle(onionSkin ? .white : BoardBrand.dim)
+                    .frame(width: 34, height: 30)
+                    .background(onionSkin ? BoardBrand.accent : Color.white.opacity(0.05),
+                                in: RoundedRectangle(cornerRadius: 7))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Onion-skin")
+            // Perspektiv-hjelpelinjer
+            Menu {
+                Picker("Perspektiv", selection: $perspectiveMode) {
+                    Text("Av").tag(0)
+                    Text("1-punkts").tag(1)
+                    Text("2-punkts").tag(2)
+                    Text("3-punkts").tag(3)
+                }
+            } label: {
+                Image(systemName: "road.lanes.curved.right")
+                    .font(.system(size: 14))
+                    .foregroundStyle(perspectiveMode > 0 ? .white : BoardBrand.dim)
+                    .frame(width: 34, height: 30)
+                    .background(perspectiveMode > 0 ? BoardBrand.accent : Color.white.opacity(0.05),
+                                in: RoundedRectangle(cornerRadius: 7))
+            }
+            .accessibilityLabel("Perspektiv")
             Spacer()
             Button { board.addShot() } label: {
                 Label("Add shot", systemImage: "plus")
@@ -645,6 +823,16 @@ struct NativeBoardView: View {
         .sheet(item: $exportPDFURL) { url in
             ShareSheet(items: [url])
         }
+        .sheet(isPresented: $showReauth) {
+            NavigationStack { LoginView(sync: reauthSync) }
+        }
+        .onChange(of: reauthSync.isLoggedIn) {
+            if reauthSync.isLoggedIn {
+                showReauth = false
+                board.syncStatus = "Innlogget ✓"
+                flushAllPending()
+            }
+        }
         .confirmationDialog("Slette shotet permanent?",
                             isPresented: Binding(get: { pendingDeleteFrameId != nil },
                                                  set: { if !$0 { pendingDeleteFrameId = nil } })) {
@@ -661,6 +849,27 @@ struct NativeBoardView: View {
                 if !title.isEmpty { board.addScene(title: title) }
             }
             Button("Avbryt", role: .cancel) { newSceneTitle = "" }
+        }
+        .alert("Omdøp scene", isPresented: Binding(
+            get: { renameSceneId != nil },
+            set: { if !$0 { renameSceneId = nil } })) {
+            TextField("Scenetittel", text: $renameSceneDraft)
+            Button("Lagre") {
+                let title = renameSceneDraft.trimmingCharacters(in: .whitespaces)
+                if let sceneId = renameSceneId, !title.isEmpty {
+                    board.renameScene(sceneId: sceneId, title: title)
+                }
+                renameSceneId = nil
+            }
+            Button("Avbryt", role: .cancel) { renameSceneId = nil }
+        }
+        .confirmationDialog("Slette scenen og alle shots permanent?",
+                            isPresented: Binding(get: { pendingDeleteSceneId != nil },
+                                                 set: { if !$0 { pendingDeleteSceneId = nil } })) {
+            Button("Slett scene", role: .destructive) {
+                if let sceneId = pendingDeleteSceneId { board.deleteScene(sceneId: sceneId) }
+                pendingDeleteSceneId = nil
+            }
         }
     }
 
@@ -723,6 +932,10 @@ struct NativeBoardView: View {
                 ForEach(Array((board.scene?.frames ?? []).enumerated()), id: \.element.id) { index, frame in
                     shotRow(frame: frame, index: index)
                         .id(index)
+                        .onDrop(of: [.text], delegate: ShotDropDelegate(
+                            targetIndex: index,
+                            draggedFrameId: $draggedFrameId,
+                            board: board))
                 }
             }
             .padding(28)
@@ -770,6 +983,18 @@ struct NativeBoardView: View {
                             .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color(white: 0.25), lineWidth: 1.5))
                     }
                     .accessibilityLabel("Shot-meny \(frame.shotNumber)")
+                    // Drag-reorder: grip-håndtak (drag på selve raden ville
+                    // kollidert med tegning på aktiv canvas).
+                    Image(systemName: "line.3.horizontal")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color(white: 0.6))
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
+                        .onDrag {
+                            draggedFrameId = frame.id
+                            return NSItemProvider(object: frame.id as NSString)
+                        }
+                        .accessibilityLabel("Flytt shot \(frame.shotNumber)")
                     if pendingFrameIds.contains(frame.id) {
                         Circle().fill(Color.orange).frame(width: 7, height: 7)
                             .accessibilityLabel("Usynkede endringer")
@@ -893,6 +1118,12 @@ struct NativeBoardView: View {
                             .allowsHitTesting(false)
                     }
                 }
+                if perspectiveMode > 0 {
+                    PerspectiveOverlay(
+                        mode: perspectiveMode,
+                        points: $vanishingPoints,
+                        editable: boardTool == .select)
+                }
                 if boardTool == .arrow || boardTool == .rect || boardTool == .text {
                     annotationCapture(scale: scale)
                 }
@@ -998,6 +1229,8 @@ struct NativeBoardView: View {
                     .stroke(BoardBrand.accent, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
                     .background(BoardBrand.accent.opacity(0.06))
                     .frame(width: rect.width + 16, height: rect.height + 16)
+                    .scaleEffect(selectionScaleFactor)
+                    .rotationEffect(.radians(selectionRotationAngle))
                     .offset(x: rect.minX - 8 + selectionDragOffset.width,
                             y: rect.minY - 8 + selectionDragOffset.height)
                     .contentShape(Rectangle())
@@ -1008,6 +1241,44 @@ struct NativeBoardView: View {
                                 moveSelection(dx: Double(value.translation.width / scale),
                                               dy: Double(value.translation.height / scale))
                                 selectionDragOffset = .zero
+                            }
+                    )
+                // Skaleringshåndtak (nedre høyre): drag fra/mot senter.
+                selectionHandle(systemImage: "arrow.up.left.and.arrow.down.right")
+                    .position(x: rect.maxX + 8, y: rect.maxY + 8)
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                let center = CGPoint(x: rect.midX, y: rect.midY)
+                                let start = hypot(value.startLocation.x - center.x,
+                                                  value.startLocation.y - center.y)
+                                let current = hypot(value.location.x - center.x,
+                                                    value.location.y - center.y)
+                                selectionScaleFactor = max(0.1, min(8, current / max(1, start)))
+                            }
+                            .onEnded { _ in
+                                transformSelection(scaleBy: Double(selectionScaleFactor),
+                                                   rotateBy: 0, viewRect: rect, scale: scale)
+                                selectionScaleFactor = 1
+                            }
+                    )
+                // Rotasjonshåndtak (topp midt).
+                selectionHandle(systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
+                    .position(x: rect.midX, y: rect.minY - 28)
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                let center = CGPoint(x: rect.midX, y: rect.midY)
+                                let startAngle = atan2(value.startLocation.y - center.y,
+                                                       value.startLocation.x - center.x)
+                                let currentAngle = atan2(value.location.y - center.y,
+                                                         value.location.x - center.x)
+                                selectionRotationAngle = Double(currentAngle - startAngle)
+                            }
+                            .onEnded { _ in
+                                transformSelection(scaleBy: 1, rotateBy: selectionRotationAngle,
+                                                   viewRect: rect, scale: scale)
+                                selectionRotationAngle = 0
                             }
                     )
                 HStack(spacing: 8) {
@@ -1050,6 +1321,42 @@ struct NativeBoardView: View {
             if Double(inside) / Double(total) > 0.5 { hit.insert(stroke.id) }
         }
         selectedStrokeIds = hit
+    }
+
+    private func selectionHandle(systemImage: String) -> some View {
+        Image(systemName: systemImage)
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 22, height: 22)
+            .background(BoardBrand.accent, in: Circle())
+            .overlay(Circle().stroke(.white, lineWidth: 1.5))
+    }
+
+    /// Skaler/roter valgte strøk rundt utvalgets senter (innholdsrom).
+    private func transformSelection(scaleBy factor: Double, rotateBy angle: Double,
+                                    viewRect: CGRect, scale: CGFloat) {
+        guard !selectedStrokeIds.isEmpty,
+              factor != 1 || angle != 0 else { return }
+        let center = (x: Double(viewRect.midX / scale), y: Double(viewRect.midY / scale))
+        let cosA = cos(angle), sinA = sin(angle)
+        canvasState.undoStack.append(canvasState.strokes)
+        canvasState.redoStack = []
+        canvasState.strokes = canvasState.strokes.map { stroke in
+            guard selectedStrokeIds.contains(stroke.id) else { return stroke }
+            var transformed = stroke
+            transformed.points = transformed.points.map { point in
+                var p = point
+                let dx = (p.x - center.x) * factor
+                let dy = (p.y - center.y) * factor
+                p.x = center.x + dx * cosA - dy * sinA
+                p.y = center.y + dx * sinA + dy * cosA
+                return p
+            }
+            transformed.width *= factor
+            transformed.brush?.size *= factor
+            return transformed
+        }
+        canvasState.revision += 1
     }
 
     private func moveSelection(dx: Double, dy: Double) {
@@ -1302,6 +1609,21 @@ struct NativeBoardView: View {
     @State private var descriptionDraft = ""
     @State private var tagDraft = ""
     @State private var underlayPickerItem: PhotosPickerItem?
+    @State private var renameSceneId: String?
+    @State private var renameSceneDraft = ""
+    @State private var pendingDeleteSceneId: String?
+    @State private var draggedFrameId: String?
+    @StateObject private var reauthSync = SyncState()
+    @State private var showReauth = false
+    // Onion-skin: forrige shot i lav opacity bak aktiv frame (kontinuitet).
+    @State private var onionSkin = false
+    // Perspektiv-hjelpelinjer: 0=av, 1/2/3-punkts. VP-er normalisert 0–1
+    // (y>1 = under canvas for 3-punkts). Kun visning — aldri i data/eksport.
+    @State private var perspectiveMode = 0
+    @State private var vanishingPoints: [CGPoint] = []
+    // Lasso-transform (transient under gest)
+    @State private var selectionScaleFactor: CGFloat = 1
+    @State private var selectionRotationAngle: Double = 0
 
     private func addTag(frame: FrameSummary) {
         let tag = tagDraft.trimmingCharacters(in: .whitespaces).uppercased()
@@ -2324,6 +2646,109 @@ struct ReviewSheet: View {
 
 // PDF-eksport: bransjeleveransen — A4 landskap, én scene per seksjon,
 // 3 shot-rader per side (thumb + kode + handling + metadata).
+// Perspektiv-hjelpelinjer: stråler fra flyttbare forsvinningspunkter +
+// horisont. Ren visning (aldri i strokes/eksport); håndtak kun aktive i
+// select-modus så tegning ikke forstyrres.
+private struct PerspectiveOverlay: View {
+    let mode: Int
+    @Binding var points: [CGPoint]   // normalisert 0–1 (kan gå utenfor)
+    let editable: Bool
+
+    private static let defaults: [Int: [CGPoint]] = [
+        1: [CGPoint(x: 0.5, y: 0.45)],
+        2: [CGPoint(x: 0.06, y: 0.45), CGPoint(x: 0.94, y: 0.45)],
+        3: [CGPoint(x: 0.06, y: 0.45), CGPoint(x: 0.94, y: 0.45), CGPoint(x: 0.5, y: 1.6)],
+    ]
+
+    var body: some View {
+        GeometryReader { geo in
+            let size = geo.size
+            let active = activePoints()
+            ZStack {
+                Canvas { context, _ in
+                    let diagonal = hypot(size.width, size.height) * 2.2
+                    for vp in active {
+                        let origin = CGPoint(x: vp.x * size.width, y: vp.y * size.height)
+                        for step in 0..<36 {
+                            let angle = Double(step) / 36 * .pi * 2
+                            var path = Path()
+                            path.move(to: origin)
+                            path.addLine(to: CGPoint(x: origin.x + cos(angle) * diagonal,
+                                                     y: origin.y + sin(angle) * diagonal))
+                            context.stroke(path, with: .color(BoardBrand.accent.opacity(0.18)),
+                                           lineWidth: 0.8)
+                        }
+                    }
+                    // Horisont gjennom de to første VP-ene
+                    if active.count >= 2 {
+                        var horizon = Path()
+                        let a = CGPoint(x: active[0].x * size.width, y: active[0].y * size.height)
+                        let b = CGPoint(x: active[1].x * size.width, y: active[1].y * size.height)
+                        let direction = CGVector(dx: b.x - a.x, dy: b.y - a.y)
+                        let length = max(1, hypot(direction.dx, direction.dy))
+                        let unit = CGVector(dx: direction.dx / length, dy: direction.dy / length)
+                        horizon.move(to: CGPoint(x: a.x - unit.dx * 4000, y: a.y - unit.dy * 4000))
+                        horizon.addLine(to: CGPoint(x: a.x + unit.dx * 4000, y: a.y + unit.dy * 4000))
+                        context.stroke(horizon, with: .color(BoardBrand.accent.opacity(0.45)),
+                                       style: StrokeStyle(lineWidth: 1.2, dash: [8, 5]))
+                    }
+                }
+                .allowsHitTesting(false)
+                if editable {
+                    ForEach(active.indices, id: \.self) { index in
+                        Circle()
+                            .fill(BoardBrand.accent)
+                            .frame(width: 14, height: 14)
+                            .overlay(Circle().stroke(.white, lineWidth: 2))
+                            .position(x: active[index].x * size.width,
+                                      y: min(size.height - 8, max(8, active[index].y * size.height)))
+                            .gesture(
+                                DragGesture()
+                                    .onChanged { value in
+                                        ensureCount()
+                                        points[index] = CGPoint(
+                                            x: value.location.x / size.width,
+                                            y: value.location.y / size.height)
+                                    }
+                            )
+                    }
+                }
+            }
+        }
+        .allowsHitTesting(editable)
+    }
+
+    private func activePoints() -> [CGPoint] {
+        let wanted = Self.defaults[mode] ?? []
+        if points.count != wanted.count { return wanted }
+        return points
+    }
+
+    private func ensureCount() {
+        let wanted = Self.defaults[mode] ?? []
+        if points.count != wanted.count { points = wanted }
+    }
+}
+
+// Drag-reorder av shots: droppes grip-håndtaket på en annen rad flyttes
+// shotet dit (server-side moveFrame med offset).
+private struct ShotDropDelegate: DropDelegate {
+    let targetIndex: Int
+    @Binding var draggedFrameId: String?
+    let board: BoardState
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let frameId = draggedFrameId else { return false }
+        draggedFrameId = nil
+        board.moveShot(frameId: frameId, toIndex: targetIndex)
+        return true
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+}
+
 // Delt offscreen-motor: re-rendrer frames fra strokesJSON i full oppløsning
 // (PDF/PNG-eksport og penselforhåndsvisning) — 280px-thumbs er kun for
 // scenelister. Én instans gjenbrukes; canvas resizes per kall.
