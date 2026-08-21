@@ -63,6 +63,21 @@ final class MetalCanvasUIView: UIView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) not supported") }
 
+    // Inne i SwiftUI ScrollView (native Board) kansellerer UIScrollView
+    // content-touches — tegnestrøk dør. Slå av cancel/delay i alle
+    // forfedre-scrollviews så canvasen eier sine touches.
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        var view: UIView? = superview
+        while let current = view {
+            if let scroll = current as? UIScrollView {
+                scroll.canCancelContentTouches = false
+                scroll.delaysContentTouches = false
+            }
+            view = current.superview
+        }
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         let scale = displayScale

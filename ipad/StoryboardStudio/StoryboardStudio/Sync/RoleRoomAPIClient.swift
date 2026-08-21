@@ -27,6 +27,20 @@ struct FrameSummary: Identifiable, Sendable {
     let shotNumber: String
     let detail: String
     let strokesJSON: String?
+    // Intensjonslaget (native Board) — samme felter som web-Inspector
+    let description: String
+    let notes: String?
+    let shotType: String?
+    let lensMm: Int?
+    let movement: String?
+    let durationSec: Double
+    let transition: String?
+    let focusDepth: String?
+    let timeOfDay: String?
+    let weather: String?
+    let beatTag: String?
+    let tags: [String]
+    let thumbnailDataURL: String?
 }
 
 struct SceneSummary: Identifiable, Sendable {
@@ -99,10 +113,18 @@ actor RoleRoomAPIClient {
     }
 
     func fetchManuscripts(projectId: String) async throws -> [ManuscriptSummary] {
-        let payload = try await getJSON(path: "/api/casting/manuscripts",
-                                        query: ["projectId": projectId])
-        let list = (payload["manuscripts"] as? [[String: Any]])
-            ?? (payload["data"] as? [[String: Any]])
+        // Prod kan returnere bare array ELLER objekt-innpakning — tåler begge.
+        let (data, response) = try await URLSession.shared.data(
+            for: request(path: "/api/casting/manuscripts", query: ["projectId": projectId]))
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 else {
+            throw status == 401 ? SyncError.unauthenticated : SyncError.http(status)
+        }
+        let payload = try JSONSerialization.jsonObject(with: data)
+        let list = (payload as? [[String: Any]])
+            ?? ((payload as? [String: Any]).flatMap {
+                ($0["manuscripts"] ?? $0["data"]) as? [[String: Any]]
+            })
             ?? []
         return list.compactMap { entry in
             guard let id = entry["id"] as? String else { return nil }
@@ -155,6 +177,38 @@ actor RoleRoomAPIClient {
         guard found else { throw SyncError.malformed("frame \(frameId) ikke funnet") }
         rawScenes[manuscriptId] = scenes
 
+        guard let scene = scenes.first(where: { $0["id"] as? String == sceneId }) else {
+            throw SyncError.malformed("scene \(sceneId) ikke funnet")
+        }
+        try await sendJSON(path: "/api/casting/scenes", method: "POST", body: scene)
+    }
+
+    /// Patch vilkårlige felter på én frame (Inspector) og upsert scenen.
+    func saveFramePatch(
+        manuscriptId: String,
+        sceneId: String,
+        frameId: String,
+        fields: [String: any Sendable]
+    ) async throws {
+        guard var scenes = rawScenes[manuscriptId] else {
+            throw SyncError.malformed("scener ikke lastet")
+        }
+        let now = ISO8601DateFormatter().string(from: Date())
+        var found = false
+        for sceneIndex in scenes.indices {
+            guard scenes[sceneIndex]["id"] as? String == sceneId else { continue }
+            var frames = (scenes[sceneIndex]["storyboardFrames"] as? [[String: Any]]) ?? []
+            for frameIndex in frames.indices where frames[frameIndex]["id"] as? String == frameId {
+                for (key, value) in fields {
+                    frames[frameIndex][key] = value
+                }
+                frames[frameIndex]["updatedAt"] = now
+                found = true
+            }
+            scenes[sceneIndex]["storyboardFrames"] = frames
+        }
+        guard found else { throw SyncError.malformed("frame \(frameId) ikke funnet") }
+        rawScenes[manuscriptId] = scenes
         guard let scene = scenes.first(where: { $0["id"] as? String == sceneId }) else {
             throw SyncError.malformed("scene \(sceneId) ikke funnet")
         }
@@ -226,14 +280,29 @@ actor RoleRoomAPIClient {
             guard let frameId = frame["id"] as? String else { return nil }
             let shot = (frame["shotNumber"] as? String) ?? "?"
             let description = (frame["description"] as? String) ?? ""
-            let shotType = (frame["shotType"] as? String) ?? (frame["cameraAngle"] as? String) ?? ""
+            let shotType = (frame["shotType"] as? String) ?? (frame["cameraAngle"] as? String)
             let drawingData = frame["drawingData"] as? [String: Any]
             let strokes = drawingData?["strokes"] as? String
+            let duration = (frame["duration"] as? Double) ?? Double(frame["duration"] as? Int ?? 2)
+            let lens = (frame["lensMm"] as? Int) ?? (frame["lensMm"] as? Double).map(Int.init)
             return FrameSummary(
                 id: frameId,
                 shotNumber: shot,
-                detail: [shotType, description].filter { !$0.isEmpty }.joined(separator: " · "),
-                strokesJSON: strokes
+                detail: [shotType ?? "", description].filter { !$0.isEmpty }.joined(separator: " · "),
+                strokesJSON: strokes,
+                description: description,
+                notes: frame["notes"] as? String,
+                shotType: shotType,
+                lensMm: lens,
+                movement: frame["movement"] as? String,
+                durationSec: duration,
+                transition: frame["transition"] as? String,
+                focusDepth: frame["focusDepth"] as? String,
+                timeOfDay: frame["timeOfDay"] as? String,
+                weather: frame["weather"] as? String,
+                beatTag: frame["beatTag"] as? String,
+                tags: (frame["tags"] as? [String]) ?? [],
+                thumbnailDataURL: frame["thumbnailUrl"] as? String
             )
         }
         return SceneSummary(id: id, heading: heading, frames: frames)
