@@ -120,6 +120,7 @@ struct NativeBoardView: View {
     @State private var renderer = MetalStrokeRenderer()
     @State private var showAnimatic = false
     @State private var showShotList = false
+    @State private var showScript = false
     @State private var boardTool: BoardTool = .draw
     @State private var textPromptShown = false
     @State private var textPromptValue = ""
@@ -232,6 +233,7 @@ struct NativeBoardView: View {
             // Fanerad (mockup): Board aktiv · Shot List · Animatic.
             HStack(spacing: 4) {
                 topTab("Board", icon: "rectangle.grid.2x2", active: true) {}
+                topTab("Script", icon: "doc.text", active: false) { showScript = true }
                 topTab("Shot List", icon: "list.bullet", active: false) { showShotList = true }
                 topTab("Animatic", icon: "play.rectangle", active: false) { showAnimatic = true }
             }
@@ -366,6 +368,9 @@ struct NativeBoardView: View {
         .sheet(isPresented: $showShotList) {
             ShotListSheet(sceneHeading: board.scene?.heading ?? "",
                           frames: board.scene?.frames ?? [])
+        }
+        .sheet(isPresented: $showScript) {
+            ScriptSheet(scenes: board.scenes, activeIndex: board.selectedSceneIndex)
         }
     }
 
@@ -677,9 +682,27 @@ struct NativeBoardView: View {
                         .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
                         .onSubmit { board.patchActiveFrame(["notes": notesDraft]) }
 
-                    if !frame.tags.isEmpty {
-                        panelLabel("Tags")
-                        FlowTags(tags: frame.tags)
+                    // TAGS (mockup: chips med x + tillegg).
+                    panelLabel("Tags")
+                    FlowTags(tags: frame.tags) { removed in
+                        board.patchActiveFrame(["tags": frame.tags.filter { $0 != removed }])
+                    }
+                    HStack(spacing: 6) {
+                        TextField("Ny tag", text: $tagDraft)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white)
+                            .textInputAutocapitalization(.characters)
+                            .padding(.horizontal, 8).padding(.vertical, 5)
+                            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 7))
+                            .onSubmit { addTag(frame: frame) }
+                        Button { addTag(frame: frame) } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 11)).foregroundStyle(.white)
+                                .frame(width: 24, height: 24)
+                                .background(BoardBrand.accent, in: RoundedRectangle(cornerRadius: 7))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(tagDraft.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 } else {
                     Text("Velg et shot").font(.system(size: 13)).foregroundStyle(BoardBrand.dim)
@@ -694,6 +717,14 @@ struct NativeBoardView: View {
     }
 
     @State private var notesDraft = ""
+    @State private var tagDraft = ""
+
+    private func addTag(frame: FrameSummary) {
+        let tag = tagDraft.trimmingCharacters(in: .whitespaces).uppercased()
+        tagDraft = ""
+        guard !tag.isEmpty, !frame.tags.contains(tag) else { return }
+        board.patchActiveFrame(["tags": frame.tags + [tag]])
+    }
 
     private func glyphButton(
         _ symbol: String, value: String, current: String?, action: @escaping () -> Void
@@ -817,12 +848,30 @@ struct NativeBoardView: View {
         }
     }
 
+    private var activeLayerOpacityBinding: Binding<Double> {
+        Binding(
+            get: { canvasState.layerOpacity[canvasState.activeBoardLayer] ?? 1 },
+            set: { canvasState.layerOpacity[canvasState.activeBoardLayer] = $0 }
+        )
+    }
+
     private var layersPanel: some View {
         VStack(alignment: .leading, spacing: 6) {
-            panelLabel("Layers")
+            HStack(spacing: 8) {
+                panelLabel("Layers")
+                Spacer()
+                // Opacity for aktivt lag (mockup: slider øverst i panelet)
+                Slider(value: activeLayerOpacityBinding, in: 0.1...1)
+                    .tint(BoardBrand.accent)
+                    .frame(width: 70)
+                Text("\(Int((canvasState.layerOpacity[canvasState.activeBoardLayer] ?? 1) * 100))%")
+                    .font(.system(size: 9).monospacedDigit()).foregroundStyle(BoardBrand.dim)
+                    .frame(width: 30, alignment: .trailing)
+            }
             ForEach(BoardLayers.all, id: \.self) { layer in
                 let active = canvasState.activeBoardLayer == layer
                 let hidden = canvasState.hiddenLayers.contains(layer)
+                let locked = canvasState.lockedLayers.contains(layer)
                 HStack(spacing: 8) {
                     Button {
                         if hidden { canvasState.hiddenLayers.remove(layer) }
@@ -833,6 +882,7 @@ struct NativeBoardView: View {
                             .foregroundStyle(hidden ? BoardBrand.label : BoardBrand.dim)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Vis \(layer)")
                     Button { canvasState.activeBoardLayer = layer } label: {
                         Text(layer)
                             .font(.system(size: 11, weight: active ? .bold : .regular))
@@ -841,6 +891,16 @@ struct NativeBoardView: View {
                     }
                     .buttonStyle(.plain)
                     Spacer(minLength: 0)
+                    Button {
+                        if locked { canvasState.lockedLayers.remove(layer) }
+                        else { canvasState.lockedLayers.insert(layer) }
+                    } label: {
+                        Image(systemName: locked ? "lock.fill" : "lock.open")
+                            .font(.system(size: 10))
+                            .foregroundStyle(locked ? BoardBrand.accent : BoardBrand.label)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Lås \(layer)")
                 }
                 .padding(.horizontal, 8).padding(.vertical, 4)
                 .background(active ? BoardBrand.accent.opacity(0.22) : .clear,
@@ -1029,14 +1089,97 @@ struct ShotListSheet: View {
 
 private struct FlowTags: View {
     let tags: [String]
+    var onRemove: ((String) -> Void)?
+
     var body: some View {
-        HStack(spacing: 6) {
-            ForEach(tags, id: \.self) { tag in
-                Text(tag)
-                    .font(.system(size: 10, weight: .bold)).kerning(0.5)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(Color.white.opacity(0.08), in: Capsule())
+        // Wrap-layout: chips brytes over linjer (maks 3 per rad i 250pt-panelet)
+        let rows = stride(from: 0, to: tags.count, by: 3).map { Array(tags[$0..<min($0 + 3, tags.count)]) }
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: 6) {
+                    ForEach(row, id: \.self) { tag in
+                        HStack(spacing: 4) {
+                            Text(tag)
+                                .font(.system(size: 10, weight: .bold)).kerning(0.5)
+                                .foregroundStyle(.white)
+                            if let onRemove {
+                                Button { onRemove(tag) } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundStyle(.white.opacity(0.55))
+                                        .frame(width: 20, height: 20)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Fjern \(tag)")
+                            }
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.white.opacity(0.08), in: Capsule())
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Script-fanen: manusvisning av scenene (slugline + handling + karakterer).
+struct ScriptSheet: View {
+    let scenes: [SceneSummary]
+    let activeIndex: Int
+    @Environment(\.dismiss) private var dismiss
+
+    private func slugline(_ scene: SceneSummary, index: Int) -> String {
+        let parts = [scene.intExt?.uppercased(),
+                     scene.location?.uppercased(),
+                     scene.timeOfDay.map { "— \($0.uppercased())" }]
+            .compactMap(\.self)
+        let head = parts.isEmpty ? scene.heading.uppercased() : parts.joined(separator: " ")
+        return "\(scene.sceneNumber ?? index + 1). \(head)"
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 26) {
+                        ForEach(Array(scenes.enumerated()), id: \.element.id) { index, scene in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(slugline(scene, index: index))
+                                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                if let text = scene.descriptionText, !text.isEmpty {
+                                    Text(text)
+                                        .font(.system(size: 13, design: .monospaced))
+                                        .lineSpacing(3)
+                                }
+                                if !scene.characters.isEmpty {
+                                    // Karakterfeltet kan inneholde rolle-ID-er
+                                    // («…-ROLE-NORA») — vis bare navnedelen.
+                                    Text(scene.characters
+                                        .map { $0.components(separatedBy: "-ROLE-").last ?? $0 }
+                                        .map { $0.uppercased() }
+                                        .joined(separator: " · "))
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Text("\(scene.frames.count) \(scene.frames.count == 1 ? "SHOT" : "SHOTS") PÅ BOARDET")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(Color.purple)
+                            }
+                            .id(index)
+                            .padding(14)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(index == activeIndex ? Color.purple.opacity(0.08) : Color.clear,
+                                        in: RoundedRectangle(cornerRadius: 10))
+                        }
+                    }
+                    .padding(20)
+                }
+                .onAppear { proxy.scrollTo(activeIndex, anchor: .top) }
+            }
+            .navigationTitle("Script")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { Button("Lukk") { dismiss() } }
             }
         }
     }
