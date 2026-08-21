@@ -33,8 +33,8 @@ import AutoFixNormalIcon from '@mui/icons-material/AutoFixNormal';
 import TrendingFlatIcon from '@mui/icons-material/TrendingFlat';
 import CropSquareIcon from '@mui/icons-material/CropSquare';
 import TitleIcon from '@mui/icons-material/Title';
-import GestureIcon from '@mui/icons-material/Gesture';
 import NearMeIcon from '@mui/icons-material/NearMe';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -433,6 +433,38 @@ const BrushTipGlyph: React.FC<{ type: string; active: boolean }> = ({ type, acti
   );
 };
 
+// NOTES/DIAGRAM-miniskisse: rendrer Notes-lagets strokes nedskalert i
+// venstre kolonne (mockupens småskisser — her som ekte innhold fra laget).
+const NotesDiagramMini: React.FC<{ strokesJSON: unknown; width: number }> = ({ strokesJSON, width }) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const notesStrokes = useMemo(
+    () => parseStrokesJSON(strokesJSON).filter((stroke) => stroke.boardLayer === 'Notes' && !stroke.textAnnotation),
+    [strokesJSON],
+  );
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx || notesStrokes.length === 0) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const scale = canvas.width / 1920;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#55565c';
+    for (const stroke of notesStrokes) {
+      ctx.lineWidth = Math.max(0.8, (stroke.width ?? 4) * scale * 1.4);
+      ctx.globalAlpha = stroke.opacity ?? 1;
+      ctx.beginPath();
+      (stroke.points ?? []).forEach((point: any, index: number) => {
+        if (index === 0) ctx.moveTo(point.x * scale, point.y * scale);
+        else ctx.lineTo(point.x * scale, point.y * scale);
+      });
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }, [notesStrokes]);
+  if (notesStrokes.length === 0) return null;
+  return <canvas ref={canvasRef} width={Math.round(width)} height={Math.round(width * 1080 / 1920)} style={{ display: 'block', marginTop: 4 }} />;
+};
+
 // Mockupens ark-tekster er håndskrevet — Caveat lastes idempotent én gang.
 const HANDWRITING = '"Caveat", "Segoe Script", "Bradley Hand", cursive';
 const ensureHandwritingFont = () => {
@@ -488,6 +520,7 @@ export const StoryboardBoardPage: React.FC<{
   const [brushOpacity, setBrushOpacity] = useState(100);
   const [brushSmoothing, setBrushSmoothing] = useState(32);
   const [brushType, setBrushType] = useState('pencil');
+  const [brushesCollapsed, setBrushesCollapsed] = useState(false);
   const [brushColor, setBrushColor] = useState('#26282e');
   const [hiddenLayers, setHiddenLayers] = useState<Record<string, boolean>>({});
   const [lockedLayers, setLockedLayers] = useState<Record<string, boolean>>({});
@@ -626,7 +659,8 @@ export const StoryboardBoardPage: React.FC<{
               onClick={(event) => setSeqMenuAnchor(event.currentTarget as HTMLElement)}
               sx={{ fontSize: 14, fontWeight: 700, color: '#fff', cursor: 'pointer' }}
             >
-              {sequenceLabel} ▾
+              {String(Math.max(1, sceneItems.findIndex((entry) => entry.id === selectedSceneId) + 1)).padStart(2, '0')}
+              {'\u2002'}{sequenceLabel} ▾
             </Typography>
             <Menu anchorEl={seqMenuAnchor} open={Boolean(seqMenuAnchor)} onClose={() => setSeqMenuAnchor(null)}>
               {sceneItems.map((sceneEntry) => (
@@ -730,8 +764,6 @@ export const StoryboardBoardPage: React.FC<{
             {toolButton('shapes', <TrendingFlatIcon sx={{ fontSize: 20 }} />, 'Pil-annotasjon')}
             {toolButton('rect', <CropSquareIcon sx={{ fontSize: 18 }} />, 'Rektangel')}
             {toolButton('text', <TitleIcon sx={{ fontSize: 18 }} />, 'Tekst')}
-            <Box sx={{ width: 1, height: 22, bgcolor: PANEL_BORDER, mx: 0.75 }} />
-            {toolButton('lasso', <GestureIcon sx={{ fontSize: 18 }} />, 'Lasso')}
             <Box sx={{ flex: 1 }} />
             {frames.map((_, index) => (
               <Box
@@ -796,20 +828,24 @@ export const StoryboardBoardPage: React.FC<{
                         }}>
                           {rowFrame.shotNumber}
                         </Box>
+                        <Box sx={{ display: 'inline-block', width: `${Math.round(26 * zoom)}px`, height: '1.5px', bgcolor: '#b9bac0', ml: 0.75, mb: '5px' }} />
                         <Typography sx={{ fontSize: scaledFont(9), letterSpacing: 1, fontWeight: 700, color: '#9a9b a1'.replace(' ', ''), textTransform: 'uppercase' }}>
                           Action / Dialog
                         </Typography>
                         <Typography sx={{ fontFamily: HANDWRITING, fontSize: scaledFont(17), color: '#33343a', lineHeight: 1.3, mb: 1 }}>
                           {rowFrame.description}
                         </Typography>
-                        {rowFrame.notes && (
+                        {(rowFrame.notes || rowFrame.drawingData?.strokes) && (
                           <>
                             <Typography sx={{ fontSize: scaledFont(9), letterSpacing: 1, fontWeight: 700, color: '#9a9ba1', textTransform: 'uppercase' }}>
                               Notes / Diagram
                             </Typography>
-                            <Typography sx={{ fontFamily: HANDWRITING, fontSize: scaledFont(15), color: '#55565c', lineHeight: 1.3 }}>
-                              {rowFrame.notes}
-                            </Typography>
+                            {rowFrame.notes && (
+                              <Typography sx={{ fontFamily: HANDWRITING, fontSize: scaledFont(15), color: '#55565c', lineHeight: 1.3 }}>
+                                {rowFrame.notes}
+                              </Typography>
+                            )}
+                            <NotesDiagramMini strokesJSON={rowFrame.drawingData?.strokes} width={168 * zoom} />
                           </>
                         )}
                       </Box>
@@ -894,7 +930,18 @@ export const StoryboardBoardPage: React.FC<{
               <IconButton size="small" onClick={() => setHandMode((prev) => !prev)} sx={{ color: handMode ? '#fff' : TEXT_DIM, bgcolor: handMode ? BRAND : 'transparent', borderRadius: 1.5 }}>
                 <BackHandIcon sx={{ fontSize: 17 }} />
               </IconButton>
-              <IconButton size="small" sx={{ color: TEXT_DIM }}><PanToolAltIcon sx={{ fontSize: 17 }} /></IconButton>
+              <Tooltip title="Gå til aktivt shot">
+                <IconButton
+                  size="small"
+                  onClick={() => {
+                    const row = document.querySelector(`[data-testid="board-page-row-${frames[activeFrameIndex]?.shotNumber}"]`);
+                    row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }}
+                  sx={{ color: TEXT_DIM }}
+                >
+                  <PanToolAltIcon sx={{ fontSize: 17 }} />
+                </IconButton>
+              </Tooltip>
               <Box sx={{ width: 1, height: 20, bgcolor: PANEL_BORDER, mx: 0.5 }} />
               <IconButton size="small" onClick={() => setZoomClamped(zoom - 0.1)} sx={{ color: TEXT_DIM }}><ZoomOutIcon sx={{ fontSize: 18 }} /></IconButton>
               <Typography
@@ -1082,8 +1129,11 @@ export const StoryboardBoardPage: React.FC<{
             <Box sx={{ minWidth: 0 }}>
               <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 1 }}>
                 <PanelLabel>Brushes</PanelLabel>
+                <IconButton size="small" onClick={() => setBrushesCollapsed((prev) => !prev)} sx={{ p: 0.25, color: TEXT_DIM, transform: brushesCollapsed ? 'rotate(-90deg)' : 'none' }}>
+                  <ExpandMoreIcon sx={{ fontSize: 16 }} />
+                </IconButton>
               </Stack>
-              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ width: 176 }}>
+              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ width: 176, display: brushesCollapsed ? 'none' : 'flex' }}>
                 {['pencil', 'graphite', 'charcoal', 'conte', 'ink', 'pen', 'marker'].map((brushOption, index) => {
                   const selected = brushType === brushOption && activeTool !== 'eraser';
                   return (
@@ -1146,6 +1196,10 @@ export const StoryboardBoardPage: React.FC<{
           <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
             <PanelLabel>Layers</PanelLabel>
             <Box sx={{ flex: 1 }} />
+            <TextField select size="small" value="Normal" sx={{ width: 96, '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.05)', borderRadius: 1.5, fontSize: 11.5 }, '& fieldset': { borderColor: PANEL_BORDER } }}>
+              <MenuItem value="Normal">Normal</MenuItem>
+              <MenuItem value="Multiply">Multiply</MenuItem>
+            </TextField>
             <Typography sx={{ fontSize: 10.5, color: TEXT_DIM }}>Opacity</Typography>
             <Box
               onClick={(event) => {
