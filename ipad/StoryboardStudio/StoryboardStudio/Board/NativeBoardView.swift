@@ -57,9 +57,29 @@ final class BoardState: ObservableObject {
         do {
             scenes = try await RoleRoomAPIClient.shared.fetchScenes(manuscriptId: manuscript.id)
             selectedSceneIndex = min(selectedSceneIndex, max(0, scenes.count - 1))
-            activeFrameIndex = 0
+            // Behold aktivt shot (klemt) — reset til 0 kastet brukeren tilbake
+            // til første shot ved hver Inspector-patch.
+            activeFrameIndex = min(activeFrameIndex, max(0, (scene?.frames.count ?? 1) - 1))
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func addShot() {
+        guard let scene else { return }
+        syncStatus = "…"
+        Task {
+            do {
+                let newId = try await RoleRoomAPIClient.shared.addFrame(
+                    manuscriptId: manuscript.id, sceneId: scene.id)
+                await reload()
+                if let index = self.scene?.frames.firstIndex(where: { $0.id == newId }) {
+                    activeFrameIndex = index
+                }
+                syncStatus = "Shot lagt til ✓"
+            } catch {
+                syncStatus = error.localizedDescription
+            }
         }
     }
 
@@ -79,11 +99,31 @@ final class BoardState: ObservableObject {
     }
 }
 
+// Verktøyraden over arket (mockup): select | tegn/viskelær | pil/rekt/tekst.
+enum BoardTool: String, CaseIterable {
+    case select, draw, eraser, arrow, rect, text
+    var icon: String {
+        switch self {
+        case .select: return "cursorarrow"
+        case .draw: return "paintbrush.pointed"
+        case .eraser: return "eraser"
+        case .arrow: return "arrow.up.right"
+        case .rect: return "rectangle"
+        case .text: return "textformat"
+        }
+    }
+}
+
 struct NativeBoardView: View {
     @StateObject private var board: BoardState
     @StateObject private var canvasState = CanvasState()
     @State private var renderer = MetalStrokeRenderer()
     @State private var showAnimatic = false
+    @State private var showShotList = false
+    @State private var boardTool: BoardTool = .draw
+    @State private var textPromptShown = false
+    @State private var textPromptValue = ""
+    @State private var textPromptPoint: CGPoint = .zero
     @Environment(\.dismiss) private var dismiss
 
     init(manuscript: ManuscriptSummary) {
@@ -116,7 +156,13 @@ struct NativeBoardView: View {
         .onChange(of: board.scenes.count) { loadActiveFrameIntoCanvas() }
     }
 
+    // Forrige lastede frame + strøkantall — usynkede strøk flushes automatisk
+    // ved shot-/scenebytte så tegning ikke mistes uten eksplisitt Synk.
+    @State private var loadedFrameRef: (sceneId: String, frameId: String)?
+    @State private var loadedStrokeCount = 0
+
     private func loadActiveFrameIntoCanvas() {
+        flushPendingStrokes()
         canvasState.contentSize = board.frame.map {
             CGSize(width: $0.drawingWidth, height: $0.drawingHeight)
         }
@@ -128,6 +174,21 @@ struct NativeBoardView: View {
         }
         canvasState.undoStack = []
         canvasState.redoStack = []
+        loadedFrameRef = board.scene.flatMap { scene in
+            board.frame.map { (scene.id, $0.id) }
+        }
+        loadedStrokeCount = canvasState.strokes.count
+    }
+
+    private func flushPendingStrokes() {
+        guard let ref = loadedFrameRef, canvasState.strokes.count != loadedStrokeCount,
+              let json = try? StrokeSerialization.encodeToWebJSON(canvasState.strokes) else { return }
+        let manuscriptId = board.manuscript.id
+        Task {
+            try? await RoleRoomAPIClient.shared.saveFrameStrokes(
+                manuscriptId: manuscriptId, sceneId: ref.sceneId,
+                frameId: ref.frameId, strokesJSON: json)
+        }
     }
 
     private func syncActiveFrameStrokes() {
@@ -138,6 +199,7 @@ struct NativeBoardView: View {
                 let json = try StrokeSerialization.encodeToWebJSON(canvasState.strokes)
                 try await RoleRoomAPIClient.shared.saveFrameStrokes(
                     manuscriptId: board.manuscript.id, sceneId: scene.id, frameId: frame.id, strokesJSON: json)
+                loadedStrokeCount = canvasState.strokes.count
                 board.syncStatus = "Synket ✓"
             } catch {
                 board.syncStatus = error.localizedDescription
@@ -167,14 +229,16 @@ struct NativeBoardView: View {
                 }
             }
             Spacer()
+            // Fanerad (mockup): Board aktiv · Shot List · Animatic.
+            HStack(spacing: 4) {
+                topTab("Board", icon: "rectangle.grid.2x2", active: true) {}
+                topTab("Shot List", icon: "list.bullet", active: false) { showShotList = true }
+                topTab("Animatic", icon: "play.rectangle", active: false) { showAnimatic = true }
+            }
+            Spacer()
             if let status = board.syncStatus {
                 Text(status).font(.system(size: 12)).foregroundStyle(BoardBrand.dim)
             }
-            Button { showAnimatic = true } label: {
-                Image(systemName: "play.circle")
-                    .font(.system(size: 18)).foregroundStyle(BoardBrand.dim)
-            }
-            .disabled((board.scene?.frames.isEmpty) ?? true)
             Button { syncActiveFrameStrokes() } label: {
                 Label("Synk", systemImage: "icloud.and.arrow.up")
                     .font(.system(size: 13, weight: .semibold))
@@ -188,6 +252,18 @@ struct NativeBoardView: View {
         }
         .padding(.horizontal, 16)
         .frame(height: 52)
+    }
+
+    private func topTab(_ title: String, icon: String, active: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(active ? .white : BoardBrand.dim)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(active ? Color.white.opacity(0.1) : .clear,
+                            in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: SCENES
@@ -239,7 +315,61 @@ struct NativeBoardView: View {
 
     // MARK: Arket
 
+    private var toolRow: some View {
+        HStack(spacing: 6) {
+            ForEach([BoardTool.select, .draw, .eraser], id: \.self) { tool in toolButton(tool) }
+            Rectangle().fill(BoardBrand.border).frame(width: 1, height: 20).padding(.horizontal, 4)
+            ForEach([BoardTool.arrow, .rect, .text], id: \.self) { tool in toolButton(tool) }
+            Spacer()
+            Button { board.addShot() } label: {
+                Label("Add shot", systemImage: "plus")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(Color.black, in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 8)
+        .background(BoardBrand.panel)
+    }
+
+    private func toolButton(_ tool: BoardTool) -> some View {
+        let selected = boardTool == tool
+        return Button {
+            boardTool = tool
+            // Tegn/viskelær speiles i pensel-valget (samme kobling som web).
+            if tool == .eraser { canvasState.brushType = .eraser }
+            if tool == .draw && canvasState.brushType == .eraser { canvasState.brushType = .pencil }
+        } label: {
+            Image(systemName: tool.icon)
+                .font(.system(size: 14))
+                .foregroundStyle(selected ? .white : BoardBrand.dim)
+                .frame(width: 34, height: 30)
+                .background(selected ? BoardBrand.accent : Color.white.opacity(0.05),
+                            in: RoundedRectangle(cornerRadius: 7))
+        }
+        .buttonStyle(.plain)
+    }
+
     private var sheetArea: some View {
+        VStack(spacing: 0) {
+            toolRow
+            Divider().overlay(BoardBrand.border)
+            sheetScroll
+        }
+        .alert("Annotasjonstekst", isPresented: $textPromptShown) {
+            TextField("f.eks. PUSH IN", text: $textPromptValue)
+            Button("Legg til") { commitTextAnnotation() }
+            Button("Avbryt", role: .cancel) { textPromptValue = "" }
+        }
+        .sheet(isPresented: $showShotList) {
+            ShotListSheet(sceneHeading: board.scene?.heading ?? "",
+                          frames: board.scene?.frames ?? [])
+        }
+    }
+
+    private var sheetScroll: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 ForEach(Array((board.scene?.frames ?? []).enumerated()), id: \.element.id) { index, frame in
@@ -285,14 +415,15 @@ struct NativeBoardView: View {
                         .font(.custom(BoardBrand.handwriting, size: 13))
                         .foregroundStyle(Color(white: 0.38))
                 }
+                NotesDiagramMini(strokesJSON: frame.strokesJSON,
+                                 contentWidth: frame.drawingWidth)
             }
             .frame(width: 150, alignment: .leading)
 
             // Midt: aktiv = live Metal-canvas, ellers thumbnail
             ZStack {
                 if isActive, renderer != nil {
-                    PencilCanvasView(state: canvasState, renderer: renderer)
-                        .background(Color(red: 0.992, green: 0.992, blue: 0.984))
+                    activeCanvas(frame: frame)
                 } else if let image = decodeDataURL(frame.thumbnailDataURL) {
                     Image(uiImage: image).resizable().scaledToFill()
                 } else {
@@ -328,6 +459,126 @@ struct NativeBoardView: View {
         }
     }
 
+    // MARK: Aktiv canvas + annotasjonsverktøy (pil/rekt/tekst — web-paritet)
+
+    @State private var shapeStart: CGPoint?
+    @State private var shapeCurrent: CGPoint?
+
+    private func annotationStroke(points: [StrokePoint], text: String? = nil) -> PencilStroke {
+        var brush = BrushSpec.preset(.ink, size: 7, color: "#8b5cf6", opacity: 0.95)
+        brush.grain = 0
+        return PencilStroke(
+            id: "board-\(Int(Date().timeIntervalSince1970 * 1000))-\(Int.random(in: 100...999))",
+            points: points, inputType: "pencil",
+            color: "#8b5cf6", width: 7, opacity: 0.95,
+            brush: brush, boardLayer: "Camera / Arrows", textAnnotation: text)
+    }
+
+    private func annotationPoint(_ x: Double, _ y: Double) -> StrokePoint {
+        StrokePoint(x: x, y: y, pressure: 0.85, tiltX: 0, tiltY: 0,
+                    timestamp: Date().timeIntervalSince1970 * 1000)
+    }
+
+    private func appendAnnotation(_ stroke: PencilStroke) {
+        canvasState.undoStack.append(canvasState.strokes)
+        canvasState.redoStack = []
+        canvasState.strokes.append(stroke)
+    }
+
+    private func commitTextAnnotation() {
+        let text = textPromptValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        textPromptValue = ""
+        guard !text.isEmpty else { return }
+        appendAnnotation(annotationStroke(
+            points: [annotationPoint(textPromptPoint.x, textPromptPoint.y)], text: text))
+    }
+
+    private func activeCanvas(frame: FrameSummary) -> some View {
+        GeometryReader { geo in
+            let scale = geo.size.width / CGFloat(max(1, frame.drawingWidth))
+            ZStack(alignment: .topLeading) {
+                PencilCanvasView(state: canvasState, renderer: renderer)
+                    .background(Color(red: 0.992, green: 0.992, blue: 0.984))
+                    .allowsHitTesting(boardTool == .draw || boardTool == .eraser)
+                // Tekst-annotasjoner: Metal tegner ikke tekst — SwiftUI-overlay
+                // i samme håndskrift som web (Caveat ↔ Bradley Hand).
+                ForEach(canvasState.strokes.filter {
+                    $0.textAnnotation != nil
+                        && !canvasState.hiddenLayers.contains($0.boardLayer ?? "Drawing")
+                }) { stroke in
+                    if let point = stroke.points.first {
+                        Text((stroke.textAnnotation ?? "").uppercased())
+                            .font(.custom(BoardBrand.handwriting, size: max(12, 40 * scale)))
+                            .foregroundStyle(Color(hex: stroke.color) ?? BoardBrand.accent)
+                            .position(x: CGFloat(point.x) * scale, y: CGFloat(point.y) * scale)
+                            .allowsHitTesting(false)
+                    }
+                }
+                if boardTool == .arrow || boardTool == .rect || boardTool == .text {
+                    annotationCapture(scale: scale)
+                }
+            }
+        }
+    }
+
+    private func annotationCapture(scale: CGFloat) -> some View {
+        ZStack {
+            Color.clear.contentShape(Rectangle())
+            // Gummistrikk-preview i view-rom
+            if let start = shapeStart, let current = shapeCurrent, boardTool != .text {
+                Path { path in
+                    if boardTool == .arrow {
+                        path.move(to: start)
+                        path.addLine(to: current)
+                    } else {
+                        path.addRect(CGRect(x: min(start.x, current.x), y: min(start.y, current.y),
+                                            width: abs(current.x - start.x), height: abs(current.y - start.y)))
+                    }
+                }
+                .stroke(BoardBrand.accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+            }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if shapeStart == nil { shapeStart = value.startLocation }
+                    shapeCurrent = value.location
+                }
+                .onEnded { value in
+                    defer { shapeStart = nil; shapeCurrent = nil }
+                    let start = value.startLocation
+                    let end = value.location
+                    if boardTool == .text {
+                        textPromptPoint = CGPoint(x: end.x / scale, y: end.y / scale)
+                        textPromptShown = true
+                        return
+                    }
+                    // Innholdsrom-koordinater (web lagrer 1920×1080-rom)
+                    let sx = Double(start.x / scale), sy = Double(start.y / scale)
+                    let ex = Double(end.x / scale), ey = Double(end.y / scale)
+                    guard hypot(ex - sx, ey - sy) >= 12 else { return }
+                    let points: [StrokePoint]
+                    if boardTool == .arrow {
+                        // Web-paritet: linje + tilbake til spiss + to hodelinjer (34px, ±0.45 rad)
+                        let angle = atan2(ey - sy, ex - sx)
+                        let head = 34.0
+                        points = [
+                            annotationPoint(sx, sy), annotationPoint(ex, ey),
+                            annotationPoint(ex - head * cos(angle - 0.45), ey - head * sin(angle - 0.45)),
+                            annotationPoint(ex, ey),
+                            annotationPoint(ex - head * cos(angle + 0.45), ey - head * sin(angle + 0.45)),
+                        ]
+                    } else {
+                        let x0 = min(sx, ex), y0 = min(sy, ey), x1 = max(sx, ex), y1 = max(sy, ey)
+                        points = [annotationPoint(x0, y0), annotationPoint(x1, y0),
+                                  annotationPoint(x1, y1), annotationPoint(x0, y1),
+                                  annotationPoint(x0, y0)]
+                    }
+                    appendAnnotation(annotationStroke(points: points))
+                }
+        )
+    }
+
     private func metaEntry(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(label).font(.system(size: 8, weight: .bold)).kerning(1)
@@ -361,9 +612,45 @@ struct NativeBoardView: View {
                                     options: ["14mm", "18mm", "24mm", "28mm", "35mm", "50mm", "85mm", "135mm"]) {
                         board.patchActiveFrame(["lensMm": Int($0.replacingOccurrences(of: "mm", with: "")) ?? 35])
                     }
-                    inspectorPicker("Movement", value: frame.movement,
-                                    options: ["Static", "Pan", "Tilt", "Push In", "Tracking", "Handheld"]) {
-                        board.patchActiveFrame(["movement": $0])
+
+                    // SHOT SIZE-glyfrad (mockup): EWS→ECU, aktiv i fiolett.
+                    panelLabel("Shot size")
+                    HStack(spacing: 6) {
+                        glyphButton("figure.stand", value: "EWS", current: frame.shotType) { board.patchActiveFrame(["shotType": "EWS"]) }
+                        glyphButton("figure.walk", value: "WS", current: frame.shotType) { board.patchActiveFrame(["shotType": "WS"]) }
+                        glyphButton("person.fill", value: "MS", current: frame.shotType) { board.patchActiveFrame(["shotType": "MS"]) }
+                        glyphButton("person.crop.circle", value: "CU", current: frame.shotType) { board.patchActiveFrame(["shotType": "CU"]) }
+                        glyphButton("eye", value: "ECU", current: frame.shotType) { board.patchActiveFrame(["shotType": "ECU"]) }
+                    }
+
+                    // MOVEMENT-glyfrad (mockup).
+                    panelLabel("Movement")
+                    HStack(spacing: 6) {
+                        glyphButton("minus", value: "Static", current: frame.movement) { board.patchActiveFrame(["movement": "Static"]) }
+                        glyphButton("arrow.left.and.right", value: "Pan", current: frame.movement) { board.patchActiveFrame(["movement": "Pan"]) }
+                        glyphButton("arrow.up.and.down", value: "Tilt", current: frame.movement) { board.patchActiveFrame(["movement": "Tilt"]) }
+                        glyphButton("plus.magnifyingglass", value: "Push In", current: frame.movement) { board.patchActiveFrame(["movement": "Push In"]) }
+                        glyphButton("arrow.right.to.line", value: "Tracking", current: frame.movement) { board.patchActiveFrame(["movement": "Tracking"]) }
+                        glyphButton("hand.raised", value: "Handheld", current: frame.movement) { board.patchActiveFrame(["movement": "Handheld"]) }
+                    }
+
+                    // DURATION-stepper (mockup: tallfelt).
+                    HStack {
+                        panelLabel("Duration (sec)")
+                        Spacer()
+                        Button { board.patchActiveFrame(["duration": max(0.5, frame.durationSec - 0.5)]) } label: {
+                            Image(systemName: "minus").font(.system(size: 11)).foregroundStyle(.white)
+                                .frame(width: 24, height: 24)
+                                .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 6))
+                        }
+                        Text(String(format: "%.1f", frame.durationSec))
+                            .font(.system(size: 13).monospacedDigit()).foregroundStyle(.white)
+                            .frame(width: 34)
+                        Button { board.patchActiveFrame(["duration": frame.durationSec + 0.5]) } label: {
+                            Image(systemName: "plus").font(.system(size: 11)).foregroundStyle(.white)
+                                .frame(width: 24, height: 24)
+                                .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 6))
+                        }
                     }
                     inspectorPicker("Transition", value: frame.transition,
                                     options: ["Cut", "Dissolve", "Match Cut", "Smash Cut", "Wipe", "Fade"]) {
@@ -380,6 +667,16 @@ struct NativeBoardView: View {
                         board.patchActiveFrame(["weather": $0])
                     }
 
+                    // NOTES (mockup: fritekstfelt).
+                    panelLabel("Notes")
+                    TextField("Add notes…", text: $notesDraft, axis: .vertical)
+                        .lineLimit(2...4)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white)
+                        .padding(8)
+                        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+                        .onSubmit { board.patchActiveFrame(["notes": notesDraft]) }
+
                     if !frame.tags.isEmpty {
                         panelLabel("Tags")
                         FlowTags(tags: frame.tags)
@@ -392,6 +689,26 @@ struct NativeBoardView: View {
         }
         .frame(width: 250)
         .background(BoardBrand.chrome)
+        .onChange(of: board.frame?.id) { notesDraft = board.frame?.notes ?? "" }
+        .onAppear { notesDraft = board.frame?.notes ?? "" }
+    }
+
+    @State private var notesDraft = ""
+
+    private func glyphButton(
+        _ symbol: String, value: String, current: String?, action: @escaping () -> Void
+    ) -> some View {
+        let selected = current == value
+        return Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13))
+                .foregroundStyle(selected ? .white : BoardBrand.dim)
+                .frame(width: 34, height: 30)
+                .background(selected ? BoardBrand.accent : Color.white.opacity(0.05),
+                            in: RoundedRectangle(cornerRadius: 7))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(value)
     }
 
     private func inspectorPicker(
@@ -624,6 +941,88 @@ struct AnimaticView: View {
             let seconds = max(0.5, frames[index].durationSec)
             try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             if playing { index = (index + 1) % max(1, frames.count) }
+        }
+    }
+}
+
+// Mini-diagram i shot-radens venstrekolonne: strek-render av Notes-lag-strøk
+// (mockupens NOTES/DIAGRAM-skisse). Skjules når laget er tomt.
+private struct NotesDiagramMini: View {
+    let strokesJSON: String?
+    let contentWidth: Double
+
+    private var noteStrokes: [PencilStroke] {
+        (strokesJSON.flatMap { try? StrokeSerialization.decodeFromWebJSON($0) } ?? [])
+            .filter { $0.boardLayer == "Notes" && $0.textAnnotation == nil }
+    }
+
+    var body: some View {
+        let strokes = noteStrokes
+        if !strokes.isEmpty {
+            Canvas { context, size in
+                let scale = size.width / CGFloat(max(1, contentWidth))
+                for stroke in strokes {
+                    guard let first = stroke.points.first else { continue }
+                    var path = Path()
+                    path.move(to: CGPoint(x: first.x * scale, y: first.y * scale))
+                    for point in stroke.points.dropFirst() {
+                        path.addLine(to: CGPoint(x: point.x * scale, y: point.y * scale))
+                    }
+                    context.stroke(
+                        path,
+                        with: .color(Color(hex: stroke.color) ?? Color(white: 0.4)),
+                        style: StrokeStyle(lineWidth: max(1, stroke.width * scale * 0.6),
+                                           lineCap: .round, lineJoin: .round))
+                }
+            }
+            .aspectRatio(16 / 9, contentMode: .fit)
+            .background(Color.white.opacity(0.6))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color(white: 0.75), lineWidth: 1))
+            .padding(.top, 4)
+        }
+    }
+}
+
+// Shot List-fanen (mockup): tabellvisning av scenens shots.
+struct ShotListSheet: View {
+    let sceneHeading: String
+    let frames: [FrameSummary]
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(frames) { frame in
+                    HStack(spacing: 12) {
+                        Text(frame.shotNumber)
+                            .font(.system(.subheadline, design: .monospaced).bold())
+                            .frame(width: 44, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(frame.description.isEmpty ? "—" : frame.description)
+                                .font(.subheadline).lineLimit(1)
+                            Text([frame.shotType, frame.lensMm.map { "\($0)mm" },
+                                  frame.movement, frame.transition]
+                                .compactMap(\.self).joined(separator: " · "))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if let beat = frame.beatTag {
+                            Text(beat).font(.caption2.bold())
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Color.purple.opacity(0.18), in: Capsule())
+                        }
+                        Text(String(format: "%.1fs", frame.durationSec))
+                            .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Shot List — \(sceneHeading)")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Lukk") { dismiss() }
+                }
+            }
         }
     }
 }

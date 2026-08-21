@@ -218,6 +218,51 @@ actor RoleRoomAPIClient {
         try await sendJSON(path: "/api/casting/scenes", method: "POST", body: scene)
     }
 
+    /// ADD SHOT: ny tom frame etter siste i scenen (shotNumber = neste
+    /// bokstav i samme tallserie, «1A» → «1B»; tom scene → «1A»), upsert.
+    func addFrame(manuscriptId: String, sceneId: String) async throws -> String {
+        guard var scenes = rawScenes[manuscriptId] else {
+            throw SyncError.malformed("scener ikke lastet")
+        }
+        let now = ISO8601DateFormatter().string(from: Date())
+        var newFrameId: String?
+        for sceneIndex in scenes.indices where scenes[sceneIndex]["id"] as? String == sceneId {
+            var frames = (scenes[sceneIndex]["storyboardFrames"] as? [[String: Any]]) ?? []
+            let lastShot = (frames.last?["shotNumber"] as? String) ?? ""
+            let nextShot: String
+            if let letter = lastShot.last, letter.isLetter, letter < "Z",
+               let next = letter.unicodeScalars.first.flatMap({ UnicodeScalar($0.value + 1) }) {
+                nextShot = String(lastShot.dropLast()) + String(Character(next))
+            } else if lastShot.isEmpty {
+                nextShot = "1A"
+            } else {
+                nextShot = lastShot + "A"
+            }
+            let frameId = "frame-\(Int(Date().timeIntervalSince1970 * 1000))"
+            frames.append([
+                "id": frameId,
+                "shotNumber": nextShot,
+                "description": "",
+                "duration": 2,
+                "imageSource": "placeholder",
+                "drawingData": ["strokes": "[]", "width": 1920, "height": 1080,
+                                "createdAt": now, "updatedAt": now],
+                "createdAt": now,
+                "updatedAt": now,
+            ])
+            scenes[sceneIndex]["storyboardFrames"] = frames
+            scenes[sceneIndex]["updatedAt"] = now
+            newFrameId = frameId
+        }
+        guard let frameId = newFrameId,
+              let scene = scenes.first(where: { $0["id"] as? String == sceneId }) else {
+            throw SyncError.malformed("scene \(sceneId) ikke funnet")
+        }
+        rawScenes[manuscriptId] = scenes
+        try await sendJSON(path: "/api/casting/scenes", method: "POST", body: scene)
+        return frameId
+    }
+
     // MARK: HTTP
 
     private func request(path: String, query: [String: String]) throws -> URLRequest {

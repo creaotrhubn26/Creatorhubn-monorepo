@@ -30,8 +30,9 @@ final class CanvasState: ObservableObject {
 
     func visibleStrokes() -> [PencilStroke] {
         // Lag-sortert som web (stabil sortering på BOARD_LAYERS-indeks).
+        // textAnnotation-strøk rendres som tekst-overlay (ikke dabs) — web-paritet.
         strokes
-            .filter { !hiddenLayers.contains($0.boardLayer ?? "Drawing") }
+            .filter { $0.textAnnotation == nil && !hiddenLayers.contains($0.boardLayer ?? "Drawing") }
             .enumerated()
             .sorted { lhs, rhs in
                 let li = BoardLayers.index(of: lhs.element.boardLayer)
