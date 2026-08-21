@@ -20,6 +20,8 @@ struct TaxReserveOverview: Decodable, Sendable {
 
     var ratePct: String { String(format: "%.1f", Double(effectiveRatePer1000) / 10.0) }
     var marginalPct: String { String(format: "%.1f", Double(marginalRatePer1000) / 10.0) }
+    /// Inntektsåret fra asOf (YYYY-…) — brukes i forklaringstekst.
+    var year: String { String(asOf.prefix(4)) }
     var hasPaidAdvance: Bool { paidAdvanceTaxMinor.minor > 0 }
     var covered: Bool { recommendedReserveMinor.minor > 0 && remainingMinor.minor <= 0 }
     var progress: Double {
@@ -146,7 +148,7 @@ private struct SkattHeader: View {
             }
             .padding(.vertical, 6)
         } footer: {
-            Text("Estimert skatt \(ov.estimatedTaxMinor.kr) (22 % + 11 % trygdeavgift + trinnskatt med 2025-satser). Anslag — annen inntekt (lønn/pensjon) og personfradrag er ikke medregnet. Reknaren flytter ingen penger; du overfører selv til skattekonto og registrerer beløpet her.")
+            Text("Estimert skatt \(ov.estimatedTaxMinor.kr) (22 % alminnelig inntekt + trygdeavgift + trinnskatt med \(ov.year)-satser). Anslag — annen inntekt (lønn/pensjon) og personfradrag er ikke medregnet. Reknaren flytter ingen penger; du overfører selv til skattekonto og registrerer beløpet her.")
         }
     }
 }
