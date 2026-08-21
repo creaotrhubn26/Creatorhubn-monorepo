@@ -12,6 +12,7 @@ import type { OrganizationForm } from '../rules/types.js';
 import { money, multiplyRational } from '../shared/money.js';
 import { buildVatReport } from '../vat/engine.js';
 import { computeTaxAdjustments, type TaxAdjustment } from './adjustments.js';
+import { computeTrinnskattMinor, marginalTrinnskattPer1000 } from './brackets.js';
 
 /** Formaterer en rasjonal sats (n/100 eller n/1000) for visning — alltid fra registeret. */
 function displayRatePct(numerator: bigint, denominator: bigint): string {
@@ -51,6 +52,8 @@ export interface TaxEstimate {
     amountMinor: bigint;
   }[];
   estimatedTaxMinor: bigint;
+  /** Marginalsats på neste krone overskudd, i promille (til per-faktura-avsetning). */
+  marginalRatePer1000: number;
   /** Anbefalt reservasjon (skatt + estimert skyldig mva). */
   recommendedReserveMinor: bigint;
   vatNetPayableMinor: bigint;
@@ -139,9 +142,21 @@ export async function buildTaxEstimate(
       ratePct: displayRatePct(ssRate.numerator, ssRate.denominator),
       amountMinor: ssTax.minorUnits,
     });
-    notIncluded.push('Trinnskatt (krever samlet personinntekt)', 'Personfradrag og minstefradrag');
+    // Trinnskatt (progressiv på personinntekt). Forutsetter at hele overskuddet er
+    // personinntekt fra denne næringen. Satser 2025 (se brackets.ts).
+    const trinnskattMinor = computeTrinnskattMinor(taxable);
+    if (trinnskattMinor > 0n) {
+      components.push({
+        name: 'Trinnskatt',
+        ruleId: 'no.tax.bracket-tax-2025',
+        ruleVersion: 1,
+        ratePct: 'progressiv',
+        amountMinor: trinnskattMinor,
+      });
+    }
+    notIncluded.push('Personfradrag og minstefradrag', 'Annen personinntekt (lønn/pensjon) som endrer trinnskatt-nivået');
     uncertainty.push(
-      'Estimatet forutsetter at hele overskuddet er personinntekt fra næring, uten annen inntekt.',
+      'Estimatet forutsetter at hele overskuddet er personinntekt fra næring, uten annen inntekt. Trinnskatt beregnet med 2025-satser.',
     );
   }
 
@@ -174,6 +189,11 @@ export async function buildTaxEstimate(
     uncertainty.push(`MVA-rapporten har ${vat.warnings.length} advarsel(er) som kan påvirke tallene.`);
   }
 
+  // Marginalsats på neste krone: AS = selskapsskatt; ENK = 22% + 11% + trinnskatt-trinn.
+  const marginalRatePer1000 = isCompany
+    ? 220
+    : 220 + 110 + marginalTrinnskattPer1000(taxable);
+
   return {
     organizationId: params.organizationId,
     orgForm: params.orgForm,
@@ -186,6 +206,7 @@ export async function buildTaxEstimate(
     estimatedTaxableResultMinor: taxable,
     components,
     estimatedTaxMinor: estimatedTax,
+    marginalRatePer1000,
     recommendedReserveMinor: estimatedTax + vatDue,
     vatNetPayableMinor: vat.netPayableMinor,
     scenarios,

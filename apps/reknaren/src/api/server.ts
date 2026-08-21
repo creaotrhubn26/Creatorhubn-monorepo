@@ -4438,13 +4438,21 @@ export function createApiServer(deps: ApiDeps): express.Express {
         accountNumber: z.string().regex(/^\d{4}$/),
         paidPrivately: z.boolean().default(true),
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        businessSharePct: z.number().int().min(1).max(100).optional(),
+        receipt: z.object({
+          filename: z.string().min(1).max(200),
+          mimeType: z.string().min(1).max(100),
+          base64: z.string().min(1),
+        }).optional(),
       }).parse(req.body);
       const result = await registerPurchase(deps.db, deps.rules, {
         organizationId: req.params.orgId!, orgForm: org.org_form as OrganizationForm,
         actor: { userId: req.auth!.userId, role: req.orgRole! },
         amountMinor: BigInt(body.amountMinor), description: body.description, accountNumber: body.accountNumber,
         paidPrivately: body.paidPrivately, date: body.date ?? new Date().toISOString().slice(0, 10),
-      });
+        ...(body.businessSharePct !== undefined ? { businessSharePct: body.businessSharePct } : {}),
+        ...(body.receipt ? { receipt: body.receipt } : {}),
+      }, deps.storage);
       res.status(201).json(toJson(result));
     } catch (err) { next(err); }
   });

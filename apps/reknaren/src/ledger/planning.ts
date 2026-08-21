@@ -260,9 +260,10 @@ export async function buildForecast(
 
   // 3) Skatt — løpende estimat + anbefalt reserve + anslåtte forskuddsskatt-terminer.
   const tax = await buildTaxEstimate(db, rules, { organizationId: org, orgForm, fromDate: yearStart, toDate: asOf });
-  // Annualiser skatten hittil i år som grunnlag for terminbeløpene.
+  // Annualiser skatten hittil i år som grunnlag for terminbeløpene. Cap på ~3 mnd
+  // så ujevn (rykkvis) inntekt tidlig i året ikke gir absurd ekstrapolering.
   const daysElapsed = Math.max(1, Math.round((dayMs(asOf) - dayMs(yearStart)) / 86400000) + 1);
-  const annualTaxMinor = (tax.estimatedTaxMinor * 365n) / BigInt(daysElapsed);
+  const annualTaxMinor = (tax.estimatedTaxMinor * 365n) / BigInt(Math.max(daysElapsed, 90));
   const skatteterminer = taxInstallments(orgForm, asOf, horizonEnd, annualTaxMinor);
 
   // 4) Ubetalte kundefakturaer (forventede innbetalinger).

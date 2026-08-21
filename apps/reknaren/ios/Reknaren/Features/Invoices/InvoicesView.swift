@@ -30,7 +30,8 @@ struct InvoiceRow: Decodable, Identifiable, Sendable {
 final class InvoicesViewModel {
     enum Load { case idle, loading, loaded([InvoiceRow]), failed(String) }
     var load: Load = .idle
-    /// Effektiv skattesats i promille (fra reserve-oversikten) → per-faktura «sett av».
+    /// Marginalsats i promille (fra reserve-oversikten) → per-faktura «sett av».
+    /// Omsetning legges på toppen av årets resultat og skattlegges marginalt, ikke med snitt.
     var taxRatePer1000: Int?
 
     func fetch(orgId: String) async {
@@ -38,10 +39,10 @@ final class InvoicesViewModel {
         do {
             let rows: [InvoiceRow] = try await APIClient.shared.get("/api/organizations/\(orgId)/invoices")
             load = .loaded(rows)
-            // Best-effort: hent skattesats så vi kan vise «sett av» per faktura.
-            struct Rate: Decodable { let effectiveRatePer1000: Int }
+            // Best-effort: hent marginalsats så vi kan vise «sett av» per faktura.
+            struct Rate: Decodable { let marginalRatePer1000: Int }
             if let r = try? await APIClient.shared.get("/api/organizations/\(orgId)/tax/reserve-overview") as Rate {
-                taxRatePer1000 = r.effectiveRatePer1000 > 0 ? r.effectiveRatePer1000 : 350
+                taxRatePer1000 = r.marginalRatePer1000 > 0 ? r.marginalRatePer1000 : 400
             }
         } catch {
             load = .failed(error.localizedDescription)
@@ -79,7 +80,7 @@ private struct InvoiceCard: View {
     let inv: InvoiceRow
     let taxRatePer1000: Int?
 
-    /// Skatt å sette av for denne fakturaen = netto × effektiv sats.
+    /// Skatt å sette av for denne fakturaen = netto × marginalsats.
     private var setAsideMinor: Int64? {
         guard let rate = taxRatePer1000, rate > 0, inv.netMinor.minor > 0 else { return nil }
         return inv.netMinor.minor * Int64(rate) / 1000

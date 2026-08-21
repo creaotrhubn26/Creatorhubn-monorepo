@@ -12,15 +12,21 @@ struct TaxReserveOverview: Decodable, Sendable {
     let estimatedTaxMinor: Money
     let recommendedReserveMinor: Money
     let reservedMinor: Money
+    let paidAdvanceTaxMinor: Money
     let remainingMinor: Money
     let effectiveRatePer1000: Int
+    let marginalRatePer1000: Int
     let reserves: [TaxReserveItem]
 
     var ratePct: String { String(format: "%.1f", Double(effectiveRatePer1000) / 10.0) }
+    var marginalPct: String { String(format: "%.1f", Double(marginalRatePer1000) / 10.0) }
+    var hasPaidAdvance: Bool { paidAdvanceTaxMinor.minor > 0 }
     var covered: Bool { recommendedReserveMinor.minor > 0 && remainingMinor.minor <= 0 }
     var progress: Double {
         guard recommendedReserveMinor.minor > 0 else { return 0 }
-        return min(1, Double(reservedMinor.minor) / Double(recommendedReserveMinor.minor))
+        // Både manuelt avsatt og allerede betalt forskuddsskatt teller mot målet.
+        let dekket = reservedMinor.minor + paidAdvanceTaxMinor.minor
+        return min(1, Double(dekket) / Double(recommendedReserveMinor.minor))
     }
 }
 
@@ -122,7 +128,7 @@ private struct SkattHeader: View {
                 Text(ov.covered ? "Alt er satt av 🎉" : "Sett av til skatt")
                     .font(.headline)
                 Text(ov.recommendedReserveMinor.kr).font(.system(size: 34, weight: .bold)).monospacedDigit()
-                Text("Anbefalt reserve i år · effektiv skatt \(ov.ratePct) %")
+                Text("Anbefalt reserve i år · effektiv \(ov.ratePct) % · marginal \(ov.marginalPct) %")
                     .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 ProgressView(value: ov.progress).tint(.reknarenGreen)
                 HStack {
@@ -133,10 +139,14 @@ private struct SkattHeader: View {
                     }
                 }
                 .font(.caption).monospacedDigit()
+                if ov.hasPaidAdvance {
+                    Label("Allerede betalt forskuddsskatt: \(ov.paidAdvanceTaxMinor.kr)", systemImage: "banknote")
+                        .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                }
             }
             .padding(.vertical, 6)
         } footer: {
-            Text("Estimert skatt \(ov.estimatedTaxMinor.kr) (22 % + 11 % trygdeavgift). Anslag — trinnskatt og annen inntekt er ikke medregnet. Reknaren flytter ingen penger; du overfører selv til skattekonto og registrerer beløpet her.")
+            Text("Estimert skatt \(ov.estimatedTaxMinor.kr) (22 % + 11 % trygdeavgift + trinnskatt med 2025-satser). Anslag — annen inntekt (lønn/pensjon) og personfradrag er ikke medregnet. Reknaren flytter ingen penger; du overfører selv til skattekonto og registrerer beløpet her.")
         }
     }
 }

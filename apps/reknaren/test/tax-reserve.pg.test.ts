@@ -32,11 +32,13 @@ describe('skatteavsetning for ENK uten MVA', () => {
     });
 
     const ov = await taxReserveOverview(db, rules, { organizationId: org.id, orgForm: 'ENK', asOf: ASOF });
-    // ENK: alminnelig inntektsskatt (22%) + trygdeavgift (11%) ≈ 33% → skatt > 30 000.
+    // 100k < trinn 1 (217k) → ingen trinnskatt. 22% + 11% trygdeavgift ≈ 33%.
     expect(ov.estimatedTaxMinor).toBeGreaterThan(3_000_000n);
     expect(ov.recommendedReserveMinor).toBe(ov.estimatedTaxMinor); // ingen MVA
     expect(ov.effectiveRatePer1000).toBeGreaterThan(300);
-    expect(ov.effectiveRatePer1000).toBeLessThan(400);
+    expect(ov.effectiveRatePer1000).toBeLessThan(340);
+    expect(ov.marginalRatePer1000).toBe(330); // 220 + 110 + 0 trinnskatt under 217k
+    expect(ov.paidAdvanceTaxMinor).toBe(0n);
     expect(ov.reservedMinor).toBe(0n);
     expect(ov.remainingMinor).toBe(ov.recommendedReserveMinor);
 
@@ -47,18 +49,32 @@ describe('skatteavsetning for ENK uten MVA', () => {
     expect(ov2.remainingMinor).toBe(ov2.recommendedReserveMinor - 2_000_000n);
     expect(ov2.reserves).toHaveLength(1);
 
-    // Per faktura: netto 44 400 × effektiv sats.
+    // Per faktura: netto 44 400 × MARGINALsats (330‰).
     const setAside = await taxSetAsideForInvoice(db, rules, { organizationId: org.id, orgForm: 'ENK', asOf: ASOF, invoiceNetMinor: 4_440_000n });
-    expect(setAside.basis).toBe('effective');
-    const expected = (4_440_000n * BigInt(Math.round(ov2.effectiveRatePer1000))) / 1000n;
-    expect(setAside.setAsideMinor).toBe(expected);
+    expect(setAside.basis).toBe('marginal');
+    expect(setAside.ratePer1000).toBe(330);
+    expect(setAside.setAsideMinor).toBe((4_440_000n * 330n) / 1000n);
   });
 
-  it('faller tilbake til 35% når det ikke finnes skattbart resultat ennå', async () => {
+  it('trinnskatt løftes inn over innslagspunktet (høyere resultat)', async () => {
+    const org = await createOrganization(db, { name: 'Høy ENK', orgForm: 'ENK', vatStatus: 'not_registered', createdByUserId: userId });
+    const actor = { userId, role: 'owner' as const };
+    // Skattbart ~500 000 → i trinn 2 (306k–697k), marginal trinnskatt 4,0%.
+    await postJournalEntry(db, {
+      organizationId: org.id, actor, entryDate: '2026-03-10', description: 'salg', idempotencyKey: 'salgstor',
+      lines: [{ accountNumber: '1920', debitMinor: 50000000n }, { accountNumber: '3000', creditMinor: 50000000n }],
+    });
+    const ov = await taxReserveOverview(db, rules, { organizationId: org.id, orgForm: 'ENK', asOf: ASOF });
+    expect(ov.marginalRatePer1000).toBe(370); // 220 + 110 + 40 (trinn 2)
+    // Trinnskatt-komponent gjør effektiv sats høyere enn ren 33%.
+    expect(ov.effectiveRatePer1000).toBeGreaterThan(330);
+  });
+
+  it('faller tilbake til 40% når det ikke finnes skattbart resultat ennå', async () => {
     const org = await createOrganization(db, { name: 'Ny ENK', orgForm: 'ENK', vatStatus: 'not_registered', createdByUserId: userId });
     const s = await taxSetAsideForInvoice(db, rules, { organizationId: org.id, orgForm: 'ENK', asOf: ASOF, invoiceNetMinor: 1_000_000n });
-    expect(s.basis).toBe('default');
-    expect(s.ratePer1000).toBe(350);
-    expect(s.setAsideMinor).toBe(350_000n); // 35% av 10 000
+    // Ny ENK uten resultat: marginal = 330 (base+trygde, ingen trinnskatt) → basis 'marginal'.
+    expect(s.basis).toBe('marginal');
+    expect(s.ratePer1000).toBe(330);
   });
 });
