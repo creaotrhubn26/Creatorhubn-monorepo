@@ -8,18 +8,22 @@ import type { RuleRegister } from '../rules/register.js';
 import type { OrganizationForm } from '../rules/types.js';
 import { newId } from '../shared/ids.js';
 import { buildTaxEstimate } from './estimate.js';
+import { liquidityLadder, listPlacements, type LiquidityLadder, type Placement } from './placement.js';
 
 interface Actor { userId: string }
 
+/** Plasseringer regnes som likvide når de kan dekke en termin på kort varsel. */
+const LIQUID_KINDS = new Set(['instant', 'days']);
+
 export async function recordTaxReserve(
   db: Db,
-  params: { organizationId: string; actor: Actor; amountMinor: bigint; reservedAt: string; note?: string },
+  params: { organizationId: string; actor: Actor; amountMinor: bigint; reservedAt: string; note?: string; placementId?: string },
 ): Promise<{ id: string }> {
   const id = newId();
   await db.query(
-    `INSERT INTO tax_reserves (id, organization_id, amount_minor, reserved_at, note, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6)`,
-    [id, params.organizationId, params.amountMinor.toString(), params.reservedAt, params.note ?? null, params.actor.userId],
+    `INSERT INTO tax_reserves (id, organization_id, amount_minor, reserved_at, note, created_by, placement_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [id, params.organizationId, params.amountMinor.toString(), params.reservedAt, params.note ?? null, params.actor.userId, params.placementId ?? null],
   );
   return { id };
 }
@@ -38,6 +42,20 @@ export interface TaxReserveOverview {
   /** Marginalsats på neste krone i promille — grunnlag for per-faktura-avsetning. */
   marginalRatePer1000: number;
   reserves: { id: string; amountMinor: bigint; reservedAt: string; note: string | null }[];
+  // --- Plassering (fond/aksjer) ---
+  /** Kostpris (sum innskudd) plassert i fond/aksjer/bank. */
+  placedCostMinor: bigint;
+  /** Markedsverdi av plasseringene i dag (siste verdivurdering; bank ≈ kostpris). */
+  placedMarketValueMinor: bigint;
+  /** Urealisert gevinst/tap på plasseringene. */
+  unrealisedGainMinor: bigint;
+  /** Anslått skatt på urealisert gevinst (22 % kapitalinntekt). ASK/fondskonto = fase 2. */
+  gainTaxEstimateMinor: bigint;
+  /** Samlet dekning = kontant avsatt + markedsverdi plasseringer (erstatter kostpris med dagsverdi). */
+  coverageMinor: bigint;
+  placements: Placement[];
+  /** Likviditetstrapp mot forfallskalenderen — hva som må stå likvid vs kan plasseres lenger. */
+  ladder: LiquidityLadder;
 }
 
 export async function taxReserveOverview(
@@ -69,7 +87,24 @@ export async function taxReserveOverview(
   const paidAdvanceMinor0 = BigInt(paidRow.paid);
   const paidAdvanceTaxMinor = paidAdvanceMinor0 > 0n ? paidAdvanceMinor0 : 0n;
 
-  const remaining = est.recommendedReserveMinor - reservedMinor - paidAdvanceTaxMinor;
+  // Plasseringer: bytt kostpris mot dagsverdi i dekningen (markedsverdi kan avvike fra nominelt avsatt).
+  const placements = await listPlacements(db, { organizationId: params.organizationId, asOf: params.asOf });
+  const placedCostMinor = placements.reduce((a, p) => a + p.costMinor, 0n);
+  const placedMarketValueMinor = placements.reduce((a, p) => a + p.marketValueMinor, 0n);
+  const unrealisedGainMinor = placedMarketValueMinor - placedCostMinor;
+  const gainTaxEstimateMinor = unrealisedGainMinor > 0n ? (unrealisedGainMinor * 22n) / 100n : 0n;
+  // reservedMinor teller plassert kostpris; erstatt den med markedsverdi for reell dekning.
+  const coverageMinor = reservedMinor - placedCostMinor + placedMarketValueMinor;
+
+  const remaining = est.recommendedReserveMinor - coverageMinor - paidAdvanceTaxMinor;
+  const remainingMinor = remaining > 0n ? remaining : 0n;
+  // Likvid dekning = kontant avsatt + markedsverdi av likvide plasseringer (bank/pengemarked).
+  const cashReservedMinor = reservedMinor - placedCostMinor;
+  const liquidPlacedMinor = placements
+    .filter((p) => LIQUID_KINDS.has(p.liquidity))
+    .reduce((a, p) => a + p.marketValueMinor, 0n);
+  const ladder = liquidityLadder(remainingMinor, params.asOf, cashReservedMinor + liquidPlacedMinor);
+
   const effRate = est.estimatedTaxableResultMinor > 0n
     ? Number((est.estimatedTaxMinor * 1000n) / est.estimatedTaxableResultMinor)
     : 0;
@@ -79,10 +114,17 @@ export async function taxReserveOverview(
     recommendedReserveMinor: est.recommendedReserveMinor,
     reservedMinor,
     paidAdvanceTaxMinor,
-    remainingMinor: remaining > 0n ? remaining : 0n,
+    remainingMinor,
     effectiveRatePer1000: effRate,
     marginalRatePer1000: est.marginalRatePer1000,
     reserves: rows.map((r) => ({ id: r.id, amountMinor: BigInt(r.amount), reservedAt: r.date, note: r.note })),
+    placedCostMinor,
+    placedMarketValueMinor,
+    unrealisedGainMinor,
+    gainTaxEstimateMinor,
+    coverageMinor,
+    placements,
+    ladder,
   };
 }
 

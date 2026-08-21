@@ -7,6 +7,46 @@ struct TaxReserveItem: Decodable, Identifiable, Sendable {
     let note: String?
 }
 
+struct TaxPlacement: Decodable, Identifiable, Sendable {
+    let id: String
+    let name: String
+    let placementType: String
+    let liquidity: String
+    let ringFenced: Bool
+    let costMinor: Money
+    let marketValueMinor: Money
+    let unrealisedGainMinor: Money
+    let valuedAt: String?
+
+    var typeLabel: String {
+        switch placementType {
+        case "bank": return "Bankkonto"
+        case "money_market_fund": return "Pengemarkedsfond"
+        case "bond_fund": return "Obligasjonsfond"
+        case "equity_fund": return "Aksjefond"
+        case "stock": return "Aksjer"
+        default: return placementType
+        }
+    }
+    var gain: Bool { unrealisedGainMinor.minor > 0 }
+    var loss: Bool { unrealisedGainMinor.minor < 0 }
+}
+
+struct TaxTermin: Decodable, Identifiable, Sendable {
+    let date: String
+    let amountMinor: Money
+    let daysUntil: Int
+    let coveredLiquid: Bool
+    var id: String { date }
+}
+
+struct LiquidityLadder: Decodable, Sendable {
+    let liquidityFloorMinor: Money
+    let freeToPlaceMinor: Money
+    let nextDueDate: String?
+    let terminer: [TaxTermin]
+}
+
 struct TaxReserveOverview: Decodable, Sendable {
     let asOf: String
     let estimatedTaxMinor: Money
@@ -17,6 +57,12 @@ struct TaxReserveOverview: Decodable, Sendable {
     let effectiveRatePer1000: Int
     let marginalRatePer1000: Int
     let reserves: [TaxReserveItem]
+    let placedMarketValueMinor: Money
+    let unrealisedGainMinor: Money
+    let gainTaxEstimateMinor: Money
+    let coverageMinor: Money
+    let placements: [TaxPlacement]
+    let ladder: LiquidityLadder
 
     var ratePct: String { String(format: "%.1f", Double(effectiveRatePer1000) / 10.0) }
     var marginalPct: String { String(format: "%.1f", Double(marginalRatePer1000) / 10.0) }
@@ -26,8 +72,8 @@ struct TaxReserveOverview: Decodable, Sendable {
     var covered: Bool { recommendedReserveMinor.minor > 0 && remainingMinor.minor <= 0 }
     var progress: Double {
         guard recommendedReserveMinor.minor > 0 else { return 0 }
-        // Både manuelt avsatt og allerede betalt forskuddsskatt teller mot målet.
-        let dekket = reservedMinor.minor + paidAdvanceTaxMinor.minor
+        // Dekning (markedsverdi av avsetning) + betalt forskuddsskatt teller mot målet.
+        let dekket = coverageMinor.minor + paidAdvanceTaxMinor.minor
         return min(1, Double(dekket) / Double(recommendedReserveMinor.minor))
     }
 }
@@ -38,8 +84,11 @@ final class SkattViewModel {
     enum Load { case idle, loading, loaded(TaxReserveOverview), failed(String) }
     var load: Load = .idle
     var amountText: String = ""
+    /// nil = kontant; ellers plassering-id avsetningen legges i.
+    var selectedPlacementId: String?
     var saving = false
     var justCovered = false
+    var showAddPlacement = false
 
     func fetch(orgId: String) async {
         if case .loaded = load {} else { load = .loading }
@@ -55,11 +104,12 @@ final class SkattViewModel {
         let kroner = Int64(amountText.filter { $0.isNumber }) ?? 0
         guard kroner > 0 else { return }
         saving = true
-        struct Body: Encodable { let amountMinor: String }
+        struct Body: Encodable { let amountMinor: String; let placementId: String? }
         let wasCovered = (currentOverview?.covered) ?? false
         do {
             let _: EmptyID = try await APIClient.shared.post(
-                "/api/organizations/\(orgId)/tax/reserves", body: Body(amountMinor: String(kroner * 100)))
+                "/api/organizations/\(orgId)/tax/reserves",
+                body: Body(amountMinor: String(kroner * 100), placementId: selectedPlacementId))
             amountText = ""
             await fetch(orgId: orgId)
             if let ov = currentOverview, ov.covered, !wasCovered { justCovered = true }
@@ -69,11 +119,34 @@ final class SkattViewModel {
         saving = false
     }
 
+    func createPlacement(orgId: String, name: String, type: String, liquidity: String) async {
+        struct Body: Encodable { let name: String; let placementType: String; let liquidity: String }
+        do {
+            let _: EmptyID = try await APIClient.shared.post(
+                "/api/organizations/\(orgId)/tax/placements",
+                body: Body(name: name, placementType: type, liquidity: liquidity))
+            showAddPlacement = false
+            await fetch(orgId: orgId)
+        } catch { load = .failed(error.localizedDescription) }
+    }
+
+    func recordValuation(orgId: String, placementId: String, valueKr: Int64) async {
+        struct Body: Encodable { let marketValueMinor: String }
+        do {
+            let _: OKFlag = try await APIClient.shared.post(
+                "/api/organizations/\(orgId)/tax/placements/\(placementId)/valuations",
+                body: Body(marketValueMinor: String(valueKr * 100)))
+            await fetch(orgId: orgId)
+        } catch { load = .failed(error.localizedDescription) }
+    }
+
     private var currentOverview: TaxReserveOverview? {
         if case .loaded(let ov) = load { return ov }
         return nil
     }
 }
+
+private struct OKFlag: Decodable, Sendable { let ok: Bool? }
 
 private struct EmptyID: Decodable, Sendable { let id: String? }
 
@@ -91,7 +164,9 @@ struct SkattView: View {
             case .loaded(let ov):
                 List {
                     SkattHeader(ov: ov)
-                    RegisterSection(model: model, orgId: orgId)
+                    RegisterSection(model: model, orgId: orgId, placements: ov.placements)
+                    LikviditetSection(ov: ov)
+                    PlaceringSection(model: model, orgId: orgId, ov: ov)
                     if !ov.reserves.isEmpty {
                         Section("Avsatt i år") {
                             ForEach(ov.reserves) { r in
@@ -110,6 +185,7 @@ struct SkattView: View {
             }
         }
         .navigationTitle("Skatt")
+        .sheet(isPresented: $model.showAddPlacement) { AddPlacementSheet(model: model, orgId: orgId) }
         .overlay { if model.justCovered { CoveredToast() } }
         .task(id: model.justCovered) {
             guard model.justCovered else { return }
@@ -156,6 +232,7 @@ private struct SkattHeader: View {
 private struct RegisterSection: View {
     @Bindable var model: SkattViewModel
     let orgId: String
+    let placements: [TaxPlacement]
     var body: some View {
         Section("Registrer at du har satt av") {
             HStack {
@@ -163,12 +240,147 @@ private struct RegisterSection: View {
                     .keyboardType(.numberPad)
                 Text("kr").foregroundStyle(.secondary)
             }
+            if !placements.isEmpty {
+                Picker("Plassering", selection: $model.selectedPlacementId) {
+                    Text("Kontant / skattekonto").tag(String?.none)
+                    ForEach(placements) { p in
+                        Text(p.name).tag(String?.some(p.id))
+                    }
+                }
+            }
             Button {
                 Task { await model.register(orgId: orgId) }
             } label: {
                 if model.saving { ProgressView() } else { Label("Registrer avsatt beløp", systemImage: "plus.circle") }
             }
             .disabled(model.saving || model.amountText.filter(\.isNumber).isEmpty)
+        }
+    }
+}
+
+/// Likviditetstrapp: hva som må stå likvid vs kan plasseres lenger. Kun horisont-anbefaling.
+private struct LikviditetSection: View {
+    let ov: TaxReserveOverview
+    var body: some View {
+        Section {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Må stå likvid").font(.caption).foregroundStyle(.secondary)
+                    Text(ov.ladder.liquidityFloorMinor.kr).font(.body.weight(.semibold)).monospacedDigit()
+                    if let d = ov.ladder.nextDueDate {
+                        Text("før \(d)").font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("Fri horisont").font(.caption).foregroundStyle(.secondary)
+                    Text(ov.ladder.freeToPlaceMinor.kr).font(.body.weight(.semibold)).monospacedDigit()
+                        .foregroundStyle(Color.reknarenGreen)
+                }
+            }
+            ForEach(ov.ladder.terminer) { t in
+                HStack {
+                    Image(systemName: t.coveredLiquid ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(t.coveredLiquid ? .green : .secondary)
+                    Text("Forskuddsskatt \(t.date)").font(.caption)
+                    Spacer()
+                    Text(t.amountMinor.kr).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("Likviditet mot forfall")
+        } footer: {
+            Text("«Fri horisont» er den delen som ikke trengs likvid i det nærmeste vinduet — den kan plasseres lenger hvis du vil ta risiko. Ikke investeringsråd. I ENK er pengene ikke øremerket; faller en plassering, skylder du fortsatt hele skatten.")
+        }
+    }
+}
+
+/// Plasseringer: markedsverdi + urealisert gevinst + oppdater verdi.
+private struct PlaceringSection: View {
+    @Bindable var model: SkattViewModel
+    let orgId: String
+    let ov: TaxReserveOverview
+    @State private var valueText: [String: String] = [:]
+    var body: some View {
+        Section {
+            ForEach(ov.placements) { p in
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(p.name).font(.body.weight(.medium))
+                            Text(p.typeLabel).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(p.marketValueMinor.kr).font(.body.weight(.semibold)).monospacedDigit()
+                            if p.gain {
+                                Text("+\(p.unrealisedGainMinor.kr)").font(.caption).foregroundStyle(.green).monospacedDigit()
+                            } else if p.loss {
+                                Text(p.unrealisedGainMinor.kr).font(.caption).foregroundStyle(.red).monospacedDigit()
+                            }
+                        }
+                    }
+                    HStack {
+                        TextField("Ny verdi i kr", text: Binding(
+                            get: { valueText[p.id] ?? "" },
+                            set: { valueText[p.id] = $0 }))
+                            .keyboardType(.numberPad).font(.caption)
+                        Button("Oppdater") {
+                            let kr = Int64((valueText[p.id] ?? "").filter { $0.isNumber }) ?? 0
+                            guard kr > 0 else { return }
+                            valueText[p.id] = ""
+                            Task { await model.recordValuation(orgId: orgId, placementId: p.id, valueKr: kr) }
+                        }
+                        .font(.caption).buttonStyle(.bordered)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            Button { model.showAddPlacement = true } label: {
+                Label("Legg til plassering", systemImage: "chart.line.uptrend.xyaxis")
+            }
+        } header: {
+            Text("Plassering av avsetning")
+        } footer: {
+            if ov.unrealisedGainMinor.minor > 0 {
+                Text("Urealisert gevinst \(ov.unrealisedGainMinor.kr). Anslått skatt på gevinsten (22 %): \(ov.gainTaxEstimateMinor.kr).")
+            }
+        }
+    }
+}
+
+private struct AddPlacementSheet: View {
+    @Bindable var model: SkattViewModel
+    let orgId: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var type = "money_market_fund"
+    @State private var liquidity = "days"
+    private let types: [(String, String)] = [
+        ("bank", "Bankkonto"), ("money_market_fund", "Pengemarkedsfond"),
+        ("bond_fund", "Obligasjonsfond"), ("equity_fund", "Aksjefond"), ("stock", "Aksjer"),
+    ]
+    private let liquidities: [(String, String)] = [
+        ("instant", "Straks"), ("days", "Noen dager"), ("short_term", "Kort sikt"), ("long_term", "Lang sikt"),
+    ]
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Ny plassering") {
+                    TextField("Navn (f.eks. «KLP Pengemarked»)", text: $name)
+                    Picker("Type", selection: $type) { ForEach(types, id: \.0) { Text($0.1).tag($0.0) } }
+                    Picker("Likviditet", selection: $liquidity) { ForEach(liquidities, id: \.0) { Text($0.1).tag($0.0) } }
+                }
+            }
+            .navigationTitle("Legg til plassering")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Avbryt") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Lagre") {
+                        Task { await model.createPlacement(orgId: orgId, name: name, type: type, liquidity: liquidity) }
+                    }.disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
         }
     }
 }

@@ -123,6 +123,7 @@ import { sha256Hex } from '../documents/service.js';
 import { DomainError, NotFoundError, ValidationError } from '../shared/errors.js';
 import { buildTaxEstimate } from '../tax/estimate.js';
 import { recordTaxReserve, taxReserveOverview, taxSetAsideForInvoice } from '../tax/reserve.js';
+import { createPlacement, recordValuation } from '../tax/placement.js';
 import { commonPurchaseCategories, registerPurchase } from '../tax/purchase.js';
 import type { OrganizationForm } from '../rules/types.js';
 import { buildVatReport, listVatCodes } from '../vat/engine.js';
@@ -4399,13 +4400,58 @@ export function createApiServer(deps: ApiDeps): express.Express {
         amountMinor: z.string().regex(/^\d+$/),
         reservedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         note: z.string().max(200).optional(),
+        placementId: z.string().uuid().optional(),
       }).parse(req.body);
       const reservedAt = body.reservedAt ?? new Date().toISOString().slice(0, 10);
       const r = await recordTaxReserve(deps.db, {
         organizationId: req.params.orgId!, actor: { userId: req.auth!.userId },
-        amountMinor: BigInt(body.amountMinor), reservedAt, ...(body.note ? { note: body.note } : {}),
+        amountMinor: BigInt(body.amountMinor), reservedAt,
+        ...(body.note ? { note: body.note } : {}),
+        ...(body.placementId ? { placementId: body.placementId } : {}),
       });
       res.status(201).json(toJson(r));
+    } catch (err) { next(err); }
+  });
+  // Plasseringer av skatteavsetning (bank/fond/aksjer). Reknaren handler ALDRI — kun sporing.
+  app.post('/api/organizations/:orgId/tax/placements', requireAuth, requireOrgPermission('journal.post'), async (req: AuthedRequest, res, next) => {
+    try {
+      const body = z.object({
+        name: z.string().min(1).max(120),
+        placementType: z.enum(['bank', 'money_market_fund', 'bond_fund', 'equity_fund', 'stock']),
+        liquidity: z.enum(['instant', 'days', 'short_term', 'long_term']),
+        isin: z.string().max(20).optional(),
+        accountRef: z.string().max(60).optional(),
+        ringFenced: z.boolean().optional(),
+        openedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      }).parse(req.body);
+      const r = await createPlacement(deps.db, {
+        organizationId: req.params.orgId!, actor: { userId: req.auth!.userId },
+        name: body.name, placementType: body.placementType, liquidity: body.liquidity,
+        openedAt: body.openedAt ?? new Date().toISOString().slice(0, 10),
+        ...(body.isin ? { isin: body.isin } : {}),
+        ...(body.accountRef ? { accountRef: body.accountRef } : {}),
+        ...(body.ringFenced !== undefined ? { ringFenced: body.ringFenced } : {}),
+      });
+      res.status(201).json(toJson(r));
+    } catch (err) { next(err); }
+  });
+  // Registrer dagens markedsverdi for en plassering (append-only).
+  app.post('/api/organizations/:orgId/tax/placements/:placementId/valuations', requireAuth, requireOrgPermission('journal.post'), async (req: AuthedRequest, res, next) => {
+    try {
+      const placementId = z.string().uuid().parse(req.params.placementId);
+      const owns = (await deps.db.query(
+        `SELECT 1 FROM tax_reserve_placements WHERE id=$1 AND organization_id=$2`, [placementId, req.params.orgId],
+      )).rowCount;
+      if (!owns) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Plasseringen finnes ikke.' } }); return; }
+      const body = z.object({
+        marketValueMinor: z.string().regex(/^\d+$/),
+        valuedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      }).parse(req.body);
+      await recordValuation(deps.db, {
+        placementId, marketValueMinor: BigInt(body.marketValueMinor),
+        valuedAt: body.valuedAt ?? new Date().toISOString().slice(0, 10),
+      });
+      res.status(201).json({ ok: true });
     } catch (err) { next(err); }
   });
   // Per faktura: hvor mye bør settes av til skatt for denne fakturaen.
