@@ -19,6 +19,9 @@ struct DabInstanceData {
     var size: Float
     var rotation: Float
     var alpha: Float
+    // Oval-skalering (x=bredde, y=høyde) — Shade-tilt; (1,1) = rund.
+    // Ligger i det som var padding før float3 — stride er fortsatt 48.
+    var stretch: SIMD2<Float> = SIMD2(1, 1)
     var color: SIMD3<Float>
 }
 
@@ -131,12 +134,41 @@ final class MetalStrokeRenderer {
         let spacing = max(0.5, baseSize * config.spacing)
         var carry = 0.0
 
-        func emit(at point: StrokePoint, direction: SIMD2<Double>) {
-            let pressure = max(0.05, point.pressure)
-            let sizeFactor = 1 - config.pressureToSize + pressure * config.pressureToSize
-            let size = baseSize * sizeFactor * (0.6 + brush.pressureSensitivity * 0.4)
+        // Total lengde (for taper inn/ut) + fartsberegning per segment.
+        var totalLength = 0.0
+        if stroke.points.count > 1 {
+            for i in 1..<stroke.points.count {
+                let dx = stroke.points[i].x - stroke.points[i - 1].x
+                let dy = stroke.points[i].y - stroke.points[i - 1].y
+                totalLength += (dx * dx + dy * dy).squareRoot()
+            }
+        }
+        totalLength *= scale
+
+        func emit(at point: StrokePoint, direction: SIMD2<Double>,
+                  traveledTotal: Double, velocity: Double) {
+            // Pressure curve (spec §8: pow 0.65 for blyant — ikke lineær)
+            let pressure = pow(max(0.05, point.pressure), config.pressureCurve)
+            var sizeFactor = 1 - config.pressureToSize + pressure * config.pressureToSize
+            // Velocity-dynamikk (px/ms; ~1.0 er rask strek)
+            if config.velocityToSize != 0 {
+                sizeFactor *= max(0.6, 1 + config.velocityToSize * min(velocity, 2))
+            }
+            var size = baseSize * sizeFactor * (0.6 + brush.pressureSensitivity * 0.4)
+            if config.sizeJitter > 0 {
+                size *= 1 + (rng.next() - 0.5) * 2 * config.sizeJitter
+            }
             let alphaFactor = 1 - config.pressureToOpacity + pressure * config.pressureToOpacity
             var alpha = brush.opacity * config.flow * alphaFactor
+            if config.velocityToOpacity != 0 {
+                alpha *= max(0.5, 1 + config.velocityToOpacity * min(velocity, 2))
+            }
+            // Taper inn/ut (spec §9 — Ink)
+            if config.taperDistance > 0, totalLength > 0 {
+                let taper = min(1, min(traveledTotal, totalLength - traveledTotal)
+                    / (config.taperDistance * scale))
+                size *= max(0.15, taper)
+            }
 
             // Canvas-låst papirtann (Procreate «Texturized» / Krita multiply)
             let grain = min(1, max(0, brush.grain))
@@ -148,6 +180,15 @@ final class MetalStrokeRenderer {
 
             var x = point.x * scale
             var y = point.y * scale
+            // Menneskelig wobble (spec §15): lavfrekvent noise vinkelrett
+            // på strøkretningen, deterministisk på avstand.
+            if config.wobble > 0 {
+                let wobble = WobbleNoise.sample(traveledTotal / scale * 0.05)
+                    * config.wobble * baseSize * 0.35
+                let dirLen = max(0.0001, (direction.x * direction.x + direction.y * direction.y).squareRoot())
+                x += -direction.y / dirLen * wobble
+                y += direction.x / dirLen * wobble
+            }
             let scatter = config.scatter * (1 + grain * 0.6)
             if scatter > 0 {
                 let magnitude = rng.next() * scatter * baseSize
@@ -166,24 +207,58 @@ final class MetalStrokeRenderer {
                 rotation += (rng.next() * 2 - 1) * config.jitterAngleDeg * .pi / 180
             }
 
+            // Tilt-oval (spec §12): flat stylus → bred og flat grafittside.
+            var stretch = SIMD2<Float>(1, 1)
+            if config.tiltOval > 0 {
+                let tilt = min(1, (point.tiltX * point.tiltX + point.tiltY * point.tiltY).squareRoot() / 90)
+                stretch = SIMD2(Float(1 + tilt * 2.5 * config.tiltOval),
+                                Float(max(0.3, 1 - tilt * 0.55 * config.tiltOval)))
+            }
             dabs.append(DabInstanceData(
                 position: SIMD2<Float>(Float(x), Float(y)),
                 size: Float(size),
                 rotation: Float(rotation),
                 alpha: Float(min(1, alpha)),
+                stretch: stretch,
                 color: rgb))
+            // Shade 2.0 (spec §38): mikrolinjer i strøkretningen — små
+            // ekstra dabs foran/bak som simulerer grafittsidens striper.
+            if config.directionTexture > 0, rng.next() < config.directionTexture {
+                let dirLen = max(0.0001, (direction.x * direction.x + direction.y * direction.y).squareRoot())
+                let ux = direction.x / dirLen, uy = direction.y / dirLen
+                let offset = (rng.next() - 0.5) * size * 0.8
+                let lift = (rng.next() - 0.5) * size * 0.5
+                dabs.append(DabInstanceData(
+                    position: SIMD2<Float>(Float(x + ux * offset - uy * lift),
+                                           Float(y + uy * offset + ux * lift)),
+                    size: Float(size * 0.18),
+                    rotation: Float(atan2(uy, ux)),
+                    alpha: Float(min(1, alpha * 0.8)),
+                    stretch: SIMD2(3.5, 0.5),
+                    color: rgb))
+            }
+        }
+
+        // Prosedural skravering (spec §10/§37): egen generator.
+        if let hatchParams = config.hatch {
+            return hatchDabs(stroke, scale: scale, brush: brush, config: config,
+                             params: hatchParams, rng: &rng)
         }
 
         if stroke.points.count == 1 {
-            emit(at: stroke.points[0], direction: SIMD2(1, 0))
+            emit(at: stroke.points[0], direction: SIMD2(1, 0), traveledTotal: 0, velocity: 0)
             return dabs
         }
+        var accumulated = 0.0
         for i in 1..<stroke.points.count {
             let from = stroke.points[i - 1]
             let to = stroke.points[i]
             let dx = to.x - from.x, dy = to.y - from.y
             let dist = (dx * dx + dy * dy).squareRoot() * scale
             guard dist > 0.001 else { continue }
+            // Fart i px/ms fra timestamps (spec §5)
+            let dt = max(1, to.timestamp - from.timestamp)
+            let velocity = dist / scale / dt
             var traveled = -carry
             while traveled + spacing <= dist {
                 traveled += spacing
@@ -195,7 +270,103 @@ final class MetalStrokeRenderer {
                     tiltX: from.tiltX + (to.tiltX - from.tiltX) * t,
                     tiltY: from.tiltY + (to.tiltY - from.tiltY) * t,
                     timestamp: from.timestamp)
-                emit(at: sample, direction: SIMD2(dx, dy))
+                emit(at: sample, direction: SIMD2(dx, dy),
+                     traveledTotal: accumulated + traveled, velocity: velocity)
+            }
+            carry = dist - traveled
+            accumulated += dist
+        }
+        return dabs
+    }
+
+    /// Story Hatch / Cross Hatch: genererer korte parallelle streker
+    /// (organiske, 5 segmenter) langs strøkbanen. Trykk styrer tetthet og
+    /// om kryss-laget legges (spec §37): <0.35 glissent, ≥0.7 kryss.
+    private func hatchDabs(_ stroke: PencilStroke, scale: Double, brush: BrushSpec,
+                           config: StampConfig, params: HatchParams,
+                           rng: inout SeededRandom) -> [DabInstanceData] {
+        var dabs: [DabInstanceData] = []
+        let rgb = Self.parseHex(brush.color)
+        let region = max(8, brush.size) * scale           // penselens dekkbredde
+        let sizeRatio = max(0.4, brush.size / 34)          // spec-preset er 34 px
+        let markLength = params.lineLength * sizeRatio * scale
+        let markWidth = max(1, params.lineWidth * 1.6 * scale)
+        let markSpacing = params.lineSpacing * sizeRatio * scale
+        let alwaysCross = stroke.brush?.type == .crosshatch
+
+        func mark(at cx: Double, _ cy: Double, angle: Double, alpha: Double) {
+            let length = markLength * (1 + (rng.next() - 0.5) * params.lengthJitter)
+            let markAngle = angle + (rng.next() - 0.5) * params.angleJitter * 2
+            // Organisk strek: 5 segmenter med sideveis avvik (spec §10),
+            // hvert segment tegnes som tette små dabs.
+            let segments = 5
+            var previous = SIMD2<Double>(cx - cos(markAngle) * length / 2,
+                                         cy - sin(markAngle) * length / 2)
+            for i in 1...segments {
+                let t = Double(i) / Double(segments)
+                let wobbleOffset = (rng.next() - 0.5) * 0.9 * scale
+                let px = cx + cos(markAngle) * (t - 0.5) * length - sin(markAngle) * wobbleOffset
+                let py = cy + sin(markAngle) * (t - 0.5) * length + cos(markAngle) * wobbleOffset
+                let segLen = ((px - previous.x) * (px - previous.x)
+                    + (py - previous.y) * (py - previous.y)).squareRoot()
+                let steps = max(1, Int(segLen / (markWidth * 0.6)))
+                for step in 0...steps {
+                    let st = Double(step) / Double(steps)
+                    dabs.append(DabInstanceData(
+                        position: SIMD2<Float>(Float(previous.x + (px - previous.x) * st),
+                                               Float(previous.y + (py - previous.y) * st)),
+                        size: Float(markWidth),
+                        rotation: 0,
+                        alpha: Float(alpha),
+                        color: rgb))
+                }
+                previous = SIMD2(px, py)
+            }
+        }
+
+        var carry = 0.0
+        let points = stroke.points
+        guard let first = points.first else { return dabs }
+        // Ett punkt: én klynge.
+        func cluster(at point: StrokePoint) {
+            let pressure = pow(max(0.05, point.pressure), config.pressureCurve)
+            // Trykk → tetthet + kryss (spec §37)
+            let density: Double = pressure < 0.35 ? 0.3 : (pressure < 0.7 ? 0.65 : 1.0)
+            let cross = alwaysCross || pressure >= 0.7
+            let alpha = min(1, brush.opacity * (0.7 + pressure * 0.5))
+            let rows = max(1, Int(region / markSpacing * density))
+            for _ in 0..<rows {
+                let ox = (rng.next() - 0.5) * region
+                let oy = (rng.next() - 0.5) * region
+                let jx = (rng.next() - 0.5) * params.positionJitter * scale
+                let jy = (rng.next() - 0.5) * params.positionJitter * scale
+                mark(at: point.x * scale + ox + jx, point.y * scale + oy + jy,
+                     angle: params.angle, alpha: alpha)
+                if cross {
+                    mark(at: point.x * scale + ox - jx, point.y * scale + oy - jy,
+                         angle: params.crossAngle, alpha: alpha * 0.85)
+                }
+            }
+        }
+        if points.count == 1 {
+            cluster(at: first)
+            return dabs
+        }
+        // Klynger med regionsavstand langs banen (unngå dobbeltdekning).
+        let clusterSpacing = region * 0.55
+        for i in 1..<points.count {
+            let from = points[i - 1], to = points[i]
+            let dx = to.x - from.x, dy = to.y - from.y
+            let dist = (dx * dx + dy * dy).squareRoot() * scale
+            guard dist > 0.001 else { continue }
+            var traveled = -carry
+            while traveled + clusterSpacing <= dist {
+                traveled += clusterSpacing
+                let t = traveled / dist
+                cluster(at: StrokePoint(
+                    x: from.x + dx * t, y: from.y + dy * t,
+                    pressure: from.pressure + (to.pressure - from.pressure) * t,
+                    tiltX: 0, tiltY: 0, timestamp: from.timestamp))
             }
             carry = dist - traveled
         }
@@ -258,7 +429,8 @@ final class MetalStrokeRenderer {
         pass.colorAttachments[0].loadAction = .load
         pass.colorAttachments[0].storeAction = .store
         guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
-        let pipeline = brush.type == .eraser ? dabPipelineEraser : dabPipelineAccumulator
+        let isErase = brush.type == .eraser || brush.type == .kneaded || brush.type == .lightlift
+        let pipeline = isErase ? dabPipelineEraser : dabPipelineAccumulator
         encodeDabs(dabs, preset: config.preset, into: encoder, pipeline: pipeline)
         encoder.endEncoding()
         buffer.commit()

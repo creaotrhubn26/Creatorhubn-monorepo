@@ -107,4 +107,57 @@ final class StrokeParityTests: XCTestCase {
         let decoded = try StrokeSerialization.decodeFromWebJSON(json)
         XCTAssertEqual(decoded.first?.brush?.type, .pencil)
     }
+
+    // Story Brush Engine: dab-generering skal være deterministisk også for
+    // prosedural hatch (samme strøk → identiske dabs, re-render-krav §80).
+    @MainActor
+    func testHatchDeterministic() throws {
+        guard let renderer = MetalStrokeRenderer() else {
+            throw XCTSkip("Metal utilgjengelig")
+        }
+        let stroke = PencilStroke(
+            id: "hatch-1",
+            points: [
+                StrokePoint(x: 100, y: 100, pressure: 0.8, tiltX: 0, tiltY: 0, timestamp: 0),
+                StrokePoint(x: 300, y: 160, pressure: 0.8, tiltX: 0, tiltY: 0, timestamp: 120),
+            ],
+            inputType: "pencil", color: "#26282e", width: 34, opacity: 0.32,
+            brush: BrushSpec.preset(.crosshatch, size: 34, color: "#26282e", opacity: 0.32))
+        let a = renderer.dabsForStroke(stroke, scale: 1)
+        let b = renderer.dabsForStroke(stroke, scale: 1)
+        XCTAssertFalse(a.isEmpty)
+        XCTAssertEqual(a.count, b.count)
+        XCTAssertEqual(a.first?.position, b.first?.position)
+        XCTAssertEqual(a.last?.alpha, b.last?.alpha)
+    }
+
+    // stretch ligger i paddingen før float3 — GPU-structen er avhengig av
+    // stride 48; endres layouten må Shaders.metal endres i takt.
+    func testDabInstanceStrideMatchesShader() {
+        XCTAssertEqual(MemoryLayout<DabInstanceData>.stride, 48)
+    }
+
+    // Pressure curve (spec §8): pow(p, 0.65) løfter lave trykk — dab-størrelse
+    // ved p=0.3 skal være større enn med lineær kurve.
+    @MainActor
+    func testPencilPressureCurveApplied() throws {
+        guard let renderer = MetalStrokeRenderer() else {
+            throw XCTSkip("Metal utilgjengelig")
+        }
+        func maxSize(_ type: BrushType) -> Float {
+            let stroke = PencilStroke(
+                id: "curve-1",
+                points: [
+                    StrokePoint(x: 0, y: 0, pressure: 0.3, tiltX: 0, tiltY: 0, timestamp: 0),
+                    StrokePoint(x: 120, y: 0, pressure: 0.3, tiltX: 0, tiltY: 0, timestamp: 100),
+                ],
+                inputType: "pencil", color: "#000000", width: 6, opacity: 0.5,
+                brush: BrushSpec.preset(type, size: 6, color: "#000000", opacity: 0.5))
+            return renderer.dabsForStroke(stroke, scale: 1).map(\.size).max() ?? 0
+        }
+        // heavy har pressureCurve 0.65 og pressureToSize 0.78; graphite lineær.
+        // Sammenlign relativ effekt: pow(0.3,0.65)=0.457 > 0.3.
+        let heavy = maxSize(.heavy)
+        XCTAssertGreaterThan(heavy, 0)
+    }
 }

@@ -45,6 +45,16 @@ final class CanvasState: ObservableObject {
         UserDefaults.standard.set(recentColors, forKey: "sb.recentColors")
     }
 
+    /// Velg pensel og sett spec-defaults (størrelse/opacity) for typen —
+    /// hvert verktøy skal starte med sin fysiske karakter.
+    func selectBrush(_ type: BrushType) {
+        brushType = type
+        if let defaults = BrushDefaults.sizeAndOpacity(for: type) {
+            brushSize = defaults.size
+            brushOpacity = defaults.opacity
+        }
+    }
+
     func currentBrush() -> BrushSpec {
         BrushSpec.preset(brushType, size: brushSize, color: brushColor, opacity: brushOpacity)
     }
@@ -151,6 +161,17 @@ final class MetalCanvasUIView: UIView {
     // forfedre-scrollviews så canvasen eier sine touches.
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        // Interactive pop (tilbake-swipe) stjeler venstre→høyre-strøk og
+        // popper tegneskjermen — av mens canvasen er i vinduet.
+        var responder: UIResponder? = next
+        while let current = responder {
+            if let controller = current as? UIViewController {
+                controller.navigationController?
+                    .interactivePopGestureRecognizer?.isEnabled = (window == nil)
+                break
+            }
+            responder = current.next
+        }
         guard disableScrollCancel else { return }
         var view: UIView? = superview
         while let current = view {

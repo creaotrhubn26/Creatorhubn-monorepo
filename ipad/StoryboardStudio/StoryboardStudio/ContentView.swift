@@ -6,9 +6,11 @@ struct BrushToolbar: View {
     var onExport: (() -> Void)?
 
     private let brushOptions: [(BrushType, String)] = [
-        (.pencil, "Blyant"), (.graphite, "Grafitt"), (.charcoal, "Kull"),
-        (.conte, "Conté"), (.pen, "Penn"), (.ink, "Tusj"), (.marker, "Marker"),
-        (.highlighter, "Highlight"), (.smudge, "Smudge"), (.eraser, "Viskelær"),
+        (.layout, "Layout"), (.pencil, "Blyant"), (.heavy, "Heavy"),
+        (.detail, "Detalj"), (.ink, "Tusj"),
+        (.hatch, "Skraver"), (.crosshatch, "Kryss"), (.shade, "Skygge"),
+        (.graintex, "Korn"), (.smudge, "Smudge"),
+        (.eraser, "Viskelær"), (.kneaded, "Kna"), (.lightlift, "Lysløft"),
     ]
 
     private var colorBinding: Binding<Color> {
@@ -20,19 +22,24 @@ struct BrushToolbar: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Picker("Pensel", selection: $canvasState.brushType) {
+            // 13 pensler — meny i stedet for segmenter; valg setter
+            // spec-defaults via selectBrush.
+            Menu {
                 ForEach(brushOptions, id: \.0) { option in
-                    Text(option.1).tag(option.0)
+                    Button(option.1) { canvasState.selectBrush(option.0) }
                 }
+            } label: {
+                Label(brushOptions.first(where: { $0.0 == canvasState.brushType })?.1 ?? "Pensel",
+                      systemImage: "paintbrush.pointed")
+                    .font(.subheadline.bold())
             }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 720)
+            .accessibilityLabel("Penselvalg")
 
             ColorPicker("Farge", selection: colorBinding, supportsOpacity: false)
                 .labelsHidden()
                 .frame(width: 44)
 
-            Slider(value: $canvasState.brushSize, in: 1...48) {
+            Slider(value: $canvasState.brushSize, in: 1...120) {
                 Text("Størrelse")
             }
             .frame(width: 160)
