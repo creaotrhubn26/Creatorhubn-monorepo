@@ -2132,6 +2132,17 @@ struct BrushEditorSheet: View {
         )
     }
 
+    private var isHatchBrush: Bool {
+        canvasState.brushType == .hatch || canvasState.brushType == .crosshatch
+    }
+
+    private var isEnvironmentalBrush: Bool {
+        switch canvasState.brushType {
+        case .forest, .debris, .organictex, .fur, .wethair, .spikes: return true
+        default: return false
+        }
+    }
+
     var body: some View {
         let preset = BrushSpec.preset(canvasState.brushType, size: canvasState.brushSize,
                                       color: canvasState.brushColor, opacity: canvasState.brushOpacity)
@@ -2145,10 +2156,39 @@ struct BrushEditorSheet: View {
                         Slider(value: overrideBinding(\.flowOverride, default: preset.flow), in: 0.02...1)
                     }
                 }
+                // §48: parametre per kategori — vis kun det penselen støtter
+                if isHatchBrush {
+                    Section("Skravering") {
+                        LabeledContent("Vinkel \(Int(canvasState.hatchAngleOverride ?? 35))°") {
+                            Slider(value: overrideBinding(\.hatchAngleOverride, default: 35), in: 0...180)
+                        }
+                        LabeledContent("Tetthet") {
+                            Slider(value: overrideBinding(\.hatchDensityOverride, default: 1), in: 0.3...2.5)
+                        }
+                        LabeledContent("Lengde") {
+                            Slider(value: overrideBinding(\.hatchLengthOverride, default: 1), in: 0.4...2.5)
+                        }
+                    }
+                }
+                if isEnvironmentalBrush {
+                    Section("Struktur") {
+                        LabeledContent("Tetthet") {
+                            Slider(value: overrideBinding(\.envDensityOverride, default: 1), in: 0.3...2.5)
+                        }
+                        LabeledContent("Skala") {
+                            Slider(value: overrideBinding(\.envScaleOverride, default: 1), in: 0.4...2.5)
+                        }
+                    }
+                }
                 Section {
                     Button("Tilbakestill til preset") {
                         canvasState.grainOverride = nil
                         canvasState.flowOverride = nil
+                        canvasState.hatchAngleOverride = nil
+                        canvasState.hatchDensityOverride = nil
+                        canvasState.hatchLengthOverride = nil
+                        canvasState.envDensityOverride = nil
+                        canvasState.envScaleOverride = nil
                     }
                 }
             }
@@ -2202,6 +2242,24 @@ struct ToneReportSheet: View {
                                 color: Color(white: 0.22))
                         } header: {
                             Text("Tonefordeling · \(Int(report.coveragePct * 100)) % av flaten dekket")
+                        }
+                        // Density map (§70–§72): heatmap + hvilesoner
+                        Section("Tetthetskart") {
+                            VStack(alignment: .leading, spacing: 6) {
+                                VStack(spacing: 2) {
+                                    ForEach(0..<ToneReport.gridRows, id: \.self) { row in
+                                        HStack(spacing: 2) {
+                                            ForEach(0..<ToneReport.gridColumns, id: \.self) { col in
+                                                RoundedRectangle(cornerRadius: 2)
+                                                    .fill(Color.primary.opacity(0.06 + report.densityGrid[row][col] * 0.9))
+                                                    .aspectRatio(1.6, contentMode: .fit)
+                                            }
+                                        }
+                                    }
+                                }
+                                Text("\(report.restZoneCount) av \(ToneReport.gridRows * ToneReport.gridColumns) soner er hvileflater (øyet trenger pauser — helt fullt bilde blir støy).")
+                                    .font(.caption2).foregroundStyle(.secondary)
+                            }
                         }
                         if report.isFlat {
                             Section {

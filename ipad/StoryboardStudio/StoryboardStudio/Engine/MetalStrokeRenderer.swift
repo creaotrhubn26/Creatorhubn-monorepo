@@ -300,7 +300,11 @@ final class MetalStrokeRenderer {
         let rgb = Self.parseHex(brush.color)
         let region = max(8, brush.size) * scale           // penselens dekkbredde
         let sizeRatio = max(0.4, brush.size / 34)          // spec-preset er 34 px
-        let markLength = params.lineLength * sizeRatio * scale
+        // Editor-overrides (§48) — lagret per strøk, deterministisk
+        let lengthFactor = min(3, max(0.3, brush.hatchLength ?? 1))
+        let densityFactor = min(3, max(0.3, brush.hatchDensity ?? 1))
+        let angleOverride = brush.hatchAngleDeg.map { $0 * .pi / 180 }
+        let markLength = params.lineLength * sizeRatio * scale * lengthFactor
         let markWidth = max(1, params.lineWidth * 1.6 * scale)
         let markSpacing = params.lineSpacing * sizeRatio * scale
         let alwaysCross = stroke.brush?.type == .crosshatch
@@ -345,10 +349,12 @@ final class MetalStrokeRenderer {
             let density: Double = pressure < 0.35 ? 0.3 : (pressure < 0.7 ? 0.65 : 1.0)
             let cross = params.allowCross && (alwaysCross || pressure >= 0.7)
             let alpha = min(1, brush.opacity * (0.7 + pressure * 0.5))
-            let rows = max(1, Int(region / markSpacing * density))
-            // Speed lines: merkene følger strøkretningen.
+            let rows = max(1, Int(region / markSpacing * density * densityFactor))
+            // Speed lines: merkene følger strøkretningen; ellers editor-
+            // vinkel om satt, ellers preset. Kryssvinkel beholder offset.
             let baseAngle = params.followDirection
-                ? atan2(direction.y, direction.x) : params.angle
+                ? atan2(direction.y, direction.x)
+                : (angleOverride ?? params.angle)
             for _ in 0..<rows {
                 let ox = (rng.next() - 0.5) * region
                 let oy = (rng.next() - 0.5) * region
@@ -357,8 +363,10 @@ final class MetalStrokeRenderer {
                 mark(at: point.x * scale + ox + jx, point.y * scale + oy + jy,
                      angle: baseAngle, alpha: alpha)
                 if cross {
+                    let crossAngle = angleOverride.map { $0 + (params.crossAngle - params.angle) }
+                        ?? params.crossAngle
                     mark(at: point.x * scale + ox - jx, point.y * scale + oy - jy,
-                         angle: params.crossAngle, alpha: alpha * 0.85)
+                         angle: crossAngle, alpha: alpha * 0.85)
                 }
             }
         }
@@ -396,7 +404,10 @@ final class MetalStrokeRenderer {
                                    rng: inout SeededRandom) -> [DabInstanceData] {
         var dabs: [DabInstanceData] = []
         let rgb = Self.parseHex(brush.color)
-        let unit = max(6, brush.size) * scale
+        // Editor-overrides (§48)
+        let envScale = min(3, max(0.4, brush.envScale ?? 1))
+        let envDensity = min(3, max(0.3, brush.envDensity ?? 1))
+        let unit = max(6, brush.size) * scale * envScale
 
         // Dab-fylt linje — byggeklossen for alle strukturene.
         func line(_ x0: Double, _ y0: Double, _ x1: Double, _ y1: Double,
@@ -452,7 +463,7 @@ final class MetalStrokeRenderer {
             switch mode {
             case .forest:
                 // Trykk → tetthet + høyde (spec §58)
-                let count = max(1, Int(2 + pressure * 0.82 * 5))
+                let count = max(1, Int((2 + pressure * 0.82 * 5) * envDensity))
                 for _ in 0..<count {
                     let h = unit * (0.75 + pressure * 0.46) * (1 + (rng.next() - 0.5) * 0.28)
                     conifer(px + (rng.next() - 0.5) * unit * 1.4,
@@ -461,7 +472,7 @@ final class MetalStrokeRenderer {
                 }
             case .debris:
                 // Tetthet først, så størrelse (spec §62)
-                let count = max(1, Int(8 * (0.25 + pressure * 0.86)))
+                let count = max(1, Int(8 * (0.25 + pressure * 0.86) * envDensity))
                 for _ in 0..<count {
                     let radius = rng.next() * unit
                     let clusterAngle = rng.next() * .pi * 2
@@ -487,7 +498,7 @@ final class MetalStrokeRenderer {
                 }
             case .organic:
                 // Shard-klynger (spec §64–§66)
-                let count = max(1, Int(7 * (0.3 + pressure * 0.84)))
+                let count = max(1, Int(7 * (0.3 + pressure * 0.84) * envDensity))
                 for _ in 0..<count {
                     let offsetAngle = rng.next() * .pi * 2
                     let radius = rng.next() * unit
@@ -506,7 +517,7 @@ final class MetalStrokeRenderer {
                 }
             case .fur:
                 // Klynger av tapered strå (spec §44–§45)
-                let count = max(1, Int(6 * (0.25 + pressure * 0.8)))
+                let count = max(1, Int(6 * (0.25 + pressure * 0.8) * envDensity))
                 for _ in 0..<count {
                     let angle = dirAngle * 0.7 + (rng.next() - 0.5) * 0.8
                     let length = unit * (0.5 + rng.next() * 0.6)
@@ -520,7 +531,7 @@ final class MetalStrokeRenderer {
                 // Pigg/skjell-rader (troll-pelsen i referansen): trekantede
                 // pigger vinkelrett ut fra strøkretningen, lagvis med
                 // størrelses- og vinkelvariasjon — leses som bust/skjell.
-                let count = max(2, Int(5 * (0.3 + pressure * 0.8)))
+                let count = max(2, Int(5 * (0.3 + pressure * 0.8) * envDensity))
                 let dirLen = max(0.0001, (direction.x * direction.x + direction.y * direction.y).squareRoot())
                 let ux = direction.x / dirLen, uy = direction.y / dirLen
                 // Piggene peker vinkelrett «ut» (venstre for strøkretningen)
@@ -548,7 +559,7 @@ final class MetalStrokeRenderer {
                 // Lange kurvede strå med heng (kvadratisk kurve mot tyngde) —
                 // vått hår klumper: par av nesten-parallelle strå + stor
                 // tonevariasjon (mørk masse med enkelte lysere strå).
-                let count = max(1, Int(4 * (0.3 + pressure * 0.8)))
+                let count = max(1, Int(4 * (0.3 + pressure * 0.8) * envDensity))
                 for _ in 0..<count {
                     let rootX = px + (rng.next() - 0.5) * unit
                     let rootY = py + (rng.next() - 0.5) * unit * 0.5
@@ -896,6 +907,11 @@ struct ToneReport: Sendable {
     let midPct: Double        // 0.30–0.55
     let darkPct: Double       // > 0.55
     let isFlat: Bool          // ett bånd dominerer (>75 %) ved reell dekning
+    // Density map (§70–§72): 8×5 soner, score = snitt-mørkhet (0–1).
+    static let gridColumns = 8
+    static let gridRows = 5
+    let densityGrid: [[Double]]
+    let restZoneCount: Int    // soner med score < 0.05 (§70: rest zones)
 }
 
 extension MetalStrokeRenderer {
@@ -908,6 +924,9 @@ extension MetalStrokeRenderer {
         texture.getBytes(&pixels, bytesPerRow: bytesPerRow,
                          from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
         var light = 0, mid = 0, dark = 0, covered = 0, total = 0
+        let columns = ToneReport.gridColumns, rows = ToneReport.gridRows
+        var zoneSum = Array(repeating: Array(repeating: 0.0, count: columns), count: rows)
+        var zoneCount = Array(repeating: Array(repeating: 0, count: columns), count: rows)
         let step = 4 // sample hver 4. piksel i begge akser
         var y = 0
         while y < height {
@@ -915,6 +934,9 @@ extension MetalStrokeRenderer {
             while x < width {
                 let index = (y * width + x) * 4
                 total += 1
+                let zoneX = min(columns - 1, x * columns / width)
+                let zoneY = min(rows - 1, y * rows / height)
+                zoneCount[zoneY][zoneX] += 1
                 let alpha = Double(pixels[index + 3]) / 255
                 if alpha > 0.04 {
                     covered += 1
@@ -924,6 +946,7 @@ extension MetalStrokeRenderer {
                     let b = Double(pixels[index + 2]) / 255 / alpha
                     let luminance = 0.299 * r + 0.587 * g + 0.114 * b
                     let darkness = alpha * (1 - min(1, luminance))
+                    zoneSum[zoneY][zoneX] += darkness
                     if darkness < 0.30 { light += 1 }
                     else if darkness < 0.55 { mid += 1 }
                     else { dark += 1 }
@@ -932,16 +955,25 @@ extension MetalStrokeRenderer {
             }
             y += step
         }
+        let densityGrid = (0..<rows).map { row in
+            (0..<columns).map { col in
+                zoneCount[row][col] > 0 ? zoneSum[row][col] / Double(zoneCount[row][col]) : 0
+            }
+        }
+        let restZones = densityGrid.flatMap { $0 }.filter { $0 < 0.05 }.count
         guard total > 0 else { return nil }
         let coverage = Double(covered) / Double(total)
         guard covered > 0 else {
-            return ToneReport(coveragePct: 0, lightPct: 0, midPct: 0, darkPct: 0, isFlat: false)
+            return ToneReport(coveragePct: 0, lightPct: 0, midPct: 0, darkPct: 0,
+                              isFlat: false, densityGrid: densityGrid,
+                              restZoneCount: restZones)
         }
         let lightPct = Double(light) / Double(covered)
         let midPct = Double(mid) / Double(covered)
         let darkPct = Double(dark) / Double(covered)
         let isFlat = coverage > 0.05 && max(lightPct, midPct, darkPct) > 0.75
         return ToneReport(coveragePct: coverage, lightPct: lightPct,
-                          midPct: midPct, darkPct: darkPct, isFlat: isFlat)
+                          midPct: midPct, darkPct: darkPct, isFlat: isFlat,
+                          densityGrid: densityGrid, restZoneCount: restZones)
     }
 }

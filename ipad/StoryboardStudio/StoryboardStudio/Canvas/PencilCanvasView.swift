@@ -45,10 +45,16 @@ final class CanvasState: ObservableObject {
         UserDefaults.standard.set(recentColors, forKey: "sb.recentColors")
     }
 
-    // Brush-editor (spec §25/§48-lett): per-økt-overstyringer oppå preset.
+    // Brush-editor (spec §25/§48): per-økt-overstyringer oppå preset.
+    // Verdiene bakes inn i strøkets BrushSpec → følger dokumentet.
     @Published var grainOverride: Double?
     @Published var flowOverride: Double?
     @Published var hardnessOverride: Double?
+    @Published var hatchAngleOverride: Double?    // grader
+    @Published var hatchDensityOverride: Double?
+    @Published var hatchLengthOverride: Double?
+    @Published var envDensityOverride: Double?
+    @Published var envScaleOverride: Double?
 
     /// Velg pensel og sett spec-defaults (størrelse/opacity) for typen —
     /// hvert verktøy skal starte med sin fysiske karakter. Editor-overrides
@@ -65,6 +71,11 @@ final class CanvasState: ObservableObject {
         grainOverride = nil
         flowOverride = nil
         hardnessOverride = nil
+        hatchAngleOverride = nil
+        hatchDensityOverride = nil
+        hatchLengthOverride = nil
+        envDensityOverride = nil
+        envScaleOverride = nil
     }
 
     func currentBrush() -> BrushSpec {
@@ -72,6 +83,11 @@ final class CanvasState: ObservableObject {
         if let grain = grainOverride { brush.grain = grain }
         if let flow = flowOverride { brush.flow = flow }
         if let hardness = hardnessOverride { brush.hardness = hardness }
+        brush.hatchAngleDeg = hatchAngleOverride
+        brush.hatchDensity = hatchDensityOverride
+        brush.hatchLength = hatchLengthOverride
+        brush.envDensity = envDensityOverride
+        brush.envScale = envScaleOverride
         return brush
     }
 
