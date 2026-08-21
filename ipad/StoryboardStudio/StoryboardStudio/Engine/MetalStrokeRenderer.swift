@@ -511,6 +511,34 @@ final class MetalStrokeRenderer {
                            baseWidth: 1.8 * scale,
                            alpha: alpha * (0.7 + rng.next() * 0.3))
                 }
+            case .spikes:
+                // Pigg/skjell-rader (troll-pelsen i referansen): trekantede
+                // pigger vinkelrett ut fra strøkretningen, lagvis med
+                // størrelses- og vinkelvariasjon — leses som bust/skjell.
+                let count = max(2, Int(5 * (0.3 + pressure * 0.8)))
+                let dirLen = max(0.0001, (direction.x * direction.x + direction.y * direction.y).squareRoot())
+                let ux = direction.x / dirLen, uy = direction.y / dirLen
+                // Piggene peker vinkelrett «ut» (venstre for strøkretningen)
+                let nx = -uy, ny = ux
+                for i in 0..<count {
+                    let along = (Double(i) / Double(count) - 0.5) * unit * 1.6
+                    let bx = px + ux * along + (rng.next() - 0.5) * unit * 0.2
+                    let by = py + uy * along + (rng.next() - 0.5) * unit * 0.2
+                    let spikeLength = unit * (0.35 + rng.next() * 0.45) * (0.6 + pressure * 0.5)
+                    let lean = (rng.next() - 0.5) * 0.7
+                    let tipX = bx + (nx + ux * lean) * spikeLength
+                    let tipY = by + (ny + uy * lean) * spikeLength
+                    let baseHalf = spikeLength * 0.22
+                    // Trekant: to sider fra base til spiss
+                    line(bx - ux * baseHalf, by - uy * baseHalf, tipX, tipY,
+                         width: 1.4 * scale, alpha: alpha)
+                    line(bx + ux * baseHalf, by + uy * baseHalf, tipX, tipY,
+                         width: 1.4 * scale, alpha: alpha * 0.9)
+                    // Skygge-fylling i noen pigger
+                    if rng.next() < 0.4 {
+                        line(bx, by, tipX, tipY, width: 2.2 * scale, alpha: alpha * 0.5)
+                    }
+                }
             case .wethair:
                 // Lange kurvede strå med heng (kvadratisk kurve mot tyngde) —
                 // vått hår klumper: par av nesten-parallelle strå + stor

@@ -35,6 +35,7 @@ struct HatchParams: Sendable {
 enum EnvironmentalMode: Sendable {
     case forest, debris, organic, fur
     case wethair   // lange kurvede strå med heng (rendering-klassen)
+    case spikes    // pigg/skjell-rader (troll-pels, bark, rustning)
 }
 
 struct StampConfig: Sendable {
@@ -249,6 +250,34 @@ struct StampConfig: Sendable {
                                pressureToSize: 0.4, pressureToOpacity: 0.6,
                                flow: 0.6, sizeMultiplier: 1.3,
                                pressureCurve: 0.75, sizeJitter: 0.3)
+        case .wash:
+            // Lavering: bred flat halvtransparent — bygger tonelag med
+            // papirkant-grain; tilt flater ovalen (som å legge penselen ned).
+            return StampConfig(preset: .markerChisel, spacing: 0.05, scatter: 0.02,
+                               jitterAngleDeg: 8, tiltRotation: true,
+                               pressureToSize: 0.25, pressureToOpacity: 0.6,
+                               flow: 0.3, sizeMultiplier: 1.6,
+                               pressureCurve: 0.7, wobble: 0.12, tiltOval: 0.5)
+        case .spikes:
+            return StampConfig(preset: .inkRound, spacing: 0.5, scatter: 0,
+                               jitterAngleDeg: 0, tiltRotation: false,
+                               pressureToSize: 0.5, pressureToOpacity: 0.45,
+                               flow: 0.85, sizeMultiplier: 1.0,
+                               pressureCurve: 0.8, environmental: .spikes)
+        // Web-paritet for klassiske web-pensler som manglet native config
+        // (strøk tegnet med dem på web var USYNLIGE på iPad):
+        case .watercolor:
+            return StampConfig(preset: .softRound, spacing: 0.10, scatter: 0.06,
+                               jitterAngleDeg: 18, tiltRotation: true,
+                               pressureToSize: 0.5, pressureToOpacity: 0.4,
+                               flow: 0.25, sizeMultiplier: 2.2,
+                               pressureCurve: 0.8, tiltOval: 0.3)
+        case .brush:
+            return StampConfig(preset: .charcoalTooth, spacing: 0.07, scatter: 0.02,
+                               jitterAngleDeg: 10, tiltRotation: true,
+                               pressureToSize: 0.7, pressureToOpacity: 0.45,
+                               flow: 0.55, sizeMultiplier: 1.6,
+                               pressureCurve: 0.85)
         case .gloss:
             // Hvit highlight-ink: skarp, taper — dråper og våt glans.
             return StampConfig(preset: .inkRound, spacing: 0.045, scatter: 0,
@@ -309,6 +338,8 @@ enum Streamline {
         case .wethair: return 0.3
         case .skintex, .rocktex: return 0.2
         case .gloss: return 0.4
+        case .wash: return 0.18
+        case .spikes: return 0.25
         default: return 0.2
         }
     }

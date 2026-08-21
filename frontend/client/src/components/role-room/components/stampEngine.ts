@@ -552,6 +552,17 @@ const STAMP_CONFIG_BY_BRUSH: Partial<Record<ProBrushType, StampConfig>> = {
     flow: 1.0, sizeMultiplier: 1.0, pressureCurve: 0.75,
     velocityToSize: -0.15, taperDistance: 8,
   },
+  wash: {
+    preset: 'marker-chisel', spacing: 0.05, scatter: 0.02, jitterAngle: 8,
+    tiltRotation: true, pressureToSize: 0.25, pressureToOpacity: 0.6,
+    flow: 0.3, sizeMultiplier: 1.6, pressureCurve: 0.7,
+    wobble: 0.12, tiltOval: 0.5,
+  },
+  spikes: {
+    preset: 'ink-round', spacing: 0.14, scatter: 0.25, jitterAngle: 40,
+    tiltRotation: false, pressureToSize: 0.5, pressureToOpacity: 0.45,
+    flow: 0.7, sizeMultiplier: 0.5, pressureCurve: 0.8, sizeJitter: 0.35,
+  },
 };
 
 /** Returnerer stamp-config for brush-type, eller null hvis brush ikke skal stamp-rendres. */

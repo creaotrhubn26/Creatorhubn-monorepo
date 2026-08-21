@@ -439,4 +439,150 @@ final class CompositionRenderTests: XCTestCase {
         attachment.lifetime = .keepAlways
         add(attachment)
     }
+
+    // Wash-klassen mot lavering-referansen (troll over dalen): tonelag i
+    // dybde (wash), tåke, pigg-pels, solstråler, skoglag.
+    func testRenderValleyScene() throws {
+        guard let renderer = MetalStrokeRenderer() else { throw XCTSkip("Metal utilgjengelig") }
+        var strokes: [PencilStroke] = []
+        let ink = "#22242a"
+
+        // ── Himmel: wash-lag + solstråler ──
+        for pass in 0..<3 {
+            strokes.append(stroke(.wash, size: 70, opacity: 0.28,
+                line(80, 90 + Double(pass) * 40, 1450, 70 + Double(pass) * 40,
+                     steps: 10, pressure: 0.6), tilt: 45, color: ink))
+        }
+        for i in 0..<5 {
+            strokes.append(stroke(.speedlines, size: 40, opacity: 0.35,
+                line(760 + Double(i) * 30, 60, 400 + Double(i) * 120, 420,
+                     steps: 6, pressure: 0.55), color: ink))
+        }
+
+        // ── Fjell i tre dybdelag: wash mørkere jo nærmere ──
+        // Bakerst (lysest)
+        for pass in 0..<2 {
+            strokes.append(stroke(.wash, size: 80, opacity: 0.2,
+                points([(60, 430), (300, 300 + Double(pass) * 14), (560, 400),
+                        (820, 310), (1100, 420)], pressure: 0.6), tilt: 50, color: ink))
+        }
+        // Midtlag
+        for pass in 0..<3 {
+            strokes.append(stroke(.wash, size: 76, opacity: 0.3,
+                points([(40, 560 + Double(pass) * 16), (320, 470 + Double(pass) * 16),
+                        (640, 560 + Double(pass) * 16), (1000, 500 + Double(pass) * 16),
+                        (1360, 580 + Double(pass) * 16)], pressure: 0.7), tilt: 50, color: ink))
+        }
+        // Tåke mellom lagene (hvit airbrush)
+        for pass in 0..<2 {
+            strokes.append(stroke(.airbrush, size: 90, opacity: 0.5,
+                line(60, 470 + Double(pass) * 20, 1380, 450 + Double(pass) * 20,
+                     steps: 9, pressure: 0.75), color: "#f3f0e8"))
+        }
+
+        // ── Skoglag (forest) foran fjellene ──
+        strokes.append(stroke(.forest, size: 46, opacity: 0.55,
+            line(80, 640, 560, 620, steps: 8, pressure: 0.7), color: ink))
+        strokes.append(stroke(.forest, size: 58, opacity: 0.7,
+            line(1000, 680, 1460, 700, steps: 7, pressure: 0.85), color: ink))
+        strokes.append(stroke(.forest, size: 40, opacity: 0.45,
+            line(600, 600, 900, 590, steps: 6, pressure: 0.6), color: ink))
+
+        // ── Trollet over dalen ──
+        for offset in [0.0, 2.0] {
+            strokes.append(stroke(.heavy, size: 5.2, opacity: 0.85,
+                points([(560 + offset, 480), (600, 260), (700, 140), (820, 110),
+                        (940, 150), (1010, 260), (1050, 430)], pressure: 0.95), color: ink))
+        }
+        // Pigg-pels i rader over skuldre/hode
+        for row in 0..<4 {
+            let y = 180.0 + Double(row) * 70
+            strokes.append(stroke(.spikes, size: 28, opacity: 0.6,
+                line(620, y, 990, y - 12, steps: 8, pressure: 0.8), color: ink))
+        }
+        // Ansikt: airbrush-huler + kjeft
+        for pass in 0..<3 {
+            strokes.append(stroke(.airbrush, size: 46, opacity: 0.35,
+                line(710, 220 + Double(pass) * 8, 770, 226 + Double(pass) * 8,
+                     steps: 4, pressure: 0.8), color: ink))
+            strokes.append(stroke(.airbrush, size: 46, opacity: 0.35,
+                line(850, 220 + Double(pass) * 8, 910, 226 + Double(pass) * 8,
+                     steps: 4, pressure: 0.8), color: ink))
+        }
+        strokes.append(stroke(.heavy, size: 4.4, opacity: 0.85,
+            points([(760, 300), (770, 350), (810, 368), (852, 348), (860, 300)], pressure: 0.9), color: ink))
+        for pass in 0..<3 {
+            strokes.append(stroke(.toneblock, size: 22, opacity: 0.65,
+                line(775, 315 + Double(pass) * 12, 848, 318 + Double(pass) * 12,
+                     steps: 4, pressure: 0.9), color: ink))
+        }
+        // Arm + pekende hånd
+        for offset in [0.0, 2.0] {
+            strokes.append(stroke(.heavy, size: 4.8, opacity: 0.85,
+                points([(1040 + offset, 320), (1130, 420), (1200, 520), (1230, 590)], pressure: 0.9), color: ink))
+        }
+        strokes.append(stroke(.heavy, size: 4.2, opacity: 0.85,
+            points([(1200, 560), (1280, 620), (1330, 700), (1300, 740), (1230, 700),
+                    (1190, 640)], pressure: 0.9), color: ink))
+        strokes.append(stroke(.skintex, size: 36, opacity: 0.45,
+            line(1150, 480, 1280, 640, steps: 6, pressure: 0.75), color: ink))
+
+        // ── Helikopter ──
+        strokes.append(stroke(.detail, size: 2.4, opacity: 0.85,
+            points([(200, 190), (260, 178), (330, 186), (322, 210), (250, 216), (204, 202)], pressure: 0.85), color: ink))
+        strokes.append(stroke(.detail, size: 2.0, opacity: 0.85,
+            line(160, 168, 380, 164, steps: 6, pressure: 0.8), color: ink))
+        strokes.append(stroke(.detail, size: 1.8, opacity: 0.8,
+            line(330, 196, 400, 206, steps: 4, pressure: 0.7), color: ink))
+
+        // ── Forgrunn: berg + to figurer bakfra ──
+        strokes.append(stroke(.rocktex, size: 50, opacity: 0.55,
+            line(60, 900, 480, 860, steps: 8, pressure: 0.85), color: ink))
+        strokes.append(stroke(.rocktex, size: 46, opacity: 0.5,
+            line(1050, 880, 1470, 920, steps: 8, pressure: 0.8), color: ink))
+        // Mann m/ caps
+        for offset in [0.0, 1.8] {
+            strokes.append(stroke(.heavy, size: 4.2, opacity: 0.85,
+                points([(200 + offset, 980), (210, 840), (260, 770), (330, 760),
+                        (380, 800), (395, 900), (390, 985)], pressure: 0.9), color: ink))
+        }
+        strokes.append(stroke(.detail, size: 2.2, opacity: 0.85,
+            points([(268, 772), (300, 748), (345, 756), (352, 776)], pressure: 0.85), color: ink))
+        for pass in 0..<4 {
+            strokes.append(stroke(.shade, size: 40, opacity: 0.25,
+                line(230, 800 + Double(pass) * 40, 380, 820 + Double(pass) * 40,
+                     steps: 5, pressure: 0.75), tilt: 50, color: ink))
+        }
+        // Kvinne m/ langt hår
+        for offset in [0.0, 1.8] {
+            strokes.append(stroke(.heavy, size: 4.2, opacity: 0.85,
+                points([(430 + offset, 985), (445, 850), (490, 780), (560, 772),
+                        (610, 820), (620, 930), (615, 990)], pressure: 0.9), color: ink))
+        }
+        for i in 0..<5 {
+            strokes.append(stroke(.wethair, size: 22, opacity: 0.6,
+                line(500 + Double(i) * 14, 780, 496 + Double(i) * 14, 930,
+                     steps: 5, pressure: 0.8), color: ink))
+        }
+
+        // ── Ramme ──
+        strokes.append(stroke(.detail, size: 2.4, opacity: 0.85,
+            points([(40, 40), (1490, 40), (1490, 1000), (40, 1000), (40, 40)], pressure: 0.8), color: ink))
+
+        // ── Render ──
+        renderer.resizeCanvas(width: 3072, height: 2048)
+        renderer.rebuild(strokes: strokes, scale: 2)
+        guard let dataURL = renderer.thumbnailDataURL(maxWidth: 1536),
+              let comma = dataURL.firstIndex(of: ","),
+              let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])),
+              let image = UIImage(data: data) else {
+            XCTFail("render feilet")
+            return
+        }
+        XCTAssertGreaterThan(strokes.count, 50)
+        let attachment = XCTAttachment(image: image)
+        attachment.name = "valley-scene"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
 }
