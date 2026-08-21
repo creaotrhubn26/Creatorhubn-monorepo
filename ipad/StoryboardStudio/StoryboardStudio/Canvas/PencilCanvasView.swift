@@ -17,6 +17,9 @@ final class CanvasState: ObservableObject {
     // fra rendering (web-paritet — dataene beholdes urørt).
     @Published var activeBoardLayer = "Drawing"
     @Published var hiddenLayers: Set<String> = []
+    // Per-lag opacity (0–1) og lås (blokkerer tegning på laget) — web-paritet.
+    @Published var layerOpacity: [String: Double] = [:]
+    @Published var lockedLayers: Set<String> = []
     // Lagret tegneflate-dimensjon (drawingData.width/height). Satt → strøk
     // holdes i det koordinatrommet (web-paritet); view skalerer ved rendering
     // og inverterer ved input. nil → view-punktrom (Frikanvas).
@@ -31,6 +34,8 @@ final class CanvasState: ObservableObject {
     func visibleStrokes() -> [PencilStroke] {
         // Lag-sortert som web (stabil sortering på BOARD_LAYERS-indeks).
         // textAnnotation-strøk rendres som tekst-overlay (ikke dabs) — web-paritet.
+        // Lag-opacity multipliseres inn i strøk-opacity ved render (som web) —
+        // dataene beholdes urørt.
         strokes
             .filter { $0.textAnnotation == nil && !hiddenLayers.contains($0.boardLayer ?? "Drawing") }
             .enumerated()
@@ -39,7 +44,14 @@ final class CanvasState: ObservableObject {
                 let ri = BoardLayers.index(of: rhs.element.boardLayer)
                 return li == ri ? lhs.offset < rhs.offset : li < ri
             }
-            .map(\.element)
+            .map { entry -> PencilStroke in
+                let factor = layerOpacity[entry.element.boardLayer ?? "Drawing"] ?? 1
+                guard factor < 1 else { return entry.element }
+                var stroke = entry.element
+                stroke.opacity *= factor
+                stroke.brush?.opacity *= factor
+                return stroke
+            }
     }
 
     func undo() {
@@ -184,8 +196,18 @@ final class MetalCanvasUIView: UIView {
         return smoothedPoint
     }
 
+    // Satt når strøket avvises ved start (låst lag) — touchesMoved/finish
+    // må også respektere det, ellers lekker punktene inn likevel.
+    private var strokeSuppressed = false
+
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first else { return }
+        // Låst lag: ingen tegning (web-paritet med lockedLayers).
+        if let state, state.lockedLayers.contains(state.activeBoardLayer) {
+            strokeSuppressed = true
+            return
+        }
+        strokeSuppressed = false
         strokeStartedAt = Date()
         let point = strokePoint(from: touch)
         streamlineState = (point.x, point.y)
@@ -196,7 +218,7 @@ final class MetalCanvasUIView: UIView {
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let touch = touches.first else { return }
+        guard let touch = touches.first, !strokeSuppressed else { return }
         let coalesced = event?.coalescedTouches(for: touch) ?? [touch]
         for sample in coalesced {
             let raw = strokePoint(from: sample)
@@ -216,6 +238,7 @@ final class MetalCanvasUIView: UIView {
     }
 
     private func finishStroke() {
+        if strokeSuppressed { strokeSuppressed = false; activePoints = []; predictedPoints = []; return }
         predictedPoints = []
         // Catch-up: streken skal lande der pennen faktisk sluttet.
         if let raw = lastRawPoint, activePoints.count >= 3 {
@@ -238,14 +261,18 @@ final class MetalCanvasUIView: UIView {
     }
 
     private var lastHiddenLayers: Set<String> = []
+    private var lastLayerOpacity: [String: Double] = [:]
 
     func syncIfNeeded() {
         guard let state,
-              state.strokes.count != committedCount || state.hiddenLayers != lastHiddenLayers
+              state.strokes.count != committedCount
+                || state.hiddenLayers != lastHiddenLayers
+                || state.layerOpacity != lastLayerOpacity
         else { return }
         renderer?.rebuild(strokes: state.visibleStrokes(), scale: renderScale)
         committedCount = state.strokes.count
         lastHiddenLayers = state.hiddenLayers
+        lastLayerOpacity = state.layerOpacity
         redraw()
     }
 

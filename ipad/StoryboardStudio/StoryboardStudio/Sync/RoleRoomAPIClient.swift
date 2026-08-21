@@ -50,6 +50,13 @@ struct SceneSummary: Identifiable, Sendable {
     let id: String
     let heading: String
     let frames: [FrameSummary]
+    // Manusfelter (Script-fanen)
+    let sceneNumber: Int?
+    let intExt: String?
+    let location: String?
+    let timeOfDay: String?
+    let descriptionText: String?
+    let characters: [String]
 }
 
 enum SyncError: LocalizedError {
@@ -357,6 +364,15 @@ actor RoleRoomAPIClient {
                     ?? Double(drawingData?["height"] as? Int ?? 1080)
             )
         }
-        return SceneSummary(id: id, heading: heading, frames: frames)
+        return SceneSummary(
+            id: id, heading: heading, frames: frames,
+            sceneNumber: (scene["sceneNumber"] as? Int) ?? Int(scene["sceneNumber"] as? String ?? ""),
+            intExt: (scene["intExt"] as? String) ?? (scene["int_ext"] as? String),
+            location: (scene["locationName"] as? String) ?? (scene["location"] as? String),
+            timeOfDay: (scene["timeOfDay"] as? String) ?? (scene["time_of_day"] as? String),
+            descriptionText: scene["description"] as? String,
+            characters: (scene["characters"] as? [String])
+                ?? ((scene["characters"] as? [[String: Any]])?.compactMap { $0["name"] as? String })
+                ?? [])
     }
 }
