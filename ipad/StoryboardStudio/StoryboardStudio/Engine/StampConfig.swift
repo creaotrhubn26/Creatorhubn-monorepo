@@ -9,6 +9,10 @@ enum DabPreset: String, Sendable {
     case charcoalTooth
     case inkRound
     case markerChisel
+    // Rendering-klassen (foto-referanse-nivå)
+    case softRound      // gaussisk falloff — ren myk tone (airbrush)
+    case skinPore       // porøs hud-mikrotekstur
+    case rockGrit       // kantete stein/gjørme-grus
 }
 
 // Prosedural skravering (spec §10/§37): parametre for hatch-merkene.
@@ -30,6 +34,7 @@ struct HatchParams: Sendable {
 // Prosedural miljøtekstur-modus (spec §56–§66).
 enum EnvironmentalMode: Sendable {
     case forest, debris, organic, fur
+    case wethair   // lange kurvede strå med heng (rendering-klassen)
 }
 
 struct StampConfig: Sendable {
@@ -210,6 +215,48 @@ struct StampConfig: Sendable {
                                                   crossAngle: 0,
                                                   positionJitter: 2.2, lengthJitter: 0.4,
                                                   followDirection: true, allowCross: false))
+        case .airbrush:
+            // Ren myk tone: gaussisk dab, tett spacing, lav flow — bygger
+            // kontinuerlige graderinger uten korn.
+            return StampConfig(preset: .softRound, spacing: 0.06, scatter: 0,
+                               jitterAngleDeg: 0, tiltRotation: false,
+                               pressureToSize: 0.25, pressureToOpacity: 0.75,
+                               flow: 0.5, sizeMultiplier: 1.2,
+                               pressureCurve: 0.6, tiltOval: 0.3)
+        case .wethair:
+            return StampConfig(preset: .inkRound, spacing: 0.5, scatter: 0,
+                               jitterAngleDeg: 0, tiltRotation: false,
+                               pressureToSize: 0.4, pressureToOpacity: 0.5,
+                               flow: 0.8, sizeMultiplier: 1.0,
+                               pressureCurve: 0.8, environmental: .wethair)
+        case .softfocus:
+            // Rutes til smudge-pipeline med dempet styrke/stor radius
+            // (poor-man's dybdeuskarphet) — se commitStroke.
+            return StampConfig(preset: .softRound, spacing: 0.08, scatter: 0,
+                               jitterAngleDeg: 0, tiltRotation: false,
+                               pressureToSize: 0.2, pressureToOpacity: 0.5,
+                               flow: 0.3, sizeMultiplier: 1.6,
+                               pressureCurve: 0.6)
+        case .skintex:
+            return StampConfig(preset: .skinPore, spacing: 0.10, scatter: 0.06,
+                               jitterAngleDeg: 40, tiltRotation: true,
+                               pressureToSize: 0.35, pressureToOpacity: 0.6,
+                               flow: 0.5, sizeMultiplier: 1.3,
+                               pressureCurve: 0.75, sizeJitter: 0.2)
+        case .rocktex:
+            return StampConfig(preset: .rockGrit, spacing: 0.12, scatter: 0.08,
+                               jitterAngleDeg: 60, tiltRotation: true,
+                               pressureToSize: 0.4, pressureToOpacity: 0.6,
+                               flow: 0.6, sizeMultiplier: 1.3,
+                               pressureCurve: 0.75, sizeJitter: 0.3)
+        case .gloss:
+            // Hvit highlight-ink: skarp, taper — dråper og våt glans.
+            return StampConfig(preset: .inkRound, spacing: 0.045, scatter: 0,
+                               jitterAngleDeg: 0, tiltRotation: false,
+                               pressureToSize: 0.85, pressureToOpacity: 0.2,
+                               flow: 1.0, sizeMultiplier: 1.0,
+                               pressureCurve: 0.75, velocityToSize: -0.15,
+                               taperDistance: 8)
         case .forest:
             return StampConfig(preset: .inkRound, spacing: 0.5, scatter: 0,
                                jitterAngleDeg: 0, tiltRotation: false,
@@ -258,6 +305,10 @@ enum Streamline {
         case .forest, .debris, .organictex, .fur: return 0.2
         case .toneblock: return 0.2
         case .speedlines: return 0.4
+        case .airbrush, .softfocus: return 0.15
+        case .wethair: return 0.3
+        case .skintex, .rocktex: return 0.2
+        case .gloss: return 0.4
         default: return 0.2
         }
     }

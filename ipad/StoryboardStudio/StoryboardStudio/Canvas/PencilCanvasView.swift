@@ -59,6 +59,9 @@ final class CanvasState: ObservableObject {
             brushSize = defaults.size
             brushOpacity = defaults.opacity
         }
+        if let hint = BrushDefaults.colorHint(for: type) {
+            brushColor = hint
+        }
         grainOverride = nil
         flowOverride = nil
         hardnessOverride = nil

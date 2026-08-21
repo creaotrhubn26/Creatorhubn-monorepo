@@ -94,7 +94,8 @@ final class MetalStrokeRenderer {
         smudgePipeline = smudge
         blitPipeline = blit
 
-        for preset in [DabPreset.pencilGraphite, .charcoalTooth, .inkRound, .markerChisel] {
+        for preset in [DabPreset.pencilGraphite, .charcoalTooth, .inkRound, .markerChisel,
+                       .softRound, .skinPore, .rockGrit] {
             dabTextures[preset] = DabTextureGenerator.makeTexture(device: device, preset: preset)
         }
     }
@@ -510,6 +511,44 @@ final class MetalStrokeRenderer {
                            baseWidth: 1.8 * scale,
                            alpha: alpha * (0.7 + rng.next() * 0.3))
                 }
+            case .wethair:
+                // Lange kurvede strå med heng (kvadratisk kurve mot tyngde) —
+                // vått hår klumper: par av nesten-parallelle strå + stor
+                // tonevariasjon (mørk masse med enkelte lysere strå).
+                let count = max(1, Int(4 * (0.3 + pressure * 0.8)))
+                for _ in 0..<count {
+                    let rootX = px + (rng.next() - 0.5) * unit
+                    let rootY = py + (rng.next() - 0.5) * unit * 0.5
+                    let angle = dirAngle + (rng.next() - 0.5) * 0.5
+                    let length = unit * (1.8 + rng.next() * 1.4)
+                    let sag = length * (0.25 + rng.next() * 0.35)   // heng
+                    let curve = (rng.next() - 0.5) * length * 0.4
+                    let strandAlpha = alpha * (0.35 + rng.next() * 0.65)
+                    let clumps = rng.next() < 0.4 ? 2 : 1
+                    for clump in 0..<clumps {
+                        let offset = Double(clump) * 2.4 * scale
+                        // Kvadratisk bezier: rot → kontroll (retning+kurve) → tupp (heng)
+                        let p0 = SIMD2<Double>(rootX + offset, rootY)
+                        let p1 = SIMD2<Double>(
+                            rootX + cos(angle) * length * 0.55 - sin(angle) * curve + offset,
+                            rootY + sin(angle) * length * 0.55 + cos(angle) * curve)
+                        let p2 = SIMD2<Double>(
+                            rootX + cos(angle) * length + offset,
+                            rootY + sin(angle) * length + sag)
+                        let segments = 9
+                        var previous = p0
+                        for seg in 1...segments {
+                            let t = Double(seg) / Double(segments)
+                            let mt = 1 - t
+                            let bx = mt * mt * p0.x + 2 * mt * t * p1.x + t * t * p2.x
+                            let by = mt * mt * p0.y + 2 * mt * t * p1.y + t * t * p2.y
+                            let width = max(0.8, 2.2 * scale * (1 - t * 0.8))
+                            line(previous.x, previous.y, bx, by,
+                                 width: width, alpha: strandAlpha)
+                            previous = SIMD2(bx, by)
+                        }
+                    }
+                }
             }
         }
 
@@ -583,7 +622,7 @@ final class MetalStrokeRenderer {
     /// Append ferdig strøk til committed-akkumulator (inkrementelt).
     /// Eraser rendres destination-out (piksel-viskelær — web-paritet).
     func commitStroke(_ stroke: PencilStroke, scale: Double) {
-        if stroke.brush?.type == .smudge {
+        if stroke.brush?.type == .smudge || stroke.brush?.type == .softfocus {
             smudgeStroke(stroke, scale: scale)
             return
         }
@@ -613,7 +652,10 @@ final class MetalStrokeRenderer {
               stroke.points.count >= 2,
               let buffer = queue.makeCommandBuffer() else { return }
         let brushSize = stroke.brush?.size ?? 8
-        let radius = max(6.0, brushSize * 1.5) * scale
+        // Soft focus: mye større region, mye svakere drag — jevner ut i
+        // stedet for å dra (poor-man's dybdeuskarphet).
+        let isSoftFocus = stroke.brush?.type == .softfocus
+        let radius = max(6.0, brushSize * (isSoftFocus ? 1.1 : 1.5)) * scale
         let regionSide = Int((radius * 2).rounded(.up))
         if smudgeRegionTexture == nil || smudgeRegionTexture!.width < regionSide {
             let descriptor = MTLTextureDescriptor.texture2DDescriptor(
@@ -641,7 +683,8 @@ final class MetalStrokeRenderer {
             blitEncoder.endEncoding()
 
             // 2) Stemple regionen på NY posisjon med trykkstyrt styrke
-            let strength = min(0.85, (0.2 + 0.5 * max(0.05, point.pressure)) * (stroke.brush?.opacity ?? 1))
+            var strength = min(0.85, (0.2 + 0.5 * max(0.05, point.pressure)) * (stroke.brush?.opacity ?? 1))
+            if isSoftFocus { strength *= 0.35 }
             let pass = MTLRenderPassDescriptor()
             pass.colorAttachments[0].texture = committed
             pass.colorAttachments[0].loadAction = .load
@@ -698,7 +741,7 @@ final class MetalStrokeRenderer {
 
         for stroke in strokes {
             guard let brush = stroke.brush else { continue }
-            if brush.type == .smudge {
+            if brush.type == .smudge || brush.type == .softfocus {
                 flushBatch()
                 smudgeStroke(stroke, scale: scale)
                 continue

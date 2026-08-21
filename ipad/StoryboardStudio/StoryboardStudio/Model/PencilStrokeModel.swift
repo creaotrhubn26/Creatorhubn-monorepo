@@ -36,11 +36,23 @@ enum BrushType: String, Codable, Sendable, CaseIterable {
     // Funnet i praksis-test mot referanse-storyboards:
     case toneblock     // Solid mørk tonemasse (referansens nesten-svarte flater)
     case speedlines    // Lange energilinjer langs strøkretningen (regn/fart)
+    // Rendering-klassen (foto-referanse: full tone, våt glans, dybde)
+    case airbrush      // Myk gaussisk tone — kontinuerlige graderinger
+    case wethair       // Lange kurvede hårstrå med heng og tonevariasjon
+    case softfocus     // Dybde-uskarphet: svak bred smudge (bakgrunnsseparasjon)
+    case skintex       // Porøs hud-mikrotekstur
+    case rocktex       // Stein/gjørme-grus
+    case gloss         // Glans/highlights — hvit ink m/ taper (dråper, våt hud)
 }
 
 // Spec-defaults per pensel (size px / opacity) — settes når penselen velges
 // så hvert verktøy starter med riktig fysisk karakter (§8–§11, §34–§40, §67).
 enum BrushDefaults {
+    /// Farge-hint: pensler med en naturlig standardfarge (Glans = hvit).
+    static func colorHint(for type: BrushType) -> String? {
+        type == .gloss ? "#ffffff" : nil
+    }
+
     static func sizeAndOpacity(for type: BrushType) -> (size: Double, opacity: Double)? {
         switch type {
         case .pencil: return (3.2, 0.48)       // Story Pencil
@@ -60,6 +72,12 @@ enum BrushDefaults {
         case .fur: return (24, 0.45)
         case .toneblock: return (36, 0.85)
         case .speedlines: return (40, 0.5)
+        case .airbrush: return (80, 0.35)
+        case .wethair: return (30, 0.6)
+        case .softfocus: return (70, 0.5)
+        case .skintex: return (40, 0.4)
+        case .rocktex: return (44, 0.45)
+        case .gloss: return (2.4, 0.9)
         default: return nil
         }
     }
@@ -149,6 +167,30 @@ struct BrushSpec: Codable, Sendable, Equatable {
             return BrushSpec(type: type, size: size, color: color, opacity: opacity,
                              hardness: 0.7, flow: 0.8, wetness: 0, grain: 0.15,
                              tiltSensitivity: 0.2, pressureSensitivity: 0.6)
+        case .airbrush:
+            return BrushSpec(type: type, size: size, color: color, opacity: opacity,
+                             hardness: 0.1, flow: 0.14, wetness: 0, grain: 0,
+                             tiltSensitivity: 0.4, pressureSensitivity: 0.7)
+        case .wethair:
+            return BrushSpec(type: type, size: size, color: color, opacity: opacity,
+                             hardness: 0.6, flow: 0.75, wetness: 0.3, grain: 0.2,
+                             tiltSensitivity: 0.3, pressureSensitivity: 0.8)
+        case .softfocus:
+            return BrushSpec(type: type, size: size, color: color, opacity: opacity,
+                             hardness: 0.1, flow: 0.3, wetness: 0.8, grain: 0,
+                             tiltSensitivity: 0.2, pressureSensitivity: 0.5)
+        case .skintex:
+            return BrushSpec(type: type, size: size, color: color, opacity: opacity,
+                             hardness: 0.5, flow: 0.5, wetness: 0, grain: 0.55,
+                             tiltSensitivity: 0.4, pressureSensitivity: 0.7)
+        case .rocktex:
+            return BrushSpec(type: type, size: size, color: color, opacity: opacity,
+                             hardness: 0.7, flow: 0.55, wetness: 0, grain: 0.6,
+                             tiltSensitivity: 0.4, pressureSensitivity: 0.7)
+        case .gloss:
+            return BrushSpec(type: type, size: size, color: color, opacity: opacity,
+                             hardness: 0.8, flow: 0.95, wetness: 0.2, grain: 0,
+                             tiltSensitivity: 0.3, pressureSensitivity: 0.85)
         default:
             return BrushSpec(type: type, size: size, color: color, opacity: opacity,
                              hardness: 0.8, flow: 1, wetness: 0, grain: 0.3,

@@ -519,6 +519,39 @@ const STAMP_CONFIG_BY_BRUSH: Partial<Record<ProBrushType, StampConfig>> = {
       followDirection: true, allowCross: false,
     },
   },
+  // Rendering-klassen (native har egne generatorer/teksturer; web
+  // approksimerer med nærmeste preset inntil portering)
+  airbrush: {
+    preset: 'airbrush-spray', spacing: 0.06, scatter: 0, jitterAngle: 0,
+    tiltRotation: false, pressureToSize: 0.25, pressureToOpacity: 0.75,
+    flow: 0.5, sizeMultiplier: 1.2, pressureCurve: 0.6, tiltOval: 0.3,
+  },
+  wethair: {
+    preset: 'ink-round', spacing: 0.12, scatter: 0.3, jitterAngle: 25,
+    tiltRotation: false, pressureToSize: 0.4, pressureToOpacity: 0.5,
+    flow: 0.6, sizeMultiplier: 0.5, pressureCurve: 0.8, sizeJitter: 0.4,
+  },
+  softfocus: {
+    preset: 'airbrush-spray', spacing: 0.08, scatter: 0, jitterAngle: 0,
+    tiltRotation: false, pressureToSize: 0.2, pressureToOpacity: 0.5,
+    flow: 0.12, sizeMultiplier: 1.6, pressureCurve: 0.6,
+  },
+  skintex: {
+    preset: 'texture-paper', spacing: 0.10, scatter: 0.06, jitterAngle: 40,
+    tiltRotation: true, pressureToSize: 0.35, pressureToOpacity: 0.6,
+    flow: 0.5, sizeMultiplier: 1.3, pressureCurve: 0.75, sizeJitter: 0.2,
+  },
+  rocktex: {
+    preset: 'charcoal-tooth', spacing: 0.12, scatter: 0.08, jitterAngle: 60,
+    tiltRotation: true, pressureToSize: 0.4, pressureToOpacity: 0.6,
+    flow: 0.6, sizeMultiplier: 1.3, pressureCurve: 0.75, sizeJitter: 0.3,
+  },
+  gloss: {
+    preset: 'ink-round', spacing: 0.045, scatter: 0, jitterAngle: 0,
+    tiltRotation: false, pressureToSize: 0.85, pressureToOpacity: 0.2,
+    flow: 1.0, sizeMultiplier: 1.0, pressureCurve: 0.75,
+    velocityToSize: -0.15, taperDistance: 8,
+  },
 };
 
 /** Returnerer stamp-config for brush-type, eller null hvis brush ikke skal stamp-rendres. */

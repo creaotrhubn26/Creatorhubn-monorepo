@@ -28,7 +28,8 @@ final class CompositionRenderTests: XCTestCase {
     private var strokeCounter = 0
 
     private func stroke(_ type: BrushType, size: Double, opacity: Double,
-                        _ pts: [StrokePoint], tilt: Double = 0) -> PencilStroke {
+                        _ pts: [StrokePoint], tilt: Double = 0,
+                        color: String = "#26282e") -> PencilStroke {
         strokeCounter += 1
         var brushPoints = pts
         if tilt != 0 {
@@ -43,10 +44,10 @@ final class CompositionRenderTests: XCTestCase {
             id: "comp-\(strokeCounter)",
             points: brushPoints,
             inputType: "pencil",
-            color: "#26282e",
+            color: color,
             width: size,
             opacity: opacity,
-            brush: BrushSpec.preset(type, size: size, color: "#26282e", opacity: opacity))
+            brush: BrushSpec.preset(type, size: size, color: color, opacity: opacity))
     }
 
     func testRenderMonsterCityScene() throws {
@@ -271,6 +272,170 @@ final class CompositionRenderTests: XCTestCase {
         XCTAssertGreaterThan(strokes.count, 40)
         let attachment = XCTAttachment(image: image)
         attachment.name = "monster-city-scene"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    // Rendering-klassen mot foto-referansen (troll-nærbilde): airbrush-
+    // modellering, vått hår, hud/stein-tekstur, glans-highlights, soft focus.
+    func testRenderTrollPortrait() throws {
+        guard let renderer = MetalStrokeRenderer() else { throw XCTSkip("Metal utilgjengelig") }
+        var strokes: [PencilStroke] = []
+        let ink = "#1c1e22"
+
+        // ── Bakgrunn: skog + regn, deretter soft focus over ──
+        strokes.append(stroke(.forest, size: 70, opacity: 0.5,
+            line(90, 460, 300, 430, steps: 5, pressure: 0.7), color: ink))
+        strokes.append(stroke(.graintex, size: 90, opacity: 0.3,
+            line(60, 300, 340, 520, steps: 7, pressure: 0.7), color: ink))
+        strokes.append(stroke(.softfocus, size: 90, opacity: 0.8,
+            line(60, 280, 340, 560, steps: 10, pressure: 0.8), color: ink))
+        strokes.append(stroke(.softfocus, size: 90, opacity: 0.8,
+            line(340, 560, 80, 700, steps: 8, pressure: 0.8), color: ink))
+        for i in 0..<4 {
+            strokes.append(stroke(.speedlines, size: 40, opacity: 0.4,
+                line(120 + Double(i) * 340, 60, 60 + Double(i) * 340, 420,
+                     steps: 6, pressure: 0.6), color: ink))
+        }
+
+        // ── Hodeform (stort, midtstilt) ──
+        for offset in [0.0, 2.0] {
+            strokes.append(stroke(.heavy, size: 5.6, opacity: 0.85,
+                points([(560 + offset, 210), (610, 130), (700, 80), (820, 68),
+                        (930, 92), (1010, 160), (1050, 260)], pressure: 0.95), color: ink))
+        }
+        // Ører
+        strokes.append(stroke(.heavy, size: 4.6, opacity: 0.8,
+            points([(560, 215), (505, 165), (520, 235), (560, 268)], pressure: 0.9), color: ink))
+        strokes.append(stroke(.heavy, size: 4.6, opacity: 0.8,
+            points([(1050, 265), (1108, 205), (1092, 285), (1050, 315)], pressure: 0.9), color: ink))
+        // Kjeve + åpen munn
+        for offset in [0.0, 2.0] {
+            strokes.append(stroke(.heavy, size: 5.2, opacity: 0.85,
+                points([(600 + offset, 480), (630, 640), (700, 740), (800, 772),
+                        (900, 736), (960, 630), (985, 480)], pressure: 0.95), color: ink))
+        }
+        // Munnhule: solid mørk
+        for pass in 0..<6 {
+            strokes.append(stroke(.toneblock, size: 30, opacity: 0.7,
+                line(672, 560 + Double(pass) * 13, 912, 566 + Double(pass) * 13,
+                     steps: 7, pressure: 0.9), color: ink))
+        }
+
+        // ── Airbrush-modellering: øyehuler, neserygg, kinn ──
+        for pass in 0..<4 {
+            strokes.append(stroke(.airbrush, size: 74, opacity: 0.35,
+                line(640, 240 + Double(pass) * 8, 730, 250 + Double(pass) * 8,
+                     steps: 5, pressure: 0.8), color: ink))
+            strokes.append(stroke(.airbrush, size: 74, opacity: 0.35,
+                line(860, 240 + Double(pass) * 8, 950, 252 + Double(pass) * 8,
+                     steps: 5, pressure: 0.8), color: ink))
+        }
+        for pass in 0..<3 {
+            strokes.append(stroke(.airbrush, size: 60, opacity: 0.3,
+                line(770 + Double(pass) * 14, 300, 760 + Double(pass) * 14, 460,
+                     steps: 6, pressure: 0.7), color: ink))
+        }
+        for pass in 0..<3 {
+            strokes.append(stroke(.airbrush, size: 80, opacity: 0.28,
+                line(600, 420 + Double(pass) * 16, 700, 470 + Double(pass) * 16,
+                     steps: 5, pressure: 0.7), color: ink))
+            strokes.append(stroke(.airbrush, size: 80, opacity: 0.28,
+                line(890, 430 + Double(pass) * 16, 980, 470 + Double(pass) * 16,
+                     steps: 5, pressure: 0.7), color: ink))
+        }
+
+        // ── Øyne: mørk hule + iris + glint ──
+        for (ex, ey) in [(672.0, 262.0), (908.0, 262.0)] {
+            var socket: [(Double, Double)] = []
+            for i in 0...10 {
+                let a = Double(i) / 10 * .pi * 2
+                socket.append((ex + cos(a) * 34, ey + sin(a) * 22))
+            }
+            strokes.append(stroke(.detail, size: 2.6, opacity: 0.9,
+                points(socket, pressure: 0.9), color: ink))
+            var iris: [(Double, Double)] = []
+            for i in 0...8 {
+                let a = Double(i) / 8 * .pi * 2
+                iris.append((ex + cos(a) * 10, ey + sin(a) * 10))
+            }
+            strokes.append(stroke(.detail, size: 2.2, opacity: 0.95,
+                points(iris, pressure: 0.95), color: ink))
+            strokes.append(stroke(.gloss, size: 2.6, opacity: 0.9,
+                points([(ex - 4, ey - 5), (ex - 1, ey - 7)], pressure: 0.9), color: "#ffffff"))
+        }
+
+        // ── Nese ──
+        strokes.append(stroke(.heavy, size: 4.4, opacity: 0.8,
+            points([(760, 330), (742, 420), (756, 470), (790, 486), (824, 468),
+                    (836, 418), (818, 330)], pressure: 0.9), color: ink))
+
+        // ── Tenner: konturer + glans ──
+        var teethTop: [(Double, Double)] = []
+        for i in 0..<8 {
+            let x = 676.0 + Double(i) * 32
+            teethTop.append((x, 556))
+            teethTop.append((x + 16, 596))
+        }
+        strokes.append(stroke(.detail, size: 2.4, opacity: 0.95,
+            points(teethTop, pressure: 0.9), color: ink))
+        for i in 0..<8 {
+            let x = 682.0 + Double(i) * 32
+            strokes.append(stroke(.gloss, size: 3.2, opacity: 0.85,
+                points([(x, 560), (x + 7, 578)], pressure: 0.85), color: "#ffffff"))
+        }
+
+        // ── Hud- og steintekstur ──
+        strokes.append(stroke(.skintex, size: 44, opacity: 0.4,
+            line(660, 180, 940, 200, steps: 7, pressure: 0.7), color: ink))
+        strokes.append(stroke(.skintex, size: 40, opacity: 0.4,
+            line(620, 380, 700, 430, steps: 5, pressure: 0.7), color: ink))
+        strokes.append(stroke(.skintex, size: 40, opacity: 0.4,
+            line(880, 380, 960, 430, steps: 5, pressure: 0.7), color: ink))
+        // Skuldre: stein/gjørme
+        strokes.append(stroke(.rocktex, size: 54, opacity: 0.5,
+            line(1060, 560, 1420, 660, steps: 9, pressure: 0.85), color: ink))
+        strokes.append(stroke(.rocktex, size: 50, opacity: 0.45,
+            line(1120, 700, 1460, 800, steps: 8, pressure: 0.8), color: ink))
+        strokes.append(stroke(.organictex, size: 26, opacity: 0.5,
+            line(1100, 620, 1400, 730, steps: 7, pressure: 0.75), color: ink))
+
+        // ── Vått hår: manke rundt hodet + skjegg ──
+        for i in 0..<7 {
+            let x = 560.0 + Double(i) * 14
+            strokes.append(stroke(.wethair, size: 30, opacity: 0.65,
+                line(x, 150 - Double(i) * 6, x - 40, 400, steps: 6, pressure: 0.85), color: ink))
+        }
+        for i in 0..<7 {
+            let x = 990.0 + Double(i) * 14
+            strokes.append(stroke(.wethair, size: 30, opacity: 0.65,
+                line(x, 160, x + 44, 430, steps: 6, pressure: 0.85), color: ink))
+        }
+        for i in 0..<6 {
+            let x = 660.0 + Double(i) * 50
+            strokes.append(stroke(.wethair, size: 26, opacity: 0.6,
+                line(x, 740, x - 8, 930, steps: 6, pressure: 0.8), color: ink))
+        }
+
+        // ── Dråper: gloss med taper ──
+        for (dx0, dy0) in [(700.0, 600.0), (810.0, 640.0), (760.0, 800.0), (860.0, 820.0)] {
+            strokes.append(stroke(.gloss, size: 2.8, opacity: 0.9,
+                line(dx0, dy0, dx0 + 3, dy0 + 60, steps: 6, pressure: 0.8), color: "#ffffff"))
+        }
+
+        // ── Render ──
+        renderer.resizeCanvas(width: 3072, height: 2048)
+        renderer.rebuild(strokes: strokes, scale: 2)
+        guard let dataURL = renderer.thumbnailDataURL(maxWidth: 1536),
+              let comma = dataURL.firstIndex(of: ","),
+              let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])),
+              let image = UIImage(data: data) else {
+            XCTFail("render feilet")
+            return
+        }
+        XCTAssertGreaterThan(strokes.count, 60)
+        let attachment = XCTAttachment(image: image)
+        attachment.name = "troll-portrait"
         attachment.lifetime = .keepAlways
         add(attachment)
     }
