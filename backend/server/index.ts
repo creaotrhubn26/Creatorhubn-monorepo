@@ -14744,6 +14744,10 @@ const speedDialPreferencesFallbackStore = new Map<
 
 const LEGACY_COMPAT_TABLE_NAME = "legacy_compat_store";
 let legacyCompatTableReadyPromise: Promise<boolean> | null = null;
+// Sann når compat-storen sist falt tilbake til minne (DB utilgjengelig).
+// Eksponeres i /api/health for alarmer — hendelsen 2026-08-22 viste at
+// stille fallback ser ut som datatap for brukerne.
+let compatStoreDegraded = false;
 
 async function ensureLegacyCompatTable(): Promise<boolean> {
   if (legacyCompatTableReadyPromise) return legacyCompatTableReadyPromise;
@@ -14758,12 +14762,14 @@ async function ensureLegacyCompatTable(): Promise<boolean> {
         )
       `);
       tableExistsCache.set(LEGACY_COMPAT_TABLE_NAME, true);
+      compatStoreDegraded = false;
       return true;
     } catch (error) {
-      console.warn(
-        "Legacy compat store unavailable, using in-memory fallback:",
+      console.error(
+        "COMPAT_STORE_FALLBACK: legacy compat store unavailable, using in-memory fallback:",
         error,
       );
+      compatStoreDegraded = true;
       // KRITISK: ikke cache negativen. Feiler dette under oppstart (DB
       // ikke klar rett etter deploy) ville hele compat-storen lest tomt
       // for resten av prosessens levetid — casting-data «forsvant» fra
@@ -14827,10 +14833,51 @@ async function compatStoreSet(
       [storeKey, serialized],
     );
   } catch (error) {
-    console.warn("compatStoreSet failed, using in-memory only:", {
+    compatStoreDegraded = true;
+    console.error("COMPAT_STORE_FALLBACK: compatStoreSet failed, using in-memory only:", {
       storeKey,
       error,
     });
+  }
+}
+
+/**
+ * Som compatStoreSet, men KASTER når DB ikke er tilgjengelig i stedet for
+ * å svelge feilen. Brukes for kritiske skriveveier (tegnedata) der et
+ * stille minne-fall betyr at brukerens arbeid forsvinner ved neste
+ * restart — ruta skal svare 503 så klienten beholder sin lokale backup.
+ */
+class CompatStoreUnavailableError extends Error {
+  constructor(storeKey: string) {
+    super(`compat store unavailable for ${storeKey}`);
+    this.name = "CompatStoreUnavailableError";
+  }
+}
+
+async function compatStoreSetStrict(
+  storeKey: string,
+  storeValue: unknown,
+  executor: PgQueryRunner = pool,
+): Promise<void> {
+  if (!(await ensureLegacyCompatTable())) {
+    throw new CompatStoreUnavailableError(storeKey);
+  }
+  try {
+    const serialized = JSON.stringify(storeValue ?? null) ?? "null";
+    await executor.query(
+      `INSERT INTO ${LEGACY_COMPAT_TABLE_NAME} (store_key, store_value, updated_at)
+       VALUES ($1, $2::jsonb, NOW())
+       ON CONFLICT (store_key)
+       DO UPDATE SET
+         store_value = EXCLUDED.store_value,
+         updated_at = NOW()`,
+      [storeKey, serialized],
+    );
+    compatStoreDegraded = false;
+  } catch (error) {
+    compatStoreDegraded = true;
+    console.error("COMPAT_STORE_FALLBACK: strict write failed:", { storeKey, error });
+    throw new CompatStoreUnavailableError(storeKey);
   }
 }
 
@@ -15169,6 +15216,7 @@ const manuscriptsService = createCastingManuscriptsService({
   compatStoreSet,
   compatStoreDelete,
   compatStoreListByPrefix,
+  compatStoreSetStrict,
 });
 
 // Revisions-service for diff/restore-API. Avhenger av manuscriptsService.
@@ -22740,7 +22788,10 @@ function peekFfmpegHealth(): { available: boolean | null; version: string | null
 }
 
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok" });
+  res.json({
+    status: compatStoreDegraded ? "degraded" : "ok",
+    compatStoreDegraded,
+  });
 });
 
 // Hvilken commit kjører prod akkurat nå. Offentlig + lettvekt: brukes til

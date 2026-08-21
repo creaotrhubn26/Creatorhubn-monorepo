@@ -58,6 +58,9 @@ export interface ManuscriptLocationWithItems extends ManuscriptLocation {
 export interface CastingManuscriptsServiceDeps {
   compatStoreGet: <T>(storeKey: string) => Promise<T | null>;
   compatStoreSet: (storeKey: string, storeValue: unknown) => Promise<void>;
+  // Strict-variant som KASTER ved DB-utilgjengelighet — brukes for
+  // tegnedata (scener) så klienten får 503 i stedet for stille minnetap.
+  compatStoreSetStrict?: (storeKey: string, storeValue: unknown) => Promise<void>;
   compatStoreDelete: (storeKey: string) => Promise<void>;
   compatStoreListByPrefix: <T>(
     prefix: string,
@@ -204,6 +207,7 @@ export function createCastingManuscriptsService(
     compatStoreDelete,
     compatStoreListByPrefix,
   } = deps;
+  const compatStoreSetStrict = deps.compatStoreSetStrict ?? compatStoreSet;
 
   const legacyManuscripts = new Map<string, JsonBlob>();
   const legacyScenesByManuscript = new Map<string, JsonBlob[]>();
@@ -411,8 +415,11 @@ export function createCastingManuscriptsService(
     manuscriptId: string,
     scenes: JsonBlob[],
   ): Promise<JsonBlob[]> {
+    // Strict: feiler DB-skrivingen skal ruta svare 503 — settes derfor i
+    // minne-cache FØRST ETTER vellykket persist (ellers ser klienten
+    // «lagret» data som forsvinner ved restart).
+    await compatStoreSetStrict(dbLegacyScenesKey(manuscriptId), scenes);
     legacyScenesByManuscript.set(manuscriptId, scenes);
-    await compatStoreSet(dbLegacyScenesKey(manuscriptId), scenes);
     // Bumper manuscript-master-version for sub-entitet-mutasjoner — sikrer
     // at klienter med cached manuscript-bundle invaliderer ved scene-edit.
     await bumpManuscriptVersion(manuscriptId);

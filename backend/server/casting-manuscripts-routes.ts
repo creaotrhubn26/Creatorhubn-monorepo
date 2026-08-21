@@ -557,6 +557,12 @@ export function setupCastingManuscriptsRoutes(
       await manuscriptsService.replaceScenes(manuscriptId, next);
       res.status(existingIndex >= 0 ? 200 : 201).json(scene);
     } catch (error) {
+      if ((error as Error)?.name === "CompatStoreUnavailableError") {
+        // Databasen er nede: IKKE lat som suksess — klienten beholder
+        // lokal backup og prøver igjen (autosynk).
+        res.status(503).json({ error: "storage_unavailable" });
+        return;
+      }
       console.error("Error upserting scene:", error);
       res.status(500).json({ error: "Could not save scene" });
     }
