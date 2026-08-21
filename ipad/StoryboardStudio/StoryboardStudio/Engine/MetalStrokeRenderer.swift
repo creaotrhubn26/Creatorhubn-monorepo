@@ -42,6 +42,10 @@ final class MetalStrokeRenderer {
     private(set) var committedTexture: MTLTexture?
     private var canvasSize = SIMD2<Float>(0, 0)
     var paperColor = SIMD3<Float>(0.961, 0.949, 0.918) // #f5f2ea
+    // Referanse-underlag (kun skjerm — aldri i thumbnails/eksport)
+    private let underlayBlitPipeline: MTLRenderPipelineState
+    private var underlayTexture: MTLTexture?
+    private var underlayOpacity: Float = 0
 
     init?() {
         guard let device = MTLCreateSystemDefaultDevice(),
@@ -87,12 +91,15 @@ final class MetalStrokeRenderer {
               let smudge = pipeline(vertex: "dab_vertex", fragment: "smudge_fragment",
                                     format: .rgba8Unorm, blend: .premultiplied),
               let blit = pipeline(vertex: "blit_vertex", fragment: "blit_fragment",
-                                  format: .bgra8Unorm, blend: .none) else { return nil }
+                                  format: .bgra8Unorm, blend: .none),
+              let underlayBlit = pipeline(vertex: "blit_vertex", fragment: "blit_underlay_fragment",
+                                          format: .bgra8Unorm, blend: .none) else { return nil }
         dabPipelineAccumulator = dabAccumulator
         dabPipelineScreen = dabScreen
         dabPipelineEraser = dabEraser
         smudgePipeline = smudge
         blitPipeline = blit
+        underlayBlitPipeline = underlayBlit
 
         for preset in [DabPreset.pencilGraphite, .charcoalTooth, .inkRound, .markerChisel,
                        .softRound, .skinPore, .rockGrit] {
@@ -108,6 +115,32 @@ final class MetalStrokeRenderer {
         descriptor.usage = [.renderTarget, .shaderRead]
         committedTexture = device.makeTexture(descriptor: descriptor)
         clearCommitted()
+    }
+
+    /// Sett/fjern referanse-underlag. Bildet strekkes til canvas-flaten
+    /// (samme aspekt som frame i praksis — underlaget velges for framen).
+    func setUnderlay(cgImage: CGImage?, opacity: Double) {
+        underlayOpacity = Float(opacity)
+        guard let cgImage else { underlayTexture = nil; return }
+        let width = cgImage.width, height = cgImage.height
+        guard width > 0, height > 0 else { underlayTexture = nil; return }
+        let bytesPerRow = width * 4
+        var pixels = [UInt8](repeating: 0, count: bytesPerRow * height)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: &pixels, width: width, height: height, bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow, space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+            underlayTexture = nil; return
+        }
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: false)
+        descriptor.usage = [.shaderRead]
+        let texture = device.makeTexture(descriptor: descriptor)
+        texture?.replace(region: MTLRegionMake2D(0, 0, width, height),
+                         mipmapLevel: 0, withBytes: pixels, bytesPerRow: bytesPerRow)
+        underlayTexture = texture
     }
 
     func clearCommitted() {
@@ -817,10 +850,19 @@ final class MetalStrokeRenderer {
         pass.colorAttachments[0].storeAction = .store
         guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
 
-        encoder.setRenderPipelineState(blitPipeline)
         var paper = paperColor
-        encoder.setFragmentBytes(&paper, length: MemoryLayout<SIMD3<Float>>.size, index: 0)
-        encoder.setFragmentTexture(committed, index: 0)
+        if let underlay = underlayTexture, underlayOpacity > 0.001 {
+            encoder.setRenderPipelineState(underlayBlitPipeline)
+            encoder.setFragmentBytes(&paper, length: MemoryLayout<SIMD3<Float>>.size, index: 0)
+            var opacity = underlayOpacity
+            encoder.setFragmentBytes(&opacity, length: MemoryLayout<Float>.size, index: 1)
+            encoder.setFragmentTexture(committed, index: 0)
+            encoder.setFragmentTexture(underlay, index: 1)
+        } else {
+            encoder.setRenderPipelineState(blitPipeline)
+            encoder.setFragmentBytes(&paper, length: MemoryLayout<SIMD3<Float>>.size, index: 0)
+            encoder.setFragmentTexture(committed, index: 0)
+        }
         encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
 
         for candidate in [activeStroke, predictedStroke] {

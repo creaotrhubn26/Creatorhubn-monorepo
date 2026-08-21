@@ -27,8 +27,15 @@ final class CanvasState: ObservableObject {
     // holdes i det koordinatrommet (web-paritet); view skalerer ved rendering
     // og inverterer ved input. nil → view-punktrom (Frikanvas).
     @Published var contentSize: CGSize?
-    var undoStack: [[PencilStroke]] = []
-    var redoStack: [[PencilStroke]] = []
+    // Cap: hvert snapshot er hele strokes-arrayet — uten tak vokser
+    // minnet kvadratisk gjennom en lang tegneøkt.
+    static let undoDepthLimit = 50
+    var undoStack: [[PencilStroke]] = [] {
+        didSet { if undoStack.count > Self.undoDepthLimit { undoStack.removeFirst() } }
+    }
+    var redoStack: [[PencilStroke]] = [] {
+        didSet { if redoStack.count > Self.undoDepthLimit { redoStack.removeFirst() } }
+    }
     // Pencil 2-dobbelttrykk: husk forrige pensel for viskelær-toggle.
     var previousBrushBeforeEraser: BrushType = .pencil
     // Bumpes ved ALLE strokes-mutasjoner (også flytt, som ikke endrer antall)

@@ -55,6 +55,11 @@ struct FrameSummary: Identifiable, Sendable {
     // Review (web-paritet): planned / in_review / needs_work / done + kommentarer
     let frameStatus: String?
     let comments: [ReviewComment]
+    // Konfliktdeteksjon (samme-frame-merge): serverens updatedAt ved lasting
+    let updatedAt: String?
+    // Referanse-underlag (kun visning i canvas — aldri i eksport)
+    let underlayDataURL: String?
+    let underlayOpacity: Double?
 }
 
 struct SceneSummary: Identifiable, Sendable {
@@ -231,7 +236,8 @@ actor RoleRoomAPIClient {
         sceneId: String,
         frameId: String,
         strokesJSON: String,
-        thumbnailDataURL: String? = nil
+        thumbnailDataURL: String? = nil,
+        baseUpdatedAt: String? = nil
     ) async throws {
         await refreshScenes(manuscriptId: manuscriptId)
         guard var scenes = rawScenes[manuscriptId] else {
@@ -244,7 +250,31 @@ actor RoleRoomAPIClient {
             var frames = (scenes[sceneIndex]["storyboardFrames"] as? [[String: Any]]) ?? []
             for frameIndex in frames.indices where frames[frameIndex]["id"] as? String == frameId {
                 var drawingData = (frames[frameIndex]["drawingData"] as? [String: Any]) ?? [:]
-                drawingData["strokes"] = strokesJSON
+                // Samme-frame-konflikt (spec: siste-vinner er datatap): har
+                // serveren en NYERE versjon enn den vi bygget på, unions-
+                // merges strokene på id — serverens beholdes, våre nye
+                // legges til. Append-dominert tegning gjør dette trygt.
+                var effectiveStrokes = strokesJSON
+                if let base = baseUpdatedAt,
+                   let serverUpdated = frames[frameIndex]["updatedAt"] as? String,
+                   serverUpdated != base,
+                   let serverJSON = drawingData["strokes"] as? String,
+                   let serverData = serverJSON.data(using: .utf8),
+                   let ourData = strokesJSON.data(using: .utf8),
+                   let serverList = (try? JSONSerialization.jsonObject(with: serverData)) as? [[String: Any]],
+                   let ourList = (try? JSONSerialization.jsonObject(with: ourData)) as? [[String: Any]] {
+                    let serverIds = Set(serverList.compactMap { $0["id"] as? String })
+                    let newOnes = ourList.filter { stroke in
+                        guard let id = stroke["id"] as? String else { return false }
+                        return !serverIds.contains(id)
+                    }
+                    let merged = serverList + newOnes
+                    if let mergedData = try? JSONSerialization.data(withJSONObject: merged),
+                       let mergedJSON = String(data: mergedData, encoding: .utf8) {
+                        effectiveStrokes = mergedJSON
+                    }
+                }
+                drawingData["strokes"] = effectiveStrokes
                 drawingData["updatedAt"] = now
                 if drawingData["createdAt"] == nil { drawingData["createdAt"] = now }
                 if drawingData["width"] == nil { drawingData["width"] = 1920 }
@@ -542,7 +572,11 @@ actor RoleRoomAPIClient {
                         author: (dict["author"] as? String) ?? "",
                         text: (dict["text"] as? String) ?? "",
                         at: (dict["at"] as? String) ?? "")
-                }
+                },
+                updatedAt: frame["updatedAt"] as? String,
+                underlayDataURL: frame["underlayDataURL"] as? String,
+                underlayOpacity: (frame["underlayOpacity"] as? Double)
+                    ?? (frame["underlayOpacity"] as? Int).map(Double.init)
             )
         }
         return SceneSummary(

@@ -89,3 +89,18 @@ fragment float4 blit_fragment(BlitOut in [[stage_in]],
     float3 rgb = paperColor * (1.0 - ink.a) + ink.rgb;
     return float4(rgb, 1.0);
 }
+
+// Referanse-underlag: papir → underlagsbilde (fadet) → strøk, i ett pass.
+// Kun skjermvei (present) — thumbnails/eksport leser akkumulatoren og
+// forblir uten underlag by design.
+fragment float4 blit_underlay_fragment(BlitOut in [[stage_in]],
+                                       texture2d<float> canvasTexture [[texture(0)]],
+                                       texture2d<float> underlayTexture [[texture(1)]],
+                                       constant float3 &paperColor [[buffer(0)]],
+                                       constant float &underlayOpacity [[buffer(1)]]) {
+    constexpr sampler blitSampler(mag_filter::linear, min_filter::linear);
+    float4 ink = canvasTexture.sample(blitSampler, in.uv);
+    float3 reference = underlayTexture.sample(blitSampler, in.uv).rgb;
+    float3 base = mix(paperColor, reference, underlayOpacity);
+    return float4(base * (1.0 - ink.a) + ink.rgb, 1.0);
+}

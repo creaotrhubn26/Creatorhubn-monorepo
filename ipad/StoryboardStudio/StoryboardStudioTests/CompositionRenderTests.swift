@@ -703,4 +703,38 @@ final class CompositionRenderTests: XCTestCase {
         XCTAssertLessThan(report.densityGrid[4][7], 0.05)     // nedre høyre tom
         XCTAssertGreaterThan(report.restZoneCount, 20)        // mest hvileflate
     }
+
+    // Ytelsesvokter (forbedringspunkt 7): 500 blandede strøk — full
+    // tegning-i-praksis (linjer + hatch + miljøgeneratorer + shade) skal
+    // rebuilde godt innenfor interaktiv toleranse. Sim er tregere enn
+    // device; terskelen er romslig men fanger kvadratisk regresjon.
+    func testRebuildPerformance500Strokes() throws {
+        guard let renderer = MetalStrokeRenderer() else { throw XCTSkip("Metal utilgjengelig") }
+        renderer.resizeCanvas(width: 1920, height: 1080)
+        var strokes: [PencilStroke] = []
+        var rng = SystemRandomNumberGenerator()
+        for i in 0..<500 {
+            let x0 = Double.random(in: 40...1600, using: &rng)
+            let y0 = Double.random(in: 40...1000, using: &rng)
+            let pts = line(x0, y0, x0 + Double.random(in: -300...300, using: &rng),
+                           y0 + Double.random(in: -200...200, using: &rng),
+                           steps: 16, pressure: 0.7)
+            switch i % 5 {
+            case 0: strokes.append(stroke(.pencil, size: 5, opacity: 0.9, pts))
+            case 1: strokes.append(stroke(.hatch, size: 40, opacity: 0.4, pts))
+            case 2: strokes.append(stroke(.forest, size: 30, opacity: 0.8, pts))
+            case 3: strokes.append(stroke(.shade, size: 34, opacity: 0.5, pts, tilt: 40))
+            default: strokes.append(stroke(.ink, size: 4, opacity: 0.95, pts))
+            }
+        }
+        let start = ContinuousClock.now
+        renderer.rebuild(strokes: strokes, scale: 1)
+        renderer.waitForPendingWork()
+        let elapsed = ContinuousClock.now - start
+        let seconds = Double(elapsed.components.seconds)
+            + Double(elapsed.components.attoseconds) / 1e18
+        print("PERF: 500 strøk rebuild + GPU-ferdig på \(String(format: "%.2f", seconds)) s")
+        XCTAssertLessThan(seconds, 10, "500-strøks rebuild for treg — sjekk dab-generering/batching")
+        XCTAssertNotNil(renderer.thumbnailDataURL(maxWidth: 280))
+    }
 }
