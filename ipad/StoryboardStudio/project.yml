@@ -53,12 +53,26 @@ targets:
         # iPad-only i fase 1 (artist-flaten er bygget for Pencil + stor skjerm).
         TARGETED_DEVICE_FAMILY: "2"
         IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   StoryboardStudioTests:
     type: bundle.unit-test
     platform: iOS
     sources:
       - path: StoryboardStudioTests
+    dependencies:
+      - target: StoryboardStudio
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "6"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+
+  StoryboardStudioUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: StoryboardStudioUITests
     dependencies:
       - target: StoryboardStudio
     settings:
@@ -78,5 +92,6 @@ schemes:
       config: Debug
       targets:
         - StoryboardStudioTests
+        - StoryboardStudioUITests
     archive:
       config: Release

@@ -40,9 +40,11 @@ struct BrushToolbar: View {
             Button { canvasState.undo() } label: {
                 Image(systemName: "arrow.uturn.backward")
             }
+            .accessibilityLabel("Angre")
             Button { canvasState.clear() } label: {
                 Image(systemName: "trash")
             }
+            .accessibilityLabel("Tøm")
             if let onExport {
                 Button(action: onExport) {
                     Image(systemName: "square.and.arrow.up")
@@ -95,12 +97,19 @@ struct ContentView: View {
             // Test-harness (samme mønster som web ?token=): sim-launch med
             // SB_TOKEN/SB_SERVER env auto-konfigurerer sync for verifisering.
             let env = ProcessInfo.processInfo.environment
-            guard !sync.isLoggedIn, let token = env["SB_TOKEN"] else { return }
+            guard !sync.isLoggedIn else { return }
+            // Env-token (sim-verifisering) vinner; ellers Keychain (vanlig
+            // app-restart — innloggingen skal overleve).
+            let token = env["SB_TOKEN"] ?? KeychainHelper.load(account: "session-token")
+            guard let token else { return }
             let server = env["SB_SERVER"] ?? sync.serverURL
-            if let name = try? await RoleRoomAPIClient.shared.configure(server: server, token: token) {
+            do {
+                let name = try await RoleRoomAPIClient.shared.configure(server: server, token: token)
                 sync.userName = name
                 sync.isLoggedIn = true
-            }
+            } catch SyncError.unauthenticated {
+                KeychainHelper.delete(account: "session-token")
+            } catch {}
         }
     }
 

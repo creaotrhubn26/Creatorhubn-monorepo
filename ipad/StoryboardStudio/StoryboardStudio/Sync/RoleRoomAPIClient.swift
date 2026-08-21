@@ -22,6 +22,14 @@ struct ManuscriptSummary: Identifiable, Sendable {
     let title: String
 }
 
+struct ReviewComment: Identifiable, Sendable {
+    let id: String
+    let role: String     // Director / DP / Producer / Editor / Artist
+    let author: String
+    let text: String
+    let at: String       // ISO
+}
+
 struct FrameSummary: Identifiable, Sendable {
     let id: String
     let shotNumber: String
@@ -44,6 +52,9 @@ struct FrameSummary: Identifiable, Sendable {
     // drawingData.width/height — koordinatrommet strøkene er lagret i.
     let drawingWidth: Double
     let drawingHeight: Double
+    // Review (web-paritet): planned / in_review / needs_work / done + kommentarer
+    let frameStatus: String?
+    let comments: [ReviewComment]
 }
 
 struct SceneSummary: Identifiable, Sendable {
@@ -108,13 +119,42 @@ actor RoleRoomAPIClient {
     }
 
     var isConfigured: Bool { baseURL != nil && token != nil && userId != nil }
+    var userDisplayName: String? { userName }
+
+    // MARK: Offline-cache (siste vellykkede svar per nøkkel — boardet skal
+    // kunne åpnes uten nett; skriving synkes når nettet er tilbake)
+
+    private static var cacheDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("api-cache", isDirectory: true)
+    }
+
+    private func cacheWrite(_ object: Any, key: String) {
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object) else { return }
+        try? FileManager.default.createDirectory(at: Self.cacheDirectory, withIntermediateDirectories: true)
+        try? data.write(to: Self.cacheDirectory.appendingPathComponent("\(key).json"))
+    }
+
+    private func cacheRead(key: String) -> Any? {
+        guard let data = try? Data(contentsOf: Self.cacheDirectory.appendingPathComponent("\(key).json")) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data)
+    }
 
     // MARK: Lesing
 
     func fetchProjects() async throws -> [ProjectSummary] {
-        let payload = try await getJSON(path: "/api/casting/projects", query: [:])
-        guard let projects = payload["projects"] as? [[String: Any]] else {
-            throw SyncError.malformed("projects")
+        var projects: [[String: Any]]
+        do {
+            let payload = try await getJSON(path: "/api/casting/projects", query: [:])
+            guard let list = payload["projects"] as? [[String: Any]] else {
+                throw SyncError.malformed("projects")
+            }
+            projects = list
+            cacheWrite(list, key: "projects")
+        } catch {
+            guard let cached = cacheRead(key: "projects") as? [[String: Any]] else { throw error }
+            projects = cached
         }
         return projects.compactMap { entry in
             guard let id = entry["id"] as? String else { return nil }
@@ -123,19 +163,26 @@ actor RoleRoomAPIClient {
     }
 
     func fetchManuscripts(projectId: String) async throws -> [ManuscriptSummary] {
-        // Prod kan returnere bare array ELLER objekt-innpakning — tåler begge.
-        let (data, response) = try await URLSession.shared.data(
-            for: request(path: "/api/casting/manuscripts", query: ["projectId": projectId]))
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard status == 200 else {
-            throw status == 401 ? SyncError.unauthenticated : SyncError.http(status)
+        var list: [[String: Any]]
+        do {
+            // Prod kan returnere bare array ELLER objekt-innpakning — tåler begge.
+            let (data, response) = try await URLSession.shared.data(
+                for: request(path: "/api/casting/manuscripts", query: ["projectId": projectId]))
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard status == 200 else {
+                throw status == 401 ? SyncError.unauthenticated : SyncError.http(status)
+            }
+            let payload = try JSONSerialization.jsonObject(with: data)
+            list = (payload as? [[String: Any]])
+                ?? ((payload as? [String: Any]).flatMap {
+                    ($0["manuscripts"] ?? $0["data"]) as? [[String: Any]]
+                })
+                ?? []
+            cacheWrite(list, key: "manuscripts-\(projectId)")
+        } catch {
+            guard let cached = cacheRead(key: "manuscripts-\(projectId)") as? [[String: Any]] else { throw error }
+            list = cached
         }
-        let payload = try JSONSerialization.jsonObject(with: data)
-        let list = (payload as? [[String: Any]])
-            ?? ((payload as? [String: Any]).flatMap {
-                ($0["manuscripts"] ?? $0["data"]) as? [[String: Any]]
-            })
-            ?? []
         return list.compactMap { entry in
             guard let id = entry["id"] as? String else { return nil }
             let title = (entry["title"] as? String) ?? (entry["name"] as? String) ?? id
@@ -144,7 +191,14 @@ actor RoleRoomAPIClient {
     }
 
     func fetchScenes(manuscriptId: String) async throws -> [SceneSummary] {
-        let scenes = try await getJSONArray(path: "/api/casting/manuscripts/\(manuscriptId)/scenes")
+        let scenes: [[String: Any]]
+        do {
+            scenes = try await getJSONArray(path: "/api/casting/manuscripts/\(manuscriptId)/scenes")
+            cacheWrite(scenes, key: "scenes-\(manuscriptId)")
+        } catch {
+            guard let cached = cacheRead(key: "scenes-\(manuscriptId)") as? [[String: Any]] else { throw error }
+            scenes = cached
+        }
         rawScenes[manuscriptId] = scenes
         return scenes.compactMap(Self.summarize(scene:))
     }
@@ -155,9 +209,16 @@ actor RoleRoomAPIClient {
     /// POST bygger på serverens nyeste versjon (frame-nivå-merge — andre
     /// enheters endringer på andre frames bevares). Feiler henting (offline)
     /// brukes cachen — bedre å skrive gammelt enn å miste tegningen.
+    private var lastRefresh: [String: Date] = [:]
+
     private func refreshScenes(manuscriptId: String) async {
+        // Throttle: autosynk-serier på samme frame trenger ikke fersk kopi
+        // hver gang — 15 s-vindu balanserer konfliktvern mot trafikk.
+        if let last = lastRefresh[manuscriptId], Date().timeIntervalSince(last) < 15 { return }
         if let fresh = try? await getJSONArray(path: "/api/casting/manuscripts/\(manuscriptId)/scenes") {
             rawScenes[manuscriptId] = fresh
+            lastRefresh[manuscriptId] = Date()
+            cacheWrite(fresh, key: "scenes-\(manuscriptId)")
         }
     }
 
@@ -353,11 +414,10 @@ actor RoleRoomAPIClient {
 
     /// Ny scene i manuset — arver prosjekt-/manusfelter fra eksisterende
     /// scene (upsert-endepunktet oppretter ved ny id).
-    func addScene(manuscriptId: String, title: String) async throws -> String {
+    func addScene(manuscriptId: String, title: String, projectId: String? = nil) async throws -> String {
         await refreshScenes(manuscriptId: manuscriptId)
-        guard var scenes = rawScenes[manuscriptId], let template = scenes.first else {
-            throw SyncError.malformed("scener ikke lastet")
-        }
+        var scenes = rawScenes[manuscriptId] ?? []
+        let template = scenes.first
         let now = ISO8601DateFormatter().string(from: Date())
         let maxNumber = scenes.compactMap { $0["sceneNumber"] as? Int }.max() ?? scenes.count
         let sceneId = "scene-\(Int(Date().timeIntervalSince1970 * 1000))"
@@ -371,8 +431,11 @@ actor RoleRoomAPIClient {
             "updatedAt": now,
         ]
         for key in ["manuscriptId", "manuscript_id", "projectId", "project_id", "act_id"] {
-            scene[key] = template[key]
+            scene[key] = template?[key]
         }
+        // Tomt manus: ingen mal å arve fra — bruk kjente id-er direkte.
+        if scene["manuscriptId"] == nil { scene["manuscriptId"] = manuscriptId }
+        if scene["projectId"] == nil, let projectId { scene["projectId"] = projectId }
         try await sendJSON(path: "/api/casting/scenes", method: "POST", body: scene)
         scenes.append(scene)
         rawScenes[manuscriptId] = scenes
@@ -470,7 +533,16 @@ actor RoleRoomAPIClient {
                 drawingWidth: (drawingData?["width"] as? Double)
                     ?? Double(drawingData?["width"] as? Int ?? 1920),
                 drawingHeight: (drawingData?["height"] as? Double)
-                    ?? Double(drawingData?["height"] as? Int ?? 1080)
+                    ?? Double(drawingData?["height"] as? Int ?? 1080),
+                frameStatus: frame["frameStatus"] as? String,
+                comments: ((frame["frameComments"] as? [[String: Any]]) ?? []).map { dict in
+                    ReviewComment(
+                        id: (dict["id"] as? String) ?? UUID().uuidString,
+                        role: (dict["role"] as? String) ?? "?",
+                        author: (dict["author"] as? String) ?? "",
+                        text: (dict["text"] as? String) ?? "",
+                        at: (dict["at"] as? String) ?? "")
+                }
             )
         }
         return SceneSummary(
