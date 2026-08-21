@@ -13,6 +13,9 @@ final class CanvasState: ObservableObject {
     @Published var brushSize: Double = 6
     @Published var brushColor: String = "#26282e"
     @Published var brushOpacity: Double = 0.95
+    // Smoothing-slider (0–1) — overstyrer per-pensel Streamline-verdi når
+    // satt (web-paritet: streamlineOverride = pct * 0.92).
+    @Published var streamlineOverride: Double?
     // Board Pro-lag: nye strøk tagges med aktivt lag; skjulte lag filtreres
     // fra rendering (web-paritet — dataene beholdes urørt).
     @Published var activeBoardLayer = "Drawing"
@@ -181,7 +184,8 @@ final class MetalCanvasUIView: UIView {
     }
 
     private func smoothed(_ point: StrokePoint) -> StrokePoint {
-        let amount = Streamline.amount(for: state?.brushType ?? .pencil)
+        let amount = state?.streamlineOverride
+            ?? Streamline.amount(for: state?.brushType ?? .pencil)
         guard amount > 0, var sl = streamlineState else {
             streamlineState = (point.x, point.y)
             return point

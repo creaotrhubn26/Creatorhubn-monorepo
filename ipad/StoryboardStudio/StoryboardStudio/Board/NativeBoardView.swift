@@ -125,6 +125,8 @@ struct NativeBoardView: View {
     @State private var textPromptShown = false
     @State private var textPromptValue = ""
     @State private var textPromptPoint: CGPoint = .zero
+    @State private var sheetZoom: Double = 1.0
+    @State private var scrollTarget: Int?
     @Environment(\.dismiss) private var dismiss
 
     init(manuscript: ManuscriptSummary) {
@@ -375,20 +377,33 @@ struct NativeBoardView: View {
     }
 
     private var sheetScroll: some View {
-        ScrollView {
+        ScrollViewReader { proxy in
+            ScrollView {
+                sheetContent
+            }
+            .background(BoardBrand.workspace)
+            .onChange(of: scrollTarget) {
+                if let target = scrollTarget {
+                    withAnimation { proxy.scrollTo(target, anchor: .top) }
+                    scrollTarget = nil
+                }
+            }
+        }
+    }
+
+    private var sheetContent: some View {
             VStack(alignment: .leading, spacing: 22) {
                 ForEach(Array((board.scene?.frames ?? []).enumerated()), id: \.element.id) { index, frame in
                     shotRow(frame: frame, index: index)
+                        .id(index)
                 }
             }
             .padding(28)
             .background(BoardBrand.sheet, in: RoundedRectangle(cornerRadius: 4))
             .shadow(color: .black.opacity(0.4), radius: 22, y: 8)
             .padding(.vertical, 24)
-            .frame(maxWidth: 900)
+            .frame(maxWidth: 900 * sheetZoom)
             .frame(maxWidth: .infinity)
-        }
-        .background(BoardBrand.workspace)
     }
 
     private func shotRow(frame: FrameSummary, index: Int) -> some View {
@@ -771,7 +786,7 @@ struct NativeBoardView: View {
             Divider().overlay(BoardBrand.border)
             navigatorPanel
         }
-        .frame(height: 148)
+        .frame(height: 190)
         .background(BoardBrand.panel)
     }
 
@@ -788,10 +803,24 @@ struct NativeBoardView: View {
         )
     }
 
+    // Smoothing vises som pensel-default til brukeren overstyrer (web-paritet
+    // streamlineOverride = pct * 0.92).
+    private var smoothingBinding: Binding<Double> {
+        Binding(
+            get: {
+                canvasState.streamlineOverride.map { $0 / 0.92 }
+                    ?? Streamline.amount(for: canvasState.brushType) / 0.92
+            },
+            set: { canvasState.streamlineOverride = $0 * 0.92 }
+        )
+    }
+
     private var brushesPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 panelLabel("Brushes")
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold)).foregroundStyle(BoardBrand.label)
                 Spacer()
                 Button { canvasState.undo() } label: {
                     Image(systemName: "arrow.uturn.backward")
@@ -806,28 +835,43 @@ struct NativeBoardView: View {
                 Text("\(canvasState.strokes.count) strøk")
                     .font(.system(size: 10).monospacedDigit()).foregroundStyle(BoardBrand.dim)
             }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(Self.brushChips, id: \.0) { type, name in
-                        let selected = canvasState.brushType == type
-                        Button { canvasState.brushType = type } label: {
-                            Text(name)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(selected ? .white : BoardBrand.dim)
-                                .padding(.horizontal, 10).padding(.vertical, 6)
-                                .background(selected ? BoardBrand.accent : Color.white.opacity(0.06), in: Capsule())
+            HStack(alignment: .top, spacing: 14) {
+                // Tip-glyfer i 2×5-grid (mockup) — form, ikke tekst.
+                VStack(spacing: 6) {
+                    ForEach(0..<2, id: \.self) { row in
+                        HStack(spacing: 6) {
+                            ForEach(Array(Self.brushChips[(row * 5)..<(row * 5 + 5)]), id: \.0) { type, name in
+                                let selected = canvasState.brushType == type
+                                Button { canvasState.brushType = type } label: {
+                                    BrushTipGlyph(type: type)
+                                        .frame(width: 44, height: 38)
+                                        .background(selected ? Color.white.opacity(0.12) : Color.white.opacity(0.04),
+                                                    in: RoundedRectangle(cornerRadius: 8))
+                                        .overlay(RoundedRectangle(cornerRadius: 8)
+                                            .stroke(selected ? BoardBrand.accent : BoardBrand.border,
+                                                    lineWidth: selected ? 1.5 : 1))
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(name)
+                            }
                         }
-                        .buttonStyle(.plain)
                     }
+                    ColorPicker("Farge", selection: brushColorBinding, supportsOpacity: false)
+                        .labelsHidden().frame(width: 32, height: 28)
                 }
-            }
-            HStack(spacing: 14) {
-                ColorPicker("Farge", selection: brushColorBinding, supportsOpacity: false)
-                    .labelsHidden().frame(width: 32)
-                sliderRow("Size", value: $canvasState.brushSize, range: 1...48,
-                          display: "\(Int(canvasState.brushSize)) px")
-                sliderRow("Opacity", value: $canvasState.brushOpacity, range: 0.1...1,
-                          display: "\(Int(canvasState.brushOpacity * 100))%")
+                // Sliders vertikalt m/ verdi til høyre (mockup)
+                VStack(spacing: 10) {
+                    sliderRow("Size", value: $canvasState.brushSize, range: 1...48,
+                              display: "\(Int(canvasState.brushSize)) px")
+                    sliderRow("Opacity", value: $canvasState.brushOpacity, range: 0.1...1,
+                              display: "\(Int(canvasState.brushOpacity * 100))%")
+                    sliderRow("Smothing", value: smoothingBinding, range: 0...1,
+                              display: "\(Int(smoothingBinding.wrappedValue * 100))%")
+                }
+                .frame(maxWidth: .infinity)
+                // Strøk-forhåndsvisning (mockup: hvit kurve på svart)
+                StrokePreview(size: canvasState.brushSize, opacity: canvasState.brushOpacity)
+                    .frame(width: 118, height: 122)
             }
         }
         .padding(12)
@@ -855,19 +899,16 @@ struct NativeBoardView: View {
         )
     }
 
+    private static let layerIcons: [String: String] = [
+        "Drawing": "paintbrush.pointed.fill",
+        "Camera / Arrows": "arrow.up.right.square",
+        "Dialog": "text.bubble",
+        "Notes": "note.text",
+    ]
+
     private var layersPanel: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                panelLabel("Layers")
-                Spacer()
-                // Opacity for aktivt lag (mockup: slider øverst i panelet)
-                Slider(value: activeLayerOpacityBinding, in: 0.1...1)
-                    .tint(BoardBrand.accent)
-                    .frame(width: 70)
-                Text("\(Int((canvasState.layerOpacity[canvasState.activeBoardLayer] ?? 1) * 100))%")
-                    .font(.system(size: 9).monospacedDigit()).foregroundStyle(BoardBrand.dim)
-                    .frame(width: 30, alignment: .trailing)
-            }
+            panelLabel("Layers")
             ForEach(BoardLayers.all, id: \.self) { layer in
                 let active = canvasState.activeBoardLayer == layer
                 let hidden = canvasState.hiddenLayers.contains(layer)
@@ -883,6 +924,9 @@ struct NativeBoardView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Vis \(layer)")
+                    Image(systemName: Self.layerIcons[layer] ?? "square")
+                        .font(.system(size: 9))
+                        .foregroundStyle(active ? .white : BoardBrand.label)
                     Button { canvasState.activeBoardLayer = layer } label: {
                         Text(layer)
                             .font(.system(size: 11, weight: active ? .bold : .regular))
@@ -906,33 +950,89 @@ struct NativeBoardView: View {
                 .background(active ? BoardBrand.accent.opacity(0.22) : .clear,
                             in: RoundedRectangle(cornerRadius: 6))
             }
+            // Blend-modus (kun Normal støttes) + opacity for aktivt lag (mockup)
+            HStack(spacing: 8) {
+                Menu {
+                    Button("Normal") {}
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Normal").font(.system(size: 10, weight: .semibold)).foregroundStyle(.white)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 7, weight: .bold)).foregroundStyle(BoardBrand.dim)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+                }
+                Slider(value: activeLayerOpacityBinding, in: 0.1...1)
+                    .tint(BoardBrand.accent)
+                Text("\(Int((canvasState.layerOpacity[canvasState.activeBoardLayer] ?? 1) * 100))%")
+                    .font(.system(size: 9).monospacedDigit()).foregroundStyle(BoardBrand.dim)
+                    .frame(width: 28, alignment: .trailing)
+            }
+            .padding(.top, 2)
+            // Hurtigfarger (mockup-swatches): hvit + sort blekk
+            HStack(spacing: 6) {
+                ForEach(["#ffffff", "#26282e"], id: \.self) { hex in
+                    Button { canvasState.brushColor = hex } label: {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color(hex: hex) ?? .white)
+                            .frame(width: 22, height: 22)
+                            .overlay(RoundedRectangle(cornerRadius: 4)
+                                .stroke(canvasState.brushColor == hex ? BoardBrand.accent : BoardBrand.border,
+                                        lineWidth: canvasState.brushColor == hex ? 1.5 : 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+            }
         }
         .padding(12)
-        .frame(width: 190)
+        .frame(width: 200)
     }
 
     private var navigatorPanel: some View {
         VStack(alignment: .leading, spacing: 6) {
             panelLabel("Navigator")
-            ZStack {
-                if let image = decodeDataURL(board.frame?.thumbnailDataURL) {
-                    Image(uiImage: image).resizable().scaledToFill()
-                } else {
-                    Color.white.opacity(0.05)
-                    Text("SHOT \(board.frame?.shotNumber ?? "—")")
-                        .font(.system(size: 10, weight: .bold)).foregroundStyle(BoardBrand.dim)
+            // Minimap av arket: alle shots i scenen, aktiv i fiolett;
+            // tap hopper til raden.
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 3),
+                      spacing: 4) {
+                ForEach(Array((board.scene?.frames ?? []).enumerated()), id: \.element.id) { index, frame in
+                    Button { scrollTarget = index } label: {
+                        ZStack {
+                            if let image = decodeDataURL(frame.thumbnailDataURL) {
+                                Image(uiImage: image).resizable().scaledToFill()
+                            } else {
+                                Color.white.opacity(0.07)
+                            }
+                        }
+                        .frame(height: 24)
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                        .overlay(RoundedRectangle(cornerRadius: 3)
+                            .stroke(index == board.activeFrameIndex ? BoardBrand.accent : BoardBrand.border,
+                                    lineWidth: index == board.activeFrameIndex ? 1.5 : 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Gå til shot \(frame.shotNumber)")
                 }
             }
-            .aspectRatio(2.39, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(BoardBrand.accent.opacity(0.6), lineWidth: 1))
-            if let frame = board.frame {
-                Text("\(frame.shotNumber) · \(Int(frame.durationSec)) SEC")
-                    .font(.system(size: 10).monospacedDigit()).foregroundStyle(BoardBrand.dim)
+            Spacer(minLength: 0)
+            // Zoom styrer arkbredden (reflow — canvas skalerer med)
+            HStack(spacing: 6) {
+                Button { sheetZoom = max(0.5, sheetZoom - 0.1) } label: {
+                    Image(systemName: "minus").font(.system(size: 10)).foregroundStyle(BoardBrand.dim)
+                }
+                Slider(value: $sheetZoom, in: 0.5...1.4).tint(BoardBrand.accent)
+                Button { sheetZoom = min(1.4, sheetZoom + 0.1) } label: {
+                    Image(systemName: "plus").font(.system(size: 10)).foregroundStyle(BoardBrand.dim)
+                }
+                Text("\(Int(sheetZoom * 100))%")
+                    .font(.system(size: 9).monospacedDigit()).foregroundStyle(BoardBrand.dim)
+                    .frame(width: 30, alignment: .trailing)
             }
         }
         .padding(12)
-        .frame(width: 190)
+        .frame(width: 200)
     }
 }
 
@@ -1084,6 +1184,102 @@ struct ShotListSheet: View {
                 }
             }
         }
+    }
+}
+
+// Pensel-tupp-glyf (mockup: form-bokser, ikke tekst). Tegner stav + tupp
+// der tuppformen skiller penslene.
+private struct BrushTipGlyph: View {
+    let type: BrushType
+
+    var body: some View {
+        Canvas { context, size in
+            let cx = size.width / 2
+            let white = Color.white.opacity(0.85)
+            var shaft = Path()
+            var tip = Path()
+            switch type {
+            case .pencil:
+                shaft.addRect(CGRect(x: cx - 2.5, y: 5, width: 5, height: 16))
+                tip.move(to: CGPoint(x: cx - 2.5, y: 21))
+                tip.addLine(to: CGPoint(x: cx + 2.5, y: 21))
+                tip.addLine(to: CGPoint(x: cx, y: 32))
+                tip.closeSubpath()
+            case .graphite:
+                shaft.addRect(CGRect(x: cx - 3, y: 5, width: 6, height: 15))
+                tip.move(to: CGPoint(x: cx - 3, y: 20))
+                tip.addLine(to: CGPoint(x: cx + 3, y: 20))
+                tip.addLine(to: CGPoint(x: cx + 3, y: 31))
+                tip.closeSubpath()
+            case .charcoal:
+                shaft.addRect(CGRect(x: cx - 4.5, y: 5, width: 9, height: 14))
+                tip.move(to: CGPoint(x: cx - 4.5, y: 19))
+                tip.addLine(to: CGPoint(x: cx + 4.5, y: 19))
+                tip.addLine(to: CGPoint(x: cx + 2, y: 31))
+                tip.addLine(to: CGPoint(x: cx - 2, y: 31))
+                tip.closeSubpath()
+            case .conte:
+                shaft.addRect(CGRect(x: cx - 4, y: 6, width: 8, height: 15))
+                tip.move(to: CGPoint(x: cx - 4, y: 21))
+                tip.addLine(to: CGPoint(x: cx + 4, y: 21))
+                tip.addLine(to: CGPoint(x: cx + 4, y: 29))
+                tip.addLine(to: CGPoint(x: cx - 4, y: 25))
+                tip.closeSubpath()
+            case .pen, .ink:
+                shaft.addRect(CGRect(x: cx - 1.5, y: 5, width: 3, height: 18))
+                tip.move(to: CGPoint(x: cx - 1.5, y: 23))
+                tip.addLine(to: CGPoint(x: cx + 1.5, y: 23))
+                tip.addLine(to: CGPoint(x: cx, y: 32))
+                tip.closeSubpath()
+            case .marker:
+                shaft.addRect(CGRect(x: cx - 4, y: 5, width: 8, height: 16))
+                tip.addRoundedRect(in: CGRect(x: cx - 2.5, y: 21, width: 5, height: 10),
+                                   cornerSize: CGSize(width: 2, height: 2))
+            case .highlighter:
+                shaft.addRect(CGRect(x: cx - 5, y: 5, width: 10, height: 16))
+                tip.addRect(CGRect(x: cx - 4, y: 21, width: 8, height: 9))
+            case .smudge:
+                tip.addEllipse(in: CGRect(x: cx - 7, y: 10, width: 14, height: 18))
+            case .eraser:
+                tip.addRoundedRect(in: CGRect(x: cx - 7, y: 8, width: 14, height: 20),
+                                   cornerSize: CGSize(width: 3, height: 3))
+            default:
+                shaft.addRect(CGRect(x: cx - 3, y: 5, width: 6, height: 16))
+                tip.addEllipse(in: CGRect(x: cx - 3, y: 21, width: 6, height: 10))
+            }
+            context.fill(shaft, with: .color(white.opacity(0.5)))
+            if type == .smudge {
+                context.fill(tip, with: .color(white.opacity(0.35)))
+            } else {
+                context.fill(tip, with: .color(white))
+            }
+        }
+    }
+}
+
+// Strøk-forhåndsvisning: hvit S-kurve på svart, bredde/dekning følger valget.
+private struct StrokePreview: View {
+    let size: Double
+    let opacity: Double
+
+    var body: some View {
+        Canvas { context, canvasSize in
+            var path = Path()
+            let w = canvasSize.width, h = canvasSize.height
+            path.move(to: CGPoint(x: w * 0.14, y: h * 0.62))
+            path.addCurve(to: CGPoint(x: w * 0.5, y: h * 0.45),
+                          control1: CGPoint(x: w * 0.24, y: h * 0.28),
+                          control2: CGPoint(x: w * 0.4, y: h * 0.72))
+            path.addCurve(to: CGPoint(x: w * 0.86, y: h * 0.5),
+                          control1: CGPoint(x: w * 0.62, y: h * 0.2),
+                          control2: CGPoint(x: w * 0.72, y: h * 0.75))
+            context.stroke(path,
+                           with: .color(.white.opacity(opacity)),
+                           style: StrokeStyle(lineWidth: max(2, size * 0.55),
+                                              lineCap: .round, lineJoin: .round))
+        }
+        .background(Color.black, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(BoardBrand.border, lineWidth: 1))
     }
 }
 
