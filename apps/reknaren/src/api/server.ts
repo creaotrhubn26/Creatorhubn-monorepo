@@ -122,6 +122,8 @@ import { withTransaction } from '../db/pool.js';
 import { sha256Hex } from '../documents/service.js';
 import { DomainError, NotFoundError, ValidationError } from '../shared/errors.js';
 import { buildTaxEstimate } from '../tax/estimate.js';
+import { recordTaxReserve, taxReserveOverview, taxSetAsideForInvoice } from '../tax/reserve.js';
+import type { OrganizationForm } from '../rules/types.js';
 import { buildVatReport, listVatCodes } from '../vat/engine.js';
 import { issueToken, resolveAuthSecret, verifyToken, type AuthTokenPayload } from './auth.js';
 import { createMagicToken, isAllowedEmail, verifyMagicToken } from './magic-link.js';
@@ -4378,6 +4380,46 @@ export function createApiServer(deps: ApiDeps): express.Express {
       if (!org) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Organisasjonen finnes ikke.' } }); return; }
       const asOf = new Date().toISOString().slice(0, 10);
       res.json(toJson(computeDeadlines({ orgForm: org.org_form as OrgForm, vatRegistered: org.vat_status === 'registered', asOf })));
+    } catch (err) { next(err); }
+  });
+
+  // ── Skatteavsetning: oversikt + registrer «satt av til skatt» ─────────────
+  app.get('/api/organizations/:orgId/tax/reserve-overview', requireAuth, requireOrgPermission('reports.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      const org = (await deps.db.query(`SELECT org_form FROM organizations WHERE id=$1`, [req.params.orgId])).rows[0];
+      if (!org) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Organisasjonen finnes ikke.' } }); return; }
+      const asOf = new Date().toISOString().slice(0, 10);
+      res.json(toJson(await taxReserveOverview(deps.db, deps.rules, { organizationId: req.params.orgId!, orgForm: org.org_form as OrganizationForm, asOf })));
+    } catch (err) { next(err); }
+  });
+  app.post('/api/organizations/:orgId/tax/reserves', requireAuth, requireOrgPermission('journal.post'), async (req: AuthedRequest, res, next) => {
+    try {
+      const body = z.object({
+        amountMinor: z.string().regex(/^\d+$/),
+        reservedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        note: z.string().max(200).optional(),
+      }).parse(req.body);
+      const reservedAt = body.reservedAt ?? new Date().toISOString().slice(0, 10);
+      const r = await recordTaxReserve(deps.db, {
+        organizationId: req.params.orgId!, actor: { userId: req.auth!.userId },
+        amountMinor: BigInt(body.amountMinor), reservedAt, ...(body.note ? { note: body.note } : {}),
+      });
+      res.status(201).json(toJson(r));
+    } catch (err) { next(err); }
+  });
+  // Per faktura: hvor mye bør settes av til skatt for denne fakturaen.
+  app.get('/api/organizations/:orgId/invoices/:invoiceId/tax-set-aside', requireAuth, requireOrgPermission('reports.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      const row = (await deps.db.query(
+        `SELECT o.org_form, i.net_minor::text AS net FROM invoices i JOIN organizations o ON o.id = i.organization_id
+         WHERE i.id=$1 AND i.organization_id=$2`,
+        [req.params.invoiceId, req.params.orgId],
+      )).rows[0];
+      if (!row) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Fakturaen finnes ikke.' } }); return; }
+      const asOf = new Date().toISOString().slice(0, 10);
+      res.json(toJson(await taxSetAsideForInvoice(deps.db, deps.rules, {
+        organizationId: req.params.orgId!, orgForm: row.org_form as OrganizationForm, asOf, invoiceNetMinor: BigInt(row.net),
+      })));
     } catch (err) { next(err); }
   });
 
