@@ -151,14 +151,28 @@ actor RoleRoomAPIClient {
 
     // MARK: Skriving
 
+    /// Konfliktvern: hent fersk sceneliste rett før hver skriving så vår
+    /// POST bygger på serverens nyeste versjon (frame-nivå-merge — andre
+    /// enheters endringer på andre frames bevares). Feiler henting (offline)
+    /// brukes cachen — bedre å skrive gammelt enn å miste tegningen.
+    private func refreshScenes(manuscriptId: String) async {
+        if let fresh = try? await getJSONArray(path: "/api/casting/manuscripts/\(manuscriptId)/scenes") {
+            rawScenes[manuscriptId] = fresh
+        }
+    }
+
     /// Skriv strokes (web-JSON-STRENG — parseStoredStrokes-krav) tilbake på
     /// én frame og PUT hele scenelisten (samme granularitet som web).
+    /// thumbnailDataURL settes når native har rendret en thumb (ellers
+    /// nullstilles den så web regenererer).
     func saveFrameStrokes(
         manuscriptId: String,
         sceneId: String,
         frameId: String,
-        strokesJSON: String
+        strokesJSON: String,
+        thumbnailDataURL: String? = nil
     ) async throws {
+        await refreshScenes(manuscriptId: manuscriptId)
         guard var scenes = rawScenes[manuscriptId] else {
             throw SyncError.malformed("scener ikke lastet")
         }
@@ -176,9 +190,13 @@ actor RoleRoomAPIClient {
                 if drawingData["height"] == nil { drawingData["height"] = 1080 }
                 frames[frameIndex]["drawingData"] = drawingData
                 frames[frameIndex]["imageSource"] = "drawn"
-                // Web genererer thumbnail automatisk fra strokes ved visning;
-                // nullstill stale thumb så den regenereres.
-                frames[frameIndex]["thumbnailUrl"] = nil
+                if let thumbnailDataURL {
+                    frames[frameIndex]["thumbnailUrl"] = thumbnailDataURL
+                } else {
+                    // Web genererer thumbnail automatisk fra strokes ved
+                    // visning; nullstill stale thumb så den regenereres.
+                    frames[frameIndex]["thumbnailUrl"] = nil
+                }
                 frames[frameIndex]["updatedAt"] = now
                 found = true
             }
@@ -200,6 +218,7 @@ actor RoleRoomAPIClient {
         frameId: String,
         fields: [String: any Sendable]
     ) async throws {
+        await refreshScenes(manuscriptId: manuscriptId)
         guard var scenes = rawScenes[manuscriptId] else {
             throw SyncError.malformed("scener ikke lastet")
         }
@@ -228,6 +247,7 @@ actor RoleRoomAPIClient {
     /// ADD SHOT: ny tom frame etter siste i scenen (shotNumber = neste
     /// bokstav i samme tallserie, «1A» → «1B»; tom scene → «1A»), upsert.
     func addFrame(manuscriptId: String, sceneId: String) async throws -> String {
+        await refreshScenes(manuscriptId: manuscriptId)
         guard var scenes = rawScenes[manuscriptId] else {
             throw SyncError.malformed("scener ikke lastet")
         }
@@ -268,6 +288,95 @@ actor RoleRoomAPIClient {
         rawScenes[manuscriptId] = scenes
         try await sendJSON(path: "/api/casting/scenes", method: "POST", body: scene)
         return frameId
+    }
+
+    /// Felles mønster for frame-mutasjoner: fersk scene → muter → upsert.
+    private func mutateSceneFrames(
+        manuscriptId: String, sceneId: String,
+        _ mutate: (inout [[String: Any]]) -> Void
+    ) async throws {
+        await refreshScenes(manuscriptId: manuscriptId)
+        guard var scenes = rawScenes[manuscriptId] else {
+            throw SyncError.malformed("scener ikke lastet")
+        }
+        let now = ISO8601DateFormatter().string(from: Date())
+        for sceneIndex in scenes.indices where scenes[sceneIndex]["id"] as? String == sceneId {
+            var frames = (scenes[sceneIndex]["storyboardFrames"] as? [[String: Any]]) ?? []
+            mutate(&frames)
+            scenes[sceneIndex]["storyboardFrames"] = frames
+            scenes[sceneIndex]["updatedAt"] = now
+        }
+        guard let scene = scenes.first(where: { $0["id"] as? String == sceneId }) else {
+            throw SyncError.malformed("scene \(sceneId) ikke funnet")
+        }
+        rawScenes[manuscriptId] = scenes
+        try await sendJSON(path: "/api/casting/scenes", method: "POST", body: scene)
+    }
+
+    private static func nextShotNumber(after last: String) -> String {
+        if let letter = last.last, letter.isLetter, letter < "Z",
+           let next = letter.unicodeScalars.first.flatMap({ UnicodeScalar($0.value + 1) }) {
+            return String(last.dropLast()) + String(Character(next))
+        }
+        return last.isEmpty ? "1A" : last + "A"
+    }
+
+    func deleteFrame(manuscriptId: String, sceneId: String, frameId: String) async throws {
+        try await mutateSceneFrames(manuscriptId: manuscriptId, sceneId: sceneId) { frames in
+            frames.removeAll { $0["id"] as? String == frameId }
+        }
+    }
+
+    func duplicateFrame(manuscriptId: String, sceneId: String, frameId: String) async throws -> String {
+        let newId = "frame-\(Int(Date().timeIntervalSince1970 * 1000))"
+        try await mutateSceneFrames(manuscriptId: manuscriptId, sceneId: sceneId) { frames in
+            guard let index = frames.firstIndex(where: { $0["id"] as? String == frameId }) else { return }
+            var copy = frames[index]
+            copy["id"] = newId
+            copy["shotNumber"] = Self.nextShotNumber(
+                after: (frames.last?["shotNumber"] as? String) ?? "")
+            copy["updatedAt"] = ISO8601DateFormatter().string(from: Date())
+            frames.insert(copy, at: index + 1)
+        }
+        return newId
+    }
+
+    /// Flytt frame ett hakk (offset ±1) i scenens rekkefølge.
+    func moveFrame(manuscriptId: String, sceneId: String, frameId: String, offset: Int) async throws {
+        try await mutateSceneFrames(manuscriptId: manuscriptId, sceneId: sceneId) { frames in
+            guard let index = frames.firstIndex(where: { $0["id"] as? String == frameId }) else { return }
+            let target = index + offset
+            guard frames.indices.contains(target) else { return }
+            frames.swapAt(index, target)
+        }
+    }
+
+    /// Ny scene i manuset — arver prosjekt-/manusfelter fra eksisterende
+    /// scene (upsert-endepunktet oppretter ved ny id).
+    func addScene(manuscriptId: String, title: String) async throws -> String {
+        await refreshScenes(manuscriptId: manuscriptId)
+        guard var scenes = rawScenes[manuscriptId], let template = scenes.first else {
+            throw SyncError.malformed("scener ikke lastet")
+        }
+        let now = ISO8601DateFormatter().string(from: Date())
+        let maxNumber = scenes.compactMap { $0["sceneNumber"] as? Int }.max() ?? scenes.count
+        let sceneId = "scene-\(Int(Date().timeIntervalSince1970 * 1000))"
+        var scene: [String: Any] = [
+            "id": sceneId,
+            "title": title,
+            "sceneHeading": title,
+            "sceneNumber": maxNumber + 1,
+            "storyboardFrames": [[String: Any]](),
+            "createdAt": now,
+            "updatedAt": now,
+        ]
+        for key in ["manuscriptId", "manuscript_id", "projectId", "project_id", "act_id"] {
+            scene[key] = template[key]
+        }
+        try await sendJSON(path: "/api/casting/scenes", method: "POST", body: scene)
+        scenes.append(scene)
+        rawScenes[manuscriptId] = scenes
+        return sceneId
     }
 
     // MARK: HTTP

@@ -29,6 +29,8 @@ final class CanvasState: ObservableObject {
     @Published var contentSize: CGSize?
     var undoStack: [[PencilStroke]] = []
     var redoStack: [[PencilStroke]] = []
+    // Pencil 2-dobbelttrykk: husk forrige pensel for viskelær-toggle.
+    var previousBrushBeforeEraser: BrushType = .pencil
 
     func currentBrush() -> BrushSpec {
         BrushSpec.preset(brushType, size: brushSize, color: brushColor, opacity: brushOpacity)
@@ -86,6 +88,12 @@ final class MetalCanvasUIView: UIView {
 
     var renderer: MetalStrokeRenderer?
     weak var state: CanvasState?
+    // Fullskjerm tegnemodus: kun Pencil tegner (finger panorerer ScrollView).
+    var pencilOnly = false
+    // Inline (i arket) må slå av scroll-cancel for å eie touches; fullskjerm
+    // vil beholde den så finger-pan fungerer.
+    var disableScrollCancel = true
+    private var currentInputType = "pencil"
 
     private var activePoints: [StrokePoint] = []
     private var predictedPoints: [StrokePoint] = []
@@ -112,6 +120,10 @@ final class MetalCanvasUIView: UIView {
         isMultipleTouchEnabled = false
         metalLayer.pixelFormat = .bgra8Unorm
         metalLayer.framebufferOnly = true
+        // Apple Pencil 2 dobbelttrykk: bytt viskelær ↔ forrige pensel.
+        let pencilInteraction = UIPencilInteraction()
+        pencilInteraction.delegate = self
+        addInteraction(pencilInteraction)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) not supported") }
@@ -121,6 +133,7 @@ final class MetalCanvasUIView: UIView {
     // forfedre-scrollviews så canvasen eier sine touches.
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        guard disableScrollCancel else { return }
         var view: UIView? = superview
         while let current = view {
             if let scroll = current as? UIScrollView {
@@ -175,7 +188,7 @@ final class MetalCanvasUIView: UIView {
         return PencilStroke(
             id: "ipad-\(Int(strokeStartedAt.timeIntervalSince1970 * 1000))\(idSuffix)",
             points: points,
-            inputType: "pencil",
+            inputType: currentInputType,
             color: brush.color,
             width: brush.size,
             opacity: brush.opacity,
@@ -206,12 +219,18 @@ final class MetalCanvasUIView: UIView {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first else { return }
+        // Palm rejection (fullskjerm): finger skal panorere, ikke tegne.
+        if pencilOnly && touch.type != .pencil {
+            strokeSuppressed = true
+            return
+        }
         // Låst lag: ingen tegning (web-paritet med lockedLayers).
         if let state, state.lockedLayers.contains(state.activeBoardLayer) {
             strokeSuppressed = true
             return
         }
         strokeSuppressed = false
+        currentInputType = touch.type == .pencil ? "pencil" : "touch"
         strokeStartedAt = Date()
         let point = strokePoint(from: touch)
         streamlineState = (point.x, point.y)
@@ -300,17 +319,36 @@ final class MetalCanvasUIView: UIView {
 struct PencilCanvasView: UIViewRepresentable {
     @ObservedObject var state: CanvasState
     let renderer: MetalStrokeRenderer?
+    var pencilOnly = false
+    var disableScrollCancel = true
 
     func makeUIView(context: Context) -> MetalCanvasUIView {
         let view = MetalCanvasUIView(frame: .zero)
         view.renderer = renderer
         view.state = state
+        view.pencilOnly = pencilOnly
+        view.disableScrollCancel = disableScrollCancel
         return view
     }
 
     func updateUIView(_ view: MetalCanvasUIView, context: Context) {
+        view.pencilOnly = pencilOnly
         // Undo/clear endrer strokes utenfra → full rebuild av akkumulatoren.
         // Egne commits er allerede appendet inkrementelt og hopper over.
         view.syncIfNeeded()
+    }
+}
+
+// Apple Pencil 2/Pro dobbelttrykk → viskelær ↔ forrige pensel (systemvalg
+// respekteres ikke-konfigurerbart her; standard oppførsel).
+extension MetalCanvasUIView: UIPencilInteractionDelegate {
+    func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
+        guard let state else { return }
+        if state.brushType == .eraser {
+            state.brushType = state.previousBrushBeforeEraser
+        } else {
+            state.previousBrushBeforeEraser = state.brushType
+            state.brushType = .eraser
+        }
     }
 }

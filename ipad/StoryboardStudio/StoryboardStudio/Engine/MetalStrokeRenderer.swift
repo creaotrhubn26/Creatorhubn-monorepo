@@ -226,6 +226,21 @@ final class MetalStrokeRenderer {
         }
     }
 
+    // Dab-cache: dabsForStroke er deterministisk per (strøk, scale, opacity)
+    // — full rebuild ved lag-toggle/undo gjenbruker CPU-arbeidet. Nøkkel per
+    // stroke-id; opacity i nøkkelen fordi lag-opacity bakes inn i strøket.
+    private var dabCache: [String: (scale: Double, opacity: Double, dabs: [DabInstanceData])] = [:]
+
+    private func cachedDabs(for stroke: PencilStroke, scale: Double) -> [DabInstanceData] {
+        if let hit = dabCache[stroke.id], hit.scale == scale, hit.opacity == stroke.opacity {
+            return hit.dabs
+        }
+        let dabs = dabsForStroke(stroke, scale: scale)
+        if dabCache.count > 3000 { dabCache.removeAll(keepingCapacity: true) }
+        dabCache[stroke.id] = (scale, stroke.opacity, dabs)
+        return dabs
+    }
+
     /// Append ferdig strøk til committed-akkumulator (inkrementelt).
     /// Eraser rendres destination-out (piksel-viskelær — web-paritet).
     func commitStroke(_ stroke: PencilStroke, scale: Double) {
@@ -237,7 +252,7 @@ final class MetalStrokeRenderer {
               let brush = stroke.brush,
               let config = StampConfig.forBrush(brush.type),
               let buffer = queue.makeCommandBuffer() else { return }
-        let dabs = dabsForStroke(stroke, scale: scale)
+        let dabs = cachedDabs(for: stroke, scale: scale)
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = target
         pass.colorAttachments[0].loadAction = .load
@@ -374,5 +389,45 @@ final class MetalStrokeRenderer {
             Float((value >> 16) & 0xFF) / 255,
             Float((value >> 8) & 0xFF) / 255,
             Float(value & 0xFF) / 255)
+    }
+}
+
+// Thumbnail: les akkumulatoren (rgba8 premultiplied), komposittér på hvit
+// og gi web-kompatibel PNG-dataURL (lagres i frame.thumbnailUrl så
+// SCENES-kolonnen/minimap viser native tegninger uten web-runde).
+import UIKit
+
+extension MetalStrokeRenderer {
+    func thumbnailDataURL(maxWidth: CGFloat = 320) -> String? {
+        guard let texture = committedTexture else { return nil }
+        let width = texture.width, height = texture.height
+        guard width > 0, height > 0 else { return nil }
+        let bytesPerRow = width * 4
+        var pixels = [UInt8](repeating: 0, count: bytesPerRow * height)
+        texture.getBytes(&pixels, bytesPerRow: bytesPerRow,
+                         from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let provider = CGDataProvider(data: Data(pixels) as CFData),
+              let image = CGImage(
+                width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
+                bytesPerRow: bytesPerRow, space: colorSpace,
+                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                provider: provider, decode: nil, shouldInterpolate: true,
+                intent: .defaultIntent) else { return nil }
+        let scale = min(1, maxWidth / CGFloat(width))
+        let outSize = CGSize(width: CGFloat(width) * scale, height: CGFloat(height) * scale)
+        let renderer = UIGraphicsImageRenderer(size: outSize,
+                                               format: {
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            return format
+        }())
+        let composited = renderer.image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: outSize))
+            UIImage(cgImage: image).draw(in: CGRect(origin: .zero, size: outSize))
+        }
+        guard let png = composited.pngData() else { return nil }
+        return "data:image/png;base64," + png.base64EncodedString()
     }
 }
