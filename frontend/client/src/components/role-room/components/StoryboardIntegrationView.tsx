@@ -1146,9 +1146,12 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
   projectTitle,
 }) => {
   const storyboardPanelOnly = storyboardOnly || showScriptPanel;
-  const [viewMode, setViewMode] = useState<ViewMode>(
-    storyboardPanelOnly ? 'storyboard' : 'script'
-  );
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('boardpro') === '1') {
+      return 'storyboard';
+    }
+    return storyboardPanelOnly ? 'storyboard' : 'script';
+  });
   const [storyboardFrames, setStoryboardFrames] = useState<StoryboardFrame[]>(() =>
     toLocalFrames(scene.storyboardFrames)
   );
@@ -1709,7 +1712,10 @@ const StoryboardView: React.FC<{
   const { showSuccess, showInfo, showError } = useToast();
   const { user } = useAuth();
   const [workspaceMode, setWorkspaceMode] = useState<StoryboardWorkspaceMode>('thumbnail');
-  const [boardProOpen, setBoardProOpen] = useState(false);
+  // ?boardpro=1 auto-åpner Board Pro (sim-Safari-verifisering uten klikkevei)
+  const [boardProOpen, setBoardProOpen] = useState(
+    () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('boardpro') === '1',
+  );
   const [versionsDialogOpen, setVersionsDialogOpen] = useState(false);
   const [versionSummary, setVersionSummary] = useState('');
   const [drawingFrameId, setDrawingFrameId] = useState<string | null>(null);
