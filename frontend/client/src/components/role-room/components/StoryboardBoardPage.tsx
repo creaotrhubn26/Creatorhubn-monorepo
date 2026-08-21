@@ -12,7 +12,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getStampConfigForBrush, renderStrokeStamped, stampSegment, resetCtxAfterStamp } from './stampEngine';
 import { applyStreamline } from './PencilCanvasPro';
-import { Box, Stack, Typography, IconButton, Button, TextField, MenuItem, Tooltip, Chip } from '@mui/material';
+import { Box, Stack, Typography, IconButton, Button, TextField, Menu, MenuItem, Tooltip, Chip } from '@mui/material';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import PauseIcon from '@mui/icons-material/Pause';
 import UndoIcon from '@mui/icons-material/Undo';
 import RedoIcon from '@mui/icons-material/Redo';
 import PanToolAltIcon from '@mui/icons-material/PanToolAlt';
@@ -364,11 +366,83 @@ const InlineFrameCanvas: React.FC<{
   );
 };
 
+// Enkel animatic-avspilling: frames i sekvens med per-shot-varighet
+// (mockupens Animatic-fane; full AnimaticPlayer m/ lyd lever i editoren).
+const AnimaticLite: React.FC<{ frames: any[]; onClose: () => void }> = ({ frames, onClose }) => {
+  const [index, setIndex] = useState(0);
+  const [playing, setPlaying] = useState(true);
+  const playable = frames.filter((f) => f.thumbnailUrl || f.imageUrl);
+
+  useEffect(() => {
+    if (!playing || playable.length === 0) return undefined;
+    const duration = Math.max(0.5, playable[index]?.duration ?? 2) * 1000;
+    const timer = window.setTimeout(() => setIndex((i) => (i + 1) % playable.length), duration);
+    return () => window.clearTimeout(timer);
+  }, [playing, index, playable]);
+
+  const current = playable[index];
+  return (
+    <Box data-testid="board-animatic" sx={{ position: 'fixed', inset: 0, zIndex: 1500, bgcolor: 'rgba(5,5,8,0.96)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+      <IconButton onClick={onClose} sx={{ position: 'absolute', top: 16, right: 16, color: '#fff' }}><CloseIcon /></IconButton>
+      {current ? (
+        <Box sx={{ width: 'min(86vw, 1400px)', aspectRatio: '2.39 / 1', backgroundImage: `url(${current.thumbnailUrl || current.imageUrl})`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center', borderRadius: 1 }} />
+      ) : (
+        <Typography sx={{ color: 'rgba(255,255,255,0.7)' }}>Ingen tegnede frames å spille av ennå.</Typography>
+      )}
+      <Stack direction="row" spacing={2} alignItems="center" sx={{ mt: 3 }}>
+        <IconButton onClick={() => setPlaying((p) => !p)} sx={{ color: '#fff', bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' } }}>
+          {playing ? <PauseIcon /> : <PlayArrowIcon />}
+        </IconButton>
+        <Typography sx={{ color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
+          {current ? `Shot ${current.shotNumber} · ${index + 1} / ${playable.length}` : '—'}
+        </Typography>
+      </Stack>
+      <Stack direction="row" spacing={0.5} sx={{ mt: 2, width: 'min(86vw, 1400px)' }}>
+        {playable.map((f, i) => (
+          <Box key={f.id} onClick={() => { setIndex(i); setPlaying(false); }} sx={{ flexGrow: Math.max(0.5, f.duration ?? 1), height: 5, borderRadius: 2, cursor: 'pointer', bgcolor: i === index ? '#8b5cf6' : 'rgba(255,255,255,0.2)' }} />
+        ))}
+      </Stack>
+    </Box>
+  );
+};
+
 const PanelLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <Typography sx={{ fontSize: 10.5, letterSpacing: 1.1, fontWeight: 700, color: TEXT_LABEL, textTransform: 'uppercase' }}>
     {children}
   </Typography>
 );
+
+// Pensel-tupper (mockupens Brushes-thumbnails): skaft + karakteristisk tupp.
+const BrushTipGlyph: React.FC<{ type: string; active: boolean }> = ({ type, active }) => {
+  const shaft = active ? '#c4b5fd' : 'rgba(255,255,255,0.55)';
+  const tip = active ? '#fff' : 'rgba(255,255,255,0.8)';
+  const tips: Record<string, React.ReactNode> = {
+    pencil: <path d="M 15 30 L 19 40 L 23 30 Z" fill={tip} />,
+    graphite: <path d="M 13 30 L 19 41 L 25 30 Z" fill={tip} opacity="0.85" />,
+    charcoal: <path d="M 13 30 Q 15 40 19 41 Q 23 40 25 30 Z" fill={tip} opacity="0.7" />,
+    conte: <rect x="14" y="30" width="10" height="10" rx="1.5" fill={tip} opacity="0.85" />,
+    ink: <path d="M 17 30 L 19 42 L 21 30 Z" fill={tip} />,
+    pen: <path d="M 16 30 L 19 39 L 22 30 Z M 18.4 39 h 1.2 v 3 h -1.2 Z" fill={tip} />,
+    marker: <path d="M 14 30 L 16 40 L 24 38 L 24 30 Z" fill={tip} opacity="0.9" />,
+  };
+  return (
+    <svg width="26" height="44" viewBox="0 0 38 44">
+      <rect x="14" y="4" width="10" height="27" rx="3" fill={shaft} />
+      {tips[type] ?? tips.pencil}
+    </svg>
+  );
+};
+
+// Mockupens ark-tekster er håndskrevet — Caveat lastes idempotent én gang.
+const HANDWRITING = '"Caveat", "Segoe Script", "Bradley Hand", cursive';
+const ensureHandwritingFont = () => {
+  if (typeof document === 'undefined' || document.getElementById('board-handwriting-font')) return;
+  const link = document.createElement('link');
+  link.id = 'board-handwriting-font';
+  link.rel = 'stylesheet';
+  link.href = 'https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&display=swap';
+  document.head.appendChild(link);
+};
 
 export const StoryboardBoardPage: React.FC<{
   projectName?: string;
@@ -402,7 +476,12 @@ export const StoryboardBoardPage: React.FC<{
   onClose,
 }) => {
   const [zoom, setZoom] = useState(0.75);
+  const [zoomMenuAnchor, setZoomMenuAnchor] = useState<HTMLElement | null>(null);
+  const [seqMenuAnchor, setSeqMenuAnchor] = useState<HTMLElement | null>(null);
+  const [lockedFrames, setLockedFrames] = useState<Record<string, boolean>>({});
+  const [animaticOpen, setAnimaticOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<'inspector' | 'comments'>('inspector');
+  const panStateRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const [activeTool, setActiveTool] = useState('brush');
   const [handMode, setHandMode] = useState(false);
   const [brushSize, setBrushSize] = useState(12);
@@ -417,6 +496,8 @@ export const StoryboardBoardPage: React.FC<{
   // Undo/redo: snapshot av strokes-JSON per frame (før hver commit).
   const historyRef = useRef<Record<string, { undo: string[]; redo: string[] }>>({});
   const [historyTick, setHistoryTick] = useState(0);
+
+  useEffect(() => { ensureHandwritingFont(); }, []);
 
   const frame = frames[activeFrameIndex];
   const layers = ['Notes', 'Dialog', 'Drawing', 'Camera / Arrows'];
@@ -541,7 +622,23 @@ export const StoryboardBoardPage: React.FC<{
         {sequenceLabel && (
           <>
             <Typography sx={{ fontSize: 11, letterSpacing: 1, color: TEXT_LABEL, fontWeight: 700, mr: 1 }}>SEQ.</Typography>
-            <Typography sx={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{sequenceLabel}</Typography>
+            <Typography
+              onClick={(event) => setSeqMenuAnchor(event.currentTarget as HTMLElement)}
+              sx={{ fontSize: 14, fontWeight: 700, color: '#fff', cursor: 'pointer' }}
+            >
+              {sequenceLabel} ▾
+            </Typography>
+            <Menu anchorEl={seqMenuAnchor} open={Boolean(seqMenuAnchor)} onClose={() => setSeqMenuAnchor(null)}>
+              {sceneItems.map((sceneEntry) => (
+                <MenuItem
+                  key={sceneEntry.id}
+                  selected={sceneEntry.id === selectedSceneId}
+                  onClick={() => { onSelectScene?.(sceneEntry.id); setSeqMenuAnchor(null); }}
+                >
+                  {sceneEntry.heading}
+                </MenuItem>
+              ))}
+            </Menu>
           </>
         )}
         <Box sx={{ flex: 1 }} />
@@ -549,12 +646,27 @@ export const StoryboardBoardPage: React.FC<{
           {topTab('board', 'Board', <DashboardIcon sx={{ fontSize: 17 }} />, true)}
           {topTab('script', 'Script', <DescriptionIcon sx={{ fontSize: 17 }} />, false, onOpenScript)}
           {topTab('shotlist', 'Shot List', <ListAltIcon sx={{ fontSize: 17 }} />, false, onOpenShotList)}
-          {topTab('animatic', 'Animatic', <PlayCircleOutlineIcon sx={{ fontSize: 17 }} />, false)}
+          {topTab('animatic', 'Animatic', <PlayCircleOutlineIcon sx={{ fontSize: 17 }} />, false, () => setAnimaticOpen(true))}
         </Stack>
+        <Tooltip title={typeof window !== 'undefined' ? (window.localStorage.getItem('userEmail') || '') : ''}>
+          <Box sx={{ width: 30, height: 30, borderRadius: '50%', mr: 1.5, display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, color: '#fff', background: `linear-gradient(135deg, ${BRAND}, #6366f1)` }}>
+            {(typeof window !== 'undefined' ? (window.localStorage.getItem('userEmail') || 'U') : 'U').slice(0, 2).toUpperCase()}
+          </Box>
+        </Tooltip>
         <Button size="small" startIcon={<ShareIcon sx={{ fontSize: 16 }} />} sx={{ color: '#fff', bgcolor: 'rgba(255,255,255,0.08)', borderRadius: 2, px: 1.75, textTransform: 'none', fontWeight: 600, mr: 1 }}>
           Share
         </Button>
         <IconButton size="small" sx={{ color: TEXT_DIM, mr: 0.5 }}><MoreHorizIcon /></IconButton>
+        <IconButton
+          size="small"
+          onClick={() => {
+            if (document.fullscreenElement) void document.exitFullscreen();
+            else void document.documentElement.requestFullscreen();
+          }}
+          sx={{ color: TEXT_DIM, mr: 0.5 }}
+        >
+          <FitScreenIcon sx={{ fontSize: 19 }} />
+        </IconButton>
         <IconButton size="small" onClick={onClose} data-testid="board-page-close" sx={{ color: TEXT_DIM }}><CloseIcon /></IconButton>
       </Stack>
 
@@ -566,7 +678,7 @@ export const StoryboardBoardPage: React.FC<{
             <PanelLabel>Scenes</PanelLabel>
             <IconButton size="small" onClick={onAddFrame} sx={{ color: TEXT_DIM }}><AddIcon sx={{ fontSize: 18 }} /></IconButton>
           </Stack>
-          <Box sx={{ flex: 1, overflowY: 'auto', px: 1.5, pb: 1.5 }}>
+          <Box sx={{ flex: 1, overflowY: 'auto', px: 1.5, pb: 1.5 }} data-testid="board-scenes-scroll">
             {sceneItems.map((scene, index) => {
               const selected = scene.id === selectedSceneId;
               return (
@@ -596,6 +708,14 @@ export const StoryboardBoardPage: React.FC<{
               );
             })}
           </Box>
+          <Stack direction="row" spacing={0.5} sx={{ px: 1.5, py: 1, borderTop: `1px solid ${PANEL_BORDER}` }}>
+            <Tooltip title="Klassisk visning">
+              <IconButton size="small" onClick={onClose} sx={{ color: TEXT_DIM }}><DashboardIcon sx={{ fontSize: 17 }} /></IconButton>
+            </Tooltip>
+            <Tooltip title="Animatic">
+              <IconButton size="small" onClick={() => setAnimaticOpen(true)} sx={{ color: TEXT_DIM }}><PlayCircleOutlineIcon sx={{ fontSize: 17 }} /></IconButton>
+            </Tooltip>
+          </Stack>
         </Box>
 
         {/* Arbeidsflate */}
@@ -627,10 +747,31 @@ export const StoryboardBoardPage: React.FC<{
                 {index + 1}
               </Box>
             ))}
+            <Tooltip title="Nytt shot">
+              <Box onClick={onAddFrame} sx={{ width: 28, height: 28, borderRadius: 1.25, ml: 0.5, cursor: 'pointer', bgcolor: '#000', border: `1px solid ${PANEL_BORDER}`, display: 'grid', placeItems: 'center', color: TEXT_DIM, fontSize: 15 }}>+</Box>
+            </Tooltip>
           </Stack>
 
           {/* Board-arket */}
-          <Box ref={scrollRef} sx={{ flex: 1, minHeight: 0, overflow: 'auto', bgcolor: WORKSPACE_BG, position: 'relative', cursor: handMode ? 'grab' : 'default' }}>
+          <Box
+            ref={scrollRef}
+            onPointerDown={(event) => {
+              if (!handMode) return;
+              const el = scrollRef.current;
+              if (!el) return;
+              panStateRef.current = { x: event.clientX, y: event.clientY, left: el.scrollLeft, top: el.scrollTop };
+              (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              const pan = panStateRef.current;
+              const el = scrollRef.current;
+              if (!pan || !el || !handMode) return;
+              el.scrollLeft = pan.left - (event.clientX - pan.x);
+              el.scrollTop = pan.top - (event.clientY - pan.y);
+            }}
+            onPointerUp={() => { panStateRef.current = null; }}
+            sx={{ flex: 1, minHeight: 0, overflow: 'auto', bgcolor: WORKSPACE_BG, position: 'relative', cursor: handMode ? (panStateRef.current ? 'grabbing' : 'grab') : 'default' }}
+          >
             {/* Zoom uten transition — width-animasjon gir layout-thrash, og
                 design-verktøy zoomer momentant (Figma/Procreate-konvensjon). */}
             <Box sx={{ width: `${Math.round(940 * zoom)}px`, mx: 'auto', my: 3 }}>
@@ -658,7 +799,7 @@ export const StoryboardBoardPage: React.FC<{
                         <Typography sx={{ fontSize: scaledFont(9), letterSpacing: 1, fontWeight: 700, color: '#9a9b a1'.replace(' ', ''), textTransform: 'uppercase' }}>
                           Action / Dialog
                         </Typography>
-                        <Typography sx={{ fontSize: scaledFont(12.5), fontStyle: 'italic', color: '#3d3e44', lineHeight: 1.45, mb: 1 }}>
+                        <Typography sx={{ fontFamily: HANDWRITING, fontSize: scaledFont(17), color: '#33343a', lineHeight: 1.3, mb: 1 }}>
                           {rowFrame.description}
                         </Typography>
                         {rowFrame.notes && (
@@ -666,7 +807,7 @@ export const StoryboardBoardPage: React.FC<{
                             <Typography sx={{ fontSize: scaledFont(9), letterSpacing: 1, fontWeight: 700, color: '#9a9ba1', textTransform: 'uppercase' }}>
                               Notes / Diagram
                             </Typography>
-                            <Typography sx={{ fontSize: scaledFont(11.5), fontStyle: 'italic', color: '#5a5b61', lineHeight: 1.4 }}>
+                            <Typography sx={{ fontFamily: HANDWRITING, fontSize: scaledFont(15), color: '#55565c', lineHeight: 1.3 }}>
                               {rowFrame.notes}
                             </Typography>
                           </>
@@ -674,7 +815,7 @@ export const StoryboardBoardPage: React.FC<{
                       </Box>
 
                       {(() => {
-                        const drawingInline = isActive && ['brush', 'pencil', 'eraser', 'shapes', 'rect', 'text'].includes(activeTool);
+                        const drawingInline = isActive && !lockedFrames[rowFrame.id] && ['brush', 'pencil', 'eraser', 'shapes', 'rect', 'text'].includes(activeTool);
                         const inlineTool = activeTool === 'shapes' ? 'arrow'
                           : activeTool === 'rect' ? 'rect'
                             : activeTool === 'text' ? 'text'
@@ -728,7 +869,7 @@ export const StoryboardBoardPage: React.FC<{
                         ].map(([label, value]) => (
                           <Box key={label} sx={{ mb: `${Math.round(10 * zoom)}px` }}>
                             <Typography sx={{ fontSize: scaledFont(8.5), letterSpacing: 1, fontWeight: 700, color: '#9a9ba1' }}>{label}</Typography>
-                            <Typography sx={{ fontSize: scaledFont(12), fontStyle: 'italic', color: '#3d3e44' }}>{value}</Typography>
+                            <Typography sx={{ fontFamily: HANDWRITING, fontSize: scaledFont(16), color: '#33343a' }}>{value}</Typography>
                           </Box>
                         ))}
                       </Box>
@@ -756,9 +897,20 @@ export const StoryboardBoardPage: React.FC<{
               <IconButton size="small" sx={{ color: TEXT_DIM }}><PanToolAltIcon sx={{ fontSize: 17 }} /></IconButton>
               <Box sx={{ width: 1, height: 20, bgcolor: PANEL_BORDER, mx: 0.5 }} />
               <IconButton size="small" onClick={() => setZoomClamped(zoom - 0.1)} sx={{ color: TEXT_DIM }}><ZoomOutIcon sx={{ fontSize: 18 }} /></IconButton>
-              <Typography data-testid="board-page-zoom" sx={{ fontSize: 12.5, color: '#fff', width: 42, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
-                {Math.round(zoom * 100)}%
+              <Typography
+                data-testid="board-page-zoom"
+                onClick={(event) => setZoomMenuAnchor(event.currentTarget as HTMLElement)}
+                sx={{ fontSize: 12.5, color: '#fff', width: 46, textAlign: 'center', fontVariantNumeric: 'tabular-nums', cursor: 'pointer' }}
+              >
+                {Math.round(zoom * 100)}% ▾
               </Typography>
+              <Menu anchorEl={zoomMenuAnchor} open={Boolean(zoomMenuAnchor)} onClose={() => setZoomMenuAnchor(null)}>
+                {[0.5, 0.75, 1, 1.25, 1.5].map((preset) => (
+                  <MenuItem key={preset} selected={zoom === preset} onClick={() => { setZoom(preset); setZoomMenuAnchor(null); }}>
+                    {Math.round(preset * 100)}%
+                  </MenuItem>
+                ))}
+              </Menu>
               <IconButton size="small" onClick={() => setZoomClamped(zoom + 0.1)} sx={{ color: TEXT_DIM }}><ZoomInIcon sx={{ fontSize: 18 }} /></IconButton>
               <IconButton size="small" onClick={() => setZoom(0.75)} sx={{ color: TEXT_DIM }}><FitScreenIcon sx={{ fontSize: 18 }} /></IconButton>
             </Stack>
@@ -781,7 +933,9 @@ export const StoryboardBoardPage: React.FC<{
             <Box sx={{ flex: 1, overflowY: 'auto', px: 2, py: 1.75 }}>
               <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2, px: 1.25, py: 1, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.05)', border: `1px solid ${PANEL_BORDER}` }}>
                 <Typography sx={{ fontSize: 14, fontWeight: 700, color: '#fff', flex: 1 }}>SHOT {frame.shotNumber}</Typography>
-                <LockIcon sx={{ fontSize: 15, color: TEXT_DIM }} />
+                <IconButton size="small" onClick={() => setLockedFrames((prev) => ({ ...prev, [frame.id]: !prev[frame.id] }))} sx={{ p: 0.25 }}>
+                  <LockIcon sx={{ fontSize: 15, color: lockedFrames[frame.id] ? '#f59e0b' : TEXT_DIM }} />
+                </IconButton>
                 <MoreHorizIcon sx={{ fontSize: 17, color: TEXT_DIM }} />
               </Stack>
 
@@ -912,6 +1066,8 @@ export const StoryboardBoardPage: React.FC<{
         </Box>
       </Box>
 
+      {animaticOpen && <AnimaticLite frames={frames} onClose={() => setAnimaticOpen(false)} />}
+
       {/* ── Bunnpaneler: Brushes | Layers | Navigator ──────────── */}
       <Stack direction="row" sx={{ height: 190, flexShrink: 0, borderTop: `1px solid ${PANEL_BORDER}`, bgcolor: CHROME }}>
         {/* Verktøykolonne + Brushes */}
@@ -942,7 +1098,7 @@ export const StoryboardBoardPage: React.FC<{
                           display: 'grid', placeItems: 'center',
                         }}
                       >
-                        <CreateIcon sx={{ fontSize: 17, color: selected ? '#c4b5fd' : 'rgba(255,255,255,0.7)', transform: `rotate(${index * 8 - 20}deg)` }} />
+                        <BrushTipGlyph type={brushOption} active={selected} />
                       </Box>
                     </Tooltip>
                   );
