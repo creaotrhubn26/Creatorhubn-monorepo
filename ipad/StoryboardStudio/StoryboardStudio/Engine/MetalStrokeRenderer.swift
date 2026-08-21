@@ -32,7 +32,9 @@ final class MetalStrokeRenderer {
     private let dabPipelineAccumulator: MTLRenderPipelineState
     private let dabPipelineScreen: MTLRenderPipelineState
     private let dabPipelineEraser: MTLRenderPipelineState
+    private let smudgePipeline: MTLRenderPipelineState
     private let blitPipeline: MTLRenderPipelineState
+    private var smudgeRegionTexture: MTLTexture?
     private var dabTextures: [DabPreset: MTLTexture] = [:]
     private(set) var committedTexture: MTLTexture?
     private var canvasSize = SIMD2<Float>(0, 0)
@@ -79,11 +81,14 @@ final class MetalStrokeRenderer {
                                        format: .bgra8Unorm, blend: .premultiplied),
               let dabEraser = pipeline(vertex: "dab_vertex", fragment: "dab_fragment",
                                        format: .rgba8Unorm, blend: .destinationOut),
+              let smudge = pipeline(vertex: "dab_vertex", fragment: "smudge_fragment",
+                                    format: .rgba8Unorm, blend: .premultiplied),
               let blit = pipeline(vertex: "blit_vertex", fragment: "blit_fragment",
                                   format: .bgra8Unorm, blend: .none) else { return nil }
         dabPipelineAccumulator = dabAccumulator
         dabPipelineScreen = dabScreen
         dabPipelineEraser = dabEraser
+        smudgePipeline = smudge
         blitPipeline = blit
 
         for preset in [DabPreset.pencilGraphite, .charcoalTooth, .inkRound, .markerChisel] {
@@ -224,6 +229,10 @@ final class MetalStrokeRenderer {
     /// Append ferdig strøk til committed-akkumulator (inkrementelt).
     /// Eraser rendres destination-out (piksel-viskelær — web-paritet).
     func commitStroke(_ stroke: PencilStroke, scale: Double) {
+        if stroke.brush?.type == .smudge {
+            smudgeStroke(stroke, scale: scale)
+            return
+        }
         guard let target = committedTexture,
               let brush = stroke.brush,
               let config = StampConfig.forBrush(brush.type),
@@ -237,6 +246,70 @@ final class MetalStrokeRenderer {
         let pipeline = brush.type == .eraser ? dabPipelineEraser : dabPipelineAccumulator
         encodeDabs(dabs, preset: config.preset, into: encoder, pipeline: pipeline)
         encoder.endEncoding()
+        buffer.commit()
+    }
+
+    /// Smudge (Krita «Smearing mode», web-paritet): kopier region rundt
+    /// forrige posisjon fra akkumulatoren, stemple tilbake på ny posisjon
+    /// med trykkstyrt styrke. Deterministisk — ingen random. Region-kopi
+    /// via blit til temp-tekstur unngår les+skriv på samme tekstur.
+    func smudgeStroke(_ stroke: PencilStroke, scale: Double) {
+        guard let committed = committedTexture,
+              stroke.points.count >= 2,
+              let buffer = queue.makeCommandBuffer() else { return }
+        let brushSize = stroke.brush?.size ?? 8
+        let radius = max(6.0, brushSize * 1.5) * scale
+        let regionSide = Int((radius * 2).rounded(.up))
+        if smudgeRegionTexture == nil || smudgeRegionTexture!.width < regionSide {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .rgba8Unorm, width: regionSide, height: regionSide, mipmapped: false)
+            descriptor.usage = [.shaderRead, .renderTarget]
+            smudgeRegionTexture = device.makeTexture(descriptor: descriptor)
+        }
+        guard let region = smudgeRegionTexture else { return }
+
+        var previous = stroke.points[0]
+        for point in stroke.points.dropFirst() {
+            let dx = (point.x - previous.x) * scale
+            let dy = (point.y - previous.y) * scale
+            guard (dx * dx + dy * dy).squareRoot() >= radius * 0.25 else { continue }
+
+            // 1) Kopier region rundt FORRIGE posisjon (klampet til tekstur)
+            let sourceX = max(0, min(committed.width - regionSide, Int(previous.x * scale - radius)))
+            let sourceY = max(0, min(committed.height - regionSide, Int(previous.y * scale - radius)))
+            guard let blitEncoder = buffer.makeBlitCommandEncoder() else { break }
+            blitEncoder.copy(from: committed, sourceSlice: 0, sourceLevel: 0,
+                             sourceOrigin: MTLOrigin(x: sourceX, y: sourceY, z: 0),
+                             sourceSize: MTLSize(width: regionSide, height: regionSide, depth: 1),
+                             to: region, destinationSlice: 0, destinationLevel: 0,
+                             destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
+            blitEncoder.endEncoding()
+
+            // 2) Stemple regionen på NY posisjon med trykkstyrt styrke
+            let strength = min(0.85, (0.2 + 0.5 * max(0.05, point.pressure)) * (stroke.brush?.opacity ?? 1))
+            let pass = MTLRenderPassDescriptor()
+            pass.colorAttachments[0].texture = committed
+            pass.colorAttachments[0].loadAction = .load
+            pass.colorAttachments[0].storeAction = .store
+            guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { break }
+            encoder.setRenderPipelineState(smudgePipeline)
+            var instance = DabInstanceData(
+                position: SIMD2<Float>(Float(point.x * scale), Float(point.y * scale)),
+                size: Float(regionSide),
+                rotation: 0,
+                alpha: Float(strength),
+                color: SIMD3<Float>(1, 1, 1))
+            withUnsafeBytes(of: &instance) { raw in
+                encoder.setVertexBytes(raw.baseAddress!, length: raw.count, index: 0)
+            }
+            var viewport = canvasSize
+            encoder.setVertexBytes(&viewport, length: MemoryLayout<SIMD2<Float>>.size, index: 1)
+            encoder.setFragmentTexture(region, index: 0)
+            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4, instanceCount: 1)
+            encoder.endEncoding()
+
+            previous = point
+        }
         buffer.commit()
     }
 

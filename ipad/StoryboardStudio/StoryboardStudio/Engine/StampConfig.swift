@@ -59,6 +59,13 @@ struct StampConfig: Sendable {
                                jitterAngleDeg: 0, tiltRotation: true,
                                pressureToSize: 0.3, pressureToOpacity: 0.2,
                                flow: 0.55, sizeMultiplier: 2.0)
+        case .highlighter:
+            // Bred, jevn, halvtransparent — flow gjør at overlapp ikke
+            // mørkner mye (web: multiply-følelse approksimert).
+            return StampConfig(preset: .markerChisel, spacing: 0.05, scatter: 0,
+                               jitterAngleDeg: 0, tiltRotation: false,
+                               pressureToSize: 0.15, pressureToOpacity: 0.1,
+                               flow: 0.22, sizeMultiplier: 3.0)
         case .eraser:
             // Piksel-viskelær: myk rund dab, rendres med destination-out-
             // blending i Metal (egen pipeline) — web-paritet.

@@ -8,8 +8,15 @@ struct BrushToolbar: View {
     private let brushOptions: [(BrushType, String)] = [
         (.pencil, "Blyant"), (.graphite, "Grafitt"), (.charcoal, "Kull"),
         (.conte, "Conté"), (.pen, "Penn"), (.ink, "Tusj"), (.marker, "Marker"),
-        (.eraser, "Viskelær"),
+        (.highlighter, "Highlight"), (.smudge, "Smudge"), (.eraser, "Viskelær"),
     ]
+
+    private var colorBinding: Binding<Color> {
+        Binding(
+            get: { Color(hex: canvasState.brushColor) ?? .black },
+            set: { canvasState.brushColor = $0.hexString }
+        )
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -19,7 +26,11 @@ struct BrushToolbar: View {
                 }
             }
             .pickerStyle(.segmented)
-            .frame(maxWidth: 560)
+            .frame(maxWidth: 720)
+
+            ColorPicker("Farge", selection: colorBinding, supportsOpacity: false)
+                .labelsHidden()
+                .frame(width: 44)
 
             Slider(value: $canvasState.brushSize, in: 1...48) {
                 Text("Størrelse")
@@ -46,6 +57,30 @@ struct BrushToolbar: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.bar)
+    }
+}
+
+// Hex ↔ Color for ColorPicker (strokes lagrer web-hex).
+extension Color {
+    init?(hex: String) {
+        var value: UInt64 = 0
+        let cleaned = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
+        guard cleaned.count == 6, Scanner(string: cleaned).scanHexInt64(&value) else { return nil }
+        self.init(
+            red: Double((value >> 16) & 0xFF) / 255,
+            green: Double((value >> 8) & 0xFF) / 255,
+            blue: Double(value & 0xFF) / 255)
+    }
+
+    var hexString: String {
+        let components = UIColor(self).cgColor.components ?? [0, 0, 0, 1]
+        let red = components.count > 0 ? components[0] : 0
+        let green = components.count > 1 ? components[1] : red
+        let blue = components.count > 2 ? components[2] : red
+        return String(format: "#%02x%02x%02x",
+                      Int((red * 255).rounded()),
+                      Int((green * 255).rounded()),
+                      Int((blue * 255).rounded()))
     }
 }
 
