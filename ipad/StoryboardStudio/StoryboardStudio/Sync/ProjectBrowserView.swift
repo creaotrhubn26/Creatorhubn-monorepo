@@ -110,7 +110,7 @@ struct ManuscriptListView: View {
     var body: some View {
         List(manuscripts) { manuscript in
             NavigationLink(manuscript.title) {
-                SceneListView(manuscript: manuscript)
+                NativeBoardView(manuscript: manuscript)
             }
         }
         .overlay {

@@ -89,6 +89,22 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
+            content
+        }
+        .task {
+            // Test-harness (samme mønster som web ?token=): sim-launch med
+            // SB_TOKEN/SB_SERVER env auto-konfigurerer sync for verifisering.
+            let env = ProcessInfo.processInfo.environment
+            guard !sync.isLoggedIn, let token = env["SB_TOKEN"] else { return }
+            let server = env["SB_SERVER"] ?? sync.serverURL
+            if let name = try? await RoleRoomAPIClient.shared.configure(server: server, token: token) {
+                sync.userName = name
+                sync.isLoggedIn = true
+            }
+        }
+    }
+
+    private var content: some View {
             List {
                 Section("Produksjon") {
                     if sync.isLoggedIn {
@@ -114,7 +130,6 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("Storyboard Studio")
-        }
     }
 }
 
