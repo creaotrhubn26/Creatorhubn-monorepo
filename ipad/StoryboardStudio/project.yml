@@ -40,6 +40,11 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         UIApplicationSupportsIndirectInputEvents: true
+        # OAuth-callback fra backend web-callback (platform=ios-storyboard).
+        CFBundleURLTypes:
+          - CFBundleURLName: com.creatorhubn.StoryboardStudio.oauth
+            CFBundleURLSchemes:
+              - storyboardstudio
         ITSAppUsesNonExemptEncryption: false
     settings:
       base:

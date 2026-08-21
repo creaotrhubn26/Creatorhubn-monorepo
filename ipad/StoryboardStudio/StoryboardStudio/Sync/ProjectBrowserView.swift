@@ -16,6 +16,23 @@ struct LoginView: View {
     @ObservedObject var sync: SyncState
     @State private var token = ""
     @State private var isWorking = false
+    @State private var showAdvanced = false
+
+    private func finishLogin(server: String, sessionToken: String) {
+        isWorking = true
+        sync.errorMessage = nil
+        Task {
+            do {
+                let name = try await RoleRoomAPIClient.shared.configure(server: server, token: sessionToken)
+                UserDefaults.standard.set(server, forKey: "rr.server")
+                sync.userName = name
+                sync.isLoggedIn = true
+            } catch {
+                sync.errorMessage = error.localizedDescription
+            }
+            isWorking = false
+        }
+    }
 
     var body: some View {
         Form {
@@ -23,31 +40,41 @@ struct LoginView: View {
                 TextField("Server", text: $sync.serverURL)
                     .textContentType(.URL)
                     .textInputAutocapitalization(.never)
-                SecureField("Sesjon-token", text: $token)
             }
             if let message = sync.errorMessage {
                 Text(message).foregroundStyle(.red)
             }
-            Button {
-                isWorking = true
-                sync.errorMessage = nil
-                let server = sync.serverURL
-                let sessionToken = token
-                Task {
-                    do {
-                        let name = try await RoleRoomAPIClient.shared.configure(server: server, token: sessionToken)
-                        UserDefaults.standard.set(server, forKey: "rr.server")
-                        sync.userName = name
-                        sync.isLoggedIn = true
-                    } catch {
-                        sync.errorMessage = error.localizedDescription
+            Section {
+                Button {
+                    isWorking = true
+                    sync.errorMessage = nil
+                    let server = sync.serverURL
+                    Task {
+                        do {
+                            let result = try await StoryboardGoogleSignIn.shared.signIn(server: server)
+                            finishLogin(server: server, sessionToken: result.token)
+                        } catch {
+                            sync.errorMessage = error.localizedDescription
+                            isWorking = false
+                        }
                     }
-                    isWorking = false
+                } label: {
+                    if isWorking { ProgressView() } else { Label("Logg inn med Google", systemImage: "person.badge.key") }
                 }
-            } label: {
-                if isWorking { ProgressView() } else { Text("Koble til") }
+                .disabled(isWorking)
+            } footer: {
+                Text("Krever eksisterende Role Room-konto.")
             }
-            .disabled(token.isEmpty || isWorking)
+            Section("Avansert") {
+                Toggle("Bruk sesjon-token direkte", isOn: $showAdvanced)
+                if showAdvanced {
+                    SecureField("Sesjon-token", text: $token)
+                    Button("Koble til med token") {
+                        finishLogin(server: sync.serverURL, sessionToken: token)
+                    }
+                    .disabled(token.isEmpty || isWorking)
+                }
+            }
         }
         .navigationTitle("Koble til produksjonen")
     }
