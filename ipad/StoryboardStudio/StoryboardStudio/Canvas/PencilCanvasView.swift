@@ -31,6 +31,19 @@ final class CanvasState: ObservableObject {
     var redoStack: [[PencilStroke]] = []
     // Pencil 2-dobbelttrykk: husk forrige pensel for viskelær-toggle.
     var previousBrushBeforeEraser: BrushType = .pencil
+    // Bumpes ved ALLE strokes-mutasjoner (også flytt, som ikke endrer antall)
+    // — rebuild- og autosynk-trigger.
+    @Published var revision = 0
+    // Nylige farger (maks 8, persistert).
+    @Published var recentColors: [String] =
+        UserDefaults.standard.stringArray(forKey: "sb.recentColors") ?? []
+
+    func registerRecentColor(_ hex: String) {
+        var colors = recentColors.filter { $0 != hex }
+        colors.insert(hex, at: 0)
+        recentColors = Array(colors.prefix(8))
+        UserDefaults.standard.set(recentColors, forKey: "sb.recentColors")
+    }
 
     func currentBrush() -> BrushSpec {
         BrushSpec.preset(brushType, size: brushSize, color: brushColor, opacity: brushOpacity)
@@ -63,18 +76,21 @@ final class CanvasState: ObservableObject {
         guard let previous = undoStack.popLast() else { return }
         redoStack.append(strokes)
         strokes = previous
+        revision += 1
     }
 
     func redo() {
         guard let next = redoStack.popLast() else { return }
         undoStack.append(strokes)
         strokes = next
+        revision += 1
     }
 
     func clear() {
         undoStack.append(strokes)
         redoStack = []
         strokes = []
+        revision += 1
     }
 
     func exportWebJSON() -> String {
@@ -118,6 +134,8 @@ final class MetalCanvasUIView: UIView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         isMultipleTouchEnabled = false
+        isAccessibilityElement = true
+        accessibilityIdentifier = "tegneflate"
         metalLayer.pixelFormat = .bgra8Unorm
         metalLayer.framebufferOnly = true
         // Apple Pencil 2 dobbelttrykk: bytt viskelær ↔ forrige pensel.
@@ -277,23 +295,65 @@ final class MetalCanvasUIView: UIView {
         activePoints = []
         state.undoStack.append(state.strokes)
         state.redoStack = []
-        state.strokes.append(stroke)
-        renderer?.commitStroke(stroke, scale: renderScale)
+        var finalStroke = stroke
+        // Quick-shape (Procreate-vane): hold pennen stille på slutten →
+        // strøket snappes til rett linje fra start til holdepunktet.
+        if let snapped = Self.quickShapeSnap(stroke, brushType: state.brushType) {
+            finalStroke = snapped
+        }
+        state.strokes.append(finalStroke)
+        state.registerRecentColor(state.brushColor)
+        state.revision += 1
+        renderer?.commitStroke(finalStroke, scale: renderScale)
         committedCount = state.strokes.count
+        lastRevision = state.revision
         redraw()
+    }
+
+    /// Hold stille >0,45 s på slutten av et langt strøk → rett linje.
+    /// Gjelder tegnepensler (ikke smudge/viskelær).
+    static func quickShapeSnap(_ stroke: PencilStroke, brushType: BrushType) -> PencilStroke? {
+        guard brushType != .smudge, brushType != .eraser,
+              let first = stroke.points.first, let last = stroke.points.last,
+              stroke.points.count > 8 else { return nil }
+        // Finn starten av holdet: gå bakover til punkt >8px fra siste.
+        var holdStart = last
+        for point in stroke.points.reversed() {
+            if hypot(point.x - last.x, point.y - last.y) > 8 { break }
+            holdStart = point
+        }
+        guard last.timestamp - holdStart.timestamp > 450 else { return nil }
+        let lineLength = hypot(holdStart.x - first.x, holdStart.y - first.y)
+        guard lineLength > 40 else { return nil }
+        let meanPressure = stroke.points.map(\.pressure).reduce(0, +) / Double(stroke.points.count)
+        let steps = 24
+        let points = (0...steps).map { step -> StrokePoint in
+            let t = Double(step) / Double(steps)
+            return StrokePoint(
+                x: first.x + (holdStart.x - first.x) * t,
+                y: first.y + (holdStart.y - first.y) * t,
+                pressure: meanPressure, tiltX: 0, tiltY: 0,
+                timestamp: first.timestamp + (holdStart.timestamp - first.timestamp) * t)
+        }
+        var snapped = stroke
+        snapped.points = points
+        return snapped
     }
 
     private var lastHiddenLayers: Set<String> = []
     private var lastLayerOpacity: [String: Double] = [:]
+    private var lastRevision = -1
 
     func syncIfNeeded() {
         guard let state,
               state.strokes.count != committedCount
+                || state.revision != lastRevision
                 || state.hiddenLayers != lastHiddenLayers
                 || state.layerOpacity != lastLayerOpacity
         else { return }
         renderer?.rebuild(strokes: state.visibleStrokes(), scale: renderScale)
         committedCount = state.strokes.count
+        lastRevision = state.revision
         lastHiddenLayers = state.hiddenLayers
         lastLayerOpacity = state.layerOpacity
         redraw()
@@ -349,6 +409,71 @@ extension MetalCanvasUIView: UIPencilInteractionDelegate {
         } else {
             state.previousBrushBeforeEraser = state.brushType
             state.brushType = .eraser
+        }
+    }
+}
+
+// Fullskjerm-canvas i UIScrollView: ekte pinch-zoom rundt fingrene.
+// Under zoom skaleres view-transformen (rask, litt uskarp); ved zoom-slutt
+// bakes skalaen inn i canvas-rammen og zoomScale resettes → layoutSubviews
+// gir ny drawableSize og skarp re-rendring (contentScale holder
+// koordinatrommet korrekt).
+struct ZoomablePencilCanvas: UIViewRepresentable {
+    @ObservedObject var state: CanvasState
+    let renderer: MetalStrokeRenderer?
+    let baseSize: CGSize
+    var fingerDraws: Bool
+
+    func makeUIView(context: Context) -> UIScrollView {
+        let scroll = UIScrollView()
+        scroll.minimumZoomScale = 0.4
+        scroll.maximumZoomScale = 3
+        scroll.delegate = context.coordinator
+        scroll.backgroundColor = UIColor(white: 0.13, alpha: 1)
+        scroll.contentInsetAdjustmentBehavior = .never
+        // Pan kun med finger — Pencil går til canvasen.
+        scroll.panGestureRecognizer.allowedTouchTypes = [UITouch.TouchType.direct.rawValue as NSNumber]
+
+        let canvas = MetalCanvasUIView(frame: CGRect(origin: .zero, size: baseSize))
+        canvas.renderer = renderer
+        canvas.state = state
+        canvas.pencilOnly = !fingerDraws
+        canvas.disableScrollCancel = false
+        canvas.backgroundColor = UIColor(red: 0.992, green: 0.992, blue: 0.984, alpha: 1)
+        scroll.addSubview(canvas)
+        scroll.contentSize = baseSize
+        context.coordinator.canvas = canvas
+        return scroll
+    }
+
+    func updateUIView(_ scroll: UIScrollView, context: Context) {
+        context.coordinator.canvas?.pencilOnly = !fingerDraws
+        // «Finger tegner»: scroll av så fingeren når canvasen; pinch-zoom
+        // fungerer fortsatt (egen recognizer).
+        scroll.isScrollEnabled = !fingerDraws
+        scroll.canCancelContentTouches = !fingerDraws
+        context.coordinator.canvas?.syncIfNeeded()
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator: NSObject, UIScrollViewDelegate {
+        var canvas: MetalCanvasUIView?
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? { canvas }
+
+        func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
+            guard let canvas, scale != 1 else { return }
+            // Bak skalaen inn i rammen og re-render skarpt.
+            let offset = scrollView.contentOffset
+            canvas.transform = .identity
+            canvas.frame = CGRect(origin: .zero,
+                                  size: CGSize(width: canvas.bounds.width * scale,
+                                               height: canvas.bounds.height * scale))
+            scrollView.zoomScale = 1
+            scrollView.contentSize = canvas.frame.size
+            scrollView.contentOffset = offset
+            canvas.setNeedsLayout()
         }
     }
 }

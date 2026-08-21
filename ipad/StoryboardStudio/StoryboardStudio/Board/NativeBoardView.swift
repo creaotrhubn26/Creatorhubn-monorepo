@@ -27,6 +27,22 @@ private func panelLabel(_ text: String) -> some View {
         .foregroundStyle(BoardBrand.label)
 }
 
+// Ray casting — punkt-i-polygon for lasso-utvalg.
+private func pointInPolygon(_ point: CGPoint, polygon: [CGPoint]) -> Bool {
+    guard polygon.count > 2 else { return false }
+    var inside = false
+    var j = polygon.count - 1
+    for i in 0..<polygon.count {
+        let a = polygon[i], b = polygon[j]
+        if (a.y > point.y) != (b.y > point.y),
+           point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x {
+            inside.toggle()
+        }
+        j = i
+    }
+    return inside
+}
+
 private func decodeDataURL(_ dataURL: String?) -> UIImage? {
     guard let dataURL, dataURL.hasPrefix("data:"),
           let comma = dataURL.firstIndex(of: ","),
@@ -37,14 +53,16 @@ private func decodeDataURL(_ dataURL: String?) -> UIImage? {
 @MainActor
 final class BoardState: ObservableObject {
     let manuscript: ManuscriptSummary
+    let projectId: String?
     @Published var scenes: [SceneSummary] = []
     @Published var selectedSceneIndex = 0
     @Published var activeFrameIndex = 0
     @Published var errorMessage: String?
     @Published var syncStatus: String?
 
-    init(manuscript: ManuscriptSummary) {
+    init(manuscript: ManuscriptSummary, projectId: String? = nil) {
         self.manuscript = manuscript
+        self.projectId = projectId
     }
 
     var scene: SceneSummary? { scenes.indices.contains(selectedSceneIndex) ? scenes[selectedSceneIndex] : nil }
@@ -104,7 +122,7 @@ final class BoardState: ObservableObject {
         Task {
             do {
                 let sceneId = try await RoleRoomAPIClient.shared.addScene(
-                    manuscriptId: manuscript.id, title: title)
+                    manuscriptId: manuscript.id, title: title, projectId: projectId)
                 await reload()
                 if let index = scenes.firstIndex(where: { $0.id == sceneId }) {
                     selectedSceneIndex = index
@@ -135,17 +153,46 @@ final class BoardState: ObservableObject {
     }
 
     func patchActiveFrame(_ fields: [String: any Sendable]) {
-        guard let scene, let frame else { return }
+        guard let frame else { return }
+        patchFrame(frameId: frame.id, fields: fields)
+    }
+
+    func patchFrame(frameId: String, fields: [String: any Sendable]) {
+        guard let scene else { return }
         syncStatus = "…"
         Task {
             do {
                 try await RoleRoomAPIClient.shared.saveFramePatch(
-                    manuscriptId: manuscript.id, sceneId: scene.id, frameId: frame.id, fields: fields)
+                    manuscriptId: manuscript.id, sceneId: scene.id, frameId: frameId, fields: fields)
                 await reload()
                 syncStatus = "Synket ✓"
             } catch {
                 syncStatus = error.localizedDescription
             }
+        }
+    }
+
+    /// Review: sett status (planned/in_review/needs_work/done).
+    func setFrameStatus(frameId: String, status: String) {
+        patchFrame(frameId: frameId, fields: ["frameStatus": status])
+    }
+
+    /// Review: legg til rollekommentar (web StoryboardFrameComment-form).
+    func addComment(frameId: String, role: String, text: String) {
+        guard let frame = scene?.frames.first(where: { $0.id == frameId }) else { return }
+        Task {
+            let author = await RoleRoomAPIClient.shared.userDisplayName ?? "iPad"
+            let existing: [[String: String]] = frame.comments.map {
+                ["id": $0.id, "role": $0.role, "author": $0.author, "text": $0.text, "at": $0.at]
+            }
+            let new: [String: String] = [
+                "id": "c-\(Int(Date().timeIntervalSince1970 * 1000))",
+                "role": role,
+                "author": author,
+                "text": text,
+                "at": ISO8601DateFormatter().string(from: Date()),
+            ]
+            patchFrame(frameId: frameId, fields: ["frameComments": existing + [new]])
         }
     }
 }
@@ -172,6 +219,8 @@ struct NativeBoardView: View {
     @State private var showAnimatic = false
     @State private var showShotList = false
     @State private var showScript = false
+    @State private var showReview = false
+    @State private var exportPDFURL: URL?
     @State private var boardTool: BoardTool = .draw
     @State private var textPromptShown = false
     @State private var textPromptValue = ""
@@ -184,8 +233,8 @@ struct NativeBoardView: View {
     @State private var showNewScenePrompt = false
     @Environment(\.dismiss) private var dismiss
 
-    init(manuscript: ManuscriptSummary) {
-        _board = StateObject(wrappedValue: BoardState(manuscript: manuscript))
+    init(manuscript: ManuscriptSummary, projectId: String? = nil) {
+        _board = StateObject(wrappedValue: BoardState(manuscript: manuscript, projectId: projectId))
     }
 
     var body: some View {
@@ -217,13 +266,14 @@ struct NativeBoardView: View {
         .onChange(of: board.activeFrameIndex) { loadActiveFrameIntoCanvas() }
         .onChange(of: board.selectedSceneIndex) { board.activeFrameIndex = 0; loadActiveFrameIntoCanvas() }
         .onChange(of: board.scenes.count) { loadActiveFrameIntoCanvas() }
-        .onChange(of: canvasState.strokes.count) { scheduleAutosync() }
+        .onChange(of: canvasState.revision) { scheduleAutosync() }
+        .onChange(of: boardTool) { selectedStrokeIds = [] }
     }
 
     // Forrige lastede frame + strøkantall — usynkede strøk flushes automatisk
     // ved shot-/scenebytte så tegning ikke mistes uten eksplisitt Synk.
     @State private var loadedFrameRef: (sceneId: String, frameId: String)?
-    @State private var loadedStrokeCount = 0
+    @State private var loadedRevision = 0
 
     private func loadActiveFrameIntoCanvas() {
         flushPendingStrokes()
@@ -251,17 +301,18 @@ struct NativeBoardView: View {
         loadedFrameRef = board.scene.flatMap { scene in
             board.frame.map { (scene.id, $0.id) }
         }
-        loadedStrokeCount = canvasState.strokes.count
+        canvasState.revision += 1
+        loadedRevision = canvasState.revision
         if restoredPending {
             // Marker som usynket så autosynken plukker den opp (thumb
             // rendres etter at canvasen har rebuildet den nye framen).
-            loadedStrokeCount = -1
+            loadedRevision = -1
             scheduleAutosync()
         }
     }
 
     private func flushPendingStrokes() {
-        guard let ref = loadedFrameRef, canvasState.strokes.count != loadedStrokeCount,
+        guard let ref = loadedFrameRef, canvasState.revision != loadedRevision,
               let json = try? StrokeSerialization.encodeToWebJSON(canvasState.strokes) else { return }
         let manuscriptId = board.manuscript.id
         Task {
@@ -285,7 +336,7 @@ struct NativeBoardView: View {
                 try await RoleRoomAPIClient.shared.saveFrameStrokes(
                     manuscriptId: board.manuscript.id, sceneId: scene.id, frameId: frame.id,
                     strokesJSON: json, thumbnailDataURL: thumbnail)
-                loadedStrokeCount = canvasState.strokes.count
+                loadedRevision = canvasState.revision
                 PendingStrokeStore.clear(frameId: frame.id)
                 board.syncStatus = "Synket ✓"
             } catch SyncError.unauthenticated {
@@ -300,7 +351,7 @@ struct NativeBoardView: View {
     // Autosynk: backup til disk straks, nett-synk etter 3 s ro.
     private func scheduleAutosync() {
         guard let frame = board.frame,
-              canvasState.strokes.count != loadedStrokeCount,
+              canvasState.revision != loadedRevision,
               let json = try? StrokeSerialization.encodeToWebJSON(canvasState.strokes) else { return }
         PendingStrokeStore.save(json, frameId: frame.id)
         autosyncTask?.cancel()
@@ -338,12 +389,22 @@ struct NativeBoardView: View {
                 topTab("Board", icon: "rectangle.grid.2x2", active: true) {}
                 topTab("Script", icon: "doc.text", active: false) { showScript = true }
                 topTab("Shot List", icon: "list.bullet", active: false) { showShotList = true }
+                topTab("Review", icon: "checkmark.bubble", active: false) { showReview = true }
                 topTab("Animatic", icon: "play.rectangle", active: false) { showAnimatic = true }
             }
             Spacer()
             if let status = board.syncStatus {
                 Text(status).font(.system(size: 12)).foregroundStyle(BoardBrand.dim)
             }
+            Button {
+                exportPDFURL = BoardPDFExporter.export(
+                    projectTitle: board.manuscript.title, scenes: board.scenes)
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 16)).foregroundStyle(BoardBrand.dim)
+            }
+            .disabled(board.scenes.isEmpty)
+            .accessibilityLabel("Eksporter PDF")
             Button { syncActiveFrameStrokes() } label: {
                 Label("Synk", systemImage: "icloud.and.arrow.up")
                     .font(.system(size: 13, weight: .semibold))
@@ -470,6 +531,7 @@ struct NativeBoardView: View {
         VStack(spacing: 0) {
             toolRow
             Divider().overlay(BoardBrand.border)
+            beatTimeline
             sheetScroll
         }
         .alert("Annotasjonstekst", isPresented: $textPromptShown) {
@@ -483,6 +545,12 @@ struct NativeBoardView: View {
         }
         .sheet(isPresented: $showScript) {
             ScriptSheet(scenes: board.scenes, activeIndex: board.selectedSceneIndex)
+        }
+        .sheet(isPresented: $showReview) {
+            ReviewSheet(board: board)
+        }
+        .sheet(item: $exportPDFURL) { url in
+            ShareSheet(items: [url])
         }
         .confirmationDialog("Slette shotet permanent?",
                             isPresented: Binding(get: { pendingDeleteFrameId != nil },
@@ -501,6 +569,45 @@ struct NativeBoardView: View {
             }
             Button("Avbryt", role: .cancel) { newSceneTitle = "" }
         }
+    }
+
+    // Beat-timeline (web SceneTimelineStrip): SETUP/TENSION/ACTION/RESOLUTION,
+    // segmentbredde ∝ varighet, frames uten beat arver forrige fase.
+    private static let beatToPhase: [String: String] = [
+        "ESTABLISHING": "SETUP", "TENSION": "TENSION", "BEAT": "TENSION",
+        "ACTION": "ACTION", "DIALOGUE": "ACTION", "RESOLUTION": "RESOLUTION",
+    ]
+    private static let phaseColors: [String: Color] = [
+        "SETUP": Color(red: 0.39, green: 0.45, blue: 0.55),
+        "TENSION": Color(red: 0.96, green: 0.62, blue: 0.04),
+        "ACTION": BoardBrand.accent,
+        "RESOLUTION": Color(red: 0.13, green: 0.7, blue: 0.42),
+    ]
+
+    private var beatTimeline: some View {
+        let frames = board.scene?.frames ?? []
+        var phase = "SETUP"
+        let entries: [(index: Int, phase: String, weight: Double)] = frames.enumerated().map { index, frame in
+            if let beat = frame.beatTag, let mapped = Self.beatToPhase[beat] { phase = mapped }
+            return (index, phase, max(0.5, frame.durationSec))
+        }
+        return HStack(spacing: 2) {
+            ForEach(entries, id: \.index) { entry in
+                Button { scrollTarget = entry.index } label: {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill((Self.phaseColors[entry.phase] ?? .gray)
+                            .opacity(entry.index == board.activeFrameIndex ? 1 : 0.45))
+                        .frame(height: 6)
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+                .frame(minWidth: 10)
+                .layoutPriority(entry.weight)
+                .accessibilityLabel("Beat \(entry.phase) shot \(entry.index + 1)")
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 5)
+        .background(BoardBrand.panel)
     }
 
     private var sheetScroll: some View {
@@ -629,6 +736,9 @@ struct NativeBoardView: View {
 
     @State private var shapeStart: CGPoint?
     @State private var shapeCurrent: CGPoint?
+    @State private var lassoPoints: [CGPoint] = []
+    @State private var selectedStrokeIds: Set<String> = []
+    @State private var selectionDragOffset: CGSize = .zero
 
     private func annotationStroke(points: [StrokePoint], text: String? = nil) -> PencilStroke {
         var brush = BrushSpec.preset(.ink, size: 7, color: "#8b5cf6", opacity: 0.95)
@@ -682,6 +792,9 @@ struct NativeBoardView: View {
                 }
                 if boardTool == .arrow || boardTool == .rect || boardTool == .text {
                     annotationCapture(scale: scale)
+                }
+                if boardTool == .select {
+                    lassoCapture(scale: scale)
                 }
                 // Fullskjerm tegnemodus (pinch-zoom, palm rejection)
                 Button { showFullscreenDraw = true } label: {
@@ -754,6 +867,113 @@ struct NativeBoardView: View {
                     appendAnnotation(annotationStroke(points: points))
                 }
         )
+    }
+
+    // MARK: Lasso-select: marker strøk → flytt (drag) eller slett
+
+    private func selectionRect(scale: CGFloat) -> CGRect? {
+        let selected = canvasState.strokes.filter { selectedStrokeIds.contains($0.id) }
+        let points = selected.flatMap(\.points)
+        guard let firstX = points.map(\.x).min(), let lastX = points.map(\.x).max(),
+              let firstY = points.map(\.y).min(), let lastY = points.map(\.y).max() else { return nil }
+        return CGRect(x: firstX * scale, y: firstY * scale,
+                      width: max(20, (lastX - firstX) * scale), height: max(20, (lastY - firstY) * scale))
+    }
+
+    private func lassoCapture(scale: CGFloat) -> some View {
+        ZStack(alignment: .topLeading) {
+            Color.clear.contentShape(Rectangle())
+            if lassoPoints.count > 1 {
+                Path { path in
+                    path.move(to: lassoPoints[0])
+                    for point in lassoPoints.dropFirst() { path.addLine(to: point) }
+                }
+                .stroke(BoardBrand.accent, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+            }
+            if let rect = selectionRect(scale: scale) {
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(BoardBrand.accent, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                    .background(BoardBrand.accent.opacity(0.06))
+                    .frame(width: rect.width + 16, height: rect.height + 16)
+                    .offset(x: rect.minX - 8 + selectionDragOffset.width,
+                            y: rect.minY - 8 + selectionDragOffset.height)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture()
+                            .onChanged { selectionDragOffset = $0.translation }
+                            .onEnded { value in
+                                moveSelection(dx: Double(value.translation.width / scale),
+                                              dy: Double(value.translation.height / scale))
+                                selectionDragOffset = .zero
+                            }
+                    )
+                HStack(spacing: 8) {
+                    Button { deleteSelection() } label: {
+                        Label("Slett", systemImage: "trash")
+                            .font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(Color.red.opacity(0.85), in: Capsule())
+                    }
+                    Button { selectedStrokeIds = [] } label: {
+                        Text("Avbryt")
+                            .font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(Color.black.opacity(0.6), in: Capsule())
+                    }
+                }
+                .offset(x: max(0, rect.minX - 8), y: max(0, rect.minY - 36))
+            }
+        }
+        .gesture(
+            selectedStrokeIds.isEmpty
+                ? DragGesture(minimumDistance: 0)
+                    .onChanged { lassoPoints.append($0.location) }
+                    .onEnded { _ in finishLasso(scale: scale) }
+                : nil
+        )
+    }
+
+    private func finishLasso(scale: CGFloat) {
+        defer { lassoPoints = [] }
+        guard lassoPoints.count > 4 else { return }
+        let polygon = lassoPoints.map { CGPoint(x: $0.x / scale, y: $0.y / scale) }
+        var hit: Set<String> = []
+        for stroke in canvasState.strokes {
+            let total = stroke.points.count
+            guard total > 0 else { continue }
+            let inside = stroke.points.filter {
+                pointInPolygon(CGPoint(x: $0.x, y: $0.y), polygon: polygon)
+            }.count
+            if Double(inside) / Double(total) > 0.5 { hit.insert(stroke.id) }
+        }
+        selectedStrokeIds = hit
+    }
+
+    private func moveSelection(dx: Double, dy: Double) {
+        guard !selectedStrokeIds.isEmpty, dx != 0 || dy != 0 else { return }
+        canvasState.undoStack.append(canvasState.strokes)
+        canvasState.redoStack = []
+        canvasState.strokes = canvasState.strokes.map { stroke in
+            guard selectedStrokeIds.contains(stroke.id) else { return stroke }
+            var moved = stroke
+            moved.points = moved.points.map { point in
+                var p = point
+                p.x += dx
+                p.y += dy
+                return p
+            }
+            return moved
+        }
+        canvasState.revision += 1
+    }
+
+    private func deleteSelection() {
+        guard !selectedStrokeIds.isEmpty else { return }
+        canvasState.undoStack.append(canvasState.strokes)
+        canvasState.redoStack = []
+        canvasState.strokes.removeAll { selectedStrokeIds.contains($0.id) }
+        canvasState.revision += 1
+        selectedStrokeIds = []
     }
 
     private func metaEntry(_ label: String, _ value: String) -> some View {
@@ -1036,8 +1256,22 @@ struct NativeBoardView: View {
                             }
                         }
                     }
-                    ColorPicker("Farge", selection: brushColorBinding, supportsOpacity: false)
-                        .labelsHidden().frame(width: 32, height: 28)
+                    HStack(spacing: 5) {
+                        ColorPicker("Farge", selection: brushColorBinding, supportsOpacity: false)
+                            .labelsHidden().frame(width: 32, height: 28)
+                        // Nylige farger
+                        ForEach(canvasState.recentColors.prefix(6), id: \.self) { hex in
+                            Button { canvasState.brushColor = hex } label: {
+                                Circle()
+                                    .fill(Color(hex: hex) ?? .white)
+                                    .frame(width: 16, height: 16)
+                                    .overlay(Circle().stroke(
+                                        canvasState.brushColor == hex ? BoardBrand.accent : BoardBrand.border,
+                                        lineWidth: canvasState.brushColor == hex ? 1.5 : 1))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                 }
                 // Sliders vertikalt m/ verdi til høyre (mockup)
                 VStack(spacing: 10) {
@@ -1487,8 +1721,6 @@ struct FullscreenDrawView: View {
     @ObservedObject var canvasState: CanvasState
     let frame: FrameSummary
     @State private var renderer = MetalStrokeRenderer()
-    @State private var zoom: CGFloat = 1
-    @State private var zoomAtPinchStart: CGFloat?
     @State private var fingerDraws = false
     @Environment(\.dismiss) private var dismiss
 
@@ -1505,10 +1737,6 @@ struct FullscreenDrawView: View {
                 }
                 .toggleStyle(.switch)
                 .frame(width: 150)
-                Slider(value: $zoom, in: 0.5...3).frame(width: 140)
-                Text("\(Int(zoom * 100))%")
-                    .font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary)
-                    .frame(width: 38)
                 Button { dismiss() } label: {
                     Text("Ferdig").font(.system(size: 13, weight: .semibold))
                 }
@@ -1516,27 +1744,200 @@ struct FullscreenDrawView: View {
             .padding(.horizontal, 16).padding(.vertical, 8)
             .background(.bar)
             BrushToolbar(canvasState: canvasState, onExport: nil)
-            ScrollView([.horizontal, .vertical], showsIndicators: false) {
-                PencilCanvasView(state: canvasState, renderer: renderer,
-                                 pencilOnly: !fingerDraws,
-                                 disableScrollCancel: fingerDraws)
-                    .id(fingerDraws) // disableScrollCancel virker i didMoveToWindow — remount ved bytte
-                    .background(Color(red: 0.992, green: 0.992, blue: 0.984))
-                    .frame(width: 1100 * zoom, height: 1100 * zoom / aspect)
-                    .padding(60)
-            }
-            .background(Color(white: 0.13))
-            .simultaneousGesture(
-                MagnificationGesture()
-                    .onChanged { value in
-                        if zoomAtPinchStart == nil { zoomAtPinchStart = zoom }
-                        zoom = min(3, max(0.5, (zoomAtPinchStart ?? 1) * value))
-                    }
-                    .onEnded { _ in zoomAtPinchStart = nil }
-            )
+            // Ekte UIScrollView-zoom: pinch ankrer rundt fingrene,
+            // skarp re-rendring ved zoom-slutt.
+            ZoomablePencilCanvas(state: canvasState, renderer: renderer,
+                                 baseSize: CGSize(width: 1100, height: 1100 / aspect),
+                                 fingerDraws: fingerDraws)
         }
         .background(Color.black)
     }
+}
+
+// Review-modus (web ReviewModeView): status + rollekommentarer per shot.
+struct ReviewSheet: View {
+    @ObservedObject var board: BoardState
+    @State private var commentDrafts: [String: String] = [:]
+    @State private var commentRole = "Director"
+    @Environment(\.dismiss) private var dismiss
+
+    private static let roles = ["Director", "DP", "Producer", "Editor", "Artist"]
+    private static let statusLabels: [String: (String, Color)] = [
+        "planned": ("PLANLAGT", .gray),
+        "in_review": ("TIL REVIEW", .orange),
+        "needs_work": ("TRENGER ARBEID", .red),
+        "done": ("GODKJENT", .green),
+    ]
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(board.scene?.frames ?? []) { frame in
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 10) {
+                            Text(frame.shotNumber)
+                                .font(.system(.subheadline, design: .monospaced).bold())
+                            Text(frame.description.isEmpty ? "—" : frame.description)
+                                .font(.subheadline).lineLimit(1)
+                            Spacer()
+                            if let (label, color) = Self.statusLabels[frame.frameStatus ?? "planned"] {
+                                Text(label).font(.caption2.bold())
+                                    .padding(.horizontal, 7).padding(.vertical, 3)
+                                    .background(color.opacity(0.18), in: Capsule())
+                                    .foregroundStyle(color)
+                            }
+                        }
+                        HStack(spacing: 8) {
+                            Button("Godkjenn") {
+                                board.setFrameStatus(frameId: frame.id, status: "done")
+                            }
+                            .buttonStyle(.borderedProminent).tint(.green).controlSize(.small)
+                            Button("Trenger arbeid") {
+                                board.setFrameStatus(frameId: frame.id, status: "needs_work")
+                            }
+                            .buttonStyle(.bordered).tint(.red).controlSize(.small)
+                        }
+                        ForEach(frame.comments) { comment in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(comment.role) · \(comment.author)")
+                                    .font(.caption2.bold()).foregroundStyle(.secondary)
+                                Text(comment.text).font(.caption)
+                            }
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.purple.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+                        }
+                        HStack(spacing: 6) {
+                            Menu(commentRole) {
+                                ForEach(Self.roles, id: \.self) { role in
+                                    Button(role) { commentRole = role }
+                                }
+                            }
+                            .font(.caption)
+                            TextField("Kommentar…", text: Binding(
+                                get: { commentDrafts[frame.id] ?? "" },
+                                set: { commentDrafts[frame.id] = $0 }))
+                                .textFieldStyle(.roundedBorder)
+                                .font(.caption)
+                            Button {
+                                let text = (commentDrafts[frame.id] ?? "").trimmingCharacters(in: .whitespaces)
+                                guard !text.isEmpty else { return }
+                                board.addComment(frameId: frame.id, role: commentRole, text: text)
+                                commentDrafts[frame.id] = ""
+                            } label: {
+                                Image(systemName: "paperplane.fill").font(.caption)
+                            }
+                            .disabled((commentDrafts[frame.id] ?? "").trimmingCharacters(in: .whitespaces).isEmpty)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+            .navigationTitle("Review — \(board.scene?.heading ?? "")")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { Button("Lukk") { dismiss() } }
+            }
+        }
+    }
+}
+
+// PDF-eksport: bransjeleveransen — A4 landskap, én scene per seksjon,
+// 3 shot-rader per side (thumb + kode + handling + metadata).
+enum BoardPDFExporter {
+    static func export(projectTitle: String, scenes: [SceneSummary]) -> URL? {
+        let pageRect = CGRect(x: 0, y: 0, width: 842, height: 595) // A4 landskap pt
+        let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(projectTitle.replacingOccurrences(of: "/", with: "-")) storyboard.pdf")
+        do {
+            try renderer.writePDF(to: url) { context in
+                for scene in scenes where !scene.frames.isEmpty {
+                    let shotsPerPage = 3
+                    let pages = stride(from: 0, to: scene.frames.count, by: shotsPerPage).map {
+                        Array(scene.frames[$0..<min($0 + shotsPerPage, scene.frames.count)])
+                    }
+                    for (pageIndex, pageFrames) in pages.enumerated() {
+                        context.beginPage()
+                        drawHeader(scene: scene, projectTitle: projectTitle,
+                                   pageIndex: pageIndex, pageCount: pages.count, in: pageRect)
+                        for (rowIndex, frame) in pageFrames.enumerated() {
+                            drawShotRow(frame, rowIndex: rowIndex, in: pageRect)
+                        }
+                    }
+                }
+            }
+            return url
+        } catch {
+            return nil
+        }
+    }
+
+    private static func drawHeader(scene: SceneSummary, projectTitle: String,
+                                   pageIndex: Int, pageCount: Int, in page: CGRect) {
+        let title = "\(projectTitle)  ·  \(String(format: "%02d", scene.sceneNumber ?? 0)) \(scene.heading)"
+            + (pageCount > 1 ? "  (\(pageIndex + 1)/\(pageCount))" : "")
+        (title as NSString).draw(
+            at: CGPoint(x: 36, y: 24),
+            withAttributes: [.font: UIFont.boldSystemFont(ofSize: 13),
+                             .foregroundColor: UIColor.black])
+    }
+
+    private static func drawShotRow(_ frame: FrameSummary, rowIndex: Int, in page: CGRect) {
+        let top = 56.0 + Double(rowIndex) * 172
+        let thumbRect = CGRect(x: 156, y: top, width: 280, height: 157.5)
+        // Kodeboks
+        (frame.shotNumber as NSString).draw(
+            at: CGPoint(x: 36, y: top + 4),
+            withAttributes: [.font: UIFont.monospacedSystemFont(ofSize: 14, weight: .bold),
+                             .foregroundColor: UIColor.black])
+        // Handling
+        (frame.description as NSString).draw(
+            in: CGRect(x: 36, y: top + 28, width: 110, height: 130),
+            withAttributes: [.font: UIFont.systemFont(ofSize: 9),
+                             .foregroundColor: UIColor.darkGray])
+        // Frame
+        UIColor.black.setStroke()
+        let border = UIBezierPath(rect: thumbRect)
+        border.lineWidth = 1
+        border.stroke()
+        if let image = decodeDataURL(frame.thumbnailDataURL) {
+            image.draw(in: thumbRect)
+        }
+        // Metadata-kolonne
+        let meta = [
+            "CAM/SHOT  \(frame.shotType ?? "—")",
+            "LENS  \(frame.lensMm.map { "\($0)mm" } ?? "—")",
+            "MOVE  \(frame.movement ?? "—")",
+            "DUR  \(String(format: "%.1f", frame.durationSec)) s",
+            frame.beatTag.map { "BEAT  \($0)" } ?? "",
+            frame.frameStatus.map { "STATUS  \($0)" } ?? "",
+        ].filter { !$0.isEmpty }.joined(separator: "\n")
+        (meta as NSString).draw(
+            in: CGRect(x: 452, y: top + 4, width: 160, height: 150),
+            withAttributes: [.font: UIFont.systemFont(ofSize: 9),
+                             .foregroundColor: UIColor.black])
+        // Notater høyre
+        if let notes = frame.notes, !notes.isEmpty {
+            ("NOTES  " + notes as NSString).draw(
+                in: CGRect(x: 620, y: top + 4, width: 186, height: 150),
+                withAttributes: [.font: UIFont.systemFont(ofSize: 8),
+                                 .foregroundColor: UIColor.darkGray])
+        }
+    }
+}
+
+// URL Identifiable for .sheet(item:)
+extension URL: @retroactive Identifiable {
+    public var id: String { absoluteString }
+}
+
+// UIActivityViewController-bro for deling av PDF.
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
 // Krasj-vern: usynkede strøk skrives til disk ved hver endring og slettes

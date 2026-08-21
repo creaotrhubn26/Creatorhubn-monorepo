@@ -398,7 +398,7 @@ final class MetalStrokeRenderer {
 import UIKit
 
 extension MetalStrokeRenderer {
-    func thumbnailDataURL(maxWidth: CGFloat = 320) -> String? {
+    func thumbnailDataURL(maxWidth: CGFloat = 280) -> String? {
         guard let texture = committedTexture else { return nil }
         let width = texture.width, height = texture.height
         guard width > 0, height > 0 else { return nil }
@@ -427,7 +427,9 @@ extension MetalStrokeRenderer {
             context.fill(CGRect(origin: .zero, size: outSize))
             UIImage(cgImage: image).draw(in: CGRect(origin: .zero, size: outSize))
         }
-        guard let png = composited.pngData() else { return nil }
-        return "data:image/png;base64," + png.base64EncodedString()
+        // JPEG (hvit bakgrunn komposittert — ingen alpha å miste): ~1/3 av
+        // PNG-størrelsen; hele scenen POSTes ved hver synk, så payload teller.
+        guard let jpeg = composited.jpegData(compressionQuality: 0.7) else { return nil }
+        return "data:image/jpeg;base64," + jpeg.base64EncodedString()
     }
 }

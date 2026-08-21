@@ -25,6 +25,7 @@ struct LoginView: View {
             do {
                 let name = try await RoleRoomAPIClient.shared.configure(server: server, token: sessionToken)
                 UserDefaults.standard.set(server, forKey: "rr.server")
+                KeychainHelper.save(sessionToken, account: "session-token")
                 sync.userName = name
                 sync.isLoggedIn = true
             } catch {
@@ -110,7 +111,7 @@ struct ManuscriptListView: View {
     var body: some View {
         List(manuscripts) { manuscript in
             NavigationLink(manuscript.title) {
-                NativeBoardView(manuscript: manuscript)
+                NativeBoardView(manuscript: manuscript, projectId: project.id)
             }
         }
         .overlay {
