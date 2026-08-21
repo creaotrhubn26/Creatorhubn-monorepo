@@ -160,7 +160,7 @@ export const NORWEGIAN_RULES: TaxRule[] = [
     plainExplanation:
       'Selvstendig næringsdrivende betaler trygdeavgift av næringsinntekten i tillegg til inntektsskatt.',
     technicalExplanation:
-      'Trygdeavgift på næringsinntekt, folketrygdloven § 23-3. 11,0 % for 2024, 10,9 % for 2025. Sats for 2026 er IKKE verifisert i dette registeret og må kontrolleres mot Skatteetaten før estimater for 2026 presenteres som annet enn foreløpige.',
+      'Trygdeavgift på næringsinntekt, folketrygdloven § 23-3. 11,0 % for 2024, 10,9 % for 2025, 10,8 % for 2026 (verifisert mot Skatteetaten).',
     sourceIds: ['skatteetaten-trygdeavgift'],
     appliesToOrgForms: ['ENK', 'ANS', 'DA'],
     appliesToVatStatus: 'all',
@@ -180,8 +180,15 @@ export const NORWEGIAN_RULES: TaxRule[] = [
       {
         version: 2,
         validFrom: '2025-01-01',
+        validTo: '2025-12-31',
         parameters: { rate: { numerator: '109', denominator: '1000' } },
-        changeNote: 'Sats redusert til 10,9 % fra 2025. 2026-sats må verifiseres.',
+        changeNote: 'Sats redusert til 10,9 % fra 2025.',
+      },
+      {
+        version: 3,
+        validFrom: '2026-01-01',
+        parameters: { rate: { numerator: '108', denominator: '1000' } },
+        changeNote: 'Sats redusert til 10,8 % fra 2026 (Skatteetaten).',
       },
     ],
   },

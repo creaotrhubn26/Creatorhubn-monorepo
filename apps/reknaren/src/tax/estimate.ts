@@ -96,6 +96,11 @@ export async function buildTaxEstimate(
   const taxableResult = accountingResult + adjustments.totalMinor;
   const taxable = taxableResult > 0n ? taxableResult : 0n;
   const asOf = params.toDate;
+  const year = Number(asOf.slice(0, 4));
+  const per1000 = (r: { numerator: bigint; denominator: bigint }) =>
+    Number((r.numerator * 1000n) / r.denominator);
+  // Marginalsats på neste krone (promille) — settes i hver gren fra regelregisteret.
+  let marginalRatePer1000 = 0;
 
   const components: TaxEstimate['components'] = [];
   const uncertainty: string[] = [...adjustments.notes];
@@ -119,6 +124,7 @@ export async function buildTaxEstimate(
       ratePct: displayRatePct(rate.numerator, rate.denominator),
       amountMinor: tax.minorUnits,
     });
+    marginalRatePer1000 = per1000(rate);
   } else {
     const incomeRuleId = 'no.tax.personal-base-rate';
     const incomeVersion = rules.getVersionAt(incomeRuleId, asOf);
@@ -143,20 +149,22 @@ export async function buildTaxEstimate(
       amountMinor: ssTax.minorUnits,
     });
     // Trinnskatt (progressiv på personinntekt). Forutsetter at hele overskuddet er
-    // personinntekt fra denne næringen. Satser 2025 (se brackets.ts).
-    const trinnskattMinor = computeTrinnskattMinor(taxable);
+    // personinntekt fra denne næringen. Per-år-satser (se brackets.ts).
+    const trinnskattMinor = computeTrinnskattMinor(taxable, year);
     if (trinnskattMinor > 0n) {
       components.push({
         name: 'Trinnskatt',
-        ruleId: 'no.tax.bracket-tax-2025',
+        ruleId: `no.tax.bracket-tax-${year}`,
         ruleVersion: 1,
         ratePct: 'progressiv',
         amountMinor: trinnskattMinor,
       });
     }
+    // Marginalsats ENK = alminnelig + trygdeavgift (fra registeret) + trinnskatt-trinn.
+    marginalRatePer1000 = per1000(incomeRate) + per1000(ssRate) + marginalTrinnskattPer1000(taxable, year);
     notIncluded.push('Personfradrag og minstefradrag', 'Annen personinntekt (lønn/pensjon) som endrer trinnskatt-nivået');
     uncertainty.push(
-      'Estimatet forutsetter at hele overskuddet er personinntekt fra næring, uten annen inntekt. Trinnskatt beregnet med 2025-satser.',
+      `Estimatet forutsetter at hele overskuddet er personinntekt fra næring, uten annen inntekt. Trinnskatt beregnet med ${year}-satser.`,
     );
   }
 
@@ -188,11 +196,6 @@ export async function buildTaxEstimate(
   if (vat.warnings.length) {
     uncertainty.push(`MVA-rapporten har ${vat.warnings.length} advarsel(er) som kan påvirke tallene.`);
   }
-
-  // Marginalsats på neste krone: AS = selskapsskatt; ENK = 22% + 11% + trinnskatt-trinn.
-  const marginalRatePer1000 = isCompany
-    ? 220
-    : 220 + 110 + marginalTrinnskattPer1000(taxable);
 
   return {
     organizationId: params.organizationId,
