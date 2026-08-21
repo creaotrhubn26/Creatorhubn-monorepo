@@ -13,19 +13,49 @@ final class CanvasState: ObservableObject {
     @Published var brushSize: Double = 6
     @Published var brushColor: String = "#26282e"
     @Published var brushOpacity: Double = 0.95
+    // Board Pro-lag: nye strøk tagges med aktivt lag; skjulte lag filtreres
+    // fra rendering (web-paritet — dataene beholdes urørt).
+    @Published var activeBoardLayer = "Drawing"
+    @Published var hiddenLayers: Set<String> = []
+    // Lagret tegneflate-dimensjon (drawingData.width/height). Satt → strøk
+    // holdes i det koordinatrommet (web-paritet); view skalerer ved rendering
+    // og inverterer ved input. nil → view-punktrom (Frikanvas).
+    @Published var contentSize: CGSize?
     var undoStack: [[PencilStroke]] = []
+    var redoStack: [[PencilStroke]] = []
 
     func currentBrush() -> BrushSpec {
         BrushSpec.preset(brushType, size: brushSize, color: brushColor, opacity: brushOpacity)
     }
 
+    func visibleStrokes() -> [PencilStroke] {
+        // Lag-sortert som web (stabil sortering på BOARD_LAYERS-indeks).
+        strokes
+            .filter { !hiddenLayers.contains($0.boardLayer ?? "Drawing") }
+            .enumerated()
+            .sorted { lhs, rhs in
+                let li = BoardLayers.index(of: lhs.element.boardLayer)
+                let ri = BoardLayers.index(of: rhs.element.boardLayer)
+                return li == ri ? lhs.offset < rhs.offset : li < ri
+            }
+            .map(\.element)
+    }
+
     func undo() {
         guard let previous = undoStack.popLast() else { return }
+        redoStack.append(strokes)
         strokes = previous
+    }
+
+    func redo() {
+        guard let next = redoStack.popLast() else { return }
+        undoStack.append(strokes)
+        strokes = next
     }
 
     func clear() {
         undoStack.append(strokes)
+        redoStack = []
         strokes = []
     }
 
@@ -53,6 +83,13 @@ final class MetalCanvasUIView: UIView {
     // (vår egen commit) fra ekstern endring (undo/clear → full rebuild).
     private var committedCount = 0
     private var displayScale: Double { Double(window?.screen.scale ?? 2) }
+    // Innholdsrom → view-punkter (1 når contentSize ikke er satt).
+    private var contentScale: Double {
+        guard let size = state?.contentSize, size.width > 0, bounds.width > 0 else { return 1 }
+        return Double(bounds.width / size.width)
+    }
+    // Samlet skala innholdsrom → piksler; brukes mot renderer.
+    private var renderScale: Double { displayScale * contentScale }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -88,7 +125,7 @@ final class MetalCanvasUIView: UIView {
         metalLayer.drawableSize = CGSize(width: width, height: height)
         if let renderer, renderer.committedTexture?.width != width {
             renderer.resizeCanvas(width: width, height: height)
-            renderer.rebuild(strokes: state?.strokes ?? [], scale: scale)
+            renderer.rebuild(strokes: state?.visibleStrokes() ?? [], scale: scale * contentScale)
             redraw()
         }
     }
@@ -108,8 +145,9 @@ final class MetalCanvasUIView: UIView {
             tiltX = cos(azimuth) * tiltMagnitude
             tiltY = sin(azimuth) * tiltMagnitude
         }
+        let inputScale = contentScale
         return StrokePoint(
-            x: Double(location.x), y: Double(location.y),
+            x: Double(location.x) / inputScale, y: Double(location.y) / inputScale,
             pressure: max(0.05, min(1, pressure)),
             tiltX: tiltX, tiltY: tiltY,
             timestamp: touch.timestamp * 1000)
@@ -125,7 +163,8 @@ final class MetalCanvasUIView: UIView {
             color: brush.color,
             width: brush.size,
             opacity: brush.opacity,
-            brush: brush)
+            brush: brush,
+            boardLayer: state.activeBoardLayer)
     }
 
     private func smoothed(_ point: StrokePoint) -> StrokePoint {
@@ -190,16 +229,22 @@ final class MetalCanvasUIView: UIView {
         }
         activePoints = []
         state.undoStack.append(state.strokes)
+        state.redoStack = []
         state.strokes.append(stroke)
-        renderer?.commitStroke(stroke, scale: displayScale)
+        renderer?.commitStroke(stroke, scale: renderScale)
         committedCount = state.strokes.count
         redraw()
     }
 
+    private var lastHiddenLayers: Set<String> = []
+
     func syncIfNeeded() {
-        guard let state, state.strokes.count != committedCount else { return }
-        renderer?.rebuild(strokes: state.strokes, scale: displayScale)
+        guard let state,
+              state.strokes.count != committedCount || state.hiddenLayers != lastHiddenLayers
+        else { return }
+        renderer?.rebuild(strokes: state.visibleStrokes(), scale: renderScale)
         committedCount = state.strokes.count
+        lastHiddenLayers = state.hiddenLayers
         redraw()
     }
 
@@ -216,7 +261,7 @@ final class MetalCanvasUIView: UIView {
         renderer.present(drawable: drawable,
                          activeStroke: active,
                          predictedStroke: predicted,
-                         scale: displayScale)
+                         scale: renderScale)
     }
 }
 

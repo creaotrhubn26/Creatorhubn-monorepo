@@ -41,6 +41,9 @@ struct FrameSummary: Identifiable, Sendable {
     let beatTag: String?
     let tags: [String]
     let thumbnailDataURL: String?
+    // drawingData.width/height — koordinatrommet strøkene er lagret i.
+    let drawingWidth: Double
+    let drawingHeight: Double
 }
 
 struct SceneSummary: Identifiable, Sendable {
@@ -302,7 +305,11 @@ actor RoleRoomAPIClient {
                 weather: frame["weather"] as? String,
                 beatTag: frame["beatTag"] as? String,
                 tags: (frame["tags"] as? [String]) ?? [],
-                thumbnailDataURL: frame["thumbnailUrl"] as? String
+                thumbnailDataURL: frame["thumbnailUrl"] as? String,
+                drawingWidth: (drawingData?["width"] as? Double)
+                    ?? Double(drawingData?["width"] as? Int ?? 1920),
+                drawingHeight: (drawingData?["height"] as? Double)
+                    ?? Double(drawingData?["height"] as? Int ?? 1080)
             )
         }
         return SceneSummary(id: id, heading: heading, frames: frames)
