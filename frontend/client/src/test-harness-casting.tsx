@@ -131,8 +131,11 @@ function SessionSeeder({ children }: { children: ReactNode }) {
       // Lokal backend (NODE_ENV≠production) godtar dette dev-token-et som
       // «local-admin» (getLocalDevelopmentSession) → /api/casting-ruter passerer
       // og data synkes til DB i stedet for å latche offline. Uten dette: 401.
-      window.localStorage.setItem('role_room_auth_token', 'dev-admin-local-session');
-      window.localStorage.setItem('creatorhub_auth_token', 'dev-admin-local-session');
+      // ?token=… overstyrer (sim-Safari-verifisering kan ikke kjøre
+      // addInitScript — se e2e/storyboard-vision-verify.spec.ts).
+      const overrideToken = new URLSearchParams(window.location.search).get('token');
+      window.localStorage.setItem('role_room_auth_token', overrideToken || 'dev-admin-local-session');
+      window.localStorage.setItem('creatorhub_auth_token', overrideToken || 'dev-admin-local-session');
       // Pre-seed profession so the profession selector dialog doesn't open
       await settingsService.setSetting('virtualStudio_castingProfession', 'photographer', {
         userId: 'e2e-test-user',
