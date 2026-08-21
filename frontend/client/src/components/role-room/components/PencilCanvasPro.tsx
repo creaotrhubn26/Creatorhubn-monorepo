@@ -418,6 +418,8 @@ const PRO_BRUSH_TYPES: readonly ProBrushType[] = [
   'skintex',
   'rocktex',
   'gloss',
+  'wash',
+  'spikes',
 ];
 const SELECTION_SNAP_GRID_SIZE = 50;
 const SELECTION_EDGE_SNAP_THRESHOLD = 18;
@@ -466,6 +468,8 @@ const STREAMLINE_BY_TYPE: Partial<Record<ProBrushType, number>> = {
   skintex: 0.2,
   rocktex: 0.2,
   gloss: 0.4,
+  wash: 0.18,
+  spikes: 0.25,
 };
 
 export function applyStreamline(points: PencilPoint[], amount: number): PencilPoint[] {

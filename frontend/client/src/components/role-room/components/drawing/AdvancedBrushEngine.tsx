@@ -51,7 +51,9 @@ export type AdvancedBrushType =
   | 'softfocus'
   | 'skintex'
   | 'rocktex'
-  | 'gloss';
+  | 'gloss'
+  | 'wash'
+  | 'spikes';
 
 // Alias for external usage
 export type ProBrushType = AdvancedBrushType;
@@ -112,6 +114,8 @@ export const BRUSH_PRESETS: Record<AdvancedBrushType, Partial<BrushConfig>> = {
   skintex: { grain: 0.55, flow: 0.5, hardness: 0.5, tiltSensitivity: 0.4, pressureSensitivity: 0.7 },
   rocktex: { grain: 0.6, flow: 0.55, hardness: 0.7, tiltSensitivity: 0.4, pressureSensitivity: 0.7 },
   gloss: { grain: 0, flow: 0.95, hardness: 0.8, tiltSensitivity: 0.3, pressureSensitivity: 0.85 },
+  wash: { grain: 0.22, flow: 0.16, hardness: 0.25, tiltSensitivity: 0.5, pressureSensitivity: 0.6 },
+  spikes: { grain: 0.3, flow: 0.8, hardness: 0.65, tiltSensitivity: 0.3, pressureSensitivity: 0.8 },
   speedlines: { grain: 0.15, flow: 0.8, hardness: 0.7, tiltSensitivity: 0.2, pressureSensitivity: 0.6 },
   pencil: {
     hardness: 0.6,

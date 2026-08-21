@@ -43,6 +43,9 @@ enum BrushType: String, Codable, Sendable, CaseIterable {
     case skintex       // Porøs hud-mikrotekstur
     case rocktex       // Stein/gjørme-grus
     case gloss         // Glans/highlights — hvit ink m/ taper (dråper, våt hud)
+    // Wash-klassen (blyant+lavering-referansen)
+    case wash          // Lavering: bred flat halvtransparent tone m/ papirkant
+    case spikes        // Pigg/skjell-pels i retningsfølgende rader (troll-pels)
 }
 
 // Spec-defaults per pensel (size px / opacity) — settes når penselen velges
@@ -78,6 +81,9 @@ enum BrushDefaults {
         case .skintex: return (40, 0.4)
         case .rocktex: return (44, 0.45)
         case .gloss: return (2.4, 0.9)
+        case .wash: return (64, 0.3)
+        case .spikes: return (26, 0.6)
+        case .watercolor: return (46, 0.35)
         default: return nil
         }
     }
@@ -191,6 +197,14 @@ struct BrushSpec: Codable, Sendable, Equatable {
             return BrushSpec(type: type, size: size, color: color, opacity: opacity,
                              hardness: 0.8, flow: 0.95, wetness: 0.2, grain: 0,
                              tiltSensitivity: 0.3, pressureSensitivity: 0.85)
+        case .wash:
+            return BrushSpec(type: type, size: size, color: color, opacity: opacity,
+                             hardness: 0.25, flow: 0.16, wetness: 0.6, grain: 0.22,
+                             tiltSensitivity: 0.5, pressureSensitivity: 0.6)
+        case .spikes:
+            return BrushSpec(type: type, size: size, color: color, opacity: opacity,
+                             hardness: 0.65, flow: 0.8, wetness: 0, grain: 0.3,
+                             tiltSensitivity: 0.3, pressureSensitivity: 0.8)
         default:
             return BrushSpec(type: type, size: size, color: color, opacity: opacity,
                              hardness: 0.8, flow: 1, wetness: 0, grain: 0.3,
