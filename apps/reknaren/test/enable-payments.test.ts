@@ -17,8 +17,11 @@ describe('buildPaymentRequest', () => {
     }) as Record<string, any>;
     const tx = body.payment_request.credit_transfer_transaction[0];
     expect(tx.instructed_amount).toEqual({ amount: '1249.00', currency: 'NOK' });
-    expect(tx.creditor_account).toEqual({ iban: 'NO6418024501155' });
-    expect(tx.remittance_information_structured.creditor_reference.reference).toBe('1234567890');
+    // Enable Banking-schema: creditor/creditor_account under beneficiary, flat scheme_name.
+    expect(tx.beneficiary.creditor).toEqual({ name: 'Adobe AS' });
+    expect(tx.beneficiary.creditor_account).toEqual({ scheme_name: 'IBAN', identification: 'NO6418024501155' });
+    expect(tx.reference_number).toBe('1234567890');
+    expect(body.payment_type).toBe('NORWEGIAN_DOMESTIC_CREDIT_TRANSFER');
     expect(body.aspsp).toEqual({ name: 'SpareBank 1 Østlandet', country: 'NO' });
     expect(body.state).toBe('pay:doc1');
   });
@@ -29,8 +32,16 @@ describe('buildPaymentRequest', () => {
       amountMinor: 5000n, currency: 'NOK', message: 'Faktura 42', redirectUrl: 'https://x/cb', state: 's',
     }) as Record<string, any>;
     const tx = body.payment_request.credit_transfer_transaction[0];
-    expect(tx.creditor_account).toEqual({ other: { identification: '12345678903', scheme_name: 'BBAN' } });
+    expect(tx.beneficiary.creditor_account).toEqual({ scheme_name: 'BBAN', identification: '12345678903' });
     expect(tx.remittance_information).toEqual(['Faktura 42']);
+  });
+
+  it('lar paymentType overstyres (bekreftet NO-verdi fra sandbox/EB)', () => {
+    const body = buildPaymentRequest({
+      aspspName: 'SpareBank 1 Østlandet', creditorName: 'X', creditorIban: 'NO6418024501155',
+      amountMinor: 100n, currency: 'NOK', redirectUrl: 'https://x/cb', state: 's', paymentType: 'DOMESTIC',
+    }) as Record<string, any>;
+    expect(body.payment_type).toBe('DOMESTIC');
   });
 });
 

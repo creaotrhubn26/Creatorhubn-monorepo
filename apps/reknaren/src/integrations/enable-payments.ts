@@ -26,6 +26,13 @@ export interface PaymentInitiationInput {
   debtorIban?: string;         // betalers konto (valgfritt)
   redirectUrl: string;         // hvor banken sender brukeren tilbake
   state: string;               // vår referanse
+  /**
+   * Enable Banking PaymentType. ⚠️ Riktig verdi for norsk innenlands NOK-betaling MÅ
+   * bekreftes mot Enable Banking sandbox / support (ikke i offentlig doc). «SEPA» gjelder
+   * kun EUR. Antatt NO-verdi under; overstyr til bekreftet verdi før prod.
+   * ponytail: gjettet default, bekreft mot sandbox før live.
+   */
+  paymentType?: string;
 }
 
 /** Øre (bigint) → «12.34» uten flyttall. */
@@ -37,26 +44,34 @@ export function minorToAmountString(minor: bigint, _currency: string): string {
   return `${neg ? '-' : ''}${kroner.toString()}.${ore.toString().padStart(2, '0')}`;
 }
 
-/** Bygger PIS-request-body. Ren funksjon → testbar uten nettverk. */
+/**
+ * Bygger PIS-request-body etter Enable Bankings faktiske schema (verifisert mot deres
+ * Create Payment-eksempel): `creditor`/`creditor_account` ligger under `beneficiary`,
+ * `creditor_account` er flat `{scheme_name, identification}`, KID sendes som
+ * `reference_number`, og `payment_type` er påkrevd på toppnivå. Ren funksjon → testbar.
+ */
 export function buildPaymentRequest(input: PaymentInitiationInput): Record<string, unknown> {
   const creditorAccount = input.creditorIban
-    ? { iban: input.creditorIban }
-    : { other: { identification: (input.creditorBban ?? '').replace(/\s/g, ''), scheme_name: 'BBAN' } };
+    ? { scheme_name: 'IBAN', identification: input.creditorIban }
+    : { scheme_name: 'BBAN', identification: (input.creditorBban ?? '').replace(/\s/g, '') };
   const tx: Record<string, unknown> = {
     instructed_amount: { amount: minorToAmountString(input.amountMinor, input.currency), currency: input.currency },
-    creditor: { name: input.creditorName },
-    creditor_account: creditorAccount,
+    beneficiary: {
+      creditor: { name: input.creditorName },
+      creditor_account: creditorAccount,
+    },
   };
   if (input.kid) {
-    tx.remittance_information_structured = { creditor_reference: { reference: input.kid } };
+    tx.reference_number = input.kid;             // strukturert KID
   } else if (input.message) {
-    tx.remittance_information = [input.message];
+    tx.remittance_information = [input.message]; // fri melding
   }
   return {
+    // ⚠️ NOK-verdi må bekreftes mot sandbox/EB (se PaymentInitiationInput.paymentType).
+    payment_type: input.paymentType ?? 'NORWEGIAN_DOMESTIC_CREDIT_TRANSFER',
     payment_request: {
-      payment_information_id: input.state,
       credit_transfer_transaction: [tx],
-      ...(input.debtorIban ? { debtor_account: { iban: input.debtorIban } } : {}),
+      ...(input.debtorIban ? { debtor_account: { scheme_name: 'IBAN', identification: input.debtorIban } } : {}),
     },
     aspsp: { name: input.aspspName, country: 'NO' },
     psu_type: 'business',
