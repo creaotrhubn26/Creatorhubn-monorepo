@@ -34,7 +34,14 @@ actor APIClient {
     }
 
     private func send<T: Decodable, B: Encodable>(_ path: String, method: String, body: B?) async throws -> T {
-        var req = URLRequest(url: base.appendingPathComponent(path.hasPrefix("/") ? String(path.dropFirst()) : path))
+        // NB: appendingPathComponent percent-encoder «?» → query-strenger ødelegges (404).
+        // Bygg URL fra rå streng så «?asOf=…» bevares.
+        let baseStr = base.absoluteString.hasSuffix("/") ? String(base.absoluteString.dropLast()) : base.absoluteString
+        let p = path.hasPrefix("/") ? path : "/" + path
+        guard let url = URL(string: baseStr + p) else {
+            throw APIError(status: 0, code: "BAD_URL", message: "Ugyldig forespørsels-URL.")
+        }
+        var req = URLRequest(url: url)
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
