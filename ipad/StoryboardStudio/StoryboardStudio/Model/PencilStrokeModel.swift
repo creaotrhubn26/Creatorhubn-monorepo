@@ -100,6 +100,13 @@ struct BrushSpec: Codable, Sendable, Equatable {
     var grain: Double
     var tiltSensitivity: Double
     var pressureSensitivity: Double
+    // Editor-parametre (§48) — optionals følger strøket (encodeIfPresent →
+    // utelates når nil; deterministisk re-rendering med samme verdier).
+    var hatchAngleDeg: Double?     // hatch/crosshatch: primærvinkel
+    var hatchDensity: Double?      // multiplikator på merketetthet
+    var hatchLength: Double?       // multiplikator på merkelengde
+    var envDensity: Double?        // miljøpensler: klynge-tetthet
+    var envScale: Double?          // miljøpensler: struktur-størrelse
 
     static func preset(_ type: BrushType, size: Double, color: String, opacity: Double) -> BrushSpec {
         // Samme presets som web BRUSH_PRESETS.
@@ -266,6 +273,11 @@ extension BrushSpec {
         grain = try container.decodeIfPresent(Double.self, forKey: .grain) ?? 0.3
         tiltSensitivity = try container.decodeIfPresent(Double.self, forKey: .tiltSensitivity) ?? 0.5
         pressureSensitivity = try container.decodeIfPresent(Double.self, forKey: .pressureSensitivity) ?? 0.85
+        hatchAngleDeg = try container.decodeIfPresent(Double.self, forKey: .hatchAngleDeg)
+        hatchDensity = try container.decodeIfPresent(Double.self, forKey: .hatchDensity)
+        hatchLength = try container.decodeIfPresent(Double.self, forKey: .hatchLength)
+        envDensity = try container.decodeIfPresent(Double.self, forKey: .envDensity)
+        envScale = try container.decodeIfPresent(Double.self, forKey: .envScale)
     }
 }
 

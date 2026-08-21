@@ -632,4 +632,75 @@ final class CompositionRenderTests: XCTestCase {
         XCTAssertGreaterThan(base, low)
         XCTAssertEqual(maxAlpha(flow: 0.8), base) // deterministisk
     }
+
+    // §48-editor: hatch-vinkel/tetthet og miljø-tetthet lagres per strøk
+    // og endrer genereringen deterministisk.
+    func testEditorParamsAffectGeneration() throws {
+        guard let renderer = MetalStrokeRenderer() else { throw XCTSkip("Metal utilgjengelig") }
+        func hatchDabs(angle: Double?, density: Double?) -> [DabInstanceData] {
+            var brush = BrushSpec.preset(.hatch, size: 34, color: "#26282e", opacity: 0.4)
+            brush.hatchAngleDeg = angle
+            brush.hatchDensity = density
+            let s = PencilStroke(id: "ed-1",
+                points: [StrokePoint(x: 50, y: 50, pressure: 0.8, tiltX: 0, tiltY: 0, timestamp: 0),
+                         StrokePoint(x: 300, y: 80, pressure: 0.8, tiltX: 0, tiltY: 0, timestamp: 150)],
+                inputType: "pencil", color: "#26282e", width: 34, opacity: 0.4, brush: brush)
+            return renderer.dabsForStroke(s, scale: 1)
+        }
+        let base = hatchDabs(angle: nil, density: nil)
+        let dense = hatchDabs(angle: nil, density: 2.0)
+        let angled = hatchDabs(angle: 90, density: nil)
+        XCTAssertGreaterThan(dense.count, base.count)          // tetthet øker merker
+        XCTAssertEqual(base.count, hatchDabs(angle: nil, density: nil).count) // deterministisk
+        XCTAssertNotEqual(base.first?.position, angled.first?.position)      // vinkel endrer geometri
+
+        func envDabs(density: Double?) -> Int {
+            var brush = BrushSpec.preset(.forest, size: 60, color: "#26282e", opacity: 0.6)
+            brush.envDensity = density
+            let s = PencilStroke(id: "ed-2",
+                points: [StrokePoint(x: 80, y: 200, pressure: 0.8, tiltX: 0, tiltY: 0, timestamp: 0),
+                         StrokePoint(x: 400, y: 210, pressure: 0.8, tiltX: 0, tiltY: 0, timestamp: 150)],
+                inputType: "pencil", color: "#26282e", width: 60, opacity: 0.6, brush: brush)
+            return renderer.dabsForStroke(s, scale: 1).count
+        }
+        XCTAssertGreaterThan(envDabs(density: 2.0), envDabs(density: nil))
+    }
+
+    // Skjema: editor-optionals overlever rundtur og utelates når nil.
+    func testEditorParamsRoundtrip() throws {
+        var brush = BrushSpec.preset(.hatch, size: 34, color: "#000000", opacity: 0.4)
+        brush.hatchAngleDeg = 72
+        brush.envScale = 1.4
+        let s = PencilStroke(id: "rt-1",
+            points: [StrokePoint(x: 1, y: 2, pressure: 0.5, tiltX: 0, tiltY: 0, timestamp: 0)],
+            inputType: "pencil", color: "#000000", width: 34, opacity: 0.4, brush: brush)
+        let json = try StrokeSerialization.encodeToWebJSON([s])
+        let decoded = try StrokeSerialization.decodeFromWebJSON(json)
+        XCTAssertEqual(decoded.first?.brush?.hatchAngleDeg, 72)
+        XCTAssertEqual(decoded.first?.brush?.envScale, 1.4)
+
+        let plain = BrushSpec.preset(.pencil, size: 3, color: "#000000", opacity: 0.5)
+        let plainStroke = PencilStroke(id: "rt-2", points: s.points, inputType: "pencil",
+                                       color: "#000000", width: 3, opacity: 0.5, brush: plain)
+        let plainJSON = try StrokeSerialization.encodeToWebJSON([plainStroke])
+        XCTAssertFalse(plainJSON.contains("hatchAngleDeg"))
+        XCTAssertFalse(plainJSON.contains("envScale"))
+    }
+
+    // Density map (§70–§72): mørk sone gir høy score der og hvilesoner ellers.
+    func testDensityGrid() throws {
+        guard let renderer = MetalStrokeRenderer() else { throw XCTSkip("Metal utilgjengelig") }
+        renderer.resizeCanvas(width: 800, height: 500)
+        var strokes: [PencilStroke] = []
+        for pass in 0..<6 {
+            strokes.append(stroke(.toneblock, size: 36, opacity: 0.9,
+                line(30, 40 + Double(pass) * 15, 180, 40 + Double(pass) * 15,
+                     steps: 6, pressure: 0.95)))
+        }
+        renderer.rebuild(strokes: strokes, scale: 1)
+        let report = try XCTUnwrap(renderer.toneReport())
+        XCTAssertGreaterThan(report.densityGrid[0][0], 0.3)   // øvre venstre mørk
+        XCTAssertLessThan(report.densityGrid[4][7], 0.05)     // nedre høyre tom
+        XCTAssertGreaterThan(report.restZoneCount, 20)        // mest hvileflate
+    }
 }
