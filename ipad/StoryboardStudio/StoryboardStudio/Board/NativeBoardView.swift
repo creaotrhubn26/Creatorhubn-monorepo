@@ -67,16 +67,67 @@ final class BoardState: ObservableObject {
 
     func addShot() {
         guard let scene else { return }
+        runMutation("Shot lagt til ✓") {
+            try await RoleRoomAPIClient.shared.addFrame(
+                manuscriptId: self.manuscript.id, sceneId: scene.id)
+        }
+    }
+
+    func deleteShot(frameId: String) {
+        guard let scene else { return }
+        runMutation("Shot slettet ✓") {
+            try await RoleRoomAPIClient.shared.deleteFrame(
+                manuscriptId: self.manuscript.id, sceneId: scene.id, frameId: frameId)
+            return nil
+        }
+    }
+
+    func duplicateShot(frameId: String) {
+        guard let scene else { return }
+        runMutation("Shot duplisert ✓") {
+            try await RoleRoomAPIClient.shared.duplicateFrame(
+                manuscriptId: self.manuscript.id, sceneId: scene.id, frameId: frameId)
+        }
+    }
+
+    func moveShot(frameId: String, offset: Int) {
+        guard let scene else { return }
+        runMutation("Flyttet ✓") {
+            try await RoleRoomAPIClient.shared.moveFrame(
+                manuscriptId: self.manuscript.id, sceneId: scene.id, frameId: frameId, offset: offset)
+            return frameId
+        }
+    }
+
+    func addScene(title: String) {
         syncStatus = "…"
         Task {
             do {
-                let newId = try await RoleRoomAPIClient.shared.addFrame(
-                    manuscriptId: manuscript.id, sceneId: scene.id)
+                let sceneId = try await RoleRoomAPIClient.shared.addScene(
+                    manuscriptId: manuscript.id, title: title)
                 await reload()
-                if let index = self.scene?.frames.firstIndex(where: { $0.id == newId }) {
+                if let index = scenes.firstIndex(where: { $0.id == sceneId }) {
+                    selectedSceneIndex = index
+                    activeFrameIndex = 0
+                }
+                syncStatus = "Scene opprettet ✓"
+            } catch {
+                syncStatus = error.localizedDescription
+            }
+        }
+    }
+
+    /// Kjør frame-mutasjon → reload → velg returnert frame-id (om noen).
+    private func runMutation(_ successStatus: String, _ work: @escaping () async throws -> String?) {
+        syncStatus = "…"
+        Task {
+            do {
+                let focusId = try await work()
+                await reload()
+                if let focusId, let index = scene?.frames.firstIndex(where: { $0.id == focusId }) {
                     activeFrameIndex = index
                 }
-                syncStatus = "Shot lagt til ✓"
+                syncStatus = successStatus
             } catch {
                 syncStatus = error.localizedDescription
             }
@@ -127,6 +178,10 @@ struct NativeBoardView: View {
     @State private var textPromptPoint: CGPoint = .zero
     @State private var sheetZoom: Double = 1.0
     @State private var scrollTarget: Int?
+    @State private var showFullscreenDraw = false
+    @State private var pendingDeleteFrameId: String?
+    @State private var newSceneTitle = ""
+    @State private var showNewScenePrompt = false
     @Environment(\.dismiss) private var dismiss
 
     init(manuscript: ManuscriptSummary) {
@@ -153,10 +208,16 @@ struct NativeBoardView: View {
             AnimaticView(sceneHeading: board.scene?.heading ?? "",
                          frames: board.scene?.frames ?? [])
         }
+        .fullScreenCover(isPresented: $showFullscreenDraw) {
+            if let frame = board.frame {
+                FullscreenDrawView(canvasState: canvasState, frame: frame)
+            }
+        }
         .task { await board.reload() }
         .onChange(of: board.activeFrameIndex) { loadActiveFrameIntoCanvas() }
         .onChange(of: board.selectedSceneIndex) { board.activeFrameIndex = 0; loadActiveFrameIntoCanvas() }
         .onChange(of: board.scenes.count) { loadActiveFrameIntoCanvas() }
+        .onChange(of: canvasState.strokes.count) { scheduleAutosync() }
     }
 
     // Forrige lastede frame + strøkantall — usynkede strøk flushes automatisk
@@ -166,10 +227,20 @@ struct NativeBoardView: View {
 
     private func loadActiveFrameIntoCanvas() {
         flushPendingStrokes()
+        autosyncTask?.cancel()
         canvasState.contentSize = board.frame.map {
             CGSize(width: $0.drawingWidth, height: $0.drawingHeight)
         }
-        if let json = board.frame?.strokesJSON,
+        // Pending-backup (app drept før synk) er alltid nyere enn serverens
+        // versjon — gjenopprett og synk den.
+        var restoredPending = false
+        if let frameId = board.frame?.id,
+           let pending = PendingStrokeStore.load(frameId: frameId),
+           let strokes = try? StrokeSerialization.decodeFromWebJSON(pending) {
+            canvasState.strokes = strokes
+            restoredPending = true
+            board.syncStatus = "Gjenopprettet usynket tegning"
+        } else if let json = board.frame?.strokesJSON,
            let strokes = try? StrokeSerialization.decodeFromWebJSON(json) {
             canvasState.strokes = strokes
         } else {
@@ -181,6 +252,12 @@ struct NativeBoardView: View {
             board.frame.map { (scene.id, $0.id) }
         }
         loadedStrokeCount = canvasState.strokes.count
+        if restoredPending {
+            // Marker som usynket så autosynken plukker den opp (thumb
+            // rendres etter at canvasen har rebuildet den nye framen).
+            loadedStrokeCount = -1
+            scheduleAutosync()
+        }
     }
 
     private func flushPendingStrokes() {
@@ -194,19 +271,43 @@ struct NativeBoardView: View {
         }
     }
 
+    @State private var autosyncTask: Task<Void, Never>?
+
     private func syncActiveFrameStrokes() {
         guard let scene = board.scene, let frame = board.frame else { return }
         board.syncStatus = "…"
+        // Thumb rendres fra akkumulatoren så SCENES/minimap viser native
+        // tegninger uten å vente på web.
+        let thumbnail = renderer?.thumbnailDataURL()
         Task {
             do {
                 let json = try StrokeSerialization.encodeToWebJSON(canvasState.strokes)
                 try await RoleRoomAPIClient.shared.saveFrameStrokes(
-                    manuscriptId: board.manuscript.id, sceneId: scene.id, frameId: frame.id, strokesJSON: json)
+                    manuscriptId: board.manuscript.id, sceneId: scene.id, frameId: frame.id,
+                    strokesJSON: json, thumbnailDataURL: thumbnail)
                 loadedStrokeCount = canvasState.strokes.count
+                PendingStrokeStore.clear(frameId: frame.id)
                 board.syncStatus = "Synket ✓"
+            } catch SyncError.unauthenticated {
+                board.syncStatus = "Token utløpt — logg inn på nytt"
             } catch {
+                // Pending-fil beholdes; neste autosynk prøver igjen.
                 board.syncStatus = error.localizedDescription
             }
+        }
+    }
+
+    // Autosynk: backup til disk straks, nett-synk etter 3 s ro.
+    private func scheduleAutosync() {
+        guard let frame = board.frame,
+              canvasState.strokes.count != loadedStrokeCount,
+              let json = try? StrokeSerialization.encodeToWebJSON(canvasState.strokes) else { return }
+        PendingStrokeStore.save(json, frameId: frame.id)
+        autosyncTask?.cancel()
+        autosyncTask = Task {
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard !Task.isCancelled else { return }
+            syncActiveFrameStrokes()
         }
     }
 
@@ -274,7 +375,16 @@ struct NativeBoardView: View {
 
     private var scenesColumn: some View {
         VStack(alignment: .leading, spacing: 0) {
-            panelLabel("Scenes").padding(.horizontal, 14).padding(.vertical, 12)
+            HStack {
+                panelLabel("Scenes")
+                Spacer()
+                Button { showNewScenePrompt = true } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(BoardBrand.dim)
+                }
+                .accessibilityLabel("Ny scene")
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
             ScrollView {
                 VStack(spacing: 8) {
                     ForEach(Array(board.scenes.enumerated()), id: \.element.id) { index, scene in
@@ -374,6 +484,23 @@ struct NativeBoardView: View {
         .sheet(isPresented: $showScript) {
             ScriptSheet(scenes: board.scenes, activeIndex: board.selectedSceneIndex)
         }
+        .confirmationDialog("Slette shotet permanent?",
+                            isPresented: Binding(get: { pendingDeleteFrameId != nil },
+                                                 set: { if !$0 { pendingDeleteFrameId = nil } })) {
+            Button("Slett shot", role: .destructive) {
+                if let frameId = pendingDeleteFrameId { board.deleteShot(frameId: frameId) }
+                pendingDeleteFrameId = nil
+            }
+        }
+        .alert("Ny scene", isPresented: $showNewScenePrompt) {
+            TextField("Scenetittel", text: $newSceneTitle)
+            Button("Opprett") {
+                let title = newSceneTitle.trimmingCharacters(in: .whitespaces)
+                newSceneTitle = ""
+                if !title.isEmpty { board.addScene(title: title) }
+            }
+            Button("Avbryt", role: .cancel) { newSceneTitle = "" }
+        }
     }
 
     private var sheetScroll: some View {
@@ -412,12 +539,31 @@ struct NativeBoardView: View {
             // Venstre: kode + ACTION/DIALOG + NOTES
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 6) {
-                    Text(frame.shotNumber)
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
-                        .foregroundStyle(BoardBrand.inkOnSheet)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(.white, in: RoundedRectangle(cornerRadius: 4))
-                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color(white: 0.25), lineWidth: 1.5))
+                    // Shot-meny: dupliser/flytt/slett (mockupens «…»)
+                    Menu {
+                        Button { board.duplicateShot(frameId: frame.id) } label: {
+                            Label("Dupliser", systemImage: "plus.square.on.square")
+                        }
+                        Button { board.moveShot(frameId: frame.id, offset: -1) } label: {
+                            Label("Flytt opp", systemImage: "arrow.up")
+                        }
+                        .disabled(index == 0)
+                        Button { board.moveShot(frameId: frame.id, offset: 1) } label: {
+                            Label("Flytt ned", systemImage: "arrow.down")
+                        }
+                        .disabled(index == (board.scene?.frames.count ?? 1) - 1)
+                        Button(role: .destructive) { pendingDeleteFrameId = frame.id } label: {
+                            Label("Slett shot", systemImage: "trash")
+                        }
+                    } label: {
+                        Text(frame.shotNumber)
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            .foregroundStyle(BoardBrand.inkOnSheet)
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(.white, in: RoundedRectangle(cornerRadius: 4))
+                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color(white: 0.25), lineWidth: 1.5))
+                    }
+                    .accessibilityLabel("Shot-meny \(frame.shotNumber)")
                     Rectangle().fill(Color(white: 0.72)).frame(width: 24, height: 1.5)
                 }
                 Text("ACTION / DIALOG")
@@ -516,7 +662,7 @@ struct NativeBoardView: View {
     private func activeCanvas(frame: FrameSummary) -> some View {
         GeometryReader { geo in
             let scale = geo.size.width / CGFloat(max(1, frame.drawingWidth))
-            ZStack(alignment: .topLeading) {
+            ZStack(alignment: .topTrailing) {
                 PencilCanvasView(state: canvasState, renderer: renderer)
                     .background(Color(red: 0.992, green: 0.992, blue: 0.984))
                     .allowsHitTesting(boardTool == .draw || boardTool == .eraser)
@@ -537,6 +683,17 @@ struct NativeBoardView: View {
                 if boardTool == .arrow || boardTool == .rect || boardTool == .text {
                     annotationCapture(scale: scale)
                 }
+                // Fullskjerm tegnemodus (pinch-zoom, palm rejection)
+                Button { showFullscreenDraw = true } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(Color.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 7))
+                }
+                .buttonStyle(.plain)
+                .padding(6)
+                .accessibilityLabel("Fullskjerm tegning")
             }
         }
     }
@@ -687,6 +844,22 @@ struct NativeBoardView: View {
                         board.patchActiveFrame(["weather": $0])
                     }
 
+                    // ACTION / DIALOG (frame.description)
+                    panelLabel("Action / Dialog")
+                    TextField("Hva skjer i shotet…", text: $descriptionDraft, axis: .vertical)
+                        .lineLimit(2...4)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white)
+                        .padding(8)
+                        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+                        .onSubmit { board.patchActiveFrame(["description": descriptionDraft]) }
+
+                    // BEAT-tag (web BEAT_TAG_OPTIONS)
+                    inspectorPicker("Beat", value: frame.beatTag,
+                                    options: ["ESTABLISHING", "TENSION", "BEAT", "ACTION", "DIALOGUE", "RESOLUTION"]) {
+                        board.patchActiveFrame(["beatTag": $0])
+                    }
+
                     // NOTES (mockup: fritekstfelt).
                     panelLabel("Notes")
                     TextField("Add notes…", text: $notesDraft, axis: .vertical)
@@ -727,11 +900,18 @@ struct NativeBoardView: View {
         }
         .frame(width: 250)
         .background(BoardBrand.chrome)
-        .onChange(of: board.frame?.id) { notesDraft = board.frame?.notes ?? "" }
-        .onAppear { notesDraft = board.frame?.notes ?? "" }
+        .onChange(of: board.frame?.id) {
+            notesDraft = board.frame?.notes ?? ""
+            descriptionDraft = board.frame?.description ?? ""
+        }
+        .onAppear {
+            notesDraft = board.frame?.notes ?? ""
+            descriptionDraft = board.frame?.description ?? ""
+        }
     }
 
     @State private var notesDraft = ""
+    @State private var descriptionDraft = ""
     @State private var tagDraft = ""
 
     private func addTag(frame: FrameSummary) {
@@ -1107,13 +1287,28 @@ struct AnimaticView: View {
 
 // Mini-diagram i shot-radens venstrekolonne: strek-render av Notes-lag-strøk
 // (mockupens NOTES/DIAGRAM-skisse). Skjules når laget er tomt.
+// Decode-cache: JSON-parsing per rad per render er dyrt — nøkkel er selve
+// json-strengen (endres kun når strøkene endres). Enkel cap i stedet for LRU.
+@MainActor
+private enum NoteStrokeCache {
+    static var store: [String: [PencilStroke]] = [:]
+
+    static func noteStrokes(for json: String) -> [PencilStroke] {
+        if let hit = store[json] { return hit }
+        let parsed = ((try? StrokeSerialization.decodeFromWebJSON(json)) ?? [])
+            .filter { $0.boardLayer == "Notes" && $0.textAnnotation == nil }
+        if store.count > 60 { store.removeAll(keepingCapacity: true) }
+        store[json] = parsed
+        return parsed
+    }
+}
+
 private struct NotesDiagramMini: View {
     let strokesJSON: String?
     let contentWidth: Double
 
     private var noteStrokes: [PencilStroke] {
-        (strokesJSON.flatMap { try? StrokeSerialization.decodeFromWebJSON($0) } ?? [])
-            .filter { $0.boardLayer == "Notes" && $0.textAnnotation == nil }
+        strokesJSON.map { NoteStrokeCache.noteStrokes(for: $0) } ?? []
     }
 
     var body: some View {
@@ -1280,6 +1475,93 @@ private struct StrokePreview: View {
         }
         .background(Color.black, in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(BoardBrand.border, lineWidth: 1))
+    }
+}
+
+// Fullskjerm tegnemodus: pinch/slider-zoom (bredde-reflow → skarp
+// re-rendring), finger panorerer, Pencil tegner (palm rejection),
+// «Finger tegner»-toggle for enheter uten Pencil. Deler CanvasState med
+// boardet (strokes/autosynk følger med); egen renderer-instans så inline-
+// canvasens akkumulator ikke thrashes av to layouts.
+struct FullscreenDrawView: View {
+    @ObservedObject var canvasState: CanvasState
+    let frame: FrameSummary
+    @State private var renderer = MetalStrokeRenderer()
+    @State private var zoom: CGFloat = 1
+    @State private var zoomAtPinchStart: CGFloat?
+    @State private var fingerDraws = false
+    @Environment(\.dismiss) private var dismiss
+
+    private var aspect: CGFloat { CGFloat(frame.drawingWidth / max(1, frame.drawingHeight)) }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Text("SHOT \(frame.shotNumber)")
+                    .font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                Spacer()
+                Toggle(isOn: $fingerDraws) {
+                    Text("Finger tegner").font(.system(size: 12))
+                }
+                .toggleStyle(.switch)
+                .frame(width: 150)
+                Slider(value: $zoom, in: 0.5...3).frame(width: 140)
+                Text("\(Int(zoom * 100))%")
+                    .font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary)
+                    .frame(width: 38)
+                Button { dismiss() } label: {
+                    Text("Ferdig").font(.system(size: 13, weight: .semibold))
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 8)
+            .background(.bar)
+            BrushToolbar(canvasState: canvasState, onExport: nil)
+            ScrollView([.horizontal, .vertical], showsIndicators: false) {
+                PencilCanvasView(state: canvasState, renderer: renderer,
+                                 pencilOnly: !fingerDraws,
+                                 disableScrollCancel: fingerDraws)
+                    .id(fingerDraws) // disableScrollCancel virker i didMoveToWindow — remount ved bytte
+                    .background(Color(red: 0.992, green: 0.992, blue: 0.984))
+                    .frame(width: 1100 * zoom, height: 1100 * zoom / aspect)
+                    .padding(60)
+            }
+            .background(Color(white: 0.13))
+            .simultaneousGesture(
+                MagnificationGesture()
+                    .onChanged { value in
+                        if zoomAtPinchStart == nil { zoomAtPinchStart = zoom }
+                        zoom = min(3, max(0.5, (zoomAtPinchStart ?? 1) * value))
+                    }
+                    .onEnded { _ in zoomAtPinchStart = nil }
+            )
+        }
+        .background(Color.black)
+    }
+}
+
+// Krasj-vern: usynkede strøk skrives til disk ved hver endring og slettes
+// først når serveren har bekreftet. Overlever app-kill.
+enum PendingStrokeStore {
+    private static var directory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("pending-strokes", isDirectory: true)
+    }
+
+    private static func fileURL(_ frameId: String) -> URL {
+        directory.appendingPathComponent("\(frameId).json")
+    }
+
+    static func save(_ json: String, frameId: String) {
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? json.write(to: fileURL(frameId), atomically: true, encoding: .utf8)
+    }
+
+    static func load(frameId: String) -> String? {
+        try? String(contentsOf: fileURL(frameId), encoding: .utf8)
+    }
+
+    static func clear(frameId: String) {
+        try? FileManager.default.removeItem(at: fileURL(frameId))
     }
 }
 
