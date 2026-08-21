@@ -386,6 +386,7 @@ const PRO_BRUSH_OPTIONS: ProBrushType[] = [
   'hatch', 'crosshatch', 'shade', 'graintex', 'smudge',
   'eraser', 'kneaded', 'lightlift',
   'forest', 'debris', 'organictex', 'fur', 'toneblock', 'speedlines',
+  'airbrush', 'wethair', 'softfocus', 'skintex', 'rocktex', 'gloss',
   // Klassiske
   'graphite', 'charcoal', 'conte', 'pen', 'marker', 'highlighter', 'watercolor',
 ];
@@ -405,6 +406,12 @@ const PRO_BRUSH_LABELS: Record<string, string> = {
   fur: 'Pels',
   toneblock: 'Tone',
   speedlines: 'Fart',
+  airbrush: 'Luft',
+  wethair: 'Hår',
+  softfocus: 'Fokus',
+  skintex: 'Hud',
+  rocktex: 'Stein',
+  gloss: 'Glans',
   pencil: 'Pencil',
   graphite: 'Graphite',
   charcoal: 'Charcoal',

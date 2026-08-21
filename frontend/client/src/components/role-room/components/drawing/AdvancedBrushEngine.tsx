@@ -44,7 +44,14 @@ export type AdvancedBrushType =
   | 'organictex'
   | 'fur'
   | 'toneblock'
-  | 'speedlines';
+  | 'speedlines'
+  // Rendering-klassen (native-first; web forenklet inntil portering)
+  | 'airbrush'
+  | 'wethair'
+  | 'softfocus'
+  | 'skintex'
+  | 'rocktex'
+  | 'gloss';
 
 // Alias for external usage
 export type ProBrushType = AdvancedBrushType;
@@ -99,6 +106,12 @@ export const BRUSH_PRESETS: Record<AdvancedBrushType, Partial<BrushConfig>> = {
   organictex: { grain: 0.3, flow: 0.7, hardness: 0.6, tiltSensitivity: 0.3, pressureSensitivity: 0.8 },
   fur: { grain: 0.3, flow: 0.7, hardness: 0.6, tiltSensitivity: 0.3, pressureSensitivity: 0.8 },
   toneblock: { grain: 0.18, flow: 1.0, hardness: 0.7, tiltSensitivity: 0.6, pressureSensitivity: 0.6 },
+  airbrush: { grain: 0, flow: 0.14, hardness: 0.1, tiltSensitivity: 0.4, pressureSensitivity: 0.7 },
+  wethair: { grain: 0.2, flow: 0.75, hardness: 0.6, tiltSensitivity: 0.3, pressureSensitivity: 0.8 },
+  softfocus: { grain: 0, flow: 0.3, hardness: 0.1, tiltSensitivity: 0.2, pressureSensitivity: 0.5 },
+  skintex: { grain: 0.55, flow: 0.5, hardness: 0.5, tiltSensitivity: 0.4, pressureSensitivity: 0.7 },
+  rocktex: { grain: 0.6, flow: 0.55, hardness: 0.7, tiltSensitivity: 0.4, pressureSensitivity: 0.7 },
+  gloss: { grain: 0, flow: 0.95, hardness: 0.8, tiltSensitivity: 0.3, pressureSensitivity: 0.85 },
   speedlines: { grain: 0.15, flow: 0.8, hardness: 0.7, tiltSensitivity: 0.2, pressureSensitivity: 0.6 },
   pencil: {
     hardness: 0.6,

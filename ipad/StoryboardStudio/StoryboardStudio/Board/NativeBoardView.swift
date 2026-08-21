@@ -1204,6 +1204,8 @@ struct NativeBoardView: View {
         (.eraser, "Viskelær"), (.kneaded, "Kna"), (.lightlift, "Lysløft"),
         (.forest, "Skog"), (.debris, "Bunn"), (.organictex, "Bark"), (.fur, "Pels"),
         (.toneblock, "Tone"), (.speedlines, "Fart"),
+        (.airbrush, "Luft"), (.wethair, "Hår"), (.softfocus, "Fokus"),
+        (.skintex, "Hud"), (.rocktex, "Stein"), (.gloss, "Glans"),
     ]
 
     private var brushColorBinding: Binding<Color> {
@@ -1259,8 +1261,10 @@ struct NativeBoardView: View {
             }
             HStack(alignment: .top, spacing: 14) {
                 // Tip-glyfer i 2×5-grid (mockup) — form, ikke tekst.
+                // Scrollbart glyf-grid — penselfamilien vokser.
+                ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 4) {
-                    ForEach(0..<4, id: \.self) { row in
+                    ForEach(0..<((Self.brushChips.count + 4) / 5), id: \.self) { row in
                         HStack(spacing: 5) {
                             ForEach(Array(Self.brushChips[(row * 5)..<min(row * 5 + 5, Self.brushChips.count)]), id: \.0) { type, name in
                                 let selected = canvasState.brushType == type
@@ -1278,6 +1282,10 @@ struct NativeBoardView: View {
                             }
                         }
                     }
+                }
+                }
+                .frame(height: 92)
+                VStack(spacing: 4) {
                     HStack(spacing: 5) {
                         ColorPicker("Farge", selection: brushColorBinding, supportsOpacity: false)
                             .labelsHidden().frame(width: 32, height: 28)
@@ -1771,6 +1779,41 @@ private struct BrushTipGlyph: View {
                     tip.move(to: CGPoint(x: cx - 12, y: y))
                     tip.addLine(to: CGPoint(x: cx + 12, y: y - 2))
                 }
+            case .airbrush:
+                tip.addEllipse(in: CGRect(x: cx - 9, y: 9, width: 18, height: 18))
+                shaft.addEllipse(in: CGRect(x: cx - 5, y: 13, width: 10, height: 10))
+            case .wethair:
+                for i in 0..<3 {
+                    let base = CGFloat(i) * 7
+                    tip.move(to: CGPoint(x: cx - 8 + base, y: 10))
+                    tip.addQuadCurve(to: CGPoint(x: cx - 3 + base, y: 26),
+                                     control: CGPoint(x: cx - 11 + base, y: 20))
+                }
+            case .softfocus:
+                tip.addEllipse(in: CGRect(x: cx - 10, y: 8, width: 20, height: 20))
+                tip.addEllipse(in: CGRect(x: cx - 6, y: 12, width: 12, height: 12))
+            case .skintex:
+                for i in 0..<12 {
+                    let px = cx - 10 + CGFloat((i * 31) % 20)
+                    let py = 10 + CGFloat((i * 17 + 3) % 15)
+                    tip.addEllipse(in: CGRect(x: px, y: py, width: 2.2, height: 2.2))
+                }
+            case .rocktex:
+                tip.move(to: CGPoint(x: cx - 9, y: 24))
+                tip.addLine(to: CGPoint(x: cx - 5, y: 12))
+                tip.addLine(to: CGPoint(x: cx + 2, y: 17))
+                tip.addLine(to: CGPoint(x: cx + 8, y: 10))
+                tip.addLine(to: CGPoint(x: cx + 10, y: 24))
+                tip.closeSubpath()
+            case .gloss:
+                // Dråpe
+                tip.move(to: CGPoint(x: cx, y: 9))
+                tip.addQuadCurve(to: CGPoint(x: cx + 6, y: 20),
+                                 control: CGPoint(x: cx + 7, y: 13))
+                tip.addArc(center: CGPoint(x: cx, y: 20), radius: 6,
+                           startAngle: .zero, endAngle: .radians(.pi), clockwise: false)
+                tip.addQuadCurve(to: CGPoint(x: cx, y: 9),
+                                 control: CGPoint(x: cx - 7, y: 13))
             default:
                 shaft.addRect(CGRect(x: cx - 3, y: 5, width: 6, height: 16))
                 tip.addEllipse(in: CGRect(x: cx - 3, y: 21, width: 6, height: 10))
@@ -1779,8 +1822,11 @@ private struct BrushTipGlyph: View {
             switch type {
             case .smudge:
                 context.fill(tip, with: .color(white.opacity(0.35)))
-            case .hatch, .crosshatch, .forest, .debris, .organictex, .fur, .speedlines:
+            case .hatch, .crosshatch, .forest, .debris, .organictex, .fur, .speedlines, .wethair:
                 context.stroke(tip, with: .color(white), lineWidth: 1.4)
+            case .airbrush, .softfocus:
+                context.fill(tip, with: .color(white.opacity(0.25)))
+                context.fill(shaft, with: .color(white.opacity(0.45)))
             case .lightlift:
                 context.stroke(tip, with: .color(white.opacity(0.6)), lineWidth: 2)
             case .shade, .graintex, .kneaded:

@@ -81,6 +81,56 @@ enum DabTextureGenerator {
                     pixels[y * size + x] = UInt8(min(255, alpha * 255))
                 }
             }
+        case .softRound:
+            // Gaussisk falloff — kontinuerlig myk tone uten kant.
+            for y in 0..<size {
+                for x in 0..<size {
+                    let dx = (Double(x) - center) / radius
+                    let dy = (Double(y) - center) / radius
+                    let dist2 = dx * dx + dy * dy
+                    guard dist2 <= 1 else { continue }
+                    let alpha = exp(-dist2 * 3.2)
+                    pixels[y * size + x] = UInt8(min(255, alpha * 255))
+                }
+            }
+        case .skinPore:
+            // Porøs hud: svak myk base + tett felt av små porer (mørke
+            // prikker med lysere ringer rundt — plot legger max, så vi
+            // legger base lav og prikker over).
+            radialBase(innerAlpha: 0.30, midAlpha: 0.16, midStop: 0.55)
+            for _ in 0..<160 {
+                let angle = rng.next() * .pi * 2
+                let r = rng.next().squareRoot() * radius * 0.92
+                let fade = 1 - r / radius * 0.6
+                plot(center + cos(angle) * r, center + sin(angle) * r,
+                     0.25 + rng.next() * 0.45 * fade, 0.7 + rng.next() * 1.6)
+            }
+            // Noen dypere porer
+            for _ in 0..<26 {
+                let angle = rng.next() * .pi * 2
+                let r = rng.next().squareRoot() * radius * 0.8
+                plot(center + cos(angle) * r, center + sin(angle) * r,
+                     0.7 + rng.next() * 0.3, 1.4 + rng.next() * 1.4)
+            }
+        case .rockGrit:
+            // Kantete grus: harde småflekker og korte skarpe streker,
+            // ingen myk base — brutt, mineralsk karakter.
+            for _ in 0..<70 {
+                let angle = rng.next() * .pi * 2
+                let r = rng.next().squareRoot() * radius * 0.9
+                let cx = center + cos(angle) * r
+                let cy = center + sin(angle) * r
+                let strokeAngle = rng.next() * .pi * 2
+                let length = 2 + rng.next() * 7
+                let steps = Int(length)
+                let alpha = 0.45 + rng.next() * 0.55
+                for step in 0...steps {
+                    let t = Double(step) / Double(max(1, steps))
+                    plot(cx + cos(strokeAngle) * length * t,
+                         cy + sin(strokeAngle) * length * t,
+                         alpha, 0.8 + rng.next() * 0.9)
+                }
+            }
         case .markerChisel:
             // Bred flat meisel: ellipse, jevn dekning, myk kortside.
             for y in 0..<size {
