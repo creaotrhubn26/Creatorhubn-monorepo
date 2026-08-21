@@ -1203,6 +1203,7 @@ struct NativeBoardView: View {
         (.graintex, "Korn"), (.smudge, "Smudge"),
         (.eraser, "Viskelær"), (.kneaded, "Kna"), (.lightlift, "Lysløft"),
         (.forest, "Skog"), (.debris, "Bunn"), (.organictex, "Bark"), (.fur, "Pels"),
+        (.toneblock, "Tone"), (.speedlines, "Fart"),
     ]
 
     private var brushColorBinding: Binding<Color> {
@@ -1762,6 +1763,14 @@ private struct BrushTipGlyph: View {
                     tip.move(to: CGPoint(x: cx - 9 + base, y: 25))
                     tip.addLine(to: CGPoint(x: cx - 6 + base, y: 12))
                 }
+            case .toneblock:
+                tip.addRect(CGRect(x: cx - 10, y: 10, width: 20, height: 16))
+            case .speedlines:
+                for i in 0..<3 {
+                    let y = 13.0 + Double(i) * 5
+                    tip.move(to: CGPoint(x: cx - 12, y: y))
+                    tip.addLine(to: CGPoint(x: cx + 12, y: y - 2))
+                }
             default:
                 shaft.addRect(CGRect(x: cx - 3, y: 5, width: 6, height: 16))
                 tip.addEllipse(in: CGRect(x: cx - 3, y: 21, width: 6, height: 10))
@@ -1770,7 +1779,7 @@ private struct BrushTipGlyph: View {
             switch type {
             case .smudge:
                 context.fill(tip, with: .color(white.opacity(0.35)))
-            case .hatch, .crosshatch, .forest, .debris, .organictex, .fur:
+            case .hatch, .crosshatch, .forest, .debris, .organictex, .fur, .speedlines:
                 context.stroke(tip, with: .color(white), lineWidth: 1.4)
             case .lightlift:
                 context.stroke(tip, with: .color(white.opacity(0.6)), lineWidth: 2)

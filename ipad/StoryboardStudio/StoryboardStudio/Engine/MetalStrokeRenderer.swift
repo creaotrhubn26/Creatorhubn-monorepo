@@ -333,20 +333,23 @@ final class MetalStrokeRenderer {
         let points = stroke.points
         guard let first = points.first else { return dabs }
         // Ett punkt: én klynge.
-        func cluster(at point: StrokePoint) {
+        func cluster(at point: StrokePoint, direction: SIMD2<Double>) {
             let pressure = pow(max(0.05, point.pressure), config.pressureCurve)
             // Trykk → tetthet + kryss (spec §37)
             let density: Double = pressure < 0.35 ? 0.3 : (pressure < 0.7 ? 0.65 : 1.0)
-            let cross = alwaysCross || pressure >= 0.7
+            let cross = params.allowCross && (alwaysCross || pressure >= 0.7)
             let alpha = min(1, brush.opacity * (0.7 + pressure * 0.5))
             let rows = max(1, Int(region / markSpacing * density))
+            // Speed lines: merkene følger strøkretningen.
+            let baseAngle = params.followDirection
+                ? atan2(direction.y, direction.x) : params.angle
             for _ in 0..<rows {
                 let ox = (rng.next() - 0.5) * region
                 let oy = (rng.next() - 0.5) * region
                 let jx = (rng.next() - 0.5) * params.positionJitter * scale
                 let jy = (rng.next() - 0.5) * params.positionJitter * scale
                 mark(at: point.x * scale + ox + jx, point.y * scale + oy + jy,
-                     angle: params.angle, alpha: alpha)
+                     angle: baseAngle, alpha: alpha)
                 if cross {
                     mark(at: point.x * scale + ox - jx, point.y * scale + oy - jy,
                          angle: params.crossAngle, alpha: alpha * 0.85)
@@ -354,7 +357,7 @@ final class MetalStrokeRenderer {
             }
         }
         if points.count == 1 {
-            cluster(at: first)
+            cluster(at: first, direction: SIMD2(1, 0))
             return dabs
         }
         // Klynger med regionsavstand langs banen (unngå dobbeltdekning).
@@ -371,7 +374,8 @@ final class MetalStrokeRenderer {
                 cluster(at: StrokePoint(
                     x: from.x + dx * t, y: from.y + dy * t,
                     pressure: from.pressure + (to.pressure - from.pressure) * t,
-                    tiltX: 0, tiltY: 0, timestamp: from.timestamp))
+                    tiltX: 0, tiltY: 0, timestamp: from.timestamp),
+                    direction: SIMD2(dx, dy))
             }
             carry = dist - traveled
         }
@@ -667,9 +671,46 @@ final class MetalStrokeRenderer {
     /// Full rebuild (undo/clear/last inn dokument).
     func rebuild(strokes: [PencilStroke], scale: Double) {
         clearCommitted()
-        for stroke in strokes {
-            commitStroke(stroke, scale: scale)
+        // Én command-buffer per strøk metter command-køen (~64 in-flight) —
+        // makeCommandBuffer() gir da nil og resten av strøkene droppes
+        // stille. Batch: sammenhengende ikke-smudge-strøk encodes i ÉN
+        // buffer/pass (pipeline byttes per strøk — rekkefølgen bevares);
+        // smudge må fortsatt gå alene (leser committed via blit).
+        guard let target = committedTexture else { return }
+        var batch: [(dabs: [DabInstanceData], preset: DabPreset, erase: Bool)] = []
+
+        func flushBatch() {
+            guard !batch.isEmpty else { return }
+            defer { batch = [] }
+            guard let buffer = queue.makeCommandBuffer() else { return }
+            let pass = MTLRenderPassDescriptor()
+            pass.colorAttachments[0].texture = target
+            pass.colorAttachments[0].loadAction = .load
+            pass.colorAttachments[0].storeAction = .store
+            guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
+            for entry in batch {
+                encodeDabs(entry.dabs, preset: entry.preset, into: encoder,
+                           pipeline: entry.erase ? dabPipelineEraser : dabPipelineAccumulator)
+            }
+            encoder.endEncoding()
+            buffer.commit()
         }
+
+        for stroke in strokes {
+            guard let brush = stroke.brush else { continue }
+            if brush.type == .smudge {
+                flushBatch()
+                smudgeStroke(stroke, scale: scale)
+                continue
+            }
+            guard StampConfig.forBrush(brush.type) != nil else { continue }
+            let isErase = brush.type == .eraser || brush.type == .kneaded || brush.type == .lightlift
+            let preset = StampConfig.forBrush(brush.type)!.preset
+            batch.append((cachedDabs(for: stroke, scale: scale), preset, isErase))
+            // Hold batchen håndterlig (GPU-encode er billig; minne er poenget)
+            if batch.count >= 40 { flushBatch() }
+        }
+        flushBatch()
     }
 
     /// Presenter: papir + committed + aktive/predicted dabs → drawable.

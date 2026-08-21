@@ -21,6 +21,10 @@ struct HatchParams: Sendable {
     var crossAngle: Double      // 112° — bevisst ikke 90° fra primær
     var positionJitter: Double
     var lengthJitter: Double
+    // Speed lines: merkene følger strøkretningen i stedet for fast vinkel,
+    // og kryss-laget slås aldri på.
+    var followDirection: Bool = false
+    var allowCross: Bool = true
 }
 
 // Prosedural miljøtekstur-modus (spec §56–§66).
@@ -121,7 +125,7 @@ struct StampConfig: Sendable {
             return StampConfig(preset: .pencilGraphite, spacing: 0.08, scatter: 0.10,
                                jitterAngleDeg: 14, tiltRotation: true,
                                pressureToSize: 0.78, pressureToOpacity: 0.72,
-                               flow: 0.8, sizeMultiplier: 1.15,
+                               flow: 1.0, sizeMultiplier: 1.3,
                                pressureCurve: 0.65,
                                velocityToSize: -0.12, velocityToOpacity: -0.24,
                                wobble: 0.16)
@@ -163,8 +167,8 @@ struct StampConfig: Sendable {
                                flow: 0.5, sizeMultiplier: 1.0,
                                pressureCurve: 0.8,
                                velocityToOpacity: -0.18,
-                               wobble: 0.3, tiltOval: 0.9, sizeJitter: 0.13,
-                               directionTexture: 0.55)
+                               wobble: 0.3, tiltOval: 0.9, sizeJitter: 0.1,
+                               directionTexture: 0.8)
         case .graintex:
             // Dry graphite scatter (§39): ujevn, aldri airbrush-jevn.
             return StampConfig(preset: .charcoalTooth, spacing: 0.18, scatter: 0.72,
@@ -186,6 +190,26 @@ struct StampConfig: Sendable {
                                pressureToSize: 0.2, pressureToOpacity: 0.58,
                                flow: 0.35, sizeMultiplier: 1.0,
                                pressureCurve: 0.55)
+        case .toneblock:
+            // Solid tonemasse: tett, høy dekning, kantete — det referansens
+            // mørke flater trenger (shade er bevisst myk build-up).
+            return StampConfig(preset: .markerChisel, spacing: 0.045, scatter: 0.015,
+                               jitterAngleDeg: 6, tiltRotation: true,
+                               pressureToSize: 0.3, pressureToOpacity: 0.35,
+                               flow: 0.95, sizeMultiplier: 1.4,
+                               pressureCurve: 0.8, wobble: 0.08)
+        case .speedlines:
+            return StampConfig(preset: .inkRound, spacing: 0.3, scatter: 0,
+                               jitterAngleDeg: 0, tiltRotation: false,
+                               pressureToSize: 0.25, pressureToOpacity: 0.45,
+                               flow: 0.85, sizeMultiplier: 1.0,
+                               pressureCurve: 0.8,
+                               hatch: HatchParams(lineLength: 64, lineSpacing: 9,
+                                                  lineWidth: 0.7,
+                                                  angle: 0, angleJitter: 0.03,
+                                                  crossAngle: 0,
+                                                  positionJitter: 2.2, lengthJitter: 0.4,
+                                                  followDirection: true, allowCross: false))
         case .forest:
             return StampConfig(preset: .inkRound, spacing: 0.5, scatter: 0,
                                jitterAngleDeg: 0, tiltRotation: false,
@@ -232,6 +256,8 @@ enum Streamline {
         case .heavy: return 0.16
         case .graintex, .kneaded, .lightlift: return 0.15
         case .forest, .debris, .organictex, .fur: return 0.2
+        case .toneblock: return 0.2
+        case .speedlines: return 0.4
         default: return 0.2
         }
     }

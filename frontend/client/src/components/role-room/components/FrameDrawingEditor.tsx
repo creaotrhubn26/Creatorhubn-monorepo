@@ -385,7 +385,7 @@ const PRO_BRUSH_OPTIONS: ProBrushType[] = [
   'layout', 'pencil', 'heavy', 'detail', 'ink',
   'hatch', 'crosshatch', 'shade', 'graintex', 'smudge',
   'eraser', 'kneaded', 'lightlift',
-  'forest', 'debris', 'organictex', 'fur',
+  'forest', 'debris', 'organictex', 'fur', 'toneblock', 'speedlines',
   // Klassiske
   'graphite', 'charcoal', 'conte', 'pen', 'marker', 'highlighter', 'watercolor',
 ];
@@ -403,6 +403,8 @@ const PRO_BRUSH_LABELS: Record<string, string> = {
   debris: 'Bunn',
   organictex: 'Bark',
   fur: 'Pels',
+  toneblock: 'Tone',
+  speedlines: 'Fart',
   pencil: 'Pencil',
   graphite: 'Graphite',
   charcoal: 'Charcoal',
