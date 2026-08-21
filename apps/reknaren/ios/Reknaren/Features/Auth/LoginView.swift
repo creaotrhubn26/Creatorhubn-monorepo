@@ -8,12 +8,20 @@ struct LoginView: View {
     @State private var error: String?
 
     var body: some View {
+        ZStack {
+            LoginBackdrop()
+            content
+        }
+    }
+
+    private var content: some View {
         VStack(spacing: 16) {
             Spacer()
             Image("ReknarenMark")
                 .resizable()
                 .scaledToFit()
                 .frame(width: 84, height: 84)
+                .shadow(color: .reknarenGreen.opacity(0.18), radius: 20, y: 8)
                 .accessibilityLabel("Reknaren")
             Text("Reknaren").font(.largeTitle.bold())
             Text("Regnskapet ditt, forklart på vanlig norsk.\nPassordløs innlogging med engangslenke på e-post.")
@@ -59,5 +67,32 @@ struct LoginView: View {
             self.error = error.localizedDescription
         }
         busy = false
+    }
+}
+
+/// Branded login-bakgrunn: varm bunn + myk skoggrønn glød oppe, gull-hint nede,
+/// og et stort, svakt R-merke som vannmerke. Rolig — ikke støyende.
+private struct LoginBackdrop: View {
+    var body: some View {
+        ZStack {
+            Color.reknarenGround.ignoresSafeArea()
+            RadialGradient(
+                colors: [Color.reknarenGreen.opacity(0.16), .clear],
+                center: .init(x: 0.5, y: 0.28), startRadius: 8, endRadius: 360
+            )
+            .ignoresSafeArea()
+            RadialGradient(
+                colors: [Color.reknarenGold.opacity(0.10), .clear],
+                center: .init(x: 0.9, y: 0.9), startRadius: 8, endRadius: 300
+            )
+            .ignoresSafeArea()
+            Image("ReknarenMark")
+                .resizable().scaledToFit()
+                .frame(width: 520)
+                .opacity(0.04)
+                .offset(x: 120, y: -180)
+                .ignoresSafeArea()
+        }
+        .allowsHitTesting(false)
     }
 }

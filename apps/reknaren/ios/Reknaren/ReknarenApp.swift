@@ -6,6 +6,8 @@ struct ReknarenApp: App {
     @State private var app = AppState()
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
+    init() { ReknarenAppearance.apply() }
+
     var body: some Scene {
         WindowGroup {
             Group {

@@ -55,10 +55,13 @@ struct RootView: View {
     @Environment(PushRouter.self) private var push
     @State private var selection: Screen? = .concierge
 
+    // Daglig bruk øverst, periodisk (skatt/avslutning) nederst — ikke alfabetisk.
+    private static let sectionOrder = ["Virksomhet", "Salg", "Betaling", "Innsikt", "Avslutning og skatt"]
     private var sections: [(name: String, items: [Screen])] {
-        Dictionary(grouping: Screen.allCases, by: \.section)
-            .map { ($0.key, $0.value) }
-            .sorted { $0.name < $1.name }
+        let grouped = Dictionary(grouping: Screen.allCases, by: \.section)
+        return Self.sectionOrder.compactMap { name in
+            grouped[name].map { (name, $0) }
+        }
     }
 
     var body: some View {
@@ -67,11 +70,19 @@ struct RootView: View {
                 ForEach(sections, id: \.name) { section in
                     Section(section.name) {
                         ForEach(section.items) { screen in
-                            Label(screen.label, systemImage: screen.systemImage).tag(screen)
+                            HStack(spacing: 12) {
+                                Image(systemName: screen.systemImage)
+                                    .foregroundStyle(Color.reknarenGreen)
+                                    .frame(width: 26)
+                                Text(screen.label)
+                            }
+                            .tag(screen)
                         }
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.reknarenGround.ignoresSafeArea())
             .navigationTitle("Reknaren")
             .toolbar {
                 if app.orgs.count > 1 {
@@ -82,32 +93,37 @@ struct RootView: View {
                 }
             }
         } detail: {
-            switch selection {
-            case .overview:
-                OverviewView()
-            case .capture:
-                orgScoped { CaptureView(orgId: $0) }
-            case .concierge, .none:
-                orgScoped { ConciergeView(orgId: $0) }
-            case .bank:
-                orgScoped { BankView(orgId: $0) }
-            case .invoices:
-                orgScoped { InvoicesView(orgId: $0) }
-            case .pay:
-                orgScoped { PayView(orgId: $0) }
-            case .vendors:
-                orgScoped { VendorsView(orgId: $0) }
-            case .calendar:
-                orgScoped { CalendarView(orgId: $0) }
-            case .deadlines:
-                orgScoped { DeadlinesView(orgId: $0) }
-            case .deduction:
-                orgScoped { DeductionView(orgId: $0) }
-            case .mva:
-                orgScoped { MvaView(orgId: $0) }
-            case .fixedAssets:
-                orgScoped { FixedAssetsView(orgId: $0) }
+            Group {
+                switch selection {
+                case .overview:
+                    OverviewView()
+                case .capture:
+                    orgScoped { CaptureView(orgId: $0) }
+                case .concierge, .none:
+                    orgScoped { ConciergeView(orgId: $0) }
+                case .bank:
+                    orgScoped { BankView(orgId: $0) }
+                case .invoices:
+                    orgScoped { InvoicesView(orgId: $0) }
+                case .pay:
+                    orgScoped { PayView(orgId: $0) }
+                case .vendors:
+                    orgScoped { VendorsView(orgId: $0) }
+                case .calendar:
+                    orgScoped { CalendarView(orgId: $0) }
+                case .deadlines:
+                    orgScoped { DeadlinesView(orgId: $0) }
+                case .deduction:
+                    orgScoped { DeductionView(orgId: $0) }
+                case .mva:
+                    orgScoped { MvaView(orgId: $0) }
+                case .fixedAssets:
+                    orgScoped { FixedAssetsView(orgId: $0) }
+                }
             }
+            // Varm merkevare-bunn på alle skjermer (skjuler kald system-grå).
+            .scrollContentBackground(.hidden)
+            .background(Color.reknarenGround.ignoresSafeArea())
         }
         .onChange(of: push.pendingScreen) { _, screen in
             if screen == "concierge" { selection = .concierge; push.pendingScreen = nil }
