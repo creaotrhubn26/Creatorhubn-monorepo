@@ -8,7 +8,7 @@ import SwiftUI
 final class SyncState: ObservableObject {
     @Published var isLoggedIn = false
     @Published var userName = ""
-    @Published var serverURL = UserDefaults.standard.string(forKey: "rr.server") ?? "https://www.creatorhubn.com"
+    @Published var serverURL = UserDefaults.standard.string(forKey: "rr.server") ?? "https://theroleroom.com"
     @Published var errorMessage: String?
 }
 
