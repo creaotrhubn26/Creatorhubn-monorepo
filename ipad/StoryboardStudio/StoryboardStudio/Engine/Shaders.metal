@@ -53,6 +53,19 @@ fragment float4 dab_fragment(VertexOut in [[stage_in]],
     return float4(in.color * a, a);   // premultiplied
 }
 
+// Smudge: stempler en kopiert region av akkumulatoren tilbake på ny
+// posisjon (Krita «Smearing mode»). Sampler full RGBA (premultiplied)
+// og skalerer med strength i instansens alpha.
+fragment float4 smudge_fragment(VertexOut in [[stage_in]],
+                                texture2d<float> regionTexture [[texture(0)]]) {
+    constexpr sampler regionSampler(mag_filter::linear, min_filter::linear);
+    float4 region = regionTexture.sample(regionSampler, in.uv); // premultiplied
+    // Sirkulær maske så stempelet ikke får firkantede kanter
+    float2 centered = in.uv - 0.5;
+    float falloff = 1.0 - smoothstep(0.35, 0.5, length(centered));
+    return region * in.alpha * falloff;
+}
+
 // Komposit: tegn akkumulator-teksturen (premultiplied) over papirfargen.
 struct BlitOut {
     float4 position [[position]];
