@@ -3,7 +3,7 @@ import SwiftUI
 /// Navigasjons-mål. Speiler web-nav; utvides fase for fase. `NavigationSplitView`
 /// gir sidebar på iPad og kollapser automatisk til stack på iPhone → universell.
 enum Screen: String, CaseIterable, Identifiable {
-    case capture, concierge, overview, bank, invoices, pay, vendors, calendar, deadlines, deduction, mva, fixedAssets
+    case capture, concierge, overview, bank, invoices, pay, vendors, calendar, deadlines, deduction, tax, mva, fixedAssets
     var id: String { rawValue }
 
     var label: String {
@@ -18,6 +18,7 @@ enum Screen: String, CaseIterable, Identifiable {
         case .calendar: return "Framover"
         case .deadlines: return "Frister"
         case .deduction: return "Spør: fradrag"
+        case .tax: return "Skatt"
         case .mva: return "MVA"
         case .fixedAssets: return "Anleggsmidler"
         }
@@ -34,6 +35,7 @@ enum Screen: String, CaseIterable, Identifiable {
         case .calendar: return "calendar"
         case .deadlines: return "clock.badge.exclamationmark"
         case .deduction: return "questionmark.circle"
+        case .tax: return "banknote"
         case .mva: return "doc.badge.gearshape"
         case .fixedAssets: return "shippingbox.and.arrow.backward"
         }
@@ -44,7 +46,7 @@ enum Screen: String, CaseIterable, Identifiable {
         case .invoices: return "Salg"
         case .pay, .vendors: return "Betaling"
         case .calendar, .deadlines, .deduction: return "Innsikt"
-        case .mva, .fixedAssets: return "Avslutning og skatt"
+        case .tax, .mva, .fixedAssets: return "Avslutning og skatt"
         }
     }
 }
@@ -115,6 +117,8 @@ struct RootView: View {
                     orgScoped { DeadlinesView(orgId: $0) }
                 case .deduction:
                     orgScoped { DeductionView(orgId: $0) }
+                case .tax:
+                    orgScoped { SkattView(orgId: $0) }
                 case .mva:
                     orgScoped { MvaView(orgId: $0) }
                 case .fixedAssets:
