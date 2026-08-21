@@ -11,6 +11,7 @@ struct BrushToolbar: View {
         (.hatch, "Skraver"), (.crosshatch, "Kryss"), (.shade, "Skygge"),
         (.graintex, "Korn"), (.smudge, "Smudge"),
         (.eraser, "Viskelær"), (.kneaded, "Kna"), (.lightlift, "Lysløft"),
+        (.forest, "Skog"), (.debris, "Bunn"), (.organictex, "Bark"), (.fur, "Pels"),
     ]
 
     private var colorBinding: Binding<Color> {

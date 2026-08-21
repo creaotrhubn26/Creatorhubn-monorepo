@@ -37,6 +37,17 @@ export type DabPreset =
   | 'airbrush-spray'
   | 'texture-paper';
 
+export interface HatchParams {
+  lineLength: number;
+  lineSpacing: number;
+  lineWidth: number;
+  angle: number;        // rad (35°)
+  angleJitter: number;
+  crossAngle: number;   // rad (112° — bevisst ikke 90°)
+  positionJitter: number;
+  lengthJitter: number;
+}
+
 export interface StampConfig {
   preset: DabPreset;
   spacing: number;          // % av size, 0.03..0.5
@@ -47,6 +58,16 @@ export interface StampConfig {
   pressureToOpacity: number;// 0..1
   flow: number;             // 0..1 per-dab alpha
   sizeMultiplier: number;   // global skala vs brush.size
+  // Story Brush Engine-dynamikk (samme semantikk som iPad-motoren)
+  pressureCurve?: number;      // pow-eksponent (default 1 = lineær)
+  velocityToSize?: number;     // negativ = raskere → tynnere
+  velocityToOpacity?: number;
+  wobble?: number;             // lavfrekvent smooth noise, faktor
+  taperDistance?: number;      // px taper inn/ut
+  tiltOval?: number;           // 0..1 — tilt → bred/flat oval
+  sizeJitter?: number;
+  directionTexture?: number;   // mikrolinjer i strøkretning (Shade 2.0)
+  hatch?: HatchParams;         // prosedural skravering
 }
 
 const DAB_CANVAS_SIZE = 128;
@@ -392,6 +413,92 @@ const STAMP_CONFIG_BY_BRUSH: Partial<Record<ProBrushType, StampConfig>> = {
     flow: 0.5,
     sizeMultiplier: 1.3,
   },
+  // ── Story Brush Engine (storyboard-brush-engine.md, iPad-paritet) ──
+  layout: {
+    preset: 'pencil-graphite', spacing: 0.09, scatter: 0.08, jitterAngle: 10,
+    tiltRotation: true, pressureToSize: 0.58, pressureToOpacity: 0.52,
+    flow: 0.55, sizeMultiplier: 1.0,
+    pressureCurve: 0.65, velocityToSize: -0.08, velocityToOpacity: -0.18, wobble: 0.14,
+  },
+  heavy: {
+    preset: 'pencil-graphite', spacing: 0.08, scatter: 0.10, jitterAngle: 14,
+    tiltRotation: true, pressureToSize: 0.78, pressureToOpacity: 0.72,
+    flow: 0.8, sizeMultiplier: 1.15,
+    pressureCurve: 0.65, velocityToSize: -0.12, velocityToOpacity: -0.24, wobble: 0.16,
+  },
+  detail: {
+    preset: 'ink-round', spacing: 0.045, scatter: 0.025, jitterAngle: 5,
+    tiltRotation: false, pressureToSize: 0.88, pressureToOpacity: 0.38,
+    flow: 0.85, sizeMultiplier: 1.0,
+    pressureCurve: 0.7, velocityToSize: -0.10, velocityToOpacity: -0.10,
+    wobble: 0.05, taperDistance: 6,
+  },
+  hatch: {
+    preset: 'ink-round', spacing: 0.14, scatter: 0, jitterAngle: 0,
+    tiltRotation: false, pressureToSize: 0.2, pressureToOpacity: 0.4,
+    flow: 0.9, sizeMultiplier: 1.0, pressureCurve: 0.75,
+    hatch: {
+      lineLength: 15, lineSpacing: 5, lineWidth: 0.85,
+      angle: (35 * Math.PI) / 180, angleJitter: 0.06,
+      crossAngle: (112 * Math.PI) / 180,
+      positionJitter: 1.2, lengthJitter: 0.15,
+    },
+  },
+  crosshatch: {
+    preset: 'ink-round', spacing: 0.14, scatter: 0, jitterAngle: 0,
+    tiltRotation: false, pressureToSize: 0.2, pressureToOpacity: 0.4,
+    flow: 0.9, sizeMultiplier: 1.0, pressureCurve: 0.75,
+    hatch: {
+      lineLength: 15, lineSpacing: 5, lineWidth: 0.85,
+      angle: (35 * Math.PI) / 180, angleJitter: 0.06,
+      crossAngle: (112 * Math.PI) / 180,
+      positionJitter: 1.2, lengthJitter: 0.15,
+    },
+  },
+  shade: {
+    preset: 'charcoal-tooth', spacing: 0.075, scatter: 0.04, jitterAngle: 6,
+    tiltRotation: true, pressureToSize: 0.40, pressureToOpacity: 0.70,
+    flow: 0.5, sizeMultiplier: 1.0,
+    pressureCurve: 0.8, velocityToOpacity: -0.18,
+    wobble: 0.3, tiltOval: 0.9, sizeJitter: 0.13, directionTexture: 0.55,
+  },
+  graintex: {
+    preset: 'charcoal-tooth', spacing: 0.18, scatter: 0.72, jitterAngle: 180,
+    tiltRotation: false, pressureToSize: 0.2, pressureToOpacity: 0.56,
+    flow: 0.6, sizeMultiplier: 1.0, pressureCurve: 0.8, sizeJitter: 0.42,
+  },
+  kneaded: {
+    preset: 'charcoal-tooth', spacing: 0.08, scatter: 0.05, jitterAngle: 20,
+    tiltRotation: false, pressureToSize: 0.3, pressureToOpacity: 0.72,
+    flow: 0.6, sizeMultiplier: 1.0, pressureCurve: 0.72,
+  },
+  lightlift: {
+    preset: 'ink-round', spacing: 0.06, scatter: 0.1, jitterAngle: 0,
+    tiltRotation: false, pressureToSize: 0.2, pressureToOpacity: 0.58,
+    flow: 0.35, sizeMultiplier: 1.0, pressureCurve: 0.55,
+  },
+  // Fase 2 Environmental: native genererer strukturer (gran/kvister/shards/
+  // strå); web viser forenklet scatter til egen generator porteres.
+  forest: {
+    preset: 'charcoal-tooth', spacing: 0.2, scatter: 0.5, jitterAngle: 90,
+    tiltRotation: false, pressureToSize: 0.46, pressureToOpacity: 0.4,
+    flow: 0.6, sizeMultiplier: 1.0, pressureCurve: 0.8, sizeJitter: 0.3,
+  },
+  debris: {
+    preset: 'charcoal-tooth', spacing: 0.2, scatter: 0.6, jitterAngle: 180,
+    tiltRotation: false, pressureToSize: 0.38, pressureToOpacity: 0.4,
+    flow: 0.55, sizeMultiplier: 1.0, pressureCurve: 0.8, sizeJitter: 0.4,
+  },
+  organictex: {
+    preset: 'charcoal-tooth', spacing: 0.18, scatter: 0.5, jitterAngle: 60,
+    tiltRotation: false, pressureToSize: 0.4, pressureToOpacity: 0.74,
+    flow: 0.55, sizeMultiplier: 1.0, pressureCurve: 0.8, sizeJitter: 0.35,
+  },
+  fur: {
+    preset: 'ink-round', spacing: 0.12, scatter: 0.35, jitterAngle: 30,
+    tiltRotation: false, pressureToSize: 0.4, pressureToOpacity: 0.4,
+    flow: 0.5, sizeMultiplier: 0.6, pressureCurve: 0.8, sizeJitter: 0.4,
+  },
 };
 
 /** Returnerer stamp-config for brush-type, eller null hvis brush ikke skal stamp-rendres. */
@@ -514,6 +621,11 @@ function tiltAngleRad(p: PencilPoint): number {
   return Math.atan2(ty, tx);
 }
 
+/** Lavfrekvent smooth noise for menneskelig wobble (spec §15). */
+function wobbleNoise(t: number): number {
+  return Math.sin(t * 1.13) * 0.5 + Math.sin(t * 0.47) * 0.3 + Math.sin(t * 2.17) * 0.2;
+}
+
 /**
  * Tegner én dab på ctx ved (x, y) med oppgitt rotasjon, skala og alpha.
  * Bruker setTransform direkte (raskere enn save/restore for hver dab).
@@ -526,13 +638,16 @@ function drawSingleDab(
   size: number,
   rotation: number,
   alpha: number,
+  stretchX = 1,
+  stretchY = 1,
 ): void {
-  const scale = size / DAB_CANVAS_SIZE;
-  const cos = Math.cos(rotation) * scale;
-  const sin = Math.sin(rotation) * scale;
+  const scaleX = (size / DAB_CANVAS_SIZE) * stretchX;
+  const scaleY = (size / DAB_CANVAS_SIZE) * stretchY;
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
   // transform (ikke setTransform) — bevarer basen (f.eks. devicePixelRatio)
   ctx.save();
-  ctx.transform(cos, sin, -sin, cos, x, y);
+  ctx.transform(cos * scaleX, sin * scaleX, -sin * scaleY, cos * scaleY, x, y);
   ctx.globalAlpha = alpha;
   ctx.drawImage(dab, -DAB_CANVAS_SIZE / 2, -DAB_CANVAS_SIZE / 2);
   ctx.restore();
@@ -564,13 +679,22 @@ export function stampSegment(
   const rgb = hexToRgbTriplet(brush.color);
   const tinted = getTintedDab(config.preset, dab, rgb);
 
+  // Prosedural skravering (spec §10/§37): klynger i stedet for dabs.
+  if (config.hatch) {
+    return hatchSegment(ctx, from, to, brush, config, config.hatch, carryDistance, rng);
+  }
+
+  // Fart i px/ms fra timestamps (spec §5).
+  const dt = Math.max(1, (to.timestamp ?? 0) - (from.timestamp ?? 0));
+  const velocity = dist / dt;
+
   let traveled = -carryDistance;
   // Tegn dabs ved jevne mellomrom langs segmentet
   while (traveled + spacingPx <= dist) {
     traveled += spacingPx;
     const t = traveled / dist;
     const sample = interpolatePoint(from, to, t);
-    renderDabAt(ctx, tinted, sample, brush, config, dx, dy, rng);
+    renderDabAt(ctx, tinted, sample, brush, config, dx, dy, rng, velocity);
   }
 
   // Returnér uforbrukt rest så neste segment fortsetter rytmen
@@ -586,14 +710,25 @@ function renderDabAt(
   dirX: number,
   dirY: number,
   rng: () => number = Math.random,
+  velocity = 0,
 ): void {
-  const pressure = Math.max(0.05, sample.pressure);
+  // Pressure curve (spec §8): pow — ikke lineær.
+  const pressure = Math.pow(Math.max(0.05, sample.pressure), config.pressureCurve ?? 1);
   // pressureToSize: 0=ingen effekt (full size), 1=lineær med pressure
-  const pressureSizeFactor = 1 - config.pressureToSize + pressure * config.pressureToSize;
+  let pressureSizeFactor = 1 - config.pressureToSize + pressure * config.pressureToSize;
+  if (config.velocityToSize) {
+    pressureSizeFactor *= Math.max(0.6, 1 + config.velocityToSize * Math.min(velocity, 2));
+  }
   const baseSize = Math.max(2, brush.size * config.sizeMultiplier);
-  const size = baseSize * pressureSizeFactor * (0.6 + brush.pressureSensitivity * 0.4);
+  let size = baseSize * pressureSizeFactor * (0.6 + brush.pressureSensitivity * 0.4);
+  if (config.sizeJitter) {
+    size *= 1 + (rng() - 0.5) * 2 * config.sizeJitter;
+  }
 
-  const pressureAlphaFactor = 1 - config.pressureToOpacity + pressure * config.pressureToOpacity;
+  let pressureAlphaFactor = 1 - config.pressureToOpacity + pressure * config.pressureToOpacity;
+  if (config.velocityToOpacity) {
+    pressureAlphaFactor *= Math.max(0.5, 1 + config.velocityToOpacity * Math.min(velocity, 2));
+  }
   // Grain = papirtann i CANVAS-space (Procreate «Texturized» / Krita Texture
   // multiply): tekstur samples på posisjon, så kornet er kontinuerlig på
   // tvers av strøk. Grovere ved høy grain, aldri blekere snitt. En liten
@@ -609,6 +744,13 @@ function renderDabAt(
   // Scatter — radial jitter; grain øker spredningen litt (papirtann)
   let x = sample.x;
   let y = sample.y;
+  // Menneskelig wobble (spec §15): vinkelrett på strøkretningen.
+  if (config.wobble) {
+    const dirLen = Math.max(0.0001, Math.hypot(dirX, dirY));
+    const wob = wobbleNoise((sample.x + sample.y) * 0.05) * config.wobble * baseSize * 0.35;
+    x += (-dirY / dirLen) * wob;
+    y += (dirX / dirLen) * wob;
+  }
   const scatter = config.scatter * (1 + grain * 0.6);
   if (scatter > 0) {
     const jitterMag = rng() * scatter * baseSize;
@@ -631,7 +773,111 @@ function renderDabAt(
     rotation += ((rng() * 2 - 1) * config.jitterAngle * Math.PI) / 180;
   }
 
-  drawSingleDab(ctx, tinted, x, y, size, rotation, alpha);
+  // Tilt-oval (spec §12): flat stylus → bred/flat grafittside.
+  let stretchX = 1;
+  let stretchY = 1;
+  if (config.tiltOval) {
+    const tilt = Math.min(1, Math.hypot(sample.tiltX ?? 0, sample.tiltY ?? 0) / 90);
+    stretchX = 1 + tilt * 2.5 * config.tiltOval;
+    stretchY = Math.max(0.3, 1 - tilt * 0.55 * config.tiltOval);
+  }
+  drawSingleDab(ctx, tinted, x, y, size, rotation, alpha, stretchX, stretchY);
+
+  // Shade 2.0 (spec §38): mikrolinjer i strøkretningen.
+  if (config.directionTexture && rng() < config.directionTexture) {
+    const dirLen = Math.max(0.0001, Math.hypot(dirX, dirY));
+    const ux = dirX / dirLen;
+    const uy = dirY / dirLen;
+    const offset = (rng() - 0.5) * size * 0.8;
+    const lift = (rng() - 0.5) * size * 0.5;
+    drawSingleDab(
+      ctx, tinted,
+      x + ux * offset - uy * lift,
+      y + uy * offset + ux * lift,
+      size * 0.18, Math.atan2(uy, ux), Math.min(1, alpha * 0.8), 3.5, 0.5,
+    );
+  }
+}
+
+/**
+ * Story Hatch / Cross Hatch (spec §10/§37): organiske 5-segments merker i
+ * klynger langs banen. Trykk styrer tetthet og kryss-lag. Deterministisk
+ * med seeded rng (samme mekanikk som iPad-motoren).
+ */
+function hatchSegment(
+  ctx: CanvasRenderingContext2D,
+  from: PencilPoint,
+  to: PencilPoint,
+  brush: ProBrushSettings,
+  config: StampConfig,
+  params: HatchParams,
+  carryDistance: number,
+  rng: () => number,
+): number {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 0.001) return carryDistance;
+
+  const region = Math.max(8, brush.size);
+  const sizeRatio = Math.max(0.4, brush.size / 34);
+  const markLength = params.lineLength * sizeRatio;
+  const markWidth = Math.max(1, params.lineWidth * 1.6);
+  const markSpacing = params.lineSpacing * sizeRatio;
+  const alwaysCross = brush.type === 'crosshatch';
+
+  ctx.save();
+  ctx.strokeStyle = brush.color;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = markWidth;
+
+  const mark = (cx: number, cy: number, angle: number, alpha: number) => {
+    const length = markLength * (1 + (rng() - 0.5) * params.lengthJitter);
+    const markAngle = angle + (rng() - 0.5) * params.angleJitter * 2;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    let prevX = cx - Math.cos(markAngle) * length * 0.5;
+    let prevY = cy - Math.sin(markAngle) * length * 0.5;
+    ctx.moveTo(prevX, prevY);
+    const segments = 5;
+    for (let i = 1; i <= segments; i++) {
+      const t = i / segments;
+      const wob = (rng() - 0.5) * 0.9;
+      const px = cx + Math.cos(markAngle) * (t - 0.5) * length - Math.sin(markAngle) * wob;
+      const py = cy + Math.sin(markAngle) * (t - 0.5) * length + Math.cos(markAngle) * wob;
+      ctx.lineTo(px, py);
+      prevX = px;
+      prevY = py;
+    }
+    ctx.stroke();
+  };
+
+  const cluster = (point: PencilPoint) => {
+    const pressure = Math.pow(Math.max(0.05, point.pressure), config.pressureCurve ?? 1);
+    const density = pressure < 0.35 ? 0.3 : pressure < 0.7 ? 0.65 : 1.0;
+    const cross = alwaysCross || pressure >= 0.7;
+    const alpha = Math.min(1, brush.opacity * (0.7 + pressure * 0.5));
+    const rows = Math.max(1, Math.floor((region / markSpacing) * density));
+    for (let i = 0; i < rows; i++) {
+      const ox = (rng() - 0.5) * region;
+      const oy = (rng() - 0.5) * region;
+      const jx = (rng() - 0.5) * params.positionJitter;
+      const jy = (rng() - 0.5) * params.positionJitter;
+      mark(point.x + ox + jx, point.y + oy + jy, params.angle, alpha);
+      if (cross) {
+        mark(point.x + ox - jx, point.y + oy - jy, params.crossAngle, alpha * 0.85);
+      }
+    }
+  };
+
+  const clusterSpacing = region * 0.55;
+  let traveled = -carryDistance;
+  while (traveled + clusterSpacing <= dist) {
+    traveled += clusterSpacing;
+    cluster(interpolatePoint(from, to, traveled / dist));
+  }
+  ctx.restore();
+  return dist - traveled;
 }
 
 /**
@@ -677,7 +923,24 @@ export function renderStrokeStamped(
   strokeId: string,
 ): void {
   const rng = createSeededRng(hashStringToSeed(strokeId || 'stroke'));
-  stampPolyline(ctx, points, brush, config, rng);
+  // Taper inn/ut (spec §9): pressure skaleres mot endene — pressure driver
+  // bredde, så dette gir smalere start/slutt uten motorendring.
+  let renderPoints = points;
+  if (config.taperDistance && points.length > 2) {
+    let total = 0;
+    const cumulative = [0];
+    for (let i = 1; i < points.length; i++) {
+      total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+      cumulative.push(total);
+    }
+    if (total > 0) {
+      renderPoints = points.map((point, i) => {
+        const taper = Math.min(1, Math.min(cumulative[i], total - cumulative[i]) / config.taperDistance!);
+        return { ...point, pressure: point.pressure * Math.max(0.15, taper) };
+      });
+    }
+  }
+  stampPolyline(ctx, renderPoints, brush, config, rng);
 }
 
 /**

@@ -28,6 +28,11 @@ enum BrushType: String, Codable, Sendable, CaseIterable {
     case graintex      // Story Grain — dry graphite scatter
     case kneaded       // Story Kneaded Eraser — teksturert grafitt-løft
     case lightlift     // Story Light Lift — atmosfærisk lys
+    // Fase 2: Environmental (spec §55–§66)
+    case forest        // Story Forest Brush — prosedural gran/skogsmasse
+    case debris        // Story Ground Debris — kvister/stein/skogbunn
+    case organictex    // Story Organic Texture — bark/skjell/shards
+    case fur           // Story Fur — tapered strands i klynger
 }
 
 // Spec-defaults per pensel (size px / opacity) — settes når penselen velges
@@ -46,6 +51,10 @@ enum BrushDefaults {
         case .graintex: return (72, 0.08)
         case .kneaded: return (48, 0.24)
         case .lightlift: return (96, 0.11)
+        case .forest: return (60, 0.6)
+        case .debris: return (30, 0.5)
+        case .organictex: return (18, 0.5)
+        case .fur: return (24, 0.45)
         default: return nil
         }
     }
@@ -123,6 +132,10 @@ struct BrushSpec: Codable, Sendable, Equatable {
             return BrushSpec(type: type, size: size, color: color, opacity: opacity,
                              hardness: 0.2, flow: 0.045, wetness: 0, grain: 0.32,
                              tiltSensitivity: 0.3, pressureSensitivity: 0.58)
+        case .forest, .debris, .organictex, .fur:
+            return BrushSpec(type: type, size: size, color: color, opacity: opacity,
+                             hardness: 0.6, flow: 0.7, wetness: 0, grain: 0.3,
+                             tiltSensitivity: 0.3, pressureSensitivity: 0.8)
         default:
             return BrushSpec(type: type, size: size, color: color, opacity: opacity,
                              hardness: 0.8, flow: 1, wetness: 0, grain: 0.3,

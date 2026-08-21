@@ -27,7 +27,22 @@ export type AdvancedBrushType =
   | 'ink'           // Ink with feathering
   | 'highlighter'   // Transparent overlay
   | 'smudge'        // Tone-utviskning — drar eksisterende piksler
-  | 'eraser';
+  | 'eraser'
+  // Story Brush Engine (storyboard-brush-engine.md) — iPad-paritet
+  | 'layout'        // Story Layout Pencil — lys H/HB, konstruksjon
+  | 'heavy'         // Story Pencil Heavy — 2B/3B
+  | 'detail'        // Story Detail Pencil
+  | 'hatch'         // Prosedural skravering
+  | 'crosshatch'    // Kryss-skravering 35°/112°
+  | 'shade'         // Grafittside, tilt-oval
+  | 'graintex'      // Dry graphite scatter
+  | 'kneaded'       // Teksturert grafitt-løft (viskelær)
+  | 'lightlift'     // Atmosfærisk lysløft (viskelær)
+  // Fase 2 Environmental (native-first; web rendrer forenklet scatter inntil videre)
+  | 'forest'
+  | 'debris'
+  | 'organictex'
+  | 'fur';
 
 // Alias for external usage
 export type ProBrushType = AdvancedBrushType;
@@ -67,6 +82,20 @@ export const DEFAULT_BRUSH_SETTINGS = DEFAULT_BRUSH_CONFIG;
 
 // Brush presets matching the reference image
 export const BRUSH_PRESETS: Record<AdvancedBrushType, Partial<BrushConfig>> = {
+  // Story Brush Engine (spec-verdier — samme som iPad BrushSpec.preset)
+  layout: { grain: 0.28, flow: 0.22, hardness: 0.6, tiltSensitivity: 0.4, pressureSensitivity: 0.58 },
+  heavy: { grain: 0.46, flow: 0.38, hardness: 0.5, tiltSensitivity: 0.5, pressureSensitivity: 0.78 },
+  detail: { grain: 0.22, flow: 0.6, hardness: 0.75, tiltSensitivity: 0.3, pressureSensitivity: 0.88 },
+  hatch: { grain: 0.25, flow: 0.4, hardness: 0.7, tiltSensitivity: 0.2, pressureSensitivity: 0.7 },
+  crosshatch: { grain: 0.25, flow: 0.4, hardness: 0.7, tiltSensitivity: 0.2, pressureSensitivity: 0.7 },
+  shade: { grain: 0.72, flow: 0.08, hardness: 0.3, tiltSensitivity: 0.9, pressureSensitivity: 0.7 },
+  graintex: { grain: 0.88, flow: 0.06, hardness: 0.4, tiltSensitivity: 0.3, pressureSensitivity: 0.56 },
+  kneaded: { grain: 0.48, flow: 0.12, hardness: 0.4, tiltSensitivity: 0.3, pressureSensitivity: 0.72 },
+  lightlift: { grain: 0.32, flow: 0.045, hardness: 0.2, tiltSensitivity: 0.3, pressureSensitivity: 0.58 },
+  forest: { grain: 0.3, flow: 0.7, hardness: 0.6, tiltSensitivity: 0.3, pressureSensitivity: 0.8 },
+  debris: { grain: 0.3, flow: 0.7, hardness: 0.6, tiltSensitivity: 0.3, pressureSensitivity: 0.8 },
+  organictex: { grain: 0.3, flow: 0.7, hardness: 0.6, tiltSensitivity: 0.3, pressureSensitivity: 0.8 },
+  fur: { grain: 0.3, flow: 0.7, hardness: 0.6, tiltSensitivity: 0.3, pressureSensitivity: 0.8 },
   pencil: {
     hardness: 0.6,
     flow: 0.8,

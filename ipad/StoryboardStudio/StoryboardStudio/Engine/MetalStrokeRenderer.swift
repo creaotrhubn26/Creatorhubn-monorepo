@@ -244,6 +244,11 @@ final class MetalStrokeRenderer {
             return hatchDabs(stroke, scale: scale, brush: brush, config: config,
                              params: hatchParams, rng: &rng)
         }
+        // Prosedural miljøtekstur (spec §56–§66): klynger av strukturer.
+        if let mode = config.environmental {
+            return environmentalDabs(stroke, scale: scale, brush: brush,
+                                     config: config, mode: mode, rng: &rng)
+        }
 
         if stroke.points.count == 1 {
             emit(at: stroke.points[0], direction: SIMD2(1, 0), traveledTotal: 0, velocity: 0)
@@ -367,6 +372,165 @@ final class MetalStrokeRenderer {
                     x: from.x + dx * t, y: from.y + dy * t,
                     pressure: from.pressure + (to.pressure - from.pressure) * t,
                     tiltX: 0, tiltY: 0, timestamp: from.timestamp))
+            }
+            carry = dist - traveled
+        }
+        return dabs
+    }
+
+    /// Miljøpensler (spec §57–§66): én brukerbevegelse genererer mange små
+    /// strukturer (trær/kvister/shards/hårstrå). Alt tegnes som dab-fylte
+    /// polylinjer — gjenbruker stamp-pipelinen, deterministisk per strøk-id.
+    private func environmentalDabs(_ stroke: PencilStroke, scale: Double, brush: BrushSpec,
+                                   config: StampConfig, mode: EnvironmentalMode,
+                                   rng: inout SeededRandom) -> [DabInstanceData] {
+        var dabs: [DabInstanceData] = []
+        let rgb = Self.parseHex(brush.color)
+        let unit = max(6, brush.size) * scale
+
+        // Dab-fylt linje — byggeklossen for alle strukturene.
+        func line(_ x0: Double, _ y0: Double, _ x1: Double, _ y1: Double,
+                  width: Double, alpha: Double) {
+            let length = ((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)).squareRoot()
+            let steps = max(1, Int(length / max(1, width * 0.6)))
+            for step in 0...steps {
+                let t = Double(step) / Double(steps)
+                dabs.append(DabInstanceData(
+                    position: SIMD2<Float>(Float(x0 + (x1 - x0) * t), Float(y0 + (y1 - y0) * t)),
+                    size: Float(width),
+                    rotation: 0,
+                    alpha: Float(min(1, alpha)),
+                    color: rgb))
+            }
+        }
+
+        // Tapered strå (fur/gress): bredde krymper mot tuppen.
+        func strand(_ x: Double, _ y: Double, angle: Double, length: Double,
+                    baseWidth: Double, alpha: Double) {
+            let steps = 6
+            for step in 0..<steps {
+                let t0 = Double(step) / Double(steps)
+                let t1 = Double(step + 1) / Double(steps)
+                let width = max(0.8, baseWidth * (1 - t0 * 0.85))
+                line(x + cos(angle) * length * t0, y + sin(angle) * length * t0,
+                     x + cos(angle) * length * t1, y + sin(angle) * length * t1,
+                     width: width, alpha: alpha)
+            }
+        }
+
+        // Gran (spec §60): stamme + fallende grennivåer.
+        func conifer(_ x: Double, _ y: Double, height: Double, alpha: Double) {
+            let top = y - height
+            line(x, y, x, top, width: max(1.2, height * 0.02), alpha: alpha)
+            let levels = max(5, Int(height / (8 * scale)))
+            for level in 0..<levels {
+                let t = Double(level) / Double(max(1, levels - 1))
+                let py = top + t * height
+                let widthAtLevel = height * 0.24 * t
+                guard widthAtLevel > 1 else { continue }
+                let drop = widthAtLevel * 0.68
+                line(x, py, x - widthAtLevel, py + drop, width: 1.1 * scale, alpha: alpha)
+                line(x, py, x + widthAtLevel, py + drop, width: 1.1 * scale, alpha: alpha)
+            }
+        }
+
+        func cluster(at point: StrokePoint, direction: SIMD2<Double>) {
+            let pressure = pow(max(0.05, point.pressure), config.pressureCurve)
+            let alpha = min(1, brush.opacity * (0.6 + pressure * 0.6))
+            let px = point.x * scale, py = point.y * scale
+            let dirAngle = atan2(direction.y, direction.x)
+            switch mode {
+            case .forest:
+                // Trykk → tetthet + høyde (spec §58)
+                let count = max(1, Int(2 + pressure * 0.82 * 5))
+                for _ in 0..<count {
+                    let h = unit * (0.75 + pressure * 0.46) * (1 + (rng.next() - 0.5) * 0.28)
+                    conifer(px + (rng.next() - 0.5) * unit * 1.4,
+                            py + (rng.next() - 0.5) * unit * 0.3,
+                            height: h, alpha: alpha)
+                }
+            case .debris:
+                // Tetthet først, så størrelse (spec §62)
+                let count = max(1, Int(8 * (0.25 + pressure * 0.86)))
+                for _ in 0..<count {
+                    let radius = rng.next() * unit
+                    let clusterAngle = rng.next() * .pi * 2
+                    let cx = px + cos(clusterAngle) * radius
+                    let cy = py + sin(clusterAngle) * radius
+                    let length = (unit * 0.2 + rng.next() * unit * 0.7)
+                        * (1 + pressure * 0.38)
+                    if rng.next() < 0.18 {
+                        // Stein: liten uregelmessig klump
+                        for _ in 0..<4 {
+                            line(cx + (rng.next() - 0.5) * length * 0.4,
+                                 cy + (rng.next() - 0.5) * length * 0.3,
+                                 cx + (rng.next() - 0.5) * length * 0.4,
+                                 cy + (rng.next() - 0.5) * length * 0.3,
+                                 width: 2.2 * scale, alpha: alpha * 0.9)
+                        }
+                    } else {
+                        let angle = dirAngle + (rng.next() - 0.5) * .pi
+                        line(cx - cos(angle) * length / 2, cy - sin(angle) * length / 2,
+                             cx + cos(angle) * length / 2, cy + sin(angle) * length / 2,
+                             width: (0.45 + rng.next() * 1.15) * scale * 1.6, alpha: alpha)
+                    }
+                }
+            case .organic:
+                // Shard-klynger (spec §64–§66)
+                let count = max(1, Int(7 * (0.3 + pressure * 0.84)))
+                for _ in 0..<count {
+                    let offsetAngle = rng.next() * .pi * 2
+                    let radius = rng.next() * unit
+                    let cx = px + cos(offsetAngle) * radius
+                    let cy = py + sin(offsetAngle) * radius
+                    let angle = dirAngle * 0.64 + (rng.next() - 0.5) * 0.42 * 2
+                    let shardScale = 1 + (rng.next() - 0.5) * 0.46
+                    let length = unit * 0.6 * shardScale
+                    let width = unit * 0.22 * shardScale
+                    // /\-form: to skrå linjer
+                    line(cx - cos(angle) * length / 2, cy - sin(angle) * length / 2,
+                         cx, cy - width, width: 1.3 * scale, alpha: alpha)
+                    line(cx, cy - width,
+                         cx + cos(angle) * length / 2, cy + sin(angle) * length / 2,
+                         width: 1.3 * scale, alpha: alpha)
+                }
+            case .fur:
+                // Klynger av tapered strå (spec §44–§45)
+                let count = max(1, Int(6 * (0.25 + pressure * 0.8)))
+                for _ in 0..<count {
+                    let angle = dirAngle * 0.7 + (rng.next() - 0.5) * 0.8
+                    let length = unit * (0.5 + rng.next() * 0.6)
+                    strand(px + (rng.next() - 0.5) * unit * 0.8,
+                           py + (rng.next() - 0.5) * unit * 0.8,
+                           angle: angle, length: length,
+                           baseWidth: 1.8 * scale,
+                           alpha: alpha * (0.7 + rng.next() * 0.3))
+                }
+            }
+        }
+
+        let points = stroke.points
+        guard let first = points.first else { return dabs }
+        if points.count == 1 {
+            cluster(at: first, direction: SIMD2(1, 0))
+            return dabs
+        }
+        let clusterSpacing = unit * 0.9
+        var carry = 0.0
+        for i in 1..<points.count {
+            let from = points[i - 1], to = points[i]
+            let dx = to.x - from.x, dy = to.y - from.y
+            let dist = (dx * dx + dy * dy).squareRoot() * scale
+            guard dist > 0.001 else { continue }
+            var traveled = -carry
+            while traveled + clusterSpacing <= dist {
+                traveled += clusterSpacing
+                let t = traveled / dist
+                cluster(at: StrokePoint(
+                    x: from.x + dx * t, y: from.y + dy * t,
+                    pressure: from.pressure + (to.pressure - from.pressure) * t,
+                    tiltX: 0, tiltY: 0, timestamp: from.timestamp),
+                    direction: SIMD2(dx, dy))
             }
             carry = dist - traveled
         }

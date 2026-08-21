@@ -45,8 +45,22 @@ final class BrushEngineVisualTests: XCTestCase {
         draw(fromY: 0.77, toY: 0.81)
         selectBrush("Korn")
         draw(fromY: 0.88, toY: 0.91)
+        // Miljøpenslene (fase 2) — egne baner i høyre halvdel
+        func drawRight(fromY: Double, toY: Double) {
+            let start = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: fromY))
+            let end = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.78, dy: toY))
+            start.press(forDuration: 0.1, thenDragTo: end)
+        }
+        selectBrush("Skog")
+        drawRight(fromY: 0.30, toY: 0.32)
+        selectBrush("Bunn")
+        drawRight(fromY: 0.45, toY: 0.47)
+        selectBrush("Bark")
+        drawRight(fromY: 0.60, toY: 0.62)
+        selectBrush("Pels")
+        drawRight(fromY: 0.75, toY: 0.77)
 
-        XCTAssertTrue(app.staticTexts["7 strøk"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["11 strøk"].waitForExistence(timeout: 5))
 
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         shot.name = "story-brushes"

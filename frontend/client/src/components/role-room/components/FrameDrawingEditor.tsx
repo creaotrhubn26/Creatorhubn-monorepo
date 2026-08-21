@@ -381,10 +381,28 @@ const STANDARD_BRUSH_OPTIONS: BrushType[] = ['pen', 'marker', 'highlighter'];
 // Full tørrmedie-palett — graphite/charcoal/conté/ink/watercolor rendres av
 // stamp-motoren i commit-laget; smudge drar piksler; eraser er piksel-basert.
 const PRO_BRUSH_OPTIONS: ProBrushType[] = [
-  'pencil', 'graphite', 'charcoal', 'conte', 'pen', 'ink',
-  'marker', 'highlighter', 'watercolor', 'smudge', 'eraser',
+  // Story Brush Engine (DRAW / TONE / CLEAN — iPad-paritet)
+  'layout', 'pencil', 'heavy', 'detail', 'ink',
+  'hatch', 'crosshatch', 'shade', 'graintex', 'smudge',
+  'eraser', 'kneaded', 'lightlift',
+  'forest', 'debris', 'organictex', 'fur',
+  // Klassiske
+  'graphite', 'charcoal', 'conte', 'pen', 'marker', 'highlighter', 'watercolor',
 ];
 const PRO_BRUSH_LABELS: Record<string, string> = {
+  layout: 'Layout',
+  heavy: 'Heavy',
+  detail: 'Detalj',
+  hatch: 'Skraver',
+  crosshatch: 'Kryss',
+  shade: 'Skygge',
+  graintex: 'Korn',
+  kneaded: 'Kna',
+  lightlift: 'Lysløft',
+  forest: 'Skog',
+  debris: 'Bunn',
+  organictex: 'Bark',
+  fur: 'Pels',
   pencil: 'Pencil',
   graphite: 'Graphite',
   charcoal: 'Charcoal',
