@@ -254,6 +254,10 @@ export const StoryboardTabView: React.FC<StoryboardTabViewProps> = ({
           allScenes={scenes}
           sceneDialogue={dialogueLines}
           storyboardOnly={false}
+          onRequestSceneChange={(sceneId) => {
+            const next = scenes.find((candidate) => candidate.id === sceneId);
+            if (next) setSelectedScene(next);
+          }}
         />
       </Box>
     </Box>

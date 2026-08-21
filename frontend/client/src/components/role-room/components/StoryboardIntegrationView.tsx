@@ -82,6 +82,7 @@ import {
 } from '../services/storyboardLibraryService';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import storyboardEmptyPng from './icons/Keep/roleroom_storyboard.png';
+import { StoryboardBoardPage } from './StoryboardBoardPage';
 
 interface StoryboardIntegrationViewProps {
   scene: SceneBreakdown;
@@ -106,6 +107,8 @@ interface StoryboardIntegrationViewProps {
   storyboardOnly?: boolean;
   activeFrameIndex?: number;
   onFrameSelect?: (index: number) => void;
+  /** Scenebytte fra Board Pro-flaten (eies av StoryboardTabView). */
+  onRequestSceneChange?: (sceneId: string) => void;
 }
 
 type ViewMode = 'script' | 'storyboard' | 'shotlist' | 'split';
@@ -1124,6 +1127,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
   storyboardOnly = false,
   activeFrameIndex: propActiveFrameIndex,
   onFrameSelect,
+  onRequestSceneChange,
 }) => {
   const storyboardPanelOnly = storyboardOnly || showScriptPanel;
   const [viewMode, setViewMode] = useState<ViewMode>(
@@ -1468,6 +1472,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
             showCreativeStudio={showCreativeStudio}
             versionLog={(scene as SceneWithVersionLog).storyboardVersionLog}
             onSaveVersion={handleSaveVersion}
+            onRequestSceneChange={onRequestSceneChange}
           />
         )}
         {!storyboardPanelOnly && viewMode === 'split' && (
@@ -1538,6 +1543,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
                 showCreativeStudio={showCreativeStudio}
                 versionLog={(scene as SceneWithVersionLog).storyboardVersionLog}
                 onSaveVersion={handleSaveVersion}
+                onRequestSceneChange={onRequestSceneChange}
               />
             </Box>
           </Box>
@@ -1655,6 +1661,7 @@ const StoryboardView: React.FC<{
   showCreativeStudio?: boolean;
   versionLog?: StoryboardVersionEntry[];
   onSaveVersion?: (summary: string) => void;
+  onRequestSceneChange?: (sceneId: string) => void;
 }> = ({
   frames,
   onUpdate,
@@ -1673,11 +1680,13 @@ const StoryboardView: React.FC<{
   showCreativeStudio = true,
   versionLog,
   onSaveVersion,
+  onRequestSceneChange,
 }) => {
   const device = useDeviceDetection();
   const { showSuccess, showInfo, showError } = useToast();
   const { user } = useAuth();
   const [workspaceMode, setWorkspaceMode] = useState<StoryboardWorkspaceMode>('thumbnail');
+  const [boardProOpen, setBoardProOpen] = useState(false);
   const [versionsDialogOpen, setVersionsDialogOpen] = useState(false);
   const [versionSummary, setVersionSummary] = useState('');
   const [drawingFrameId, setDrawingFrameId] = useState<string | null>(null);
@@ -2553,6 +2562,15 @@ const StoryboardView: React.FC<{
               ))}
             </ToggleButtonGroup>
 
+            <Button
+              size="small"
+              variant="contained"
+              data-testid="storyboard-board-pro-button"
+              onClick={() => setBoardProOpen(true)}
+              sx={{ bgcolor: '#8b5cf6', '&:hover': { bgcolor: '#7c3aed' }, textTransform: 'none', flexShrink: 0, fontWeight: 700 }}
+            >
+              Board Pro
+            </Button>
             {onSaveVersion && (
               <Button
                 size="small"
@@ -4027,6 +4045,32 @@ const StoryboardView: React.FC<{
           </Button>
         </DialogActions>
       </Dialog>
+
+      {boardProOpen && (
+        <StoryboardBoardPage
+          projectName={scene.projectId || 'The Role Room'}
+          sequenceLabel={scene.heading || scene.sceneName}
+          sceneItems={(allScenes ?? [scene]).map((sceneEntry: any) => {
+            const sceneFrames = Array.isArray(sceneEntry.storyboardFrames) ? sceneEntry.storyboardFrames : [];
+            const thumbFrame = sceneFrames.find((f: any) => f?.thumbnailUrl || f?.imageUrl);
+            return {
+              id: sceneEntry.id,
+              heading: sceneEntry.heading || sceneEntry.sceneName || sceneEntry.title || sceneEntry.id,
+              shotCount: sceneFrames.length,
+              thumbnailUrl: thumbFrame?.thumbnailUrl || thumbFrame?.imageUrl,
+            };
+          })}
+          selectedSceneId={scene.id}
+          onSelectScene={onRequestSceneChange}
+          frames={frames}
+          activeFrameIndex={activeFrameIndex}
+          onSelectFrame={onSelectFrame}
+          onPatchFrame={(frameId, fields) => patchFrame(frameId, fields)}
+          onDrawFrame={(frameId) => setDrawingFrameId(frameId)}
+          onAddFrame={handleAddFrame}
+          onClose={() => setBoardProOpen(false)}
+        />
+      )}
 
       <Dialog open={versionsDialogOpen} onClose={() => setVersionsDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Versions</DialogTitle>
