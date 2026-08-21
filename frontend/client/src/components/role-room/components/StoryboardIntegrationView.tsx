@@ -578,6 +578,70 @@ const parseStoredStrokes = (value: unknown): PencilStroke[] | undefined => {
   }
 };
 
+// Rask polyline-rendering av vektor-strokes til thumbnail — frames som er
+// tegnet (drawingData.strokes) men mangler thumbnailUrl/imageUrl (f.eks.
+// seedet/migrert data) får bilde i grid/strip/timeline/filmstripe. Lettvekts
+// tilnærming av penselmotoren: trykk styrer bredde/alpha, penseltype styrer
+// multiplikator; eraser rendres destination-out. Full stamp-tekstur er ikke
+// nødvendig på 480px-thumbs.
+const renderStrokesToThumbnailDataUrl = (
+  strokes: PencilStroke[],
+  width = 480,
+  sourceWidth = 1920,
+  sourceHeight = 1080,
+): string | undefined => {
+  if (typeof document === 'undefined' || strokes.length === 0) return undefined;
+  try {
+    const height = Math.round((width * sourceHeight) / sourceWidth);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return undefined;
+    ctx.fillStyle = '#f5f2ea';
+    ctx.fillRect(0, 0, width, height);
+    const scale = width / sourceWidth;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const stroke of strokes) {
+      const points = stroke.points;
+      if (!Array.isArray(points) || points.length < 2) continue;
+      const type = stroke.brush?.type;
+      if (type === 'smudge') continue;
+      const isEraser = type === 'eraser';
+      const widthMultiplier =
+        type === 'highlighter' ? 3
+          : type === 'watercolor' ? 2.4
+            : type === 'marker' ? 2
+              : type === 'charcoal' ? 1.5
+                : type === 'graphite' ? 1.3
+                  : 1;
+      const baseWidth = (typeof stroke.width === 'number' ? stroke.width : 4) * scale * widthMultiplier;
+      ctx.globalCompositeOperation = isEraser ? 'destination-out' : 'source-over';
+      ctx.strokeStyle = isEraser ? 'rgba(0,0,0,1)' : (stroke.color || '#26282e');
+      for (let i = 1; i < points.length; i++) {
+        const from = points[i - 1];
+        const to = points[i];
+        const pressure = ((from.pressure ?? 0.7) + (to.pressure ?? 0.7)) / 2;
+        ctx.globalAlpha = Math.min(
+          1,
+          (stroke.opacity ?? 1) * (type === 'highlighter' ? 0.35 : 0.45 + 0.55 * pressure),
+        );
+        ctx.lineWidth = Math.max(0.6, baseWidth * (0.5 + 0.75 * pressure));
+        ctx.beginPath();
+        ctx.moveTo(from.x * scale, from.y * scale);
+        ctx.lineTo(to.x * scale, to.y * scale);
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    return canvas.toDataURL('image/webp', 0.8);
+  } catch {
+    return undefined;
+  }
+};
+
 const parseFrameDrawingData = (
   drawingDataRaw: unknown,
   options: {
@@ -1134,6 +1198,33 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
     }, FRAME_SYNC_DEBOUNCE_MS);
 
     return () => window.clearTimeout(timeoutId);
+  }, [storyboardFrames]);
+
+  // Auto-generer thumbnails for tegnede frames uten bilde (seedet/migrert
+  // data). Batch på 6 per runde (effekt re-kjøres av frame-oppdateringen og
+  // tar neste batch); debounce-synken persisterer thumbnailUrl til scenen.
+  useEffect(() => {
+    const pending = storyboardFrames.filter(
+      (frame) => !frame.thumbnailUrl && !frame.imageUrl && frame.drawingData?.strokes,
+    );
+    if (pending.length === 0) return undefined;
+    const timer = window.setTimeout(() => {
+      const updates = new Map<string, string>();
+      for (const frame of pending.slice(0, 6)) {
+        const strokes = parseStoredStrokes(frame.drawingData?.strokes) ?? [];
+        const dataUrl = renderStrokesToThumbnailDataUrl(strokes);
+        if (dataUrl) updates.set(frame.id, dataUrl);
+      }
+      if (updates.size === 0) return;
+      setStoryboardFrames((prev) =>
+        prev.map((frame) =>
+          updates.has(frame.id)
+            ? { ...frame, thumbnailUrl: updates.get(frame.id), updatedAt: new Date().toISOString() }
+            : frame,
+        ),
+      );
+    }, 400);
+    return () => window.clearTimeout(timer);
   }, [storyboardFrames]);
 
   const handleSaveVersion = useCallback((summary: string) => {
