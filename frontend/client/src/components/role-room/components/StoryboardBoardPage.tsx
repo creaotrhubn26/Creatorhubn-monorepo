@@ -471,7 +471,9 @@ export const StoryboardBoardPage: React.FC<{
 
           {/* Board-arket */}
           <Box ref={scrollRef} sx={{ flex: 1, minHeight: 0, overflow: 'auto', bgcolor: WORKSPACE_BG, position: 'relative', cursor: handMode ? 'grab' : 'default' }}>
-            <Box sx={{ width: `${Math.round(940 * zoom)}px`, mx: 'auto', my: 3, transition: 'width 120ms ease' }}>
+            {/* Zoom uten transition — width-animasjon gir layout-thrash, og
+                design-verktøy zoomer momentant (Figma/Procreate-konvensjon). */}
+            <Box sx={{ width: `${Math.round(940 * zoom)}px`, mx: 'auto', my: 3 }}>
               <Box sx={{ bgcolor: SHEET_BG, borderRadius: 1, boxShadow: '0 10px 40px rgba(0,0,0,0.45)', px: `${Math.round(34 * zoom)}px`, py: `${Math.round(28 * zoom)}px` }}>
                 {frames.map((rowFrame, index) => {
                   const isActive = index === activeFrameIndex;
