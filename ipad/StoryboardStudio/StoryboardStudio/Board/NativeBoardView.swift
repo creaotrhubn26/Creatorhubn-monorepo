@@ -1221,6 +1221,12 @@ struct NativeBoardView: View {
                 panelLabel("Brushes")
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .bold)).foregroundStyle(BoardBrand.label)
+                // Valgt pensel med navn — glyfene alene sa ikke hva som er aktivt.
+                Text(Self.brushChips.first(where: { $0.0 == canvasState.brushType })?.1 ?? "")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(BoardBrand.accent.opacity(0.25), in: Capsule())
                 Spacer()
                 Button { canvasState.undo() } label: {
                     Image(systemName: "arrow.uturn.backward")
