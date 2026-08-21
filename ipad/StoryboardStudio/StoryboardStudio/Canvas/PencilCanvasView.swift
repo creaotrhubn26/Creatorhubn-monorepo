@@ -45,18 +45,31 @@ final class CanvasState: ObservableObject {
         UserDefaults.standard.set(recentColors, forKey: "sb.recentColors")
     }
 
+    // Brush-editor (spec §25/§48-lett): per-økt-overstyringer oppå preset.
+    @Published var grainOverride: Double?
+    @Published var flowOverride: Double?
+    @Published var hardnessOverride: Double?
+
     /// Velg pensel og sett spec-defaults (størrelse/opacity) for typen —
-    /// hvert verktøy skal starte med sin fysiske karakter.
+    /// hvert verktøy skal starte med sin fysiske karakter. Editor-overrides
+    /// nullstilles (de gjelder per pensel-økt).
     func selectBrush(_ type: BrushType) {
         brushType = type
         if let defaults = BrushDefaults.sizeAndOpacity(for: type) {
             brushSize = defaults.size
             brushOpacity = defaults.opacity
         }
+        grainOverride = nil
+        flowOverride = nil
+        hardnessOverride = nil
     }
 
     func currentBrush() -> BrushSpec {
-        BrushSpec.preset(brushType, size: brushSize, color: brushColor, opacity: brushOpacity)
+        var brush = BrushSpec.preset(brushType, size: brushSize, color: brushColor, opacity: brushOpacity)
+        if let grain = grainOverride { brush.grain = grain }
+        if let flow = flowOverride { brush.flow = flow }
+        if let hardness = hardnessOverride { brush.hardness = hardness }
+        return brush
     }
 
     func visibleStrokes() -> [PencilStroke] {

@@ -23,6 +23,11 @@ struct HatchParams: Sendable {
     var lengthJitter: Double
 }
 
+// Prosedural miljøtekstur-modus (spec §56–§66).
+enum EnvironmentalMode: Sendable {
+    case forest, debris, organic, fur
+}
+
 struct StampConfig: Sendable {
     var preset: DabPreset
     var spacing: Double
@@ -44,6 +49,8 @@ struct StampConfig: Sendable {
     var sizeJitter: Double = 0           // per-dab størrelsesvariasjon (Grain)
     var directionTexture: Double = 0     // mikrolinjer i strøkretning (Shade 2.0)
     var hatch: HatchParams? = nil
+    // Fase 2 (spec §56): prosedural miljøtekstur — mange strukturer per sample.
+    var environmental: EnvironmentalMode? = nil
 
     static func forBrush(_ type: BrushType) -> StampConfig? {
         switch type {
@@ -71,12 +78,17 @@ struct StampConfig: Sendable {
             return StampConfig(preset: .inkRound, spacing: 0.05, scatter: 0,
                                jitterAngleDeg: 0, tiltRotation: false,
                                pressureToSize: 0.5, pressureToOpacity: 0.15,
-                               flow: 1.0, sizeMultiplier: 1.0)
+                               flow: 1.0, sizeMultiplier: 1.0,
+                               pressureCurve: 0.75, velocityToSize: -0.18,
+                               taperDistance: 12)
         case .ink:
-            return StampConfig(preset: .inkRound, spacing: 0.05, scatter: 0.02,
+            // Story Ink (spec §9): taper inn/ut, pressure → bredde primært.
+            return StampConfig(preset: .inkRound, spacing: 0.045, scatter: 0.02,
                                jitterAngleDeg: 4, tiltRotation: false,
-                               pressureToSize: 0.65, pressureToOpacity: 0.3,
-                               flow: 1.0, sizeMultiplier: 1.0)
+                               pressureToSize: 0.92, pressureToOpacity: 0.12,
+                               flow: 1.0, sizeMultiplier: 1.0,
+                               pressureCurve: 0.75, velocityToSize: -0.18,
+                               taperDistance: 12)
         case .marker:
             return StampConfig(preset: .markerChisel, spacing: 0.07, scatter: 0,
                                jitterAngleDeg: 0, tiltRotation: true,
@@ -120,7 +132,7 @@ struct StampConfig: Sendable {
                                flow: 0.85, sizeMultiplier: 1.0,
                                pressureCurve: 0.7,
                                velocityToSize: -0.10, velocityToOpacity: -0.10,
-                               wobble: 0.05)
+                               wobble: 0.05, taperDistance: 6)
         case .hatch:
             return StampConfig(preset: .inkRound, spacing: 0.14, scatter: 0,
                                jitterAngleDeg: 0, tiltRotation: false,
@@ -174,6 +186,30 @@ struct StampConfig: Sendable {
                                pressureToSize: 0.2, pressureToOpacity: 0.58,
                                flow: 0.35, sizeMultiplier: 1.0,
                                pressureCurve: 0.55)
+        case .forest:
+            return StampConfig(preset: .inkRound, spacing: 0.5, scatter: 0,
+                               jitterAngleDeg: 0, tiltRotation: false,
+                               pressureToSize: 0.46, pressureToOpacity: 0.4,
+                               flow: 0.85, sizeMultiplier: 1.0,
+                               pressureCurve: 0.8, environmental: .forest)
+        case .debris:
+            return StampConfig(preset: .inkRound, spacing: 0.5, scatter: 0,
+                               jitterAngleDeg: 0, tiltRotation: false,
+                               pressureToSize: 0.38, pressureToOpacity: 0.4,
+                               flow: 0.8, sizeMultiplier: 1.0,
+                               pressureCurve: 0.8, environmental: .debris)
+        case .organictex:
+            return StampConfig(preset: .charcoalTooth, spacing: 0.5, scatter: 0,
+                               jitterAngleDeg: 0, tiltRotation: false,
+                               pressureToSize: 0.4, pressureToOpacity: 0.74,
+                               flow: 0.75, sizeMultiplier: 1.0,
+                               pressureCurve: 0.8, environmental: .organic)
+        case .fur:
+            return StampConfig(preset: .inkRound, spacing: 0.5, scatter: 0,
+                               jitterAngleDeg: 0, tiltRotation: false,
+                               pressureToSize: 0.4, pressureToOpacity: 0.4,
+                               flow: 0.75, sizeMultiplier: 1.0,
+                               pressureCurve: 0.8, environmental: .fur)
         default:
             return nil
         }
@@ -195,6 +231,7 @@ enum Streamline {
         case .shade: return 0.16
         case .heavy: return 0.16
         case .graintex, .kneaded, .lightlift: return 0.15
+        case .forest, .debris, .organictex, .fur: return 0.2
         default: return 0.2
         }
     }

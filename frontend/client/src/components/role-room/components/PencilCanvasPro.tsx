@@ -396,6 +396,20 @@ const PRO_BRUSH_TYPES: readonly ProBrushType[] = [
   'highlighter',
   'smudge',
   'eraser',
+  // Story Brush Engine (iPad-paritet)
+  'layout',
+  'heavy',
+  'detail',
+  'hatch',
+  'crosshatch',
+  'shade',
+  'graintex',
+  'kneaded',
+  'lightlift',
+  'forest',
+  'debris',
+  'organictex',
+  'fur',
 ];
 const SELECTION_SNAP_GRID_SIZE = 50;
 const SELECTION_EDGE_SNAP_THRESHOLD = 18;
@@ -422,6 +436,20 @@ const STREAMLINE_BY_TYPE: Partial<Record<ProBrushType, number>> = {
   watercolor: 0.2,
   smudge: 0.15,
   eraser: 0.15,
+  // Story Brush Engine (spec §6)
+  layout: 0.28,
+  heavy: 0.16,
+  detail: 0.35,
+  hatch: 0.3,
+  crosshatch: 0.3,
+  shade: 0.16,
+  graintex: 0.15,
+  kneaded: 0.15,
+  lightlift: 0.15,
+  forest: 0.2,
+  debris: 0.2,
+  organictex: 0.2,
+  fur: 0.2,
 };
 
 export function applyStreamline(points: PencilPoint[], amount: number): PencilPoint[] {
@@ -3102,7 +3130,19 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       const renderStroke = transforms.length ? applyStrokeTransformsToStroke(stroke, transforms) : stroke;
       const brush = getStrokeBrushSettings(stroke);
       const seedKey = stroke.id || `${renderStroke.points[0]?.x},${renderStroke.points[0]?.y},${renderStroke.points.length}`;
-      if (brush.type === 'eraser') {
+      if (brush.type === 'kneaded' || brush.type === 'lightlift') {
+        // Teksturert grafitt-løft (spec §40/§67): stamp-dabs som alpha-maske
+        // under destination-out — løfter gradvis, ikke hardt.
+        const liftConfig = getStampConfigForBrush(brush.type);
+        if (liftConfig) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'destination-out';
+          renderStrokeStamped(ctx, renderStroke.points, brush, liftConfig, renderStroke.id);
+          ctx.restore();
+        } else {
+          renderEraserStroke(ctx, renderStroke.points, brush);
+        }
+      } else if (brush.type === 'eraser') {
         renderEraserStroke(ctx, renderStroke.points, brush);
         return;
       }

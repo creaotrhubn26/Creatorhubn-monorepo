@@ -228,6 +228,7 @@ struct NativeBoardView: View {
     @State private var sheetZoom: Double = 1.0
     @State private var scrollTarget: Int?
     @State private var showFullscreenDraw = false
+    @State private var showBrushEditor = false
     @State private var pendingDeleteFrameId: String?
     @State private var newSceneTitle = ""
     @State private var showNewScenePrompt = false
@@ -548,6 +549,10 @@ struct NativeBoardView: View {
         }
         .sheet(isPresented: $showReview) {
             ReviewSheet(board: board)
+        }
+        .sheet(isPresented: $showBrushEditor) {
+            BrushEditorSheet(canvasState: canvasState)
+                .presentationDetents([.medium])
         }
         .sheet(item: $exportPDFURL) { url in
             ShareSheet(items: [url])
@@ -1197,6 +1202,7 @@ struct NativeBoardView: View {
         (.hatch, "Skraver"), (.crosshatch, "Kryss"), (.shade, "Skygge"),
         (.graintex, "Korn"), (.smudge, "Smudge"),
         (.eraser, "Viskelær"), (.kneaded, "Kna"), (.lightlift, "Lysløft"),
+        (.forest, "Skog"), (.debris, "Bunn"), (.organictex, "Bark"), (.fur, "Pels"),
     ]
 
     private var brushColorBinding: Binding<Color> {
@@ -1221,9 +1227,15 @@ struct NativeBoardView: View {
     private var brushesPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                panelLabel("Brushes")
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .bold)).foregroundStyle(BoardBrand.label)
+                Button { showBrushEditor = true } label: {
+                    HStack(spacing: 4) {
+                        panelLabel("Brushes")
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 9, weight: .bold)).foregroundStyle(BoardBrand.label)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Pensel-editor")
                 // Valgt pensel med navn — glyfene alene sa ikke hva som er aktivt.
                 Text(Self.brushChips.first(where: { $0.0 == canvasState.brushType })?.1 ?? "")
                     .font(.system(size: 11, weight: .bold))
@@ -1246,14 +1258,14 @@ struct NativeBoardView: View {
             }
             HStack(alignment: .top, spacing: 14) {
                 // Tip-glyfer i 2×5-grid (mockup) — form, ikke tekst.
-                VStack(spacing: 5) {
-                    ForEach(0..<3, id: \.self) { row in
+                VStack(spacing: 4) {
+                    ForEach(0..<4, id: \.self) { row in
                         HStack(spacing: 5) {
                             ForEach(Array(Self.brushChips[(row * 5)..<min(row * 5 + 5, Self.brushChips.count)]), id: \.0) { type, name in
                                 let selected = canvasState.brushType == type
                                 Button { canvasState.selectBrush(type) } label: {
                                     BrushTipGlyph(type: type)
-                                        .frame(width: 44, height: 30)
+                                        .frame(width: 44, height: 26)
                                         .background(selected ? Color.white.opacity(0.12) : Color.white.opacity(0.04),
                                                     in: RoundedRectangle(cornerRadius: 8))
                                         .overlay(RoundedRectangle(cornerRadius: 8)
@@ -1727,6 +1739,29 @@ private struct BrushTipGlyph: View {
                                    cornerSize: CGSize(width: 6, height: 6))
             case .lightlift:
                 tip.addEllipse(in: CGRect(x: cx - 9, y: 9, width: 18, height: 18))
+            case .forest:
+                // Gran: stamme + skrå grener
+                tip.move(to: CGPoint(x: cx, y: 28)); tip.addLine(to: CGPoint(x: cx, y: 8))
+                tip.move(to: CGPoint(x: cx, y: 12)); tip.addLine(to: CGPoint(x: cx - 6, y: 18))
+                tip.move(to: CGPoint(x: cx, y: 12)); tip.addLine(to: CGPoint(x: cx + 6, y: 18))
+                tip.move(to: CGPoint(x: cx, y: 18)); tip.addLine(to: CGPoint(x: cx - 9, y: 26))
+                tip.move(to: CGPoint(x: cx, y: 18)); tip.addLine(to: CGPoint(x: cx + 9, y: 26))
+            case .debris:
+                tip.move(to: CGPoint(x: cx - 10, y: 24)); tip.addLine(to: CGPoint(x: cx - 2, y: 20))
+                tip.move(to: CGPoint(x: cx + 1, y: 25)); tip.addLine(to: CGPoint(x: cx + 9, y: 23))
+                tip.move(to: CGPoint(x: cx - 5, y: 15)); tip.addLine(to: CGPoint(x: cx + 3, y: 12))
+                tip.addEllipse(in: CGRect(x: cx + 5, y: 13, width: 4, height: 3))
+            case .organictex:
+                tip.move(to: CGPoint(x: cx - 9, y: 22)); tip.addLine(to: CGPoint(x: cx - 5, y: 14))
+                tip.addLine(to: CGPoint(x: cx - 1, y: 22))
+                tip.move(to: CGPoint(x: cx + 1, y: 20)); tip.addLine(to: CGPoint(x: cx + 5, y: 12))
+                tip.addLine(to: CGPoint(x: cx + 9, y: 20))
+            case .fur:
+                for i in 0..<4 {
+                    let base = CGFloat(i) * 6
+                    tip.move(to: CGPoint(x: cx - 9 + base, y: 25))
+                    tip.addLine(to: CGPoint(x: cx - 6 + base, y: 12))
+                }
             default:
                 shaft.addRect(CGRect(x: cx - 3, y: 5, width: 6, height: 16))
                 tip.addEllipse(in: CGRect(x: cx - 3, y: 21, width: 6, height: 10))
@@ -1735,7 +1770,7 @@ private struct BrushTipGlyph: View {
             switch type {
             case .smudge:
                 context.fill(tip, with: .color(white.opacity(0.35)))
-            case .hatch, .crosshatch:
+            case .hatch, .crosshatch, .forest, .debris, .organictex, .fur:
                 context.stroke(tip, with: .color(white), lineWidth: 1.4)
             case .lightlift:
                 context.stroke(tip, with: .color(white.opacity(0.6)), lineWidth: 2)
@@ -2000,6 +2035,53 @@ struct ShareSheet: UIViewControllerRepresentable {
         UIActivityViewController(activityItems: items, applicationActivities: nil)
     }
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+}
+
+// Mini pensel-editor (spec §25-ånden): overstyr tekstur-parametre for valgt
+// pensel. Overrides gjelder nye strøk til penselen byttes.
+struct BrushEditorSheet: View {
+    @ObservedObject var canvasState: CanvasState
+    @Environment(\.dismiss) private var dismiss
+
+    private func overrideBinding(
+        _ keyPath: ReferenceWritableKeyPath<CanvasState, Double?>, default defaultValue: Double
+    ) -> Binding<Double> {
+        Binding(
+            get: { canvasState[keyPath: keyPath] ?? defaultValue },
+            set: { canvasState[keyPath: keyPath] = $0 }
+        )
+    }
+
+    var body: some View {
+        let preset = BrushSpec.preset(canvasState.brushType, size: canvasState.brushSize,
+                                      color: canvasState.brushColor, opacity: canvasState.brushOpacity)
+        NavigationStack {
+            Form {
+                Section("Tekstur") {
+                    LabeledContent("Grain") {
+                        Slider(value: overrideBinding(\.grainOverride, default: preset.grain), in: 0...1)
+                    }
+                    LabeledContent("Flow") {
+                        Slider(value: overrideBinding(\.flowOverride, default: preset.flow), in: 0.02...1)
+                    }
+                    LabeledContent("Hardness") {
+                        Slider(value: overrideBinding(\.hardnessOverride, default: preset.hardness), in: 0...1)
+                    }
+                }
+                Section {
+                    Button("Tilbakestill til preset") {
+                        canvasState.grainOverride = nil
+                        canvasState.flowOverride = nil
+                        canvasState.hardnessOverride = nil
+                    }
+                }
+            }
+            .navigationTitle("Pensel-editor")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { Button("Ferdig") { dismiss() } }
+            }
+        }
+    }
 }
 
 // Krasj-vern: usynkede strøk skrives til disk ved hver endring og slettes
