@@ -139,6 +139,24 @@ test.describe('Storyboard-visjonen — TROLL', () => {
       await page.screenshot({ path: `${SHOT_DIR}/5-review-kommentar.png` });
     }
 
+    // Board Pro-flaten (mockup 2-skallet)
+    const boardProButton = page.locator('[data-testid="storyboard-board-pro-button"]');
+    if (await boardProButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await boardProButton.click();
+      await expect(page.locator('[data-testid="storyboard-board-page"]')).toBeVisible({ timeout: 8_000 });
+      await page.waitForTimeout(1_500);
+      await page.screenshot({ path: `${SHOT_DIR}/7-board-pro.png` });
+      // Inspector: klikk shot size-ikonet CU og verifiser at det aktiveres
+      const cuButton = page.locator('[data-testid="inspector-shot-size-CU"]');
+      if (await cuButton.isVisible({ timeout: 2_000 }).catch(() => false)) {
+        await cuButton.click();
+        await page.waitForTimeout(600);
+        await page.screenshot({ path: `${SHOT_DIR}/8-board-pro-inspector.png` });
+      }
+      await page.locator('[data-testid="board-page-close"]').click();
+      await page.waitForTimeout(500);
+    }
+
     // Bølge E: Versions
     const versionsButton = page.locator('[data-testid="storyboard-versions-button"]');
     await expect(versionsButton).toBeVisible({ timeout: 5_000 });
