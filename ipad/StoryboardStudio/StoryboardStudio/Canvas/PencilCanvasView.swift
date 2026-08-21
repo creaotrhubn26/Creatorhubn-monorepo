@@ -38,6 +38,8 @@ final class CanvasState: ObservableObject {
     }
     // Pencil 2-dobbelttrykk: husk forrige pensel for viskelær-toggle.
     var previousBrushBeforeEraser: BrushType = .pencil
+    // Eyedropper: neste tap på canvasen plukker farge i stedet for å tegne.
+    @Published var colorPickArmed = false
     // Bumpes ved ALLE strokes-mutasjoner (også flytt, som ikke endrer antall)
     // — rebuild- og autosynk-trigger.
     @Published var revision = 0
@@ -191,6 +193,44 @@ final class MetalCanvasUIView: UIView {
         let pencilInteraction = UIPencilInteraction()
         pencilInteraction.delegate = self
         addInteraction(pencilInteraction)
+        // Standard tegneapp-gester: 2-finger-tap = angre, 3-finger = gjenta.
+        let undoTap = UITapGestureRecognizer(target: self, action: #selector(handleUndoTap))
+        undoTap.numberOfTouchesRequired = 2
+        addGestureRecognizer(undoTap)
+        let redoTap = UITapGestureRecognizer(target: self, action: #selector(handleRedoTap))
+        redoTap.numberOfTouchesRequired = 3
+        addGestureRecognizer(redoTap)
+        // Pencil-hover (iOS 16+, M2-iPader): ring viser penselstørrelse.
+        let hover = UIHoverGestureRecognizer(target: self, action: #selector(handleHover(_:)))
+        addGestureRecognizer(hover)
+        hoverRing.fillColor = nil
+        hoverRing.strokeColor = UIColor(white: 0.2, alpha: 0.55).cgColor
+        hoverRing.lineWidth = 1
+        hoverRing.isHidden = true
+        layer.addSublayer(hoverRing)
+    }
+
+    private let hoverRing = CAShapeLayer()
+
+    @objc private func handleUndoTap() { state?.undo() }
+    @objc private func handleRedoTap() { state?.redo() }
+
+    @objc private func handleHover(_ recognizer: UIHoverGestureRecognizer) {
+        switch recognizer.state {
+        case .began, .changed:
+            guard let state else { return }
+            let location = recognizer.location(in: self)
+            let radius = max(1.5, state.brushSize * contentScale / 2)
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            hoverRing.path = UIBezierPath(
+                arcCenter: location, radius: radius,
+                startAngle: 0, endAngle: .pi * 2, clockwise: true).cgPath
+            hoverRing.isHidden = false
+            CATransaction.commit()
+        default:
+            hoverRing.isHidden = true
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) not supported") }
@@ -297,6 +337,20 @@ final class MetalCanvasUIView: UIView {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first else { return }
+        // Eyedropper armert: plukk farge under fingeren i stedet for å tegne.
+        if let state, state.colorPickArmed {
+            strokeSuppressed = true
+            let location = touch.location(in: self)
+            if bounds.width > 0, bounds.height > 0,
+               let hex = renderer?.pickColorHex(
+                   normalizedX: location.x / bounds.width,
+                   normalizedY: location.y / bounds.height) {
+                state.brushColor = hex
+                state.registerRecentColor(hex)
+            }
+            state.colorPickArmed = false
+            return
+        }
         // Palm rejection (fullskjerm): finger skal panorere, ikke tegne.
         if pencilOnly && touch.type != .pencil {
             strokeSuppressed = true

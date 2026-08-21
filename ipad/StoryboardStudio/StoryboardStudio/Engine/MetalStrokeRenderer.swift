@@ -117,6 +117,28 @@ final class MetalStrokeRenderer {
         clearCommitted()
     }
 
+    /// Eyedropper: les én piksel fra akkumulatoren (normaliserte koordinater
+    /// 0–1), komposittér over papirfargen og gi hex — samme farge øyet ser.
+    func pickColorHex(normalizedX: Double, normalizedY: Double) -> String? {
+        waitForPendingWork()
+        guard let texture = committedTexture, texture.width > 0, texture.height > 0 else { return nil }
+        let x = max(0, min(texture.width - 1, Int(normalizedX * Double(texture.width))))
+        let y = max(0, min(texture.height - 1, Int(normalizedY * Double(texture.height))))
+        var pixel = [UInt8](repeating: 0, count: 4)
+        texture.getBytes(&pixel, bytesPerRow: 4,
+                         from: MTLRegionMake2D(x, y, 1, 1), mipmapLevel: 0)
+        let alpha = Double(pixel[3]) / 255
+        func channel(_ ink: UInt8, _ paper: Float) -> Int {
+            // premultiplied over papir
+            let value = Double(ink) / 255 + Double(paper) * (1 - alpha)
+            return max(0, min(255, Int(value * 255)))
+        }
+        return String(format: "#%02x%02x%02x",
+                      channel(pixel[0], paperColor.x),
+                      channel(pixel[1], paperColor.y),
+                      channel(pixel[2], paperColor.z))
+    }
+
     /// Sett/fjern referanse-underlag. Bildet strekkes til canvas-flaten
     /// (samme aspekt som frame i praksis — underlaget velges for framen).
     func setUnderlay(cgImage: CGImage?, opacity: Double) {
@@ -685,13 +707,21 @@ final class MetalStrokeRenderer {
     // — full rebuild ved lag-toggle/undo gjenbruker CPU-arbeidet. Nøkkel per
     // stroke-id; opacity i nøkkelen fordi lag-opacity bakes inn i strøket.
     private var dabCache: [String: (scale: Double, opacity: Double, dabs: [DabInstanceData])] = [:]
+    private var cachedDabTotal = 0
 
     private func cachedDabs(for stroke: PencilStroke, scale: Double) -> [DabInstanceData] {
         if let hit = dabCache[stroke.id], hit.scale == scale, hit.opacity == stroke.opacity {
             return hit.dabs
         }
         let dabs = dabsForStroke(stroke, scale: scale)
-        if dabCache.count > 3000 { dabCache.removeAll(keepingCapacity: true) }
+        // Eviction på samlet dab-antall (48 B/dab): miljø/hatch-strøk kan ha
+        // tusenvis av dabs hver, så strøk-antall alene var feil mål.
+        // ponytail: full tømming ved tak (~19 MB) — LRU hvis rebuild-hikke merkes.
+        cachedDabTotal += dabs.count
+        if cachedDabTotal > 400_000 {
+            dabCache.removeAll(keepingCapacity: true)
+            cachedDabTotal = dabs.count
+        }
         dabCache[stroke.id] = (scale, stroke.opacity, dabs)
         return dabs
     }
