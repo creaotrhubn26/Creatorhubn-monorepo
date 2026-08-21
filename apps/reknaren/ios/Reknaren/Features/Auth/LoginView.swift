@@ -17,12 +17,8 @@ struct LoginView: View {
     private var content: some View {
         VStack(spacing: 16) {
             Spacer()
-            Image("ReknarenMark")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 84, height: 84)
-                .shadow(color: .reknarenGreen.opacity(0.18), radius: 20, y: 8)
-                .accessibilityLabel("Reknaren")
+            ReidarView(style: sent ? .success : (busy ? .loading : .idle), size: 132,
+                       caption: busy ? "Sender innloggingslenke…" : nil)
             Text("Reknaren").font(.largeTitle.bold())
             Text("Regnskapet ditt, forklart på vanlig norsk.\nPassordløs innlogging med engangslenke på e-post.")
                 .font(.subheadline)
@@ -30,10 +26,13 @@ struct LoginView: View {
                 .multilineTextAlignment(.center)
 
             if sent {
-                ContentUnavailableView("Sjekk e-posten din",
-                                       systemImage: "envelope.badge",
-                                       description: Text("Vi sendte en innloggingslenke til \(email). Åpne den for å logge inn."))
-                    .frame(maxWidth: 360)
+                VStack(spacing: 6) {
+                    Text("Sjekk e-posten din").font(.headline)
+                    Text("Vi sendte en innloggingslenke til \(email). Åpne den for å logge inn.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: 320)
             } else {
                 VStack(spacing: 10) {
                     TextField("E-post", text: $email)
