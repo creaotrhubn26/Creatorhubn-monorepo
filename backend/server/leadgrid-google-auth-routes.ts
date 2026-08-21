@@ -22,6 +22,7 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
+import { persistAuthSession } from "./auth-session-store";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -121,9 +122,11 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
     const cached = stateCache.get(state);
     if (!cached) return res.status(400).send("Ugyldig state");
 
-    // iOS: redirect tilbake til app via leadgrid:// scheme
-    if (cached.platform === "ios") {
-      return res.redirect(`leadgrid://oauth?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`);
+    // iOS: redirect tilbake til app via app-scheme. Storyboard Studio bruker
+    // samme flyt med platform=ios-storyboard → storyboardstudio://oauth.
+    if (cached.platform === "ios" || cached.platform === "ios-storyboard") {
+      const scheme = cached.platform === "ios-storyboard" ? "storyboardstudio" : "leadgrid";
+      return res.redirect(`${scheme}://oauth?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`);
     }
     // Web: redirect til /leadgrid/welcome m/ code (handler lengre frem)
     res.redirect(`${PUBLIC_BASE}/leadgrid/welcome?google_code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`);
@@ -163,6 +166,53 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
       res.json({ id_token: d.id_token });
     } catch (e: any) {
       console.error("[google-auth callback]", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  // ---------- Bytte id_token mot Role Room-SESJON (Storyboard Studio) ----------
+  // Krever EKSISTERENDE bruker (artisten må allerede være i The Role Room —
+  // ingen auto-opprett fra tegneappen). Returnerer creatorhub-sesjonstoken
+  // som fungerer mot /api/auth/user, /api/casting/* osv.
+  app.post("/api/auth/google/session-exchange", async (req, res) => {
+    const { id_token } = req.body ?? {};
+    if (!id_token) return res.status(400).json({ error: "id_token påkrevd" });
+
+    const verified = await verifyGoogleIdToken(id_token);
+    if (!verified?.email) return res.status(401).json({ error: "Ugyldig Google-token" });
+    if (!verified.email_verified) {
+      return res.status(400).json({ error: "Google e-post ikke verifisert" });
+    }
+
+    try {
+      const r = await pool.query<{ id: string; email: string; name: string | null; role: string | null }>(
+        `SELECT id, email, COALESCE(display_name, name, email) AS name, role
+           FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+        [verified.email],
+      );
+      const user = r.rows[0];
+      if (!user) {
+        return res.status(403).json({
+          error: "user_not_found",
+          message: "Ingen Role Room-konto for denne e-posten. Opprett konto i The Role Room først.",
+        });
+      }
+
+      const token = crypto.randomBytes(32).toString("hex");
+      const session = {
+        userId: user.id,
+        email: user.email,
+        name: user.name ?? user.email,
+        role: user.role ?? "user",
+        loginAt: new Date().toISOString(),
+        isAdmin: user.role === "admin" || user.role === "super_admin",
+        verified_email: true,
+      };
+      activeSessions.set(token, session as SessionData);
+      void persistAuthSession(pool, token, session as any);
+      res.json({ token, user: { id: user.id, email: user.email, name: session.name, role: session.role } });
+    } catch (e) {
+      console.error("[google session-exchange]", e);
       res.status(500).json({ error: "internal_error" });
     }
   });
