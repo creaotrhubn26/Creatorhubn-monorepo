@@ -9,7 +9,9 @@
  * Gjenbruker eksisterende data og handlinger via props — ingen egen
  * persistens (patchFrame går til samme sync som resten).
  */
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { getStampConfigForBrush, renderStrokeStamped, stampSegment, resetCtxAfterStamp } from './stampEngine';
+import { applyStreamline } from './PencilCanvasPro';
 import { Box, Stack, Typography, IconButton, Button, TextField, MenuItem, Tooltip, Chip } from '@mui/material';
 import UndoIcon from '@mui/icons-material/Undo';
 import RedoIcon from '@mui/icons-material/Redo';
@@ -74,6 +76,182 @@ const ShotSizeGlyph: React.FC<{ size: string; active: boolean }> = ({ size, acti
   );
 };
 
+// Inline-tegning i aktiv rute (mockupens kjerne: pensel rett på arket).
+// Gjenbruker web-motoren: stamp-preview under strøket, seedet stamp-commit
+// ved slipp, StreamLine på posisjonene, strokes lagres som web-JSON-STRENG
+// via onCommit → patchFrame (auto-thumbnail regenereres av eksisterende
+// effekt siden thumbnailUrl nullstilles).
+const parseStrokesJSON = (value: unknown): any[] => {
+  if (typeof value !== 'string' || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const InlineFrameCanvas: React.FC<{
+  frame: any;
+  brush: { type: string; size: number; color: string; opacity: number; smoothing: number };
+  onCommit: (strokesJSON: string) => void;
+}> = ({ frame, brush, onCommit }) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const previewRef = useRef<HTMLCanvasElement | null>(null);
+  const activePointsRef = useRef<any[]>([]);
+  const carryRef = useRef(0);
+  const strokesRef = useRef<any[]>([]);
+
+  const buildBrush = useCallback(() => ({
+    type: brush.type,
+    size: brush.size,
+    color: brush.color,
+    opacity: brush.opacity,
+    hardness: 0.6,
+    flow: 0.9,
+    wetness: 0,
+    grain: brush.type === 'charcoal' ? 0.85 : brush.type === 'pencil' ? 0.7 : 0.3,
+    tiltSensitivity: 0.5,
+    pressureSensitivity: 0.9,
+  }), [brush]);
+
+  const renderCommitted = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#fdfdfb';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for (const stroke of strokesRef.current) {
+      const strokeBrush = { ...buildBrush(), ...(stroke.brush ?? {}), size: stroke.width ?? 4, color: stroke.color ?? '#26282e', opacity: stroke.opacity ?? 1 };
+      if (strokeBrush.type === 'eraser') {
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        for (let i = 1; i < (stroke.points?.length ?? 0); i++) {
+          const a = stroke.points[i - 1];
+          const b = stroke.points[i];
+          const pressure = ((a.pressure ?? 0.7) + (b.pressure ?? 0.7)) / 2;
+          ctx.lineWidth = Math.max(2, strokeBrush.size * 2 * (0.35 + 0.65 * pressure));
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+        ctx.restore();
+        continue;
+      }
+      const config = getStampConfigForBrush(strokeBrush.type);
+      if (config) {
+        renderStrokeStamped(ctx, stroke.points ?? [], strokeBrush, config, stroke.id ?? 'stroke');
+      } else {
+        ctx.save();
+        ctx.strokeStyle = strokeBrush.color;
+        ctx.globalAlpha = strokeBrush.opacity * 0.8;
+        ctx.lineWidth = strokeBrush.size;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        (stroke.points ?? []).forEach((point: any, index: number) => {
+          if (index === 0) ctx.moveTo(point.x, point.y);
+          else ctx.lineTo(point.x, point.y);
+        });
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }, [buildBrush]);
+
+  useEffect(() => {
+    strokesRef.current = parseStrokesJSON(frame?.drawingData?.strokes);
+    renderCommitted();
+  }, [frame?.id, frame?.drawingData?.strokes, renderCommitted]);
+
+  const toCanvasPoint = useCallback((event: React.PointerEvent) => {
+    const canvas = previewRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * 1920,
+      y: ((event.clientY - rect.top) / rect.height) * 1080,
+      pressure: event.pressure > 0 ? event.pressure : 0.7,
+      tiltX: (event as any).tiltX ?? 0,
+      tiltY: (event as any).tiltY ?? 0,
+      timestamp: performance.now(),
+    };
+  }, []);
+
+  const handlePointerDown = useCallback((event: React.PointerEvent) => {
+    (event.target as HTMLElement).setPointerCapture(event.pointerId);
+    activePointsRef.current = [toCanvasPoint(event)];
+    carryRef.current = 0;
+  }, [toCanvasPoint]);
+
+  const handlePointerMove = useCallback((event: React.PointerEvent) => {
+    if (activePointsRef.current.length === 0) return;
+    const previewCtx = previewRef.current?.getContext('2d');
+    if (!previewCtx) return;
+    const point = toCanvasPoint(event);
+    const previous = activePointsRef.current[activePointsRef.current.length - 1];
+    activePointsRef.current.push(point);
+    const liveBrush = buildBrush();
+    if (liveBrush.type === 'eraser') {
+      previewCtx.save();
+      previewCtx.strokeStyle = 'rgba(180,180,180,0.5)';
+      previewCtx.lineWidth = liveBrush.size * 2;
+      previewCtx.lineCap = 'round';
+      previewCtx.beginPath();
+      previewCtx.moveTo(previous.x, previous.y);
+      previewCtx.lineTo(point.x, point.y);
+      previewCtx.stroke();
+      previewCtx.restore();
+      return;
+    }
+    const config = getStampConfigForBrush(liveBrush.type);
+    if (config) {
+      carryRef.current = stampSegment(previewCtx, previous, point, liveBrush, config, carryRef.current);
+      resetCtxAfterStamp(previewCtx);
+    }
+  }, [buildBrush, toCanvasPoint]);
+
+  const handlePointerUp = useCallback(() => {
+    const points = activePointsRef.current;
+    activePointsRef.current = [];
+    const previewCtx = previewRef.current?.getContext('2d');
+    previewCtx?.clearRect(0, 0, 1920, 1080);
+    if (points.length < 2) return;
+    const liveBrush = buildBrush();
+    const smoothed = applyStreamline(points, (brush.smoothing / 100) * 0.92);
+    const stroke = {
+      id: `board-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+      points: smoothed,
+      inputType: 'pencil',
+      color: liveBrush.color,
+      width: liveBrush.size,
+      opacity: liveBrush.opacity,
+      brush: liveBrush,
+    };
+    strokesRef.current = [...strokesRef.current, stroke];
+    renderCommitted();
+    onCommit(JSON.stringify(strokesRef.current));
+  }, [brush.smoothing, buildBrush, onCommit, renderCommitted]);
+
+  return (
+    <Box sx={{ position: 'absolute', inset: 0 }}>
+      <canvas ref={canvasRef} width={1920} height={1080} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+      <canvas
+        ref={previewRef} width={1920} height={1080}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none', cursor: 'crosshair' }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        data-testid="board-inline-canvas"
+      />
+    </Box>
+  );
+};
+
 const PanelLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <Typography sx={{ fontSize: 10.5, letterSpacing: 1.1, fontWeight: 700, color: TEXT_LABEL, textTransform: 'uppercase' }}>
     {children}
@@ -118,6 +296,8 @@ export const StoryboardBoardPage: React.FC<{
   const [brushSize, setBrushSize] = useState(12);
   const [brushOpacity, setBrushOpacity] = useState(100);
   const [brushSmoothing, setBrushSmoothing] = useState(32);
+  const [brushType, setBrushType] = useState('pencil');
+  const [brushColor, setBrushColor] = useState('#26282e');
   const [hiddenLayers, setHiddenLayers] = useState<Record<string, boolean>>({});
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -331,20 +511,52 @@ export const StoryboardBoardPage: React.FC<{
                         )}
                       </Box>
 
-                      <Box sx={{
-                        flex: 1, minWidth: 0, aspectRatio: '2.39 / 1', borderRadius: '4px',
-                        border: isActive ? `2px solid ${BRAND}` : '1.5px solid #2b2c31',
-                        backgroundImage: image ? `url(${image})` : undefined,
-                        backgroundSize: 'cover', backgroundPosition: 'center',
-                        bgcolor: image ? '#fdfdfb' : '#ececea',
-                        display: 'grid', placeItems: 'center',
-                      }}>
-                        {!image && (
-                          <Typography sx={{ fontSize: scaledFont(11), color: '#9a9ba1' }}>
-                            Dobbeltklikk for å tegne
-                          </Typography>
-                        )}
-                      </Box>
+                      {(() => {
+                        const drawingInline = isActive && ['brush', 'pencil', 'eraser'].includes(activeTool);
+                        const effectiveType = activeTool === 'eraser' ? 'eraser'
+                          : activeTool === 'pencil' ? 'pencil'
+                            : brushType;
+                        return (
+                          <Box sx={{
+                            flex: 1, minWidth: 0, aspectRatio: '2.39 / 1', borderRadius: '4px',
+                            position: 'relative', overflow: 'hidden',
+                            border: isActive ? `2px solid ${BRAND}` : '1.5px solid #2b2c31',
+                            backgroundImage: !drawingInline && image ? `url(${image})` : undefined,
+                            backgroundSize: 'cover', backgroundPosition: 'center',
+                            bgcolor: image || drawingInline ? '#fdfdfb' : '#ececea',
+                            display: 'grid', placeItems: 'center',
+                          }}>
+                            {drawingInline && (
+                              <InlineFrameCanvas
+                                frame={rowFrame}
+                                brush={{
+                                  type: effectiveType,
+                                  size: brushSize,
+                                  color: brushColor,
+                                  opacity: brushOpacity / 100,
+                                  smoothing: brushSmoothing,
+                                }}
+                                onCommit={(strokesJSON) => onPatchFrame(rowFrame.id, {
+                                  drawingData: {
+                                    ...(rowFrame.drawingData ?? {}),
+                                    strokes: strokesJSON,
+                                    width: 1920,
+                                    height: 1080,
+                                    updatedAt: new Date().toISOString(),
+                                  },
+                                  thumbnailUrl: undefined,
+                                  imageSource: 'drawn',
+                                })}
+                              />
+                            )}
+                            {!drawingInline && !image && (
+                              <Typography sx={{ fontSize: scaledFont(11), color: '#9a9ba1' }}>
+                                Velg pensel og tegn — eller dobbeltklikk for full editor
+                              </Typography>
+                            )}
+                          </Box>
+                        );
+                      })()}
 
                       <Box sx={{ width: `${Math.round(118 * zoom)}px`, flexShrink: 0 }}>
                         {[
@@ -555,18 +767,31 @@ export const StoryboardBoardPage: React.FC<{
                 <PanelLabel>Brushes</PanelLabel>
               </Stack>
               <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ width: 176 }}>
-                {['pencil', 'graphite', 'charcoal', 'ink', 'pen', 'marker', 'watercolor'].map((brush, index) => (
-                  <Tooltip key={brush} title={brush}>
-                    <Box sx={{
-                      width: 38, height: 46, borderRadius: 1.5, cursor: 'pointer',
-                      bgcolor: index === 2 ? BRAND_SOFT : 'rgba(255,255,255,0.04)',
-                      border: index === 2 ? `1.5px solid ${BRAND}` : `1px solid ${PANEL_BORDER}`,
-                      display: 'grid', placeItems: 'center',
-                    }}>
-                      <CreateIcon sx={{ fontSize: 17, color: 'rgba(255,255,255,0.7)', transform: `rotate(${index * 8 - 20}deg)` }} />
-                    </Box>
-                  </Tooltip>
-                ))}
+                {['pencil', 'graphite', 'charcoal', 'conte', 'ink', 'pen', 'marker'].map((brushOption, index) => {
+                  const selected = brushType === brushOption && activeTool !== 'eraser';
+                  return (
+                    <Tooltip key={brushOption} title={brushOption}>
+                      <Box
+                        onClick={() => { setBrushType(brushOption); setActiveTool('brush'); }}
+                        data-testid={`board-brush-${brushOption}`}
+                        sx={{
+                          width: 38, height: 46, borderRadius: 1.5, cursor: 'pointer',
+                          bgcolor: selected ? BRAND_SOFT : 'rgba(255,255,255,0.04)',
+                          border: selected ? `1.5px solid ${BRAND}` : `1px solid ${PANEL_BORDER}`,
+                          display: 'grid', placeItems: 'center',
+                        }}
+                      >
+                        <CreateIcon sx={{ fontSize: 17, color: selected ? '#c4b5fd' : 'rgba(255,255,255,0.7)', transform: `rotate(${index * 8 - 20}deg)` }} />
+                      </Box>
+                    </Tooltip>
+                  );
+                })}
+                <Tooltip title="Penselfarge">
+                  <Box component="label" sx={{ width: 38, height: 46, borderRadius: 1.5, cursor: 'pointer', border: `1px solid ${PANEL_BORDER}`, display: 'grid', placeItems: 'center' }}>
+                    <Box sx={{ width: 20, height: 20, borderRadius: '50%', bgcolor: brushColor, border: '2px solid rgba(255,255,255,0.35)' }} />
+                    <input type="color" value={brushColor} onChange={(event) => setBrushColor(event.target.value)} style={{ position: 'absolute', width: 0, height: 0, opacity: 0 }} />
+                  </Box>
+                </Tooltip>
               </Stack>
             </Box>
             <Box sx={{ flex: 1, minWidth: 140 }}>

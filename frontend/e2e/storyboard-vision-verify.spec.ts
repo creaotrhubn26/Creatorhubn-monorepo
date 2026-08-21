@@ -153,6 +153,23 @@ test.describe('Storyboard-visjonen — TROLL', () => {
         await page.waitForTimeout(600);
         await page.screenshot({ path: `${SHOT_DIR}/8-board-pro-inspector.png` });
       }
+
+      // Inline-tegning: velg kull-pensel og dra et strøk i aktiv rute
+      const charcoalBrush = page.locator('[data-testid="board-brush-charcoal"]');
+      if (await charcoalBrush.isVisible({ timeout: 2_000 }).catch(() => false)) {
+        await charcoalBrush.click();
+        const inlineCanvas = page.locator('[data-testid="board-inline-canvas"]');
+        await expect(inlineCanvas).toBeVisible({ timeout: 5_000 });
+        const bounds = await inlineCanvas.boundingBox();
+        if (bounds) {
+          await page.mouse.move(bounds.x + bounds.width * 0.25, bounds.y + bounds.height * 0.35);
+          await page.mouse.down();
+          await page.mouse.move(bounds.x + bounds.width * 0.7, bounds.y + bounds.height * 0.65, { steps: 24 });
+          await page.mouse.up();
+          await page.waitForTimeout(900);
+          await page.screenshot({ path: `${SHOT_DIR}/9-board-pro-inline-tegning.png` });
+        }
+      }
       await page.locator('[data-testid="board-page-close"]').click();
       await page.waitForTimeout(500);
     }

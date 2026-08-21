@@ -1473,6 +1473,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
             versionLog={(scene as SceneWithVersionLog).storyboardVersionLog}
             onSaveVersion={handleSaveVersion}
             onRequestSceneChange={onRequestSceneChange}
+            onSwitchViewMode={(mode) => setViewMode(mode)}
           />
         )}
         {!storyboardPanelOnly && viewMode === 'split' && (
@@ -1658,6 +1659,7 @@ const StoryboardView: React.FC<{
   versionLog?: StoryboardVersionEntry[];
   onSaveVersion?: (summary: string) => void;
   onRequestSceneChange?: (sceneId: string) => void;
+  onSwitchViewMode?: (mode: 'script' | 'shotlist') => void;
 }> = ({
   frames,
   onUpdate,
@@ -1677,6 +1679,7 @@ const StoryboardView: React.FC<{
   versionLog,
   onSaveVersion,
   onRequestSceneChange,
+  onSwitchViewMode,
 }) => {
   const device = useDeviceDetection();
   const { showSuccess, showInfo, showError } = useToast();
@@ -4064,6 +4067,8 @@ const StoryboardView: React.FC<{
           onPatchFrame={(frameId, fields) => patchFrame(frameId, fields)}
           onDrawFrame={(frameId) => setDrawingFrameId(frameId)}
           onAddFrame={handleAddFrame}
+          onOpenScript={onSwitchViewMode ? () => { setBoardProOpen(false); onSwitchViewMode('script'); } : undefined}
+          onOpenShotList={onSwitchViewMode ? () => { setBoardProOpen(false); onSwitchViewMode('shotlist'); } : undefined}
           onClose={() => setBoardProOpen(false)}
         />
       )}
