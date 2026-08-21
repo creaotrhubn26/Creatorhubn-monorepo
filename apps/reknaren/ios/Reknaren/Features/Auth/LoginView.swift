@@ -37,9 +37,9 @@ struct LoginView: View {
                     Button {
                         Task { await requestLink() }
                     } label: {
-                        if busy { ProgressView() } else { Text("Send innloggingslenke").frame(maxWidth: .infinity) }
+                        if busy { ProgressView().tint(.white).frame(maxWidth: .infinity) } else { Text("Send innloggingslenke") }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(ReknarenPrimaryButtonStyle())
                     .disabled(busy || email.isEmpty)
                     if let error { Text(error).font(.footnote).foregroundStyle(.red) }
                 }

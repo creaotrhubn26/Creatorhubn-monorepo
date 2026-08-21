@@ -21,6 +21,7 @@ struct ReknarenApp: App {
                     }
                 }
             }
+            .tint(.reknarenGreen)
             .environment(session)
             .environment(app)
             .environment(PushRouter.shared)
