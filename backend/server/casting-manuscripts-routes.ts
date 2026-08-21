@@ -513,7 +513,20 @@ export function setupCastingManuscriptsRoutes(
   app.get("/api/casting/manuscripts/:manuscriptId/scenes", async (req, res) => {
     try {
       if (!(await ensureManuscriptOwner(req, res, req.params.manuscriptId))) return;
+      // ETag fra manuscript-version (bumpes ved hver scene-mutasjon):
+      // klienter som poller slipper å laste hele scenelisten (thumbs +
+      // underlag = MB) når ingenting er endret.
+      const manuscript = await manuscriptsService.getManuscript(
+        req.params.manuscriptId,
+      );
+      const version = (manuscript as { version?: number } | null)?.version ?? 0;
+      const etag = `W/"scenes-${req.params.manuscriptId}-${version}"`;
+      if (req.headers["if-none-match"] === etag) {
+        res.status(304).end();
+        return;
+      }
       const scenes = await manuscriptsService.getScenes(req.params.manuscriptId);
+      res.setHeader("ETag", etag);
       res.json(scenes);
     } catch (error) {
       console.error("Error listing scenes:", error);
@@ -565,6 +578,34 @@ export function setupCastingManuscriptsRoutes(
       }
       console.error("Error upserting scene:", error);
       res.status(500).json({ error: "Could not save scene" });
+    }
+  });
+
+  // Slett én scene (iPad-appen; web sletter via egne flows).
+  app.delete("/api/casting/scenes/:sceneId", async (req, res) => {
+    try {
+      const manuscriptId =
+        typeof req.query.manuscriptId === "string" ? req.query.manuscriptId : "";
+      if (!manuscriptId) {
+        res.status(400).json({ error: "manuscriptId is required" });
+        return;
+      }
+      if (!(await ensureManuscriptOwner(req, res, manuscriptId))) return;
+      const current = await manuscriptsService.getScenes(manuscriptId);
+      const next = current.filter((scene) => scene?.id !== req.params.sceneId);
+      if (next.length === current.length) {
+        res.status(404).json({ error: "scene_not_found" });
+        return;
+      }
+      await manuscriptsService.replaceScenes(manuscriptId, next);
+      res.json({ ok: true });
+    } catch (error) {
+      if ((error as Error)?.name === "CompatStoreUnavailableError") {
+        res.status(503).json({ error: "storage_unavailable" });
+        return;
+      }
+      console.error("Error deleting scene:", error);
+      res.status(500).json({ error: "Could not delete scene" });
     }
   });
 
