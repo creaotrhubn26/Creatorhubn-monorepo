@@ -75,6 +75,52 @@ struct PencilStroke: Codable, Sendable, Equatable, Identifiable {
     var width: Double
     var opacity: Double
     var brush: BrushSpec?
+    // Board Pro-felter (web-paritet): lag-tag + tekst-annotasjon («PUSH IN»).
+    // Optional → utelates i JSON når nil, og web-strøk med disse feltene
+    // overlever native rundtur tapsfritt.
+    var boardLayer: String?
+    var textAnnotation: String?
+}
+
+// Web BOARD_LAYERS-rekkefølge — strøk uten boardLayer regnes som Drawing.
+enum BoardLayers {
+    static let all = ["Drawing", "Camera / Arrows", "Dialog", "Notes"]
+    static func index(of layer: String?) -> Int {
+        all.firstIndex(of: layer ?? "Drawing") ?? 0
+    }
+}
+
+// Tolerant decode: web-strøk kan mangle felter (eldre motorversjoner lagret
+// f.eks. brush uten pressureSensitivity) — strict decode ville forkastet hele
+// framen. Defaults matcher web-motorens fallbacks. init(from:) i extension
+// bevarer memberwise-init for preset().
+extension StrokePoint {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        x = try container.decode(Double.self, forKey: .x)
+        y = try container.decode(Double.self, forKey: .y)
+        pressure = try container.decodeIfPresent(Double.self, forKey: .pressure) ?? 0.5
+        tiltX = try container.decodeIfPresent(Double.self, forKey: .tiltX) ?? 0
+        tiltY = try container.decodeIfPresent(Double.self, forKey: .tiltY) ?? 0
+        timestamp = try container.decodeIfPresent(Double.self, forKey: .timestamp) ?? 0
+    }
+}
+
+extension BrushSpec {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let rawType = try container.decodeIfPresent(String.self, forKey: .type) ?? "pencil"
+        type = BrushType(rawValue: rawType) ?? .pencil
+        size = try container.decodeIfPresent(Double.self, forKey: .size) ?? 6
+        color = try container.decodeIfPresent(String.self, forKey: .color) ?? "#26282e"
+        opacity = try container.decodeIfPresent(Double.self, forKey: .opacity) ?? 1
+        hardness = try container.decodeIfPresent(Double.self, forKey: .hardness) ?? 0.6
+        flow = try container.decodeIfPresent(Double.self, forKey: .flow) ?? 0.85
+        wetness = try container.decodeIfPresent(Double.self, forKey: .wetness) ?? 0
+        grain = try container.decodeIfPresent(Double.self, forKey: .grain) ?? 0.3
+        tiltSensitivity = try container.decodeIfPresent(Double.self, forKey: .tiltSensitivity) ?? 0.5
+        pressureSensitivity = try container.decodeIfPresent(Double.self, forKey: .pressureSensitivity) ?? 0.85
+    }
 }
 
 enum StrokeSerialization {
