@@ -130,6 +130,18 @@ export interface CastingManuscriptsService {
   // returnere den til klient med korrekt ETag-header.
   replaceManuscript(manuscriptId: string, manuscript: JsonBlob): Promise<JsonBlob>;
   replaceScenes(manuscriptId: string, scenes: JsonBlob[]): Promise<JsonBlob[]>;
+  /**
+   * Per-frame patch: merger fields inn i én storyboard-frame og strict-
+   * persisterer scenen. Kutter payload (hele scener POSTes ellers per
+   * strøk-lagring) og klobber ikke andre frames i samme scene.
+   * null → scene/frame ikke funnet.
+   */
+  patchFrame(
+    manuscriptId: string,
+    sceneId: string,
+    frameId: string,
+    fields: JsonBlob,
+  ): Promise<{ updatedAt: string } | null>;
   replaceDialogue(manuscriptId: string, dialogue: JsonBlob[]): Promise<JsonBlob[]>;
   replaceActs(manuscriptId: string, acts: JsonBlob[]): Promise<JsonBlob[]>;
   replaceRevisions(manuscriptId: string, revisions: JsonBlob[]): Promise<JsonBlob[]>;
@@ -426,6 +438,39 @@ export function createCastingManuscriptsService(
     return scenes;
   }
 
+  async function patchFrame(
+    manuscriptId: string,
+    sceneId: string,
+    frameId: string,
+    fields: JsonBlob,
+  ): Promise<{ updatedAt: string } | null> {
+    const scenes = await getScenes(manuscriptId);
+    const sceneIndex = scenes.findIndex((scene) => scene?.id === sceneId);
+    if (sceneIndex < 0) return null;
+    const scene = scenes[sceneIndex] as any;
+    const frames: any[] = Array.isArray(scene.storyboardFrames)
+      ? scene.storyboardFrames
+      : [];
+    const frameIndex = frames.findIndex((frame) => frame?.id === frameId);
+    if (frameIndex < 0) return null;
+    const updatedAt = new Date().toISOString();
+    const nextFrames = frames.slice();
+    nextFrames[frameIndex] = {
+      ...frames[frameIndex],
+      ...fields,
+      id: frameId,
+      updatedAt,
+    };
+    const nextScenes = scenes.slice();
+    nextScenes[sceneIndex] = {
+      ...scene,
+      storyboardFrames: nextFrames,
+      updatedAt,
+    };
+    await replaceScenes(manuscriptId, nextScenes);
+    return { updatedAt };
+  }
+
   async function replaceDialogue(
     manuscriptId: string,
     dialogue: JsonBlob[],
@@ -584,6 +629,7 @@ export function createCastingManuscriptsService(
     getRevisions,
     replaceManuscript,
     replaceScenes,
+    patchFrame,
     replaceDialogue,
     replaceActs,
     replaceRevisions,

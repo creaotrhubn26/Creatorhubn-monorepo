@@ -568,6 +568,45 @@ export function setupCastingManuscriptsRoutes(
     }
   });
 
+  // Per-frame patch (iPad-appen): unngår hele-scene-POST per strøk-lagring
+  // — payload er kun frame-feltene som endres.
+  app.patch("/api/casting/frames", async (req, res) => {
+    try {
+      const payload = req.body && typeof req.body === "object" ? req.body : {};
+      const manuscriptId =
+        typeof payload.manuscriptId === "string" ? payload.manuscriptId : "";
+      const sceneId = typeof payload.sceneId === "string" ? payload.sceneId : "";
+      const frameId = typeof payload.frameId === "string" ? payload.frameId : "";
+      const fields =
+        payload.fields && typeof payload.fields === "object" ? payload.fields : null;
+      if (!manuscriptId || !sceneId || !frameId || !fields) {
+        res.status(400).json({
+          error: "manuscriptId, sceneId, frameId and fields are required",
+        });
+        return;
+      }
+      if (!(await ensureManuscriptOwner(req, res, manuscriptId))) return;
+      const result = await manuscriptsService.patchFrame(
+        manuscriptId,
+        sceneId,
+        frameId,
+        fields,
+      );
+      if (!result) {
+        res.status(404).json({ error: "frame_not_found" });
+        return;
+      }
+      res.json(result);
+    } catch (error) {
+      if ((error as Error)?.name === "CompatStoreUnavailableError") {
+        res.status(503).json({ error: "storage_unavailable" });
+        return;
+      }
+      console.error("Error patching frame:", error);
+      res.status(500).json({ error: "Could not patch frame" });
+    }
+  });
+
   // ── Dialogue ───────────────────────────────────────────────────────
 
   app.get("/api/casting/manuscripts/:manuscriptId/dialogue", async (req, res) => {
