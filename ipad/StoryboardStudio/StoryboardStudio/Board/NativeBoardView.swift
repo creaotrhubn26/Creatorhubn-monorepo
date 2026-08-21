@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import PhotosUI
+import AVFoundation
 
 // Native Board Pro — mockup-flaten («Neon City», STORYBOARD_DESIGN.md §4b)
 // i SwiftUI rundt Metal-motoren, med Role Room-brand (fiolett aksent).
@@ -271,6 +272,13 @@ struct NativeBoardView: View {
         .onChange(of: board.selectedSceneIndex) { board.activeFrameIndex = 0; loadActiveFrameIntoCanvas() }
         .onChange(of: board.scenes.count) { loadActiveFrameIntoCanvas() }
         .onChange(of: canvasState.revision) { scheduleAutosync() }
+        .task {
+            // Retry-løkke for usynkede frames (nett tilbake / feilet synk).
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
+                if !pendingFrameIds.isEmpty { flushAllPending() }
+            }
+        }
         .onChange(of: boardTool) { selectedStrokeIds = [] }
     }
 
@@ -367,6 +375,34 @@ struct NativeBoardView: View {
         }
     }
 
+    /// Synk alle usynkede frames fra disk-backupen — kjøres fra «Synk nå»
+    /// og en 60 s retry-timer (nett tilbake skal ikke kreve at hver frame
+    /// åpnes på nytt).
+    private func flushAllPending() {
+        for frameId in PendingStrokeStore.pendingFrameIds() {
+            if frameId == board.frame?.id {
+                syncActiveFrameStrokes()
+                continue
+            }
+            guard let scene = board.scenes.first(where: { scene in
+                scene.frames.contains { $0.id == frameId }
+            }), let json = PendingStrokeStore.load(frameId: frameId) else { continue }
+            let manuscriptId = board.manuscript.id
+            let sceneId = scene.id
+            Task {
+                do {
+                    try await RoleRoomAPIClient.shared.saveFrameStrokes(
+                        manuscriptId: manuscriptId, sceneId: sceneId,
+                        frameId: frameId, strokesJSON: json)
+                    PendingStrokeStore.clear(frameId: frameId)
+                    pendingFrameIds.remove(frameId)
+                } catch {
+                    // beholdes på disk; neste retry tar den
+                }
+            }
+        }
+    }
+
     // Autosynk: backup til disk straks, nett-synk etter 3 s ro.
     private func scheduleAutosync() {
         guard let frame = board.frame,
@@ -414,9 +450,14 @@ struct NativeBoardView: View {
             }
             Spacer()
             if !pendingFrameIds.isEmpty {
-                Label("\(pendingFrameIds.count) usynket", systemImage: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.orange)
+                Button { flushAllPending() } label: {
+                    Label("\(pendingFrameIds.count) usynket — synk nå",
+                          systemImage: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.orange)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Synk nå")
             }
             if let status = board.syncStatus {
                 Text(status).font(.system(size: 12)).foregroundStyle(BoardBrand.dim)
@@ -429,9 +470,20 @@ struct NativeBoardView: View {
                     .font(.system(size: 15)).foregroundStyle(BoardBrand.dim)
             }
             .accessibilityLabel("Tone-analyse")
-            Button {
-                exportPDFURL = BoardPDFExporter.export(
-                    projectTitle: board.manuscript.title, scenes: board.scenes)
+            Menu {
+                Button {
+                    exportPDFURL = BoardPDFExporter.export(
+                        projectTitle: board.manuscript.title, scenes: board.scenes)
+                } label: {
+                    Label("PDF", systemImage: "doc.richtext")
+                }
+                Button {
+                    exportPDFURL = BoardPDFExporter.export(
+                        projectTitle: board.manuscript.title, scenes: board.scenes,
+                        includeUnderlay: true)
+                } label: {
+                    Label("PDF med underlag", systemImage: "photo.on.rectangle")
+                }
             } label: {
                 Image(systemName: "square.and.arrow.up")
                     .font(.system(size: 16)).foregroundStyle(BoardBrand.dim)
@@ -1402,6 +1454,16 @@ struct NativeBoardView: View {
                     HStack(spacing: 5) {
                         ColorPicker("Farge", selection: brushColorBinding, supportsOpacity: false)
                             .labelsHidden().frame(width: 32, height: 28)
+                        Button { canvasState.colorPickArmed.toggle() } label: {
+                            Image(systemName: "eyedropper")
+                                .font(.system(size: 12))
+                                .foregroundStyle(canvasState.colorPickArmed ? .white : BoardBrand.dim)
+                                .frame(width: 24, height: 24)
+                                .background(canvasState.colorPickArmed ? BoardBrand.accent : Color.white.opacity(0.05),
+                                            in: RoundedRectangle(cornerRadius: 7))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Fargeplukker")
                         // Nylige farger
                         ForEach(canvasState.recentColors.prefix(6), id: \.self) { hex in
                             Button { canvasState.brushColor = hex } label: {
@@ -1595,12 +1657,105 @@ struct NativeBoardView: View {
 
 // MARK: Animatic — scene-avspilling med per-shot varighet (native AnimaticLite)
 
+// Animatic → MP4: ett stillbilde per shot i shot-varighet (H.264 1280×720).
+// Frames re-rendres i hi-res gjennom motoren; thumb/plakat som fallback.
+@MainActor
+enum AnimaticVideoExporter {
+    static func export(sceneHeading: String, frames: [FrameSummary]) async -> URL? {
+        guard !frames.isEmpty else { return nil }
+        let videoSize = CGSize(width: 1280, height: 720)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(sceneHeading.replacingOccurrences(of: "/", with: "-")) animatic.mp4")
+        try? FileManager.default.removeItem(at: url)
+        guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mp4) else { return nil }
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: Int(videoSize.width),
+            AVVideoHeightKey: Int(videoSize.height),
+        ])
+        input.expectsMediaDataInRealTime = false
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+            assetWriterInput: input,
+            sourcePixelBufferAttributes: [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                kCVPixelBufferWidthKey as String: Int(videoSize.width),
+                kCVPixelBufferHeightKey as String: Int(videoSize.height),
+            ])
+        writer.add(input)
+        guard writer.startWriting() else { return nil }
+        writer.startSession(atSourceTime: .zero)
+        var time = CMTime.zero
+        for frame in frames {
+            let image = FrameRenderService.image(for: frame, maxWidth: 1280)
+                ?? decodeDataURL(frame.thumbnailDataURL)
+            guard let buffer = pixelBuffer(image: image, shotNumber: frame.shotNumber,
+                                           size: videoSize) else { continue }
+            while !input.isReadyForMoreMediaData {
+                try? await Task.sleep(nanoseconds: 20_000_000)
+            }
+            adaptor.append(buffer, withPresentationTime: time)
+            time = CMTimeAdd(time, CMTime(seconds: max(0.5, frame.durationSec),
+                                          preferredTimescale: 600))
+        }
+        input.markAsFinished()
+        writer.endSession(atSourceTime: time)
+        await withCheckedContinuation { continuation in
+            writer.finishWriting { continuation.resume() }
+        }
+        return writer.status == .completed ? url : nil
+    }
+
+    /// Aspekt-fit på hvit flate; shots uten tegning får plakat med shot-nr.
+    private static func pixelBuffer(image: UIImage?, shotNumber: String,
+                                    size: CGSize) -> CVPixelBuffer? {
+        var buffer: CVPixelBuffer?
+        CVPixelBufferCreate(kCFAllocatorDefault, Int(size.width), Int(size.height),
+                            kCVPixelFormatType_32BGRA, nil, &buffer)
+        guard let buffer else { return nil }
+        CVPixelBufferLockBaseAddress(buffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+        guard let context = CGContext(
+            data: CVPixelBufferGetBaseAddress(buffer),
+            width: Int(size.width), height: Int(size.height), bitsPerComponent: 8,
+            bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo.byteOrder32Little.rawValue
+                | CGImageAlphaInfo.premultipliedFirst.rawValue) else { return nil }
+        UIGraphicsPushContext(context)
+        context.translateBy(x: 0, y: size.height)
+        context.scaleBy(x: 1, y: -1)
+        UIColor.white.setFill()
+        context.fill(CGRect(origin: .zero, size: size))
+        if let image {
+            let scale = min(size.width / image.size.width, size.height / image.size.height)
+            let drawSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+            image.draw(in: CGRect(x: (size.width - drawSize.width) / 2,
+                                  y: (size.height - drawSize.height) / 2,
+                                  width: drawSize.width, height: drawSize.height))
+        } else {
+            let text = "SHOT \(shotNumber)" as NSString
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.boldSystemFont(ofSize: 44),
+                .foregroundColor: UIColor(white: 0.55, alpha: 1),
+            ]
+            let textSize = text.size(withAttributes: attributes)
+            text.draw(at: CGPoint(x: (size.width - textSize.width) / 2,
+                                  y: (size.height - textSize.height) / 2),
+                      withAttributes: attributes)
+        }
+        UIGraphicsPopContext()
+        return buffer
+    }
+}
+
 struct AnimaticView: View {
     let sceneHeading: String
     let frames: [FrameSummary]
     @Environment(\.dismiss) private var dismiss
     @State private var index = 0
     @State private var playing = true
+    @State private var exporting = false
+    @State private var exportURL: URL?
 
     var body: some View {
         ZStack {
@@ -1611,6 +1766,23 @@ struct AnimaticView: View {
                         .font(.system(size: 12, weight: .bold)).kerning(1.2)
                         .foregroundStyle(.white.opacity(0.6))
                     Spacer()
+                    Button {
+                        exporting = true
+                        Task {
+                            exportURL = await AnimaticVideoExporter.export(
+                                sceneHeading: sceneHeading, frames: frames)
+                            exporting = false
+                        }
+                    } label: {
+                        if exporting {
+                            ProgressView().tint(.white)
+                        } else {
+                            Label("Eksporter video", systemImage: "film")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.8))
+                        }
+                    }
+                    .disabled(exporting || frames.isEmpty)
                     Button { dismiss() } label: {
                         Image(systemName: "xmark").foregroundStyle(.white.opacity(0.7))
                     }
@@ -1652,6 +1824,9 @@ struct AnimaticView: View {
                 }
                 .padding(.horizontal, 24).padding(.bottom, 20)
             }
+        }
+        .sheet(item: $exportURL) { url in
+            ShareSheet(items: [url])
         }
         .task(id: "\(index)-\(playing)") {
             guard playing, frames.indices.contains(index) else { return }
@@ -2157,8 +2332,11 @@ enum FrameRenderService {
     static let renderer = MetalStrokeRenderer()
 
     /// Rendrer frame-tegningen offscreen ved gitt bredde (aspekt fra
-    /// drawingWidth/Height). nil → ingen strøk / motor utilgjengelig.
-    static func image(for frame: FrameSummary, maxWidth: CGFloat) -> UIImage? {
+    /// drawingWidth/Height). Tekst-annotasjoner («PUSH IN») tegnes inn med
+    /// CoreText (Metal tegner ikke tekst); underlaget kan tas med for
+    /// review-utgaver. nil → ingen strøk / motor utilgjengelig.
+    static func image(for frame: FrameSummary, maxWidth: CGFloat,
+                      includeUnderlay: Bool = false) -> UIImage? {
         guard let renderer,
               let json = frame.strokesJSON,
               let strokes = try? StrokeSerialization.decodeFromWebJSON(json) else { return nil }
@@ -2168,8 +2346,40 @@ enum FrameRenderService {
         renderer.resizeCanvas(width: Int(maxWidth),
                               height: Int(frame.drawingHeight * scale))
         renderer.rebuild(strokes: drawable, scale: scale)
-        guard let dataURL = renderer.thumbnailDataURL(maxWidth: maxWidth) else { return nil }
-        return decodeDataURL(dataURL)
+        guard let dataURL = renderer.thumbnailDataURL(maxWidth: maxWidth),
+              let base = decodeDataURL(dataURL) else { return nil }
+
+        let annotations = strokes.filter { ($0.textAnnotation ?? "").isEmpty == false }
+        let underlayImage = includeUnderlay ? frame.underlayDataURL.flatMap(decodeDataURL) : nil
+        guard underlayImage != nil || !annotations.isEmpty else { return base }
+        let size = base.size
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+            if let underlay = underlayImage {
+                underlay.draw(in: CGRect(origin: .zero, size: size), blendMode: .normal,
+                              alpha: CGFloat(frame.underlayOpacity ?? 0.4))
+            }
+            // Multiply: hvitt papir slipper underlaget gjennom, grafitt biter.
+            base.draw(in: CGRect(origin: .zero, size: size), blendMode: .multiply, alpha: 1)
+            for stroke in annotations {
+                guard let point = stroke.points.first else { continue }
+                let text = (stroke.textAnnotation ?? "").uppercased()
+                let fontSize = max(12, 40 * scale)
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: UIFont(name: BoardBrand.handwriting, size: fontSize)
+                        ?? UIFont.systemFont(ofSize: fontSize),
+                    .foregroundColor: UIColor(Color(hex: stroke.color) ?? BoardBrand.accent),
+                ]
+                let textSize = (text as NSString).size(withAttributes: attributes)
+                (text as NSString).draw(
+                    at: CGPoint(x: CGFloat(point.x) * scale - textSize.width / 2,
+                                y: CGFloat(point.y) * scale - textSize.height / 2),
+                    withAttributes: attributes)
+            }
+        }
     }
 
     /// PNG-fil i temp for deling (shot-menyens «Eksporter PNG»).
@@ -2185,7 +2395,8 @@ enum FrameRenderService {
 
 @MainActor
 enum BoardPDFExporter {
-    static func export(projectTitle: String, scenes: [SceneSummary]) -> URL? {
+    static func export(projectTitle: String, scenes: [SceneSummary],
+                       includeUnderlay: Bool = false) -> URL? {
         let pageRect = CGRect(x: 0, y: 0, width: 842, height: 595) // A4 landskap pt
         let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
         let url = FileManager.default.temporaryDirectory
@@ -2202,7 +2413,8 @@ enum BoardPDFExporter {
                         drawHeader(scene: scene, projectTitle: projectTitle,
                                    pageIndex: pageIndex, pageCount: pages.count, in: pageRect)
                         for (rowIndex, frame) in pageFrames.enumerated() {
-                            drawShotRow(frame, rowIndex: rowIndex, in: pageRect)
+                            drawShotRow(frame, rowIndex: rowIndex, in: pageRect,
+                                        includeUnderlay: includeUnderlay)
                         }
                     }
                 }
@@ -2223,7 +2435,8 @@ enum BoardPDFExporter {
                              .foregroundColor: UIColor.black])
     }
 
-    private static func drawShotRow(_ frame: FrameSummary, rowIndex: Int, in page: CGRect) {
+    private static func drawShotRow(_ frame: FrameSummary, rowIndex: Int, in page: CGRect,
+                                    includeUnderlay: Bool) {
         let top = 56.0 + Double(rowIndex) * 172
         let thumbRect = CGRect(x: 156, y: top, width: 280, height: 157.5)
         // Kodeboks
@@ -2241,7 +2454,8 @@ enum BoardPDFExporter {
         let border = UIBezierPath(rect: thumbRect)
         border.lineWidth = 1
         border.stroke()
-        if let image = FrameRenderService.image(for: frame, maxWidth: 1120)
+        if let image = FrameRenderService.image(for: frame, maxWidth: 1120,
+                                                includeUnderlay: includeUnderlay)
             ?? decodeDataURL(frame.thumbnailDataURL) {
             image.draw(in: thumbRect)
         }

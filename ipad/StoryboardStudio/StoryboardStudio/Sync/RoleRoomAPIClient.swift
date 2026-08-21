@@ -91,6 +91,30 @@ enum SyncError: LocalizedError {
     }
 }
 
+// Konflikt-merge (samme frame redigert fra to enheter): union på stroke-id.
+// Serverens strøk beholdes i sin rekkefølge; våre nye appendes. Tegning er
+// append-dominert, så union taper aldri data (sletting på vår side i
+// konflikt-tilfellet overlever ikke — akseptert trade-off).
+enum StrokeMerge {
+    static func union(serverJSON: String, oursJSON: String) -> String? {
+        guard let serverData = serverJSON.data(using: .utf8),
+              let ourData = oursJSON.data(using: .utf8),
+              let serverList = (try? JSONSerialization.jsonObject(with: serverData)) as? [[String: Any]],
+              let ourList = (try? JSONSerialization.jsonObject(with: ourData)) as? [[String: Any]] else {
+            return nil
+        }
+        let serverIds = Set(serverList.compactMap { $0["id"] as? String })
+        let newOnes = ourList.filter { stroke in
+            guard let id = stroke["id"] as? String else { return false }
+            return !serverIds.contains(id)
+        }
+        guard let mergedData = try? JSONSerialization.data(withJSONObject: serverList + newOnes) else {
+            return nil
+        }
+        return String(data: mergedData, encoding: .utf8)
+    }
+}
+
 actor RoleRoomAPIClient {
     static let shared = RoleRoomAPIClient()
     static let scenesNamespace = "virtualStudio_manuscriptScenes"
@@ -259,20 +283,8 @@ actor RoleRoomAPIClient {
                    let serverUpdated = frames[frameIndex]["updatedAt"] as? String,
                    serverUpdated != base,
                    let serverJSON = drawingData["strokes"] as? String,
-                   let serverData = serverJSON.data(using: .utf8),
-                   let ourData = strokesJSON.data(using: .utf8),
-                   let serverList = (try? JSONSerialization.jsonObject(with: serverData)) as? [[String: Any]],
-                   let ourList = (try? JSONSerialization.jsonObject(with: ourData)) as? [[String: Any]] {
-                    let serverIds = Set(serverList.compactMap { $0["id"] as? String })
-                    let newOnes = ourList.filter { stroke in
-                        guard let id = stroke["id"] as? String else { return false }
-                        return !serverIds.contains(id)
-                    }
-                    let merged = serverList + newOnes
-                    if let mergedData = try? JSONSerialization.data(withJSONObject: merged),
-                       let mergedJSON = String(data: mergedData, encoding: .utf8) {
-                        effectiveStrokes = mergedJSON
-                    }
+                   let merged = StrokeMerge.union(serverJSON: serverJSON, oursJSON: strokesJSON) {
+                    effectiveStrokes = merged
                 }
                 drawingData["strokes"] = effectiveStrokes
                 drawingData["updatedAt"] = now
@@ -299,7 +311,43 @@ actor RoleRoomAPIClient {
         guard let scene = scenes.first(where: { $0["id"] as? String == sceneId }) else {
             throw SyncError.malformed("scene \(sceneId) ikke funnet")
         }
+        // Per-frame PATCH (kun endrede felter — hele scenen med alle thumbs/
+        // underlag POSTes ikke lenger per strøk-lagring). Legacy-fallback
+        // mot eldre backend.
+        if let frames = scene["storyboardFrames"] as? [[String: Any]],
+           let frame = frames.first(where: { $0["id"] as? String == frameId }) {
+            var fields: [String: Any] = [
+                "drawingData": frame["drawingData"] ?? [:],
+                "imageSource": "drawn",
+            ]
+            fields["thumbnailUrl"] = frame["thumbnailUrl"] ?? NSNull()
+            if let serverUpdatedAt = try await patchFrameRemote(
+                manuscriptId: manuscriptId, sceneId: sceneId,
+                frameId: frameId, fields: fields) {
+                if !serverUpdatedAt.isEmpty {
+                    applyLocalFrameUpdatedAt(manuscriptId: manuscriptId, sceneId: sceneId,
+                                             frameId: frameId, updatedAt: serverUpdatedAt)
+                }
+                return
+            }
+        }
         try await sendJSON(path: "/api/casting/scenes", method: "POST", body: scene)
+    }
+
+    /// Skriv serverens autoritative updatedAt inn i lokal rå-scene så
+    /// neste konfliktsjekk sammenligner mot riktig verdi.
+    private func applyLocalFrameUpdatedAt(
+        manuscriptId: String, sceneId: String, frameId: String, updatedAt: String
+    ) {
+        guard var scenes = rawScenes[manuscriptId] else { return }
+        for sceneIndex in scenes.indices where scenes[sceneIndex]["id"] as? String == sceneId {
+            var frames = (scenes[sceneIndex]["storyboardFrames"] as? [[String: Any]]) ?? []
+            for frameIndex in frames.indices where frames[frameIndex]["id"] as? String == frameId {
+                frames[frameIndex]["updatedAt"] = updatedAt
+            }
+            scenes[sceneIndex]["storyboardFrames"] = frames
+        }
+        rawScenes[manuscriptId] = scenes
     }
 
     /// Patch vilkårlige felter på én frame (Inspector) og upsert scenen.
@@ -331,6 +379,17 @@ actor RoleRoomAPIClient {
         rawScenes[manuscriptId] = scenes
         guard let scene = scenes.first(where: { $0["id"] as? String == sceneId }) else {
             throw SyncError.malformed("scene \(sceneId) ikke funnet")
+        }
+        // Kun endrede felter over nettet — klobber ikke andres samtidige
+        // frame-endringer i samme scene (felt-nivå granularitet).
+        if let serverUpdatedAt = try await patchFrameRemote(
+            manuscriptId: manuscriptId, sceneId: sceneId, frameId: frameId,
+            fields: fields as [String: Any]) {
+            if !serverUpdatedAt.isEmpty {
+                applyLocalFrameUpdatedAt(manuscriptId: manuscriptId, sceneId: sceneId,
+                                         frameId: frameId, updatedAt: serverUpdatedAt)
+            }
+            return
         }
         try await sendJSON(path: "/api/casting/scenes", method: "POST", body: scene)
     }
@@ -511,6 +570,41 @@ actor RoleRoomAPIClient {
             return list
         }
         throw SyncError.malformed(path)
+    }
+
+    // Per-frame PATCH (payload-kutt): husker om backend har endepunktet
+    // så eldre backend faller tilbake til hele-scene-POST uten ekstra
+    // rundtur hver gang.
+    private var frameEndpointAvailable: Bool?
+
+    /// PATCH /api/casting/frames. true = håndtert; false = endepunkt
+    /// finnes ikke (kaller bruker legacy-POST). Kaster ved andre feil.
+    private func patchFrameRemote(
+        manuscriptId: String, sceneId: String, frameId: String,
+        fields: [String: Any]
+    ) async throws -> String? {
+        if frameEndpointAvailable == false { return nil }
+        var request = try request(path: "/api/casting/frames", query: [:])
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "manuscriptId": manuscriptId, "sceneId": sceneId,
+            "frameId": frameId, "fields": fields,
+        ])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if (200...299).contains(status) {
+            frameEndpointAvailable = true
+            let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            return (payload?["updatedAt"] as? String) ?? ""
+        }
+        if status == 404 || status == 405 {
+            // 404 kan også bety frame ikke funnet på ny backend — legacy-
+            // POST upserter uansett riktig, så fallback er trygt begge veier.
+            frameEndpointAvailable = nil
+            return nil
+        }
+        throw status == 401 ? SyncError.unauthenticated : SyncError.http(status)
     }
 
     private func sendJSON(path: String, method: String, body: [String: Any]) async throws {

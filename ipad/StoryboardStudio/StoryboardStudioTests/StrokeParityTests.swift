@@ -160,4 +160,19 @@ final class StrokeParityTests: XCTestCase {
         let heavy = maxSize(.heavy)
         XCTAssertGreaterThan(heavy, 0)
     }
+
+    // Konflikt-merge (forbedringspunkt 1): union på id — server først,
+    // våre nye appendes, dupliserte id-er tas aldri med to ganger.
+    func testStrokeMergeUnion() throws {
+        let server = #"[{"id":"a","points":[]},{"id":"b","points":[]}]"#
+        let ours = #"[{"id":"a","points":[]},{"id":"c","points":[]}]"#
+        let merged = try XCTUnwrap(StrokeMerge.union(serverJSON: server, oursJSON: ours))
+        let list = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(merged.utf8)) as? [[String: Any]])
+        XCTAssertEqual(list.compactMap { $0["id"] as? String }, ["a", "b", "c"])
+    }
+
+    func testStrokeMergeMalformedReturnsNil() {
+        XCTAssertNil(StrokeMerge.union(serverJSON: "ikke json", oursJSON: "[]"))
+    }
 }
