@@ -218,6 +218,18 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
   const stageContainerRef = React.useRef<HTMLDivElement | null>(null);
   const playerRootRef = React.useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
+
+  const toggleFullscreen = React.useCallback(async () => {
+    if (typeof document === 'undefined') return;
+    const el = stageContainerRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) {
+      try { await document.exitFullscreen(); } catch {}
+    } else {
+      try { await el.requestFullscreen(); } catch {}
+    }
+  }, []);
+
   const [recordingElapsed, setRecordingElapsed] = React.useState(0);
   const recordingStartRef = React.useRef<number | null>(null);
   // Web Audio-graf bygges når opptak starter, rives ned når det stopper.
@@ -929,17 +941,6 @@ export const AnimaticPlayer: React.FC<AnimaticPlayerProps> = ({
     };
     document.addEventListener('fullscreenchange', onChange);
     return () => document.removeEventListener('fullscreenchange', onChange);
-  }, []);
-
-  const toggleFullscreen = React.useCallback(async () => {
-    if (typeof document === 'undefined') return;
-    const el = stageContainerRef.current;
-    if (!el) return;
-    if (document.fullscreenElement) {
-      try { await document.exitFullscreen(); } catch {}
-    } else {
-      try { await el.requestFullscreen(); } catch {}
-    }
   }, []);
 
   // Stage-canvas-rendering + cross-fade er eksternalisert til
