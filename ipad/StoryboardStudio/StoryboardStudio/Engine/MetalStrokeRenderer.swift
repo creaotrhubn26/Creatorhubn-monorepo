@@ -756,6 +756,9 @@ final class MetalStrokeRenderer {
     }
 
     /// Full rebuild (undo/clear/last inn dokument).
+    /// For GPU-barrieren i extension (queue er private).
+    func queueForBarrier() -> MTLCommandBuffer? { queue.makeCommandBuffer() }
+
     func rebuild(strokes: [PencilStroke], scale: Double) {
         clearCommitted()
         // Én command-buffer per strøk metter command-køen (~64 in-flight) —
@@ -862,7 +865,17 @@ final class MetalStrokeRenderer {
 import UIKit
 
 extension MetalStrokeRenderer {
+    /// GPU-barriere: en tom buffer på samme kø serialiseres etter alt
+    /// innsendt arbeid — getBytes etterpå ser ferdig rendret tekstur.
+    /// (Uten denne var toneReport/thumbnail et race mot rebuild.)
+    func waitForPendingWork() {
+        guard let buffer = queueForBarrier() else { return }
+        buffer.commit()
+        buffer.waitUntilCompleted()
+    }
+
     func thumbnailDataURL(maxWidth: CGFloat = 280) -> String? {
+        waitForPendingWork()
         guard let texture = committedTexture else { return nil }
         let width = texture.width, height = texture.height
         guard width > 0, height > 0 else { return nil }
@@ -916,6 +929,7 @@ struct ToneReport: Sendable {
 
 extension MetalStrokeRenderer {
     func toneReport() -> ToneReport? {
+        waitForPendingWork()
         guard let texture = committedTexture else { return nil }
         let width = texture.width, height = texture.height
         guard width > 0, height > 0 else { return nil }
