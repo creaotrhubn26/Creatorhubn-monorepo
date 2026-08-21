@@ -607,6 +607,19 @@ const renderStrokesToThumbnailDataUrl = (
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     for (const stroke of strokes) {
+      // Tekst-annotasjoner fra Board Pro («PUSH IN»-stil): ett ankerpunkt +
+      // textAnnotation-felt — rendres som håndskrift-tekst, ikke linjer.
+      const annotationText = (stroke as { textAnnotation?: string }).textAnnotation;
+      if (annotationText && Array.isArray(stroke.points) && stroke.points[0]) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = stroke.opacity ?? 1;
+        ctx.font = `700 ${Math.max(10, 52 * scale)}px Caveat, "Segoe Script", cursive`;
+        ctx.fillStyle = stroke.color || '#8b5cf6';
+        ctx.fillText(String(annotationText).toUpperCase(), stroke.points[0].x * scale, stroke.points[0].y * scale);
+        ctx.restore();
+        continue;
+      }
       const points = stroke.points;
       if (!Array.isArray(points) || points.length < 2) continue;
       const type = stroke.brush?.type;

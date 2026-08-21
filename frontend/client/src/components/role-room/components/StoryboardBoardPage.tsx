@@ -28,7 +28,7 @@ import ShareIcon from '@mui/icons-material/IosShare';
 import BrushIcon from '@mui/icons-material/Brush';
 import CreateIcon from '@mui/icons-material/Create';
 import AutoFixNormalIcon from '@mui/icons-material/AutoFixNormal';
-import InterestsIcon from '@mui/icons-material/Interests';
+import TrendingFlatIcon from '@mui/icons-material/TrendingFlat';
 import CropSquareIcon from '@mui/icons-material/CropSquare';
 import TitleIcon from '@mui/icons-material/Title';
 import GestureIcon from '@mui/icons-material/Gesture';
@@ -91,16 +91,26 @@ const parseStrokesJSON = (value: unknown): any[] => {
   }
 };
 
+// Lag-rekkefølge på arket (bunn → topp) — matcher mockupens Layers-panel.
+const BOARD_LAYERS = ['Drawing', 'Camera / Arrows', 'Dialog', 'Notes'] as const;
+const ANNOTATION_COLOR = '#8b5cf6';
+
 const InlineFrameCanvas: React.FC<{
   frame: any;
   brush: { type: string; size: number; color: string; opacity: number; smoothing: number };
+  tool: string; // 'draw' | 'arrow' | 'rect' | 'text'
+  activeLayer: string;
+  hiddenLayers: Record<string, boolean>;
+  lockedLayers: Record<string, boolean>;
+  layerOpacity: Record<string, number>;
   onCommit: (strokesJSON: string) => void;
-}> = ({ frame, brush, onCommit }) => {
+}> = ({ frame, brush, tool, activeLayer, hiddenLayers, lockedLayers, layerOpacity, onCommit }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewRef = useRef<HTMLCanvasElement | null>(null);
   const activePointsRef = useRef<any[]>([]);
   const carryRef = useRef(0);
   const strokesRef = useRef<any[]>([]);
+  const shapeStartRef = useRef<any | null>(null);
 
   const buildBrush = useCallback(() => ({
     type: brush.type,
@@ -123,8 +133,32 @@ const InlineFrameCanvas: React.FC<{
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#fdfdfb';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    for (const stroke of strokesRef.current) {
-      const strokeBrush = { ...buildBrush(), ...(stroke.brush ?? {}), size: stroke.width ?? 4, color: stroke.color ?? '#26282e', opacity: stroke.opacity ?? 1 };
+    // Lag-sortert rendering: strøk uten boardLayer regnes som Drawing.
+    const layerOrder = (stroke: any) => {
+      const index = BOARD_LAYERS.indexOf(stroke.boardLayer ?? 'Drawing');
+      return index === -1 ? 0 : index;
+    };
+    const visibleStrokes = [...strokesRef.current]
+      .filter((stroke) => !hiddenLayers[stroke.boardLayer ?? 'Drawing'])
+      .sort((a, b) => layerOrder(a) - layerOrder(b));
+    for (const stroke of visibleStrokes) {
+      const strokeLayerOpacity = layerOpacity[stroke.boardLayer ?? 'Drawing'] ?? 1;
+      ctx.save();
+      ctx.globalAlpha = strokeLayerOpacity;
+      // Tekst-annotasjon («PUSH IN»-stil): spesialstrøk med textAnnotation.
+      if (stroke.textAnnotation) {
+        const anchor = stroke.points?.[0];
+        if (anchor) {
+          ctx.font = '700 52px Caveat, "Segoe Script", cursive';
+          ctx.fillStyle = stroke.color ?? ANNOTATION_COLOR;
+          ctx.fillText(String(stroke.textAnnotation).toUpperCase(), anchor.x, anchor.y);
+        }
+        ctx.restore();
+        continue;
+      }
+      // Lag-opacity multipliseres inn i brush-opacity (stamp-motoren styrer
+      // alpha per dab selv, så ctx.globalAlpha alene når ikke frem der).
+      const strokeBrush = { ...buildBrush(), ...(stroke.brush ?? {}), size: stroke.width ?? 4, color: stroke.color ?? '#26282e', opacity: (stroke.opacity ?? 1) * strokeLayerOpacity };
       if (strokeBrush.type === 'eraser') {
         ctx.save();
         ctx.globalCompositeOperation = 'destination-out';
@@ -141,6 +175,7 @@ const InlineFrameCanvas: React.FC<{
           ctx.stroke();
         }
         ctx.restore();
+        ctx.restore();
         continue;
       }
       const config = getStampConfigForBrush(strokeBrush.type);
@@ -149,7 +184,7 @@ const InlineFrameCanvas: React.FC<{
       } else {
         ctx.save();
         ctx.strokeStyle = strokeBrush.color;
-        ctx.globalAlpha = strokeBrush.opacity * 0.8;
+        ctx.globalAlpha = Math.min(1, strokeBrush.opacity * 0.8 * strokeLayerOpacity);
         ctx.lineWidth = strokeBrush.size;
         ctx.lineCap = 'round';
         ctx.beginPath();
@@ -160,8 +195,9 @@ const InlineFrameCanvas: React.FC<{
         ctx.stroke();
         ctx.restore();
       }
+      ctx.restore();
     }
-  }, [buildBrush]);
+  }, [buildBrush, hiddenLayers, layerOpacity]);
 
   useEffect(() => {
     strokesRef.current = parseStrokesJSON(frame?.drawingData?.strokes);
@@ -181,16 +217,67 @@ const InlineFrameCanvas: React.FC<{
     };
   }, []);
 
+  const makeAnnotationStroke = useCallback((points: any[], extra: Record<string, unknown> = {}) => ({
+    id: `board-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+    points,
+    inputType: 'pencil',
+    color: ANNOTATION_COLOR,
+    width: 7,
+    opacity: 0.95,
+    boardLayer: 'Camera / Arrows',
+    brush: { ...buildBrush(), type: 'ink', size: 7, color: ANNOTATION_COLOR, opacity: 0.95, grain: 0 },
+    ...extra,
+  }), [buildBrush]);
+
+  const commitStrokes = useCallback((next: any[]) => {
+    strokesRef.current = next;
+    renderCommitted();
+    onCommit(JSON.stringify(next));
+  }, [onCommit, renderCommitted]);
+
   const handlePointerDown = useCallback((event: React.PointerEvent) => {
+    if (lockedLayers[activeLayer] && tool === 'draw') return;
     (event.target as HTMLElement).setPointerCapture(event.pointerId);
-    activePointsRef.current = [toCanvasPoint(event)];
+    const point = toCanvasPoint(event);
+    if (tool === 'text') {
+      const text = window.prompt('Annotasjonstekst (f.eks. PUSH IN):');
+      if (text?.trim()) {
+        commitStrokes([...strokesRef.current, makeAnnotationStroke([point], { textAnnotation: text.trim() })]);
+      }
+      return;
+    }
+    if (tool === 'arrow' || tool === 'rect') {
+      shapeStartRef.current = point;
+      return;
+    }
+    activePointsRef.current = [point];
     carryRef.current = 0;
-  }, [toCanvasPoint]);
+  }, [activeLayer, commitStrokes, lockedLayers, makeAnnotationStroke, toCanvasPoint, tool]);
 
   const handlePointerMove = useCallback((event: React.PointerEvent) => {
-    if (activePointsRef.current.length === 0) return;
     const previewCtx = previewRef.current?.getContext('2d');
     if (!previewCtx) return;
+    // Form-preview for pil/rekt: tegn gummistrikk-form fra start til pekeren.
+    if ((tool === 'arrow' || tool === 'rect') && shapeStartRef.current) {
+      const current = toCanvasPoint(event);
+      const start = shapeStartRef.current;
+      previewCtx.clearRect(0, 0, 1920, 1080);
+      previewCtx.save();
+      previewCtx.strokeStyle = ANNOTATION_COLOR;
+      previewCtx.lineWidth = 7;
+      previewCtx.lineCap = 'round';
+      previewCtx.beginPath();
+      if (tool === 'arrow') {
+        previewCtx.moveTo(start.x, start.y);
+        previewCtx.lineTo(current.x, current.y);
+      } else {
+        previewCtx.rect(Math.min(start.x, current.x), Math.min(start.y, current.y), Math.abs(current.x - start.x), Math.abs(current.y - start.y));
+      }
+      previewCtx.stroke();
+      previewCtx.restore();
+      return;
+    }
+    if (activePointsRef.current.length === 0) return;
     const point = toCanvasPoint(event);
     const previous = activePointsRef.current[activePointsRef.current.length - 1];
     activePointsRef.current.push(point);
@@ -214,10 +301,36 @@ const InlineFrameCanvas: React.FC<{
     }
   }, [buildBrush, toCanvasPoint]);
 
-  const handlePointerUp = useCallback(() => {
+  const handlePointerUp = useCallback((event: React.PointerEvent) => {
+    const previewCtx = previewRef.current?.getContext('2d');
+    // Pil/rekt: generer annotasjonsstrøk på Camera/Arrows-laget.
+    if ((tool === 'arrow' || tool === 'rect') && shapeStartRef.current) {
+      const start = shapeStartRef.current;
+      shapeStartRef.current = null;
+      previewCtx?.clearRect(0, 0, 1920, 1080);
+      const end = toCanvasPoint(event);
+      if (Math.hypot(end.x - start.x, end.y - start.y) < 12) return;
+      const press = (x: number, y: number) => ({ x, y, pressure: 0.85, tiltX: 0, tiltY: 0, timestamp: performance.now() });
+      let points: any[];
+      if (tool === 'arrow') {
+        const angle = Math.atan2(end.y - start.y, end.x - start.x);
+        const head = 34;
+        points = [
+          press(start.x, start.y), press(end.x, end.y),
+          press(end.x - head * Math.cos(angle - 0.45), end.y - head * Math.sin(angle - 0.45)),
+          press(end.x, end.y),
+          press(end.x - head * Math.cos(angle + 0.45), end.y - head * Math.sin(angle + 0.45)),
+        ];
+      } else {
+        const x0 = Math.min(start.x, end.x); const y0 = Math.min(start.y, end.y);
+        const x1 = Math.max(start.x, end.x); const y1 = Math.max(start.y, end.y);
+        points = [press(x0, y0), press(x1, y0), press(x1, y1), press(x0, y1), press(x0, y0)];
+      }
+      commitStrokes([...strokesRef.current, makeAnnotationStroke(points)]);
+      return;
+    }
     const points = activePointsRef.current;
     activePointsRef.current = [];
-    const previewCtx = previewRef.current?.getContext('2d');
     previewCtx?.clearRect(0, 0, 1920, 1080);
     if (points.length < 2) return;
     const liveBrush = buildBrush();
@@ -229,12 +342,11 @@ const InlineFrameCanvas: React.FC<{
       color: liveBrush.color,
       width: liveBrush.size,
       opacity: liveBrush.opacity,
+      boardLayer: activeLayer,
       brush: liveBrush,
     };
-    strokesRef.current = [...strokesRef.current, stroke];
-    renderCommitted();
-    onCommit(JSON.stringify(strokesRef.current));
-  }, [brush.smoothing, buildBrush, onCommit, renderCommitted]);
+    commitStrokes([...strokesRef.current, stroke]);
+  }, [activeLayer, brush.smoothing, buildBrush, commitStrokes, makeAnnotationStroke, toCanvasPoint, tool]);
 
   return (
     <Box sx={{ position: 'absolute', inset: 0 }}>
@@ -299,12 +411,60 @@ export const StoryboardBoardPage: React.FC<{
   const [brushType, setBrushType] = useState('pencil');
   const [brushColor, setBrushColor] = useState('#26282e');
   const [hiddenLayers, setHiddenLayers] = useState<Record<string, boolean>>({});
+  const [lockedLayers, setLockedLayers] = useState<Record<string, boolean>>({});
+  const [layerOpacity, setLayerOpacity] = useState<Record<string, number>>({});
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  // Undo/redo: snapshot av strokes-JSON per frame (før hver commit).
+  const historyRef = useRef<Record<string, { undo: string[]; redo: string[] }>>({});
+  const [historyTick, setHistoryTick] = useState(0);
 
   const frame = frames[activeFrameIndex];
   const layers = ['Notes', 'Dialog', 'Drawing', 'Camera / Arrows'];
   const [activeLayer, setActiveLayer] = useState('Drawing');
   const comments = frame?.frameComments ?? [];
+
+  const frameHistory = frame ? (historyRef.current[frame.id] ??= { undo: [], redo: [] }) : null;
+
+  const applyStrokes = useCallback((frameId: string, strokesJSON: string) => {
+    onPatchFrame(frameId, {
+      drawingData: {
+        ...(frames.find((f) => f.id === frameId)?.drawingData ?? {}),
+        strokes: strokesJSON,
+        width: 1920,
+        height: 1080,
+        updatedAt: new Date().toISOString(),
+      },
+      thumbnailUrl: undefined,
+      imageSource: 'drawn',
+    });
+  }, [frames, onPatchFrame]);
+
+  const handleInlineCommit = useCallback((frameId: string, strokesJSON: string) => {
+    const history = (historyRef.current[frameId] ??= { undo: [], redo: [] });
+    const previous = frames.find((f) => f.id === frameId)?.drawingData?.strokes;
+    history.undo.push(typeof previous === 'string' ? previous : '[]');
+    history.redo = [];
+    setHistoryTick((tick) => tick + 1);
+    applyStrokes(frameId, strokesJSON);
+  }, [applyStrokes, frames]);
+
+  const handleUndo = useCallback(() => {
+    if (!frame || !frameHistory?.undo.length) return;
+    const current = typeof frame.drawingData?.strokes === 'string' ? frame.drawingData.strokes : '[]';
+    const previous = frameHistory.undo.pop()!;
+    frameHistory.redo.push(current);
+    setHistoryTick((tick) => tick + 1);
+    applyStrokes(frame.id, previous);
+  }, [applyStrokes, frame, frameHistory]);
+
+  const handleRedo = useCallback(() => {
+    if (!frame || !frameHistory?.redo.length) return;
+    const current = typeof frame.drawingData?.strokes === 'string' ? frame.drawingData.strokes : '[]';
+    const next = frameHistory.redo.pop()!;
+    frameHistory.undo.push(current);
+    setHistoryTick((tick) => tick + 1);
+    applyStrokes(frame.id, next);
+  }, [applyStrokes, frame, frameHistory]);
 
   const patch = useCallback(
     (fields: Record<string, unknown>) => { if (frame) onPatchFrame(frame.id, fields); },
@@ -447,7 +607,7 @@ export const StoryboardBoardPage: React.FC<{
             {toolButton('pencil', <CreateIcon sx={{ fontSize: 18 }} />, 'Blyant')}
             {toolButton('eraser', <AutoFixNormalIcon sx={{ fontSize: 18 }} />, 'Viskelær')}
             <Box sx={{ width: 1, height: 22, bgcolor: PANEL_BORDER, mx: 0.75 }} />
-            {toolButton('shapes', <InterestsIcon sx={{ fontSize: 18 }} />, 'Former')}
+            {toolButton('shapes', <TrendingFlatIcon sx={{ fontSize: 20 }} />, 'Pil-annotasjon')}
             {toolButton('rect', <CropSquareIcon sx={{ fontSize: 18 }} />, 'Rektangel')}
             {toolButton('text', <TitleIcon sx={{ fontSize: 18 }} />, 'Tekst')}
             <Box sx={{ width: 1, height: 22, bgcolor: PANEL_BORDER, mx: 0.75 }} />
@@ -514,7 +674,11 @@ export const StoryboardBoardPage: React.FC<{
                       </Box>
 
                       {(() => {
-                        const drawingInline = isActive && ['brush', 'pencil', 'eraser'].includes(activeTool);
+                        const drawingInline = isActive && ['brush', 'pencil', 'eraser', 'shapes', 'rect', 'text'].includes(activeTool);
+                        const inlineTool = activeTool === 'shapes' ? 'arrow'
+                          : activeTool === 'rect' ? 'rect'
+                            : activeTool === 'text' ? 'text'
+                              : 'draw';
                         const effectiveType = activeTool === 'eraser' ? 'eraser'
                           : activeTool === 'pencil' ? 'pencil'
                             : brushType;
@@ -538,17 +702,12 @@ export const StoryboardBoardPage: React.FC<{
                                   opacity: brushOpacity / 100,
                                   smoothing: brushSmoothing,
                                 }}
-                                onCommit={(strokesJSON) => onPatchFrame(rowFrame.id, {
-                                  drawingData: {
-                                    ...(rowFrame.drawingData ?? {}),
-                                    strokes: strokesJSON,
-                                    width: 1920,
-                                    height: 1080,
-                                    updatedAt: new Date().toISOString(),
-                                  },
-                                  thumbnailUrl: undefined,
-                                  imageSource: 'drawn',
-                                })}
+                                tool={inlineTool}
+                                activeLayer={activeLayer}
+                                hiddenLayers={hiddenLayers}
+                                lockedLayers={lockedLayers}
+                                layerOpacity={layerOpacity}
+                                onCommit={(strokesJSON) => handleInlineCommit(rowFrame.id, strokesJSON)}
                               />
                             )}
                             {!drawingInline && !image && (
@@ -588,8 +747,8 @@ export const StoryboardBoardPage: React.FC<{
               px: 1, py: 0.5, borderRadius: 999, bgcolor: 'rgba(15,15,18,0.92)', border: `1px solid ${PANEL_BORDER}`,
               boxShadow: '0 6px 24px rgba(0,0,0,0.5)',
             }}>
-              <IconButton size="small" sx={{ color: TEXT_DIM }}><UndoIcon sx={{ fontSize: 18 }} /></IconButton>
-              <IconButton size="small" sx={{ color: TEXT_DIM }}><RedoIcon sx={{ fontSize: 18 }} /></IconButton>
+              <IconButton size="small" onClick={handleUndo} disabled={!frameHistory?.undo.length} data-testid="board-page-undo" sx={{ color: frameHistory?.undo.length ? '#fff' : 'rgba(255,255,255,0.25)' }}><UndoIcon sx={{ fontSize: 18 }} /></IconButton>
+              <IconButton size="small" onClick={handleRedo} disabled={!frameHistory?.redo.length} data-testid="board-page-redo" sx={{ color: frameHistory?.redo.length ? '#fff' : 'rgba(255,255,255,0.25)' }}><RedoIcon sx={{ fontSize: 18 }} /></IconButton>
               <Box sx={{ width: 1, height: 20, bgcolor: PANEL_BORDER, mx: 0.5 }} />
               <IconButton size="small" onClick={() => setHandMode((prev) => !prev)} sx={{ color: handMode ? '#fff' : TEXT_DIM, bgcolor: handMode ? BRAND : 'transparent', borderRadius: 1.5 }}>
                 <BackHandIcon sx={{ fontSize: 17 }} />
@@ -828,12 +987,23 @@ export const StoryboardBoardPage: React.FC<{
 
         {/* Layers */}
         <Box sx={{ flex: 1, borderRight: `1px solid ${PANEL_BORDER}`, px: 2, py: 1.25, minWidth: 0 }}>
-          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
             <PanelLabel>Layers</PanelLabel>
-            <TextField select size="small" value="Normal" sx={{ width: 108, '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.05)', borderRadius: 1.5, fontSize: 12 }, '& fieldset': { borderColor: PANEL_BORDER } }}>
-              <MenuItem value="Normal">Normal</MenuItem>
-              <MenuItem value="Multiply">Multiply</MenuItem>
-            </TextField>
+            <Box sx={{ flex: 1 }} />
+            <Typography sx={{ fontSize: 10.5, color: TEXT_DIM }}>Opacity</Typography>
+            <Box
+              onClick={(event) => {
+                const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+                const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+                setLayerOpacity((prev) => ({ ...prev, [activeLayer]: Math.round(ratio * 100) / 100 }));
+              }}
+              sx={{ width: 64, height: 4, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.12)', position: 'relative', cursor: 'pointer' }}
+            >
+              <Box sx={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${(layerOpacity[activeLayer] ?? 1) * 100}%`, borderRadius: 2, bgcolor: BRAND }} />
+            </Box>
+            <Typography sx={{ fontSize: 10.5, color: '#fff', width: 34, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+              {Math.round((layerOpacity[activeLayer] ?? 1) * 100)}%
+            </Typography>
           </Stack>
           {layers.map((layer) => {
             const hidden = hiddenLayers[layer];
@@ -850,13 +1020,20 @@ export const StoryboardBoardPage: React.FC<{
               >
                 <IconButton
                   size="small"
+                  data-testid={`board-layer-eye-${layer.replace(/[^a-z]/gi, '')}`}
                   onClick={(event) => { event.stopPropagation(); setHiddenLayers((prev) => ({ ...prev, [layer]: !prev[layer] })); }}
                   sx={{ p: 0.25, color: selected ? '#fff' : TEXT_DIM }}
                 >
                   {hidden ? <VisibilityOffIcon sx={{ fontSize: 15 }} /> : <VisibilityIcon sx={{ fontSize: 15 }} />}
                 </IconButton>
                 <Typography sx={{ fontSize: 12.5, fontWeight: 600, color: selected ? '#fff' : 'rgba(255,255,255,0.8)', flex: 1 }}>{layer}</Typography>
-                <LockIcon sx={{ fontSize: 13, color: selected ? 'rgba(255,255,255,0.7)' : TEXT_LABEL }} />
+                <IconButton
+                  size="small"
+                  onClick={(event) => { event.stopPropagation(); setLockedLayers((prev) => ({ ...prev, [layer]: !prev[layer] })); }}
+                  sx={{ p: 0.25, color: lockedLayers[layer] ? '#f59e0b' : (selected ? 'rgba(255,255,255,0.7)' : TEXT_LABEL) }}
+                >
+                  <LockIcon sx={{ fontSize: 13 }} />
+                </IconButton>
               </Stack>
             );
           })}

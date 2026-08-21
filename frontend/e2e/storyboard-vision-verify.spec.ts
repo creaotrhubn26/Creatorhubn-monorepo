@@ -170,6 +170,44 @@ test.describe('Storyboard-visjonen — TROLL', () => {
           await page.screenshot({ path: `${SHOT_DIR}/9-board-pro-inline-tegning.png` });
         }
       }
+      // Pil-annotasjon: velg pil-verktøyet og dra
+      const arrowTool = page.getByRole('button', { name: /pil-annotasjon/i }).first();
+      if (await arrowTool.isVisible({ timeout: 2_000 }).catch(() => false)) {
+        await arrowTool.click();
+        const inlineCanvas = page.locator('[data-testid="board-inline-canvas"]');
+        const bounds = await inlineCanvas.boundingBox();
+        if (bounds) {
+          await page.mouse.move(bounds.x + bounds.width * 0.6, bounds.y + bounds.height * 0.25);
+          await page.mouse.down();
+          await page.mouse.move(bounds.x + bounds.width * 0.85, bounds.y + bounds.height * 0.45, { steps: 12 });
+          await page.mouse.up();
+          await page.waitForTimeout(700);
+        }
+        // Tekst-annotasjon via prompt
+        page.once('dialog', (dialog) => dialog.accept('PUSH IN'));
+        const textTool = page.getByRole('button', { name: /^tekst$/i }).first();
+        await textTool.click();
+        if (bounds) {
+          await page.mouse.click(bounds.x + bounds.width * 0.55, bounds.y + bounds.height * 0.15);
+          await page.waitForTimeout(700);
+        }
+        await page.screenshot({ path: `${SHOT_DIR}/10-board-pro-annotasjoner.png` });
+
+        // Undo skal være aktiv og fjerne siste annotasjon
+        const undoButton = page.locator('[data-testid="board-page-undo"]');
+        await expect(undoButton).toBeEnabled();
+        await undoButton.click();
+        await page.waitForTimeout(600);
+
+        // Lag-toggle: skjul Camera/Arrows — pilen forsvinner fra canvas
+        const eyeToggle = page.locator('[data-testid="board-layer-eye-CameraArrows"]');
+        if (await eyeToggle.isVisible({ timeout: 2_000 }).catch(() => false)) {
+          await eyeToggle.click();
+          await page.waitForTimeout(500);
+          await page.screenshot({ path: `${SHOT_DIR}/11-board-pro-lag-skjult.png` });
+          await eyeToggle.click();
+        }
+      }
       await page.locator('[data-testid="board-page-close"]').click();
       await page.waitForTimeout(500);
     }
