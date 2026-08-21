@@ -109,6 +109,8 @@ interface StoryboardIntegrationViewProps {
   onFrameSelect?: (index: number) => void;
   /** Scenebytte fra Board Pro-flaten (eies av StoryboardTabView). */
   onRequestSceneChange?: (sceneId: string) => void;
+  /** Prosjektets visningsnavn (Board Pro-topbaren). */
+  projectTitle?: string;
 }
 
 type ViewMode = 'script' | 'storyboard' | 'shotlist' | 'split';
@@ -1141,6 +1143,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
   activeFrameIndex: propActiveFrameIndex,
   onFrameSelect,
   onRequestSceneChange,
+  projectTitle,
 }) => {
   const storyboardPanelOnly = storyboardOnly || showScriptPanel;
   const [viewMode, setViewMode] = useState<ViewMode>(
@@ -1487,6 +1490,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
             onSaveVersion={handleSaveVersion}
             onRequestSceneChange={onRequestSceneChange}
             onSwitchViewMode={(mode) => setViewMode(mode)}
+            projectTitle={projectTitle}
           />
         )}
         {!storyboardPanelOnly && viewMode === 'split' && (
@@ -1558,6 +1562,7 @@ export const StoryboardIntegrationView: React.FC<StoryboardIntegrationViewProps>
                 versionLog={(scene as SceneWithVersionLog).storyboardVersionLog}
                 onSaveVersion={handleSaveVersion}
                 onRequestSceneChange={onRequestSceneChange}
+                projectTitle={projectTitle}
               />
             </Box>
           </Box>
@@ -1673,6 +1678,7 @@ const StoryboardView: React.FC<{
   onSaveVersion?: (summary: string) => void;
   onRequestSceneChange?: (sceneId: string) => void;
   onSwitchViewMode?: (mode: 'script' | 'shotlist') => void;
+  projectTitle?: string;
 }> = ({
   frames,
   onUpdate,
@@ -1693,6 +1699,7 @@ const StoryboardView: React.FC<{
   onSaveVersion,
   onRequestSceneChange,
   onSwitchViewMode,
+  projectTitle,
 }) => {
   const device = useDeviceDetection();
   const { showSuccess, showInfo, showError } = useToast();
@@ -4060,14 +4067,14 @@ const StoryboardView: React.FC<{
 
       {boardProOpen && (
         <StoryboardBoardPage
-          projectName={scene.projectId || 'The Role Room'}
-          sequenceLabel={scene.heading || scene.sceneName}
+          projectName={projectTitle || scene.projectId || 'The Role Room'}
+          sequenceLabel={scene.heading || scene.sceneName || scene.title || scene.sceneHeading}
           sceneItems={(allScenes ?? [scene]).map((sceneEntry: any) => {
             const sceneFrames = Array.isArray(sceneEntry.storyboardFrames) ? sceneEntry.storyboardFrames : [];
             const thumbFrame = sceneFrames.find((f: any) => f?.thumbnailUrl || f?.imageUrl);
             return {
               id: sceneEntry.id,
-              heading: sceneEntry.heading || sceneEntry.sceneName || sceneEntry.title || sceneEntry.id,
+              heading: sceneEntry.heading || sceneEntry.sceneName || sceneEntry.title || sceneEntry.sceneHeading || sceneEntry.id,
               shotCount: sceneFrames.length,
               thumbnailUrl: thumbFrame?.thumbnailUrl || thumbFrame?.imageUrl,
             };
