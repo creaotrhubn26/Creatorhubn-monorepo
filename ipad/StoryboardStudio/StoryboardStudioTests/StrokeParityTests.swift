@@ -35,6 +35,20 @@ final class StrokeParityTests: XCTestCase {
         XCTAssertNotEqual(a.next(), c.next())
     }
 
+    func testStreamlineAmountsMatchWeb() {
+        // Web-paritet: STREAMLINE_BY_TYPE i PencilCanvasPro.tsx
+        XCTAssertEqual(Streamline.amount(for: .pen), 0.45)
+        XCTAssertEqual(Streamline.amount(for: .ink), 0.5)
+        XCTAssertEqual(Streamline.amount(for: .marker), 0.3)
+        XCTAssertEqual(Streamline.amount(for: .pencil), 0.2)
+        XCTAssertEqual(Streamline.amount(for: .eraser), 0.15)
+    }
+
+    func testEraserHasStampConfig() {
+        XCTAssertNotNil(StampConfig.forBrush(.eraser))
+        XCTAssertNil(StampConfig.forBrush(.smudge))
+    }
+
     func testPaperToothStableAndBounded() {
         let first = PaperTooth.sample(12.3, 45.6)
         let second = PaperTooth.sample(12.3, 45.6)

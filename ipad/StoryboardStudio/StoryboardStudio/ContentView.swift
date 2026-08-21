@@ -8,6 +8,7 @@ struct BrushToolbar: View {
     private let brushOptions: [(BrushType, String)] = [
         (.pencil, "Blyant"), (.graphite, "Grafitt"), (.charcoal, "Kull"),
         (.conte, "Conté"), (.pen, "Penn"), (.ink, "Tusj"), (.marker, "Marker"),
+        (.eraser, "Viskelær"),
     ]
 
     var body: some View {

@@ -26,10 +26,12 @@ struct DabInstanceData {
 final class MetalStrokeRenderer {
     let device: MTLDevice
     private let queue: MTLCommandQueue
-    // To varianter — pipeline-format MÅ matche render-target:
-    // akkumulator er rgba8, skjerm-drawable er bgra8.
+    // Pipeline-format MÅ matche render-target: akkumulator rgba8, drawable
+    // bgra8. Eraser har egen blending (destination-out: zero /
+    // oneMinusSourceAlpha) mot akkumulatoren.
     private let dabPipelineAccumulator: MTLRenderPipelineState
     private let dabPipelineScreen: MTLRenderPipelineState
+    private let dabPipelineEraser: MTLRenderPipelineState
     private let blitPipeline: MTLRenderPipelineState
     private var dabTextures: [DabPreset: MTLTexture] = [:]
     private(set) var committedTexture: MTLTexture?
@@ -43,32 +45,45 @@ final class MetalStrokeRenderer {
         self.device = device
         self.queue = queue
 
+        enum BlendMode { case none, premultiplied, destinationOut }
         func pipeline(vertex: String, fragment: String, format: MTLPixelFormat,
-                      blend: Bool) -> MTLRenderPipelineState? {
+                      blend: BlendMode) -> MTLRenderPipelineState? {
             let descriptor = MTLRenderPipelineDescriptor()
             descriptor.vertexFunction = library.makeFunction(name: vertex)
             descriptor.fragmentFunction = library.makeFunction(name: fragment)
             descriptor.colorAttachments[0].pixelFormat = format
-            if blend {
+            if blend != .none {
                 let attachment = descriptor.colorAttachments[0]!
                 attachment.isBlendingEnabled = true
-                // premultiplied: one / oneMinusSourceAlpha
-                attachment.sourceRGBBlendFactor = .one
-                attachment.sourceAlphaBlendFactor = .one
-                attachment.destinationRGBBlendFactor = .oneMinusSourceAlpha
-                attachment.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+                switch blend {
+                case .premultiplied:
+                    attachment.sourceRGBBlendFactor = .one
+                    attachment.sourceAlphaBlendFactor = .one
+                    attachment.destinationRGBBlendFactor = .oneMinusSourceAlpha
+                    attachment.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+                case .destinationOut:
+                    attachment.sourceRGBBlendFactor = .zero
+                    attachment.sourceAlphaBlendFactor = .zero
+                    attachment.destinationRGBBlendFactor = .oneMinusSourceAlpha
+                    attachment.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+                case .none:
+                    break
+                }
             }
             return try? device.makeRenderPipelineState(descriptor: descriptor)
         }
 
         guard let dabAccumulator = pipeline(vertex: "dab_vertex", fragment: "dab_fragment",
-                                            format: .rgba8Unorm, blend: true),
+                                            format: .rgba8Unorm, blend: .premultiplied),
               let dabScreen = pipeline(vertex: "dab_vertex", fragment: "dab_fragment",
-                                       format: .bgra8Unorm, blend: true),
+                                       format: .bgra8Unorm, blend: .premultiplied),
+              let dabEraser = pipeline(vertex: "dab_vertex", fragment: "dab_fragment",
+                                       format: .rgba8Unorm, blend: .destinationOut),
               let blit = pipeline(vertex: "blit_vertex", fragment: "blit_fragment",
-                                  format: .bgra8Unorm, blend: false) else { return nil }
+                                  format: .bgra8Unorm, blend: .none) else { return nil }
         dabPipelineAccumulator = dabAccumulator
         dabPipelineScreen = dabScreen
+        dabPipelineEraser = dabEraser
         blitPipeline = blit
 
         for preset in [DabPreset.pencilGraphite, .charcoalTooth, .inkRound, .markerChisel] {
@@ -207,6 +222,7 @@ final class MetalStrokeRenderer {
     }
 
     /// Append ferdig strøk til committed-akkumulator (inkrementelt).
+    /// Eraser rendres destination-out (piksel-viskelær — web-paritet).
     func commitStroke(_ stroke: PencilStroke, scale: Double) {
         guard let target = committedTexture,
               let brush = stroke.brush,
@@ -218,7 +234,8 @@ final class MetalStrokeRenderer {
         pass.colorAttachments[0].loadAction = .load
         pass.colorAttachments[0].storeAction = .store
         guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
-        encodeDabs(dabs, preset: config.preset, into: encoder, pipeline: dabPipelineAccumulator)
+        let pipeline = brush.type == .eraser ? dabPipelineEraser : dabPipelineAccumulator
+        encodeDabs(dabs, preset: config.preset, into: encoder, pipeline: pipeline)
         encoder.endEncoding()
         buffer.commit()
     }
@@ -255,8 +272,17 @@ final class MetalStrokeRenderer {
             if let stroke = candidate,
                let brush = stroke.brush,
                let config = StampConfig.forBrush(brush.type) {
-                encodeDabs(dabsForStroke(stroke, scale: scale),
-                           preset: config.preset, into: encoder,
+                // Aktiv eraser kan ikke destination-out'e drawablen (papiret
+                // ligger der) — ghost i papirfarge er visuelt ekvivalent
+                // siden viskingen committes ekte ved stroke-end.
+                var dabs = dabsForStroke(stroke, scale: scale)
+                if brush.type == .eraser {
+                    for index in dabs.indices {
+                        dabs[index].color = paperColor
+                        dabs[index].alpha = min(1, dabs[index].alpha + 0.25)
+                    }
+                }
+                encodeDabs(dabs, preset: config.preset, into: encoder,
                            pipeline: dabPipelineScreen)
             }
         }
