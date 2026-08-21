@@ -410,6 +410,8 @@ const PRO_BRUSH_TYPES: readonly ProBrushType[] = [
   'debris',
   'organictex',
   'fur',
+  'toneblock',
+  'speedlines',
 ];
 const SELECTION_SNAP_GRID_SIZE = 50;
 const SELECTION_EDGE_SNAP_THRESHOLD = 18;
@@ -450,6 +452,8 @@ const STREAMLINE_BY_TYPE: Partial<Record<ProBrushType, number>> = {
   debris: 0.2,
   organictex: 0.2,
   fur: 0.2,
+  toneblock: 0.2,
+  speedlines: 0.4,
 };
 
 export function applyStreamline(points: PencilPoint[], amount: number): PencilPoint[] {

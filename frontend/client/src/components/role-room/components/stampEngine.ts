@@ -46,6 +46,9 @@ export interface HatchParams {
   crossAngle: number;   // rad (112° — bevisst ikke 90°)
   positionJitter: number;
   lengthJitter: number;
+  // Speed lines: følg strøkretningen, aldri kryss-lag.
+  followDirection?: boolean;
+  allowCross?: boolean;
 }
 
 export interface StampConfig {
@@ -423,7 +426,7 @@ const STAMP_CONFIG_BY_BRUSH: Partial<Record<ProBrushType, StampConfig>> = {
   heavy: {
     preset: 'pencil-graphite', spacing: 0.08, scatter: 0.10, jitterAngle: 14,
     tiltRotation: true, pressureToSize: 0.78, pressureToOpacity: 0.72,
-    flow: 0.8, sizeMultiplier: 1.15,
+    flow: 1.0, sizeMultiplier: 1.3,
     pressureCurve: 0.65, velocityToSize: -0.12, velocityToOpacity: -0.24, wobble: 0.16,
   },
   detail: {
@@ -460,7 +463,7 @@ const STAMP_CONFIG_BY_BRUSH: Partial<Record<ProBrushType, StampConfig>> = {
     tiltRotation: true, pressureToSize: 0.40, pressureToOpacity: 0.70,
     flow: 0.5, sizeMultiplier: 1.0,
     pressureCurve: 0.8, velocityToOpacity: -0.18,
-    wobble: 0.3, tiltOval: 0.9, sizeJitter: 0.13, directionTexture: 0.55,
+    wobble: 0.3, tiltOval: 0.9, sizeJitter: 0.1, directionTexture: 0.8,
   },
   graintex: {
     preset: 'charcoal-tooth', spacing: 0.18, scatter: 0.72, jitterAngle: 180,
@@ -498,6 +501,23 @@ const STAMP_CONFIG_BY_BRUSH: Partial<Record<ProBrushType, StampConfig>> = {
     preset: 'ink-round', spacing: 0.12, scatter: 0.35, jitterAngle: 30,
     tiltRotation: false, pressureToSize: 0.4, pressureToOpacity: 0.4,
     flow: 0.5, sizeMultiplier: 0.6, pressureCurve: 0.8, sizeJitter: 0.4,
+  },
+  // Funnet i praksis-test mot referanse-storyboards:
+  toneblock: {
+    preset: 'marker-chisel', spacing: 0.045, scatter: 0.015, jitterAngle: 6,
+    tiltRotation: true, pressureToSize: 0.3, pressureToOpacity: 0.35,
+    flow: 0.95, sizeMultiplier: 1.4, pressureCurve: 0.8, wobble: 0.08,
+  },
+  speedlines: {
+    preset: 'ink-round', spacing: 0.3, scatter: 0, jitterAngle: 0,
+    tiltRotation: false, pressureToSize: 0.25, pressureToOpacity: 0.45,
+    flow: 0.85, sizeMultiplier: 1.0, pressureCurve: 0.8,
+    hatch: {
+      lineLength: 64, lineSpacing: 9, lineWidth: 0.7,
+      angle: 0, angleJitter: 0.03, crossAngle: 0,
+      positionJitter: 2.2, lengthJitter: 0.4,
+      followDirection: true, allowCross: false,
+    },
   },
 };
 
@@ -852,10 +872,12 @@ function hatchSegment(
     ctx.stroke();
   };
 
+  const baseDirection = Math.atan2(dy, dx);
   const cluster = (point: PencilPoint) => {
     const pressure = Math.pow(Math.max(0.05, point.pressure), config.pressureCurve ?? 1);
     const density = pressure < 0.35 ? 0.3 : pressure < 0.7 ? 0.65 : 1.0;
-    const cross = alwaysCross || pressure >= 0.7;
+    const cross = (params.allowCross ?? true) && (alwaysCross || pressure >= 0.7);
+    const markAngle = params.followDirection ? baseDirection : params.angle;
     const alpha = Math.min(1, brush.opacity * (0.7 + pressure * 0.5));
     const rows = Math.max(1, Math.floor((region / markSpacing) * density));
     for (let i = 0; i < rows; i++) {
@@ -863,7 +885,7 @@ function hatchSegment(
       const oy = (rng() - 0.5) * region;
       const jx = (rng() - 0.5) * params.positionJitter;
       const jy = (rng() - 0.5) * params.positionJitter;
-      mark(point.x + ox + jx, point.y + oy + jy, params.angle, alpha);
+      mark(point.x + ox + jx, point.y + oy + jy, markAngle, alpha);
       if (cross) {
         mark(point.x + ox - jx, point.y + oy - jy, params.crossAngle, alpha * 0.85);
       }

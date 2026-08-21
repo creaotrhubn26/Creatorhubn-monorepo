@@ -42,7 +42,9 @@ export type AdvancedBrushType =
   | 'forest'
   | 'debris'
   | 'organictex'
-  | 'fur';
+  | 'fur'
+  | 'toneblock'
+  | 'speedlines';
 
 // Alias for external usage
 export type ProBrushType = AdvancedBrushType;
@@ -96,6 +98,8 @@ export const BRUSH_PRESETS: Record<AdvancedBrushType, Partial<BrushConfig>> = {
   debris: { grain: 0.3, flow: 0.7, hardness: 0.6, tiltSensitivity: 0.3, pressureSensitivity: 0.8 },
   organictex: { grain: 0.3, flow: 0.7, hardness: 0.6, tiltSensitivity: 0.3, pressureSensitivity: 0.8 },
   fur: { grain: 0.3, flow: 0.7, hardness: 0.6, tiltSensitivity: 0.3, pressureSensitivity: 0.8 },
+  toneblock: { grain: 0.18, flow: 1.0, hardness: 0.7, tiltSensitivity: 0.6, pressureSensitivity: 0.6 },
+  speedlines: { grain: 0.15, flow: 0.8, hardness: 0.7, tiltSensitivity: 0.2, pressureSensitivity: 0.6 },
   pencil: {
     hardness: 0.6,
     flow: 0.8,

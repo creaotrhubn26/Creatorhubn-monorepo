@@ -12,6 +12,7 @@ struct BrushToolbar: View {
         (.graintex, "Korn"), (.smudge, "Smudge"),
         (.eraser, "Viskelær"), (.kneaded, "Kna"), (.lightlift, "Lysløft"),
         (.forest, "Skog"), (.debris, "Bunn"), (.organictex, "Bark"), (.fur, "Pels"),
+        (.toneblock, "Tone"), (.speedlines, "Fart"),
     ]
 
     private var colorBinding: Binding<Color> {

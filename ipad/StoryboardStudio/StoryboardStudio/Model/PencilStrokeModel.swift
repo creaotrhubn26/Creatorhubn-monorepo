@@ -33,6 +33,9 @@ enum BrushType: String, Codable, Sendable, CaseIterable {
     case debris        // Story Ground Debris — kvister/stein/skogbunn
     case organictex    // Story Organic Texture — bark/skjell/shards
     case fur           // Story Fur — tapered strands i klynger
+    // Funnet i praksis-test mot referanse-storyboards:
+    case toneblock     // Solid mørk tonemasse (referansens nesten-svarte flater)
+    case speedlines    // Lange energilinjer langs strøkretningen (regn/fart)
 }
 
 // Spec-defaults per pensel (size px / opacity) — settes når penselen velges
@@ -55,6 +58,8 @@ enum BrushDefaults {
         case .debris: return (30, 0.5)
         case .organictex: return (18, 0.5)
         case .fur: return (24, 0.45)
+        case .toneblock: return (36, 0.85)
+        case .speedlines: return (40, 0.5)
         default: return nil
         }
     }
@@ -136,6 +141,14 @@ struct BrushSpec: Codable, Sendable, Equatable {
             return BrushSpec(type: type, size: size, color: color, opacity: opacity,
                              hardness: 0.6, flow: 0.7, wetness: 0, grain: 0.3,
                              tiltSensitivity: 0.3, pressureSensitivity: 0.8)
+        case .toneblock:
+            return BrushSpec(type: type, size: size, color: color, opacity: opacity,
+                             hardness: 0.7, flow: 1.0, wetness: 0, grain: 0.18,
+                             tiltSensitivity: 0.6, pressureSensitivity: 0.6)
+        case .speedlines:
+            return BrushSpec(type: type, size: size, color: color, opacity: opacity,
+                             hardness: 0.7, flow: 0.8, wetness: 0, grain: 0.15,
+                             tiltSensitivity: 0.2, pressureSensitivity: 0.6)
         default:
             return BrushSpec(type: type, size: size, color: color, opacity: opacity,
                              hardness: 0.8, flow: 1, wetness: 0, grain: 0.3,
