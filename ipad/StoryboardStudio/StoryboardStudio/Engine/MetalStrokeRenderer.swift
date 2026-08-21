@@ -160,7 +160,12 @@ final class MetalStrokeRenderer {
                 size *= 1 + (rng.next() - 0.5) * 2 * config.sizeJitter
             }
             let alphaFactor = 1 - config.pressureToOpacity + pressure * config.pressureToOpacity
-            var alpha = brush.opacity * config.flow * alphaFactor
+            // Flow: config.flow er kalibrert motor-basis; brush.flow (lagret
+            // per strøk, editor-styrbar) modulerer normalisert mot preset-
+            // default — uendret oppførsel uten override, deterministisk.
+            let presetFlow = BrushSpec.preset(brush.type, size: 1, color: "#000000", opacity: 1).flow
+            let flowFactor = presetFlow > 0.001 ? min(2.5, brush.flow / presetFlow) : 1
+            var alpha = brush.opacity * config.flow * flowFactor * alphaFactor
             if config.velocityToOpacity != 0 {
                 alpha *= max(0.5, 1 + config.velocityToOpacity * min(velocity, 2))
             }
@@ -879,5 +884,64 @@ extension MetalStrokeRenderer {
         // PNG-størrelsen; hele scenen POSTes ved hver synk, så payload teller.
         guard let jpeg = composited.jpegData(compressionQuality: 0.7) else { return nil }
         return "data:image/jpeg;base64," + jpeg.base64EncodedString()
+    }
+}
+
+// Tonal-analyse (spec §42–§43): fordeler tegningens dekkede piksler på
+// lys/mellom/mørk tone og varsler når bildet er flatt (alt i ett bånd).
+// Analyseverktøy — endrer aldri tegningen.
+struct ToneReport: Sendable {
+    let coveragePct: Double   // andel av flaten med tegning
+    let lightPct: Double      // andel av dekket areal, darkness < 0.30
+    let midPct: Double        // 0.30–0.55
+    let darkPct: Double       // > 0.55
+    let isFlat: Bool          // ett bånd dominerer (>75 %) ved reell dekning
+}
+
+extension MetalStrokeRenderer {
+    func toneReport() -> ToneReport? {
+        guard let texture = committedTexture else { return nil }
+        let width = texture.width, height = texture.height
+        guard width > 0, height > 0 else { return nil }
+        let bytesPerRow = width * 4
+        var pixels = [UInt8](repeating: 0, count: bytesPerRow * height)
+        texture.getBytes(&pixels, bytesPerRow: bytesPerRow,
+                         from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+        var light = 0, mid = 0, dark = 0, covered = 0, total = 0
+        let step = 4 // sample hver 4. piksel i begge akser
+        var y = 0
+        while y < height {
+            var x = 0
+            while x < width {
+                let index = (y * width + x) * 4
+                total += 1
+                let alpha = Double(pixels[index + 3]) / 255
+                if alpha > 0.04 {
+                    covered += 1
+                    // Premultiplied: unpremultipliser og bruk mørkhet
+                    let r = Double(pixels[index]) / 255 / alpha
+                    let g = Double(pixels[index + 1]) / 255 / alpha
+                    let b = Double(pixels[index + 2]) / 255 / alpha
+                    let luminance = 0.299 * r + 0.587 * g + 0.114 * b
+                    let darkness = alpha * (1 - min(1, luminance))
+                    if darkness < 0.30 { light += 1 }
+                    else if darkness < 0.55 { mid += 1 }
+                    else { dark += 1 }
+                }
+                x += step
+            }
+            y += step
+        }
+        guard total > 0 else { return nil }
+        let coverage = Double(covered) / Double(total)
+        guard covered > 0 else {
+            return ToneReport(coveragePct: 0, lightPct: 0, midPct: 0, darkPct: 0, isFlat: false)
+        }
+        let lightPct = Double(light) / Double(covered)
+        let midPct = Double(mid) / Double(covered)
+        let darkPct = Double(dark) / Double(covered)
+        let isFlat = coverage > 0.05 && max(lightPct, midPct, darkPct) > 0.75
+        return ToneReport(coveragePct: coverage, lightPct: lightPct,
+                          midPct: midPct, darkPct: darkPct, isFlat: isFlat)
     }
 }

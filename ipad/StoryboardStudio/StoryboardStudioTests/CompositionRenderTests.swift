@@ -585,4 +585,51 @@ final class CompositionRenderTests: XCTestCase {
         attachment.lifetime = .keepAlways
         add(attachment)
     }
+
+    // Tonal-analysen (§42–§43): dal-scenen skal ha spredning (ikke flat),
+    // og tom canvas gir null dekning.
+    func testToneReport() throws {
+        guard let renderer = MetalStrokeRenderer() else { throw XCTSkip("Metal utilgjengelig") }
+        renderer.resizeCanvas(width: 512, height: 512)
+        let empty = renderer.toneReport()
+        XCTAssertEqual(empty?.coveragePct ?? -1, 0, accuracy: 0.001)
+
+        // Mørk flate + lys vask → to bånd
+        var strokes: [PencilStroke] = []
+        for pass in 0..<6 {
+            strokes.append(stroke(.toneblock, size: 40, opacity: 0.9,
+                line(60, 100 + Double(pass) * 18, 450, 100 + Double(pass) * 18,
+                     steps: 8, pressure: 0.95)))
+        }
+        for pass in 0..<4 {
+            strokes.append(stroke(.wash, size: 60, opacity: 0.22,
+                line(60, 320 + Double(pass) * 30, 450, 320 + Double(pass) * 30,
+                     steps: 8, pressure: 0.5)))
+        }
+        renderer.rebuild(strokes: strokes, scale: 1)
+        let report = try XCTUnwrap(renderer.toneReport())
+        XCTAssertGreaterThan(report.coveragePct, 0.05)
+        XCTAssertGreaterThan(report.darkPct, 0.1)
+        XCTAssertGreaterThan(report.lightPct, 0.1)
+        XCTAssertFalse(report.isFlat)
+    }
+
+    // Flow-override skal endre dab-alpha deterministisk (editor-slideren
+    // har reell effekt), og samme strøk gir samme dabs.
+    func testFlowOverrideAffectsAlpha() throws {
+        guard let renderer = MetalStrokeRenderer() else { throw XCTSkip("Metal utilgjengelig") }
+        func maxAlpha(flow: Double) -> Float {
+            var brush = BrushSpec.preset(.pencil, size: 6, color: "#000000", opacity: 0.6)
+            brush.flow = flow
+            let s = PencilStroke(id: "flow-1",
+                points: [StrokePoint(x: 0, y: 0, pressure: 0.7, tiltX: 0, tiltY: 0, timestamp: 0),
+                         StrokePoint(x: 100, y: 0, pressure: 0.7, tiltX: 0, tiltY: 0, timestamp: 80)],
+                inputType: "pencil", color: "#000000", width: 6, opacity: 0.6, brush: brush)
+            return renderer.dabsForStroke(s, scale: 1).map(\.alpha).max() ?? 0
+        }
+        let base = maxAlpha(flow: 0.8)   // preset-default for pencil
+        let low = maxAlpha(flow: 0.2)
+        XCTAssertGreaterThan(base, low)
+        XCTAssertEqual(maxAlpha(flow: 0.8), base) // deterministisk
+    }
 }

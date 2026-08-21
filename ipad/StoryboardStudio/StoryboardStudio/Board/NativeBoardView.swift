@@ -229,6 +229,8 @@ struct NativeBoardView: View {
     @State private var scrollTarget: Int?
     @State private var showFullscreenDraw = false
     @State private var showBrushEditor = false
+    @State private var toneReport: ToneReport?
+    @State private var showToneReport = false
     @State private var pendingDeleteFrameId: String?
     @State private var newSceneTitle = ""
     @State private var showNewScenePrompt = false
@@ -398,6 +400,14 @@ struct NativeBoardView: View {
                 Text(status).font(.system(size: 12)).foregroundStyle(BoardBrand.dim)
             }
             Button {
+                toneReport = renderer?.toneReport()
+                showToneReport = true
+            } label: {
+                Image(systemName: "chart.bar")
+                    .font(.system(size: 15)).foregroundStyle(BoardBrand.dim)
+            }
+            .accessibilityLabel("Tone-analyse")
+            Button {
                 exportPDFURL = BoardPDFExporter.export(
                     projectTitle: board.manuscript.title, scenes: board.scenes)
             } label: {
@@ -552,6 +562,10 @@ struct NativeBoardView: View {
         }
         .sheet(isPresented: $showBrushEditor) {
             BrushEditorSheet(canvasState: canvasState)
+                .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $showToneReport) {
+            ToneReportSheet(report: toneReport)
                 .presentationDetents([.medium])
         }
         .sheet(item: $exportPDFURL) { url in
@@ -2130,21 +2144,89 @@ struct BrushEditorSheet: View {
                     LabeledContent("Flow") {
                         Slider(value: overrideBinding(\.flowOverride, default: preset.flow), in: 0.02...1)
                     }
-                    LabeledContent("Hardness") {
-                        Slider(value: overrideBinding(\.hardnessOverride, default: preset.hardness), in: 0...1)
-                    }
                 }
                 Section {
                     Button("Tilbakestill til preset") {
                         canvasState.grainOverride = nil
                         canvasState.flowOverride = nil
-                        canvasState.hardnessOverride = nil
                     }
                 }
             }
             .navigationTitle("Pensel-editor")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) { Button("Ferdig") { dismiss() } }
+            }
+        }
+    }
+}
+
+// Tonal-analyse (spec §42–§43): fordeling lys/mellom/mørk for aktivt shot,
+// med flathetsvarsel. Kun analyse — foreslår, tvinger aldri.
+struct ToneReportSheet: View {
+    let report: ToneReport?
+    @Environment(\.dismiss) private var dismiss
+
+    private func bar(_ label: String, _ value: Double, hint: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text(label).font(.system(size: 12, weight: .bold))
+                Spacer()
+                Text("\(Int(value * 100)) %")
+                    .font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule().fill(color).frame(width: max(3, geo.size.width * value))
+                }
+            }
+            .frame(height: 10)
+            Text(hint).font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if let report {
+                    List {
+                        Section {
+                            bar("LYS (bakgrunn)", report.lightPct,
+                                hint: "Fjell, tåke, fjern skog — 10–30 % mørkhet",
+                                color: Color(white: 0.75))
+                            bar("MELLOM (midtplan)", report.midPct,
+                                hint: "Trær, kjøretøy, terreng — 30–55 %",
+                                color: Color(white: 0.5))
+                            bar("MØRK (forgrunn/hero)", report.darkPct,
+                                hint: "Hovedfigurer, silhuetter — 60–90 %",
+                                color: Color(white: 0.22))
+                        } header: {
+                            Text("Tonefordeling · \(Int(report.coveragePct * 100)) % av flaten dekket")
+                        }
+                        if report.isFlat {
+                            Section {
+                                Label("Flat tonefordeling: nesten alt ligger i ett bånd. Vurder å skille bakgrunn/midtplan/forgrunn med Vask, Skygge eller Tone.",
+                                      systemImage: "exclamationmark.triangle")
+                                    .font(.footnote)
+                                    .foregroundStyle(.orange)
+                            }
+                        } else if report.coveragePct > 0.05 {
+                            Section {
+                                Label("God spredning over tonebåndene — dybden leses.",
+                                      systemImage: "checkmark.circle")
+                                    .font(.footnote)
+                                    .foregroundStyle(.green)
+                            }
+                        }
+                    }
+                } else {
+                    ContentUnavailableView("Ingen tegning å analysere",
+                                           systemImage: "chart.bar")
+                }
+            }
+            .navigationTitle("Tone-analyse")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { Button("Lukk") { dismiss() } }
             }
         }
     }
