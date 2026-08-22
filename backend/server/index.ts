@@ -1040,6 +1040,7 @@ import { setupAuthRoutes } from "./auth-routes";
 import { setupFirmwareRoutes } from "./firmware-routes";
 import { setupClientPortalRoutes } from "./client-portal-routes";
 import { setupEquipmentRootRoutes } from "./equipment-root-routes";
+import { setupEquipmentAdminRoutes } from "./equipment-admin-routes";
 import {
   setupTesterEnterpriseOfferRoutes,
   runOfferCreationSweep,
@@ -67802,6 +67803,7 @@ setupFirmwareRoutes({
 });
 setupClientPortalRoutes({ app, pool, activeSessions });
 setupEquipmentRootRoutes({ app, pool, db, parseSettings, requireUserSession });
+setupEquipmentAdminRoutes({ app, requireAdminSession, db });
 
 // Slice 9X.54 — Admin → bruker-segment varslinger (fyller orphan UI).
 // Slice 9X.55 — Send med requireAdminSession så admin-endepunktene (CRUD)
