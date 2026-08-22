@@ -356,7 +356,8 @@ struct NativeBoardView: View {
         }
         .fullScreenCover(isPresented: $showFullscreenDraw) {
             if let frame = board.frame {
-                FullscreenDrawView(canvasState: canvasState, frame: frame)
+                FullscreenDrawView(canvasState: canvasState, frame: frame,
+                                   underlay: composedUnderlay())
             }
         }
         .task { await board.reload() }
@@ -474,6 +475,13 @@ struct NativeBoardView: View {
     /// Dekod frame-underlag + ev. onion-skin (forrige shot) og sett på
     /// gitt renderer (inline og fullskjerm har hver sin instans).
     private func applyUnderlay(to target: MetalStrokeRenderer?) {
+        let (image, opacity) = composedUnderlay()
+        target?.setUnderlay(cgImage: image, opacity: opacity)
+    }
+
+    /// Komponert underlag (referansefoto + onion-lag) for aktiv frame —
+    /// deles med fullskjerm så begge renderere viser det samme.
+    private func composedUnderlay() -> (CGImage?, Double) {
         let underlayImage = board.frame?.underlayDataURL.flatMap(decodeDataURL)
         // Onion-kilder med alpha: forrige tydeligst, nabo nummer to svakere.
         var onionLayers: [(image: UIImage, alpha: CGFloat)] = []
@@ -491,9 +499,9 @@ struct NativeBoardView: View {
         let opacity = board.frame?.underlayOpacity ?? 0.4
         switch (underlayImage, onionLayers.isEmpty) {
         case (nil, true):
-            target?.setUnderlay(cgImage: nil, opacity: 0)
+            return (nil, 0)
         case (let underlay?, true):
-            target?.setUnderlay(cgImage: underlay.cgImage, opacity: opacity)
+            return (underlay.cgImage, opacity)
         default:
             // Komponer på papirfarget flate (samlet opacity 1 i shaderen).
             let width = 1120.0
@@ -512,7 +520,7 @@ struct NativeBoardView: View {
                                      blendMode: .multiply, alpha: layer.alpha)
                 }
             }
-            target?.setUnderlay(cgImage: composed.cgImage, opacity: 1)
+            return (composed.cgImage, 1)
         }
     }
 
@@ -680,25 +688,33 @@ struct NativeBoardView: View {
                     .font(.system(size: 15)).foregroundStyle(BoardBrand.dim)
             }
             .accessibilityLabel("Tone-analyse")
+            if let progress = pdfExportProgress {
+                Text("Eksporterer \(progress)")
+                    .font(.system(size: 11).monospacedDigit())
+                    .foregroundStyle(BoardBrand.dim)
+            }
             Menu {
                 Button {
-                    exportPDFURL = BoardPDFExporter.export(
-                        projectTitle: board.manuscript.title, scenes: board.scenes)
+                    exportPDF(includeUnderlay: false)
                 } label: {
                     Label("PDF", systemImage: "doc.richtext")
                 }
                 Button {
-                    exportPDFURL = BoardPDFExporter.export(
-                        projectTitle: board.manuscript.title, scenes: board.scenes,
-                        includeUnderlay: true)
+                    exportPDF(includeUnderlay: true)
                 } label: {
                     Label("PDF med underlag", systemImage: "photo.on.rectangle")
+                }
+                Button {
+                    exportPDFURL = BoardPDFExporter.exportCSV(
+                        projectTitle: board.manuscript.title, scenes: board.scenes)
+                } label: {
+                    Label("Shot-liste (CSV)", systemImage: "tablecells")
                 }
             } label: {
                 Image(systemName: "square.and.arrow.up")
                     .font(.system(size: 16)).foregroundStyle(BoardBrand.dim)
             }
-            .disabled(board.scenes.isEmpty)
+            .disabled(board.scenes.isEmpty || pdfExportProgress != nil)
             .accessibilityLabel("Eksporter PDF")
             Button { syncActiveFrameStrokes() } label: {
                 Label("Synk", systemImage: "icloud.and.arrow.up")
@@ -1746,6 +1762,18 @@ struct NativeBoardView: View {
     @State private var historyFrameRef: (sceneId: String, frameId: String)?
     @State private var historyEntries: [(updatedAt: String, strokes: String)] = []
     @State private var showHistorySheet = false
+    @State private var pdfExportProgress: String?
+
+    private func exportPDF(includeUnderlay: Bool) {
+        pdfExportProgress = "…"
+        Task {
+            exportPDFURL = await BoardPDFExporter.export(
+                projectTitle: board.manuscript.title, scenes: board.scenes,
+                includeUnderlay: includeUnderlay,
+                progress: { done, total in pdfExportProgress = "\(done)/\(total)" })
+            pdfExportProgress = nil
+        }
+    }
     // Onion-skin: 0=av, 1=forrige, 2=forrige+neste, 3=to tilbake.
     @State private var onionMode = 0
     // Perspektiv-hjelpelinjer: 0=av, 1/2/3-punkts. VP-er normalisert 0–1
@@ -1935,6 +1963,19 @@ struct NativeBoardView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Fargeplukker")
+                        if canvasState.brushType == .eraser {
+                            // Objektmodus: berørte strøk slettes hele
+                            Button { canvasState.eraserObjectMode.toggle() } label: {
+                                Image(systemName: "scissors")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(canvasState.eraserObjectMode ? .white : BoardBrand.dim)
+                                    .frame(width: 24, height: 24)
+                                    .background(canvasState.eraserObjectMode ? BoardBrand.accent : Color.white.opacity(0.05),
+                                                in: RoundedRectangle(cornerRadius: 7))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Strøk-viskelær")
+                        }
                         // Nylige farger
                         ForEach(canvasState.recentColors.prefix(6), id: \.self) { hex in
                             Button { canvasState.brushColor = hex } label: {
@@ -2136,6 +2177,29 @@ struct NativeBoardView: View {
 
 // MARK: Animatic — scene-avspilling med per-shot varighet (native AnimaticLite)
 
+// Voiceover per shot: m4a i Documents/voiceover/<frameId>.m4a — lokalt
+// på enheten (server-synk er bevisst utelatt; animatic-lyd er arbeidslyd).
+enum VoiceoverStore {
+    static var directory: URL {
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("voiceover", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    static func url(frameId: String) -> URL {
+        directory.appendingPathComponent("\(frameId).m4a")
+    }
+
+    static func exists(frameId: String) -> Bool {
+        FileManager.default.fileExists(atPath: url(frameId: frameId).path)
+    }
+
+    static func delete(frameId: String) {
+        try? FileManager.default.removeItem(at: url(frameId: frameId))
+    }
+}
+
 // Animatic → MP4: ett stillbilde per shot i shot-varighet (H.264 1280×720).
 // Frames re-rendres i hi-res gjennom motoren; thumb/plakat som fallback.
 @MainActor
@@ -2218,7 +2282,54 @@ enum AnimaticVideoExporter {
         await withCheckedContinuation { continuation in
             writer.finishWriting { continuation.resume() }
         }
-        return writer.status == .completed ? url : nil
+        guard writer.status == .completed else { return nil }
+        return await mixVoiceover(videoURL: url, frames: frames)
+    }
+
+    /// Legg voiceover-klippene inn på shot-tidene (composition + re-eksport).
+    /// Uten voiceover returneres videofilen urørt.
+    private static func mixVoiceover(videoURL: URL, frames: [FrameSummary]) async -> URL {
+        guard frames.contains(where: { VoiceoverStore.exists(frameId: $0.id) }) else {
+            return videoURL
+        }
+        let composition = AVMutableComposition()
+        let videoAsset = AVURLAsset(url: videoURL)
+        guard let videoTrack = try? await videoAsset.loadTracks(withMediaType: .video).first,
+              let videoDuration = try? await videoAsset.load(.duration),
+              let compositionVideo = composition.addMutableTrack(
+                withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
+              (try? compositionVideo.insertTimeRange(
+                CMTimeRange(start: .zero, duration: videoDuration),
+                of: videoTrack, at: .zero)) != nil,
+              let compositionAudio = composition.addMutableTrack(
+                withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
+            return videoURL
+        }
+        var time = CMTime.zero
+        for frame in frames {
+            let shotDuration = CMTime(seconds: max(0.5, frame.durationSec), preferredTimescale: 600)
+            defer { time = CMTimeAdd(time, shotDuration) }
+            guard VoiceoverStore.exists(frameId: frame.id) else { continue }
+            let audioAsset = AVURLAsset(url: VoiceoverStore.url(frameId: frame.id))
+            guard let audioTrack = try? await audioAsset.loadTracks(withMediaType: .audio).first,
+                  let audioDuration = try? await audioAsset.load(.duration) else { continue }
+            let clip = CMTimeMinimum(audioDuration, shotDuration)
+            try? compositionAudio.insertTimeRange(
+                CMTimeRange(start: .zero, duration: clip), of: audioTrack, at: time)
+        }
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("animatic-voiceover.mp4")
+        try? FileManager.default.removeItem(at: outputURL)
+        guard let export = AVAssetExportSession(asset: composition,
+                                                presetName: AVAssetExportPresetHighestQuality) else {
+            return videoURL
+        }
+        export.outputURL = outputURL
+        export.outputFileType = .mp4
+        await withCheckedContinuation { continuation in
+            export.exportAsynchronously { continuation.resume() }
+        }
+        return export.status == .completed ? outputURL : videoURL
     }
 
     private static func aspectFit(_ image: UIImage?, in size: CGSize) -> CGRect {
@@ -2283,6 +2394,10 @@ struct AnimaticView: View {
     @State private var playing = true
     @State private var exporting = false
     @State private var exportURL: URL?
+    @State private var audioRecorder: AVAudioRecorder?
+    @State private var recordingFrameId: String?
+    @State private var voiceoverPlayer: AVAudioPlayer?
+    @State private var voiceoverRevision = 0
 
     var body: some View {
         ZStack {
@@ -2349,6 +2464,29 @@ struct AnimaticView: View {
                         Text("\(frame.shotNumber) · \(Int(frame.durationSec))s")
                             .font(.system(size: 12).monospacedDigit())
                             .foregroundStyle(.white.opacity(0.6))
+                        // Voiceover: opptak per shot (lokalt, mikses i MP4)
+                        Button {
+                            toggleRecording(frameId: frame.id)
+                        } label: {
+                            Image(systemName: recordingFrameId == frame.id
+                                  ? "stop.circle.fill" : "mic.circle")
+                                .font(.system(size: 18))
+                                .foregroundStyle(recordingFrameId == frame.id ? .red
+                                                 : VoiceoverStore.exists(frameId: frame.id)
+                                                 ? BoardBrand.accent : .white.opacity(0.6))
+                        }
+                        .accessibilityLabel("Voiceover")
+                        .id(voiceoverRevision)
+                        if VoiceoverStore.exists(frameId: frame.id), recordingFrameId == nil {
+                            Button {
+                                VoiceoverStore.delete(frameId: frame.id)
+                                voiceoverRevision += 1
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
+                            }
+                            .accessibilityLabel("Slett voiceover")
+                        }
                     }
                 }
                 .padding(.horizontal, 24).padding(.bottom, 20)
@@ -2359,6 +2497,13 @@ struct AnimaticView: View {
         }
         .task(id: "\(index)-\(playing)") {
             guard playing, frames.indices.contains(index) else { return }
+            // Spill shot-voiceover under avspilling.
+            let frameId = frames[index].id
+            if VoiceoverStore.exists(frameId: frameId), recordingFrameId == nil {
+                voiceoverPlayer = try? AVAudioPlayer(
+                    contentsOf: VoiceoverStore.url(frameId: frameId))
+                voiceoverPlayer?.play()
+            }
             let seconds = max(0.5, frames[index].durationSec)
             try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             if playing {
@@ -2731,6 +2876,10 @@ private struct StrokePreview: View {
 struct FullscreenDrawView: View {
     @ObservedObject var canvasState: CanvasState
     let frame: FrameSummary
+    // Komponert av boardet (underlag + onion) — samme bilde begge steder.
+    // Perspektiv-overlay følger bevisst IKKE med hit: fullskjerm zoomer i
+    // UIScrollView-rommet der et SwiftUI-overlay ikke ville fulgt canvasen.
+    var underlay: (CGImage?, Double) = (nil, 0)
     @State private var renderer = MetalStrokeRenderer()
     @State private var fingerDraws = false
     @Environment(\.dismiss) private var dismiss
@@ -2738,9 +2887,7 @@ struct FullscreenDrawView: View {
     private var aspect: CGFloat { CGFloat(frame.drawingWidth / max(1, frame.drawingHeight)) }
 
     private func applyUnderlay() {
-        let image = frame.underlayDataURL.flatMap(decodeDataURL)
-        renderer?.setUnderlay(cgImage: image?.cgImage,
-                              opacity: frame.underlayOpacity ?? 0.4)
+        renderer?.setUnderlay(cgImage: underlay.0, opacity: underlay.1)
     }
 
     var body: some View {
@@ -2769,6 +2916,39 @@ struct FullscreenDrawView: View {
         }
         .background(Color.black)
         .onAppear { applyUnderlay() }
+    }
+}
+
+extension AnimaticView {
+    /// Start/stopp opptak for et shot (AVAudioRecorder → m4a).
+    fileprivate func toggleRecording(frameId: String) {
+        if recordingFrameId == frameId {
+            audioRecorder?.stop()
+            audioRecorder = nil
+            recordingFrameId = nil
+            voiceoverRevision += 1
+            return
+        }
+        audioRecorder?.stop()
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playAndRecord, options: [.defaultToSpeaker])
+        try? session.setActive(true)
+        session.requestRecordPermission { granted in
+            guard granted else { return }
+            Task { @MainActor in
+                let settings: [String: Any] = [
+                    AVFormatIDKey: kAudioFormatMPEG4AAC,
+                    AVSampleRateKey: 44_100,
+                    AVNumberOfChannelsKey: 1,
+                    AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
+                ]
+                audioRecorder = try? AVAudioRecorder(
+                    url: VoiceoverStore.url(frameId: frameId), settings: settings)
+                audioRecorder?.record()
+                recordingFrameId = frameId
+                playing = false
+            }
+        }
     }
 }
 
@@ -3037,14 +3217,32 @@ enum FrameRenderService {
 
 @MainActor
 enum BoardPDFExporter {
+    /// Async: frames pre-rendres med Task.yield mellom hver (UI forblir
+    /// responsiv på store prosjekter) og progress rapporteres «N/M».
     static func export(projectTitle: String, scenes: [SceneSummary],
-                       includeUnderlay: Bool = false) -> URL? {
+                       includeUnderlay: Bool = false,
+                       progress: ((Int, Int) -> Void)? = nil) async -> URL? {
+        // Pre-render alle frame-bilder (den tunge delen).
+        let allFrames = scenes.flatMap(\.frames)
+        var images: [String: UIImage] = [:]
+        for (index, frame) in allFrames.enumerated() {
+            progress?(index + 1, allFrames.count)
+            if let image = FrameRenderService.image(for: frame, maxWidth: 1120,
+                                                    includeUnderlay: includeUnderlay)
+                ?? decodeDataURL(frame.thumbnailDataURL) {
+                images[frame.id] = image
+            }
+            await Task.yield()
+        }
+
         let pageRect = CGRect(x: 0, y: 0, width: 842, height: 595) // A4 landskap pt
         let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(projectTitle.replacingOccurrences(of: "/", with: "-")) storyboard.pdf")
         do {
             try renderer.writePDF(to: url) { context in
+                drawTitlePage(context: context, projectTitle: projectTitle,
+                              scenes: scenes, in: pageRect)
                 for scene in scenes where !scene.frames.isEmpty {
                     let shotsPerPage = 3
                     let pages = stride(from: 0, to: scene.frames.count, by: shotsPerPage).map {
@@ -3056,7 +3254,7 @@ enum BoardPDFExporter {
                                    pageIndex: pageIndex, pageCount: pages.count, in: pageRect)
                         for (rowIndex, frame) in pageFrames.enumerated() {
                             drawShotRow(frame, rowIndex: rowIndex, in: pageRect,
-                                        includeUnderlay: includeUnderlay)
+                                        image: images[frame.id])
                         }
                     }
                 }
@@ -3065,6 +3263,57 @@ enum BoardPDFExporter {
         } catch {
             return nil
         }
+    }
+
+    /// Forside: prosjekt, dato, omfang — produksjonskontorets førsteside.
+    private static func drawTitlePage(context: UIGraphicsPDFRendererContext,
+                                      projectTitle: String, scenes: [SceneSummary],
+                                      in page: CGRect) {
+        context.beginPage()
+        let shotCount = scenes.reduce(0) { $0 + $1.frames.count }
+        let totalSeconds = scenes.flatMap(\.frames).reduce(0.0) { $0 + $1.durationSec }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .long
+        formatter.locale = Locale(identifier: "nb_NO")
+        (projectTitle.uppercased() as NSString).draw(
+            at: CGPoint(x: 72, y: 200),
+            withAttributes: [.font: UIFont.boldSystemFont(ofSize: 34),
+                             .foregroundColor: UIColor.black])
+        ("STORYBOARD" as NSString).draw(
+            at: CGPoint(x: 72, y: 244),
+            withAttributes: [.font: UIFont.systemFont(ofSize: 16, weight: .medium),
+                             .foregroundColor: UIColor.darkGray])
+        let meta = [
+            formatter.string(from: Date()),
+            "\(scenes.count) scener · \(shotCount) shots",
+            String(format: "Estimert lengde %.0f sek", totalSeconds),
+        ].joined(separator: "\n")
+        (meta as NSString).draw(
+            in: CGRect(x: 72, y: 300, width: 500, height: 120),
+            withAttributes: [.font: UIFont.systemFont(ofSize: 13),
+                             .foregroundColor: UIColor.black])
+    }
+
+    /// Shot-liste som CSV (semikolon — Excel-NO) for produksjonsplanlegging.
+    static func exportCSV(projectTitle: String, scenes: [SceneSummary]) -> URL? {
+        var rows = ["Scene;Shot;Beskrivelse;Type;Lens;Bevegelse;Varighet (s);Beat;Status;Tags"]
+        for scene in scenes {
+            for frame in scene.frames {
+                let cells = [
+                    scene.heading, frame.shotNumber, frame.description,
+                    frame.shotType ?? "", frame.lensMm.map { "\($0)mm" } ?? "",
+                    frame.movement ?? "", String(format: "%.1f", frame.durationSec),
+                    frame.beatTag ?? "", frame.frameStatus ?? "",
+                    frame.tags.joined(separator: ", "),
+                ].map { $0.replacingOccurrences(of: ";", with: ",") }
+                rows.append(cells.joined(separator: ";"))
+            }
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(projectTitle.replacingOccurrences(of: "/", with: "-")) shotliste.csv")
+        guard let data = ("\u{FEFF}" + rows.joined(separator: "\n")).data(using: .utf8) else { return nil }
+        try? data.write(to: url)
+        return url
     }
 
     private static func drawHeader(scene: SceneSummary, projectTitle: String,
@@ -3078,7 +3327,7 @@ enum BoardPDFExporter {
     }
 
     private static func drawShotRow(_ frame: FrameSummary, rowIndex: Int, in page: CGRect,
-                                    includeUnderlay: Bool) {
+                                    image: UIImage?) {
         let top = 56.0 + Double(rowIndex) * 172
         let thumbRect = CGRect(x: 156, y: top, width: 280, height: 157.5)
         // Kodeboks
@@ -3096,9 +3345,7 @@ enum BoardPDFExporter {
         let border = UIBezierPath(rect: thumbRect)
         border.lineWidth = 1
         border.stroke()
-        if let image = FrameRenderService.image(for: frame, maxWidth: 1120,
-                                                includeUnderlay: includeUnderlay)
-            ?? decodeDataURL(frame.thumbnailDataURL) {
+        if let image {
             image.draw(in: thumbRect)
         }
         // Metadata-kolonne
@@ -3264,6 +3511,27 @@ struct ToneReportSheet: View {
                         } header: {
                             Text("Tonefordeling · \(Int(report.coveragePct * 100)) % av flaten dekket")
                         }
+                        // Fokal klarhet (§73–§74 forenklet): står noe frem?
+                        Section("Fokus") {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("Fokal kontrast").font(.system(size: 12, weight: .bold))
+                                    Spacer()
+                                    Text("\(Int(report.focalContrast * 100)) %")
+                                        .font(.system(size: 12).monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                }
+                                if report.isDiffuse {
+                                    Label("Diffust: ingen sone står tydelig frem — vurder å mørkne hero-området eller lette omgivelsene.",
+                                          systemImage: "exclamationmark.triangle")
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                } else if report.focalZone != nil {
+                                    Text("Tyngdepunktet er markert i tetthetskartet under.")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
                         // Density map (§70–§72): heatmap + hvilesoner
                         Section("Tetthetskart") {
                             VStack(alignment: .leading, spacing: 6) {
@@ -3271,8 +3539,11 @@ struct ToneReportSheet: View {
                                     ForEach(0..<ToneReport.gridRows, id: \.self) { row in
                                         HStack(spacing: 2) {
                                             ForEach(0..<ToneReport.gridColumns, id: \.self) { col in
+                                                let isPeak = report.focalZone.map { $0.row == row && $0.col == col } ?? false
                                                 RoundedRectangle(cornerRadius: 2)
                                                     .fill(Color.primary.opacity(0.06 + report.densityGrid[row][col] * 0.9))
+                                                    .overlay(RoundedRectangle(cornerRadius: 2)
+                                                        .stroke(isPeak ? BoardBrand.accent : .clear, lineWidth: 2))
                                                     .aspectRatio(1.6, contentMode: .fit)
                                             }
                                         }

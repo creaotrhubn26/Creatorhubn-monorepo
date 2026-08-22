@@ -39,6 +39,22 @@ struct BrushToolbar: View {
                     .font(.subheadline.bold())
             }
             .accessibilityLabel("Penselvalg")
+            Button {
+                canvasState.colorPickArmed.toggle()
+            } label: {
+                Image(systemName: "eyedropper")
+                    .foregroundStyle(canvasState.colorPickArmed ? Color.purple : Color.secondary)
+            }
+            .accessibilityLabel("Fargeplukker")
+            if canvasState.brushType == .eraser {
+                Button {
+                    canvasState.eraserObjectMode.toggle()
+                } label: {
+                    Image(systemName: "scissors")
+                        .foregroundStyle(canvasState.eraserObjectMode ? Color.purple : Color.secondary)
+                }
+                .accessibilityLabel("Strøk-viskelær")
+            }
 
             ColorPicker("Farge", selection: colorBinding, supportsOpacity: false)
                 .labelsHidden()

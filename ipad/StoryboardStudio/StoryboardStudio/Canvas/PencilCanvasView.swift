@@ -40,6 +40,9 @@ final class CanvasState: ObservableObject {
     var previousBrushBeforeEraser: BrushType = .pencil
     // Eyedropper: neste tap på canvasen plukker farge i stedet for å tegne.
     @Published var colorPickArmed = false
+    // Viskelær-objektmodus: berørte STRØK slettes hele (opprydding),
+    // i stedet for piksel-visking.
+    @Published var eraserObjectMode = false
     // Bumpes ved ALLE strokes-mutasjoner (også flytt, som ikke endrer antall)
     // — rebuild- og autosynk-trigger.
     @Published var revision = 0
@@ -225,6 +228,30 @@ final class MetalCanvasUIView: UIView {
 
     private let hoverRing = CAShapeLayer()
 
+    // Objekt-viskelær: én undo-snapshot per gest, slett under drag.
+    private var objectEraseInProgress = false
+    private var objectEraseSnapshotTaken = false
+
+    private func objectErase(at location: CGPoint) {
+        guard let state else { return }
+        let x = Double(location.x) / contentScale
+        let y = Double(location.y) / contentScale
+        let hitIds = state.strokes.filter { stroke in
+            guard stroke.textAnnotation == nil,
+                  !state.lockedLayers.contains(stroke.boardLayer ?? "Drawing") else { return false }
+            let radius = max(8, stroke.width / 2 + 8)
+            return stroke.points.contains { hypot($0.x - x, $0.y - y) < radius }
+        }.map(\.id)
+        guard !hitIds.isEmpty else { return }
+        if !objectEraseSnapshotTaken {
+            state.undoStack.append(state.strokes)
+            state.redoStack = []
+            objectEraseSnapshotTaken = true
+        }
+        state.strokes.removeAll { hitIds.contains($0.id) }
+        state.revision += 1
+    }
+
     @objc private func handleUndoTap() { state?.undo() }
     @objc private func handleRedoTap() { state?.redo() }
 
@@ -369,6 +396,13 @@ final class MetalCanvasUIView: UIView {
             strokeSuppressed = true
             return
         }
+        // Objekt-viskelær: slett hele strøk under fingeren, ingen tegning.
+        if let state, state.brushType == .eraser, state.eraserObjectMode {
+            strokeSuppressed = true
+            objectEraseInProgress = true
+            objectErase(at: touch.location(in: self))
+            return
+        }
         // Låst lag: ingen tegning (web-paritet med lockedLayers).
         if let state, state.lockedLayers.contains(state.activeBoardLayer) {
             strokeSuppressed = true
@@ -386,6 +420,10 @@ final class MetalCanvasUIView: UIView {
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if objectEraseInProgress, let touch = touches.first {
+            objectErase(at: touch.location(in: self))
+            return
+        }
         guard let touch = touches.first, !strokeSuppressed else { return }
         let coalesced = event?.coalescedTouches(for: touch) ?? [touch]
         for sample in coalesced {
@@ -406,6 +444,12 @@ final class MetalCanvasUIView: UIView {
     }
 
     private func finishStroke() {
+        if objectEraseInProgress {
+            objectEraseInProgress = false
+            objectEraseSnapshotTaken = false
+            strokeSuppressed = false
+            return
+        }
         if strokeSuppressed { strokeSuppressed = false; activePoints = []; predictedPoints = []; return }
         predictedPoints = []
         // Catch-up: streken skal lande der pennen faktisk sluttet.
