@@ -31,6 +31,9 @@ struct ReviewComment: Identifiable, Sendable {
     // Pin på bildet (normalisert 0–1) — mockupens nummererte markører.
     let x: Double?
     let y: Double?
+    // Tråder + reaksjoner
+    let parentId: String?
+    let likes: Int?
 }
 
 struct FrameSummary: Identifiable, Sendable {
@@ -76,6 +79,7 @@ struct FrameSummary: Identifiable, Sendable {
     let reviewDueAt: String?
     let reviewApprovedBy: String?
     let reviewApprovedAt: String?
+    let reviewStarred: Bool?
 }
 
 struct SceneSummary: Identifiable, Sendable {
@@ -1031,7 +1035,9 @@ actor RoleRoomAPIClient {
                         text: (dict["text"] as? String) ?? "",
                         at: (dict["at"] as? String) ?? "",
                         x: dict["x"] as? Double,
-                        y: dict["y"] as? Double)
+                        y: dict["y"] as? Double,
+                        parentId: dict["parentId"] as? String,
+                        likes: dict["likes"] as? Int)
                 },
                 updatedAt: frame["updatedAt"] as? String,
                 underlayDataURL: frame["underlayDataURL"] as? String,
@@ -1044,7 +1050,9 @@ actor RoleRoomAPIClient {
                 reviewPriority: frame["reviewPriority"] as? String,
                 reviewDueAt: frame["reviewDueAt"] as? String,
                 reviewApprovedBy: frame["reviewApprovedBy"] as? String,
-                reviewApprovedAt: frame["reviewApprovedAt"] as? String
+                reviewApprovedAt: frame["reviewApprovedAt"] as? String,
+                reviewStarred: (frame["reviewStarred"] as? Bool)
+                    ?? (frame["reviewStarred"] as? Int).map { $0 != 0 }
             )
         }
         return SceneSummary(
