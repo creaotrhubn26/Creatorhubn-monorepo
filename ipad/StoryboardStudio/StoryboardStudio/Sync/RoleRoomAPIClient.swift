@@ -83,6 +83,9 @@ struct SceneSummary: Identifiable, Sendable {
     let hubNotes: String?
     let hubQuote: String?
     let hubMoodboard: String?
+    let hubMapPositions: String?
+    let hubMapNotes: String?
+    let hubTeam: String?
     // Manusfelter (Script-fanen)
     let sceneNumber: Int?
     let intExt: String?
@@ -791,6 +794,33 @@ actor RoleRoomAPIClient {
         return "/api/role-room/storage/files/\(fileId)/download"
     }
 
+    struct StorageFileSummary: Identifiable, Sendable {
+        let id: String
+        let displayName: String
+        let sizeBytes: Int
+        let contentType: String?
+        let uploadedAt: String
+        var downloadPath: String { "/api/role-room/storage/files/\(id)/download" }
+        var isImage: Bool { (contentType ?? "").hasPrefix("image/") }
+    }
+
+    /// Prosjektets filer i Role Room-lagringen (Assets-seksjonen i hubben).
+    func listStorageFiles(projectId: String) async -> [StorageFileSummary] {
+        guard let payload = try? await getJSON(
+            path: "/api/role-room/storage/files",
+            query: ["projectId": projectId, "limit": "60"]),
+              let files = payload["files"] as? [[String: Any]] else { return [] }
+        return files.compactMap { entry in
+            guard let id = entry["id"] as? String else { return nil }
+            return StorageFileSummary(
+                id: id,
+                displayName: (entry["displayName"] as? String) ?? id,
+                sizeBytes: (entry["sizeBytes"] as? Int) ?? 0,
+                contentType: entry["contentType"] as? String,
+                uploadedAt: (entry["uploadedAt"] as? String) ?? "")
+        }
+    }
+
     /// Hent remote panel-bilde (Bearer + 302-følging), disk-cachet.
     func fetchRemoteImageData(path: String) async -> Data? {
         let key = "img-\(path.hashValue)"
@@ -989,6 +1019,9 @@ actor RoleRoomAPIClient {
             hubNotes: scene["hubNotes"] as? String,
             hubQuote: scene["hubQuote"] as? String,
             hubMoodboard: scene["hubMoodboard"] as? String,
+            hubMapPositions: scene["hubMapPositions"] as? String,
+            hubMapNotes: scene["hubMapNotes"] as? String,
+            hubTeam: scene["hubTeam"] as? String,
             sceneNumber: (scene["sceneNumber"] as? Int) ?? Int(scene["sceneNumber"] as? String ?? ""),
             intExt: (scene["intExt"] as? String) ?? (scene["int_ext"] as? String),
             location: (scene["locationName"] as? String) ?? (scene["location"] as? String),
