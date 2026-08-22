@@ -6,6 +6,79 @@ import PhotosUI
 // Datagrunnlag: scenene/frames fra API-et + hub-metadata lagret på første
 // scene (samme mønster som presentasjonsoppsettet — web ignorerer feltene).
 
+// Flate-navigasjon: samme sidemeny i hub, Assets og Review — velger man
+// en annen flate lukkes den aktive og målet åpnes fra hubben.
+enum HubDestination: String, Identifiable {
+    case board, script, shotList, animatic, review, assets
+    var id: String { rawValue }
+}
+
+struct HubSidebar: View {
+    let projectName: String
+    let storageUsed: Int
+    let storageQuota: Int?
+    var active: HubDestination?
+    let onSelect: (HubDestination) -> Void
+
+    private static let items: [(HubDestination, String, String)] = [
+        (.board, "rectangle.grid.2x2", "Board"),
+        (.script, "doc.text", "Script"),
+        (.shotList, "list.bullet", "Shot List"),
+        (.animatic, "play.rectangle", "Animatic"),
+        (.review, "checkmark.bubble", "Review"),
+        (.assets, "folder", "Assets"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(projectName)
+                .font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                .padding(.bottom, 10)
+            ForEach(Self.items, id: \.0) { destination, icon, title in
+                let isActive = active == destination
+                Button {
+                    guard !isActive else { return }
+                    onSelect(destination)
+                } label: {
+                    HStack(spacing: 9) {
+                        Image(systemName: icon).font(.system(size: 12))
+                        Text(title).font(.system(size: 13, weight: .medium))
+                        Spacer()
+                    }
+                    .foregroundStyle(isActive ? .white : BoardBrand.dim)
+                    .padding(.horizontal, 10).padding(.vertical, 8)
+                    .background(isActive ? BoardBrand.accent.opacity(0.35)
+                                : Color.white.opacity(0.03),
+                                in: RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+            VStack(alignment: .leading, spacing: 5) {
+                Text("LAGRING")
+                    .font(.system(size: 9, weight: .bold)).kerning(1)
+                    .foregroundStyle(BoardBrand.label)
+                GeometryReader { geo in
+                    let quota = Double(storageQuota ?? 1_073_741_824)
+                    let fraction = min(1, Double(storageUsed) / max(1, quota))
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.08))
+                        Capsule().fill(fraction > 0.85 ? Color.orange : BoardBrand.accent)
+                            .frame(width: geo.size.width * fraction)
+                    }
+                }
+                .frame(height: 5)
+                Text("\(ByteCountFormatter.string(fromByteCount: Int64(storageUsed), countStyle: .file)) av \(ByteCountFormatter.string(fromByteCount: Int64(storageQuota ?? 1_073_741_824), countStyle: .file))")
+                    .font(.system(size: 9)).foregroundStyle(BoardBrand.dim)
+            }
+        }
+        .padding(14)
+        .frame(width: 170)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(BoardBrand.panel)
+    }
+}
+
 @MainActor
 final class HubState: ObservableObject {
     let project: ProjectSummary
@@ -292,10 +365,18 @@ struct ProjectHubView: View {
                           frames: hub.allFrames)
         }
         .fullScreenCover(isPresented: $showAssets) {
-            AssetsView(project: hub.project, manuscript: hub.manuscript)
+            AssetsView(project: hub.project, manuscript: hub.manuscript,
+                       storageUsed: hub.storageUsed, storageQuota: hub.storageQuota,
+                       onNavigate: { destination in
+                           crossNavigate(from: $showAssets, to: destination)
+                       })
         }
         .fullScreenCover(isPresented: $showReviewDirect) {
-            ReviewView(project: hub.project, manuscript: hub.manuscript)
+            ReviewView(project: hub.project, manuscript: hub.manuscript,
+                       storageUsed: hub.storageUsed, storageQuota: hub.storageQuota,
+                       onNavigate: { destination in
+                           crossNavigate(from: $showReviewDirect, to: destination)
+                       })
         }
         .fullScreenCover(isPresented: $showAnimaticDirect) {
             AnimaticView(sceneHeading: hub.manuscript.title,
@@ -347,56 +428,38 @@ struct ProjectHubView: View {
     }
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(hub.project.name)
-                .font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
-                .padding(.bottom, 10)
-            sidebarItem("rectangle.grid.2x2", "Board") { openBoard(sheet: nil) }
-            // Script/Shot List/Animatic vises DIREKTE — ingen omvei via boardet.
-            sidebarItem("doc.text", "Script") { showScriptDirect = true }
-            sidebarItem("list.bullet", "Shot List") { showShotListDirect = true }
-            sidebarItem("play.rectangle", "Animatic") { showAnimaticDirect = true }
-            sidebarItem("checkmark.bubble", "Review") { showReviewDirect = true }
-            sidebarItem("folder", "Assets") { showAssets = true }
-            Spacer()
-            // Lagringsmåler (Role Room-kvoten)
-            VStack(alignment: .leading, spacing: 5) {
-                Text("LAGRING")
-                    .font(.system(size: 9, weight: .bold)).kerning(1)
-                    .foregroundStyle(BoardBrand.label)
-                GeometryReader { geo in
-                    let quota = Double(hub.storageQuota ?? 1_073_741_824)
-                    let fraction = min(1, Double(hub.storageUsed) / max(1, quota))
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.white.opacity(0.08))
-                        Capsule().fill(fraction > 0.85 ? Color.orange : BoardBrand.accent)
-                            .frame(width: geo.size.width * fraction)
-                    }
-                }
-                .frame(height: 5)
-                Text("\(ByteCountFormatter.string(fromByteCount: Int64(hub.storageUsed), countStyle: .file)) av \(ByteCountFormatter.string(fromByteCount: Int64(hub.storageQuota ?? 1_073_741_824), countStyle: .file))")
-                    .font(.system(size: 9)).foregroundStyle(BoardBrand.dim)
-            }
+        HubSidebar(projectName: hub.project.name,
+                   storageUsed: hub.storageUsed,
+                   storageQuota: hub.storageQuota,
+                   active: nil) { destination in
+            navigate(to: destination)
         }
-        .padding(14)
-        .frame(width: 170)
-        .frame(maxHeight: .infinity, alignment: .top)
-        .background(BoardBrand.panel)
     }
 
-    private func sidebarItem(_ icon: String, _ title: String,
-                             action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 9) {
-                Image(systemName: icon).font(.system(size: 12))
-                Text(title).font(.system(size: 13, weight: .medium))
-                Spacer()
-            }
-            .foregroundStyle(BoardBrand.dim)
-            .padding(.horizontal, 10).padding(.vertical, 8)
-            .background(Color.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 8))
+    @State private var pendingDestination: HubDestination?
+
+    private func navigate(to destination: HubDestination) {
+        switch destination {
+        case .board: openBoard(sheet: nil)
+        case .script: showScriptDirect = true
+        case .shotList: showShotListDirect = true
+        case .animatic: showAnimaticDirect = true
+        case .review: showReviewDirect = true
+        case .assets: showAssets = true
         }
-        .buttonStyle(.plain)
+    }
+
+    /// Fra en flate (Assets/Review) til en annen: lukk aktiv cover og
+    /// åpne målet når lukkingen er ferdig.
+    private func crossNavigate(from current: Binding<Bool>, to destination: HubDestination) {
+        pendingDestination = destination
+        current.wrappedValue = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            if let target = pendingDestination {
+                pendingDestination = nil
+                navigate(to: target)
+            }
+        }
     }
 
     // MARK: Seksjoner

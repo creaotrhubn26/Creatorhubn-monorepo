@@ -73,6 +73,9 @@ final class AssetsState: ObservableObject {
 
 struct AssetsView: View {
     @StateObject private var state: AssetsState
+    var storageUsed = 0
+    var storageQuota: Int?
+    var onNavigate: ((HubDestination) -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
     @State private var typeFilter = "Alle"
@@ -90,8 +93,13 @@ struct AssetsView: View {
     @State private var renameDraft = ""
     @State private var newSwatchColor = Color(red: 0.55, green: 0.36, blue: 0.96)
 
-    init(project: ProjectSummary, manuscript: ManuscriptSummary) {
+    init(project: ProjectSummary, manuscript: ManuscriptSummary,
+         storageUsed: Int = 0, storageQuota: Int? = nil,
+         onNavigate: ((HubDestination) -> Void)? = nil) {
         _state = StateObject(wrappedValue: AssetsState(project: project, manuscript: manuscript))
+        self.storageUsed = storageUsed
+        self.storageQuota = storageQuota
+        self.onNavigate = onNavigate
     }
 
     // «Mapper» = produksjonskonteksten filene ble lastet opp med.
@@ -136,6 +144,12 @@ struct AssetsView: View {
 
     var body: some View {
         NavigationStack {
+            HStack(spacing: 0) {
+            HubSidebar(projectName: state.project.name,
+                       storageUsed: storageUsed, storageQuota: storageQuota,
+                       active: .assets) { destination in
+                onNavigate?(destination)
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Alle filer, bilder og media for produksjonen — lagret i Role Room-skyen.")
@@ -148,6 +162,7 @@ struct AssetsView: View {
                     if listMode { fileList } else { fileGrid }
                 }
                 .padding(18)
+            }
             }
             .background(BoardBrand.chrome)
             .navigationTitle(folderFilter.flatMap { key -> String? in
@@ -408,8 +423,8 @@ struct AssetsView: View {
     // Fargeprøve-kort (mockupens #hex-kort) — prosjektets fargespråk.
     private var swatchRow: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("FARGER")
-                .font(.system(size: 10, weight: .bold)).kerning(1)
+            Text("FARGER · prosjektets fargespråk — tap legger fargen i penselens nylige farger")
+                .font(.system(size: 10, weight: .bold)).kerning(0.5)
                 .foregroundStyle(BoardBrand.label)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 6),
                       spacing: 12) {
@@ -426,6 +441,17 @@ struct AssetsView: View {
                                     .background(.black.opacity(0.45), in: Capsule())
                                     .padding(5)
                             }
+                    }
+                    .onTapGesture {
+                        // Del med tegneflaten: samme lager som boardets
+                        // «nylige farger»-rad (sb.recentColors).
+                        var recent = UserDefaults.standard
+                            .stringArray(forKey: "sb.recentColors") ?? []
+                        recent.removeAll { $0 == hex }
+                        recent.insert(hex, at: 0)
+                        UserDefaults.standard.set(Array(recent.prefix(8)),
+                                                  forKey: "sb.recentColors")
+                        status = "\(hex.uppercased()) lagt i penselfargene ✓"
                     }
                     .contextMenu {
                         Button("Slett", role: .destructive) {
