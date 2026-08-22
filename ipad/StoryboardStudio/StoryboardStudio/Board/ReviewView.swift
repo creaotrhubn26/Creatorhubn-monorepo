@@ -13,6 +13,8 @@ final class ReviewState: ObservableObject {
     @Published var scenes: [SceneSummary] = []
     @Published var selected: (sceneId: String, frameId: String)?
     @Published var statusFilter: String?
+    @Published var roleFilter: String?
+    @Published var sortMode = "Sekvens"     // Sekvens / Frist / Prioritet
     @Published var status: String?
 
     init(project: ProjectSummary, manuscript: ManuscriptSummary) {
@@ -32,7 +34,35 @@ final class ReviewState: ObservableObject {
     }
 
     func frames(status: String) -> [(scene: SceneSummary, frame: FrameSummary)] {
-        allFrames.filter { ($0.frame.frameStatus ?? "planned") == status }
+        var items = allFrames.filter { ($0.frame.frameStatus ?? "planned") == status }
+        if let roleFilter {
+            items = items.filter { pair in
+                pair.frame.comments.contains { $0.role == roleFilter }
+            }
+        }
+        switch sortMode {
+        case "Frist":
+            items.sort { ($0.frame.reviewDueAt ?? "9999") < ($1.frame.reviewDueAt ?? "9999") }
+        case "Prioritet":
+            let rank = ["Høy": 0, "Normal": 1, "Lav": 2]
+            items.sort { rank[$0.frame.reviewPriority ?? "Normal", default: 1]
+                       < rank[$1.frame.reviewPriority ?? "Normal", default: 1] }
+        default:
+            break
+        }
+        return items
+    }
+
+    /// Shots med minst én kommentar fra rollen (rolle-chips i toppen).
+    func roleCount(_ role: String) -> Int {
+        allFrames.filter { pair in pair.frame.comments.contains { $0.role == role } }.count
+    }
+
+    @Published var presentNames: [String] = []
+
+    var reviewers: [(name: String, role: String, online: Bool)] {
+        let team: [HubState.TeamMember] = HubState.decodeList(scenes.first?.hubTeam)
+        return team.map { ($0.name, $0.role, presentNames.contains($0.name)) }
     }
 
     var selectedPair: (scene: SceneSummary, frame: FrameSummary)? {
@@ -54,6 +84,31 @@ final class ReviewState: ObservableObject {
             }
         }
         await FrameImageCache.prefetch(frames: Array(allFrames.map(\.frame).prefix(24)))
+        presentNames = await RoleRoomAPIClient.shared.reportPresence(manuscriptId: manuscript.id)
+    }
+
+    /// Serialiser kommentarliste (bevarer pins/likes/tråder).
+    static func commentDicts(_ comments: [ReviewComment]) -> [[String: any Sendable]] {
+        comments.map { comment in
+            var dict: [String: any Sendable] = [
+                "id": comment.id, "role": comment.role, "author": comment.author,
+                "text": comment.text, "at": comment.at,
+            ]
+            if let x = comment.x { dict["x"] = x }
+            if let y = comment.y { dict["y"] = y }
+            if let parentId = comment.parentId { dict["parentId"] = parentId }
+            if let likes = comment.likes { dict["likes"] = likes }
+            return dict
+        }
+    }
+
+    func likeComment(_ commentId: String) {
+        guard let pair = selectedPair else { return }
+        var dicts = Self.commentDicts(pair.frame.comments)
+        for index in dicts.indices where (dicts[index]["id"] as? String) == commentId {
+            dicts[index]["likes"] = ((dicts[index]["likes"] as? Int) ?? 0) + 1
+        }
+        patch(["frameComments": dicts])
     }
 
     func patch(_ fields: [String: any Sendable]) {
@@ -89,19 +144,11 @@ final class ReviewState: ObservableObject {
         patch(fields)
     }
 
-    func addComment(role: String, text: String, pin: CGPoint?) {
+    func addComment(role: String, text: String, pin: CGPoint?, parentId: String? = nil) {
         guard let pair = selectedPair else { return }
         Task {
             let author = await RoleRoomAPIClient.shared.userDisplayName ?? "iPad"
-            var existing: [[String: any Sendable]] = pair.frame.comments.map { comment in
-                var dict: [String: any Sendable] = [
-                    "id": comment.id, "role": comment.role, "author": comment.author,
-                    "text": comment.text, "at": comment.at,
-                ]
-                if let x = comment.x { dict["x"] = x }
-                if let y = comment.y { dict["y"] = y }
-                return dict
-            }
+            var existing = Self.commentDicts(pair.frame.comments)
             var new: [String: any Sendable] = [
                 "id": "c-\(Int(Date().timeIntervalSince1970 * 1000))",
                 "role": role, "author": author, "text": text,
@@ -111,6 +158,7 @@ final class ReviewState: ObservableObject {
                 new["x"] = Double(pin.x)
                 new["y"] = Double(pin.y)
             }
+            if let parentId { new["parentId"] = parentId }
             existing.append(new)
             patch(["frameComments": existing])
         }
@@ -127,6 +175,9 @@ struct ReviewView: View {
     @State private var commentRole = "Director"
     @State private var commentText = ""
     @State private var historyVersions: [(updatedAt: String, strokes: String)] = []
+    @State private var commentTab = "Kommentarer"
+    @State private var notesDraft = ""
+    @State private var replyTo: ReviewComment?
 
     private static let roles = ["Director", "DP", "Producer", "Editor", "Artist"]
 
@@ -185,6 +236,39 @@ struct ReviewView: View {
             VStack(alignment: .leading, spacing: 14) {
                 // Status-tellere som filter-chips
                 FlowStatusChips(state: state)
+                // Rolle-filtre (mockup: Director 5 / Producer 4 / …)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(Self.roles, id: \.self) { role in
+                            let count = state.roleCount(role)
+                            if count > 0 {
+                                let active = state.roleFilter == role
+                                Button {
+                                    state.roleFilter = active ? nil : role
+                                } label: {
+                                    Text("\(role) \(count)")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(active ? .white : BoardBrand.dim)
+                                        .padding(.horizontal, 9).padding(.vertical, 5)
+                                        .background(active ? BoardBrand.accent : Color.white.opacity(0.05),
+                                                    in: Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+                Menu {
+                    Picker("Sorter", selection: Binding(
+                        get: { state.sortMode }, set: { state.sortMode = $0 })) {
+                        Text("Sekvens").tag("Sekvens")
+                        Text("Frist").tag("Frist")
+                        Text("Prioritet").tag("Prioritet")
+                    }
+                } label: {
+                    Label("Sorter: \(state.sortMode)", systemImage: "arrow.up.arrow.down")
+                        .font(.system(size: 10)).foregroundStyle(BoardBrand.dim)
+                }
                 ForEach(ReviewState.statusOrder, id: \.key) { entry in
                     let items = state.frames(status: entry.key)
                     if !items.isEmpty,
@@ -298,6 +382,19 @@ struct ReviewView: View {
                 .font(.system(size: 12)).foregroundStyle(BoardBrand.dim)
             Text(pair.frame.description)
                 .font(.system(size: 13)).foregroundStyle(.white).lineLimit(1)
+            Button {
+                state.patch(["reviewStarred": !(pair.frame.reviewStarred ?? false)])
+            } label: {
+                Image(systemName: (pair.frame.reviewStarred ?? false) ? "star.fill" : "star")
+                    .font(.system(size: 14))
+                    .foregroundStyle((pair.frame.reviewStarred ?? false) ? .yellow : BoardBrand.dim)
+            }
+            .buttonStyle(.plain)
+            if let due = dueLabel(pair.frame) {
+                Text(due.text)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(due.urgent ? .red : BoardBrand.dim)
+            }
             Spacer()
             // Versjonsvelger (drawingHistory)
             if !historyVersions.isEmpty {
@@ -355,7 +452,7 @@ struct ReviewView: View {
             perspectiveMode: nil, vanishingPoints: nil, voiceoverDataURL: nil,
             imageUrl: pair.frame.imageUrl,
             reviewPriority: nil, reviewDueAt: nil,
-            reviewApprovedBy: nil, reviewApprovedAt: nil)
+            reviewApprovedBy: nil, reviewApprovedAt: nil, reviewStarred: nil)
         return FrameRenderService.image(for: ghost, maxWidth: 900)
     }
 
@@ -412,6 +509,26 @@ struct ReviewView: View {
                              contentMode: .fit)
                 .background(Color.white, in: RoundedRectangle(cornerRadius: 8))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(alignment: .bottomLeading) {
+                    // CAM · type · lens (mockup-stripen)
+                    let cam = ["CAM", pair.frame.shotType,
+                               pair.frame.lensMm.map { "\($0)mm" }]
+                        .compactMap(\.self).joined(separator: " · ")
+                    Text(cam)
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(.black.opacity(0.65), in: Capsule())
+                        .padding(8)
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    Text(String(format: "DUR: %.1fs", pair.frame.durationSec))
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(.black.opacity(0.65), in: Capsule())
+                        .padding(8)
+                }
             } else {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.white.opacity(0.05)).frame(height: 240)
@@ -436,9 +553,48 @@ struct ReviewView: View {
 
     private func commentsSection(_ pair: (scene: SceneSummary, frame: FrameSummary)) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("KOMMENTARER · \(pair.frame.comments.count)")
-                .font(.system(size: 10, weight: .bold)).kerning(1)
-                .foregroundStyle(BoardBrand.label)
+            HStack(spacing: 14) {
+                ForEach(["Kommentarer", "Notater"], id: \.self) { tab in
+                    Button {
+                        commentTab = tab
+                        if tab == "Notater" { notesDraft = pair.frame.notes ?? "" }
+                    } label: {
+                        Text(tab == "Kommentarer"
+                             ? "KOMMENTARER · \(pair.frame.comments.count)" : "NOTATER")
+                            .font(.system(size: 10, weight: .bold)).kerning(1)
+                            .foregroundStyle(commentTab == tab ? .white : BoardBrand.label)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+                // Reviewere (hubTeam) m/ presence
+                if !state.reviewers.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(Array(state.reviewers.enumerated()), id: \.offset) { _, reviewer in
+                            HStack(spacing: 3) {
+                                Circle().fill(reviewer.online ? Color.green : Color.white.opacity(0.25))
+                                    .frame(width: 6, height: 6)
+                                Text(reviewer.name)
+                                    .font(.system(size: 9)).foregroundStyle(BoardBrand.dim)
+                            }
+                        }
+                    }
+                }
+            }
+            if commentTab == "Notater" {
+                TextField("Notater til shotet …", text: $notesDraft, axis: .vertical)
+                    .lineLimit(4...10)
+                    .font(.system(size: 12)).foregroundStyle(.white)
+                    .padding(9)
+                    .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 9))
+                Button("Lagre notater") {
+                    state.patch(["notes": notesDraft])
+                }
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(BoardBrand.accent)
+                .buttonStyle(.plain)
+            } else {
+            EmptyView()
             HStack(spacing: 8) {
                 Menu {
                     ForEach(Self.roles, id: \.self) { role in
@@ -449,9 +605,11 @@ struct ReviewView: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(BoardBrand.accent)
                 }
-                TextField(pinMode && pendingPin != nil
-                          ? "Kommentar til pin \(pinnedComments(pair).count + 1)…"
-                          : "Skriv en kommentar…",
+                TextField(replyTo != nil
+                          ? "Svar til \(replyTo?.author ?? "")…"
+                          : (pinMode && pendingPin != nil
+                             ? "Kommentar til pin \(pinnedComments(pair).count + 1)…"
+                             : "Skriv en kommentar…"),
                           text: $commentText)
                     .font(.system(size: 12)).foregroundStyle(.white)
                     .onSubmit { sendComment() }
@@ -469,20 +627,51 @@ struct ReviewView: View {
             .padding(9)
             .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 9))
             let pinned = pinnedComments(pair)
-            ForEach(pair.frame.comments) { comment in
-                HStack(alignment: .top, spacing: 8) {
-                    if let index = pinned.firstIndex(where: { $0.id == comment.id }) {
-                        pinBadge(number: index + 1).scaleEffect(0.8)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("\(comment.role) · \(comment.author) · \(shortDate(comment.at))")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(BoardBrand.dim)
-                        Text(comment.text)
-                            .font(.system(size: 12)).foregroundStyle(.white)
-                    }
+            let roots = pair.frame.comments.filter { $0.parentId == nil }
+            ForEach(roots) { comment in
+                commentRow(comment, pinned: pinned, indent: 0)
+                ForEach(pair.frame.comments.filter { $0.parentId == comment.id }) { reply in
+                    commentRow(reply, pinned: pinned, indent: 1)
                 }
             }
+            }
+        }
+    }
+
+    private func commentRow(_ comment: ReviewComment,
+                            pinned: [ReviewComment], indent: Int) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            if indent > 0 {
+                Rectangle().fill(BoardBrand.border).frame(width: 2)
+                    .padding(.leading, 10)
+            }
+            if let index = pinned.firstIndex(where: { $0.id == comment.id }) {
+                pinBadge(number: index + 1).scaleEffect(0.8)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text("\(comment.role) · \(comment.author) · \(shortDate(comment.at))")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(BoardBrand.dim)
+                Text(comment.text)
+                    .font(.system(size: 12)).foregroundStyle(.white)
+                HStack(spacing: 12) {
+                    if indent == 0 {
+                        Button("Svar") { replyTo = comment }
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(BoardBrand.accent)
+                            .buttonStyle(.plain)
+                    }
+                    Button {
+                        state.likeComment(comment.id)
+                    } label: {
+                        Label("\((comment.likes ?? 0))", systemImage: "hand.thumbsup")
+                            .font(.system(size: 10))
+                            .foregroundStyle((comment.likes ?? 0) > 0 ? BoardBrand.accent : BoardBrand.dim)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            Spacer(minLength: 0)
         }
     }
 
@@ -490,7 +679,10 @@ struct ReviewView: View {
         let text = commentText.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
         commentText = ""
-        state.addComment(role: commentRole, text: text, pin: pendingPin)
+        state.addComment(role: commentRole, text: text,
+                         pin: replyTo == nil ? pendingPin : nil,
+                         parentId: replyTo?.id)
+        replyTo = nil
         pendingPin = nil
         pinMode = false
     }
