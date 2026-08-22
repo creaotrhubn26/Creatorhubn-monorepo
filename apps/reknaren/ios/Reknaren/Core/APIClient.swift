@@ -33,6 +33,10 @@ actor APIClient {
         try await send(path, method: "POST", body: body)
     }
 
+    func put<T: Decodable, B: Encodable>(_ path: String, body: B) async throws -> T {
+        try await send(path, method: "PUT", body: body)
+    }
+
     private func send<T: Decodable, B: Encodable>(_ path: String, method: String, body: B?) async throws -> T {
         // NB: appendingPathComponent percent-encoder «?» → query-strenger ødelegges (404).
         // Bygg URL fra rå streng så «?asOf=…» bevares.

@@ -8,7 +8,7 @@ import type { RuleRegister } from '../rules/register.js';
 import type { OrganizationForm } from '../rules/types.js';
 import { newId } from '../shared/ids.js';
 import { buildTaxEstimate } from './estimate.js';
-import { liquidityLadder, listPlacements, type LiquidityLadder, type Placement } from './placement.js';
+import { liquidityLadder, listAdvanceInstallments, listPlacements, placementGainTaxMinor, type LiquidityLadder, type Placement } from './placement.js';
 
 interface Actor { userId: string }
 
@@ -88,11 +88,15 @@ export async function taxReserveOverview(
   const paidAdvanceTaxMinor = paidAdvanceMinor0 > 0n ? paidAdvanceMinor0 : 0n;
 
   // Plasseringer: bytt kostpris mot dagsverdi i dekningen (markedsverdi kan avvike fra nominelt avsatt).
-  const placements = await listPlacements(db, { organizationId: params.organizationId, asOf: params.asOf });
+  const placementsRaw = await listPlacements(db, { organizationId: params.organizationId, asOf: params.asOf });
+  // Skatt på gevinst per plassering: aksjonærmodell (oppjustering) for aksjer/aksjefond, ellers flat 22 %.
+  const baseRate = rules.getRationalParamAt('no.tax.personal-base-rate', 'rate', params.asOf);
+  const upscale = rules.getRationalParamAt('no.tax.share-income-upscaling', 'factor', params.asOf);
+  const placements = placementsRaw.map((p) => ({ ...p, gainTaxMinor: placementGainTaxMinor(p, baseRate, upscale) }));
   const placedCostMinor = placements.reduce((a, p) => a + p.costMinor, 0n);
   const placedMarketValueMinor = placements.reduce((a, p) => a + p.marketValueMinor, 0n);
   const unrealisedGainMinor = placedMarketValueMinor - placedCostMinor;
-  const gainTaxEstimateMinor = unrealisedGainMinor > 0n ? (unrealisedGainMinor * 22n) / 100n : 0n;
+  const gainTaxEstimateMinor = placements.reduce((a, p) => a + p.gainTaxMinor, 0n);
   // reservedMinor teller plassert kostpris; erstatt den med markedsverdi for reell dekning.
   const coverageMinor = reservedMinor - placedCostMinor + placedMarketValueMinor;
 
@@ -103,7 +107,8 @@ export async function taxReserveOverview(
   const liquidPlacedMinor = placements
     .filter((p) => LIQUID_KINDS.has(p.liquidity))
     .reduce((a, p) => a + p.marketValueMinor, 0n);
-  const ladder = liquidityLadder(remainingMinor, params.asOf, cashReservedMinor + liquidPlacedMinor);
+  const installments = await listAdvanceInstallments(db, { organizationId: params.organizationId, year: Number(params.asOf.slice(0, 4)) });
+  const ladder = liquidityLadder(remainingMinor, params.asOf, cashReservedMinor + liquidPlacedMinor, installments);
 
   const effRate = est.estimatedTaxableResultMinor > 0n
     ? Number((est.estimatedTaxMinor * 1000n) / est.estimatedTaxableResultMinor)

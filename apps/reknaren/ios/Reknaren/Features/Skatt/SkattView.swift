@@ -16,7 +16,11 @@ struct TaxPlacement: Decodable, Identifiable, Sendable {
     let costMinor: Money
     let marketValueMinor: Money
     let unrealisedGainMinor: Money
+    let gainTaxMinor: Money
     let valuedAt: String?
+
+    /// Aksjer/aksjefond følger aksjonærmodellen (oppjustering → 37,84 %).
+    var isEquity: Bool { placementType == "equity_fund" || placementType == "stock" }
 
     var typeLabel: String {
         switch placementType {
@@ -89,6 +93,7 @@ final class SkattViewModel {
     var saving = false
     var justCovered = false
     var showAddPlacement = false
+    var showAdvanceTax = false
 
     func fetch(orgId: String) async {
         if case .loaded = load {} else { load = .loading }
@@ -130,6 +135,19 @@ final class SkattViewModel {
         } catch { load = .failed(error.localizedDescription) }
     }
 
+    func setAdvanceTax(orgId: String, year: Int, terminer: [(termNo: Int, dueDate: String, amountKr: Int64)]) async {
+        struct Item: Encodable { let termNo: Int; let dueDate: String; let amountMinor: String }
+        struct Body: Encodable { let year: Int; let installments: [Item] }
+        let items = terminer.filter { $0.amountKr > 0 }.map { Item(termNo: $0.termNo, dueDate: $0.dueDate, amountMinor: String($0.amountKr * 100)) }
+        guard !items.isEmpty else { return }
+        do {
+            let _: OKFlag = try await APIClient.shared.put(
+                "/api/organizations/\(orgId)/tax/advance-installments", body: Body(year: year, installments: items))
+            showAdvanceTax = false
+            await fetch(orgId: orgId)
+        } catch { load = .failed(error.localizedDescription) }
+    }
+
     func recordValuation(orgId: String, placementId: String, valueKr: Int64) async {
         struct Body: Encodable { let marketValueMinor: String }
         do {
@@ -165,7 +183,7 @@ struct SkattView: View {
                 List {
                     SkattHeader(ov: ov)
                     RegisterSection(model: model, orgId: orgId, placements: ov.placements)
-                    LikviditetSection(ov: ov)
+                    LikviditetSection(model: model, ov: ov)
                     PlaceringSection(model: model, orgId: orgId, ov: ov)
                     if !ov.reserves.isEmpty {
                         Section("Avsatt i år") {
@@ -186,6 +204,7 @@ struct SkattView: View {
         }
         .navigationTitle("Skatt")
         .sheet(isPresented: $model.showAddPlacement) { AddPlacementSheet(model: model, orgId: orgId) }
+        .sheet(isPresented: $model.showAdvanceTax) { AdvanceTaxSheet(model: model, orgId: orgId) }
         .overlay { if model.justCovered { CoveredToast() } }
         .task(id: model.justCovered) {
             guard model.justCovered else { return }
@@ -260,6 +279,7 @@ private struct RegisterSection: View {
 
 /// Likviditetstrapp: hva som må stå likvid vs kan plasseres lenger. Kun horisont-anbefaling.
 private struct LikviditetSection: View {
+    @Bindable var model: SkattViewModel
     let ov: TaxReserveOverview
     var body: some View {
         Section {
@@ -287,6 +307,9 @@ private struct LikviditetSection: View {
                     Text(t.amountMinor.kr).font(.caption).monospacedDigit().foregroundStyle(.secondary)
                 }
             }
+            Button { model.showAdvanceTax = true } label: {
+                Label("Registrer fastsatt forskuddsskatt", systemImage: "calendar.badge.clock")
+            }.font(.caption)
         } header: {
             Text("Likviditet mot forfall")
         } footer: {
@@ -319,6 +342,10 @@ private struct PlaceringSection: View {
                                 Text(p.unrealisedGainMinor.kr).font(.caption).foregroundStyle(.red).monospacedDigit()
                             }
                         }
+                    }
+                    if p.gainTaxMinor.minor > 0 {
+                        Text("Skatt på gevinst ca \(p.gainTaxMinor.kr)\(p.isEquity ? " (aksjonærmodell 37,84 %)" : " (22 %)")")
+                            .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
                     }
                     HStack {
                         TextField("Ny verdi i kr", text: Binding(
@@ -379,6 +406,48 @@ private struct AddPlacementSheet: View {
                     Button("Lagre") {
                         Task { await model.createPlacement(orgId: orgId, name: name, type: type, liquidity: liquidity) }
                     }.disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+    }
+}
+
+/// Registrer fastsatt forskuddsskatt per termin (fra Skatteetatens forskuddsutskriving).
+private struct AdvanceTaxSheet: View {
+    @Bindable var model: SkattViewModel
+    let orgId: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var year = Calendar.current.component(.year, from: Date())
+    @State private var amounts: [String] = ["", "", "", ""]
+    private let dates = ["03-15", "06-15", "09-15", "12-15"]
+    private let labels = ["1. termin (15. mars)", "2. termin (15. juni)", "3. termin (15. sept)", "4. termin (15. des)"]
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Stepper("År: \(year)", value: $year, in: 2020...2100)
+                    ForEach(0..<4, id: \.self) { i in
+                        HStack {
+                            Text(labels[i]).font(.callout)
+                            Spacer()
+                            TextField("kr", text: $amounts[i]).keyboardType(.numberPad)
+                                .multilineTextAlignment(.trailing).frame(width: 100)
+                        }
+                    }
+                } footer: {
+                    Text("Fra forskuddsutskrivingen din på Skatteetaten. Presiserer likviditetstrappen — hva som må stå likvid før hvert forfall. La stå tomt for terminer du ikke vil registrere.")
+                }
+            }
+            .navigationTitle("Fastsatt forskuddsskatt")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Avbryt") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Lagre") {
+                        let terminer = (0..<4).map { i in
+                            (termNo: i + 1, dueDate: "\(year)-\(dates[i])", amountKr: Int64(amounts[i].filter { $0.isNumber }) ?? 0)
+                        }
+                        Task { await model.setAdvanceTax(orgId: orgId, year: year, terminer: terminer) }
+                    }
                 }
             }
         }

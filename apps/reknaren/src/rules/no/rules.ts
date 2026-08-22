@@ -193,6 +193,31 @@ export const NORWEGIAN_RULES: TaxRule[] = [
     ],
   },
   {
+    ruleId: 'no.tax.share-income-upscaling',
+    shortName: 'Oppjusteringsfaktor aksjeinntekt',
+    plainExplanation:
+      'Gevinst og utbytte på aksjer og aksjefond ganges opp med en faktor før skatt på 22 %, slik at effektiv skatt blir høyere (37,84 % i 2026). Renteinntekt og rentefond skattlegges flatt med 22 %.',
+    technicalExplanation:
+      'Aksjonærmodellen, sktl. § 10-11/§ 10-31: aksjeinntekt oppjusteres med faktor 1,72 (2023–2026) og skattlegges så med 22 % → 37,84 %. Skjermingsfradrag reduserer grunnlaget (ikke medregnet i løpende estimat).',
+    sourceIds: ['skatteetaten-selskapsskatt', 'lovdata-sktl'],
+    appliesToOrgForms: 'all',
+    appliesToVatStatus: 'all',
+    appliesToSituations: [],
+    calculationMethod: 'aksjegevinst × oppjusteringsfaktor × alminnelig sats',
+    documentationRequirements: [],
+    riskLevel: 'medium',
+    lastReviewed: '2026-01-01',
+    reviewedBy: 'system-bootstrap',
+    versions: [
+      {
+        version: 1,
+        validFrom: '2023-01-01',
+        parameters: { factor: { numerator: '172', denominator: '100' } },
+        changeNote: 'Oppjusteringsfaktor 1,72 fra 2023 (verifisert mot Skatteetaten t.o.m. 2026).',
+      },
+    ],
+  },
+  {
     ruleId: 'no.asset.expense-threshold',
     shortName: 'Grense for direkte kostnadsføring',
     plainExplanation:

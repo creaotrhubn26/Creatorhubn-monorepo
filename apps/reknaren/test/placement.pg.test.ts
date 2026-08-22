@@ -7,6 +7,7 @@ import { postJournalEntry } from '../src/ledger/engine.js';
 import { createOrganization, ensureUser } from '../src/orgs/service.js';
 import { buildNorwegianRuleRegister } from '../src/rules/no/rules.js';
 import { createPlacement, liquidityLadder, recordValuation } from '../src/tax/placement.js';
+import { setAdvanceInstallments } from '../src/tax/placement.js';
 import { recordTaxReserve, taxReserveOverview } from '../src/tax/reserve.js';
 import { setupTestDb, truncateAll } from './helpers.js';
 
@@ -43,6 +44,55 @@ describe('liquidityLadder (ren)', () => {
     const l = liquidityLadder(100_000n, '2026-01-01', 30_000n); // dekker 1 termin (25k), rest 5k < 25k
     expect(l.terminer[0]!.coveredLiquid).toBe(true);
     expect(l.terminer[1]!.coveredLiquid).toBe(false);
+  });
+
+  it('bruker fastsatt forskuddsskatt når den finnes (ikke jevn R/4)', () => {
+    const l = liquidityLadder(60_000n, '2026-08-22', 0n, [
+      { termNo: 3, dueDate: '2026-09-15', amountMinor: 30_000n },
+      { termNo: 4, dueDate: '2026-12-15', amountMinor: 25_000n },
+    ]);
+    expect(l.nextDueDate).toBe('2026-09-15');
+    expect(l.terminer.map((t) => t.amountMinor)).toEqual([30_000n, 25_000n]); // fastsatt, ikke 30k jevnt
+    expect(l.liquidityFloorMinor).toBe(30_000n);           // bare 15. sept (≤90 d)
+    expect(l.freeToPlaceMinor).toBe(5_000n);               // 60k − (30k+25k) planlagt
+  });
+});
+
+describe('aksjonærmodell for gevinstskatt', () => {
+  it('aksjefond oppjusteres (37,84 %), pengemarkedsfond er flat 22 %', async () => {
+    const org = await createOrganization(db, { name: 'Aksje ENK', orgForm: 'ENK', vatStatus: 'not_registered', createdByUserId: userId });
+    const actor = { userId, role: 'owner' as const };
+    const aksje = await createPlacement(db, {
+      organizationId: org.id, actor, name: 'DNB Global', placementType: 'equity_fund', liquidity: 'long_term', openedAt: '2026-02-01',
+    });
+    await recordTaxReserve(db, { organizationId: org.id, actor, amountMinor: 5_000_000n, reservedAt: '2026-02-01', placementId: aksje.id });
+    await recordValuation(db, { placementId: aksje.id, valuedAt: '2026-08-01', marketValueMinor: 6_000_000n }); // +1 000 000 gevinst
+
+    const ov = await taxReserveOverview(db, rules, { organizationId: org.id, orgForm: 'ENK', asOf: '2026-08-22' });
+    const p = ov.placements[0]!;
+    // Aksjegevinst 1 000 000 × 22 % × 1,72 = 378 400.
+    expect(p.gainTaxMinor).toBe((1_000_000n * 22n * 172n) / (100n * 100n));
+    expect(p.gainTaxMinor).toBe(378_400n);
+    expect(ov.gainTaxEstimateMinor).toBe(378_400n);
+  });
+
+  it('fastsatt forskuddsskatt slår gjennom i oversiktens likviditetstrapp', async () => {
+    const org = await createOrganization(db, { name: 'Forskudd ENK', orgForm: 'ENK', vatStatus: 'not_registered', createdByUserId: userId });
+    const actor = { userId, role: 'owner' as const };
+    await postJournalEntry(db, {
+      organizationId: org.id, actor, entryDate: '2026-03-10', description: 'salg', idempotencyKey: 'salgf',
+      lines: [{ accountNumber: '1920', debitMinor: 40000000n }, { accountNumber: '3000', creditMinor: 40000000n }],
+    });
+    await setAdvanceInstallments(db, {
+      organizationId: org.id, actor, year: 2026,
+      installments: [
+        { termNo: 3, dueDate: '2026-09-15', amountMinor: 2_500_000n },
+        { termNo: 4, dueDate: '2026-12-15', amountMinor: 2_500_000n },
+      ],
+    });
+    const ov = await taxReserveOverview(db, rules, { organizationId: org.id, orgForm: 'ENK', asOf: '2026-08-22' });
+    expect(ov.ladder.terminer.map((t) => t.amountMinor)).toEqual([2_500_000n, 2_500_000n]);
+    expect(ov.ladder.nextDueDate).toBe('2026-09-15');
   });
 });
 

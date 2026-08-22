@@ -20,7 +20,28 @@ export interface Placement {
   costMinor: bigint;          // sum innskudd (inngangsverdi)
   marketValueMinor: bigint;   // siste verdivurdering, ellers kostpris (bank)
   unrealisedGainMinor: bigint;
+  /** Anslått skatt på urealisert gevinst — aksjonærmodell for aksjer/aksjefond, ellers flat 22 %. */
+  gainTaxMinor: bigint;
   valuedAt: string | null;
+}
+
+/** Aksjer og aksjefond følger aksjonærmodellen (oppjustering); renter/bank er flat sats. */
+const EQUITY_KINDS: PlacementType[] = ['equity_fund', 'stock'];
+
+/**
+ * Skatt på urealisert gevinst for én plassering. Tap → 0 (fradrag håndteres ved
+ * realisering, fase 2b). Aksjeinntekt oppjusteres; renteinntekt skattlegges flatt.
+ */
+export function placementGainTaxMinor(
+  p: Pick<Placement, 'placementType' | 'unrealisedGainMinor'>,
+  base: { numerator: bigint; denominator: bigint },       // alminnelig sats, f.eks. 22/100
+  upscale: { numerator: bigint; denominator: bigint },    // oppjusteringsfaktor, f.eks. 172/100
+): bigint {
+  if (p.unrealisedGainMinor <= 0n) return 0n;
+  if (EQUITY_KINDS.includes(p.placementType)) {
+    return (p.unrealisedGainMinor * base.numerator * upscale.numerator) / (base.denominator * upscale.denominator);
+  }
+  return (p.unrealisedGainMinor * base.numerator) / base.denominator;
 }
 
 export async function createPlacement(
@@ -84,9 +105,40 @@ export async function listPlacements(
       id: r.id, name: r.name, placementType: r.placement_type as PlacementType,
       liquidity: r.liquidity as Liquidity, ringFenced: r.ring_fenced === true,
       costMinor: cost, marketValueMinor: market, unrealisedGainMinor: market - cost,
+      gainTaxMinor: 0n, // fylles i taxReserveOverview med satser fra regelregisteret
       valuedAt: r.valued_at ?? null,
     };
   });
+}
+
+export interface AdvanceInstallment { termNo: number; dueDate: string; amountMinor: bigint }
+
+/** Sett/oppdater fastsatt forskuddsskatt for et år (upsert per termin). */
+export async function setAdvanceInstallments(
+  db: Db,
+  params: { organizationId: string; actor: Actor; year: number; installments: AdvanceInstallment[] },
+): Promise<void> {
+  for (const t of params.installments) {
+    await db.query(
+      `INSERT INTO advance_tax_installments (id, organization_id, year, term_no, due_date, amount_minor, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (organization_id, year, term_no)
+       DO UPDATE SET due_date = EXCLUDED.due_date, amount_minor = EXCLUDED.amount_minor`,
+      [newId(), params.organizationId, params.year, t.termNo, t.dueDate, t.amountMinor.toString(), params.actor.userId],
+    );
+  }
+}
+
+export async function listAdvanceInstallments(
+  db: Db,
+  params: { organizationId: string; year: number },
+): Promise<AdvanceInstallment[]> {
+  const rows = (await db.query(
+    `SELECT term_no, due_date::text AS due_date, amount_minor::text AS amount
+     FROM advance_tax_installments WHERE organization_id = $1 AND year = $2 ORDER BY term_no`,
+    [params.organizationId, params.year],
+  )).rows;
+  return rows.map((r) => ({ termNo: r.term_no, dueDate: r.due_date, amountMinor: BigInt(r.amount) }));
 }
 
 export interface Termin { date: string; amountMinor: bigint; daysUntil: number; coveredLiquid: boolean }
@@ -105,31 +157,45 @@ export interface LiquidityLadder {
  * innen 90 dager (må være likvid) fra resten. MVP: jevn R/n-fordeling.
  * ponytail: bytt jevn fordeling mot fastsatt forskuddsskatt per termin når vi har de tallene.
  */
-export function liquidityLadder(remainingNeedMinor: bigint, asOf: string, liquidCoverMinor = 0n): LiquidityLadder {
+export function liquidityLadder(
+  remainingNeedMinor: bigint,
+  asOf: string,
+  liquidCoverMinor = 0n,
+  installments?: AdvanceInstallment[],
+): LiquidityLadder {
   const need = remainingNeedMinor > 0n ? remainingNeedMinor : 0n;
   const year = asOf.slice(0, 4);
-  const dueDates = [`${year}-03-15`, `${year}-06-15`, `${year}-09-15`, `${year}-12-15`];
-  const future = dueDates.filter((d) => d >= asOf);
+  // Fastsatt forskuddsskatt hvis vi har den; ellers jevn R/4 på standard-terminene.
+  const schedule: { date: string; amountMinor: bigint }[] = installments && installments.length > 0
+    ? installments.map((t) => ({ date: t.dueDate, amountMinor: t.amountMinor }))
+    : [`${year}-03-15`, `${year}-06-15`, `${year}-09-15`, `${year}-12-15`]
+        .map((date) => ({ date, amountMinor: 0n })); // fylles under
+  const future = schedule.filter((s) => s.date >= asOf).sort((a, b) => a.date.localeCompare(b.date));
   if (future.length === 0) {
     // Alle terminer i året er passert → hele gjenstående behovet er «nå».
     return { liquidityFloorMinor: need, freeToPlaceMinor: 0n, nextDueDate: null, terminer: [] };
   }
-  const per = need / BigInt(future.length);
+  const usingFastsatt = !!(installments && installments.length > 0);
+  const per = need / BigInt(future.length); // kun ved R/4-fallback
   const asOfMs = Date.parse(asOf);
   let floor = 0n;
+  let scheduledFuture = 0n;
   let liquidLeft = liquidCoverMinor;
-  const terminer: Termin[] = future.map((date) => {
-    const daysUntil = Math.round((Date.parse(date) - asOfMs) / 86_400_000);
-    if (daysUntil <= 90) floor += per;
-    const covered = liquidLeft >= per;
-    if (covered) liquidLeft -= per;
-    return { date, amountMinor: per, daysUntil, coveredLiquid: covered };
+  const terminer: Termin[] = future.map((s) => {
+    const amount = usingFastsatt ? s.amountMinor : per;
+    scheduledFuture += amount;
+    const daysUntil = Math.round((Date.parse(s.date) - asOfMs) / 86_400_000);
+    if (daysUntil <= 90) floor += amount;
+    const covered = liquidLeft >= amount;
+    if (covered) liquidLeft -= amount;
+    return { date: s.date, amountMinor: amount, daysUntil, coveredLiquid: covered };
   });
-  const freeToPlace = need - floor;
+  // Fri horisont = behov utover det som er planlagt betalt i det nære vinduet.
+  const freeBasis = usingFastsatt ? need - scheduledFuture : need - floor;
   return {
     liquidityFloorMinor: floor,
-    freeToPlaceMinor: freeToPlace > 0n ? freeToPlace : 0n,
-    nextDueDate: future[0]!,
+    freeToPlaceMinor: freeBasis > 0n ? freeBasis : 0n,
+    nextDueDate: future[0]!.date,
     terminer,
   };
 }

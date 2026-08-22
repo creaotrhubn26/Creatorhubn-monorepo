@@ -123,7 +123,7 @@ import { sha256Hex } from '../documents/service.js';
 import { DomainError, NotFoundError, ValidationError } from '../shared/errors.js';
 import { buildTaxEstimate } from '../tax/estimate.js';
 import { recordTaxReserve, taxReserveOverview, taxSetAsideForInvoice } from '../tax/reserve.js';
-import { createPlacement, recordValuation } from '../tax/placement.js';
+import { createPlacement, listAdvanceInstallments, recordValuation, setAdvanceInstallments } from '../tax/placement.js';
 import { commonPurchaseCategories, registerPurchase } from '../tax/purchase.js';
 import type { OrganizationForm } from '../rules/types.js';
 import { buildVatReport, listVatCodes } from '../vat/engine.js';
@@ -4452,6 +4452,30 @@ export function createApiServer(deps: ApiDeps): express.Express {
         valuedAt: body.valuedAt ?? new Date().toISOString().slice(0, 10),
       });
       res.status(201).json({ ok: true });
+    } catch (err) { next(err); }
+  });
+  // Fastsatt forskuddsskatt per termin (fra Skatteetatens forskuddsutskriving) — presiserer likviditetstrappen.
+  app.get('/api/organizations/:orgId/tax/advance-installments', requireAuth, requireOrgPermission('reports.view'), async (req: AuthedRequest, res, next) => {
+    try {
+      const year = Number(z.string().regex(/^\d{4}$/).parse(String(req.query.year ?? new Date().getFullYear())));
+      res.json(toJson(await listAdvanceInstallments(deps.db, { organizationId: req.params.orgId!, year })));
+    } catch (err) { next(err); }
+  });
+  app.put('/api/organizations/:orgId/tax/advance-installments', requireAuth, requireOrgPermission('journal.post'), async (req: AuthedRequest, res, next) => {
+    try {
+      const body = z.object({
+        year: z.number().int().min(2000).max(2100),
+        installments: z.array(z.object({
+          termNo: z.number().int().min(1).max(4),
+          dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          amountMinor: z.string().regex(/^\d+$/),
+        })).min(1).max(4),
+      }).parse(req.body);
+      await setAdvanceInstallments(deps.db, {
+        organizationId: req.params.orgId!, actor: { userId: req.auth!.userId }, year: body.year,
+        installments: body.installments.map((t) => ({ termNo: t.termNo, dueDate: t.dueDate, amountMinor: BigInt(t.amountMinor) })),
+      });
+      res.json({ ok: true });
     } catch (err) { next(err); }
   });
   // Per faktura: hvor mye bør settes av til skatt for denne fakturaen.
