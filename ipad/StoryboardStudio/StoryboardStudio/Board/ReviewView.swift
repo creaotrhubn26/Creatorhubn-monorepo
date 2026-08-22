@@ -174,6 +174,9 @@ final class ReviewState: ObservableObject {
 
 struct ReviewView: View {
     @StateObject private var state: ReviewState
+    var storageUsed = 0
+    var storageQuota: Int?
+    var onNavigate: ((HubDestination) -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var selectedVersion = 0        // 0 = gjeldende, 1..3 = historikk
     @State private var compareMode = false
@@ -188,13 +191,24 @@ struct ReviewView: View {
 
     private static let roles = ["Director", "DP", "Producer", "Editor", "Artist"]
 
-    init(project: ProjectSummary, manuscript: ManuscriptSummary) {
+    init(project: ProjectSummary, manuscript: ManuscriptSummary,
+         storageUsed: Int = 0, storageQuota: Int? = nil,
+         onNavigate: ((HubDestination) -> Void)? = nil) {
         _state = StateObject(wrappedValue: ReviewState(project: project, manuscript: manuscript))
+        self.storageUsed = storageUsed
+        self.storageQuota = storageQuota
+        self.onNavigate = onNavigate
     }
 
     var body: some View {
         NavigationStack {
             HStack(spacing: 0) {
+                HubSidebar(projectName: state.project.name,
+                           storageUsed: storageUsed, storageQuota: storageQuota,
+                           active: .review) { destination in
+                    onNavigate?(destination)
+                }
+                Divider().overlay(BoardBrand.border)
                 queue
                 Divider().overlay(BoardBrand.border)
                 centerPane
