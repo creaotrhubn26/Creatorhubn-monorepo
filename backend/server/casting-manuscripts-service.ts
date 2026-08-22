@@ -142,6 +142,8 @@ export interface CastingManuscriptsService {
     frameId: string,
     fields: JsonBlob,
   ): Promise<{ updatedAt: string } | null>;
+  /** Se implementasjonen: bevarer forrige strokes i drawingHistory. */
+  withDrawingHistory(existingFrame: unknown, nextFrame: unknown): unknown;
   replaceDialogue(manuscriptId: string, dialogue: JsonBlob[]): Promise<JsonBlob[]>;
   replaceActs(manuscriptId: string, acts: JsonBlob[]): Promise<JsonBlob[]>;
   replaceRevisions(manuscriptId: string, revisions: JsonBlob[]): Promise<JsonBlob[]>;
@@ -438,6 +440,30 @@ export function createCastingManuscriptsService(
     return scenes;
   }
 
+  /**
+   * Tegne-historikk: når drawingData.strokes byttes ut, bevares forrige
+   * versjon i frame.drawingHistory (nyeste først, cap 3) så synket undo
+   * ikke er borte for alltid. Thumbs/underlag holdes utenfor — kun
+   * strokes-strengen + tidspunkt.
+   */
+  function withDrawingHistory(existingFrame: any, nextFrame: any): any {
+    const prevStrokes = existingFrame?.drawingData?.strokes;
+    const nextStrokes = nextFrame?.drawingData?.strokes;
+    if (typeof prevStrokes !== "string" || prevStrokes === nextStrokes) {
+      return nextFrame;
+    }
+    const history = Array.isArray(existingFrame?.drawingHistory)
+      ? existingFrame.drawingHistory
+      : [];
+    return {
+      ...nextFrame,
+      drawingHistory: [
+        { strokes: prevStrokes, updatedAt: existingFrame?.updatedAt ?? null },
+        ...history,
+      ].slice(0, 3),
+    };
+  }
+
   async function patchFrame(
     manuscriptId: string,
     sceneId: string,
@@ -455,12 +481,12 @@ export function createCastingManuscriptsService(
     if (frameIndex < 0) return null;
     const updatedAt = new Date().toISOString();
     const nextFrames = frames.slice();
-    nextFrames[frameIndex] = {
+    nextFrames[frameIndex] = withDrawingHistory(frames[frameIndex], {
       ...frames[frameIndex],
       ...fields,
       id: frameId,
       updatedAt,
-    };
+    });
     const nextScenes = scenes.slice();
     nextScenes[sceneIndex] = {
       ...scene,
@@ -630,6 +656,7 @@ export function createCastingManuscriptsService(
     replaceManuscript,
     replaceScenes,
     patchFrame,
+    withDrawingHistory,
     replaceDialogue,
     replaceActs,
     replaceRevisions,
