@@ -42,7 +42,7 @@ import { AcademyIcon } from '../shared/CreatorHubIcons';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 // Google Drive Integration
 // Toast Notifications
-import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
+import { useVisualEditorOptional } from '../admin/visual-editor/VisualEditorContext';
 // New context imports
 import { useProject } from '../../contexts/ProjectContext';
 import { useSettings, type UserSettings } from '../../contexts/SettingsContext';
@@ -1048,7 +1048,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
     features
 } = useEnhancedMasterIntegration();
 
-  const visualEditor = useVisualEditor();
+  // Optional: showcase rendres også utenfor VisualEditorProvider (/workspace
+  // m.fl.) — den kastende hooken tar da ned hele flaten til app-router-boundaryen.
+  const visualEditor = useVisualEditorOptional();
   
   // Comprehensive Feature System for Universal Showcase
   const showcaseAccess = features.checkFeatureAccess('universal-showcase');
@@ -7853,8 +7855,8 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
         setShowAcademy(true);
         break;
       case 'open-visual-editor':
-        visualEditor.setSidebarOpen(true);
-        visualEditor.setActiveTab('templates');
+        visualEditor?.setSidebarOpen(true);
+        visualEditor?.setActiveTab('templates');
         setShowDashboard(true);
         break;
       case 'open-settings':
