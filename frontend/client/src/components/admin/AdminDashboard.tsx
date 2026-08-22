@@ -125,6 +125,7 @@ import CustomerSuccessSnapshotCard from './CustomerSuccessSnapshotCard';
 import LeadMapMarketplaceCard from './LeadMapMarketplaceCard';
 import InviteManagementDashboard from './InviteManagementDashboard';
 import AdminNotificationManager from './AdminNotificationManager';
+import EquipmentAdminPage from '@/pages/EquipmentAdminPage';
 import AdminConfigStatusCard from './AdminConfigStatusCard';
 import AdminPaymentStatusCard from './AdminPaymentStatusCard';
 import AdminAnalyticsHub from './AdminAnalyticsHub';
@@ -1396,6 +1397,7 @@ export default function AdminDashboard({
     { id: 'send-notifications', label: 'Send varslinger', icon: Campaign },
     { id: 'community', label: 'Community', icon: Group },
     { id: 'innhold-assets', label: 'Innhold & Assets', icon: Folder },
+    { id: 'utstyrsdatabase', label: 'Utstyrsdatabase', icon: Storage },
     { id: 'kunder-prosjekter', label: 'Kunder/Prosjekter', icon: Group },
     { id: 'kommunikasjon', label: 'Kommunikasjon', icon: Chat },
     { id: 'inbound-alerts', label: 'Innkommende', icon: Inbox },
@@ -1454,7 +1456,7 @@ export default function AdminDashboard({
     {
       label: 'Oversikt',
       items: adminTabs.filter((tab) =>
-        ['overblikk', 'brukere-roller', 'invite-requests', 'send-notifications', 'community', 'innhold-assets', 'kunder-prosjekter', 'kommunikasjon', 'inbound-alerts'].includes(tab.id),
+        ['overblikk', 'brukere-roller', 'invite-requests', 'send-notifications', 'community', 'innhold-assets', 'utstyrsdatabase', 'kunder-prosjekter', 'kommunikasjon', 'inbound-alerts'].includes(tab.id),
       ),
     },
     {
@@ -3524,6 +3526,8 @@ export default function AdminDashboard({
         );
       case 'send-notifications':
         return <AdminNotificationManager />;
+      case 'utstyrsdatabase':
+        return <EquipmentAdminPage />;
       case 'community':
         return <CommunityManagementDashboard />;
       case 'innhold-assets':
