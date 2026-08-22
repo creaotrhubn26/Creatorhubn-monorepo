@@ -277,6 +277,20 @@ struct ProjectHubView: View {
             }
             Button("Avbryt", role: .cancel) { editingNoteId = nil }
         }
+        .sheet(isPresented: $showScriptDirect) {
+            ScriptSheet(scenes: hub.scenes, activeIndex: 0)
+        }
+        .sheet(isPresented: $showShotListDirect) {
+            ShotListSheet(sceneHeading: "\(hub.manuscript.title) — alle scener",
+                          frames: hub.allFrames)
+        }
+        .fullScreenCover(isPresented: $showAnimaticDirect) {
+            AnimaticView(sceneHeading: hub.manuscript.title,
+                         frames: hub.allFrames.filter {
+                             $0.strokesJSON?.isEmpty == false || $0.imageUrl != nil
+                                 || $0.thumbnailDataURL != nil
+                         })
+        }
         .onChange(of: moodPickerItem) {
             guard let item = moodPickerItem else { return }
             moodPickerItem = nil
@@ -306,6 +320,9 @@ struct ProjectHubView: View {
     // MARK: Sidebar (mockup-navigasjonen, iPad-tilpasset)
 
     @State private var boardSheet: NativeBoardView.InitialSheet?
+    @State private var showScriptDirect = false
+    @State private var showShotListDirect = false
+    @State private var showAnimaticDirect = false
 
     private func openBoard(sheet: NativeBoardView.InitialSheet?) {
         boardSheet = sheet
@@ -319,9 +336,10 @@ struct ProjectHubView: View {
                 .font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
                 .padding(.bottom, 10)
             sidebarItem("rectangle.grid.2x2", "Board") { openBoard(sheet: nil) }
-            sidebarItem("doc.text", "Script") { openBoard(sheet: .script) }
-            sidebarItem("list.bullet", "Shot List") { openBoard(sheet: .shotList) }
-            sidebarItem("play.rectangle", "Animatic") { openBoard(sheet: .animatic) }
+            // Script/Shot List/Animatic vises DIREKTE — ingen omvei via boardet.
+            sidebarItem("doc.text", "Script") { showScriptDirect = true }
+            sidebarItem("list.bullet", "Shot List") { showShotListDirect = true }
+            sidebarItem("play.rectangle", "Animatic") { showAnimaticDirect = true }
             sidebarItem("checkmark.bubble", "Review") { openBoard(sheet: .review) }
             Spacer()
             // Lagringsmåler (Role Room-kvoten)
@@ -716,7 +734,7 @@ struct ProjectHubView: View {
                         .foregroundStyle(BoardBrand.accent)
                         .buttonStyle(.plain)
                     Spacer()
-                    Button("Vis shot-liste") { openBoard(sheet: .shotList) }
+                    Button("Vis shot-liste") { showShotListDirect = true }
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(BoardBrand.accent)
                         .buttonStyle(.plain)
