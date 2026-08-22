@@ -1003,6 +1003,16 @@ struct ReviewView: View {
                 if let pair = state.selectedPair {
                     inspectorSection("SHOT-INFO") {
                         inspectorRow("Scene / shot", pair.frame.shotNumber)
+                        InspectorTextRow(label: "Scene-navn",
+                                         initial: pair.scene.heading) { value in
+                            let manuscriptId = state.manuscript.id
+                            let sceneId = pair.scene.id
+                            Task {
+                                try? await RoleRoomAPIClient.shared.renameScene(
+                                    manuscriptId: manuscriptId, sceneId: sceneId, title: value)
+                                await state.load()
+                            }
+                        }
                         // Redigerbart (mockup-dropdowns) — patcher framen direkte
                         editRow("Type", value: pair.frame.shotType,
                                 options: ["WS", "MS", "CU", "ECU", "OTS", "POV", "INSERT"],
@@ -1013,7 +1023,13 @@ struct ReviewView: View {
                         editRow("Bevegelse", value: pair.frame.movement,
                                 options: ["Static", "Pan", "Tilt", "Dolly", "Handheld", "Crane"],
                                 key: "movement")
-                        inspectorRow("Varighet", String(format: "%.1f s", pair.frame.durationSec))
+                        InspectorTextRow(label: "Varighet",
+                                         initial: String(format: "%.1f", pair.frame.durationSec),
+                                         suffix: "s") { value in
+                            if let seconds = Double(value.replacingOccurrences(of: ",", with: ".")) {
+                                state.patch(["duration": seconds])
+                            }
+                        }
                         editRow("Overgang", value: pair.frame.transition,
                                 options: ["Cut", "Dissolve", "Match Cut", "Smash Cut", "Wipe", "Fade"],
                                 key: "transition")
@@ -1023,6 +1039,14 @@ struct ReviewView: View {
                                 options: ["Day", "Night", "Dawn", "Dusk"], key: "timeOfDay")
                         editRow("Vær", value: pair.frame.weather,
                                 options: ["Clear", "Overcast", "Rain", "Snow", "Fog"], key: "weather")
+                        InspectorTextRow(label: "Set / lokasjon",
+                                         initial: pair.frame.setLocation ?? "") { value in
+                            state.patch(["setLocation": value])
+                        }
+                        InspectorTextRow(label: "Stage / unit",
+                                         initial: pair.frame.stageUnit ?? "") { value in
+                            state.patch(["stageUnit": value])
+                        }
                         // Tags med fjerning + tillegg
                         FlowTags(tags: pair.frame.tags) { removed in
                             state.patch(["tags": pair.frame.tags.filter { $0 != removed }])
@@ -1060,6 +1084,31 @@ struct ReviewView: View {
                         }
                     }
                     inspectorSection("REVIEW-STATUS") {
+                        HStack {
+                            Text("Status").font(.system(size: 11)).foregroundStyle(BoardBrand.dim)
+                            Spacer()
+                            Menu {
+                                ForEach(ReviewState.statusOrder, id: \.key) { entry in
+                                    Button(entry.title.capitalized) { state.setStatus(entry.key) }
+                                }
+                            } label: {
+                                let current = ReviewState.statusOrder.first {
+                                    $0.key == (pair.frame.frameStatus ?? "planned")
+                                }
+                                HStack(spacing: 5) {
+                                    Circle().fill(current?.color ?? .gray)
+                                        .frame(width: 7, height: 7)
+                                    Text(current?.title.capitalized ?? "Planlagt")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundStyle(.white)
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.system(size: 7)).foregroundStyle(BoardBrand.label)
+                                }
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(Color.white.opacity(0.05),
+                                            in: RoundedRectangle(cornerRadius: 6))
+                            }
+                        }
                         Picker("Prioritet", selection: Binding(
                             get: { pair.frame.reviewPriority ?? "Normal" },
                             set: { state.patch(["reviewPriority": $0]) })) {
@@ -1081,10 +1130,9 @@ struct ReviewView: View {
                                    displayedComponents: .date)
                             .font(.system(size: 12))
                             .colorScheme(.dark)
-                        if let approvedBy = pair.frame.reviewApprovedBy {
-                            inspectorRow("Godkjent av", approvedBy)
-                            inspectorRow("Dato", pair.frame.reviewApprovedAt.map(shortDate) ?? "—")
-                        }
+                        inspectorRow("Godkjent av", pair.frame.reviewApprovedBy ?? "—")
+                        inspectorRow("Godkjent dato",
+                                     pair.frame.reviewApprovedAt.map(shortDate) ?? "—")
                     }
                     VStack(spacing: 8) {
                         Button {
@@ -1189,6 +1237,40 @@ struct ReviewView: View {
             Spacer()
             Text(value).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
         }
+    }
+}
+
+// Redigerbar tekstrad i inspector (mockup-tekstfeltene). Egen @State så
+// hvert felt kan redigeres fritt; committer på Enter.
+private struct InspectorTextRow: View {
+    let label: String
+    let initial: String
+    var suffix: String? = nil
+    let onCommit: (String) -> Void
+    @State private var text = ""
+
+    var body: some View {
+        HStack {
+            Text(label).font(.system(size: 11)).foregroundStyle(BoardBrand.dim)
+            Spacer()
+            TextField("—", text: $text)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.trailing)
+                .frame(maxWidth: 140)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+                .onSubmit {
+                    let trimmed = text.trimmingCharacters(in: .whitespaces)
+                    guard trimmed != initial else { return }
+                    onCommit(trimmed)
+                }
+            if let suffix {
+                Text(suffix).font(.system(size: 11)).foregroundStyle(BoardBrand.dim)
+            }
+        }
+        .onAppear { text = initial }
+        .onChange(of: initial) { _, newValue in text = newValue }
     }
 }
 

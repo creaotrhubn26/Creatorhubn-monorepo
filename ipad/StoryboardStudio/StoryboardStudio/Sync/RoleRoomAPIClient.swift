@@ -86,6 +86,10 @@ struct FrameSummary: Identifiable, Sendable {
     let reviewAssignee: String?
     let reviewColorLabel: String?
     let reviewSnoozedUntil: String?
+    // Produksjonsdetaljer (mockup-paritet) — defaults så eksisterende
+    // init-kall ikke må endres.
+    var setLocation: String? = nil
+    var stageUnit: String? = nil
 }
 
 struct SceneSummary: Identifiable, Sendable {
@@ -1101,7 +1105,9 @@ actor RoleRoomAPIClient {
                     ?? (frame["reviewStarred"] as? Int).map { $0 != 0 },
                 reviewAssignee: frame["reviewAssignee"] as? String,
                 reviewColorLabel: frame["reviewColorLabel"] as? String,
-                reviewSnoozedUntil: frame["reviewSnoozedUntil"] as? String
+                reviewSnoozedUntil: frame["reviewSnoozedUntil"] as? String,
+                setLocation: frame["setLocation"] as? String,
+                stageUnit: frame["stageUnit"] as? String
             )
         }
         return SceneSummary(
