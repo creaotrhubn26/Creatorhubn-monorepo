@@ -441,6 +441,14 @@ struct NativeBoardView: View {
             board.frame.map { (scene.id, $0.id) }
         }
         loadedFrameUpdatedAt = board.frame?.updatedAt
+        // Remote panel-bilde: hent async og re-render når det lander.
+        if let imageUrl = board.frame?.imageUrl, !imageUrl.hasPrefix("data:"),
+           FrameImageCache.images[imageUrl] == nil, let frame = board.frame {
+            Task {
+                await FrameImageCache.prefetch(frames: [frame])
+                applyUnderlay(to: renderer)
+            }
+        }
         perspectiveMode = board.frame?.perspectiveMode ?? 0
         vanishingPoints = (board.frame?.vanishingPoints ?? []).compactMap { pair in
             pair.count == 2 ? CGPoint(x: pair[0], y: pair[1]) : nil
@@ -485,6 +493,76 @@ struct NativeBoardView: View {
             : []
     }
 
+    // Kuratert symbolsett for stamp-penselen (presentasjons-ikoner).
+    static let stampSymbols = ["person.fill", "heart", "target", "chart.bar.fill",
+                               "star.fill", "checkmark.seal", "exclamationmark.triangle",
+                               "camera.fill", "lightbulb", "hand.thumbsup"]
+
+    /// SF Symbol → PNG-dataURL som penselspiss (form = alfakanal).
+    static func symbolTipDataURL(_ name: String) -> String? {
+        let config = UIImage.SymbolConfiguration(pointSize: 100, weight: .medium)
+        guard let symbol = UIImage(systemName: name, withConfiguration: config)?
+            .withTintColor(.black, renderingMode: .alwaysOriginal) else { return nil }
+        let side = 128.0
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let image = UIGraphicsImageRenderer(size: CGSize(width: side, height: side),
+                                            format: format).image { _ in
+            let fit = min(side / symbol.size.width, side / symbol.size.height) * 0.86
+            let drawSize = CGSize(width: symbol.size.width * fit, height: symbol.size.height * fit)
+            symbol.draw(in: CGRect(x: (side - drawSize.width) / 2,
+                                   y: (side - drawSize.height) / 2,
+                                   width: drawSize.width, height: drawSize.height))
+        }
+        guard let png = image.pngData() else { return nil }
+        return "data:image/png;base64," + png.base64EncodedString()
+    }
+
+    /// B2-opplasting med dataURL-fallback. Filene legges I PRODUKSJONS-
+    /// STRUKTUREN, ikke løst i bucketen: projectId + sceneId + entity-
+    /// kobling (storyboard_frame/scene) driver per-prosjekt-visningen og
+    /// entity-files-oppslaget i Role Room-lagringen, og filnavnet bærer
+    /// prosjekt/scene/shot for menneskelig lesbarhet.
+    static func uploadOrInline(dataURL: String, name: String, board: BoardState,
+                               sceneId: String? = nil,
+                               entityType: String? = nil,
+                               entityId: String? = nil,
+                               note: String? = nil) async -> String {
+        guard let comma = dataURL.firstIndex(of: ","),
+              let jpeg = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])) else {
+            return dataURL
+        }
+        do {
+            let path = try await RoleRoomAPIClient.shared.uploadStorageImage(
+                jpegData: jpeg, name: name,
+                projectId: board.projectId,
+                sceneId: sceneId,
+                attachedToEntityType: entityType,
+                attachedToEntityId: entityId,
+                attachmentNote: note)
+            await MainActor.run {
+                FrameImageCache.images[path] = UIImage(data: jpeg)
+            }
+            return path
+        } catch {
+            return dataURL
+        }
+    }
+
+    /// Nedskalert JPEG-dataURL (payload-diett for scene-synk).
+    static func jpegDataURL(_ image: UIImage, maxSide: Double, quality: Double) -> String? {
+        let scaleFactor = min(1, maxSide / max(image.size.width, image.size.height))
+        let size = CGSize(width: image.size.width * scaleFactor,
+                          height: image.size.height * scaleFactor)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let scaled = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        guard let jpeg = scaled.jpegData(compressionQuality: quality) else { return nil }
+        return "data:image/jpeg;base64," + jpeg.base64EncodedString()
+    }
+
     /// Persister perspektiv-oppsettet på framen (visnings-metadata; web
     /// ignorerer feltene).
     private func persistPerspective() {
@@ -505,6 +583,10 @@ struct NativeBoardView: View {
     /// Komponert underlag (referansefoto + onion-lag) for aktiv frame —
     /// deles med fullskjerm så begge renderere viser det samme.
     private func composedUnderlay() -> (CGImage?, Double) {
+        // Bilde-frame: statisk innhold tegnes underst med full opacity
+        // (i motsetning til referanse-underlaget følger det med i eksport
+        // via FrameRenderService).
+        let frameImage = FrameImageCache.image(for: board.frame?.imageUrl)
         let underlayImage = board.frame?.underlayDataURL.flatMap(decodeDataURL)
         // Onion-kilder med alpha: forrige tydeligst, nabo nummer to svakere.
         var onionLayers: [(image: UIImage, alpha: CGFloat)] = []
@@ -520,7 +602,7 @@ struct NativeBoardView: View {
             if onionMode == 3, let older = render(current - 2) { onionLayers.append((older, 0.2)) }
         }
         let opacity = board.frame?.underlayOpacity ?? 0.4
-        switch (underlayImage, onionLayers.isEmpty) {
+        switch (underlayImage, onionLayers.isEmpty && frameImage == nil) {
         case (nil, true):
             return (nil, 0)
         case (let underlay?, true):
@@ -535,6 +617,9 @@ struct NativeBoardView: View {
             let composed = UIGraphicsImageRenderer(size: size, format: format).image { context in
                 UIColor(red: 0.961, green: 0.949, blue: 0.918, alpha: 1).setFill()
                 context.fill(CGRect(origin: .zero, size: size))
+                if let base = frameImage {
+                    base.draw(in: CGRect(origin: .zero, size: size))
+                }
                 if let underlay = underlayImage {
                     underlay.draw(in: CGRect(origin: .zero, size: size), blendMode: .normal, alpha: opacity)
                 }
@@ -746,6 +831,17 @@ struct NativeBoardView: View {
                     Label("PDF med underlag", systemImage: "photo.on.rectangle")
                 }
                 Button {
+                    pdfExportProgress = "…"
+                    Task {
+                        exportPDFURL = await BoardPDFExporter.exportPresentation(
+                            projectTitle: board.manuscript.title, scenes: board.scenes,
+                            progress: { done, total in pdfExportProgress = "\(done)/\(total)" })
+                        pdfExportProgress = nil
+                    }
+                } label: {
+                    Label("Presentasjon (PDF)", systemImage: "rectangle.grid.3x2")
+                }
+                Button {
                     exportPDFURL = BoardPDFExporter.exportCSV(
                         projectTitle: board.manuscript.title, scenes: board.scenes)
                 } label: {
@@ -839,6 +935,10 @@ struct NativeBoardView: View {
                             Button {
                                 board.duplicateScene(sceneId: scene.id)
                             } label: { Label("Dupliser", systemImage: "plus.square.on.square") }
+                            Button {
+                                board.selectedSceneIndex = index
+                                showSheetImportDialog = true
+                            } label: { Label("Importer ark…", systemImage: "square.grid.3x3.square") }
                             Button {
                                 board.renumberShots()
                             } label: { Label("Renummerer shots", systemImage: "textformat.123") }
@@ -943,7 +1043,9 @@ struct NativeBoardView: View {
         }
         .alert("Annotasjonstekst", isPresented: $textPromptShown) {
             TextField("f.eks. PUSH IN", text: $textPromptValue)
-            Button("Legg til") { commitTextAnnotation() }
+            Button("Tekst") { commitTextAnnotation(style: nil) }
+            Button("Post-it") { commitTextAnnotation(style: "note") }
+            Button("Snakkeboble") { commitTextAnnotation(style: "bubble") }
             Button("Avbryt", role: .cancel) { textPromptValue = "" }
         }
         .sheet(isPresented: $showShotList) {
@@ -969,6 +1071,143 @@ struct NativeBoardView: View {
         }
         .sheet(isPresented: $showReauth) {
             NavigationStack { LoginView(sync: reauthSync) }
+        }
+        .sheet(isPresented: Binding(get: { imageImportFrameId != nil },
+                                    set: { if !$0 { imageImportFrameId = nil } })) {
+            NavigationStack {
+                VStack(spacing: 20) {
+                    Text("Bildet blir panelets innhold — det vises i boardet, kan tegnes over, og følger med i PDF/PNG/animatic.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center).padding(.horizontal)
+                    PhotosPicker(selection: $frameImagePickerItem, matching: .images) {
+                        Label("Velg bilde", systemImage: "photo.badge.plus")
+                            .font(.headline)
+                            .padding(.horizontal, 20).padding(.vertical, 12)
+                            .background(BoardBrand.accent, in: Capsule())
+                            .foregroundStyle(.white)
+                    }
+                    if board.scene?.frames.first(where: { $0.id == imageImportFrameId })?.imageUrl != nil {
+                        Button("Fjern eksisterende bilde", role: .destructive) {
+                            if let frameId = imageImportFrameId {
+                                board.patchFrame(frameId: frameId,
+                                                 fields: ["imageUrl": NSNull(), "imageSource": NSNull()])
+                            }
+                            imageImportFrameId = nil
+                        }
+                    }
+                }
+                .navigationTitle("Bilde-frame")
+                .toolbar { ToolbarItem(placement: .cancellationAction) {
+                    Button("Avbryt") { imageImportFrameId = nil }
+                } }
+            }
+            .presentationDetents([.medium])
+        }
+        .onChange(of: frameImagePickerItem) {
+            guard let item = frameImagePickerItem, let frameId = imageImportFrameId else { return }
+            frameImagePickerItem = nil
+            imageImportFrameId = nil
+            Task {
+                guard let data = try? await item.loadTransferable(type: Data.self),
+                      let image = UIImage(data: data),
+                      let dataURL = Self.jpegDataURL(image, maxSide: 1600, quality: 0.75) else { return }
+                // B2 først (holder scene-payloaden slank); dataURL kun som
+                // fallback når lagring ikke er konfigurert/offline.
+                let scene = board.scene
+                let shot = scene?.frames.first(where: { $0.id == frameId })?.shotNumber ?? frameId
+                let imageUrl = await Self.uploadOrInline(
+                    dataURL: dataURL,
+                    name: "\(board.manuscript.title) - \(scene?.heading ?? "scene") - \(shot).jpg",
+                    board: board,
+                    sceneId: scene?.id,
+                    entityType: "storyboard_frame",
+                    entityId: frameId,
+                    note: "Panel-bilde importert fra Storyboard Studio")
+                board.patchFrame(frameId: frameId,
+                                 fields: ["imageUrl": imageUrl, "imageSource": "imported"])
+                if board.frame?.id == frameId { loadActiveFrameIntoCanvas() }
+            }
+        }
+        .sheet(isPresented: $showSheetImportDialog) {
+            NavigationStack {
+                VStack(spacing: 18) {
+                    Text("Importer et helt storyboard-ark: bildet splittes i et rutenett og hver rute blir et panel i scenen.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center).padding(.horizontal)
+                    Picker("Rutenett", selection: Binding(
+                        get: { "\(sheetImportGrid.columns)x\(sheetImportGrid.rows)" },
+                        set: { value in
+                            let parts = value.split(separator: "x").compactMap { Int($0) }
+                            if parts.count == 2 { sheetImportGrid = (parts[0], parts[1]) }
+                        })) {
+                        Text("2 × 2").tag("2x2")
+                        Text("3 × 2").tag("3x2")
+                        Text("4 × 3").tag("4x3")
+                        Text("3 × 4").tag("3x4")
+                    }
+                    .pickerStyle(.segmented).padding(.horizontal)
+                    PhotosPicker(selection: $sheetImportPickerItem, matching: .images) {
+                        Label("Velg ark", systemImage: "square.grid.3x3.square")
+                            .font(.headline)
+                            .padding(.horizontal, 20).padding(.vertical, 12)
+                            .background(BoardBrand.accent, in: Capsule())
+                            .foregroundStyle(.white)
+                    }
+                }
+                .navigationTitle("Importer ark")
+                .toolbar { ToolbarItem(placement: .cancellationAction) {
+                    Button("Avbryt") { showSheetImportDialog = false }
+                } }
+            }
+            .presentationDetents([.medium])
+        }
+        .onChange(of: sheetImportPickerItem) {
+            guard let item = sheetImportPickerItem else { return }
+            sheetImportPickerItem = nil
+            showSheetImportDialog = false
+            let grid = sheetImportGrid
+            guard let scene = board.scene else { return }
+            let manuscriptId = board.manuscript.id
+            Task {
+                guard let data = try? await item.loadTransferable(type: Data.self),
+                      let image = UIImage(data: data), let cg = image.cgImage else { return }
+                var panels: [String] = []
+                let cellWidth = cg.width / grid.columns
+                let cellHeight = cg.height / grid.rows
+                for row in 0..<grid.rows {
+                    for col in 0..<grid.columns {
+                        guard let cell = cg.cropping(to: CGRect(
+                            x: col * cellWidth, y: row * cellHeight,
+                            width: cellWidth, height: cellHeight)) else { continue }
+                        if let dataURL = Self.jpegDataURL(UIImage(cgImage: cell),
+                                                          maxSide: 1200, quality: 0.72) {
+                            panels.append(dataURL)
+                        }
+                    }
+                }
+                guard !panels.isEmpty else { return }
+                board.syncStatus = "Importerer \(panels.count) paneler…"
+                var panelURLs: [String] = []
+                for (index, dataURL) in panels.enumerated() {
+                    board.syncStatus = "Laster opp panel \(index + 1)/\(panels.count)…"
+                    panelURLs.append(await Self.uploadOrInline(
+                        dataURL: dataURL,
+                        name: "\(board.manuscript.title) - \(scene.heading) - ark \(index + 1).jpg",
+                        board: board,
+                        sceneId: scene.id,
+                        entityType: "storyboard_scene",
+                        entityId: scene.id,
+                        note: "Ark-import (\(grid.columns)×\(grid.rows)) fra Storyboard Studio"))
+                }
+                do {
+                    try await RoleRoomAPIClient.shared.importImageFrames(
+                        manuscriptId: manuscriptId, sceneId: scene.id, imageURLs: panelURLs)
+                    await board.reload()
+                    board.syncStatus = "\(panels.count) paneler importert ✓"
+                } catch {
+                    board.syncStatus = error.localizedDescription
+                }
+            }
         }
         .sheet(isPresented: $showHistorySheet) {
             NavigationStack {
@@ -1147,6 +1386,11 @@ struct NativeBoardView: View {
                             Label("Eksporter PNG", systemImage: "photo")
                         }
                         Button {
+                            imageImportFrameId = frame.id
+                        } label: {
+                            Label("Importer bilde…", systemImage: "photo.badge.plus")
+                        }
+                        Button {
                             guard let scene = board.scene else { return }
                             historyFrameRef = (scene.id, frame.id)
                             Task {
@@ -1212,7 +1456,8 @@ struct NativeBoardView: View {
             ZStack {
                 if isActive, renderer != nil {
                     activeCanvas(frame: frame)
-                } else if let image = decodeDataURL(frame.thumbnailDataURL) {
+                } else if let image = decodeDataURL(frame.thumbnailDataURL)
+                    ?? FrameImageCache.image(for: frame.imageUrl) {
                     Image(uiImage: image).resizable().scaledToFill()
                 } else {
                     Color(white: 0.925)
@@ -1276,12 +1521,14 @@ struct NativeBoardView: View {
         canvasState.strokes.append(stroke)
     }
 
-    private func commitTextAnnotation() {
+    private func commitTextAnnotation(style: String?) {
         let text = textPromptValue.trimmingCharacters(in: .whitespacesAndNewlines)
         textPromptValue = ""
         guard !text.isEmpty else { return }
-        appendAnnotation(annotationStroke(
-            points: [annotationPoint(textPromptPoint.x, textPromptPoint.y)], text: text))
+        var stroke = annotationStroke(
+            points: [annotationPoint(textPromptPoint.x, textPromptPoint.y)], text: text)
+        stroke.annotationStyle = style
+        appendAnnotation(stroke)
     }
 
     private func activeCanvas(frame: FrameSummary) -> some View {
@@ -1298,9 +1545,29 @@ struct NativeBoardView: View {
                         && !canvasState.hiddenLayers.contains($0.boardLayer ?? "Drawing")
                 }) { stroke in
                     if let point = stroke.points.first {
-                        Text((stroke.textAnnotation ?? "").uppercased())
-                            .font(.custom(BoardBrand.handwriting, size: max(12, 40 * scale)))
-                            .foregroundStyle(Color(hex: stroke.color) ?? BoardBrand.accent)
+                        let style = stroke.annotationStyle
+                        Text(style == nil ? (stroke.textAnnotation ?? "").uppercased()
+                                          : (stroke.textAnnotation ?? ""))
+                            .font(.custom(BoardBrand.handwriting,
+                                          size: max(12, (style == nil ? 40 : 30) * scale)))
+                            .foregroundStyle(style == "note"
+                                ? Color(red: 0.25, green: 0.22, blue: 0.15)
+                                : (Color(hex: stroke.color) ?? BoardBrand.accent))
+                            .padding(style == nil ? 0 : 10)
+                            .background {
+                                if style == "note" {
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(Color(red: 0.96, green: 0.91, blue: 0.75))
+                                        .shadow(color: .black.opacity(0.2), radius: 3, y: 2)
+                                } else if style == "bubble" {
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(.white)
+                                        .overlay(RoundedRectangle(cornerRadius: 10)
+                                            .stroke(Color(hex: stroke.color) ?? BoardBrand.accent,
+                                                    lineWidth: 2))
+                                        .shadow(color: .black.opacity(0.15), radius: 3, y: 2)
+                                }
+                            }
                             .position(x: CGFloat(point.x) * scale, y: CGFloat(point.y) * scale)
                             .allowsHitTesting(false)
                     }
@@ -1870,6 +2137,11 @@ struct NativeBoardView: View {
     @State private var tagDraft = ""
     @State private var underlayPickerItem: PhotosPickerItem?
     @State private var tipPickerItem: PhotosPickerItem?
+    @State private var imageImportFrameId: String?
+    @State private var frameImagePickerItem: PhotosPickerItem?
+    @State private var sheetImportPickerItem: PhotosPickerItem?
+    @State private var sheetImportGrid: (columns: Int, rows: Int) = (4, 3)
+    @State private var showSheetImportDialog = false
     @State private var renameSceneId: String?
     @State private var renameSceneDraft = ""
     @State private var pendingDeleteSceneId: String?
@@ -2098,6 +2370,28 @@ struct NativeBoardView: View {
                                     .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 7))
                             }
                             .accessibilityLabel("Importer penselspiss")
+                            // Innebygd symbolsett (SF Symbols → spiss)
+                            ForEach(Self.stampSymbols, id: \.self) { symbol in
+                                Button {
+                                    if let dataURL = Self.symbolTipDataURL(symbol) {
+                                        if canvasState.brushType == .stamp {
+                                            canvasState.stampTipDataURL = dataURL
+                                            UserDefaults.standard.set(dataURL, forKey: "sb.stampTip")
+                                        } else {
+                                            canvasState.customTipDataURL = dataURL
+                                            UserDefaults.standard.set(dataURL, forKey: "sb.customTip")
+                                        }
+                                    }
+                                } label: {
+                                    Image(systemName: symbol)
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(BoardBrand.dim)
+                                        .frame(width: 22, height: 22)
+                                        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Symbol \(symbol)")
+                            }
                         }
                         if canvasState.brushType == .eraser {
                             // Objektmodus: berørte strøk slettes hele
@@ -2342,6 +2636,7 @@ enum VoiceoverStore {
 enum AnimaticVideoExporter {
     static func export(sceneHeading: String, frames: [FrameSummary]) async -> URL? {
         guard !frames.isEmpty else { return nil }
+        await FrameImageCache.prefetch(frames: frames)
         let videoSize = CGSize(width: 1280, height: 720)
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(sceneHeading.replacingOccurrences(of: "/", with: "-")) animatic.mp4")
@@ -3351,6 +3646,32 @@ private struct ShotDropDelegate: DropDelegate {
     }
 }
 
+// Minne-cache for remote panel-bilder (B2 download-stier) — de synkrone
+// render-veiene (canvas, celler, eksport) leser herfra; async prefetch
+// fyller den. dataURL-er dekodes direkte og trenger ikke cachen.
+@MainActor
+enum FrameImageCache {
+    static var images: [String: UIImage] = [:]
+
+    static func image(for imageUrl: String?) -> UIImage? {
+        guard let imageUrl else { return nil }
+        if imageUrl.hasPrefix("data:") { return decodeDataURL(imageUrl) }
+        return images[imageUrl]
+    }
+
+    /// Hent remote-bilder som mangler i cachen (før render/eksport).
+    static func prefetch(frames: [FrameSummary]) async {
+        for frame in frames {
+            guard let imageUrl = frame.imageUrl, !imageUrl.hasPrefix("data:"),
+                  images[imageUrl] == nil else { continue }
+            if let data = await RoleRoomAPIClient.shared.fetchRemoteImageData(path: imageUrl),
+               let image = UIImage(data: data) {
+                images[imageUrl] = image
+            }
+        }
+    }
+}
+
 // Delt offscreen-motor: re-rendrer frames fra strokesJSON i full oppløsning
 // (PDF/PNG-eksport og penselforhåndsvisning) — 280px-thumbs er kun for
 // scenelister. Én instans gjenbrukes; canvas resizes per kall.
@@ -3368,7 +3689,9 @@ enum FrameRenderService {
               let json = frame.strokesJSON,
               let strokes = try? StrokeSerialization.decodeFromWebJSON(json) else { return nil }
         let drawable = strokes.filter { $0.textAnnotation == nil }
-        guard !drawable.isEmpty, frame.drawingWidth > 0 else { return nil }
+        let frameImage = FrameImageCache.image(for: frame.imageUrl)
+        guard frame.drawingWidth > 0,
+              !drawable.isEmpty || frameImage != nil else { return nil }
         let scale = maxWidth / frame.drawingWidth
         renderer.resizeCanvas(width: Int(maxWidth),
                               height: Int(frame.drawingHeight * scale))
@@ -3378,33 +3701,67 @@ enum FrameRenderService {
 
         let annotations = strokes.filter { ($0.textAnnotation ?? "").isEmpty == false }
         let underlayImage = includeUnderlay ? frame.underlayDataURL.flatMap(decodeDataURL) : nil
-        guard underlayImage != nil || !annotations.isEmpty else { return base }
+        guard underlayImage != nil || !annotations.isEmpty || frameImage != nil else { return base }
         let size = base.size
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         return UIGraphicsImageRenderer(size: size, format: format).image { context in
             UIColor.white.setFill()
             context.fill(CGRect(origin: .zero, size: size))
+            if let frameImage {
+                frameImage.draw(in: CGRect(origin: .zero, size: size))
+            }
             if let underlay = underlayImage {
                 underlay.draw(in: CGRect(origin: .zero, size: size), blendMode: .normal,
                               alpha: CGFloat(frame.underlayOpacity ?? 0.4))
             }
-            // Multiply: hvitt papir slipper underlaget gjennom, grafitt biter.
+            // Multiply: hvitt papir slipper bildet/underlaget gjennom, grafitt biter.
             base.draw(in: CGRect(origin: .zero, size: size), blendMode: .multiply, alpha: 1)
             for stroke in annotations {
                 guard let point = stroke.points.first else { continue }
-                let text = (stroke.textAnnotation ?? "").uppercased()
-                let fontSize = max(12, 40 * scale)
+                let style = stroke.annotationStyle
+                let text = style == nil
+                    ? (stroke.textAnnotation ?? "").uppercased()
+                    : (stroke.textAnnotation ?? "")
+                let fontSize = max(12, (style == nil ? 40 : 30) * scale)
                 let attributes: [NSAttributedString.Key: Any] = [
                     .font: UIFont(name: BoardBrand.handwriting, size: fontSize)
                         ?? UIFont.systemFont(ofSize: fontSize),
-                    .foregroundColor: UIColor(Color(hex: stroke.color) ?? BoardBrand.accent),
+                    .foregroundColor: style == "note"
+                        ? UIColor(red: 0.25, green: 0.22, blue: 0.15, alpha: 1)
+                        : UIColor(Color(hex: stroke.color) ?? BoardBrand.accent),
                 ]
                 let textSize = (text as NSString).size(withAttributes: attributes)
-                (text as NSString).draw(
-                    at: CGPoint(x: CGFloat(point.x) * scale - textSize.width / 2,
-                                y: CGFloat(point.y) * scale - textSize.height / 2),
-                    withAttributes: attributes)
+                let origin = CGPoint(x: CGFloat(point.x) * scale - textSize.width / 2,
+                                     y: CGFloat(point.y) * scale - textSize.height / 2)
+                // Post-it / snakkeboble: bakgrunnsform bak teksten.
+                if style == "note" || style == "bubble" {
+                    let pad = 10 * scale
+                    let box = CGRect(x: origin.x - pad, y: origin.y - pad,
+                                     width: textSize.width + pad * 2,
+                                     height: textSize.height + pad * 2)
+                    let path = UIBezierPath(roundedRect: box,
+                                            cornerRadius: style == "bubble" ? 10 * scale : 2)
+                    if style == "note" {
+                        UIColor(red: 0.96, green: 0.91, blue: 0.75, alpha: 0.95).setFill()
+                        path.fill()
+                    } else {
+                        UIColor.white.setFill()
+                        path.fill()
+                        UIColor(Color(hex: stroke.color) ?? BoardBrand.accent).setStroke()
+                        path.lineWidth = 2 * scale
+                        path.stroke()
+                        // Hale nederst til venstre
+                        let tail = UIBezierPath()
+                        tail.move(to: CGPoint(x: box.minX + box.width * 0.22, y: box.maxY))
+                        tail.addLine(to: CGPoint(x: box.minX + box.width * 0.14,
+                                                 y: box.maxY + 14 * scale))
+                        tail.addLine(to: CGPoint(x: box.minX + box.width * 0.34, y: box.maxY))
+                        UIColor.white.setFill()
+                        tail.fill()
+                    }
+                }
+                (text as NSString).draw(at: origin, withAttributes: attributes)
             }
         }
     }
@@ -3429,6 +3786,7 @@ enum BoardPDFExporter {
                        progress: ((Int, Int) -> Void)? = nil) async -> URL? {
         // Pre-render alle frame-bilder (den tunge delen).
         let allFrames = scenes.flatMap(\.frames)
+        await FrameImageCache.prefetch(frames: allFrames)
         var images: [String: UIImage] = [:]
         for (index, frame) in allFrames.enumerated() {
             progress?(index + 1, allFrames.count)
@@ -3497,6 +3855,98 @@ enum BoardPDFExporter {
             in: CGRect(x: 72, y: 300, width: 500, height: 120),
             withAttributes: [.font: UIFont.systemFont(ofSize: 13),
                              .foregroundColor: UIColor.black])
+    }
+
+    /// Presentasjons-mal (pitch-dokument): 4×3-grid per side, nummer-
+    /// badge, caption (description) under hvert panel, tittel-header og
+    /// enkel footer — i motsetning til produksjons-PDF-en (metadata-rader).
+    static func exportPresentation(projectTitle: String, scenes: [SceneSummary],
+                                   progress: ((Int, Int) -> Void)? = nil) async -> URL? {
+        let allFrames = scenes.flatMap(\.frames)
+        guard !allFrames.isEmpty else { return nil }
+        await FrameImageCache.prefetch(frames: allFrames)
+        var images: [String: UIImage] = [:]
+        for (index, frame) in allFrames.enumerated() {
+            progress?(index + 1, allFrames.count)
+            if let image = FrameRenderService.image(for: frame, maxWidth: 640)
+                ?? decodeDataURL(frame.thumbnailDataURL)
+                ?? FrameImageCache.image(for: frame.imageUrl) {
+                images[frame.id] = image
+            }
+            await Task.yield()
+        }
+        let pageRect = CGRect(x: 0, y: 0, width: 842, height: 595)
+        let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(projectTitle.replacingOccurrences(of: "/", with: "-")) presentasjon.pdf")
+        let columns = 4, rows = 3
+        let perPage = columns * rows
+        let margin = 36.0
+        let cellWidth = (pageRect.width - margin * 2 - Double(columns - 1) * 14) / Double(columns)
+        let panelHeight = cellWidth * 9 / 16
+        let cellHeight = panelHeight + 34
+        do {
+            try renderer.writePDF(to: url) { context in
+                let pages = stride(from: 0, to: allFrames.count, by: perPage).map {
+                    Array(allFrames[$0..<min($0 + perPage, allFrames.count)])
+                }
+                for (pageIndex, pageFrames) in pages.enumerated() {
+                    context.beginPage()
+                    // Header
+                    (projectTitle.uppercased() as NSString).draw(
+                        at: CGPoint(x: margin, y: 20),
+                        withAttributes: [.font: UIFont.boldSystemFont(ofSize: 20),
+                                         .foregroundColor: UIColor(red: 0.1, green: 0.3, blue: 0.75, alpha: 1)])
+                    let formatter = DateFormatter()
+                    formatter.dateStyle = .medium
+                    formatter.locale = Locale(identifier: "nb_NO")
+                    let headerRight = "\(formatter.string(from: Date()))  ·  side \(pageIndex + 1)/\(pages.count)"
+                    let rightAttributes: [NSAttributedString.Key: Any] = [
+                        .font: UIFont.systemFont(ofSize: 9), .foregroundColor: UIColor.darkGray]
+                    let rightSize = (headerRight as NSString).size(withAttributes: rightAttributes)
+                    (headerRight as NSString).draw(
+                        at: CGPoint(x: pageRect.width - margin - rightSize.width, y: 28),
+                        withAttributes: rightAttributes)
+                    // Grid
+                    for (slot, frame) in pageFrames.enumerated() {
+                        let column = slot % columns, row = slot / columns
+                        let x = margin + Double(column) * (cellWidth + 14)
+                        let y = 58.0 + Double(row) * (cellHeight + 16)
+                        let panelRect = CGRect(x: x, y: y, width: cellWidth, height: panelHeight)
+                        UIColor.black.setStroke()
+                        let border = UIBezierPath(rect: panelRect)
+                        border.lineWidth = 1
+                        border.stroke()
+                        images[frame.id]?.draw(in: panelRect)
+                        // Nummer-badge
+                        let badge = CGRect(x: x + 4, y: y + 4, width: 22, height: 16)
+                        UIColor.white.setFill()
+                        UIBezierPath(rect: badge).fill()
+                        UIColor.black.setStroke()
+                        UIBezierPath(rect: badge).stroke()
+                        let number = "\(pageIndex * perPage + slot + 1)" as NSString
+                        number.draw(in: badge.insetBy(dx: 5, dy: 2),
+                                    withAttributes: [.font: UIFont.boldSystemFont(ofSize: 10),
+                                                     .foregroundColor: UIColor.black])
+                        // Caption: description, to linjer
+                        (frame.description as NSString).draw(
+                            in: CGRect(x: x, y: y + panelHeight + 4, width: cellWidth, height: 28),
+                            withAttributes: [.font: UIFont.systemFont(ofSize: 8),
+                                             .foregroundColor: UIColor.black])
+                    }
+                    // Footer
+                    let shotCount = allFrames.count
+                    let footer = "\(projectTitle)  ·  \(scenes.count) scener  ·  \(shotCount) paneler"
+                    (footer as NSString).draw(
+                        at: CGPoint(x: margin, y: pageRect.height - 22),
+                        withAttributes: [.font: UIFont.systemFont(ofSize: 8),
+                                         .foregroundColor: UIColor.gray])
+                }
+            }
+            return url
+        } catch {
+            return nil
+        }
     }
 
     /// Shot-liste som CSV (semikolon — Excel-NO) for produksjonsplanlegging.

@@ -65,6 +65,9 @@ struct FrameSummary: Identifiable, Sendable {
     let vanishingPoints: [[Double]]?
     // Voiceover (m4a base64) — synkes så animatic-lyd følger prosjektet
     let voiceoverDataURL: String?
+    // Bilde-frame (importert/AI): statisk bildeinnhold som VISES og
+    // EKSPORTERES (i motsetning til underlag). dataURL støttes native.
+    let imageUrl: String?
 }
 
 struct SceneSummary: Identifiable, Sendable {
@@ -712,6 +715,89 @@ actor RoleRoomAPIClient {
         rawScenes[deleted.manuscriptId] = scenes
     }
 
+    /// Last opp panel-bilde til B2 (bruker-bucket m/ kvote). Returnerer
+    /// download-stien som blir frame.imageUrl (web-img med cookies og
+    /// native fetch med Bearer følger 302 til signert B2-URL).
+    func uploadStorageImage(jpegData: Data, name: String,
+                            projectId: String? = nil,
+                            sceneId: String? = nil,
+                            attachedToEntityType: String? = nil,
+                            attachedToEntityId: String? = nil,
+                            attachmentNote: String? = nil) async throws -> String {
+        var request = try request(path: "/api/role-room/storage/upload", query: [:])
+        request.httpMethod = "POST"
+        let boundary = "sb-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)",
+                         forHTTPHeaderField: "Content-Type")
+        var body = Data()
+        func field(_ name: String, _ value: String) {
+            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".utf8))
+        }
+        field("sourceModule", "storyboard")
+        if let projectId { field("projectId", projectId) }
+        if let sceneId { field("sceneId", sceneId) }
+        if let attachedToEntityType { field("attachedToEntityType", attachedToEntityType) }
+        if let attachedToEntityId { field("attachedToEntityId", attachedToEntityId) }
+        if let attachmentNote { field("attachmentNote", attachmentNote) }
+        body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(name)\"\r\nContent-Type: image/jpeg\r\n\r\n".utf8))
+        body.append(jpegData)
+        body.append(Data("\r\n--\(boundary)--\r\n".utf8))
+        request.httpBody = body
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200,
+              let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let file = payload["file"] as? [String: Any],
+              let fileId = file["id"] as? String else {
+            throw status == 401 ? SyncError.unauthenticated : SyncError.http(status)
+        }
+        return "/api/role-room/storage/files/\(fileId)/download"
+    }
+
+    /// Hent remote panel-bilde (Bearer + 302-følging), disk-cachet.
+    func fetchRemoteImageData(path: String) async -> Data? {
+        let key = "img-\(path.hashValue)"
+        if let cached = try? Data(contentsOf: Self.cacheDirectory.appendingPathComponent("\(key).bin")) {
+            return cached
+        }
+        guard let request = try? request(path: path, query: [:]),
+              let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        try? FileManager.default.createDirectory(at: Self.cacheDirectory,
+                                                 withIntermediateDirectories: true)
+        try? data.write(to: Self.cacheDirectory.appendingPathComponent("\(key).bin"))
+        return data
+    }
+
+    /// Ark-import: legg N bilde-frames (dataURL-er) bakerst i scenen i én
+    /// mutasjon (presentasjons-board → paneler).
+    func importImageFrames(manuscriptId: String, sceneId: String,
+                           imageURLs imageDataURLs: [String]) async throws {
+        try await mutateSceneFrames(manuscriptId: manuscriptId, sceneId: sceneId) { frames in
+            let stamp = Int(Date().timeIntervalSince1970 * 1000)
+            for (index, dataURL) in imageDataURLs.enumerated() {
+                let lastShot = (frames.last?["shotNumber"] as? String) ?? ""
+                let digits = lastShot.prefix { $0.isNumber }
+                let prefix = digits.isEmpty ? "1" : String(digits)
+                var letters = ""
+                var value = frames.count
+                repeat {
+                    letters = String(UnicodeScalar(UInt8(65 + value % 26))) + letters
+                    value = value / 26 - 1
+                } while value >= 0
+                frames.append([
+                    "id": "frame-\(stamp)-imp\(index)",
+                    "shotNumber": prefix + letters,
+                    "description": "",
+                    "imageUrl": dataURL,
+                    "imageSource": "imported",
+                    "durationSec": 3,
+                    "tags": [String](),
+                ])
+            }
+        }
+    }
+
     // MARK: HTTP
 
     private func request(path: String, query: [String: String]) throws -> URLRequest {
@@ -854,7 +940,8 @@ actor RoleRoomAPIClient {
                     ?? (frame["underlayOpacity"] as? Int).map(Double.init),
                 perspectiveMode: frame["perspectiveMode"] as? Int,
                 vanishingPoints: frame["vanishingPoints"] as? [[Double]],
-                voiceoverDataURL: frame["voiceoverDataURL"] as? String
+                voiceoverDataURL: frame["voiceoverDataURL"] as? String,
+                imageUrl: frame["imageUrl"] as? String
             )
         }
         return SceneSummary(

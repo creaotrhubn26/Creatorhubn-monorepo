@@ -742,18 +742,20 @@ final class CompositionRenderTests: XCTestCase {
     // ── Eksportveier (forbedringspunkt 9) ────────────────────────────
 
     private func makeFrame(strokes: [PencilStroke], id: String = "test-frame",
-                           durationSec: Double = 2) -> FrameSummary {
+                           durationSec: Double = 2, imageUrl: String? = nil,
+                           description: String = "") -> FrameSummary {
         FrameSummary(
             id: id, shotNumber: "1A", detail: "",
             strokesJSON: try? StrokeSerialization.encodeToWebJSON(strokes),
-            description: "", notes: nil, shotType: nil, lensMm: nil,
+            description: description, notes: nil, shotType: nil, lensMm: nil,
             movement: nil, durationSec: durationSec, transition: nil,
             focusDepth: nil, timeOfDay: nil, weather: nil, beatTag: nil,
             tags: [], thumbnailDataURL: nil,
             drawingWidth: 1920, drawingHeight: 1080,
             frameStatus: nil, comments: [], updatedAt: nil,
             underlayDataURL: nil, underlayOpacity: nil,
-            perspectiveMode: nil, vanishingPoints: nil, voiceoverDataURL: nil)
+            perspectiveMode: nil, vanishingPoints: nil, voiceoverDataURL: nil,
+            imageUrl: imageUrl)
     }
 
     /// Tekst-annotasjoner skal med i eksport-render (CoreText-pass) —
@@ -1174,5 +1176,70 @@ final class CompositionRenderTests: XCTestCase {
         attachment.name = "troll-roar"
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    // ── Import-runden: bilde-frames, annotasjonsformer, presentasjon ──
+
+    private func solidImageDataURL(color: UIColor, size: CGSize) -> String {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let image = UIGraphicsImageRenderer(size: size, format: format).image { context in
+            color.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+        }
+        return "data:image/jpeg;base64," + image.jpegData(compressionQuality: 0.8)!.base64EncodedString()
+    }
+
+    /// Bilde-frame uten strokes skal rendres i eksport (før: nil).
+    func testImageFrameRendersInExport() throws {
+        let dataURL = solidImageDataURL(color: .systemBlue, size: CGSize(width: 320, height: 180))
+        let frame = makeFrame(strokes: [], id: "img-frame", imageUrl: dataURL)
+        let image = try XCTUnwrap(FrameRenderService.image(for: frame, maxWidth: 400))
+        // Sample midtpiksel — skal ikke være papirhvit
+        let cg = try XCTUnwrap(image.cgImage)
+        let data = try XCTUnwrap(cg.dataProvider?.data)
+        let pixels = try XCTUnwrap(CFDataGetBytePtr(data))
+        let offset = (cg.height / 2) * cg.bytesPerRow + (cg.width / 2) * (cg.bitsPerPixel / 8)
+        // Kanalrekkefølge varierer (ARGB/BGRA) — hvitt papir har ALLE
+        // kanaler ≥ 250; en farget piksel har minst én lav kanal.
+        let channels = (0..<4).map { Double(pixels[offset + $0]) }
+        XCTAssertLessThan(channels.min() ?? 255, 200,
+                          "midtpikselet skal bære bildefargen, ikke papir")
+    }
+
+    /// Post-it/boble skal endre eksport-bildet mot ren tekst.
+    func testAnnotationStylesAffectExport() throws {
+        let base = stroke(.pencil, size: 5, opacity: 0.9, line(200, 200, 900, 700))
+        func annotated(_ style: String?) -> FrameSummary {
+            var annotation = stroke(.pencil, size: 4, opacity: 1,
+                                    points([(960, 300)], pressure: 0.7))
+            annotation.textAnnotation = "Post-it tekst"
+            annotation.annotationStyle = style
+            return makeFrame(strokes: [base, annotation], id: "ann-\(style ?? "plain")")
+        }
+        let plain = try XCTUnwrap(FrameRenderService.image(for: annotated(nil), maxWidth: 400)?.pngData())
+        let note = try XCTUnwrap(FrameRenderService.image(for: annotated("note"), maxWidth: 400)?.pngData())
+        let bubble = try XCTUnwrap(FrameRenderService.image(for: annotated("bubble"), maxWidth: 400)?.pngData())
+        XCTAssertNotEqual(plain, note)
+        XCTAssertNotEqual(note, bubble)
+    }
+
+    /// Presentasjons-PDF genereres med paneler fra bilde-frames.
+    func testPresentationPDFExport() async throws {
+        let dataURL = solidImageDataURL(color: .darkGray, size: CGSize(width: 320, height: 180))
+        let frames = (0..<5).map { index in
+            makeFrame(strokes: [], id: "pres-\(index)", imageUrl: dataURL,
+                      description: "Panel \(index + 1): kort caption her.")
+        }
+        let scene = SceneSummary(id: "pres-scene", heading: "PRESENTASJON",
+                                 frames: frames, sceneNumber: 1, intExt: nil,
+                                 location: nil, timeOfDay: nil,
+                                 descriptionText: nil, characters: [])
+        let url = await BoardPDFExporter.exportPresentation(
+            projectTitle: "Testprosjekt", scenes: [scene])
+        let fileURL = try XCTUnwrap(url)
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        let size = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int) ?? 0
+        XCTAssertGreaterThan(size, 10_000, "PDF-en skal inneholde paneler")
     }
 }
