@@ -21,6 +21,8 @@ final class AssetsState: ObservableObject {
         var id: String
         var name: String
         var fileIds: [String]
+        // Mappefarge (hex) — optional så eksisterende mapper dekoder uendret
+        var color: String?
     }
 
     init(project: ProjectSummary, manuscript: ManuscriptSummary) {
@@ -365,12 +367,29 @@ struct AssetsView: View {
                         HStack {
                             Image(systemName: "folder.fill")
                                 .font(.system(size: 30))
-                                .foregroundStyle(BoardBrand.accent.opacity(0.7))
+                                .foregroundStyle(folder.color.flatMap { Color(hex: $0) }
+                                                 ?? BoardBrand.accent.opacity(0.7))
                             Spacer()
                             Menu {
                                 Button("Omdøp") {
                                     renameFileId = "folder:\(folder.id)"
                                     renameDraft = folder.name
+                                }
+                                Menu("Farge") {
+                                    ForEach(folderColors + state.colorSwatches, id: \.self) { hex in
+                                        Button {
+                                            setFolderColor(folder.id, hex: hex)
+                                        } label: {
+                                            Label(hex.uppercased(),
+                                                  systemImage: folder.color == hex
+                                                  ? "checkmark.circle.fill" : "circle.fill")
+                                        }
+                                    }
+                                    if folder.color != nil {
+                                        Button("Standard", role: .destructive) {
+                                            setFolderColor(folder.id, hex: nil)
+                                        }
+                                    }
                                 }
                                 Button("Slett mappe", role: .destructive) {
                                     state.userFolders.removeAll { $0.id == folder.id }
@@ -498,11 +517,12 @@ struct AssetsView: View {
                     Text(file.displayName)
                         .font(.system(size: 12)).foregroundStyle(.white).lineLimit(1)
                     if let folder = state.folderFor(fileId: file.id) {
+                        let tint = folder.color.flatMap { Color(hex: $0) } ?? BoardBrand.accent
                         Text(folder.name)
                             .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(BoardBrand.accent)
+                            .foregroundStyle(tint)
                             .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(BoardBrand.accent.opacity(0.15), in: Capsule())
+                            .background(tint.opacity(0.15), in: Capsule())
                     }
                     Spacer()
                     Text(fileTypeLabel(file))
@@ -522,6 +542,16 @@ struct AssetsView: View {
                 }
             }
         }
+    }
+
+    // Faste mappefarger + prosjektets egne fargeprøver i menyen.
+    private let folderColors = ["#8b5cf6", "#3bb8c4", "#4caf7d", "#f0c243",
+                                "#ef6a6a", "#a06ee0"]
+
+    private func setFolderColor(_ folderId: String, hex: String?) {
+        guard let index = state.userFolders.firstIndex(where: { $0.id == folderId }) else { return }
+        state.userFolders[index].color = hex
+        state.persistMeta()
     }
 
     @ViewBuilder
