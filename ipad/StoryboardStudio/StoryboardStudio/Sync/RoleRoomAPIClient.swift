@@ -314,13 +314,14 @@ actor RoleRoomAPIClient {
         strokesJSON: String,
         thumbnailDataURL: String? = nil,
         baseUpdatedAt: String? = nil
-    ) async throws {
+    ) async throws -> (updatedAt: String?, merged: Bool) {
         await refreshScenes(manuscriptId: manuscriptId)
         guard var scenes = rawScenes[manuscriptId] else {
             throw SyncError.malformed("scener ikke lastet")
         }
         let now = ISO8601DateFormatter().string(from: Date())
         var found = false
+        var mergedAny = false
         for sceneIndex in scenes.indices {
             guard scenes[sceneIndex]["id"] as? String == sceneId else { continue }
             var frames = (scenes[sceneIndex]["storyboardFrames"] as? [[String: Any]]) ?? []
@@ -331,13 +332,16 @@ actor RoleRoomAPIClient {
                 // merges strokene på id — serverens beholdes, våre nye
                 // legges til. Append-dominert tegning gjør dette trygt.
                 var effectiveStrokes = strokesJSON
+                var didMerge = false
                 if let base = baseUpdatedAt,
                    let serverUpdated = frames[frameIndex]["updatedAt"] as? String,
                    serverUpdated != base,
                    let serverJSON = drawingData["strokes"] as? String,
                    let merged = StrokeMerge.union(serverJSON: serverJSON, oursJSON: strokesJSON) {
                     effectiveStrokes = merged
+                    didMerge = merged != strokesJSON
                 }
+                mergedAny = mergedAny || didMerge
                 drawingData["strokes"] = effectiveStrokes
                 drawingData["updatedAt"] = now
                 if drawingData["createdAt"] == nil { drawingData["createdAt"] = now }
@@ -379,11 +383,13 @@ actor RoleRoomAPIClient {
                 if !serverUpdatedAt.isEmpty {
                     applyLocalFrameUpdatedAt(manuscriptId: manuscriptId, sceneId: sceneId,
                                              frameId: frameId, updatedAt: serverUpdatedAt)
+                    return (serverUpdatedAt, mergedAny)
                 }
-                return
+                return (now, mergedAny)
             }
         }
         try await sendJSON(path: "/api/casting/scenes", method: "POST", body: scene)
+        return (now, mergedAny)
     }
 
     /// Skriv serverens autoritative updatedAt inn i lokal rå-scene så
