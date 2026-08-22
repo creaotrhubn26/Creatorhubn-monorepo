@@ -148,4 +148,56 @@ final class FeatureVisualQATests: XCTestCase {
         Thread.sleep(forTimeInterval: 1)
         attachShot(app, name: "hub-02-nedre")
     }
+
+    // Assets-fanen: visuell verifisering mot prod.
+    @MainActor
+    func testAssetsScreenshot() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchEnvironment["SB_TOKEN"] = "e2e-verify-daniel-2026"
+        app.launchEnvironment["SB_SERVER"] = "https://theroleroom.com"
+        app.launch()
+        let roleRoom = app.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH 'The Role Room'")).firstMatch
+        guard roleRoom.waitForExistence(timeout: 20) else { throw XCTSkip("prod/token") }
+        roleRoom.tap()
+        guard app.staticTexts["TROLL"].firstMatch.waitForExistence(timeout: 15) else {
+            throw XCTSkip("TROLL mangler")
+        }
+        app.staticTexts["TROLL"].firstMatch.tap()
+        let manuscript = app.cells.firstMatch
+        if manuscript.waitForExistence(timeout: 8) { manuscript.tap() }
+        let assets = app.buttons["Assets"].firstMatch
+        XCTAssertTrue(assets.waitForExistence(timeout: 15), "sidebar-Assets mangler")
+        assets.tap()
+        Thread.sleep(forTimeInterval: 4)
+        attachShot(app, name: "assets-01")
+    }
+
+    // Review-flaten: visuell verifisering mot prod.
+    @MainActor
+    func testReviewScreenshot() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchEnvironment["SB_TOKEN"] = "e2e-verify-daniel-2026"
+        app.launchEnvironment["SB_SERVER"] = "https://theroleroom.com"
+        app.launch()
+        let roleRoom = app.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH 'The Role Room'")).firstMatch
+        guard roleRoom.waitForExistence(timeout: 20) else { throw XCTSkip("prod/token") }
+        roleRoom.tap()
+        guard app.staticTexts["TROLL"].firstMatch.waitForExistence(timeout: 15) else {
+            throw XCTSkip("TROLL mangler")
+        }
+        app.staticTexts["TROLL"].firstMatch.tap()
+        let manuscript = app.cells.firstMatch
+        if manuscript.waitForExistence(timeout: 8) { manuscript.tap() }
+        let review = app.buttons["Review"].firstMatch
+        XCTAssertTrue(review.waitForExistence(timeout: 15), "sidebar-Review mangler")
+        review.tap()
+        XCTAssertTrue(app.buttons["Godkjenn shot"].firstMatch.waitForExistence(timeout: 15),
+                      "review-flaten åpnet ikke")
+        Thread.sleep(forTimeInterval: 3)
+        attachShot(app, name: "review-01")
+    }
 }

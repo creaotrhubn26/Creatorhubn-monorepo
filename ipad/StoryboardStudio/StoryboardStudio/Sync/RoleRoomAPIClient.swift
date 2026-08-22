@@ -28,6 +28,9 @@ struct ReviewComment: Identifiable, Sendable {
     let author: String
     let text: String
     let at: String       // ISO
+    // Pin på bildet (normalisert 0–1) — mockupens nummererte markører.
+    let x: Double?
+    let y: Double?
 }
 
 struct FrameSummary: Identifiable, Sendable {
@@ -68,6 +71,11 @@ struct FrameSummary: Identifiable, Sendable {
     // Bilde-frame (importert/AI): statisk bildeinnhold som VISES og
     // EKSPORTERES (i motsetning til underlag). dataURL støttes native.
     let imageUrl: String?
+    // Review-flaten: prioritet/frist/godkjenning
+    let reviewPriority: String?
+    let reviewDueAt: String?
+    let reviewApprovedBy: String?
+    let reviewApprovedAt: String?
 }
 
 struct SceneSummary: Identifiable, Sendable {
@@ -1021,7 +1029,9 @@ actor RoleRoomAPIClient {
                         role: (dict["role"] as? String) ?? "?",
                         author: (dict["author"] as? String) ?? "",
                         text: (dict["text"] as? String) ?? "",
-                        at: (dict["at"] as? String) ?? "")
+                        at: (dict["at"] as? String) ?? "",
+                        x: dict["x"] as? Double,
+                        y: dict["y"] as? Double)
                 },
                 updatedAt: frame["updatedAt"] as? String,
                 underlayDataURL: frame["underlayDataURL"] as? String,
@@ -1030,7 +1040,11 @@ actor RoleRoomAPIClient {
                 perspectiveMode: frame["perspectiveMode"] as? Int,
                 vanishingPoints: frame["vanishingPoints"] as? [[Double]],
                 voiceoverDataURL: frame["voiceoverDataURL"] as? String,
-                imageUrl: frame["imageUrl"] as? String
+                imageUrl: frame["imageUrl"] as? String,
+                reviewPriority: frame["reviewPriority"] as? String,
+                reviewDueAt: frame["reviewDueAt"] as? String,
+                reviewApprovedBy: frame["reviewApprovedBy"] as? String,
+                reviewApprovedAt: frame["reviewApprovedAt"] as? String
             )
         }
         return SceneSummary(

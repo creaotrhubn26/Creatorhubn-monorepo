@@ -294,6 +294,9 @@ struct ProjectHubView: View {
         .fullScreenCover(isPresented: $showAssets) {
             AssetsView(project: hub.project, manuscript: hub.manuscript)
         }
+        .fullScreenCover(isPresented: $showReviewDirect) {
+            ReviewView(project: hub.project, manuscript: hub.manuscript)
+        }
         .fullScreenCover(isPresented: $showAnimaticDirect) {
             AnimaticView(sceneHeading: hub.manuscript.title,
                          frames: hub.allFrames.filter {
@@ -333,6 +336,7 @@ struct ProjectHubView: View {
     @State private var showScriptDirect = false
     @State private var showScriptFullscreen = false
     @State private var showAssets = false
+    @State private var showReviewDirect = false
     @State private var showShotListDirect = false
     @State private var showAnimaticDirect = false
 
@@ -352,7 +356,7 @@ struct ProjectHubView: View {
             sidebarItem("doc.text", "Script") { showScriptDirect = true }
             sidebarItem("list.bullet", "Shot List") { showShotListDirect = true }
             sidebarItem("play.rectangle", "Animatic") { showAnimaticDirect = true }
-            sidebarItem("checkmark.bubble", "Review") { openBoard(sheet: .review) }
+            sidebarItem("checkmark.bubble", "Review") { showReviewDirect = true }
             sidebarItem("folder", "Assets") { showAssets = true }
             Spacer()
             // Lagringsmåler (Role Room-kvoten)
