@@ -1231,8 +1231,14 @@ final class CompositionRenderTests: XCTestCase {
             makeFrame(strokes: [], id: "pres-\(index)", imageUrl: dataURL,
                       description: "Panel \(index + 1): kort caption her.")
         }
+        let footer = """
+        [{"title":"TONE","items":["Personlig","Trygg"]},        {"title":"BUDSKAP","items":["Forbered deg før timen"]},        {"title":"MÅL","items":["Bedre samtaler"]}]
+        """
         let scene = SceneSummary(id: "pres-scene", heading: "PRESENTASJON",
-                                 frames: frames, sceneNumber: 1, intExt: nil,
+                                 frames: frames,
+                                 presentationConcept: "En som tar helse på alvor.",
+                                 presentationFooter: footer,
+                                 sceneNumber: 1, intExt: nil,
                                  location: nil, timeOfDay: nil,
                                  descriptionText: nil, characters: [])
         let url = await BoardPDFExporter.exportPresentation(
