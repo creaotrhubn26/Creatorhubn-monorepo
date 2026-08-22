@@ -136,6 +136,9 @@ struct ContentView: View {
                 let name = try await RoleRoomAPIClient.shared.configure(server: server, token: token)
                 sync.userName = name
                 sync.isLoggedIn = true
+                PushDelegate.requestAuthorizationAndRegister()
+                let unread = await RoleRoomAPIClient.shared.fetchUnreadMentions(name: name)
+                UserDefaults.standard.set(unread, forKey: "sbMentionCount")
             } catch SyncError.unauthenticated {
                 KeychainHelper.delete(account: "session-token")
             } catch {}

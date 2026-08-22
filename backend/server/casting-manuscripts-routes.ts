@@ -83,6 +83,12 @@ import {
   sendPreconditionFailed,
   setEtagHeader,
 } from "./_shared-concurrency.js";
+import {
+  notifyStoryboardMentions,
+  listMentions,
+  markMentionsRead,
+  registerStoryboardDeviceToken,
+} from "./storyboard-mention-service";
 import type { CastingManuscriptRevisionsService } from "./casting-manuscript-revisions-service.js";
 import type { CastingManuscriptsService } from "./casting-manuscripts-service";
 import { computeManuscriptLockState } from "./casting-manuscripts-service.js";
@@ -108,6 +114,8 @@ export interface CastingManuscriptsRoutesDeps {
    * manuscriptsService internt for å lese/skrive revisions-array.
    */
   revisionsService: CastingManuscriptRevisionsService;
+  /** Valgfri PG-pool — aktiverer @mention-varsling på frame-kommentarer. */
+  pool?: import("pg").Pool;
 }
 
 /**
@@ -189,7 +197,7 @@ function listManuscriptPresence(
 export function setupCastingManuscriptsRoutes(
   deps: CastingManuscriptsRoutesDeps,
 ): void {
-  const { app, requireUserSession, compatStoreGet, manuscriptsService, revisionsService } = deps;
+  const { app, requireUserSession, compatStoreGet, manuscriptsService, revisionsService, pool } = deps;
 
   // Manuscript content (full screenplay text, dialogue, revisions) is
   // tenant-private. These read endpoints were unauthenticated — anyone who
@@ -629,6 +637,69 @@ export function setupCastingManuscriptsRoutes(
 
   // Per-frame patch (iPad-appen): unngår hele-scene-POST per strøk-lagring
   // — payload er kun frame-feltene som endres.
+  // ── Storyboard @mention-varsler (in-app-kilden for iPad + web) ──
+  app.get("/api/casting/storyboard-mentions", async (req, res) => {
+    try {
+      if (!requireUserSession(req, res)) return;
+      if (!pool) {
+        res.json({ mentions: [] });
+        return;
+      }
+      const name = typeof req.query.name === "string" ? req.query.name : "";
+      if (!name) {
+        res.status(400).json({ error: "name is required" });
+        return;
+      }
+      const mentions = await listMentions(pool, name, req.query.unread === "1");
+      res.json({ mentions });
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  app.post("/api/casting/storyboard-mentions/read", async (req, res) => {
+    try {
+      if (!requireUserSession(req, res)) return;
+      if (!pool) {
+        res.json({ updated: 0 });
+        return;
+      }
+      const name = typeof req.body?.name === "string" ? req.body.name : "";
+      if (!name) {
+        res.status(400).json({ error: "name is required" });
+        return;
+      }
+      const updated = await markMentionsRead(pool, name);
+      res.json({ updated });
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  // APNs-token for Storyboard Studio (push når appen er lukket).
+  app.post("/api/role-room/storyboard/device-token", async (req, res) => {
+    try {
+      const session = requireUserSession(req, res);
+      if (!session) return;
+      if (!pool) {
+        res.json({ ok: false, reason: "no_pool" });
+        return;
+      }
+      const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+      if (!token) {
+        res.status(400).json({ error: "token is required" });
+        return;
+      }
+      await registerStoryboardDeviceToken(pool, session.userId, token, {
+        deviceName: typeof req.body?.deviceName === "string" ? req.body.deviceName : undefined,
+        appVersion: typeof req.body?.appVersion === "string" ? req.body.appVersion : undefined,
+      });
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
   app.patch("/api/casting/frames", async (req, res) => {
     try {
       const payload = req.body && typeof req.body === "object" ? req.body : {};
@@ -645,12 +716,51 @@ export function setupCastingManuscriptsRoutes(
         return;
       }
       if (!(await ensureManuscriptOwner(req, res, manuscriptId))) return;
+      // @mention-varsling: snapshot kommentarene FØR patch for diff.
+      let mentionBaseline: Array<Record<string, unknown>> | null = null;
+      let mentionTeam: string | null = null;
+      let mentionShot: string | undefined;
+      if (pool && Array.isArray((fields as any).comments)) {
+        try {
+          const scenesBefore = await manuscriptsService.getScenes(manuscriptId);
+          const sceneBefore = scenesBefore.find((s: any) => s?.id === sceneId) as any;
+          const frameBefore = (sceneBefore?.storyboardFrames ?? []).find(
+            (f: any) => f?.id === frameId,
+          );
+          mentionBaseline = Array.isArray(frameBefore?.comments)
+            ? frameBefore.comments
+            : [];
+          mentionShot = frameBefore?.shotNumber;
+          mentionTeam =
+            typeof (scenesBefore[0] as any)?.hubTeam === "string"
+              ? (scenesBefore[0] as any).hubTeam
+              : null;
+        } catch {
+          mentionBaseline = null;
+        }
+      }
       const result = await manuscriptsService.patchFrame(
         manuscriptId,
         sceneId,
         frameId,
         fields,
       );
+      if (pool && result && mentionBaseline) {
+        let team: Array<{ name: string; email?: string }> = [];
+        try {
+          team = mentionTeam ? JSON.parse(mentionTeam) : [];
+        } catch {
+          team = [];
+        }
+        // Fire-and-forget — varslingsfeil skal aldri feile lagringen.
+        void notifyStoryboardMentions(
+          pool,
+          { manuscriptId, sceneId, frameId, shotNumber: mentionShot },
+          mentionBaseline,
+          (fields as any).comments,
+          team,
+        );
+      }
       if (!result) {
         res.status(404).json({ error: "frame_not_found" });
         return;
