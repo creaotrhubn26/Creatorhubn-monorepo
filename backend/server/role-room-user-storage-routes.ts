@@ -260,6 +260,26 @@ export function registerRoleRoomUserStorageRoutes(
     }
   });
 
+  // Soft delete (papirkurv-semantikk): eier-sjekken ligger i SQL-
+  // funksjonen (userId + fileId må matche); frigjør kvote.
+  app.delete("/api/role-room/storage/files/:id", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    try {
+      const result = await softDeleteUserFile(pool, {
+        userId: viewerId, fileId: req.params.id,
+      });
+      if (!result.ok) {
+        res.status(404).json({ error: "fil_ikke_funnet" });
+        return;
+      }
+      res.json({ ok: true, freedBytes: result.freedBytes });
+    } catch (err) {
+      console.error("[storage/delete]", err);
+      res.status(500).json({ error: "delete_failed" });
+    }
+  });
+
   // ──────────────────────────────────────────────────────────────────
   // GET /api/role-room/storage/files/:id/download → 302 til signed URL
   // ──────────────────────────────────────────────────────────────────

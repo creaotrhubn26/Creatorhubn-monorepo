@@ -291,6 +291,9 @@ struct ProjectHubView: View {
             ShotListSheet(sceneHeading: "\(hub.manuscript.title) — alle scener",
                           frames: hub.allFrames)
         }
+        .fullScreenCover(isPresented: $showAssets) {
+            AssetsView(project: hub.project, manuscript: hub.manuscript)
+        }
         .fullScreenCover(isPresented: $showAnimaticDirect) {
             AnimaticView(sceneHeading: hub.manuscript.title,
                          frames: hub.allFrames.filter {
@@ -329,6 +332,7 @@ struct ProjectHubView: View {
     @State private var boardSheet: NativeBoardView.InitialSheet?
     @State private var showScriptDirect = false
     @State private var showScriptFullscreen = false
+    @State private var showAssets = false
     @State private var showShotListDirect = false
     @State private var showAnimaticDirect = false
 
@@ -349,6 +353,7 @@ struct ProjectHubView: View {
             sidebarItem("list.bullet", "Shot List") { showShotListDirect = true }
             sidebarItem("play.rectangle", "Animatic") { showAnimaticDirect = true }
             sidebarItem("checkmark.bubble", "Review") { openBoard(sheet: .review) }
+            sidebarItem("folder", "Assets") { showAssets = true }
             Spacer()
             // Lagringsmåler (Role Room-kvoten)
             VStack(alignment: .leading, spacing: 5) {
@@ -933,6 +938,10 @@ struct ProjectHubView: View {
 
     private var assetsSection: some View {
         sectionCard("ASSETS · \(hub.assets.count)") {
+            Button("Åpne Assets-fanen") { showAssets = true }
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(BoardBrand.accent)
+                .buttonStyle(.plain)
             if hub.assets.isEmpty {
                 Text("Ingen filer i prosjektet ennå — paneler, ark og moodboard-bilder havner her.")
                     .font(.system(size: 11)).foregroundStyle(BoardBrand.dim)
