@@ -1238,6 +1238,8 @@ final class CompositionRenderTests: XCTestCase {
                                  frames: frames,
                                  presentationConcept: "En som tar helse på alvor.",
                                  presentationFooter: footer,
+                                 hubTasks: nil, hubNotes: nil,
+                                 hubQuote: nil, hubMoodboard: nil,
                                  sceneNumber: 1, intExt: nil,
                                  location: nil, timeOfDay: nil,
                                  descriptionText: nil, characters: [])

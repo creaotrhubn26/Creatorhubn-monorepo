@@ -78,6 +78,11 @@ struct SceneSummary: Identifiable, Sendable {
     // seksjoner (JSON [{title, items[]}]) — lagres på første scene.
     let presentationConcept: String?
     let presentationFooter: String?
+    // Hub-metadata (prosjektoversikten): oppgaver/notater/moodboard/sitat.
+    let hubTasks: String?
+    let hubNotes: String?
+    let hubQuote: String?
+    let hubMoodboard: String?
     // Manusfelter (Script-fanen)
     let sceneNumber: Int?
     let intExt: String?
@@ -671,6 +676,19 @@ actor RoleRoomAPIClient {
         try await sendJSON(path: "/api/casting/scenes", method: "POST", body: scenes[0])
     }
 
+    /// Hub-metadata (generisk variant av presentasjons-mønsteret):
+    /// vilkårlige felter på FØRSTE scene.
+    func setHubMeta(manuscriptId: String, fields: [String: any Sendable]) async throws {
+        await refreshScenes(manuscriptId: manuscriptId)
+        guard var scenes = rawScenes[manuscriptId], !scenes.isEmpty else {
+            throw SyncError.malformed("scener ikke lastet")
+        }
+        for (key, value) in fields { scenes[0][key] = value }
+        scenes[0]["updatedAt"] = ISO8601DateFormatter().string(from: Date())
+        rawScenes[manuscriptId] = scenes
+        try await sendJSON(path: "/api/casting/scenes", method: "POST", body: scenes[0])
+    }
+
     /// Renummerer shots i rekkefølge: prefiks (tall-delen av første shot,
     /// ellers sceneNumber) + A, B, …, Z, AA.
     func renumberFrames(manuscriptId: String, sceneId: String) async throws {
@@ -967,6 +985,10 @@ actor RoleRoomAPIClient {
             id: id, heading: heading, frames: frames,
             presentationConcept: scene["presentationConcept"] as? String,
             presentationFooter: scene["presentationFooter"] as? String,
+            hubTasks: scene["hubTasks"] as? String,
+            hubNotes: scene["hubNotes"] as? String,
+            hubQuote: scene["hubQuote"] as? String,
+            hubMoodboard: scene["hubMoodboard"] as? String,
             sceneNumber: (scene["sceneNumber"] as? Int) ?? Int(scene["sceneNumber"] as? String ?? ""),
             intExt: (scene["intExt"] as? String) ?? (scene["int_ext"] as? String),
             location: (scene["locationName"] as? String) ?? (scene["location"] as? String),
