@@ -175,4 +175,65 @@ final class StrokeParityTests: XCTestCase {
     func testStrokeMergeMalformedReturnsNil() {
         XCTAssertNil(StrokeMerge.union(serverJSON: "ikke json", oursJSON: "[]"))
     }
+
+    // ── Quick-shape (hold-snap): lukket form → ellipse/rektangel ─────
+
+    private func holdStroke(_ coords: [(Double, Double)]) -> PencilStroke {
+        var t = 0.0
+        var points = coords.map { xy -> StrokePoint in
+            t += 20
+            return StrokePoint(x: xy.0, y: xy.1, pressure: 0.7, tiltX: 0, tiltY: 0, timestamp: t)
+        }
+        // Hold: 500 ms stille på sluttpunktet.
+        if let last = points.last {
+            points.append(StrokePoint(x: last.x, y: last.y, pressure: 0.7,
+                                      tiltX: 0, tiltY: 0, timestamp: t + 500))
+        }
+        return PencilStroke(id: "qs", points: points, inputType: "pencil",
+                            color: "#26282e", width: 5, opacity: 0.9,
+                            brush: BrushSpec.preset(.pencil, size: 5, color: "#26282e", opacity: 0.9))
+    }
+
+    @MainActor
+    func testQuickShapeSnapsCircleToEllipse() throws {
+        let coords = (0...24).map { step -> (Double, Double) in
+            let angle = Double(step) / 24 * .pi * 2
+            return (400 + 150 * cos(angle) + Double(step % 3), 300 + 120 * sin(angle))
+        }
+        let snapped = try XCTUnwrap(
+            MetalCanvasUIView.quickShapeSnap(holdStroke(coords), brushType: .pencil))
+        XCTAssertEqual(snapped.points.count, 49, "ellipse genererer 49 punkter")
+        // Alle punkter skal ligge på ellipsen (radiusavvik ≈ 0).
+        for point in snapped.points {
+            let radius = hypot((point.x - 400) / 150, (point.y - 300) / 120)
+            XCTAssertEqual(radius, 1, accuracy: 0.05)
+        }
+    }
+
+    @MainActor
+    func testQuickShapeSnapsBoxToRectangle() throws {
+        var coords: [(Double, Double)] = []
+        for step in 0...10 { coords.append((200 + Double(step) * 40, 200)) }
+        for step in 0...10 { coords.append((600, 200 + Double(step) * 30)) }
+        for step in 0...10 { coords.append((600 - Double(step) * 40, 500)) }
+        for step in 0...10 { coords.append((200, 500 - Double(step) * 30)) }
+        let snapped = try XCTUnwrap(
+            MetalCanvasUIView.quickShapeSnap(holdStroke(coords), brushType: .pencil))
+        // Alle punkter på bbox-kanten.
+        for point in snapped.points {
+            let onEdge = min(min(abs(point.x - 200), abs(point.x - 600)),
+                             min(abs(point.y - 200), abs(point.y - 500)))
+            XCTAssertEqual(onEdge, 0, accuracy: 1)
+        }
+    }
+
+    @MainActor
+    func testQuickShapeOpenStrokeStillSnapsToLine() throws {
+        let coords = (0...20).map { step -> (Double, Double) in
+            (100 + Double(step) * 30, 200 + Double(step) * 10 + (step % 2 == 0 ? 4.0 : -4.0))
+        }
+        let snapped = try XCTUnwrap(
+            MetalCanvasUIView.quickShapeSnap(holdStroke(coords), brushType: .pencil))
+        XCTAssertEqual(snapped.points.count, 25, "linje genererer 25 punkter")
+    }
 }

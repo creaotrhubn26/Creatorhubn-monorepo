@@ -752,7 +752,8 @@ final class CompositionRenderTests: XCTestCase {
             tags: [], thumbnailDataURL: nil,
             drawingWidth: 1920, drawingHeight: 1080,
             frameStatus: nil, comments: [], updatedAt: nil,
-            underlayDataURL: nil, underlayOpacity: nil)
+            underlayDataURL: nil, underlayOpacity: nil,
+            perspectiveMode: nil, vanishingPoints: nil)
     }
 
     /// Tekst-annotasjoner skal med i eksport-render (CoreText-pass) —
