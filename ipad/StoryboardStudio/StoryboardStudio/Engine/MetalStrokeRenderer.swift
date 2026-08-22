@@ -52,18 +52,24 @@ final class MetalStrokeRenderer {
               let image = UIImage(data: data)?.cgImage else { return nil }
         let width = min(256, image.width), height = min(256, image.height)
         guard width > 0, height > 0 else { return nil }
-        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        // Dab-shaderen leser .r som alpha-MASKE (r8Unorm, som de prosedurale
+        // teksturene). Formen = PNG-ens alfakanal; fargen kommer fra brush.
+        var rgba = [UInt8](repeating: 0, count: width * height * 4)
         guard let context = CGContext(
-            data: &pixels, width: width, height: height, bitsPerComponent: 8,
+            data: &rgba, width: width, height: height, bitsPerComponent: 8,
             bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        var mask = [UInt8](repeating: 0, count: width * height)
+        for index in 0..<(width * height) {
+            mask[index] = rgba[index * 4 + 3]
+        }
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: false)
+            pixelFormat: .r8Unorm, width: width, height: height, mipmapped: false)
         descriptor.usage = [.shaderRead]
         guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
         texture.replace(region: MTLRegionMake2D(0, 0, width, height),
-                        mipmapLevel: 0, withBytes: pixels, bytesPerRow: width * 4)
+                        mipmapLevel: 0, withBytes: mask, bytesPerRow: width)
         if customTipTextures.count > 32 { customTipTextures.removeAll() }
         customTipTextures[key] = texture
         return texture

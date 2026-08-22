@@ -835,4 +835,106 @@ final class CompositionRenderTests: XCTestCase {
         XCTAssertTrue((0...1).contains(hero.separation))
         XCTAssertTrue(CGRect(x: 0, y: 0, width: 1, height: 1).contains(hero.heroRect.origin))
     }
+
+    // Runde 7-showcase: fyll, halftone, wet mix, hue-jitter og egen
+    // PNG-spiss rendret på ett ark — visuell verifisering via attachment.
+    func testRenderRound7Showcase() throws {
+        guard let renderer = MetalStrokeRenderer() else { throw XCTSkip("Metal utilgjengelig") }
+        renderer.resizeCanvas(width: 1536, height: 1024)
+        var strokes: [PencilStroke] = []
+
+        // Ramme + etiketter trengs ikke — fire kvadranter:
+        // ── 1) FYLL: lukket sirkel-omriss → interiøret fylles ──
+        var t = 0.0
+        let circle = (0...40).map { step -> StrokePoint in
+            let angle = Double(step) / 40 * .pi * 2
+            t += 8
+            return StrokePoint(x: 380 + 200 * cos(angle), y: 280 + 150 * sin(angle),
+                               pressure: 0.75, tiltX: 0, tiltY: 0, timestamp: t)
+        }
+        strokes.append(PencilStroke(id: "r7-fill", points: circle, inputType: "pencil",
+                                    color: "#26282e", width: 7, opacity: 0.85,
+                                    brush: BrushSpec.preset(.fill, size: 7, color: "#26282e", opacity: 0.85)))
+
+        // ── 2) HALFTONE: tre strøk med stigende trykk → raster-gradient ──
+        for row in 0..<3 {
+            t += 100
+            let pts = (0...30).map { step -> StrokePoint in
+                t += 6
+                return StrokePoint(x: 850 + Double(step) * 18,
+                                   y: 160 + Double(row) * 90,
+                                   pressure: 0.3 + Double(row) * 0.3,
+                                   tiltX: 0, tiltY: 0, timestamp: t)
+            }
+            strokes.append(PencilStroke(id: "r7-ht-\(row)", points: pts, inputType: "pencil",
+                                        color: "#26282e", width: 40, opacity: 0.9,
+                                        brush: BrushSpec.preset(.halftone, size: 40, color: "#26282e", opacity: 0.9)))
+        }
+
+        // ── 3) VASK m/ wet mix: langt strøk → pigmentet brukes opp ──
+        t += 100
+        let washPts = (0...70).map { step -> StrokePoint in
+            t += 7
+            return StrokePoint(x: 120 + Double(step) * 19,
+                               y: 640 + sin(Double(step) * 0.25) * 25,
+                               pressure: 0.7, tiltX: 35, tiltY: 12, timestamp: t)
+        }
+        strokes.append(PencilStroke(id: "r7-wash", points: washPts, inputType: "pencil",
+                                    color: "#3a5a7a", width: 70, opacity: 0.6,
+                                    brush: BrushSpec.preset(.wash, size: 70, color: "#3a5a7a", opacity: 0.6)))
+
+        // ── 4) HUE-JITTER: marker med fargevariasjon ──
+        t += 100
+        let jitterPts = (0...40).map { step -> StrokePoint in
+            t += 7
+            return StrokePoint(x: 150 + Double(step) * 15,
+                               y: 830 + cos(Double(step) * 0.3) * 20,
+                               pressure: 0.8, tiltX: 20, tiltY: 5, timestamp: t)
+        }
+        var jitterBrush = BrushSpec.preset(.marker, size: 34, color: "#c04a30", opacity: 0.85)
+        jitterBrush.hueJitter = 0.6
+        strokes.append(PencilStroke(id: "r7-jitter", points: jitterPts, inputType: "pencil",
+                                    color: "#c04a30", width: 34, opacity: 0.85, brush: jitterBrush))
+
+        // ── 5) EGEN SPISS: prosedural stjerne-PNG som dab-form ──
+        let starSize = CGSize(width: 64, height: 64)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let starImage = UIGraphicsImageRenderer(size: starSize, format: format).image { _ in
+            let path = UIBezierPath()
+            for i in 0..<10 {
+                let radius: CGFloat = i % 2 == 0 ? 30 : 12
+                let angle = CGFloat(i) / 10 * .pi * 2 - .pi / 2
+                let point = CGPoint(x: 32 + cos(angle) * radius, y: 32 + sin(angle) * radius)
+                i == 0 ? path.move(to: point) : path.addLine(to: point)
+            }
+            path.close()
+            UIColor.black.setFill()
+            path.fill()
+        }
+        let starDataURL = "data:image/png;base64," + starImage.pngData()!.base64EncodedString()
+        // Hvert tap = ett avtrykk (1-punkts strøk — stamp-semantikk).
+        var stampBrush = BrushSpec.preset(.stamp, size: 60, color: "#5a3a7a", opacity: 0.9)
+        stampBrush.stampDataURL = starDataURL
+        for step in 0..<5 {
+            t += 200
+            strokes.append(PencilStroke(
+                id: "r7-stamp-\(step)",
+                points: [StrokePoint(x: 950 + Double(step) * 110,
+                                     y: 700 + Double(step % 2) * 90,
+                                     pressure: 0.8, tiltX: 0, tiltY: 0, timestamp: t)],
+                inputType: "pencil", color: "#5a3a7a", width: 60, opacity: 0.9,
+                brush: stampBrush))
+        }
+
+        renderer.rebuild(strokes: strokes, scale: 1)
+        renderer.waitForPendingWork()
+        let dataURL = try XCTUnwrap(renderer.thumbnailDataURL(maxWidth: 1536))
+        let comma = try XCTUnwrap(dataURL.firstIndex(of: ","))
+        let data = try XCTUnwrap(Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])))
+        let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.jpeg")
+        attachment.name = "runde7-showcase"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
 }
