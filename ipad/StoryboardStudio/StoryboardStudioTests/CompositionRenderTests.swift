@@ -1241,7 +1241,7 @@ final class CompositionRenderTests: XCTestCase {
                                  hubTasks: nil, hubNotes: nil,
                                  hubQuote: nil, hubMoodboard: nil,
                                  hubMapPositions: nil, hubMapNotes: nil,
-                                 hubTeam: nil,
+                                 hubTeam: nil, hubInfo: nil,
                                  sceneNumber: 1, intExt: nil,
                                  location: nil, timeOfDay: nil,
                                  descriptionText: nil, characters: [])

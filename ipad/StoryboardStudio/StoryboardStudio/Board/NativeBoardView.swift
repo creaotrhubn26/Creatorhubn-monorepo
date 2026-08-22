@@ -330,11 +330,17 @@ struct NativeBoardView: View {
     @State private var showNewScenePrompt = false
     @Environment(\.dismiss) private var dismiss
 
+    enum InitialSheet { case script, shotList, animatic, review }
+
     init(manuscript: ManuscriptSummary, projectId: String? = nil,
-         initialSceneIndex: Int = 0) {
+         initialSceneIndex: Int = 0, initialSheet: InitialSheet? = nil) {
         let state = BoardState(manuscript: manuscript, projectId: projectId)
         state.selectedSceneIndex = initialSceneIndex
         _board = StateObject(wrappedValue: state)
+        _showScript = State(initialValue: initialSheet == .script)
+        _showShotList = State(initialValue: initialSheet == .shotList)
+        _showAnimatic = State(initialValue: initialSheet == .animatic)
+        _showReview = State(initialValue: initialSheet == .review)
     }
 
     var body: some View {
