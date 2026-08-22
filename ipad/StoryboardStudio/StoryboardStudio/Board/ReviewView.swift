@@ -1048,6 +1048,7 @@ struct ReviewView: View {
                             state.patch(["stageUnit": value])
                         }
                         // Tags med fjerning + tillegg
+                        Text("Tags").font(.system(size: 11)).foregroundStyle(BoardBrand.dim)
                         FlowTags(tags: pair.frame.tags) { removed in
                             state.patch(["tags": pair.frame.tags.filter { $0 != removed }])
                         }
