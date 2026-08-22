@@ -831,6 +831,14 @@ struct NativeBoardView: View {
                     Label("PDF med underlag", systemImage: "photo.on.rectangle")
                 }
                 Button {
+                    presentationConceptDraft = board.scenes.first?.presentationConcept ?? ""
+                    presentationFooterDraft = PresentationFooter.decode(
+                        board.scenes.first?.presentationFooter)
+                    showPresentationSetup = true
+                } label: {
+                    Label("Presentasjonsoppsett…", systemImage: "text.badge.checkmark")
+                }
+                Button {
                     pdfExportProgress = "…"
                     Task {
                         exportPDFURL = await BoardPDFExporter.exportPresentation(
@@ -1206,6 +1214,46 @@ struct NativeBoardView: View {
                     board.syncStatus = "\(panels.count) paneler importert ✓"
                 } catch {
                     board.syncStatus = error.localizedDescription
+                }
+            }
+        }
+        .sheet(isPresented: $showPresentationSetup) {
+            NavigationStack {
+                Form {
+                    Section("Konsept-linje (under tittelen)") {
+                        TextField("f.eks. En som tar helse på alvor …",
+                                  text: $presentationConceptDraft, axis: .vertical)
+                            .lineLimit(2...3)
+                    }
+                    ForEach($presentationFooterDraft) { $section in
+                        Section {
+                            TextField("Tittel", text: $section.title)
+                                .font(.headline)
+                            TextField("Ett punkt per linje", text: $section.itemsText, axis: .vertical)
+                                .lineLimit(3...6)
+                        }
+                    }
+                }
+                .navigationTitle("Presentasjonsoppsett")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Avbryt") { showPresentationSetup = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Lagre") {
+                            showPresentationSetup = false
+                            let concept = presentationConceptDraft
+                            let footer = PresentationFooter.encode(presentationFooterDraft)
+                            let manuscriptId = board.manuscript.id
+                            Task {
+                                try? await RoleRoomAPIClient.shared.setPresentationMeta(
+                                    manuscriptId: manuscriptId, concept: concept,
+                                    footerJSON: footer)
+                                await board.reload()
+                                board.syncStatus = "Presentasjonsoppsett lagret ✓"
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -2142,6 +2190,9 @@ struct NativeBoardView: View {
     @State private var sheetImportPickerItem: PhotosPickerItem?
     @State private var sheetImportGrid: (columns: Int, rows: Int) = (4, 3)
     @State private var showSheetImportDialog = false
+    @State private var showPresentationSetup = false
+    @State private var presentationConceptDraft = ""
+    @State private var presentationFooterDraft: [PresentationFooter.Section] = PresentationFooter.defaults
     @State private var renameSceneId: String?
     @State private var renameSceneDraft = ""
     @State private var pendingDeleteSceneId: String?
@@ -3646,6 +3697,40 @@ private struct ShotDropDelegate: DropDelegate {
     }
 }
 
+// Presentasjons-footer: fire tema-spalter (TONE/BUDSKAP/MÅL/… i pitch-
+// formatet). Lagres som JSON på første scene; web ignorerer feltet.
+enum PresentationFooter {
+    struct Section: Identifiable {
+        var id = UUID()
+        var title: String
+        var itemsText: String   // ett punkt per linje
+    }
+
+    static let defaults: [Section] = [
+        Section(title: "TONE", itemsText: ""),
+        Section(title: "BUDSKAP", itemsText: ""),
+        Section(title: "MÅL", itemsText: ""),
+        Section(title: "VIDERE IDEER", itemsText: ""),
+    ]
+
+    static func encode(_ sections: [Section]) -> String {
+        let payload = sections.map { ["title": $0.title, "items": $0.itemsText
+            .split(separator: "\n").map(String.init)] }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return "[]" }
+        return String(data: data, encoding: .utf8) ?? "[]"
+    }
+
+    static func decode(_ json: String?) -> [Section] {
+        guard let json, let data = json.data(using: .utf8),
+              let list = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]],
+              !list.isEmpty else { return defaults }
+        return list.map { entry in
+            Section(title: (entry["title"] as? String) ?? "",
+                    itemsText: ((entry["items"] as? [String]) ?? []).joined(separator: "\n"))
+        }
+    }
+}
+
 // Minne-cache for remote panel-bilder (B2 download-stier) — de synkrone
 // render-veiene (canvas, celler, eksport) leser herfra; async prefetch
 // fyller den. dataURL-er dekodes direkte og trenger ikke cachen.
@@ -3892,11 +3977,17 @@ enum BoardPDFExporter {
                 }
                 for (pageIndex, pageFrames) in pages.enumerated() {
                     context.beginPage()
-                    // Header
+                    // Header + konsept-linje
                     (projectTitle.uppercased() as NSString).draw(
-                        at: CGPoint(x: margin, y: 20),
+                        at: CGPoint(x: margin, y: 16),
                         withAttributes: [.font: UIFont.boldSystemFont(ofSize: 20),
                                          .foregroundColor: UIColor(red: 0.1, green: 0.3, blue: 0.75, alpha: 1)])
+                    if let concept = scenes.first?.presentationConcept, !concept.isEmpty {
+                        ("KONSEPT: \(concept)" as NSString).draw(
+                            in: CGRect(x: margin, y: 40, width: pageRect.width - margin * 2, height: 14),
+                            withAttributes: [.font: UIFont.systemFont(ofSize: 8.5),
+                                             .foregroundColor: UIColor.darkGray])
+                    }
                     let formatter = DateFormatter()
                     formatter.dateStyle = .medium
                     formatter.locale = Locale(identifier: "nb_NO")
@@ -3934,13 +4025,39 @@ enum BoardPDFExporter {
                             withAttributes: [.font: UIFont.systemFont(ofSize: 8),
                                              .foregroundColor: UIColor.black])
                     }
-                    // Footer
-                    let shotCount = allFrames.count
-                    let footer = "\(projectTitle)  ·  \(scenes.count) scener  ·  \(shotCount) paneler"
-                    (footer as NSString).draw(
-                        at: CGPoint(x: margin, y: pageRect.height - 22),
-                        withAttributes: [.font: UIFont.systemFont(ofSize: 8),
-                                         .foregroundColor: UIColor.gray])
+                    // Footer: fire tema-spalter når satt, ellers enkel linje
+                    let sections = PresentationFooter.decode(scenes.first?.presentationFooter)
+                        .filter { !$0.itemsText.isEmpty }
+                    if sections.isEmpty {
+                        let footer = "\(projectTitle)  ·  \(scenes.count) scener  ·  \(allFrames.count) paneler"
+                        (footer as NSString).draw(
+                            at: CGPoint(x: margin, y: pageRect.height - 22),
+                            withAttributes: [.font: UIFont.systemFont(ofSize: 8),
+                                             .foregroundColor: UIColor.gray])
+                    } else {
+                        let footerTop = pageRect.height - 64
+                        UIColor.lightGray.setStroke()
+                        let divider = UIBezierPath()
+                        divider.move(to: CGPoint(x: margin, y: footerTop - 6))
+                        divider.addLine(to: CGPoint(x: pageRect.width - margin, y: footerTop - 6))
+                        divider.lineWidth = 0.5
+                        divider.stroke()
+                        let columnWidth = (pageRect.width - margin * 2) / CGFloat(sections.count)
+                        for (index, section) in sections.enumerated() {
+                            let x = margin + CGFloat(index) * columnWidth
+                            (section.title.uppercased() as NSString).draw(
+                                at: CGPoint(x: x, y: footerTop),
+                                withAttributes: [.font: UIFont.boldSystemFont(ofSize: 8),
+                                                 .foregroundColor: UIColor(red: 0.1, green: 0.3, blue: 0.75, alpha: 1)])
+                            let items = section.itemsText.split(separator: "\n")
+                                .map { "•  \($0)" }.joined(separator: "\n")
+                            (items as NSString).draw(
+                                in: CGRect(x: x, y: footerTop + 11,
+                                           width: columnWidth - 10, height: 50),
+                                withAttributes: [.font: UIFont.systemFont(ofSize: 6.5),
+                                                 .foregroundColor: UIColor.black])
+                        }
+                    }
                 }
             }
             return url
