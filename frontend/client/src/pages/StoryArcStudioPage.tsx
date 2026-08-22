@@ -46,7 +46,7 @@ import { useProject } from '../contexts/ProjectContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useTheme as useCustomTheme } from '../contexts/ThemeContext';
 import { useRealTime } from '../contexts/RealTimeContext';
-import { useVisualEditor } from '../components/admin/visual-editor/VisualEditorContext';
+import { useVisualEditorOptional } from '../components/admin/visual-editor/VisualEditorContext';
 import StoryArcStudio from '@/components/StoryArcStudio';
 import NoteEditor from '@/components/notes/NoteEditor';
 import ResolveProjectCreator from '@/components/davinci-resolve/ResolveProjectCreator';
@@ -66,7 +66,8 @@ export default function StoryArcStudioPage() {
   const { settings, updateSetting, getSetting } = useSettings();
   const { getProfessionTheme } = useCustomTheme();
   const { isConnected, emitEvent, onEvent, offEvent } = useRealTime();
-  const { addNotification } = useVisualEditor();
+  // Optional: kan rendres utenfor VisualEditorProvider — kastende hook = krasj.
+  const addNotification = useVisualEditorOptional()?.addNotification ?? (() => {});
   
   // Master Integration Provider
   const { integration, communication, dataFlow, componentRegistry, features } = useEnhancedMasterIntegration();
