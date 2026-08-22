@@ -51,8 +51,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.StoryboardStudio
         INFOPLIST_FILE: StoryboardStudio/Generated/Info.plist
-        # APNs for @mention-varsler (krever push-capability på App ID-en).
-        CODE_SIGN_ENTITLEMENTS: StoryboardStudio/StoryboardStudio.entitlements
+        # APNs for @mention-varsler: aktiver linjen under NÅR push-capability
+        # er slått på for App ID-en i developer-portalen (krever innlogging).
+        # CODE_SIGN_ENTITLEMENTS: StoryboardStudio/StoryboardStudio.entitlements
         # iPad-only i fase 1 (artist-flaten er bygget for Pencil + stor skjerm).
         TARGETED_DEVICE_FAMILY: "2"
         IPHONEOS_DEPLOYMENT_TARGET: "17.0"
