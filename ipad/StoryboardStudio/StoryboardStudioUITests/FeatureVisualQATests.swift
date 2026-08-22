@@ -61,4 +61,58 @@ final class FeatureVisualQATests: XCTestCase {
         attachment.lifetime = .keepAlways
         add(attachment)
     }
+
+    // Runde 7 interaktivt: iso/fisheye-guides, VP-snap-toggle, retusj.
+    @MainActor
+    func testRound7BoardFeatures() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchEnvironment["SB_TOKEN"] = "e2e-verify-daniel-2026"
+        app.launchEnvironment["SB_SERVER"] = "https://theroleroom.com"
+        app.launch()
+        let roleRoom = app.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH 'The Role Room'")).firstMatch
+        guard roleRoom.waitForExistence(timeout: 20) else { throw XCTSkip("prod/token") }
+        roleRoom.tap()
+        guard app.staticTexts["TROLL"].firstMatch.waitForExistence(timeout: 15) else {
+            throw XCTSkip("TROLL mangler")
+        }
+        app.staticTexts["TROLL"].firstMatch.tap()
+        let manuscript = app.cells.firstMatch
+        if manuscript.waitForExistence(timeout: 8) { manuscript.tap() }
+        let perspective = app.buttons["Perspektiv"].firstMatch
+        XCTAssertTrue(perspective.waitForExistence(timeout: 15))
+
+        func pick(_ label: String, shot: String) {
+            perspective.tap()
+            let option = app.buttons[label].firstMatch
+            if option.waitForExistence(timeout: 4) {
+                option.tap()
+                Thread.sleep(forTimeInterval: 1.5)
+                attachShot(app, name: shot)
+            } else {
+                app.tap()
+            }
+        }
+        pick("Isometrisk", shot: "r7-01-isometrisk")
+        pick("Fisheye", shot: "r7-02-fisheye")
+        pick("2-punkts", shot: "r7-03-2punkts")
+        // Snap-toggle synlig i menyen
+        perspective.tap()
+        let snap = app.switches["Snap strøk til VP"].firstMatch
+        if snap.waitForExistence(timeout: 4) {
+            attachShot(app, name: "r7-04-snap-meny")
+            snap.tap()
+        } else {
+            app.tap()
+        }
+        pick("Av", shot: "r7-05-av")
+
+        // Retusj: lasso rundt tegningen → juster-knappene synlige
+        app.buttons["Select"].firstMatch.exists
+            ? app.buttons["Select"].firstMatch.tap()
+            : app.buttons.matching(NSPredicate(format: "label == 'select'")).firstMatch.tap()
+        Thread.sleep(forTimeInterval: 1)
+        attachShot(app, name: "r7-06-selectmodus")
+    }
 }
