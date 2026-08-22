@@ -203,12 +203,14 @@ struct ReviewView: View {
     var body: some View {
         NavigationStack {
             HStack(spacing: 0) {
-                HubSidebar(projectName: state.project.name,
-                           storageUsed: storageUsed, storageQuota: storageQuota,
-                           active: .review) { destination in
-                    onNavigate?(destination)
+                if let onNavigate {
+                    HubSidebar(projectName: state.project.name,
+                               storageUsed: storageUsed, storageQuota: storageQuota,
+                               active: .review) { destination in
+                        onNavigate(destination)
+                    }
+                    Divider().overlay(BoardBrand.border)
                 }
-                Divider().overlay(BoardBrand.border)
                 queue
                 Divider().overlay(BoardBrand.border)
                 centerPane
