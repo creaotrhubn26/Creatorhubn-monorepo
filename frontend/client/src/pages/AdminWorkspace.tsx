@@ -39,6 +39,8 @@ import {
   Tooltip,
   Typography,
   useMediaQuery,
+  ThemeProvider,
+  createTheme,
 } from '@mui/material';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined';
@@ -143,6 +145,24 @@ const BRAND = {
   hoverBg: 'rgba(167, 139, 250, 0.08)',
   selectedBg: 'rgba(167, 139, 250, 0.16)',
 };
+
+// Lokal mørk MUI-theme i BRAND-paletten: paneler som bruker MUI-defaults
+// (Card/Paper/action.hover/text.secondary/ikoner) følger workspace-designet
+// automatisk i stedet for å falle tilbake til lys standard-theme.
+const workspaceTheme = createTheme({
+  palette: {
+    mode: 'dark',
+    primary: { main: BRAND.accent },
+    secondary: { main: BRAND.accentStrong },
+    background: { default: '#0b0518', paper: '#1a0a2e' },
+    text: { primary: BRAND.text, secondary: BRAND.textMuted },
+    divider: BRAND.border,
+    success: { main: '#22c55e' },
+    warning: { main: '#fbbf24' },
+    error: { main: '#fda4af' },
+    info: { main: '#22d3ee' },
+  },
+});
 
 // ─────────────────────────────────────────────────────────
 // Sidebar-struktur
@@ -2321,6 +2341,7 @@ export default function AdminWorkspace() {
   const inboxBadge = notifications.length;
 
   return (
+    <ThemeProvider theme={workspaceTheme}>
     <Box
       sx={{
         display: 'flex',
@@ -2417,5 +2438,6 @@ export default function AdminWorkspace() {
         />
       ) : null}
     </Box>
+    </ThemeProvider>
   );
 }

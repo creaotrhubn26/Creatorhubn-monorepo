@@ -270,13 +270,15 @@ const EquipmentAdminPage: React.FC = () => {
     refetch: refetchProducts,
 } = useQuery({
     queryKey: ['/api/equipment-admin/products', ],
-    refetchInterval: 3000,
+    // Ikke poll: mutasjonene invaliderer queryene selv. 3s-intervall + default
+    // retry mot manglende backend-ruter ga en 404-storm i konsollen.
+    retry: false,
 });
 
   // Fetch stats
   const { data: statsResponse } = useQuery({
     queryKey: ['/api/equipment-admin/stats', ],
-    refetchInterval: 3000,
+    retry: false,
 });
 
   const products = Array.isArray((productsResponse as any)?.data) ? (productsResponse as any).data : [];
