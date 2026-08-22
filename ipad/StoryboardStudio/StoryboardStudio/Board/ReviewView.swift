@@ -477,91 +477,56 @@ struct ReviewView: View {
                     .foregroundStyle((pair.frame.reviewStarred ?? false) ? .yellow : BoardBrand.dim)
             }
             .buttonStyle(.plain)
-            // Tildelt person (hubTeam)
-            Menu {
-                ForEach(Array(state.reviewers.enumerated()), id: \.offset) { _, reviewer in
-                    Button(reviewer.name) {
-                        state.patch(["reviewAssignee": reviewer.name])
-                    }
-                }
-                if pair.frame.reviewAssignee != nil {
-                    Button("Fjern tildeling", role: .destructive) {
-                        state.patch(["reviewAssignee": NSNull()])
-                    }
-                }
-            } label: {
-                Label(pair.frame.reviewAssignee ?? "Tildel",
-                      systemImage: "person.crop.circle")
-                    .font(.system(size: 11))
-                    .foregroundStyle(pair.frame.reviewAssignee != nil
-                                     ? BoardBrand.accent : BoardBrand.dim)
+            if let assignee = pair.frame.reviewAssignee {
+                Label(assignee, systemImage: "person.crop.circle")
+                    .font(.system(size: 11)).foregroundStyle(BoardBrand.accent)
             }
             if let due = dueLabel(pair.frame) {
                 Text(due.text)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(due.urgent ? .red : BoardBrand.dim)
             }
+            if compareMode || selectedVersion != 0 {
+                Label(selectedVersion == 0 ? "Gjeldende" : "Versjon −\(selectedVersion)",
+                      systemImage: "clock.arrow.circlepath")
+                    .font(.system(size: 11)).foregroundStyle(BoardBrand.accent)
+            }
             Spacer()
-            // Versjonsvelger (drawingHistory)
-            if !historyVersions.isEmpty {
+            // Sjeldne handlinger samlet i «…» (mockup/board-mønster)
+            Menu {
                 Menu {
-                    Button("Gjeldende versjon") { selectedVersion = 0 }
-                    ForEach(Array(historyVersions.enumerated()), id: \.offset) { index, version in
-                        Button("Versjon −\(index + 1) (\(shortDate(version.updatedAt)))") {
-                            selectedVersion = index + 1
+                    ForEach(Array(state.reviewers.enumerated()), id: \.offset) { _, reviewer in
+                        Button(reviewer.name) {
+                            state.patch(["reviewAssignee": reviewer.name])
+                        }
+                    }
+                    if pair.frame.reviewAssignee != nil {
+                        Button("Fjern tildeling", role: .destructive) {
+                            state.patch(["reviewAssignee": NSNull()])
                         }
                     }
                 } label: {
-                    Label(selectedVersion == 0 ? "Gjeldende" : "Versjon −\(selectedVersion)",
-                          systemImage: "clock.arrow.circlepath")
-                        .font(.system(size: 12)).foregroundStyle(BoardBrand.dim)
+                    Label(pair.frame.reviewAssignee ?? "Tildel", systemImage: "person.crop.circle")
                 }
-                Button {
-                    compareMode.toggle()
-                    if compareMode && selectedVersion == 0 { selectedVersion = 1 }
-                } label: {
-                    Label("Sammenlign", systemImage: "rectangle.split.2x1")
-                        .font(.system(size: 12))
-                        .foregroundStyle(compareMode ? BoardBrand.accent : BoardBrand.dim)
+                if !historyVersions.isEmpty {
+                    Menu {
+                        Button("Gjeldende versjon") { selectedVersion = 0 }
+                        ForEach(Array(historyVersions.enumerated()), id: \.offset) { index, version in
+                            Button("Versjon −\(index + 1) (\(shortDate(version.updatedAt)))") {
+                                selectedVersion = index + 1
+                            }
+                        }
+                    } label: {
+                        Label("Versjoner", systemImage: "clock.arrow.circlepath")
+                    }
+                    Button {
+                        compareMode.toggle()
+                        if compareMode && selectedVersion == 0 { selectedVersion = 1 }
+                    } label: {
+                        Label(compareMode ? "Avslutt sammenligning" : "Sammenlign versjoner",
+                              systemImage: "rectangle.split.2x1")
+                    }
                 }
-                .buttonStyle(.plain)
-            }
-            Button {
-                pinMode.toggle()
-                pendingPin = nil
-                pendingPinTarget = nil
-                redlineMode = nil
-            } label: {
-                Label("Pin", systemImage: "mappin.circle")
-                    .font(.system(size: 12))
-                    .foregroundStyle(pinMode ? BoardBrand.accent : BoardBrand.dim)
-            }
-            .buttonStyle(.plain)
-            // Redlines: reviewer tegner pil/frihånd oppå panelet
-            Button {
-                redlineMode = redlineMode == "arrow" ? nil : "arrow"
-                pinMode = false
-            } label: {
-                Label("Pil", systemImage: "arrow.up.right")
-                    .font(.system(size: 12))
-                    .foregroundStyle(redlineMode == "arrow" ? BoardBrand.accent : BoardBrand.dim)
-            }
-            .buttonStyle(.plain)
-            Button {
-                redlineMode = redlineMode == "draw" ? nil : "draw"
-                pinMode = false
-            } label: {
-                Label("Tegn", systemImage: "scribble")
-                    .font(.system(size: 12))
-                    .foregroundStyle(redlineMode == "draw" ? BoardBrand.accent : BoardBrand.dim)
-            }
-            .buttonStyle(.plain)
-            Button { fullscreenPreview = true } label: {
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .font(.system(size: 12)).foregroundStyle(BoardBrand.dim)
-            }
-            .buttonStyle(.plain)
-            Menu {
                 Button {
                     exportShareURL = FrameRenderService.exportPNG(
                         frame: pair.frame, projectTitle: state.manuscript.title)
@@ -570,7 +535,8 @@ struct ReviewView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 12)).foregroundStyle(BoardBrand.dim)
+                    .font(.system(size: 15)).foregroundStyle(BoardBrand.dim)
+                    .frame(width: 30, height: 30)
             }
         }
     }
@@ -613,8 +579,52 @@ struct ReviewView: View {
         return FrameRenderService.image(for: ghost, maxWidth: 900)
     }
 
+    /// Panel-verktøy i boardstil — flytende pill, verktøyene virker på panelet.
+    private func previewToolbar() -> some View {
+        HStack(spacing: 2) {
+            toolButton("mappin.circle", "Pin", active: pinMode) {
+                pinMode.toggle()
+                pendingPin = nil
+                pendingPinTarget = nil
+                redlineMode = nil
+            }
+            toolButton("arrow.up.right", "Pil", active: redlineMode == "arrow") {
+                redlineMode = redlineMode == "arrow" ? nil : "arrow"
+                pinMode = false
+            }
+            toolButton("scribble", "Tegn", active: redlineMode == "draw") {
+                redlineMode = redlineMode == "draw" ? nil : "draw"
+                pinMode = false
+            }
+            Divider().frame(height: 16).overlay(Color.white.opacity(0.15))
+            toolButton("arrow.up.left.and.arrow.down.right", "Fullskjerm", active: false) {
+                fullscreenPreview = true
+            }
+        }
+        .padding(.horizontal, 6).padding(.vertical, 4)
+        .background(Color.white.opacity(0.06), in: Capsule())
+    }
+
+    private func toolButton(_ icon: String, _ title: String, active: Bool,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(active ? .white : BoardBrand.dim)
+                .padding(.horizontal, 9).padding(.vertical, 5)
+                .background(active ? BoardBrand.accent.opacity(0.55) : .clear,
+                            in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
     private func previewArea(_ pair: (scene: SceneSummary, frame: FrameSummary)) -> some View {
         VStack(spacing: 10) {
+            HStack {
+                Spacer()
+                previewToolbar()
+                Spacer()
+            }
             if compareMode {
                 HStack(spacing: 10) {
                     labeledPreview(pair, version: selectedVersion,
