@@ -90,6 +90,7 @@ struct FrameSummary: Identifiable, Sendable {
     // init-kall ikke må endres.
     var setLocation: String? = nil
     var stageUnit: String? = nil
+    var reviewFollowers: [String]? = nil
 }
 
 struct SceneSummary: Identifiable, Sendable {
@@ -1107,7 +1108,8 @@ actor RoleRoomAPIClient {
                 reviewColorLabel: frame["reviewColorLabel"] as? String,
                 reviewSnoozedUntil: frame["reviewSnoozedUntil"] as? String,
                 setLocation: frame["setLocation"] as? String,
-                stageUnit: frame["stageUnit"] as? String
+                stageUnit: frame["stageUnit"] as? String,
+                reviewFollowers: frame["reviewFollowers"] as? [String]
             )
         }
         return SceneSummary(

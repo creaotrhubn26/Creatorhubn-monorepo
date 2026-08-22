@@ -224,6 +224,7 @@ struct ReviewView: View {
     @State private var pendingPinTarget: CGPoint?
     @State private var fullscreenPreview = false
     @State private var exportShareURL: URL?
+    @State private var showTeamEditor = false
 
     private static let roles = ["Director", "DP", "Producer", "Editor", "Artist"]
 
@@ -269,6 +270,9 @@ struct ReviewView: View {
             }
         }
         .task { await state.load() }
+        .sheet(isPresented: $showTeamEditor) {
+            TeamEditorSheet(state: state)
+        }
         .fullScreenCover(isPresented: $fullscreenPreview) {
             ZStack(alignment: .topTrailing) {
                 Color.black.ignoresSafeArea()
@@ -859,26 +863,33 @@ struct ReviewView: View {
                         if tab == "Notater" { notesDraft = pair.frame.notes ?? "" }
                     } label: {
                         Text(tab == "Kommentarer"
-                             ? "KOMMENTARER · \(pair.frame.comments.count)" : "NOTATER")
+                             ? "KOMMENTARER · \(pair.frame.comments.count)"
+                             : ((pair.frame.notes?.isEmpty == false) ? "NOTATER •" : "NOTATER"))
                             .font(.system(size: 10, weight: .bold)).kerning(1)
                             .foregroundStyle(commentTab == tab ? .white : BoardBrand.label)
                     }
                     .buttonStyle(.plain)
                 }
                 Spacer()
-                // Reviewere (hubTeam) m/ presence
+                // Reviewere (hubTeam): avatarer m/ presence-dot + Rediger
                 if !state.reviewers.isEmpty {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 5) {
                         ForEach(Array(state.reviewers.enumerated()), id: \.offset) { _, reviewer in
-                            HStack(spacing: 3) {
-                                Circle().fill(reviewer.online ? Color.green : Color.white.opacity(0.25))
-                                    .frame(width: 6, height: 6)
-                                Text(reviewer.name)
-                                    .font(.system(size: 9)).foregroundStyle(BoardBrand.dim)
-                            }
+                            avatar(reviewer.name, role: reviewer.role, size: 20)
+                                .overlay(alignment: .bottomTrailing) {
+                                    Circle()
+                                        .fill(reviewer.online ? Color.green : Color.white.opacity(0.25))
+                                        .frame(width: 6, height: 6)
+                                        .overlay(Circle().stroke(BoardBrand.panel, lineWidth: 1))
+                                }
                         }
                     }
                 }
+                Button("Rediger") { showTeamEditor = true }
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(BoardBrand.accent)
+                    .buttonStyle(.plain)
+                followersView(pair)
             }
             if commentTab == "Notater" {
                 TextField("Notater til shotet …", text: $notesDraft, axis: .vertical)
@@ -893,8 +904,38 @@ struct ReviewView: View {
                 .foregroundStyle(BoardBrand.accent)
                 .buttonStyle(.plain)
             } else {
-            EmptyView()
+            // @-forslag fra reviewers mens man skriver
+            if let query = mentionQuery {
+                let matches = state.reviewers.filter {
+                    query.isEmpty
+                    || $0.name.lowercased().hasPrefix(query.lowercased())
+                }
+                if !matches.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(Array(matches.enumerated()), id: \.offset) { _, reviewer in
+                            Button {
+                                var words = commentText.split(
+                                    separator: " ", omittingEmptySubsequences: false)
+                                words.removeLast()
+                                let mention = "@" + reviewer.name.replacingOccurrences(of: " ", with: "")
+                                commentText = (words.map(String.init) + [mention, ""])
+                                    .joined(separator: " ")
+                            } label: {
+                                HStack(spacing: 4) {
+                                    avatar(reviewer.name, role: reviewer.role, size: 16)
+                                    Text(reviewer.name).font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(.white)
+                                }
+                                .padding(.horizontal, 7).padding(.vertical, 4)
+                                .background(Color.white.opacity(0.07), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
             HStack(spacing: 8) {
+                avatar(commentRole, role: commentRole, size: 24)
                 Menu {
                     ForEach(Self.roles, id: \.self) { role in
                         Button(role) { commentRole = role }
@@ -908,10 +949,18 @@ struct ReviewView: View {
                           ? "Svar til \(replyTo?.author ?? "")…"
                           : (pinMode && pendingPin != nil
                              ? "Kommentar til pin \(pinnedComments(pair).count + 1)…"
-                             : "Skriv en kommentar…"),
+                             : "Skriv en kommentar eller @nevn noen…"),
                           text: $commentText)
                     .font(.system(size: 12)).foregroundStyle(.white)
                     .onSubmit { sendComment() }
+                Menu {
+                    ForEach(["👍", "🔥", "🎬", "👏", "❤️", "😂"], id: \.self) { emoji in
+                        Button(emoji) { commentText += emoji }
+                    }
+                } label: {
+                    Image(systemName: "face.smiling")
+                        .font(.system(size: 13)).foregroundStyle(BoardBrand.dim)
+                }
                 Button {
                     sendComment()
                 } label: {
@@ -944,14 +993,18 @@ struct ReviewView: View {
                 Rectangle().fill(BoardBrand.border).frame(width: 2)
                     .padding(.leading, 10)
             }
-            if let index = pinned.firstIndex(where: { $0.id == comment.id }) {
-                pinBadge(number: index + 1).scaleEffect(0.8)
-            }
+            avatar(comment.author, role: comment.role, size: indent > 0 ? 20 : 26)
             VStack(alignment: .leading, spacing: 3) {
-                Text("\(comment.role) · \(comment.author) · \(shortDate(comment.at))")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(BoardBrand.dim)
-                Text(comment.text)
+                HStack(spacing: 6) {
+                    Text(comment.author)
+                        .font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+                    Text(shortDate(comment.at))
+                        .font(.system(size: 10)).foregroundStyle(BoardBrand.dim)
+                    if let index = pinned.firstIndex(where: { $0.id == comment.id }) {
+                        pinBadge(number: index + 1).scaleEffect(0.65)
+                    }
+                }
+                mentionText(comment.text)
                     .font(.system(size: 12)).foregroundStyle(.white)
                 HStack(spacing: 12) {
                     if indent == 0 {
@@ -974,6 +1027,47 @@ struct ReviewView: View {
         }
     }
 
+    /// Followers (mockup): avatar-stabel + Administrer-meny. Lagres på framen.
+    @ViewBuilder
+    private func followersView(_ pair: (scene: SceneSummary, frame: FrameSummary)) -> some View {
+        let followers = pair.frame.reviewFollowers ?? []
+        HStack(spacing: 4) {
+            Text("FØLGERE · \(followers.count)")
+                .font(.system(size: 9, weight: .bold)).kerning(1)
+                .foregroundStyle(BoardBrand.label)
+            HStack(spacing: -6) {
+                ForEach(followers.prefix(4), id: \.self) { name in
+                    let role = state.reviewers.first { $0.name == name }?.role ?? ""
+                    avatar(name, role: role, size: 18)
+                        .overlay(Circle().stroke(BoardBrand.panel, lineWidth: 1.5))
+                }
+            }
+            Menu {
+                ForEach(Array(state.reviewers.enumerated()), id: \.offset) { _, reviewer in
+                    Button {
+                        var next = followers
+                        if let index = next.firstIndex(of: reviewer.name) {
+                            next.remove(at: index)
+                        } else {
+                            next.append(reviewer.name)
+                        }
+                        state.patch(["reviewFollowers": next])
+                    } label: {
+                        if followers.contains(reviewer.name) {
+                            Label(reviewer.name, systemImage: "checkmark")
+                        } else {
+                            Text(reviewer.name)
+                        }
+                    }
+                }
+            } label: {
+                Text("Administrer")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(BoardBrand.accent)
+            }
+        }
+    }
+
     private func sendComment() {
         let text = commentText.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
@@ -986,6 +1080,49 @@ struct ReviewView: View {
         pendingPin = nil
         pendingPinTarget = nil
         pinMode = false
+    }
+
+    static func roleColor(_ role: String) -> Color {
+        switch role {
+        case "Director": return Color(hex: "#8b5cf6") ?? .purple
+        case "Cinematographer", "DoP": return .orange
+        case "Editor": return Color(hex: "#3bb8c4") ?? .teal
+        case "Producer": return Color(hex: "#4caf7d") ?? .green
+        case "Art Director": return Color(hex: "#f0c243") ?? .yellow
+        default: return .gray
+        }
+    }
+
+    /// Avatar-sirkel med initialer (mockup-stilen), farget etter rolle.
+    private func avatar(_ name: String, role: String, size: CGFloat = 26) -> some View {
+        let initials = name.split(separator: " ").prefix(2)
+            .compactMap { $0.first.map(String.init) }.joined()
+        return Circle()
+            .fill(Self.roleColor(role).opacity(0.35))
+            .frame(width: size, height: size)
+            .overlay(
+                Text(initials.isEmpty ? "?" : initials.uppercased())
+                    .font(.system(size: size * 0.38, weight: .bold))
+                    .foregroundStyle(.white))
+    }
+
+    /// Kommentartekst med @nevnelser i accent-farge.
+    private func mentionText(_ text: String) -> Text {
+        text.split(separator: " ", omittingEmptySubsequences: false)
+            .map { word in
+                let str = String(word)
+                return str.hasPrefix("@") && str.count > 1
+                    ? Text(str).foregroundColor(BoardBrand.accent)
+                    : Text(str)
+            }
+            .reduce(Text("")) { $0 == Text("") ? $1 : $0 + Text(" ") + $1 }
+    }
+
+    /// Pågående @-token i composer (for forslag).
+    private var mentionQuery: String? {
+        guard let last = commentText.split(separator: " ").last,
+              last.hasPrefix("@") else { return nil }
+        return String(last.dropFirst())
     }
 
     private func shortDate(_ iso: String) -> String {
@@ -1238,6 +1375,64 @@ struct ReviewView: View {
             Spacer()
             Text(value).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
         }
+    }
+}
+
+// Team-redigering (mockupens «Edit» på Reviewers) — samme hubTeam som hubben.
+private struct TeamEditorSheet: View {
+    @ObservedObject var state: ReviewState
+    @Environment(\.dismiss) private var dismiss
+    @State private var team: [HubState.TeamMember] = []
+    @State private var newName = ""
+    @State private var newRole = "Director"
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(team) { member in
+                    HStack {
+                        Text(member.name).foregroundStyle(.white)
+                        Spacer()
+                        Text(member.role).foregroundStyle(.secondary)
+                    }
+                }
+                .onDelete { team.remove(atOffsets: $0) }
+                HStack {
+                    TextField("Navn", text: $newName)
+                    Menu(newRole) {
+                        ForEach(["Director", "Cinematographer", "Editor",
+                                 "Producer", "Art Director", "Client"], id: \.self) { role in
+                            Button(role) { newRole = role }
+                        }
+                    }
+                    Button {
+                        let trimmed = newName.trimmingCharacters(in: .whitespaces)
+                        guard !trimmed.isEmpty else { return }
+                        team.append(.init(id: UUID().uuidString, name: trimmed, role: newRole))
+                        newName = ""
+                    } label: { Image(systemName: "plus.circle.fill") }
+                }
+            }
+            .navigationTitle("Reviewere")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Lagre") {
+                        let manuscriptId = state.manuscript.id
+                        let json = HubState.encodeList(team)
+                        Task {
+                            try? await RoleRoomAPIClient.shared.setHubMeta(
+                                manuscriptId: manuscriptId, fields: ["hubTeam": json])
+                            await state.load()
+                        }
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Avbryt") { dismiss() }
+                }
+            }
+        }
+        .onAppear { team = HubState.decodeList(state.scenes.first?.hubTeam) }
     }
 }
 
