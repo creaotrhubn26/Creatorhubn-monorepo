@@ -521,7 +521,11 @@ export function setupCastingManuscriptsRoutes(
       );
       const version = (manuscript as { version?: number } | null)?.version ?? 0;
       const etag = `W/"scenes-${req.params.manuscriptId}-${version}"`;
-      if (req.headers["if-none-match"] === etag) {
+      // Netlify-proxyen foran Render stripper standard betingede headere
+      // (If-None-Match når aldri origin) — aksepter custom header i tillegg.
+      const clientTag =
+        req.headers["if-none-match"] ?? req.headers["x-if-none-match"];
+      if (clientTag === etag) {
         res.status(304).end();
         return;
       }

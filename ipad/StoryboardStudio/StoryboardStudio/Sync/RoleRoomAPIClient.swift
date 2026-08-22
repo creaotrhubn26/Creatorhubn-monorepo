@@ -231,6 +231,8 @@ actor RoleRoomAPIClient {
         request.cachePolicy = .reloadIgnoringLocalCacheData
         if let etag = scenesETag[manuscriptId], rawScenes[manuscriptId] != nil {
             request.setValue(etag, forHTTPHeaderField: "If-None-Match")
+            // Netlify-proxyen stripper If-None-Match — custom header går gjennom.
+            request.setValue(etag, forHTTPHeaderField: "X-If-None-Match")
         }
         let (data, response) = try await URLSession.shared.data(for: request)
         let http = response as? HTTPURLResponse
