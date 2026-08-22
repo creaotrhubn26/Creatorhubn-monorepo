@@ -786,4 +786,34 @@ final class CompositionRenderTests: XCTestCase {
         let duration = try await AVURLAsset(url: url).load(.duration).seconds
         XCTAssertEqual(duration, 3.0, accuracy: 0.15)
     }
+
+    // Fokal klarhet (§73–§74 forenklet): tett klynge ett sted skal gi
+    // høy fokal kontrast; jevnt utsmurt tetthet skal flagges som diffus.
+    func testFocalContrast() throws {
+        guard let renderer = MetalStrokeRenderer() else { throw XCTSkip("Metal utilgjengelig") }
+        renderer.resizeCanvas(width: 800, height: 500)
+        // Tett mørk klynge øverst til venstre
+        var clustered: [PencilStroke] = []
+        for i in 0..<12 {
+            clustered.append(stroke(.heavy, size: 26, opacity: 0.95,
+                line(60, 40 + Double(i) * 8, 200, 44 + Double(i) * 8)))
+        }
+        renderer.rebuild(strokes: clustered, scale: 1)
+        let focused = try XCTUnwrap(renderer.toneReport())
+        XCTAssertGreaterThan(focused.focalContrast, 0.2)
+        // Klyngen spenner sonegrensene — kravet er øvre venstre kvadrant.
+        XCTAssertLessThanOrEqual(focused.focalZone?.row ?? 9, 1)
+        XCTAssertLessThanOrEqual(focused.focalZone?.col ?? 9, 1)
+
+        // Jevn lett dekning over hele flaten → diffus
+        var uniform: [PencilStroke] = []
+        for row in 0..<10 {
+            uniform.append(stroke(.shade, size: 60, opacity: 0.4,
+                line(20, 25 + Double(row) * 50, 780, 25 + Double(row) * 50, steps: 30), tilt: 40))
+        }
+        renderer.rebuild(strokes: uniform, scale: 1)
+        let diffuse = try XCTUnwrap(renderer.toneReport())
+        XCTAssertLessThan(diffuse.focalContrast, 0.12)
+        XCTAssertTrue(diffuse.isDiffuse)
+    }
 }

@@ -32,6 +32,7 @@ targets:
         CFBundleDisplayName: Storyboard Studio
         CFBundleName: StoryboardStudio
         UILaunchScreen: {}
+        NSMicrophoneUsageDescription: Mikrofonen brukes til å spille inn voiceover per shot i animatic-en.
         UIRequiredDeviceCapabilities: [arm64, metal]
         # iPad-first tegneapp — alle retninger.
         UISupportedInterfaceOrientations~ipad:

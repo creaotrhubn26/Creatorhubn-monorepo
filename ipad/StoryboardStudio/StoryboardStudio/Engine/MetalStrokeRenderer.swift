@@ -997,6 +997,12 @@ struct ToneReport: Sendable {
     static let gridRows = 5
     let densityGrid: [[Double]]
     let restZoneCount: Int    // soner med score < 0.05 (§70: rest zones)
+    // Fokal klarhet (§73–§74, forenklet uten subject-maske): står én sone
+    // tydelig frem, eller flyter tettheten jevnt utover? Rådgivende.
+    let focalZone: (row: Int, col: Int)?
+    let focalContrast: Double // peak-sone minus snitt av resten (0–1)
+
+    var isDiffuse: Bool { coveragePct > 0.15 && focalContrast < 0.12 }
 }
 
 extension MetalStrokeRenderer {
@@ -1047,12 +1053,28 @@ extension MetalStrokeRenderer {
             }
         }
         let restZones = densityGrid.flatMap { $0 }.filter { $0 < 0.05 }.count
+        // Fokal-analyse: peak-sone mot snittet av de øvrige sonene.
+        var peakValue = 0.0
+        var peakZone: (row: Int, col: Int)?
+        var zoneTotal = 0.0
+        for row in 0..<rows {
+            for col in 0..<columns {
+                let value = densityGrid[row][col]
+                zoneTotal += value
+                if value > peakValue { peakValue = value; peakZone = (row, col) }
+            }
+        }
+        let zoneCountTotal = Double(rows * columns)
+        let othersAverage = zoneCountTotal > 1
+            ? (zoneTotal - peakValue) / (zoneCountTotal - 1) : 0
+        let focalContrast = max(0, peakValue - othersAverage)
         guard total > 0 else { return nil }
         let coverage = Double(covered) / Double(total)
         guard covered > 0 else {
             return ToneReport(coveragePct: 0, lightPct: 0, midPct: 0, darkPct: 0,
                               isFlat: false, densityGrid: densityGrid,
-                              restZoneCount: restZones)
+                              restZoneCount: restZones,
+                              focalZone: nil, focalContrast: 0)
         }
         let lightPct = Double(light) / Double(covered)
         let midPct = Double(mid) / Double(covered)
@@ -1060,6 +1082,7 @@ extension MetalStrokeRenderer {
         let isFlat = coverage > 0.05 && max(lightPct, midPct, darkPct) > 0.75
         return ToneReport(coveragePct: coverage, lightPct: lightPct,
                           midPct: midPct, darkPct: darkPct, isFlat: isFlat,
-                          densityGrid: densityGrid, restZoneCount: restZones)
+                          densityGrid: densityGrid, restZoneCount: restZones,
+                          focalZone: peakZone, focalContrast: focalContrast)
     }
 }
