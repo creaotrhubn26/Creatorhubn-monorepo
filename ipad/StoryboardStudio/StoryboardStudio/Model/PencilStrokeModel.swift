@@ -13,6 +13,21 @@ struct StrokePoint: Codable, Sendable, Equatable {
     var tiltX: Double
     var tiltY: Double
     var timestamp: Double
+    // Pencil Pro barrel-roll (GRADER, iOS 17.5+) — optional så web-strøk
+    // og eldre data dekoder uendret; utelates i JSON når nil.
+    var rollAngle: Double?
+
+    init(x: Double, y: Double, pressure: Double,
+         tiltX: Double, tiltY: Double, timestamp: Double,
+         rollAngle: Double? = nil) {
+        self.x = x
+        self.y = y
+        self.pressure = pressure
+        self.tiltX = tiltX
+        self.tiltY = tiltY
+        self.timestamp = timestamp
+        self.rollAngle = rollAngle
+    }
 }
 
 enum BrushType: String, Codable, Sendable, CaseIterable {
@@ -52,6 +67,47 @@ enum BrushType: String, Codable, Sendable, CaseIterable {
 // så hvert verktøy starter med riktig fysisk karakter (§8–§11, §34–§40, §67).
 enum BrushDefaults {
     /// Farge-hint: pensler med en naturlig standardfarge (Glans = hvit).
+    /// Én-linjes onboarding per pensel (vises i long-press-menyen).
+    static func describe(_ type: BrushType) -> String {
+        switch type {
+        case .layout: return "Lys H/HB-konstruksjon — skisser først, tegn over etterpå."
+        case .pencil: return "Standard blyant — allsidig linje med trykkrespons."
+        case .graphite: return "Bred grafitt — sidelagt blyant for raske flater."
+        case .charcoal: return "Kull — grov tekstur, dype mørke."
+        case .conte: return "Conté — tørr kritt-linje med tann."
+        case .heavy: return "Tung mørk linje — silhuetter og tyngdepunkt."
+        case .detail: return "Tynn detaljlinje — ansikter, hender, presisjon."
+        case .pen: return "Penn — jevn tusjlinje med lett taper."
+        case .ink: return "Tusj — dekkende svart med spiss taper."
+        case .marker: return "Marker — bred chisel-tupp, følger roll/tilt."
+        case .brush: return "Pensel — myk våt linje med trykk-svell."
+        case .watercolor: return "Akvarell — transparent lag som bygger seg opp."
+        case .highlighter: return "Highlighter — flat markering over tegningen."
+        case .smudge: return "Smudge — drar og blander eksisterende toner."
+        case .eraser: return "Viskelær — piksel-visking; saksen sletter hele strøk."
+        case .kneaded: return "Knagummi — løfter tone forsiktig uten hard kant."
+        case .lightlift: return "Lysløft — svakt løft for høylys og tåke."
+        case .hatch: return "Skravering — parallelle linjer, trykk styrer tetthet."
+        case .crosshatch: return "Kryss-skravering — to lag (35°/112°) for tone."
+        case .shade: return "Skygge — flat grafittside med retningstekstur."
+        case .graintex: return "Korn — spredt tekstur for asfalt, sand, støy."
+        case .toneblock: return "Toneblokk — solid mørk masse; overlapp strøkene tett."
+        case .speedlines: return "Fartslinjer — retningsfølgende streker for bevegelse."
+        case .forest: return "Skog — prosedural gran-silhuett langs strøket."
+        case .debris: return "Bunnrusk — småstein og kvist langs linjen."
+        case .organictex: return "Bark — organiske skår for trestammer og stein."
+        case .fur: return "Pels — korte strå på tvers av strøkretningen."
+        case .wethair: return "Vått hår — hengende, klumpede strå med tonevariasjon."
+        case .spikes: return "Pigger — trekanter vinkelrett på strøket (pels/bark)."
+        case .airbrush: return "Luft — myk gauss-sky for gradienter og dis."
+        case .softfocus: return "Myk fokus — smudge i stor radius = dybdeskarphet."
+        case .skintex: return "Hud — porete tekstur for ansikter i nærbilde."
+        case .rocktex: return "Stein — grov mineral-tekstur for fjell og mur."
+        case .gloss: return "Glans — hvite høylys med taper (øyne, metall, vått)."
+        case .wash: return "Vask — lavering i brede bånd; dybdelag og tåke."
+        }
+    }
+
     static func colorHint(for type: BrushType) -> String? {
         type == .gloss ? "#ffffff" : nil
     }

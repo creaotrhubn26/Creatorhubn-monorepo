@@ -63,6 +63,8 @@ struct FrameSummary: Identifiable, Sendable {
     // Perspektiv-hjelpelinjer (persistert per frame; kun visning)
     let perspectiveMode: Int?
     let vanishingPoints: [[Double]]?
+    // Voiceover (m4a base64) — synkes så animatic-lyd følger prosjektet
+    let voiceoverDataURL: String?
 }
 
 struct SceneSummary: Identifiable, Sendable {
@@ -845,7 +847,8 @@ actor RoleRoomAPIClient {
                 underlayOpacity: (frame["underlayOpacity"] as? Double)
                     ?? (frame["underlayOpacity"] as? Int).map(Double.init),
                 perspectiveMode: frame["perspectiveMode"] as? Int,
-                vanishingPoints: frame["vanishingPoints"] as? [[Double]]
+                vanishingPoints: frame["vanishingPoints"] as? [[Double]],
+                voiceoverDataURL: frame["voiceoverDataURL"] as? String
             )
         }
         return SceneSummary(

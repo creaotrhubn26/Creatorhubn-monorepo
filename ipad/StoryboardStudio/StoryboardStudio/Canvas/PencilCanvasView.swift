@@ -38,6 +38,8 @@ final class CanvasState: ObservableObject {
     }
     // Pencil 2-dobbelttrykk: husk forrige pensel for viskelær-toggle.
     var previousBrushBeforeEraser: BrushType = .pencil
+    // Pencil Pro squeeze: veksle mellom to siste pensler.
+    var previousBrush: BrushType = .pencil
     // Eyedropper: neste tap på canvasen plukker farge i stedet for å tegne.
     @Published var colorPickArmed = false
     // Viskelær-objektmodus: berørte STRØK slettes hele (opprydding),
@@ -85,6 +87,7 @@ final class CanvasState: ObservableObject {
     /// hvert verktøy skal starte med sin fysiske karakter. Editor-overrides
     /// nullstilles (de gjelder per pensel-økt).
     func selectBrush(_ type: BrushType) {
+        if type != brushType { previousBrush = brushType }
         brushType = type
         if let defaults = BrushDefaults.sizeAndOpacity(for: type) {
             brushSize = defaults.size
@@ -325,19 +328,25 @@ final class MetalCanvasUIView: UIView {
         // altitude/azimuth → tiltX/tiltY i GRADER (PointerEvent-konvensjon,
         // samme som web-motoren forventer).
         var tiltX = 0.0, tiltY = 0.0
+        var rollDegrees: Double?
         if touch.type == .pencil {
             let altitude = Double(touch.altitudeAngle)          // 0 = flat, π/2 = vertikal
             let azimuth = Double(touch.azimuthAngle(in: self))
             let tiltMagnitude = (1 - altitude / (.pi / 2)) * 90 // 0..90 grader
             tiltX = cos(azimuth) * tiltMagnitude
             tiltY = sin(azimuth) * tiltMagnitude
+            // Pencil Pro barrel-roll (kalibreres mot ekte hardware).
+            if #available(iOS 17.5, *), touch.rollAngle != 0 {
+                rollDegrees = Double(touch.rollAngle) * 180 / .pi
+            }
         }
         let inputScale = contentScale
         return StrokePoint(
             x: Double(location.x) / inputScale, y: Double(location.y) / inputScale,
             pressure: max(0.05, min(1, pressure)),
             tiltX: tiltX, tiltY: tiltY,
-            timestamp: touch.timestamp * 1000)
+            timestamp: touch.timestamp * 1000,
+            rollAngle: rollDegrees)
     }
 
     private func makeStroke(points: [StrokePoint], idSuffix: String = "") -> PencilStroke? {
@@ -618,6 +627,17 @@ struct PencilCanvasView: UIViewRepresentable {
 
 // Apple Pencil 2/Pro dobbelttrykk → viskelær ↔ forrige pensel (systemvalg
 // respekteres ikke-konfigurerbart her; standard oppførsel).
+@available(iOS 17.5, *)
+extension MetalCanvasUIView {
+    // Pencil Pro squeeze: veksle til forrige pensel (validering krever
+    // ekte hardware — sim sender aldri squeeze).
+    func pencilInteraction(_ interaction: UIPencilInteraction,
+                           didReceiveSqueeze squeeze: UIPencilInteraction.Squeeze) {
+        guard squeeze.phase == .ended, let state else { return }
+        state.selectBrush(state.previousBrush)
+    }
+}
+
 extension MetalCanvasUIView: UIPencilInteractionDelegate {
     func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
         guard let state else { return }

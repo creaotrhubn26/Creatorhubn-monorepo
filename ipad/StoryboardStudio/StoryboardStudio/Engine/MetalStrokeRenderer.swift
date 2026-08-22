@@ -259,7 +259,11 @@ final class MetalStrokeRenderer {
             }
 
             var rotation: Double
-            if config.tiltRotation, point.tiltX != 0 || point.tiltY != 0 {
+            if config.tiltRotation, let roll = point.rollAngle {
+                // Pencil Pro barrel-roll: fysisk penn-rotasjon vinner over
+                // tilt-utledet retning (chisel/flate pensler).
+                rotation = roll * .pi / 180
+            } else if config.tiltRotation, point.tiltX != 0 || point.tiltY != 0 {
                 rotation = atan2(point.tiltY, point.tiltX)
             } else {
                 rotation = atan2(direction.y, direction.x)
@@ -980,6 +984,74 @@ extension MetalStrokeRenderer {
         // PNG-størrelsen; hele scenen POSTes ved hver synk, så payload teller.
         guard let jpeg = composited.jpegData(compressionQuality: 0.7) else { return nil }
         return "data:image/jpeg;base64," + jpeg.base64EncodedString()
+    }
+}
+
+// §73–§74 fullversjon: Vision-saliency finner hero-regionen i det
+// komposifterte bildet; separasjon = verdikontrast region vs omgivelsesring.
+// Rådgivende — endrer aldri tegningen. (Simulator kjører Vision på CPU.)
+import Vision
+
+struct HeroReport: Sendable {
+    let heroRect: CGRect        // normalisert, top-left-origo
+    let separation: Double      // 0–1 verdikontrast mot omgivelsene
+    var isWeak: Bool { separation < 0.15 }
+}
+
+extension MetalStrokeRenderer {
+    func heroAnalysis() -> HeroReport? {
+        guard let dataURL = thumbnailDataURL(maxWidth: 512),
+              let comma = dataURL.firstIndex(of: ","),
+              let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])),
+              let image = UIImage(data: data)?.cgImage else { return nil }
+        let request = VNGenerateAttentionBasedSaliencyImageRequest()
+        let handler = VNImageRequestHandler(cgImage: image)
+        guard (try? handler.perform([request])) != nil,
+              let observation = request.results?.first else { return nil }
+        // Vision-bbox er normalisert med origo nede til venstre.
+        guard let salient = observation.salientObjects?.first else { return nil }
+        let box = salient.boundingBox
+        let rect = CGRect(x: box.minX, y: 1 - box.maxY, width: box.width, height: box.height)
+
+        // Verdikontrast: snittmørkhet inne i rect vs ring rundt (1.6×).
+        let width = image.width, height = image.height
+        guard width > 0, height > 0,
+              let pixelData = image.dataProvider?.data,
+              let pixels = CFDataGetBytePtr(pixelData) else { return nil }
+        let bytesPerRow = image.bytesPerRow
+        let bytesPerPixel = image.bitsPerPixel / 8
+        func meanDarkness(in region: CGRect, excluding hole: CGRect?) -> Double {
+            var sum = 0.0
+            var count = 0
+            let x0 = max(0, Int(region.minX * CGFloat(width)))
+            let x1 = min(width - 1, Int(region.maxX * CGFloat(width)))
+            let y0 = max(0, Int(region.minY * CGFloat(height)))
+            let y1 = min(height - 1, Int(region.maxY * CGFloat(height)))
+            guard x1 > x0, y1 > y0 else { return 0 }
+            let stepX = max(1, (x1 - x0) / 48), stepY = max(1, (y1 - y0) / 48)
+            var y = y0
+            while y <= y1 {
+                var x = x0
+                while x <= x1 {
+                    let nx = CGFloat(x) / CGFloat(width), ny = CGFloat(y) / CGFloat(height)
+                    if let hole, hole.contains(CGPoint(x: nx, y: ny)) { x += stepX; continue }
+                    let offset = y * bytesPerRow + x * bytesPerPixel
+                    let r = Double(pixels[offset]) / 255
+                    let g = Double(pixels[offset + 1]) / 255
+                    let b = Double(pixels[offset + 2]) / 255
+                    sum += 1 - (0.299 * r + 0.587 * g + 0.114 * b)
+                    count += 1
+                    x += stepX
+                }
+                y += stepY
+            }
+            return count > 0 ? sum / Double(count) : 0
+        }
+        let inside = meanDarkness(in: rect, excluding: nil)
+        let ring = rect.insetBy(dx: -rect.width * 0.3, dy: -rect.height * 0.3)
+            .intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+        let surroundings = meanDarkness(in: ring, excluding: rect)
+        return HeroReport(heroRect: rect, separation: abs(inside - surroundings))
     }
 }
 
