@@ -278,7 +278,14 @@ struct ProjectHubView: View {
             Button("Avbryt", role: .cancel) { editingNoteId = nil }
         }
         .sheet(isPresented: $showScriptDirect) {
-            ScriptSheet(scenes: hub.scenes, activeIndex: 0)
+            ScriptSheet(scenes: hub.scenes, activeIndex: 0,
+                        onEnterReadingMode: {
+                            showScriptDirect = false
+                            showScriptFullscreen = true
+                        })
+        }
+        .fullScreenCover(isPresented: $showScriptFullscreen) {
+            ScriptSheet(scenes: hub.scenes, activeIndex: 0, readingMode: true)
         }
         .sheet(isPresented: $showShotListDirect) {
             ShotListSheet(sceneHeading: "\(hub.manuscript.title) — alle scener",
@@ -321,6 +328,7 @@ struct ProjectHubView: View {
 
     @State private var boardSheet: NativeBoardView.InitialSheet?
     @State private var showScriptDirect = false
+    @State private var showScriptFullscreen = false
     @State private var showShotListDirect = false
     @State private var showAnimaticDirect = false
 

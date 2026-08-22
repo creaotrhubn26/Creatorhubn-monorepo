@@ -4455,7 +4455,12 @@ private struct FlowTags: View {
 struct ScriptSheet: View {
     let scenes: [SceneSummary]
     let activeIndex: Int
+    // Lesemodus (fullskjerm): manus-typografi i smal kolonne med
+    // justerbar tekststørrelse — for gjennomlesing, ikke redigering.
+    var readingMode = false
+    var onEnterReadingMode: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("sb.scriptFontSize") private var readingFontSize = 16.0
 
     private func slugline(_ scene: SceneSummary, index: Int) -> String {
         let parts = [scene.intExt?.uppercased(),
@@ -4466,19 +4471,21 @@ struct ScriptSheet: View {
         return "\(scene.sceneNumber ?? index + 1). \(head)"
     }
 
+    private var baseSize: Double { readingMode ? readingFontSize : 13 }
+
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 26) {
+                    VStack(alignment: .leading, spacing: readingMode ? 34 : 26) {
                         ForEach(Array(scenes.enumerated()), id: \.element.id) { index, scene in
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(slugline(scene, index: index))
-                                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                    .font(.system(size: baseSize + 1, weight: .bold, design: .monospaced))
                                 if let text = scene.descriptionText, !text.isEmpty {
                                     Text(text)
-                                        .font(.system(size: 13, design: .monospaced))
-                                        .lineSpacing(3)
+                                        .font(.system(size: baseSize, design: .monospaced))
+                                        .lineSpacing(readingMode ? 6 : 3)
                                 }
                                 if !scene.characters.isEmpty {
                                     // Karakterfeltet kan inneholde rolle-ID-er
@@ -4502,11 +4509,31 @@ struct ScriptSheet: View {
                         }
                     }
                     .padding(20)
+                    .frame(maxWidth: readingMode ? 680 : .infinity)
+                    .frame(maxWidth: .infinity)
                 }
                 .onAppear { proxy.scrollTo(activeIndex, anchor: .top) }
             }
-            .navigationTitle("Script")
+            .navigationTitle(readingMode ? "Script — lesemodus" : "Script")
             .toolbar {
+                if readingMode {
+                    ToolbarItemGroup(placement: .topBarLeading) {
+                        Button {
+                            readingFontSize = max(12, readingFontSize - 2)
+                        } label: { Image(systemName: "textformat.size.smaller") }
+                        Button {
+                            readingFontSize = min(30, readingFontSize + 2)
+                        } label: { Image(systemName: "textformat.size.larger") }
+                    }
+                } else if let onEnterReadingMode {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            onEnterReadingMode()
+                        } label: {
+                            Label("Fullskjerm", systemImage: "arrow.up.left.and.arrow.down.right")
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) { Button("Lukk") { dismiss() } }
             }
         }
