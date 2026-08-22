@@ -99,7 +99,10 @@ export function createDesktopAuthRouter(pool: Pool): Router {
     const authorizationUrl = oauthClient.generateAuthUrl({
       access_type: 'online',
       scope: ['openid', 'email', 'profile'],
-      include_granted_scopes: true,
+      // false: true fletter inn kontoens gamle grants på samme klient og kan
+      // velte selv denne rene identitets-innloggingen med «scopes that cannot
+      // be requested together» (400 invalid_request).
+      include_granted_scopes: false,
       prompt: 'select_account',
       state: stateId,
     });

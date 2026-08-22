@@ -758,7 +758,12 @@ export function createCreatorHubGoogleRouter(
       const authorizationUrl = oauthClient.generateAuthUrl({
         access_type: 'offline',
         scope: [...CREATORHUB_GOOGLE_SCOPES],
-        include_granted_scopes: true,
+        // ALDRI true: Google fletter da kontoens TIDLIGERE grants (f.eks. gamle
+        // youtube.upload/yt-analytics-grants fra før scope-oppryddingen) inn i
+        // requesten og avviser hele innloggingen med «scopes that cannot be
+        // requested together» (400 invalid_request). Bunten over er komplett,
+        // så flagget tilfører ingenting.
+        include_granted_scopes: false,
         prompt: 'consent',
         state: stateId,
         ...(loginHint ? { login_hint: loginHint } : {}),

@@ -605,7 +605,9 @@ export function setupUserDriveCredentialsRoutes(
         scope: fullScope,
         access_type: "offline",
         prompt: "consent", // tvinger refresh_token hver gang
-        include_granted_scopes: "true",
+        // "false": "true" fletter inn kontoens gamle grants på samme klient og
+        // kan avvise requesten med «scopes that cannot be requested together».
+        include_granted_scopes: "false",
         state,
       });
 

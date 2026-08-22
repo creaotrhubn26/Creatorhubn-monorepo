@@ -2507,10 +2507,10 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           refresh_token_encrypted = COALESCE(EXCLUDED.refresh_token_encrypted, role_room_google_connections.refresh_token_encrypted),
           expiry_date = COALESCE(EXCLUDED.expiry_date, role_room_google_connections.expiry_date),
           -- OVERSKRIVER scopes (ikke union). Korrekt per (user_id, oauth_app)-rad:
-          -- Workspace-raden ('role_room') akkumulerer via include_granted_scopes=true
-          -- (token-svaret bærer HELE bevilgningen); analytics-raden
-          -- ('role_room_yt_analytics') er en isolert grant der token-svaret alltid er
-          -- akkurat analytics-scopene. Hver rad = én logisk grant, så overskrive er riktig.
+          -- hver consent ber om sin komplette bunt (include_granted_scopes=false
+          -- overalt — true fletter inn gamle grants og gir Googles «scopes that
+          -- cannot be requested together»), så token-svaret bærer hele bunten.
+          -- Hver rad = én logisk grant, så overskrive er riktig.
           scopes = EXCLUDED.scopes,
           connection_state = 'connected',
           last_error = NULL,
@@ -9204,15 +9204,16 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         : isLoginMode
           ? [...ROLE_ROOM_GOOGLE_LOGIN_SCOPES]
           : [...ROLE_ROOM_GOOGLE_SCOPES];
-      // yt-analytics-monetary KAN IKKE evalueres sammen med Drive. include_granted_scopes
-      // fletter tidligere gitte Drive-scopes inn i denne forespørselen → Google avviser
-      // («scopes that cannot be requested together»). Derfor MÅ analytics-consenten hentes
-      // isolert (false); den blir et eget refresh-token på oauth_app='role_room_yt_analytics'.
-      const includeGrantedScopes = !isLoginMode && !isYoutubeAnalyticsConsent;
+      // ALDRI include_granted_scopes=true: Google fletter da kontoens TIDLIGERE
+      // grants inn i requesten (f.eks. den isolerte yt-analytics-granten, eller
+      // gamle youtube.upload-grants fra før scope-oppryddingen) og avviser hele
+      // requesten med «scopes that cannot be requested together» (400
+      // invalid_request). Hver consent ber om sin komplette bunt og lagres som
+      // egen credential (oauth_app), så flagget tilfører ingenting.
       const authorizationUrl = oauthClient.generateAuthUrl({
         access_type: 'offline',
         scope: requestedScopes,
-        include_granted_scopes: includeGrantedScopes,
+        include_granted_scopes: false,
         prompt: 'consent',
         state: stateId,
         ...(loginHint ? { login_hint: loginHint } : {}),
@@ -9284,7 +9285,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       const authorizationUrl = oauthClient.generateAuthUrl({
         access_type: 'offline',
         scope: [...ROLE_ROOM_GOOGLE_SCOPES],
-        include_granted_scopes: true,
+        // false — se kommentar ved produsent-linken over: true fletter inn
+        // gamle grants og gir «scopes that cannot be requested together».
+        include_granted_scopes: false,
         prompt: 'consent',
         state: stateId,
       });
