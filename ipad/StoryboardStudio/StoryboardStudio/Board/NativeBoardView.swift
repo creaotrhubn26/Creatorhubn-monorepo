@@ -463,7 +463,7 @@ struct NativeBoardView: View {
         showHistorySheet = false
         let manuscriptId = board.manuscript.id
         Task {
-            try? await RoleRoomAPIClient.shared.saveFrameStrokes(
+            _ = try? await RoleRoomAPIClient.shared.saveFrameStrokes(
                 manuscriptId: manuscriptId, sceneId: ref.sceneId,
                 frameId: ref.frameId, strokesJSON: entry.strokes)
             await board.reload()
@@ -539,7 +539,7 @@ struct NativeBoardView: View {
               let json = try? StrokeSerialization.encodeToWebJSON(canvasState.strokes) else { return }
         let manuscriptId = board.manuscript.id
         Task {
-            try? await RoleRoomAPIClient.shared.saveFrameStrokes(
+            _ = try? await RoleRoomAPIClient.shared.saveFrameStrokes(
                 manuscriptId: manuscriptId, sceneId: ref.sceneId,
                 frameId: ref.frameId, strokesJSON: json)
         }
@@ -549,6 +549,10 @@ struct NativeBoardView: View {
 
     private func syncActiveFrameStrokes() {
         guard let scene = board.scene, let frame = board.frame else { return }
+        // Re-entrancy-vern (E2E-QA fant race): manuell Synk + autosynk-
+        // timeren samtidig ga to parallelle saves og visnings-desynk.
+        guard !syncInFlight else { return }
+        syncInFlight = true
         board.syncStatus = "…"
         // Thumb rendres fra akkumulatoren så SCENES/minimap viser native
         // tegninger uten å vente på web.
@@ -556,20 +560,33 @@ struct NativeBoardView: View {
         Task {
             do {
                 let json = try StrokeSerialization.encodeToWebJSON(canvasState.strokes)
-                try await RoleRoomAPIClient.shared.saveFrameStrokes(
+                let result = try await RoleRoomAPIClient.shared.saveFrameStrokes(
                     manuscriptId: board.manuscript.id, sceneId: scene.id, frameId: frame.id,
                     strokesJSON: json, thumbnailDataURL: thumbnail,
                     baseUpdatedAt: loadedFrameUpdatedAt)
                 loadedRevision = canvasState.revision
+                // KRITISK (funnet av E2E-QA): uten oppdatert baseline så
+                // NESTE synk på samme frame en falsk konflikt → union-merge
+                // gjenopplivet slettede/angrede strøk for alltid.
+                loadedFrameUpdatedAt = result.updatedAt ?? loadedFrameUpdatedAt
                 PendingStrokeStore.clear(frameId: frame.id)
                 pendingFrameIds.remove(frame.id)
-                board.syncStatus = "Synket ✓"
+                if result.merged {
+                    // Ekte konflikt: serveren hadde nyere strøk — hent unionen
+                    // inn i canvasen så lokal visning matcher det som ble lagret.
+                    await board.reload()
+                    loadActiveFrameIntoCanvas()
+                    board.syncStatus = "Synket (flettet med annen enhet) ✓"
+                } else {
+                    board.syncStatus = "Synket ✓"
+                }
             } catch SyncError.unauthenticated {
                 board.syncStatus = "Token utløpt — logg inn på nytt"
             } catch {
                 // Pending-fil beholdes; neste autosynk prøver igjen.
                 board.syncStatus = error.localizedDescription
             }
+            syncInFlight = false
         }
     }
 
@@ -589,7 +606,7 @@ struct NativeBoardView: View {
             let sceneId = scene.id
             Task {
                 do {
-                    try await RoleRoomAPIClient.shared.saveFrameStrokes(
+                    _ = try await RoleRoomAPIClient.shared.saveFrameStrokes(
                         manuscriptId: manuscriptId, sceneId: sceneId,
                         frameId: frameId, strokesJSON: json)
                     PendingStrokeStore.clear(frameId: frameId)
@@ -1775,6 +1792,7 @@ struct NativeBoardView: View {
     @State private var showHistorySheet = false
     @State private var pdfExportProgress: String?
     @State private var heroReport: HeroReport?
+    @State private var syncInFlight = false
 
     private func exportPDF(includeUnderlay: Bool) {
         pdfExportProgress = "…"
@@ -1909,11 +1927,13 @@ struct NativeBoardView: View {
                         .font(.system(size: 13)).foregroundStyle(canvasState.undoStack.isEmpty ? BoardBrand.label : .white)
                 }
                 .disabled(canvasState.undoStack.isEmpty)
+                .accessibilityLabel("Angre")
                 Button { canvasState.redo() } label: {
                     Image(systemName: "arrow.uturn.forward")
                         .font(.system(size: 13)).foregroundStyle(canvasState.redoStack.isEmpty ? BoardBrand.label : .white)
                 }
                 .disabled(canvasState.redoStack.isEmpty)
+                .accessibilityLabel("Gjenta")
                 Text("\(canvasState.strokes.count) strøk")
                     .font(.system(size: 10).monospacedDigit()).foregroundStyle(BoardBrand.dim)
             }
