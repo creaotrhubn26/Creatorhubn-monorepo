@@ -13,6 +13,7 @@ struct TaxPlacement: Decodable, Identifiable, Sendable {
     let placementType: String
     let liquidity: String
     let ringFenced: Bool
+    let ticker: String?
     let costMinor: Money
     let marketValueMinor: Money
     let unrealisedGainMinor: Money
@@ -129,13 +130,24 @@ final class SkattViewModel {
         saving = false
     }
 
-    func createPlacement(orgId: String, name: String, type: String, liquidity: String) async {
-        struct Body: Encodable { let name: String; let placementType: String; let liquidity: String }
+    func createPlacement(orgId: String, name: String, type: String, liquidity: String, ticker: String) async {
+        struct Body: Encodable { let name: String; let placementType: String; let liquidity: String; let ticker: String? }
+        let t = ticker.trimmingCharacters(in: .whitespaces)
         do {
             let _: EmptyID = try await APIClient.shared.post(
                 "/api/organizations/\(orgId)/tax/placements",
-                body: Body(name: name, placementType: type, liquidity: liquidity))
+                body: Body(name: name, placementType: type, liquidity: liquidity, ticker: t.isEmpty ? nil : t))
             showAddPlacement = false
+            await fetch(orgId: orgId)
+        } catch { load = .failed(error.localizedDescription) }
+    }
+
+    func refreshQuote(orgId: String, placementId: String) async {
+        struct Empty: Encodable {}
+        struct Result: Decodable { let marketValueMinor: Money }
+        do {
+            let _: Result = try await APIClient.shared.post(
+                "/api/organizations/\(orgId)/tax/placements/\(placementId)/refresh-quote", body: Empty())
             await fetch(orgId: orgId)
         } catch { load = .failed(error.localizedDescription) }
     }
@@ -391,6 +403,13 @@ private struct PlaceringSection: View {
                         }
                         .font(.caption).buttonStyle(.bordered)
                     }
+                    if let tick = p.ticker, !tick.isEmpty {
+                        Button {
+                            Task { await model.refreshQuote(orgId: orgId, placementId: p.id) }
+                        } label: {
+                            Label("Hent kurs (\(tick))", systemImage: "arrow.clockwise")
+                        }.font(.caption)
+                    }
                     if p.placementType != "bank" {
                         Button {
                             model.lastRealisedGainMinor = nil
@@ -427,6 +446,8 @@ private struct AddPlacementSheet: View {
     @State private var name = ""
     @State private var type = "money_market_fund"
     @State private var liquidity = "days"
+    @State private var ticker = ""
+    private var showsTicker: Bool { type == "stock" || type == "equity_fund" }
     private let types: [(String, String)] = [
         ("bank", "Bankkonto"), ("money_market_fund", "Pengemarkedsfond"),
         ("bond_fund", "Obligasjonsfond"), ("equity_fund", "Aksjefond"), ("stock", "Aksjer"),
@@ -437,10 +458,20 @@ private struct AddPlacementSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Ny plassering") {
+                Section {
                     TextField("Navn (f.eks. «KLP Pengemarked»)", text: $name)
                     Picker("Type", selection: $type) { ForEach(types, id: \.0) { Text($0.1).tag($0.0) } }
                     Picker("Likviditet", selection: $liquidity) { ForEach(liquidities, id: \.0) { Text($0.1).tag($0.0) } }
+                    if showsTicker {
+                        TextField("Ticker for auto-kurs (f.eks. EQNR.OL)", text: $ticker)
+                            .textInputAutocapitalization(.characters).autocorrectionDisabled()
+                    }
+                } header: {
+                    Text("Ny plassering")
+                } footer: {
+                    if showsTicker {
+                        Text("Legg inn Oslo Børs-ticker (f.eks. EQNR.OL) for å hente kurs automatisk. La stå tomt for manuell verdi — fond uten børsticker oppdateres manuelt.")
+                    }
                 }
             }
             .navigationTitle("Legg til plassering")
@@ -448,7 +479,7 @@ private struct AddPlacementSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Avbryt") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Lagre") {
-                        Task { await model.createPlacement(orgId: orgId, name: name, type: type, liquidity: liquidity) }
+                        Task { await model.createPlacement(orgId: orgId, name: name, type: type, liquidity: liquidity, ticker: showsTicker ? ticker : "") }
                     }.disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }

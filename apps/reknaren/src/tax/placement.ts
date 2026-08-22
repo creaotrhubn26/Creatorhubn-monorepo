@@ -17,6 +17,7 @@ export interface Placement {
   placementType: PlacementType;
   liquidity: Liquidity;
   ringFenced: boolean;
+  ticker: string | null;      // Yahoo-ticker for auto-kurs, ellers manuell verdi
   costMinor: bigint;          // sum innskudd (inngangsverdi)
   marketValueMinor: bigint;   // siste verdivurdering, ellers kostpris (bank)
   unrealisedGainMinor: bigint;
@@ -53,15 +54,15 @@ export async function createPlacement(
   db: Db,
   params: {
     organizationId: string; actor: Actor; name: string; placementType: PlacementType;
-    liquidity: Liquidity; isin?: string; accountRef?: string; ringFenced?: boolean; openedAt: string;
+    liquidity: Liquidity; isin?: string; ticker?: string; accountRef?: string; ringFenced?: boolean; openedAt: string;
   },
 ): Promise<{ id: string }> {
   const id = newId();
   await db.query(
     `INSERT INTO tax_reserve_placements
-       (id, organization_id, name, placement_type, isin, account_ref, liquidity, ring_fenced, opened_at, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-    [id, params.organizationId, params.name, params.placementType, params.isin ?? null,
+       (id, organization_id, name, placement_type, isin, ticker, account_ref, liquidity, ring_fenced, opened_at, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    [id, params.organizationId, params.name, params.placementType, params.isin ?? null, params.ticker ?? null,
      params.accountRef ?? null, params.liquidity, params.ringFenced ?? false, params.openedAt, params.actor.userId],
   );
   return { id };
@@ -86,7 +87,7 @@ export async function listPlacements(
   params: { organizationId: string; asOf: string },
 ): Promise<Placement[]> {
   const rows = (await db.query(
-    `SELECT p.id::text AS id, p.name, p.placement_type, p.liquidity, p.ring_fenced,
+    `SELECT p.id::text AS id, p.name, p.placement_type, p.liquidity, p.ring_fenced, p.ticker,
             COALESCE(dep.cost, 0)::text AS cost,
             val.market_value_minor::text AS value, val.valued_at::text AS valued_at
      FROM tax_reserve_placements p
@@ -108,7 +109,7 @@ export async function listPlacements(
     const market = r.value != null ? BigInt(r.value) : cost; // bank u/verdi ≈ kostpris
     return {
       id: r.id, name: r.name, placementType: r.placement_type as PlacementType,
-      liquidity: r.liquidity as Liquidity, ringFenced: r.ring_fenced === true,
+      liquidity: r.liquidity as Liquidity, ringFenced: r.ring_fenced === true, ticker: r.ticker ?? null,
       costMinor: cost, marketValueMinor: market, unrealisedGainMinor: market - cost,
       gainTaxMinor: 0n, // fylles i taxReserveOverview med satser fra regelregisteret
       valuedAt: r.valued_at ?? null,

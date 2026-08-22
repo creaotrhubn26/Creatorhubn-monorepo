@@ -124,8 +124,9 @@ import { DomainError, NotFoundError, ValidationError } from '../shared/errors.js
 import { buildTaxEstimate } from '../tax/estimate.js';
 import { recordTaxReserve, taxReserveOverview, taxSetAsideForInvoice } from '../tax/reserve.js';
 import { createPlacement, listAdvanceInstallments, recordValuation, setAdvanceInstallments } from '../tax/placement.js';
-import { addLot, methodForType, recordDisposal, unitsToMicro } from '../tax/lots.js';
+import { addLot, lotHoldings, methodForType, recordDisposal, unitsToMicro } from '../tax/lots.js';
 import type { PlacementType } from '../tax/placement.js';
+import { fetchYahooQuote, marketValueFromQuote } from '../tax/market-quote.js';
 import { commonPurchaseCategories, registerPurchase } from '../tax/purchase.js';
 import type { OrganizationForm } from '../rules/types.js';
 import { buildVatReport, listVatCodes } from '../vat/engine.js';
@@ -4422,6 +4423,7 @@ export function createApiServer(deps: ApiDeps): express.Express {
         placementType: z.enum(['bank', 'money_market_fund', 'bond_fund', 'equity_fund', 'stock']),
         liquidity: z.enum(['instant', 'days', 'short_term', 'long_term']),
         isin: z.string().max(20).optional(),
+        ticker: z.string().max(20).optional(),
         accountRef: z.string().max(60).optional(),
         ringFenced: z.boolean().optional(),
         openedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -4431,10 +4433,35 @@ export function createApiServer(deps: ApiDeps): express.Express {
         name: body.name, placementType: body.placementType, liquidity: body.liquidity,
         openedAt: body.openedAt ?? new Date().toISOString().slice(0, 10),
         ...(body.isin ? { isin: body.isin } : {}),
+        ...(body.ticker ? { ticker: body.ticker } : {}),
         ...(body.accountRef ? { accountRef: body.accountRef } : {}),
         ...(body.ringFenced !== undefined ? { ringFenced: body.ringFenced } : {}),
       });
       res.status(201).json(toJson(r));
+    } catch (err) { next(err); }
+  });
+  // Hent dagskurs (gratis Yahoo) og lagre markedsverdi = kurs × antall andeler. Kun ticker + lots.
+  app.post('/api/organizations/:orgId/tax/placements/:placementId/refresh-quote', requireAuth, requireOrgPermission('journal.post'), async (req: AuthedRequest, res, next) => {
+    try {
+      const placementId = z.string().uuid().parse(req.params.placementId);
+      const p = (await deps.db.query(
+        `SELECT ticker, placement_type FROM tax_reserve_placements WHERE id=$1 AND organization_id=$2`, [placementId, req.params.orgId],
+      )).rows[0];
+      if (!p) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Plasseringen finnes ikke.' } }); return; }
+      if (!p.ticker) { res.status(400).json({ error: { code: 'NO_TICKER', message: 'Plasseringen har ingen ticker for kurshenting.' } }); return; }
+      const holdings = await lotHoldings(deps.db, placementId, methodForType(p.placement_type as PlacementType));
+      if (!holdings.hasLots || holdings.unitsMicro <= 0n) {
+        res.status(400).json({ error: { code: 'NO_UNITS', message: 'Registrer kjøp (andeler) før kurshenting kan regne ut verdi.' } }); return;
+      }
+      let quote;
+      try { quote = await fetchYahooQuote(p.ticker); }
+      catch (e) { res.status(502).json({ error: { code: 'QUOTE_FAILED', message: e instanceof Error ? e.message : 'Kurshenting feilet.' } }); return; }
+      if (quote.currency !== 'NOK') {
+        res.status(400).json({ error: { code: 'NON_NOK', message: `Kursen er i ${quote.currency}, ikke NOK. Valutaomregning støttes ikke ennå.` } }); return;
+      }
+      const marketValueMinor = marketValueFromQuote(quote.priceMinor, holdings.unitsMicro);
+      await recordValuation(deps.db, { placementId, marketValueMinor, valuedAt: new Date().toISOString().slice(0, 10) });
+      res.status(201).json(toJson({ marketValueMinor, priceMinor: quote.priceMinor, ticker: quote.ticker }));
     } catch (err) { next(err); }
   });
   // Registrer dagens markedsverdi for en plassering (append-only).
