@@ -81,8 +81,11 @@ struct HubSidebar: View {
 
 @MainActor
 final class HubState: ObservableObject {
-    let project: ProjectSummary
-    let manuscript: ManuscriptSummary
+    @Published var project: ProjectSummary
+    @Published var manuscript: ManuscriptSummary
+    // Prosjektvelgeren (mockup: «PROJECT Neon City ▾»)
+    @Published var allProjects: [ProjectSummary] = []
+    @Published var manuscriptsByProject: [String: [ManuscriptSummary]] = [:]
     @Published var scenes: [SceneSummary] = []
     @Published var tasks: [HubTask] = []
     @Published var notes = ""
@@ -152,6 +155,33 @@ final class HubState: ObservableObject {
 
     private func sceneUpdatedAt(_ scene: SceneSummary) -> String {
         scene.frames.compactMap(\.updatedAt).max() ?? ""
+    }
+
+    /// Bytt produksjon uten å forlate hubben — nullstiller og laster alt.
+    func switchTo(project: ProjectSummary, manuscript: ManuscriptSummary) async {
+        self.project = project
+        self.manuscript = manuscript
+        scenes = []
+        tasks = []
+        notes = ""
+        quote = ""
+        moodboard = []
+        mapPositions = [:]
+        mapNotes = []
+        team = []
+        assets = []
+        palette = []
+        info = ProjectInfo()
+        await load()
+    }
+
+    func loadProjectChoices() async {
+        guard let projects = try? await RoleRoomAPIClient.shared.fetchProjects() else { return }
+        allProjects = projects
+        for candidate in projects where manuscriptsByProject[candidate.id] == nil {
+            manuscriptsByProject[candidate.id] = (try? await RoleRoomAPIClient.shared
+                .fetchManuscripts(projectId: candidate.id)) ?? []
+        }
     }
 
     func load() async {
@@ -315,7 +345,10 @@ struct ProjectHubView: View {
         .navigationTitle(hub.project.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .task { await hub.load() }
+        .task {
+            await hub.load()
+            await hub.loadProjectChoices()
+        }
         .fullScreenCover(isPresented: $showBoard) {
             NavigationStack {
                 NativeBoardView(manuscript: hub.manuscript, projectId: hub.project.id,
@@ -467,6 +500,40 @@ struct ProjectHubView: View {
     private var hero: some View {
         HStack(alignment: .center, spacing: 20) {
             VStack(alignment: .leading, spacing: 6) {
+                // Prosjektvelgeren (mockup: PROJECT ▾) — bytt produksjon
+                // uten å forlate hubben.
+                Menu {
+                    ForEach(hub.allProjects) { project in
+                        let manuscripts = hub.manuscriptsByProject[project.id] ?? []
+                        if manuscripts.count <= 1 {
+                            Button(project.name) {
+                                guard let manuscript = manuscripts.first else { return }
+                                Task { await hub.switchTo(project: project, manuscript: manuscript) }
+                            }
+                        } else {
+                            Menu(project.name) {
+                                ForEach(manuscripts) { manuscript in
+                                    Button(manuscript.title) {
+                                        Task { await hub.switchTo(project: project,
+                                                                  manuscript: manuscript) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("PROSJEKT")
+                            .font(.system(size: 10, weight: .bold)).kerning(1)
+                            .foregroundStyle(BoardBrand.label)
+                        Text(hub.project.name)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(BoardBrand.accent)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(BoardBrand.label)
+                    }
+                }
                 Text(hub.manuscript.title)
                     .font(.system(size: 28, weight: .bold)).foregroundStyle(.white)
                 Text("Fortsett der du slapp — \(hub.scenes.count) scener · \(hub.allFrames.count) shots")
