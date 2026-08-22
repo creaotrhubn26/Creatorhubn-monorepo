@@ -27,6 +27,8 @@ targets:
       path: Reknaren/Generated/Info.plist
       properties:
         CFBundleDisplayName: Reknaren
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
