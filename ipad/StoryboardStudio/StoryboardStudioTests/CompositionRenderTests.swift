@@ -753,7 +753,7 @@ final class CompositionRenderTests: XCTestCase {
             drawingWidth: 1920, drawingHeight: 1080,
             frameStatus: nil, comments: [], updatedAt: nil,
             underlayDataURL: nil, underlayOpacity: nil,
-            perspectiveMode: nil, vanishingPoints: nil)
+            perspectiveMode: nil, vanishingPoints: nil, voiceoverDataURL: nil)
     }
 
     /// Tekst-annotasjoner skal med i eksport-render (CoreText-pass) —
@@ -815,5 +815,24 @@ final class CompositionRenderTests: XCTestCase {
         let diffuse = try XCTUnwrap(renderer.toneReport())
         XCTAssertLessThan(diffuse.focalContrast, 0.12)
         XCTAssertTrue(diffuse.isDiffuse)
+    }
+
+    // §74 Vision-saliency: skal gi gyldig rapport uten krasj på ekte
+    // komposisjon (verdier i [0,1]; sim kjører Vision på CPU).
+    func testHeroAnalysisReturnsValidRange() throws {
+        guard let renderer = MetalStrokeRenderer() else { throw XCTSkip("Metal utilgjengelig") }
+        renderer.resizeCanvas(width: 800, height: 500)
+        var strokes: [PencilStroke] = []
+        for i in 0..<10 {
+            strokes.append(stroke(.heavy, size: 30, opacity: 0.95,
+                line(280, 120 + Double(i) * 12, 520, 124 + Double(i) * 12)))
+        }
+        strokes.append(stroke(.hatch, size: 40, opacity: 0.3, line(40, 420, 760, 430)))
+        renderer.rebuild(strokes: strokes, scale: 1)
+        guard let hero = renderer.heroAnalysis() else {
+            throw XCTSkip("Vision fant ingen salient region i sim")
+        }
+        XCTAssertTrue((0...1).contains(hero.separation))
+        XCTAssertTrue(CGRect(x: 0, y: 0, width: 1, height: 1).contains(hero.heroRect.origin))
     }
 }

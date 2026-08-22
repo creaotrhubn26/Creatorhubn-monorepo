@@ -352,7 +352,12 @@ struct NativeBoardView: View {
         .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showAnimatic) {
             AnimaticView(sceneHeading: board.scene?.heading ?? "",
-                         frames: board.scene?.frames ?? [])
+                         frames: board.scene?.frames ?? [],
+                         onVoiceoverChanged: { frameId, dataURL in
+                             board.patchFrame(frameId: frameId, fields: [
+                                 "voiceoverDataURL": dataURL ?? NSNull(),
+                             ])
+                         })
         }
         .fullScreenCover(isPresented: $showFullscreenDraw) {
             if let frame = board.frame {
@@ -381,11 +386,16 @@ struct NativeBoardView: View {
             presentOthers = await RoleRoomAPIClient.shared.reportPresence(
                 manuscriptId: board.manuscript.id)
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                // Andre til stede → tettere polling (10 s, 304-billig).
+                let interval: UInt64 = presentOthers.isEmpty ? 30 : 10
+                try? await Task.sleep(nanoseconds: interval * 1_000_000_000)
                 guard !Task.isCancelled else { break }
                 presentOthers = await RoleRoomAPIClient.shared.reportPresence(
                     manuscriptId: board.manuscript.id)
                 let changed = await board.refreshFromServer()
+                if changed, let other = presentOthers.first {
+                    board.syncStatus = "Oppdatert fra \(other)"
+                }
                 if changed,
                    canvasState.revision == loadedRevision,
                    board.frame?.updatedAt != loadedFrameUpdatedAt {
@@ -682,6 +692,7 @@ struct NativeBoardView: View {
             }
             Button {
                 toneReport = renderer?.toneReport()
+                heroReport = renderer?.heroAnalysis()
                 showToneReport = true
             } label: {
                 Image(systemName: "chart.bar")
@@ -915,7 +926,7 @@ struct NativeBoardView: View {
                 .presentationDetents([.medium])
         }
         .sheet(isPresented: $showToneReport) {
-            ToneReportSheet(report: toneReport)
+            ToneReportSheet(report: toneReport, hero: heroReport)
                 .presentationDetents([.medium])
         }
         .sheet(item: $exportPDFURL) { url in
@@ -1763,6 +1774,7 @@ struct NativeBoardView: View {
     @State private var historyEntries: [(updatedAt: String, strokes: String)] = []
     @State private var showHistorySheet = false
     @State private var pdfExportProgress: String?
+    @State private var heroReport: HeroReport?
 
     private func exportPDF(includeUnderlay: Bool) {
         pdfExportProgress = "…"
@@ -1936,6 +1948,7 @@ struct NativeBoardView: View {
                                 .buttonStyle(.plain)
                                 .accessibilityLabel(name)
                                 .contextMenu {
+                                    Text(BrushDefaults.describe(type))
                                     Button {
                                         canvasState.toggleFavoriteBrush(type)
                                     } label: {
@@ -2389,6 +2402,9 @@ enum AnimaticVideoExporter {
 struct AnimaticView: View {
     let sceneHeading: String
     let frames: [FrameSummary]
+    // Synk: kalles ved opptak-stopp (dataURL) og sletting (nil) —
+    // boardet PATCHer framen så lyden følger prosjektet på tvers av enheter.
+    var onVoiceoverChanged: ((String, String?) -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var index = 0
     @State private var playing = true
@@ -2481,6 +2497,7 @@ struct AnimaticView: View {
                             Button {
                                 VoiceoverStore.delete(frameId: frame.id)
                                 voiceoverRevision += 1
+                                onVoiceoverChanged?(frame.id, nil)
                             } label: {
                                 Image(systemName: "trash")
                                     .font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
@@ -2494,6 +2511,16 @@ struct AnimaticView: View {
         }
         .sheet(item: $exportURL) { url in
             ShareSheet(items: [url])
+        }
+        .onAppear {
+            // Server-voiceover → lokale filer (andre enheters opptak).
+            for frame in frames where !VoiceoverStore.exists(frameId: frame.id) {
+                guard let dataURL = frame.voiceoverDataURL,
+                      let comma = dataURL.firstIndex(of: ","),
+                      let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])) else { continue }
+                try? data.write(to: VoiceoverStore.url(frameId: frame.id))
+            }
+            voiceoverRevision += 1
         }
         .task(id: "\(index)-\(playing)") {
             guard playing, frames.indices.contains(index) else { return }
@@ -2927,6 +2954,9 @@ extension AnimaticView {
             audioRecorder = nil
             recordingFrameId = nil
             voiceoverRevision += 1
+            if let data = try? Data(contentsOf: VoiceoverStore.url(frameId: frameId)) {
+                onVoiceoverChanged?(frameId, "data:audio/m4a;base64," + data.base64EncodedString())
+            }
             return
         }
         audioRecorder?.stop()
@@ -3472,6 +3502,7 @@ struct BrushEditorSheet: View {
 // med flathetsvarsel. Kun analyse — foreslår, tvinger aldri.
 struct ToneReportSheet: View {
     let report: ToneReport?
+    var hero: HeroReport?
     @Environment(\.dismiss) private var dismiss
 
     private func bar(_ label: String, _ value: Double, hint: String, color: Color) -> some View {
@@ -3529,6 +3560,22 @@ struct ToneReportSheet: View {
                                 } else if report.focalZone != nil {
                                     Text("Tyngdepunktet er markert i tetthetskartet under.")
                                         .font(.caption).foregroundStyle(.secondary)
+                                }
+                                // §74 hero-separasjon (Vision-saliency)
+                                if let hero {
+                                    HStack {
+                                        Text("Hero-separasjon").font(.system(size: 12, weight: .bold))
+                                        Spacer()
+                                        Text("\(Int(hero.separation * 100)) %")
+                                            .font(.system(size: 12).monospacedDigit())
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    if hero.isWeak {
+                                        Label("Hero-regionen drukner i omgivelsene — øk verdikontrasten rundt hovedmotivet.",
+                                              systemImage: "exclamationmark.triangle")
+                                            .font(.caption)
+                                            .foregroundStyle(.orange)
+                                    }
                                 }
                             }
                         }
