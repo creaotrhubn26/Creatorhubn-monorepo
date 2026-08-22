@@ -11,7 +11,17 @@ final class AssetsState: ObservableObject {
     let project: ProjectSummary
     let manuscript: ManuscriptSummary
     @Published var files: [RoleRoomAPIClient.StorageFileSummary] = []
+    @Published var trash: [RoleRoomAPIClient.StorageFileSummary] = []
     @Published var loading = true
+    // Brukerstyrte mapper + fargeprøver — persistert i hub-metadataene.
+    @Published var userFolders: [UserFolder] = []
+    @Published var colorSwatches: [String] = []
+
+    struct UserFolder: Identifiable, Codable {
+        var id: String
+        var name: String
+        var fileIds: [String]
+    }
 
     init(project: ProjectSummary, manuscript: ManuscriptSummary) {
         self.project = project
@@ -21,7 +31,43 @@ final class AssetsState: ObservableObject {
     func load() async {
         loading = files.isEmpty
         files = await RoleRoomAPIClient.shared.listStorageFiles(projectId: project.id)
+        if let scenes = try? await RoleRoomAPIClient.shared
+            .fetchScenes(manuscriptId: manuscript.id) {
+            userFolders = HubState.decodeList(scenes.first?.hubAssetFolders)
+            colorSwatches = HubState.decodeMoodboard(scenes.first?.hubAssetColors)
+        }
         loading = false
+    }
+
+    func loadTrash() async {
+        trash = await RoleRoomAPIClient.shared.listTrash()
+    }
+
+    func persistMeta() {
+        let manuscriptId = manuscript.id
+        let payload: [String: any Sendable] = [
+            "hubAssetFolders": HubState.encodeList(userFolders),
+            "hubAssetColors": (try? JSONSerialization.data(withJSONObject: colorSwatches))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "[]",
+        ]
+        Task {
+            try? await RoleRoomAPIClient.shared.setHubMeta(manuscriptId: manuscriptId,
+                                                           fields: payload)
+        }
+    }
+
+    func folderFor(fileId: String) -> UserFolder? {
+        userFolders.first { $0.fileIds.contains(fileId) }
+    }
+
+    func move(fileId: String, to folderId: String?) {
+        for index in userFolders.indices {
+            userFolders[index].fileIds.removeAll { $0 == fileId }
+        }
+        if let folderId, let index = userFolders.firstIndex(where: { $0.id == folderId }) {
+            userFolders[index].fileIds.append(fileId)
+        }
+        persistMeta()
     }
 }
 
@@ -36,6 +82,13 @@ struct AssetsView: View {
     @State private var previewImage: UIImage?
     @State private var pendingDeleteId: String?
     @State private var status: String?
+    @State private var listMode = false
+    @State private var showTrash = false
+    @State private var showNewFolder = false
+    @State private var newFolderName = ""
+    @State private var renameFileId: String?
+    @State private var renameDraft = ""
+    @State private var newSwatchColor = Color(red: 0.55, green: 0.36, blue: 0.96)
 
     init(project: ProjectSummary, manuscript: ManuscriptSummary) {
         _state = StateObject(wrappedValue: AssetsState(project: project, manuscript: manuscript))
@@ -56,7 +109,16 @@ struct AssetsView: View {
 
     private var visibleFiles: [RoleRoomAPIClient.StorageFileSummary] {
         state.files
-            .filter { folderFilter == nil || folderKey($0) == folderFilter }
+            .filter { file in
+                guard let folderFilter else { return true }
+                if folderFilter.hasPrefix("uf:") {
+                    let folderId = String(folderFilter.dropFirst(3))
+                    return state.folderFor(fileId: file.id)?.id == folderId
+                }
+                // Auto-gruppene viser kun filer som IKKE ligger i brukermappe
+                return folderKey(file) == folderFilter
+                    && state.folderFor(fileId: file.id) == nil
+            }
             .filter {
                 switch typeFilter {
                 case "Bilder": return $0.isImage
@@ -81,14 +143,18 @@ struct AssetsView: View {
                     filterRow
                     if folderFilter == nil && searchText.isEmpty {
                         folderRow
+                        swatchRow
                     }
-                    fileGrid
+                    if listMode { fileList } else { fileGrid }
                 }
                 .padding(18)
             }
             .background(BoardBrand.chrome)
-            .navigationTitle(folderFilter.flatMap { key in
-                Self.folders.first { $0.key == key }?.title
+            .navigationTitle(folderFilter.flatMap { key -> String? in
+                if key.hasPrefix("uf:") {
+                    return state.userFolders.first { $0.id == String(key.dropFirst(3)) }?.name
+                }
+                return Self.folders.first { $0.key == key }?.title
             } ?? "Assets")
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
@@ -100,6 +166,18 @@ struct AssetsView: View {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     if let status {
                         Text(status).font(.system(size: 11)).foregroundStyle(BoardBrand.dim)
+                    }
+                    Button { listMode.toggle() } label: {
+                        Image(systemName: listMode ? "square.grid.2x2" : "list.bullet")
+                    }
+                    Button { showNewFolder = true } label: {
+                        Label("Ny mappe", systemImage: "folder.badge.plus")
+                    }
+                    Button {
+                        showTrash = true
+                        Task { await state.loadTrash() }
+                    } label: {
+                        Image(systemName: "trash")
                     }
                     PhotosPicker(selection: $importPickerItem, matching: .images) {
                         Label("Importer", systemImage: "square.and.arrow.down")
@@ -151,6 +229,78 @@ struct AssetsView: View {
                 }
             }
         }
+        .alert("Ny mappe", isPresented: $showNewFolder) {
+            TextField("Mappenavn", text: $newFolderName)
+            Button("Opprett") {
+                let name = newFolderName.trimmingCharacters(in: .whitespaces)
+                newFolderName = ""
+                guard !name.isEmpty else { return }
+                state.userFolders.append(AssetsState.UserFolder(
+                    id: UUID().uuidString, name: name, fileIds: []))
+                state.persistMeta()
+            }
+            Button("Avbryt", role: .cancel) { newFolderName = "" }
+        }
+        .alert("Omdøp", isPresented: Binding(
+            get: { renameFileId != nil },
+            set: { if !$0 { renameFileId = nil } })) {
+            TextField("Navn", text: $renameDraft)
+            Button("Lagre") {
+                let name = renameDraft.trimmingCharacters(in: .whitespaces)
+                guard let target = renameFileId, !name.isEmpty else { renameFileId = nil; return }
+                renameFileId = nil
+                if target.hasPrefix("folder:") {
+                    let folderId = String(target.dropFirst(7))
+                    if let index = state.userFolders.firstIndex(where: { $0.id == folderId }) {
+                        state.userFolders[index].name = name
+                        state.persistMeta()
+                    }
+                } else {
+                    Task {
+                        if await RoleRoomAPIClient.shared.renameStorageFile(
+                            fileId: target, displayName: name) {
+                            await state.load()
+                        }
+                    }
+                }
+            }
+            Button("Avbryt", role: .cancel) { renameFileId = nil }
+        }
+        .sheet(isPresented: $showTrash) {
+            NavigationStack {
+                List {
+                    if state.trash.isEmpty {
+                        Text("Papirkurven er tom.").foregroundStyle(.secondary)
+                    }
+                    ForEach(state.trash) { file in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(file.displayName).font(.subheadline)
+                                Text(ByteCountFormatter.string(
+                                    fromByteCount: Int64(file.sizeBytes), countStyle: .file))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("Gjenopprett") {
+                                Task {
+                                    if await RoleRoomAPIClient.shared
+                                        .restoreStorageFile(fileId: file.id) {
+                                        await state.loadTrash()
+                                        await state.load()
+                                    }
+                                }
+                            }
+                            .buttonStyle(.borderedProminent).tint(BoardBrand.accent)
+                        }
+                    }
+                }
+                .navigationTitle("Papirkurv")
+                .toolbar { ToolbarItem(placement: .cancellationAction) {
+                    Button("Lukk") { showTrash = false }
+                } }
+            }
+            .presentationDetents([.medium, .large])
+        }
         .confirmationDialog("Flytte filen til papirkurven?",
                             isPresented: Binding(get: { pendingDeleteId != nil },
                                                  set: { if !$0 { pendingDeleteId = nil } })) {
@@ -193,6 +343,43 @@ struct AssetsView: View {
     private var folderRow: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4),
                   spacing: 12) {
+            // Brukerstyrte mapper (Ny mappe) — med «…»-meny
+            ForEach(state.userFolders) { folder in
+                Button { folderFilter = "uf:\(folder.id)" } label: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "folder.fill")
+                                .font(.system(size: 30))
+                                .foregroundStyle(BoardBrand.accent.opacity(0.7))
+                            Spacer()
+                            Menu {
+                                Button("Omdøp") {
+                                    renameFileId = "folder:\(folder.id)"
+                                    renameDraft = folder.name
+                                }
+                                Button("Slett mappe", role: .destructive) {
+                                    state.userFolders.removeAll { $0.id == folder.id }
+                                    state.persistMeta()
+                                }
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .foregroundStyle(BoardBrand.dim)
+                                    .frame(width: 24, height: 24)
+                            }
+                        }
+                        .frame(minHeight: 70, alignment: .top)
+                        Text(folder.name)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                        Text("\(folder.fileIds.count) \(folder.fileIds.count == 1 ? "fil" : "filer")")
+                            .font(.system(size: 11)).foregroundStyle(BoardBrand.dim)
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(BoardBrand.panel, in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+            }
             ForEach(Self.folders, id: \.key) { folder in
                 let count = state.files.filter { folderKey($0) == folder.key }.count
                 if count > 0 {
@@ -216,6 +403,118 @@ struct AssetsView: View {
                 }
             }
         }
+    }
+
+    // Fargeprøve-kort (mockupens #hex-kort) — prosjektets fargespråk.
+    private var swatchRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("FARGER")
+                .font(.system(size: 10, weight: .bold)).kerning(1)
+                .foregroundStyle(BoardBrand.label)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 6),
+                      spacing: 12) {
+                ForEach(state.colorSwatches, id: \.self) { hex in
+                    VStack(alignment: .trailing, spacing: 0) {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(hex: hex) ?? .gray)
+                            .frame(height: 76)
+                            .overlay(alignment: .bottomTrailing) {
+                                Text(hex.uppercased())
+                                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(.white)
+                                    .padding(5)
+                                    .background(.black.opacity(0.45), in: Capsule())
+                                    .padding(5)
+                            }
+                    }
+                    .contextMenu {
+                        Button("Slett", role: .destructive) {
+                            state.colorSwatches.removeAll { $0 == hex }
+                            state.persistMeta()
+                        }
+                    }
+                }
+                VStack(spacing: 4) {
+                    ColorPicker("", selection: $newSwatchColor, supportsOpacity: false)
+                        .labelsHidden()
+                    Button {
+                        let hex = newSwatchColor.hexString
+                        guard !state.colorSwatches.contains(hex) else { return }
+                        state.colorSwatches.append(hex)
+                        state.persistMeta()
+                    } label: {
+                        Label("Legg til", systemImage: "plus")
+                            .font(.system(size: 10)).foregroundStyle(BoardBrand.dim)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .frame(height: 76)
+            }
+        }
+    }
+
+    // Listevisning (grid/liste-toggle)
+    private var fileList: some View {
+        VStack(spacing: 6) {
+            ForEach(visibleFiles) { file in
+                HStack(spacing: 10) {
+                    Group {
+                        if file.isImage, let image = FrameImageCache.image(for: file.downloadPath) {
+                            Image(uiImage: image).resizable().scaledToFill()
+                        } else {
+                            Rectangle().fill(Color.white.opacity(0.05))
+                                .overlay(Image(systemName: file.isImage ? "photo" : "doc.text")
+                                    .font(.system(size: 14)).foregroundStyle(BoardBrand.label))
+                        }
+                    }
+                    .frame(width: 52, height: 32)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                    Text(file.displayName)
+                        .font(.system(size: 12)).foregroundStyle(.white).lineLimit(1)
+                    if let folder = state.folderFor(fileId: file.id) {
+                        Text(folder.name)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(BoardBrand.accent)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(BoardBrand.accent.opacity(0.15), in: Capsule())
+                    }
+                    Spacer()
+                    Text(fileTypeLabel(file))
+                        .font(.system(size: 9, weight: .bold)).foregroundStyle(BoardBrand.label)
+                    Text(ByteCountFormatter.string(fromByteCount: Int64(file.sizeBytes),
+                                                   countStyle: .file))
+                        .font(.system(size: 10)).foregroundStyle(BoardBrand.dim)
+                        .frame(width: 64, alignment: .trailing)
+                }
+                .padding(8)
+                .background(BoardBrand.panel, in: RoundedRectangle(cornerRadius: 9))
+                .contextMenu { fileMenu(file) }
+                .onTapGesture {
+                    if let image = FrameImageCache.image(for: file.downloadPath) {
+                        previewImage = image
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func fileMenu(_ file: RoleRoomAPIClient.StorageFileSummary) -> some View {
+        Button("Omdøp") {
+            renameFileId = file.id
+            renameDraft = file.displayName
+        }
+        Menu("Flytt til mappe") {
+            ForEach(state.userFolders) { folder in
+                Button(folder.name) { state.move(fileId: file.id, to: folder.id) }
+            }
+            if state.folderFor(fileId: file.id) != nil {
+                Button("Ut av mappen", role: .destructive) {
+                    state.move(fileId: file.id, to: nil)
+                }
+            }
+        }
+        Button("Slett", role: .destructive) { pendingDeleteId = file.id }
     }
 
     private var fileGrid: some View {
@@ -275,13 +574,7 @@ struct AssetsView: View {
                 previewImage = image
             }
         }
-        .contextMenu {
-            Button(role: .destructive) {
-                pendingDeleteId = file.id
-            } label: {
-                Label("Slett", systemImage: "trash")
-            }
-        }
+        .contextMenu { fileMenu(file) }
     }
 
     private func fileTypeLabel(_ file: RoleRoomAPIClient.StorageFileSummary) -> String {

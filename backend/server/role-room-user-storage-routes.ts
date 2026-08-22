@@ -260,6 +260,90 @@ export function registerRoleRoomUserStorageRoutes(
     }
   });
 
+  // Omdøp fil (kort-menyens «…» → Rename)
+  app.patch("/api/role-room/storage/files/:id", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    const displayName = typeof req.body?.displayName === 'string'
+      ? req.body.displayName.trim().slice(0, 255) : "";
+    if (!displayName) { res.status(400).json({ error: "mangler_navn" }); return; }
+    try {
+      const r = await pool.query(
+        `UPDATE role_room_user_files SET display_name = $1
+         WHERE id = $2::uuid AND user_id = $3 AND deleted_at IS NULL`,
+        [displayName, req.params.id, viewerId],
+      );
+      if (r.rowCount === 0) { res.status(404).json({ error: "fil_ikke_funnet" }); return; }
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[storage/rename]", err);
+      res.status(500).json({ error: "rename_failed" });
+    }
+  });
+
+  // Papirkurv: liste over soft-slettede filer
+  app.get("/api/role-room/storage/trash", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    try {
+      const r = await pool.query(
+        `SELECT id, display_name, size_bytes, content_type, uploaded_at, deleted_at,
+                attached_to_entity_type
+         FROM role_room_user_files
+         WHERE user_id = $1 AND deleted_at IS NOT NULL
+         ORDER BY deleted_at DESC LIMIT 100`,
+        [viewerId],
+      );
+      res.json({ files: r.rows.map((row) => ({
+        id: row.id,
+        displayName: row.display_name,
+        sizeBytes: Number(row.size_bytes),
+        contentType: row.content_type,
+        uploadedAt: row.uploaded_at,
+        deletedAt: row.deleted_at,
+        attachedToEntityType: row.attached_to_entity_type,
+      })) });
+    } catch (err) {
+      console.error("[storage/trash]", err);
+      res.status(500).json({ error: "trash_failed" });
+    }
+  });
+
+  // Gjenopprett fra papirkurven (reserverer kvoten igjen)
+  app.post("/api/role-room/storage/files/:id/restore", async (req: Request, res: Response) => {
+    const viewerId = getUserIdFromRequest(req, activeSessions);
+    if (!viewerId) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const r = await client.query<{ size_bytes: string }>(
+        `UPDATE role_room_user_files SET deleted_at = NULL
+         WHERE id = $1::uuid AND user_id = $2 AND deleted_at IS NOT NULL
+         RETURNING size_bytes`,
+        [req.params.id, viewerId],
+      );
+      if (r.rowCount === 0) {
+        await client.query("ROLLBACK");
+        res.status(404).json({ error: "fil_ikke_funnet" });
+        return;
+      }
+      await client.query(
+        `UPDATE role_room_user_storage_consumption
+         SET used_bytes = used_bytes + $1, file_count = file_count + 1
+         WHERE user_id = $2`,
+        [Number(r.rows[0].size_bytes), viewerId],
+      );
+      await client.query("COMMIT");
+      res.json({ ok: true });
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("[storage/restore]", err);
+      res.status(500).json({ error: "restore_failed" });
+    } finally {
+      client.release();
+    }
+  });
+
   // Soft delete (papirkurv-semantikk): eier-sjekken ligger i SQL-
   // funksjonen (userId + fileId må matche); frigjør kvote.
   app.delete("/api/role-room/storage/files/:id", async (req: Request, res: Response) => {

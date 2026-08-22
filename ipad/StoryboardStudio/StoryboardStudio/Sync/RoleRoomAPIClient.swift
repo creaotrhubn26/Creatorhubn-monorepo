@@ -102,6 +102,8 @@ struct SceneSummary: Identifiable, Sendable {
     let hubMapNotes: String?
     let hubTeam: String?
     let hubInfo: String?
+    let hubAssetFolders: String?
+    let hubAssetColors: String?
     // Manusfelter (Script-fanen)
     let sceneNumber: Int?
     let intExt: String?
@@ -821,6 +823,42 @@ actor RoleRoomAPIClient {
         var isImage: Bool { (contentType ?? "").hasPrefix("image/") }
     }
 
+    /// Omdøp fil i Role Room-lagringen.
+    func renameStorageFile(fileId: String, displayName: String) async -> Bool {
+        guard var request = try? request(path: "/api/role-room/storage/files/\(fileId)",
+                                         query: [:]) else { return false }
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["displayName": displayName])
+        guard let (_, response) = try? await URLSession.shared.data(for: request) else { return false }
+        return (response as? HTTPURLResponse)?.statusCode == 200
+    }
+
+    /// Papirkurven (soft-slettede filer).
+    func listTrash() async -> [StorageFileSummary] {
+        guard let payload = try? await getJSON(path: "/api/role-room/storage/trash", query: [:]),
+              let files = payload["files"] as? [[String: Any]] else { return [] }
+        return files.compactMap { entry in
+            guard let id = entry["id"] as? String else { return nil }
+            return StorageFileSummary(
+                id: id,
+                displayName: (entry["displayName"] as? String) ?? id,
+                sizeBytes: (entry["sizeBytes"] as? Int) ?? 0,
+                contentType: entry["contentType"] as? String,
+                uploadedAt: (entry["uploadedAt"] as? String) ?? "",
+                entityType: entry["attachedToEntityType"] as? String)
+        }
+    }
+
+    /// Gjenopprett fra papirkurven (reserverer kvoten igjen).
+    func restoreStorageFile(fileId: String) async -> Bool {
+        guard var request = try? request(path: "/api/role-room/storage/files/\(fileId)/restore",
+                                         query: [:]) else { return false }
+        request.httpMethod = "POST"
+        guard let (_, response) = try? await URLSession.shared.data(for: request) else { return false }
+        return (response as? HTTPURLResponse)?.statusCode == 200
+    }
+
     /// Soft delete (papirkurv) — frigjør kvote.
     func deleteStorageFile(fileId: String) async -> Bool {
         guard var request = try? request(path: "/api/role-room/storage/files/\(fileId)",
@@ -1073,6 +1111,8 @@ actor RoleRoomAPIClient {
             hubMapNotes: scene["hubMapNotes"] as? String,
             hubTeam: scene["hubTeam"] as? String,
             hubInfo: scene["hubInfo"] as? String,
+            hubAssetFolders: scene["hubAssetFolders"] as? String,
+            hubAssetColors: scene["hubAssetColors"] as? String,
             sceneNumber: (scene["sceneNumber"] as? Int) ?? Int(scene["sceneNumber"] as? String ?? ""),
             intExt: (scene["intExt"] as? String) ?? (scene["int_ext"] as? String),
             location: (scene["locationName"] as? String) ?? (scene["location"] as? String),
