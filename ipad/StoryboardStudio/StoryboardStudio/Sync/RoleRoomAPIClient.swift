@@ -80,6 +80,9 @@ struct FrameSummary: Identifiable, Sendable {
     let reviewApprovedBy: String?
     let reviewApprovedAt: String?
     let reviewStarred: Bool?
+    let reviewAssignee: String?
+    let reviewColorLabel: String?
+    let reviewSnoozedUntil: String?
 }
 
 struct SceneSummary: Identifiable, Sendable {
@@ -1052,7 +1055,10 @@ actor RoleRoomAPIClient {
                 reviewApprovedBy: frame["reviewApprovedBy"] as? String,
                 reviewApprovedAt: frame["reviewApprovedAt"] as? String,
                 reviewStarred: (frame["reviewStarred"] as? Bool)
-                    ?? (frame["reviewStarred"] as? Int).map { $0 != 0 }
+                    ?? (frame["reviewStarred"] as? Int).map { $0 != 0 },
+                reviewAssignee: frame["reviewAssignee"] as? String,
+                reviewColorLabel: frame["reviewColorLabel"] as? String,
+                reviewSnoozedUntil: frame["reviewSnoozedUntil"] as? String
             )
         }
         return SceneSummary(
