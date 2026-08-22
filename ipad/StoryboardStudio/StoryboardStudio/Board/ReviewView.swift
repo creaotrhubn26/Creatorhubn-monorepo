@@ -94,7 +94,7 @@ final class ReviewState: ObservableObject {
         presentNames = await RoleRoomAPIClient.shared.reportPresence(manuscriptId: manuscript.id)
     }
 
-    /// Serialiser kommentarliste (bevarer pins/likes/tråder).
+    /// Serialiser kommentarliste (bevarer pins/likes/tråder/lederlinjer).
     static func commentDicts(_ comments: [ReviewComment]) -> [[String: any Sendable]] {
         comments.map { comment in
             var dict: [String: any Sendable] = [
@@ -105,7 +105,33 @@ final class ReviewState: ObservableObject {
             if let y = comment.y { dict["y"] = y }
             if let parentId = comment.parentId { dict["parentId"] = parentId }
             if let likes = comment.likes { dict["likes"] = likes }
+            if let targetX = comment.targetX { dict["targetX"] = targetX }
+            if let targetY = comment.targetY { dict["targetY"] = targetY }
             return dict
+        }
+    }
+
+    /// Redline: reviewer-strøk på lag «Review» — synlig i review og board,
+    /// filtrert fra eksport. Lagres som vanlige strokes (historikk gjelder).
+    func appendRedline(_ stroke: PencilStroke) {
+        guard let selected, let pair = selectedPair else { return }
+        let manuscriptId = manuscript.id
+        status = "…"
+        Task {
+            do {
+                var strokes = (try? StrokeSerialization.decodeFromWebJSON(
+                    pair.frame.strokesJSON ?? "[]")) ?? []
+                strokes.append(stroke)
+                let json = try StrokeSerialization.encodeToWebJSON(strokes)
+                _ = try await RoleRoomAPIClient.shared.saveFrameStrokes(
+                    manuscriptId: manuscriptId, sceneId: selected.sceneId,
+                    frameId: selected.frameId, strokesJSON: json,
+                    baseUpdatedAt: pair.frame.updatedAt)
+                await load()
+                status = "Markering lagret ✓"
+            } catch {
+                status = error.localizedDescription
+            }
         }
     }
 
@@ -151,7 +177,8 @@ final class ReviewState: ObservableObject {
         patch(fields)
     }
 
-    func addComment(role: String, text: String, pin: CGPoint?, parentId: String? = nil) {
+    func addComment(role: String, text: String, pin: CGPoint?, pinTarget: CGPoint? = nil,
+                    parentId: String? = nil) {
         guard let pair = selectedPair else { return }
         Task {
             let author = await RoleRoomAPIClient.shared.userDisplayName ?? "iPad"
@@ -164,6 +191,10 @@ final class ReviewState: ObservableObject {
             if let pin {
                 new["x"] = Double(pin.x)
                 new["y"] = Double(pin.y)
+            }
+            if let pinTarget {
+                new["targetX"] = Double(pinTarget.x)
+                new["targetY"] = Double(pinTarget.y)
             }
             if let parentId { new["parentId"] = parentId }
             existing.append(new)
@@ -188,6 +219,11 @@ struct ReviewView: View {
     @State private var commentTab = "Kommentarer"
     @State private var notesDraft = ""
     @State private var replyTo: ReviewComment?
+    @State private var redlineMode: String?        // nil / "arrow" / "draw"
+    @State private var redlinePoints: [CGPoint] = []   // view-rom under drag
+    @State private var pendingPinTarget: CGPoint?
+    @State private var fullscreenPreview = false
+    @State private var exportShareURL: URL?
 
     private static let roles = ["Director", "DP", "Producer", "Editor", "Artist"]
 
@@ -233,6 +269,26 @@ struct ReviewView: View {
             }
         }
         .task { await state.load() }
+        .fullScreenCover(isPresented: $fullscreenPreview) {
+            ZStack(alignment: .topTrailing) {
+                Color.black.ignoresSafeArea()
+                if let pair = state.selectedPair,
+                   let image = versionImage(pair, version: selectedVersion) {
+                    Image(uiImage: image).resizable().scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                Button { fullscreenPreview = false } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 28)).foregroundStyle(.white.opacity(0.8))
+                        .padding(20)
+                }
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { exportShareURL != nil },
+            set: { if !$0 { exportShareURL = nil } })) {
+            if let url = exportShareURL { ShareSheet(items: [url]) }
+        }
         .onChange(of: state.selected?.frameId) {
             selectedVersion = 0
             compareMode = false
@@ -392,6 +448,7 @@ struct ReviewView: View {
                 if let pair = state.selectedPair {
                     headerRow(pair)
                     previewArea(pair)
+                    sceneContext(pair)
                     commentsSection(pair)
                 } else {
                     Text("Velg et shot i køen").foregroundStyle(BoardBrand.dim).padding(40)
@@ -411,6 +468,7 @@ struct ReviewView: View {
                 .font(.system(size: 12)).foregroundStyle(BoardBrand.dim)
             Text(pair.frame.description)
                 .font(.system(size: 13)).foregroundStyle(.white).lineLimit(1)
+            statusBadge(pair.frame)
             Button {
                 state.patch(["reviewStarred": !(pair.frame.reviewStarred ?? false)])
             } label: {
@@ -471,19 +529,69 @@ struct ReviewView: View {
             Button {
                 pinMode.toggle()
                 pendingPin = nil
+                pendingPinTarget = nil
+                redlineMode = nil
             } label: {
                 Label("Pin", systemImage: "mappin.circle")
                     .font(.system(size: 12))
                     .foregroundStyle(pinMode ? BoardBrand.accent : BoardBrand.dim)
             }
             .buttonStyle(.plain)
+            // Redlines: reviewer tegner pil/frihånd oppå panelet
+            Button {
+                redlineMode = redlineMode == "arrow" ? nil : "arrow"
+                pinMode = false
+            } label: {
+                Label("Pil", systemImage: "arrow.up.right")
+                    .font(.system(size: 12))
+                    .foregroundStyle(redlineMode == "arrow" ? BoardBrand.accent : BoardBrand.dim)
+            }
+            .buttonStyle(.plain)
+            Button {
+                redlineMode = redlineMode == "draw" ? nil : "draw"
+                pinMode = false
+            } label: {
+                Label("Tegn", systemImage: "scribble")
+                    .font(.system(size: 12))
+                    .foregroundStyle(redlineMode == "draw" ? BoardBrand.accent : BoardBrand.dim)
+            }
+            .buttonStyle(.plain)
+            Button { fullscreenPreview = true } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 12)).foregroundStyle(BoardBrand.dim)
+            }
+            .buttonStyle(.plain)
+            Menu {
+                Button {
+                    exportShareURL = FrameRenderService.exportPNG(
+                        frame: pair.frame, projectTitle: state.manuscript.title)
+                } label: {
+                    Label("Eksporter PNG", systemImage: "photo")
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 12)).foregroundStyle(BoardBrand.dim)
+            }
         }
+    }
+
+    /// Status-badge i headeren (mockup: «In Review»-chipen).
+    private func statusBadge(_ frame: FrameSummary) -> some View {
+        let entry = ReviewState.statusOrder.first {
+            $0.key == (frame.frameStatus ?? "planned")
+        }
+        return Text(entry?.title.capitalized ?? "Planlagt")
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .background((entry?.color ?? .gray).opacity(0.7), in: Capsule())
     }
 
     private func versionImage(_ pair: (scene: SceneSummary, frame: FrameSummary),
                               version: Int) -> UIImage? {
         if version == 0 {
-            return FrameRenderService.image(for: pair.frame, maxWidth: 900)
+            return FrameRenderService.image(for: pair.frame, maxWidth: 900,
+                                            includeReviewLayer: true)
                 ?? decodeDataURL(pair.frame.thumbnailDataURL)
         }
         guard historyVersions.indices.contains(version - 1) else { return nil }
@@ -545,45 +653,177 @@ struct ReviewView: View {
                                               y: pendingPin.y * geo.size.height)
                             }
                         }
+                    // Redline-preview under drag
+                    if redlineMode != nil && redlinePoints.count > 1 {
+                        Path { path in
+                            path.move(to: redlinePoints[0])
+                            if redlineMode == "arrow", let last = redlinePoints.last {
+                                path.addLine(to: last)
+                            } else {
+                                for point in redlinePoints.dropFirst() { path.addLine(to: point) }
+                            }
+                        }
+                        .stroke(Color(red: 0.25, green: 0.5, blue: 1),
+                                style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    }
+                    // Pin-lederlinjer (badge → målpunkt)
+                    if version == 0 && !compareMode {
+                        Canvas { context, size in
+                            for comment in pinnedComments(pair) {
+                                guard let targetX = comment.targetX,
+                                      let targetY = comment.targetY,
+                                      let x = comment.x, let y = comment.y else { continue }
+                                let from = CGPoint(x: x * size.width, y: y * size.height)
+                                let to = CGPoint(x: targetX * size.width, y: targetY * size.height)
+                                var path = Path()
+                                path.move(to: from)
+                                path.addQuadCurve(to: to, control: CGPoint(
+                                    x: (from.x + to.x) / 2,
+                                    y: min(from.y, to.y) - 20))
+                                context.stroke(path, with: .color(Color(red: 0.25, green: 0.5, blue: 1)),
+                                               lineWidth: 2)
+                                context.fill(Path(ellipseIn: CGRect(x: to.x - 3, y: to.y - 3,
+                                                                    width: 6, height: 6)),
+                                             with: .color(Color(red: 0.25, green: 0.5, blue: 1)))
+                            }
+                        }
+                        .allowsHitTesting(false)
+                    }
                     }
                     .contentShape(Rectangle())
                     .onTapGesture { location in
-                        guard pinMode, version == 0, !compareMode,
+                        guard version == 0, !compareMode,
                               geo.size.width > 0, geo.size.height > 0 else { return }
-                        pendingPin = CGPoint(x: location.x / geo.size.width,
-                                             y: location.y / geo.size.height)
+                        let normalized = CGPoint(x: location.x / geo.size.width,
+                                                 y: location.y / geo.size.height)
+                        if pinMode {
+                            if pendingPin == nil {
+                                pendingPin = normalized
+                            } else if pendingPinTarget == nil {
+                                // Andre tap = lederlinje-mål (valgfritt)
+                                pendingPinTarget = normalized
+                            } else {
+                                pendingPin = normalized
+                                pendingPinTarget = nil
+                            }
+                        }
                     }
+                    .gesture(
+                        redlineMode == nil ? nil :
+                        DragGesture(minimumDistance: 2)
+                            .onChanged { redlinePoints.append($0.location) }
+                            .onEnded { _ in
+                                commitRedline(pair, viewSize: geo.size)
+                                redlinePoints = []
+                            }
+                    )
                 }
                 .aspectRatio(CGFloat(pair.frame.drawingWidth / max(1, pair.frame.drawingHeight)),
                              contentMode: .fit)
                 .background(Color.white, in: RoundedRectangle(cornerRadius: 8))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(alignment: .bottomLeading) {
-                    // CAM · type · lens (mockup-stripen)
-                    let cam = ["CAM", pair.frame.shotType,
-                               pair.frame.lensMm.map { "\($0)mm" }]
-                        .compactMap(\.self).joined(separator: " · ")
-                    Text(cam)
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(.black.opacity(0.65), in: Capsule())
-                        .padding(8)
-                }
-                .overlay(alignment: .bottomTrailing) {
-                    Text(String(format: "DUR: %.1fs", pair.frame.durationSec))
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(.black.opacity(0.65), in: Capsule())
-                        .padding(8)
-                }
+                // CAM/DUR som caption-rad UNDER panelet (mockup-stilen)
             } else {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.white.opacity(0.05)).frame(height: 240)
                     .overlay(Text("Ingen tegning").foregroundStyle(BoardBrand.dim))
             }
+            captionRow(pair.frame)
         }
+    }
+
+    /// Scenens øvrige shots stablet under (mockupens panel 1/2-stabel) —
+    /// klippet i kontekst; tap bytter valgt shot.
+    @ViewBuilder
+    private func sceneContext(_ pair: (scene: SceneSummary, frame: FrameSummary)) -> some View {
+        let others = pair.scene.frames.filter { $0.id != pair.frame.id }
+        if !others.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("SCENEN · \(pair.scene.frames.count) SHOTS")
+                    .font(.system(size: 10, weight: .bold)).kerning(1)
+                    .foregroundStyle(BoardBrand.label)
+                ForEach(Array(others.enumerated()), id: \.element.id) { _, frame in
+                    Button {
+                        state.selected = (pair.scene.id, frame.id)
+                    } label: {
+                        HStack(alignment: .top, spacing: 10) {
+                            Text(frame.shotNumber)
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundStyle(BoardBrand.label)
+                                .frame(width: 30, alignment: .leading)
+                            VStack(spacing: 3) {
+                                Group {
+                                    if let image = decodeDataURL(frame.thumbnailDataURL)
+                                        ?? FrameImageCache.image(for: frame.imageUrl) {
+                                        Image(uiImage: image).resizable().scaledToFit()
+                                    } else {
+                                        Rectangle().fill(Color.white.opacity(0.05))
+                                            .aspectRatio(16 / 9, contentMode: .fit)
+                                    }
+                                }
+                                .background(Color.white, in: RoundedRectangle(cornerRadius: 6))
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                captionRow(frame)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func captionRow(_ frame: FrameSummary) -> some View {
+        HStack {
+            Text(["CAM", frame.shotType, frame.lensMm.map { "\($0)mm" }]
+                .compactMap(\.self).joined(separator: "  ·  "))
+            Spacer()
+            Text(String(format: "DUR: %.1fs", frame.durationSec))
+        }
+        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+        .foregroundStyle(BoardBrand.dim)
+        .padding(.horizontal, 2)
+    }
+
+    /// Konverter view-punkter → innholdsrom og lagre som Review-lag-strøk.
+    private func commitRedline(_ pair: (scene: SceneSummary, frame: FrameSummary),
+                               viewSize: CGSize) {
+        guard redlinePoints.count > 1, viewSize.width > 0 else { return }
+        let scaleX = pair.frame.drawingWidth / viewSize.width
+        let scaleY = pair.frame.drawingHeight / viewSize.height
+        var t = Date().timeIntervalSince1970 * 1000
+        func point(_ p: CGPoint) -> StrokePoint {
+            t += 8
+            return StrokePoint(x: Double(p.x) * scaleX, y: Double(p.y) * scaleY,
+                               pressure: 0.8, tiltX: 0, tiltY: 0, timestamp: t)
+        }
+        var points: [StrokePoint]
+        if redlineMode == "arrow", let first = redlinePoints.first,
+           let last = redlinePoints.last {
+            // Pil: linje + hode (samme geometri som boardets pil-verktøy)
+            let sx = Double(first.x) * scaleX, sy = Double(first.y) * scaleY
+            let ex = Double(last.x) * scaleX, ey = Double(last.y) * scaleY
+            let angle = atan2(ey - sy, ex - sx)
+            let head = 34.0
+            points = [CGPoint(x: sx, y: sy), CGPoint(x: ex, y: ey),
+                      CGPoint(x: ex - cos(angle - 0.45) * head, y: ey - sin(angle - 0.45) * head),
+                      CGPoint(x: ex, y: ey),
+                      CGPoint(x: ex - cos(angle + 0.45) * head, y: ey - sin(angle + 0.45) * head)]
+                .map { p in
+                    t += 8
+                    return StrokePoint(x: Double(p.x), y: Double(p.y),
+                                       pressure: 0.8, tiltX: 0, tiltY: 0, timestamp: t)
+                }
+        } else {
+            points = redlinePoints.map(point)
+        }
+        var brush = BrushSpec.preset(.ink, size: 6, color: "#3b82f6", opacity: 0.95)
+        brush.grain = 0
+        let stroke = PencilStroke(
+            id: "review-\(Int(t))", points: points, inputType: "pencil",
+            color: "#3b82f6", width: 6, opacity: 0.95,
+            brush: brush, boardLayer: "Review")
+        state.appendRedline(stroke)
     }
 
     private func pinnedComments(_ pair: (scene: SceneSummary, frame: FrameSummary)) -> [ReviewComment] {
@@ -730,9 +970,11 @@ struct ReviewView: View {
         commentText = ""
         state.addComment(role: commentRole, text: text,
                          pin: replyTo == nil ? pendingPin : nil,
+                         pinTarget: replyTo == nil ? pendingPinTarget : nil,
                          parentId: replyTo?.id)
         replyTo = nil
         pendingPin = nil
+        pendingPinTarget = nil
         pinMode = false
     }
 

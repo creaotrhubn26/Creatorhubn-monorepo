@@ -3792,11 +3792,17 @@ enum FrameRenderService {
     /// CoreText (Metal tegner ikke tekst); underlaget kan tas med for
     /// review-utgaver. nil → ingen strøk / motor utilgjengelig.
     static func image(for frame: FrameSummary, maxWidth: CGFloat,
-                      includeUnderlay: Bool = false) -> UIImage? {
+                      includeUnderlay: Bool = false,
+                      includeReviewLayer: Bool = false) -> UIImage? {
         guard let renderer,
               let json = frame.strokesJSON,
               let strokes = try? StrokeSerialization.decodeFromWebJSON(json) else { return nil }
-        let drawable = strokes.filter { $0.textAnnotation == nil }
+        // Redlines (lag «Review») er reviewer-markeringer — aldri i
+        // PDF/PNG/animatic-leveranser, kun i review-flaten.
+        let drawable = strokes.filter {
+            $0.textAnnotation == nil
+                && (includeReviewLayer || $0.boardLayer != "Review")
+        }
         let frameImage = FrameImageCache.image(for: frame.imageUrl)
         guard frame.drawingWidth > 0,
               !drawable.isEmpty || frameImage != nil else { return nil }
