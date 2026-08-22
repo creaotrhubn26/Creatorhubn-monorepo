@@ -84,11 +84,43 @@ struct LoginView: View {
 struct ProjectListView: View {
     @State private var projects: [ProjectSummary] = []
     @State private var error: String?
+    @State private var openTasks: [(project: String, text: String)] = []
+    @State private var inbox: [(project: String, role: String, text: String)] = []
 
     var body: some View {
-        List(projects) { project in
-            NavigationLink(project.name) {
-                ManuscriptListView(project: project)
+        List {
+            Section("Produksjoner") {
+                ForEach(projects) { project in
+                    NavigationLink(project.name) {
+                        ManuscriptListView(project: project)
+                    }
+                }
+            }
+            // «Mine oppgaver» og «Innboks» på tvers av produksjonene —
+            // aggregert fra hub-oppgavene og review-kommentarene.
+            if !openTasks.isEmpty {
+                Section("Mine oppgaver · \(openTasks.count)") {
+                    ForEach(Array(openTasks.prefix(8).enumerated()), id: \.offset) { _, task in
+                        HStack {
+                            Image(systemName: "square")
+                                .font(.system(size: 12)).foregroundStyle(.secondary)
+                            Text(task.text).font(.subheadline)
+                            Spacer()
+                            Text(task.project).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            if !inbox.isEmpty {
+                Section("Innboks · siste kommentarer") {
+                    ForEach(Array(inbox.prefix(6).enumerated()), id: \.offset) { _, entry in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(entry.role) · \(entry.project)")
+                                .font(.caption.bold()).foregroundStyle(.secondary)
+                            Text(entry.text).font(.subheadline).lineLimit(2)
+                        }
+                    }
+                }
             }
         }
         .overlay {
@@ -99,7 +131,35 @@ struct ProjectListView: View {
         .task {
             do { projects = try await RoleRoomAPIClient.shared.fetchProjects() }
             catch { self.error = error.localizedDescription }
+            await loadOverview()
         }
+    }
+
+    /// Aggregat på tvers: én manus+scene-henting per prosjekt (få
+    /// produksjoner i praksis; ETag gjør gjenbesøk billige).
+    private func loadOverview() async {
+        var tasks: [(String, String)] = []
+        var comments: [(String, String, String, String)] = []   // (at, project, role, text)
+        for project in projects {
+            guard let manuscripts = try? await RoleRoomAPIClient.shared
+                .fetchManuscripts(projectId: project.id),
+                  let manuscript = manuscripts.first,
+                  let scenes = try? await RoleRoomAPIClient.shared
+                .fetchScenes(manuscriptId: manuscript.id) else { continue }
+            for task in HubState.decodeTasks(scenes.first?.hubTasks) where !task.done {
+                tasks.append((project.name, task.text))
+            }
+            for scene in scenes {
+                for frame in scene.frames {
+                    for comment in frame.comments {
+                        comments.append((comment.at, project.name, comment.role, comment.text))
+                    }
+                }
+            }
+        }
+        openTasks = tasks.map { (project: $0.0, text: $0.1) }
+        inbox = comments.sorted { $0.0 > $1.0 }
+            .map { (project: $0.1, role: $0.2, text: $0.3) }
     }
 }
 

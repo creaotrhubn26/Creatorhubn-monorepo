@@ -25,6 +25,24 @@ final class HubState: ObservableObject {
         var done: Bool
     }
 
+    struct MapNote: Identifiable, Codable {
+        var id: String
+        var text: String
+        var x: Double
+        var y: Double
+    }
+
+    struct TeamMember: Identifiable, Codable {
+        var id: String
+        var name: String
+        var role: String
+    }
+
+    @Published var mapPositions: [String: CGPoint] = [:]   // sceneId → punkt
+    @Published var mapNotes: [MapNote] = []
+    @Published var team: [TeamMember] = []
+    @Published var assets: [RoleRoomAPIClient.StorageFileSummary] = []
+
     init(project: ProjectSummary, manuscript: ManuscriptSummary) {
         self.project = project
         self.manuscript = manuscript
@@ -57,8 +75,12 @@ final class HubState: ObservableObject {
             notes = meta?.hubNotes ?? ""
             quote = meta?.hubQuote ?? ""
             moodboard = Self.decodeMoodboard(meta?.hubMoodboard)
+            mapPositions = Self.decodePositions(meta?.hubMapPositions)
+            mapNotes = Self.decodeList(meta?.hubMapNotes)
+            team = Self.decodeList(meta?.hubTeam)
         }
         loading = false
+        assets = await RoleRoomAPIClient.shared.listStorageFiles(projectId: project.id)
         presentOthers = await RoleRoomAPIClient.shared.reportPresence(manuscriptId: manuscript.id)
         await FrameImageCache.prefetch(frames: Array(allFrames.prefix(20)))
     }
@@ -70,6 +92,9 @@ final class HubState: ObservableObject {
             "hubQuote": quote,
             "hubMoodboard": (try? JSONSerialization.data(withJSONObject: moodboard))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]",
+            "hubMapPositions": Self.encodePositions(mapPositions),
+            "hubMapNotes": Self.encodeList(mapNotes),
+            "hubTeam": Self.encodeList(team),
         ]
         let manuscriptId = manuscript.id
         Task {
@@ -87,6 +112,30 @@ final class HubState: ObservableObject {
     static func encodeTasks(_ tasks: [HubTask]) -> String {
         guard let data = try? JSONEncoder().encode(tasks) else { return "[]" }
         return String(data: data, encoding: .utf8) ?? "[]"
+    }
+
+    static func decodeList<T: Codable>(_ json: String?) -> [T] {
+        guard let json, let data = json.data(using: .utf8),
+              let list = try? JSONDecoder().decode([T].self, from: data) else { return [] }
+        return list
+    }
+
+    static func encodeList<T: Codable>(_ list: [T]) -> String {
+        guard let data = try? JSONEncoder().encode(list) else { return "[]" }
+        return String(data: data, encoding: .utf8) ?? "[]"
+    }
+
+    static func decodePositions(_ json: String?) -> [String: CGPoint] {
+        guard let json, let data = json.data(using: .utf8),
+              let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: [Double]]
+        else { return [:] }
+        return dict.compactMapValues { $0.count == 2 ? CGPoint(x: $0[0], y: $0[1]) : nil }
+    }
+
+    static func encodePositions(_ positions: [String: CGPoint]) -> String {
+        let payload = positions.mapValues { [Double($0.x), Double($0.y)] }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return "{}" }
+        return String(data: data, encoding: .utf8) ?? "{}"
     }
 
     static func decodeMoodboard(_ json: String?) -> [String] {
@@ -116,10 +165,12 @@ struct ProjectHubView: View {
                         recentBoards
                         sceneMap
                         moodboardSection
+                        assetsSection
                     }
                     .frame(maxWidth: .infinity)
                     VStack(alignment: .leading, spacing: 18) {
                         infoCard
+                        teamCard
                         progressCard
                         tasksCard
                         notesCard
@@ -148,6 +199,25 @@ struct ProjectHubView: View {
                         }
                     }
             }
+        }
+        .alert("Rediger lapp", isPresented: Binding(
+            get: { editingNoteId != nil },
+            set: { if !$0 { editingNoteId = nil } })) {
+            TextField("Tekst", text: $noteDraft)
+            Button("Lagre") {
+                if let noteId = editingNoteId,
+                   let index = hub.mapNotes.firstIndex(where: { $0.id == noteId }) {
+                    hub.mapNotes[index].text = noteDraft
+                    hub.persistMeta()
+                }
+                editingNoteId = nil
+            }
+            Button("Slett", role: .destructive) {
+                hub.mapNotes.removeAll { $0.id == editingNoteId }
+                hub.persistMeta()
+                editingNoteId = nil
+            }
+            Button("Avbryt", role: .cancel) { editingNoteId = nil }
         }
         .onChange(of: moodPickerItem) {
             guard let item = moodPickerItem else { return }
@@ -253,50 +323,124 @@ struct ProjectHubView: View {
         }
     }
 
+    // Fritt scene-kart (Milanote-idéen): scener som flyttbare noder med
+    // koblingslinjer i fortellerrekkefølge + gule post-it-lapper. Posisjoner
+    // og lapper persisteres i hub-metadataene.
     private var sceneMap: some View {
         sectionCard("SCENE-KART") {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 0) {
-                    ForEach(Array(hub.scenes.enumerated()), id: \.element.id) { index, scene in
-                        HStack(spacing: 0) {
-                            Button {
-                                openBoardSceneIndex = index
-                                showBoard = true
-                            } label: {
-                                VStack(spacing: 5) {
-                                    sceneThumb(scene, width: 120, height: 68)
-                                    Text(String(format: "%02d", scene.sceneNumber ?? index + 1))
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundStyle(BoardBrand.label)
-                                    Text(scene.heading)
-                                        .font(.system(size: 10)).foregroundStyle(.white)
-                                        .lineLimit(1).frame(width: 120)
-                                    // Fremdriftsstripe per scene
-                                    GeometryReader { geo in
-                                        let done = scene.frames.filter { $0.frameStatus == "done" }.count
-                                        let fraction = scene.frames.isEmpty ? 0
-                                            : Double(done) / Double(scene.frames.count)
-                                        ZStack(alignment: .leading) {
-                                            Capsule().fill(Color.white.opacity(0.1))
-                                            Capsule().fill(BoardBrand.accent)
-                                                .frame(width: geo.size.width * fraction)
-                                        }
-                                    }
-                                    .frame(width: 120, height: 3)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            if index < hub.scenes.count - 1 {
-                                Rectangle().fill(BoardBrand.border)
-                                    .frame(width: 26, height: 1.5)
-                                    .padding(.bottom, 30)
-                            }
+            ScrollView([.horizontal, .vertical], showsIndicators: false) {
+                ZStack(alignment: .topLeading) {
+                    // Koblingslinjer under nodene
+                    Canvas { context, _ in
+                        let points = hub.scenes.enumerated().map { index, scene in
+                            nodePosition(scene, index: index)
                         }
+                        guard points.count > 1 else { return }
+                        var path = Path()
+                        path.move(to: points[0])
+                        for point in points.dropFirst() { path.addLine(to: point) }
+                        context.stroke(path, with: .color(.white.opacity(0.18)),
+                                       style: StrokeStyle(lineWidth: 1.5, dash: [5, 5]))
+                    }
+                    .frame(width: mapSize.width, height: mapSize.height)
+                    ForEach(Array(hub.scenes.enumerated()), id: \.element.id) { index, scene in
+                        sceneNode(scene, index: index)
+                            .position(dragOffsets[scene.id]
+                                      ?? nodePosition(scene, index: index))
+                            .gesture(
+                                DragGesture()
+                                    .onChanged { dragOffsets[scene.id] = $0.location }
+                                    .onEnded { value in
+                                        hub.mapPositions[scene.id] = value.location
+                                        dragOffsets[scene.id] = nil
+                                        hub.persistMeta()
+                                    }
+                            )
+                    }
+                    ForEach($hub.mapNotes) { $note in
+                        mapNoteView($note)
                     }
                 }
-                .padding(.vertical, 4)
+                .frame(width: mapSize.width, height: mapSize.height)
             }
+            .frame(height: 260)
+            Button {
+                hub.mapNotes.append(HubState.MapNote(
+                    id: UUID().uuidString, text: "Ny lapp",
+                    x: 120 + Double(hub.mapNotes.count % 4) * 40,
+                    y: 60 + Double(hub.mapNotes.count % 3) * 30))
+                hub.persistMeta()
+            } label: {
+                Label("Ny lapp", systemImage: "note.text.badge.plus")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(BoardBrand.dim)
+            }
+            .buttonStyle(.plain)
         }
+    }
+
+    private var mapSize: CGSize {
+        CGSize(width: max(900, Double(hub.scenes.count) * 170 + 120), height: 460)
+    }
+
+    @State private var dragOffsets: [String: CGPoint] = [:]
+    @State private var editingNoteId: String?
+    @State private var noteDraft = ""
+
+    private func nodePosition(_ scene: SceneSummary, index: Int) -> CGPoint {
+        dragOffsets[scene.id] ?? hub.mapPositions[scene.id]
+            ?? CGPoint(x: 90 + Double(index) * 165,
+                       y: index % 2 == 0 ? 140 : 300)
+    }
+
+    private func sceneNode(_ scene: SceneSummary, index: Int) -> some View {
+        VStack(spacing: 4) {
+            sceneThumb(scene, width: 120, height: 68)
+            Text("\(String(format: "%02d", scene.sceneNumber ?? index + 1)) \(scene.heading)")
+                .font(.system(size: 10)).foregroundStyle(.white)
+                .lineLimit(1).frame(width: 120)
+            GeometryReader { geo in
+                let done = scene.frames.filter { $0.frameStatus == "done" }.count
+                let fraction = scene.frames.isEmpty ? 0 : Double(done) / Double(scene.frames.count)
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.1))
+                    Capsule().fill(BoardBrand.accent)
+                        .frame(width: geo.size.width * fraction)
+                }
+            }
+            .frame(width: 120, height: 3)
+        }
+        .padding(6)
+        .background(BoardBrand.chrome, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(BoardBrand.border))
+        .onTapGesture(count: 2) {
+            openBoardSceneIndex = hub.scenes.firstIndex { $0.id == scene.id } ?? 0
+            showBoard = true
+        }
+    }
+
+    private func mapNoteView(_ note: Binding<HubState.MapNote>) -> some View {
+        Text(note.wrappedValue.text)
+            .font(.custom(BoardBrand.handwriting, size: 13))
+            .foregroundStyle(Color(red: 0.25, green: 0.22, blue: 0.15))
+            .padding(10)
+            .frame(maxWidth: 150, alignment: .topLeading)
+            .background(Color(red: 0.96, green: 0.91, blue: 0.6),
+                        in: RoundedRectangle(cornerRadius: 3))
+            .shadow(color: .black.opacity(0.35), radius: 4, y: 3)
+            .position(x: note.wrappedValue.x, y: note.wrappedValue.y)
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        note.wrappedValue.x = value.location.x
+                        note.wrappedValue.y = value.location.y
+                    }
+                    .onEnded { _ in hub.persistMeta() }
+            )
+            .onTapGesture(count: 2) {
+                editingNoteId = note.wrappedValue.id
+                noteDraft = note.wrappedValue.text
+            }
     }
 
     private var moodboardSection: some View {
@@ -429,6 +573,100 @@ struct ProjectHubView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(newTaskText.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+    }
+
+    @State private var newMemberName = ""
+    @State private var newMemberRole = ""
+
+    private var teamCard: some View {
+        sectionCard("TEAM") {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(hub.team) { member in
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(hub.presentOthers.contains(member.name)
+                                  ? Color.green : Color.white.opacity(0.2))
+                            .frame(width: 7, height: 7)
+                        Text(member.name)
+                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                        Text(member.role)
+                            .font(.system(size: 11)).foregroundStyle(BoardBrand.dim)
+                        Spacer()
+                        Button {
+                            hub.team.removeAll { $0.id == member.id }
+                            hub.persistMeta()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9)).foregroundStyle(BoardBrand.label)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                HStack(spacing: 6) {
+                    TextField("Navn", text: $newMemberName)
+                        .font(.system(size: 12)).foregroundStyle(.white)
+                    TextField("Rolle", text: $newMemberRole)
+                        .font(.system(size: 12)).foregroundStyle(.white)
+                        .frame(width: 90)
+                    Button {
+                        let name = newMemberName.trimmingCharacters(in: .whitespaces)
+                        guard !name.isEmpty else { return }
+                        hub.team.append(HubState.TeamMember(
+                            id: UUID().uuidString, name: name,
+                            role: newMemberRole.trimmingCharacters(in: .whitespaces)))
+                        newMemberName = ""
+                        newMemberRole = ""
+                        hub.persistMeta()
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 11)).foregroundStyle(.white)
+                            .frame(width: 22, height: 22)
+                            .background(BoardBrand.accent, in: RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var assetsSection: some View {
+        sectionCard("ASSETS · \(hub.assets.count)") {
+            if hub.assets.isEmpty {
+                Text("Ingen filer i prosjektet ennå — paneler, ark og moodboard-bilder havner her.")
+                    .font(.system(size: 11)).foregroundStyle(BoardBrand.dim)
+            } else {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6),
+                          spacing: 10) {
+                    ForEach(hub.assets.prefix(18)) { asset in
+                        VStack(spacing: 4) {
+                            if asset.isImage,
+                               let image = FrameImageCache.image(for: asset.downloadPath) {
+                                Image(uiImage: image).resizable().scaledToFill()
+                                    .frame(height: 66)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                            } else {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color.white.opacity(0.05)).frame(height: 66)
+                                    .overlay(Image(systemName: asset.isImage ? "photo" : "doc")
+                                        .foregroundStyle(BoardBrand.label))
+                                    .task {
+                                        guard asset.isImage else { return }
+                                        if let data = await RoleRoomAPIClient.shared
+                                            .fetchRemoteImageData(path: asset.downloadPath),
+                                           let image = UIImage(data: data) {
+                                            FrameImageCache.images[asset.downloadPath] = image
+                                            hub.objectWillChange.send()
+                                        }
+                                    }
+                            }
+                            Text(asset.displayName)
+                                .font(.system(size: 8)).foregroundStyle(BoardBrand.dim)
+                                .lineLimit(1)
+                        }
+                    }
                 }
             }
         }
