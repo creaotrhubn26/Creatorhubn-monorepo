@@ -236,4 +236,101 @@ final class StrokeParityTests: XCTestCase {
             MetalCanvasUIView.quickShapeSnap(holdStroke(coords), brushType: .pencil))
         XCTAssertEqual(snapped.points.count, 25, "linje genererer 25 punkter")
     }
+
+    // ── Research-runden: fyll, halftone, snap, wet mix ───────────────
+
+    @MainActor
+    func testFillInteriorGeneratesInteriorDabs() throws {
+        guard let renderer = MetalStrokeRenderer() else { throw XCTSkip("Metal utilgjengelig") }
+        func circleStroke(_ type: BrushType) -> PencilStroke {
+            var t = 0.0
+            let points = (0...36).map { step -> StrokePoint in
+                let angle = Double(step) / 36 * .pi * 2
+                t += 10
+                return StrokePoint(x: 400 + 150 * cos(angle), y: 300 + 150 * sin(angle),
+                                   pressure: 0.7, tiltX: 0, tiltY: 0, timestamp: t)
+            }
+            return PencilStroke(id: "fill-test-\(type.rawValue)", points: points,
+                                inputType: "pencil", color: "#26282e", width: 8, opacity: 0.9,
+                                brush: BrushSpec.preset(type, size: 8, color: "#26282e", opacity: 0.9))
+        }
+        let outlineOnly = renderer.dabsForStroke(circleStroke(.ink), scale: 1)
+        let filled = renderer.dabsForStroke(circleStroke(.fill), scale: 1)
+        XCTAssertGreaterThan(filled.count, outlineOnly.count * 3,
+                             "fyllet skal generere interiør-dabs, ikke bare omriss")
+    }
+
+    @MainActor
+    func testHalftoneSnapsToGrid() throws {
+        guard let renderer = MetalStrokeRenderer() else { throw XCTSkip("Metal utilgjengelig") }
+        var t = 0.0
+        let points = (0...30).map { step -> StrokePoint in
+            t += 8
+            return StrokePoint(x: 100 + Double(step) * 15, y: 200 + Double(step) * 3,
+                               pressure: 0.8, tiltX: 0, tiltY: 0, timestamp: t)
+        }
+        let stroke = PencilStroke(id: "ht", points: points, inputType: "pencil",
+                                  color: "#26282e", width: 34, opacity: 0.85,
+                                  brush: BrushSpec.preset(.halftone, size: 34, color: "#26282e", opacity: 0.85))
+        let dabs = renderer.dabsForStroke(stroke, scale: 1)
+        XCTAssertFalse(dabs.isEmpty)
+        let grid = max(3, 34.0 * 0.7)
+        for dab in dabs {
+            let rx = Double(dab.position.x).truncatingRemainder(dividingBy: grid)
+            XCTAssertTrue(min(rx, grid - rx) < 0.01, "dab ikke på grid: \(dab.position)")
+        }
+        // Deterministisk dedup: samme strøk to ganger → samme antall
+        XCTAssertEqual(dabs.count, renderer.dabsForStroke(stroke, scale: 1).count)
+    }
+
+    func testPerspectiveSnapProjectsOntoRay() throws {
+        var t = 0.0
+        let points = (0...10).map { step -> StrokePoint in
+            t += 10
+            // Nesten horisontalt strøk med litt sjatter
+            return StrokePoint(x: 100 + Double(step) * 40,
+                               y: 300 + Double(step % 2 == 0 ? 4.0 : -4.0),
+                               pressure: 0.7, tiltX: 0, tiltY: 0, timestamp: t)
+        }
+        let stroke = PencilStroke(id: "ps", points: points, inputType: "pencil",
+                                  color: "#26282e", width: 5, opacity: 0.9,
+                                  brush: BrushSpec.preset(.pencil, size: 5, color: "#26282e", opacity: 0.9))
+        let vp = CGPoint(x: 1900, y: 300)
+        let snapped = try XCTUnwrap(
+            MetalCanvasUIView.perspectiveSnap(stroke, vanishingPoints: [vp]))
+        // Strålen går gjennom FØRSTE punkt mot VP — assert kolinearitet.
+        let first = snapped.points[0]
+        let rayDX = Double(vp.x) - first.x, rayDY = Double(vp.y) - first.y
+        let rayLength = hypot(rayDX, rayDY)
+        for point in snapped.points {
+            let cross = ((point.x - first.x) * rayDY - (point.y - first.y) * rayDX) / rayLength
+            XCTAssertEqual(cross, 0, accuracy: 0.01, "punkt ikke på VP-strålen")
+        }
+        // 45° unna → ingen snap
+        let steep = PencilStroke(id: "ps2", points: points.enumerated().map { index, point in
+            var p = point; p.y = 300 + Double(index) * 40; return p
+        }, inputType: "pencil", color: "#26282e", width: 5, opacity: 0.9,
+           brush: stroke.brush)
+        XCTAssertNil(MetalCanvasUIView.perspectiveSnap(steep, vanishingPoints: [vp]))
+    }
+
+    @MainActor
+    func testWetFalloffReducesAlphaAlongStroke() throws {
+        guard let renderer = MetalStrokeRenderer() else { throw XCTSkip("Metal utilgjengelig") }
+        var t = 0.0
+        let points = (0...60).map { step -> StrokePoint in
+            t += 8
+            return StrokePoint(x: 50 + Double(step) * 25, y: 300,
+                               pressure: 0.7, tiltX: 0, tiltY: 0, timestamp: t)
+        }
+        let stroke = PencilStroke(id: "wet", points: points, inputType: "pencil",
+                                  color: "#3a5a7a", width: 60, opacity: 0.6,
+                                  brush: BrushSpec.preset(.wash, size: 60, color: "#3a5a7a", opacity: 0.6))
+        let dabs = renderer.dabsForStroke(stroke, scale: 1)
+        XCTAssertGreaterThan(dabs.count, 20)
+        let early = dabs.prefix(5).map { Double($0.alpha) }.reduce(0, +) / 5
+        let mid = dabs[(dabs.count / 2 - 2)...(dabs.count / 2 + 2)]
+            .map { Double($0.alpha) }.reduce(0, +) / 5
+        XCTAssertLessThan(mid, early, "pigmentet skal brukes opp langs strøket")
+    }
 }

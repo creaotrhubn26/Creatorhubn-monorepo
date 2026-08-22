@@ -11,6 +11,7 @@ enum DabPreset: String, Sendable {
     case markerChisel
     // Rendering-klassen (foto-referanse-nivå)
     case softRound      // gaussisk falloff — ren myk tone (airbrush)
+    case halftoneDot    // hard sirkel — screen tone-raster
     case skinPore       // porøs hud-mikrotekstur
     case rockGrit       // kantete stein/gjørme-grus
 }
@@ -61,6 +62,16 @@ struct StampConfig: Sendable {
     var hatch: HatchParams? = nil
     // Fase 2 (spec §56): prosedural miljøtekstur — mange strukturer per sample.
     var environmental: EnvironmentalMode? = nil
+    // Wet mix (Procreate-inspirert, forenklet): pigmentet «brukes opp»
+    // langs strøket (falloff), samler seg ved slutten (edge) og drar
+    // underliggende farge via et svakt smudge-etterpass (pull).
+    var wetFalloffLength: Double = 0     // px; 0 = av
+    var wetEdge: Double = 0              // alpha-boost i taper-sonen
+    var wetPull: Double = 0              // 0..1 smudge-styrke etter dabs
+    // Fyll: lukket omriss scanline-fylles med dabs (SBP «auto fill»).
+    var fillInterior: Bool = false
+    // Halftone: dabs snappes til verdens-grid, dot-størrelse ∝ trykk.
+    var halftoneGrid: Bool = false
 
     static func forBrush(_ type: BrushType) -> StampConfig? {
         switch type {
@@ -257,7 +268,8 @@ struct StampConfig: Sendable {
                                jitterAngleDeg: 8, tiltRotation: true,
                                pressureToSize: 0.25, pressureToOpacity: 0.6,
                                flow: 0.3, sizeMultiplier: 1.6,
-                               pressureCurve: 0.7, wobble: 0.12, tiltOval: 0.5)
+                               pressureCurve: 0.7, wobble: 0.12, tiltOval: 0.5,
+                               wetFalloffLength: 900, wetEdge: 0.6, wetPull: 0.15)
         case .spikes:
             return StampConfig(preset: .inkRound, spacing: 0.5, scatter: 0,
                                jitterAngleDeg: 0, tiltRotation: false,
@@ -271,7 +283,34 @@ struct StampConfig: Sendable {
                                jitterAngleDeg: 18, tiltRotation: true,
                                pressureToSize: 0.5, pressureToOpacity: 0.4,
                                flow: 0.25, sizeMultiplier: 2.2,
-                               pressureCurve: 0.8, tiltOval: 0.3)
+                               pressureCurve: 0.8, tiltOval: 0.3,
+                               wetFalloffLength: 700, wetEdge: 0.5, wetPull: 0.12)
+        case .fill:
+            // Fyll: tegn omrisset — lukkes det, scanline-fylles interiøret.
+            return StampConfig(preset: .inkRound, spacing: 0.3, scatter: 0,
+                               jitterAngleDeg: 0, tiltRotation: false,
+                               pressureToSize: 0.1, pressureToOpacity: 0.2,
+                               flow: 0.9, sizeMultiplier: 1.0,
+                               fillInterior: true)
+        case .halftone:
+            return StampConfig(preset: .halftoneDot, spacing: 0.2, scatter: 0,
+                               jitterAngleDeg: 0, tiltRotation: false,
+                               pressureToSize: 0.9, pressureToOpacity: 0.1,
+                               flow: 0.95, sizeMultiplier: 1.0,
+                               halftoneGrid: true)
+        case .stamp:
+            // Enkeltavtrykk: stor spacing = ett stempel per tap/kort strøk.
+            return StampConfig(preset: .softRound, spacing: 2.5, scatter: 0,
+                               jitterAngleDeg: 0, tiltRotation: false,
+                               pressureToSize: 0.3, pressureToOpacity: 0.1,
+                               flow: 1.0, sizeMultiplier: 3.0)
+        case .custom:
+            // Egen penselspiss (PNG) med vanlig strøk-oppførsel (ABR-verdien
+            // uten ABR-formatet).
+            return StampConfig(preset: .pencilGraphite, spacing: 0.12, scatter: 0.04,
+                               jitterAngleDeg: 10, tiltRotation: true,
+                               pressureToSize: 0.6, pressureToOpacity: 0.5,
+                               flow: 0.85, sizeMultiplier: 1.4)
         case .brush:
             return StampConfig(preset: .charcoalTooth, spacing: 0.07, scatter: 0.02,
                                jitterAngleDeg: 10, tiltRotation: true,

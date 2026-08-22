@@ -45,6 +45,10 @@ final class CanvasState: ObservableObject {
     // Viskelær-objektmodus: berørte STRØK slettes hele (opprydding),
     // i stedet for piksel-visking.
     @Published var eraserObjectMode = false
+    // Perspektiv-snap: strøk som peker mot et VP magnetiseres til strålen.
+    // VP-ene i INNHOLDSROM; settes av boardet fra guide-oppsettet.
+    @Published var perspectiveSnapEnabled = false
+    var perspectiveSnapPoints: [CGPoint] = []
     // Bumpes ved ALLE strokes-mutasjoner (også flytt, som ikke endrer antall)
     // — rebuild- og autosynk-trigger.
     @Published var revision = 0
@@ -82,6 +86,12 @@ final class CanvasState: ObservableObject {
     @Published var hatchLengthOverride: Double?
     @Published var envDensityOverride: Double?
     @Published var envScaleOverride: Double?
+    @Published var hueJitterOverride: Double?
+    // Egen penselspiss/stamp (PNG-dataURL) — én aktiv per type, persistert.
+    @Published var customTipDataURL: String? =
+        UserDefaults.standard.string(forKey: "sb.customTip")
+    @Published var stampTipDataURL: String? =
+        UserDefaults.standard.string(forKey: "sb.stampTip")
 
     /// Velg pensel og sett spec-defaults (størrelse/opacity) for typen —
     /// hvert verktøy skal starte med sin fysiske karakter. Editor-overrides
@@ -104,6 +114,7 @@ final class CanvasState: ObservableObject {
         hatchLengthOverride = nil
         envDensityOverride = nil
         envScaleOverride = nil
+        hueJitterOverride = nil
     }
 
     func currentBrush() -> BrushSpec {
@@ -116,6 +127,9 @@ final class CanvasState: ObservableObject {
         brush.hatchLength = hatchLengthOverride
         brush.envDensity = envDensityOverride
         brush.envScale = envScaleOverride
+        brush.hueJitter = hueJitterOverride
+        if brushType == .custom { brush.stampDataURL = customTipDataURL }
+        if brushType == .stamp { brush.stampDataURL = stampTipDataURL }
         return brush
     }
 
@@ -481,6 +495,11 @@ final class MetalCanvasUIView: UIView {
         if let snapped = Self.quickShapeSnap(stroke, brushType: state.brushType) {
             finalStroke = snapped
         }
+        if state.perspectiveSnapEnabled,
+           let projected = Self.perspectiveSnap(finalStroke,
+                                                vanishingPoints: state.perspectiveSnapPoints) {
+            finalStroke = projected
+        }
         state.strokes.append(finalStroke)
         state.registerRecentColor(state.brushColor)
         state.revision += 1
@@ -488,6 +507,39 @@ final class MetalCanvasUIView: UIView {
         committedCount = state.strokes.count
         lastRevision = state.revision
         redraw()
+    }
+
+    /// Perspektiv-snap (SBP-paritet): peker strøket <10° mot en VP-stråle,
+    /// projiseres alle punkter på linjen gjennom startpunktet mot VP-en.
+    static func perspectiveSnap(_ stroke: PencilStroke,
+                                vanishingPoints: [CGPoint]) -> PencilStroke? {
+        guard !vanishingPoints.isEmpty,
+              let first = stroke.points.first, let last = stroke.points.last else { return nil }
+        let strokeDX = last.x - first.x, strokeDY = last.y - first.y
+        let length = hypot(strokeDX, strokeDY)
+        guard length > 30 else { return nil }
+        var best: (unit: (Double, Double), deviation: Double)?
+        for vp in vanishingPoints {
+            let toVP = (Double(vp.x) - first.x, Double(vp.y) - first.y)
+            let vpLength = hypot(toVP.0, toVP.1)
+            guard vpLength > 1 else { continue }
+            let unit = (toVP.0 / vpLength, toVP.1 / vpLength)
+            // |sin| av vinkelen mellom strøk og stråle (retning likegyldig)
+            let cross = abs(strokeDX / length * unit.1 - strokeDY / length * unit.0)
+            if best == nil || cross < best!.deviation {
+                best = (unit, cross)
+            }
+        }
+        guard let match = best, match.deviation < 0.17 else { return nil } // <~10°
+        var snapped = stroke
+        snapped.points = snapped.points.map { point in
+            var p = point
+            let t = (p.x - first.x) * match.unit.0 + (p.y - first.y) * match.unit.1
+            p.x = first.x + match.unit.0 * t
+            p.y = first.y + match.unit.1 * t
+            return p
+        }
+        return snapped
     }
 
     /// Hold stille >0,45 s på slutten av et langt strøk → rett linje.

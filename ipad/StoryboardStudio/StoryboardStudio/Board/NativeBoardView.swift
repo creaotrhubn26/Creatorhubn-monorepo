@@ -371,7 +371,8 @@ struct NativeBoardView: View {
         .onChange(of: board.scenes.count) { loadActiveFrameIntoCanvas() }
         .onChange(of: canvasState.revision) { scheduleAutosync() }
         .onChange(of: onionMode) { applyUnderlay(to: renderer) }
-        .onChange(of: perspectiveMode) { persistPerspective() }
+        .onChange(of: perspectiveMode) { persistPerspective(); updateSnapState() }
+        .onChange(of: perspectiveSnap) { updateSnapState() }
         .task {
             // Retry-løkke for usynkede frames (nett tilbake / feilet synk).
             while !Task.isCancelled {
@@ -445,6 +446,7 @@ struct NativeBoardView: View {
             pair.count == 2 ? CGPoint(x: pair[0], y: pair[1]) : nil
         }
         applyUnderlay(to: renderer)
+        updateSnapState()
         pendingFrameIds = PendingStrokeStore.pendingFrameIds()
         canvasState.revision += 1
         loadedRevision = canvasState.revision
@@ -470,6 +472,17 @@ struct NativeBoardView: View {
             if board.frame?.id == ref.frameId { loadActiveFrameIntoCanvas() }
             board.syncStatus = "Gjenopprettet ✓"
         }
+    }
+
+    /// Snap-tilstand → canvas (VP-er i innholdsrom).
+    private func updateSnapState() {
+        let contentWidth = board.frame?.drawingWidth ?? 1920
+        let contentHeight = board.frame?.drawingHeight ?? 1080
+        let active = (1...3).contains(perspectiveMode) && perspectiveSnap
+        canvasState.perspectiveSnapEnabled = active
+        canvasState.perspectiveSnapPoints = active
+            ? vanishingPoints.map { CGPoint(x: $0.x * contentWidth, y: $0.y * contentHeight) }
+            : []
     }
 
     /// Persister perspektiv-oppsettet på framen (visnings-metadata; web
@@ -874,6 +887,11 @@ struct NativeBoardView: View {
                     Text("1-punkts").tag(1)
                     Text("2-punkts").tag(2)
                     Text("3-punkts").tag(3)
+                    Text("Isometrisk").tag(4)
+                    Text("Fisheye").tag(5)
+                }
+                if (1...3).contains(perspectiveMode) {
+                    Toggle("Snap strøk til VP", isOn: $perspectiveSnap)
                 }
             } label: {
                 Image(systemName: "road.lanes.curved.right")
@@ -1292,7 +1310,7 @@ struct NativeBoardView: View {
                         mode: perspectiveMode,
                         points: $vanishingPoints,
                         editable: boardTool == .select,
-                        onCommit: { persistPerspective() })
+                        onCommit: { persistPerspective(); updateSnapState() })
                 }
                 if boardTool == .arrow || boardTool == .rect || boardTool == .text {
                     annotationCapture(scale: scale)
@@ -1464,6 +1482,15 @@ struct NativeBoardView: View {
                             .padding(.horizontal, 10).padding(.vertical, 5)
                             .background(Color.black.opacity(0.6), in: Capsule())
                     }
+                    // Retusj (SBP Pencil Line Retouch-paritet): juster
+                    // eksisterende strøk uten å tegne på nytt.
+                    retouchButton("minus.circle", "Tynnere") { retouchSelection(widthFactor: 0.8) }
+                    retouchButton("plus.circle", "Tykkere") { retouchSelection(widthFactor: 1.25) }
+                    retouchButton("sun.min", "Blekere") { retouchSelection(opacityFactor: 0.8) }
+                    retouchButton("sun.max", "Mørkere") { retouchSelection(opacityFactor: 1.25) }
+                    retouchButton("paintpalette", "Pensel-farge") {
+                        retouchSelection(color: canvasState.brushColor)
+                    }
                 }
                 .offset(x: max(0, rect.minX - 8), y: max(0, rect.minY - 36))
             }
@@ -1491,6 +1518,41 @@ struct NativeBoardView: View {
             if Double(inside) / Double(total) > 0.5 { hit.insert(stroke.id) }
         }
         selectedStrokeIds = hit
+    }
+
+    private func retouchButton(_ systemImage: String, _ label: String,
+                               action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
+                .padding(6)
+                .background(Color.black.opacity(0.6), in: Circle())
+        }
+        .accessibilityLabel(label)
+    }
+
+    /// Muter valgte strøk (bredde/opasitet/farge) — én undo per trykk.
+    private func retouchSelection(widthFactor: Double = 1,
+                                  opacityFactor: Double = 1,
+                                  color: String? = nil) {
+        guard !selectedStrokeIds.isEmpty else { return }
+        canvasState.undoStack.append(canvasState.strokes)
+        canvasState.redoStack = []
+        canvasState.strokes = canvasState.strokes.map { stroke in
+            guard selectedStrokeIds.contains(stroke.id) else { return stroke }
+            var adjusted = stroke
+            adjusted.width = max(0.5, adjusted.width * widthFactor)
+            adjusted.opacity = min(1, max(0.05, adjusted.opacity * opacityFactor))
+            if var brush = adjusted.brush {
+                brush.size = max(0.5, brush.size * widthFactor)
+                brush.opacity = min(1, max(0.05, brush.opacity * opacityFactor))
+                if let color { brush.color = color }
+                adjusted.brush = brush
+            }
+            if let color { adjusted.color = color }
+            return adjusted
+        }
+        canvasState.revision += 1
     }
 
     private func selectionHandle(systemImage: String) -> some View {
@@ -1745,6 +1807,34 @@ struct NativeBoardView: View {
             notesDraft = board.frame?.notes ?? ""
             descriptionDraft = board.frame?.description ?? ""
         }
+        .onChange(of: tipPickerItem) {
+            guard let item = tipPickerItem else { return }
+            tipPickerItem = nil
+            let isStamp = canvasState.brushType == .stamp
+            Task {
+                guard let data = try? await item.loadTransferable(type: Data.self),
+                      let image = UIImage(data: data) else { return }
+                // ≤256px PNG (alpha bevares) — bakes i strøket ved tegning.
+                let maxSide = 256.0
+                let scaleFactor = min(1, maxSide / max(image.size.width, image.size.height))
+                let size = CGSize(width: image.size.width * scaleFactor,
+                                  height: image.size.height * scaleFactor)
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = 1
+                let scaled = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+                    image.draw(in: CGRect(origin: .zero, size: size))
+                }
+                guard let png = scaled.pngData() else { return }
+                let dataURL = "data:image/png;base64," + png.base64EncodedString()
+                if isStamp {
+                    canvasState.stampTipDataURL = dataURL
+                    UserDefaults.standard.set(dataURL, forKey: "sb.stampTip")
+                } else {
+                    canvasState.customTipDataURL = dataURL
+                    UserDefaults.standard.set(dataURL, forKey: "sb.customTip")
+                }
+            }
+        }
         .onChange(of: underlayPickerItem) {
             guard let item = underlayPickerItem else { return }
             underlayPickerItem = nil
@@ -1779,6 +1869,7 @@ struct NativeBoardView: View {
     @State private var descriptionDraft = ""
     @State private var tagDraft = ""
     @State private var underlayPickerItem: PhotosPickerItem?
+    @State private var tipPickerItem: PhotosPickerItem?
     @State private var renameSceneId: String?
     @State private var renameSceneDraft = ""
     @State private var pendingDeleteSceneId: String?
@@ -1810,6 +1901,7 @@ struct NativeBoardView: View {
     // (y>1 = under canvas for 3-punkts). Kun visning — aldri i data/eksport.
     @State private var perspectiveMode = 0
     @State private var vanishingPoints: [CGPoint] = []
+    @State private var perspectiveSnap = false
     // Lasso-transform (transient under gest)
     @State private var selectionScaleFactor: CGFloat = 1
     @State private var selectionRotationAngle: Double = 0
@@ -1882,6 +1974,7 @@ struct NativeBoardView: View {
         (.airbrush, "Luft"), (.wethair, "Hår"), (.softfocus, "Fokus"),
         (.skintex, "Hud"), (.rocktex, "Stein"), (.gloss, "Glans"),
         (.wash, "Vask"), (.spikes, "Pigg"), (.watercolor, "Akvarell"),
+        (.fill, "Fyll"), (.halftone, "Raster"), (.stamp, "Stamp"), (.custom, "Egen"),
     ]
 
     private var brushColorBinding: Binding<Color> {
@@ -1996,6 +2089,16 @@ struct NativeBoardView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Fargeplukker")
+                        if canvasState.brushType == .stamp || canvasState.brushType == .custom {
+                            PhotosPicker(selection: $tipPickerItem, matching: .images) {
+                                Image(systemName: "square.and.arrow.down")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(BoardBrand.dim)
+                                    .frame(width: 24, height: 24)
+                                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 7))
+                            }
+                            .accessibilityLabel("Importer penselspiss")
+                        }
                         if canvasState.brushType == .eraser {
                             // Objektmodus: berørte strøk slettes hele
                             Button { canvasState.eraserObjectMode.toggle() } label: {
@@ -3104,6 +3207,7 @@ private struct PerspectiveOverlay: View {
         1: [CGPoint(x: 0.5, y: 0.45)],
         2: [CGPoint(x: 0.06, y: 0.45), CGPoint(x: 0.94, y: 0.45)],
         3: [CGPoint(x: 0.06, y: 0.45), CGPoint(x: 0.94, y: 0.45), CGPoint(x: 0.5, y: 1.6)],
+        5: [CGPoint(x: 0.5, y: 0.5)],   // fisheye-senter
     ]
 
     var body: some View {
@@ -3113,6 +3217,57 @@ private struct PerspectiveOverlay: View {
             ZStack {
                 Canvas { context, _ in
                     let diagonal = hypot(size.width, size.height) * 2.2
+                    if mode == 4 {
+                        // Isometrisk: tre linjefamilier (30°/150°/vertikal).
+                        for angle in [Double.pi / 6, .pi - .pi / 6, .pi / 2] {
+                            let step = 46.0
+                            let normal = CGVector(dx: -sin(angle), dy: cos(angle))
+                            var offset = -diagonal
+                            while offset < diagonal {
+                                var path = Path()
+                                let mid = CGPoint(x: size.width / 2 + normal.dx * offset,
+                                                  y: size.height / 2 + normal.dy * offset)
+                                path.move(to: CGPoint(x: mid.x - cos(angle) * diagonal,
+                                                      y: mid.y - sin(angle) * diagonal))
+                                path.addLine(to: CGPoint(x: mid.x + cos(angle) * diagonal,
+                                                         y: mid.y + sin(angle) * diagonal))
+                                context.stroke(path, with: .color(BoardBrand.accent.opacity(0.16)),
+                                               lineWidth: 0.8)
+                                offset += step
+                            }
+                        }
+                        return
+                    }
+                    if mode == 5 {
+                        // Fisheye: konsentriske sirkler + buede «vertikaler»
+                        // gjennom senteret (flyttbart).
+                        let center = active.first ?? CGPoint(x: 0.5, y: 0.5)
+                        let origin = CGPoint(x: center.x * size.width, y: center.y * size.height)
+                        let maxRadius = hypot(size.width, size.height) * 0.62
+                        for step in 1...6 {
+                            let radius = maxRadius * Double(step) / 6
+                            context.stroke(
+                                Path(ellipseIn: CGRect(x: origin.x - radius, y: origin.y - radius,
+                                                       width: radius * 2, height: radius * 2)),
+                                with: .color(BoardBrand.accent.opacity(0.18)), lineWidth: 0.8)
+                        }
+                        for step in stride(from: -3, through: 3, by: 1) where step != 0 {
+                            let bend = CGFloat(step) * size.width * 0.16
+                            var path = Path()
+                            path.move(to: CGPoint(x: origin.x + bend, y: 0))
+                            path.addQuadCurve(to: CGPoint(x: origin.x + bend, y: size.height),
+                                              control: CGPoint(x: origin.x + bend * 1.9, y: origin.y))
+                            context.stroke(path, with: .color(BoardBrand.accent.opacity(0.18)),
+                                           lineWidth: 0.8)
+                            var horizontal = Path()
+                            horizontal.move(to: CGPoint(x: 0, y: origin.y + bend))
+                            horizontal.addQuadCurve(to: CGPoint(x: size.width, y: origin.y + bend),
+                                                    control: CGPoint(x: origin.x, y: origin.y + bend * 1.9))
+                            context.stroke(horizontal, with: .color(BoardBrand.accent.opacity(0.18)),
+                                           lineWidth: 0.8)
+                        }
+                        return
+                    }
                     for vp in active {
                         let origin = CGPoint(x: vp.x * size.width, y: vp.y * size.height)
                         for step in 0..<36 {
@@ -3472,6 +3627,9 @@ struct BrushEditorSheet: View {
                     }
                     LabeledContent("Flow") {
                         Slider(value: overrideBinding(\.flowOverride, default: preset.flow), in: 0.02...1)
+                    }
+                    LabeledContent("Fargevariasjon") {
+                        Slider(value: overrideBinding(\.hueJitterOverride, default: 0), in: 0...1)
                     }
                 }
                 // §48: parametre per kategori — vis kun det penselen støtter

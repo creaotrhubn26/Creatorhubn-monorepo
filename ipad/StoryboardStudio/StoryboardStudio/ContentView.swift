@@ -16,6 +16,7 @@ struct BrushToolbar: View {
         (.airbrush, "Luft"), (.wethair, "Hår"), (.softfocus, "Fokus"),
         (.skintex, "Hud"), (.rocktex, "Stein"), (.gloss, "Glans"),
         (.wash, "Vask"), (.spikes, "Pigg"), (.watercolor, "Akvarell"),
+        (.fill, "Fyll"), (.halftone, "Raster"), (.stamp, "Stamp"), (.custom, "Egen"),
     ]
 
     private var colorBinding: Binding<Color> {
