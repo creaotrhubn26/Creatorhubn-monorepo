@@ -9,6 +9,7 @@ import type { OrganizationForm } from '../rules/types.js';
 import { newId } from '../shared/ids.js';
 import { buildTaxEstimate } from './estimate.js';
 import { liquidityLadder, listAdvanceInstallments, listPlacements, placementGainTaxMinor, type LiquidityLadder, type Placement } from './placement.js';
+import { lotHoldings, methodForType, realisedGainForYear } from './lots.js';
 
 interface Actor { userId: string }
 
@@ -49,8 +50,12 @@ export interface TaxReserveOverview {
   placedMarketValueMinor: bigint;
   /** Urealisert gevinst/tap på plasseringene. */
   unrealisedGainMinor: bigint;
-  /** Anslått skatt på urealisert gevinst (22 % kapitalinntekt). ASK/fondskonto = fase 2. */
+  /** Anslått skatt på urealisert gevinst (aksjonærmodell/flat). ASK/fondskonto = fase 2. */
   gainTaxEstimateMinor: bigint;
+  /** Realisert gevinst/tap i år (fra salg av andeler). */
+  realisedGainMinor: bigint;
+  /** Anslått skatt på realisert gevinst i år — kommer i tillegg til inntektsskatten. */
+  realisedGainTaxMinor: bigint;
   /** Samlet dekning = kontant avsatt + markedsverdi plasseringer (erstatter kostpris med dagsverdi). */
   coverageMinor: bigint;
   placements: Placement[];
@@ -92,7 +97,25 @@ export async function taxReserveOverview(
   // Skatt på gevinst per plassering: aksjonærmodell (oppjustering) for aksjer/aksjefond, ellers flat 22 %.
   const baseRate = rules.getRationalParamAt('no.tax.personal-base-rate', 'rate', params.asOf);
   const upscale = rules.getRationalParamAt('no.tax.share-income-upscaling', 'factor', params.asOf);
-  const placements = placementsRaw.map((p) => ({ ...p, gainTaxMinor: placementGainTaxMinor(p, baseRate, upscale) }));
+  // Lot-sporede plasseringer: bruk gjenværende kostbasis fra lots (etter salg) som kostpris.
+  const placements = await Promise.all(placementsRaw.map(async (p) => {
+    const holdings = await lotHoldings(db, p.id, methodForType(p.placementType));
+    const cost = holdings.hasLots ? holdings.costMinor : p.costMinor;
+    const withCost = { ...p, costMinor: cost, unrealisedGainMinor: p.marketValueMinor - cost };
+    return { ...withCost, gainTaxMinor: placementGainTaxMinor(withCost, baseRate, upscale) };
+  }));
+  // Realisert gevinst i år + skatt på den (kommer i tillegg til inntektsskatten).
+  const year = Number(params.asOf.slice(0, 4));
+  const realisedByType = await realisedGainForYear(db, params.organizationId, year);
+  const realisedGainMinor = realisedByType.reduce((a, r) => a + r.realisedGainMinor, 0n);
+  const equityKinds = new Set(['equity_fund', 'stock']);
+  const realisedTaxRaw = realisedByType.reduce((a, r) => {
+    const g = r.realisedGainMinor;
+    const flat = (g * baseRate.numerator) / baseRate.denominator;
+    const tax = equityKinds.has(r.placementType) ? (flat * upscale.numerator) / upscale.denominator : flat;
+    return a + tax;
+  }, 0n);
+  const realisedGainTaxMinor = realisedTaxRaw > 0n ? realisedTaxRaw : 0n;
   const placedCostMinor = placements.reduce((a, p) => a + p.costMinor, 0n);
   const placedMarketValueMinor = placements.reduce((a, p) => a + p.marketValueMinor, 0n);
   const unrealisedGainMinor = placedMarketValueMinor - placedCostMinor;
@@ -127,6 +150,8 @@ export async function taxReserveOverview(
     placedMarketValueMinor,
     unrealisedGainMinor,
     gainTaxEstimateMinor,
+    realisedGainMinor,
+    realisedGainTaxMinor,
     coverageMinor,
     placements,
     ladder,

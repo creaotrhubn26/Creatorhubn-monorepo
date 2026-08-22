@@ -64,6 +64,8 @@ struct TaxReserveOverview: Decodable, Sendable {
     let placedMarketValueMinor: Money
     let unrealisedGainMinor: Money
     let gainTaxEstimateMinor: Money
+    let realisedGainMinor: Money
+    let realisedGainTaxMinor: Money
     let coverageMinor: Money
     let placements: [TaxPlacement]
     let ladder: LiquidityLadder
@@ -94,6 +96,9 @@ final class SkattViewModel {
     var justCovered = false
     var showAddPlacement = false
     var showAdvanceTax = false
+    var tradePlacement: TaxPlacement?
+    /// Siste realiserte gevinst fra et salg — vises kort som kvittering.
+    var lastRealisedGainMinor: Int64?
 
     func fetch(orgId: String) async {
         if case .loaded = load {} else { load = .loading }
@@ -144,6 +149,31 @@ final class SkattViewModel {
             let _: OKFlag = try await APIClient.shared.put(
                 "/api/organizations/\(orgId)/tax/advance-installments", body: Body(year: year, installments: items))
             showAdvanceTax = false
+            await fetch(orgId: orgId)
+        } catch { load = .failed(error.localizedDescription) }
+    }
+
+    func addLot(orgId: String, placementId: String, units: String, costKr: Int64) async {
+        struct Body: Encodable { let units: String; let costMinor: String }
+        guard costKr > 0, !units.isEmpty else { return }
+        do {
+            let _: EmptyID = try await APIClient.shared.post(
+                "/api/organizations/\(orgId)/tax/placements/\(placementId)/lots",
+                body: Body(units: units, costMinor: String(costKr * 100)))
+            tradePlacement = nil
+            await fetch(orgId: orgId)
+        } catch { load = .failed(error.localizedDescription) }
+    }
+
+    func recordDisposal(orgId: String, placementId: String, units: String, proceedsKr: Int64) async {
+        struct Body: Encodable { let units: String; let proceedsMinor: String }
+        struct Result: Decodable { let realisedGainMinor: Money }
+        guard proceedsKr > 0, !units.isEmpty else { return }
+        do {
+            let r: Result = try await APIClient.shared.post(
+                "/api/organizations/\(orgId)/tax/placements/\(placementId)/disposals",
+                body: Body(units: units, proceedsMinor: String(proceedsKr * 100)))
+            lastRealisedGainMinor = r.realisedGainMinor.minor // behold arket åpent så gevinsten vises
             await fetch(orgId: orgId)
         } catch { load = .failed(error.localizedDescription) }
     }
@@ -205,6 +235,7 @@ struct SkattView: View {
         .navigationTitle("Skatt")
         .sheet(isPresented: $model.showAddPlacement) { AddPlacementSheet(model: model, orgId: orgId) }
         .sheet(isPresented: $model.showAdvanceTax) { AdvanceTaxSheet(model: model, orgId: orgId) }
+        .sheet(item: $model.tradePlacement) { p in TradeSheet(model: model, orgId: orgId, placement: p) }
         .overlay { if model.justCovered { CoveredToast() } }
         .task(id: model.justCovered) {
             guard model.justCovered else { return }
@@ -360,6 +391,14 @@ private struct PlaceringSection: View {
                         }
                         .font(.caption).buttonStyle(.bordered)
                     }
+                    if p.placementType != "bank" {
+                        Button {
+                            model.lastRealisedGainMinor = nil
+                            model.tradePlacement = p
+                        } label: {
+                            Label("Registrer kjøp / salg av andeler", systemImage: "arrow.left.arrow.right")
+                        }.font(.caption)
+                    }
                 }
                 .padding(.vertical, 2)
             }
@@ -369,8 +408,13 @@ private struct PlaceringSection: View {
         } header: {
             Text("Plassering av avsetning")
         } footer: {
-            if ov.unrealisedGainMinor.minor > 0 {
-                Text("Urealisert gevinst \(ov.unrealisedGainMinor.kr). Anslått skatt på gevinsten (22 %): \(ov.gainTaxEstimateMinor.kr).")
+            VStack(alignment: .leading, spacing: 4) {
+                if ov.unrealisedGainMinor.minor > 0 {
+                    Text("Urealisert gevinst \(ov.unrealisedGainMinor.kr). Anslått skatt på gevinsten: \(ov.gainTaxEstimateMinor.kr).")
+                }
+                if ov.realisedGainMinor.minor != 0 {
+                    Text("Realisert i år: \(ov.realisedGainMinor.kr). Skatt på realisert gevinst (kommer i tillegg): \(ov.realisedGainTaxMinor.kr). Aksjer beregnes FIFO, fond etter gjennomsnitt.")
+                }
             }
         }
     }
@@ -406,6 +450,56 @@ private struct AddPlacementSheet: View {
                     Button("Lagre") {
                         Task { await model.createPlacement(orgId: orgId, name: name, type: type, liquidity: liquidity) }
                     }.disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+    }
+}
+
+/// Registrer kjøp (andeler + kostpris) eller salg (andeler + vederlag) av en plassering.
+private struct TradeSheet: View {
+    @Bindable var model: SkattViewModel
+    let orgId: String
+    let placement: TaxPlacement
+    @Environment(\.dismiss) private var dismiss
+    @State private var isSell = false
+    @State private var units = ""
+    @State private var amount = ""
+    private var methodNote: String {
+        placement.placementType == "stock" ? "Aksjer: gevinst beregnes FIFO." : "Fond: gevinst beregnes etter gjennomsnittsmetoden."
+    }
+    var body: some View {
+        NavigationStack {
+            Form {
+                Picker("Handel", selection: $isSell) {
+                    Text("Kjøp").tag(false)
+                    Text("Salg").tag(true)
+                }.pickerStyle(.segmented)
+                Section {
+                    HStack { Text("Andeler"); Spacer(); TextField("antall", text: $units).keyboardType(.decimalPad).multilineTextAlignment(.trailing).frame(width: 120) }
+                    HStack { Text(isSell ? "Vederlag" : "Kostpris"); Spacer(); TextField("kr", text: $amount).keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 120); Text("kr").foregroundStyle(.secondary) }
+                } footer: {
+                    Text(methodNote + (isSell ? " Realisert gevinst = vederlag − kostbasis." : ""))
+                }
+                if let g = model.lastRealisedGainMinor {
+                    Section {
+                        Label("Realisert gevinst: \(Money(minor: g).kr)", systemImage: g >= 0 ? "arrow.up.right" : "arrow.down.right")
+                            .foregroundStyle(g >= 0 ? .green : .red)
+                    }
+                }
+            }
+            .navigationTitle(placement.name)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Lukk") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Lagre") {
+                        let kr = Int64(amount.filter { $0.isNumber }) ?? 0
+                        let u = units.trimmingCharacters(in: .whitespaces)
+                        Task {
+                            if isSell { await model.recordDisposal(orgId: orgId, placementId: placement.id, units: u, proceedsKr: kr) }
+                            else { await model.addLot(orgId: orgId, placementId: placement.id, units: u, costKr: kr) }
+                        }
+                    }.disabled(units.isEmpty || amount.filter(\.isNumber).isEmpty)
                 }
             }
         }

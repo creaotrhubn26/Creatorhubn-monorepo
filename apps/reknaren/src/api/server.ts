@@ -124,6 +124,8 @@ import { DomainError, NotFoundError, ValidationError } from '../shared/errors.js
 import { buildTaxEstimate } from '../tax/estimate.js';
 import { recordTaxReserve, taxReserveOverview, taxSetAsideForInvoice } from '../tax/reserve.js';
 import { createPlacement, listAdvanceInstallments, recordValuation, setAdvanceInstallments } from '../tax/placement.js';
+import { addLot, methodForType, recordDisposal, unitsToMicro } from '../tax/lots.js';
+import type { PlacementType } from '../tax/placement.js';
 import { commonPurchaseCategories, registerPurchase } from '../tax/purchase.js';
 import type { OrganizationForm } from '../rules/types.js';
 import { buildVatReport, listVatCodes } from '../vat/engine.js';
@@ -4452,6 +4454,51 @@ export function createApiServer(deps: ApiDeps): express.Express {
         valuedAt: body.valuedAt ?? new Date().toISOString().slice(0, 10),
       });
       res.status(201).json({ ok: true });
+    } catch (err) { next(err); }
+  });
+  // Kjøp (lot): andeler + kostpris ervervet i en plassering — grunnlag for FIFO/gjennomsnitt.
+  app.post('/api/organizations/:orgId/tax/placements/:placementId/lots', requireAuth, requireOrgPermission('journal.post'), async (req: AuthedRequest, res, next) => {
+    try {
+      const placementId = z.string().uuid().parse(req.params.placementId);
+      const owns = (await deps.db.query(`SELECT 1 FROM tax_reserve_placements WHERE id=$1 AND organization_id=$2`, [placementId, req.params.orgId])).rowCount;
+      if (!owns) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Plasseringen finnes ikke.' } }); return; }
+      const body = z.object({
+        units: z.string().regex(/^\d+(\.\d{1,6})?$/),
+        costMinor: z.string().regex(/^\d+$/),
+        acquiredAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      }).parse(req.body);
+      const r = await addLot(deps.db, {
+        placementId, actor: { userId: req.auth!.userId },
+        acquiredAt: body.acquiredAt ?? new Date().toISOString().slice(0, 10),
+        unitsMicro: unitsToMicro(body.units), costMinor: BigInt(body.costMinor),
+      });
+      res.status(201).json(toJson(r));
+    } catch (err) { next(err); }
+  });
+  // Salg (disposal): realiserer gevinst FIFO (aksje) / gjennomsnitt (fond) og lagrer den.
+  app.post('/api/organizations/:orgId/tax/placements/:placementId/disposals', requireAuth, requireOrgPermission('journal.post'), async (req: AuthedRequest, res, next) => {
+    try {
+      const placementId = z.string().uuid().parse(req.params.placementId);
+      const p = (await deps.db.query(`SELECT placement_type FROM tax_reserve_placements WHERE id=$1 AND organization_id=$2`, [placementId, req.params.orgId])).rows[0];
+      if (!p) { res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Plasseringen finnes ikke.' } }); return; }
+      const body = z.object({
+        units: z.string().regex(/^\d+(\.\d{1,6})?$/),
+        proceedsMinor: z.string().regex(/^\d+$/),
+        disposedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      }).parse(req.body);
+      try {
+        const r = await recordDisposal(deps.db, {
+          placementId, actor: { userId: req.auth!.userId }, method: methodForType(p.placement_type as PlacementType),
+          disposedAt: body.disposedAt ?? new Date().toISOString().slice(0, 10),
+          unitsMicro: unitsToMicro(body.units), proceedsMinor: BigInt(body.proceedsMinor),
+        });
+        res.status(201).json(toJson(r));
+      } catch (e) {
+        if (e instanceof Error && e.message.includes('overstiger')) {
+          res.status(400).json({ error: { code: 'INSUFFICIENT_UNITS', message: e.message } }); return;
+        }
+        throw e;
+      }
     } catch (err) { next(err); }
   });
   // Fastsatt forskuddsskatt per termin (fra Skatteetatens forskuddsutskriving) — presiserer likviditetstrappen.
