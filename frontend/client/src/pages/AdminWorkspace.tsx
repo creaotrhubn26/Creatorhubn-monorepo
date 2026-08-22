@@ -15,6 +15,7 @@
  */
 
 import {
+  startTransition,
   useCallback,
   useEffect,
   useMemo,
@@ -39,6 +40,7 @@ import {
   Typography,
   useMediaQuery,
 } from '@mui/material';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined';
 import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined';
 import GavelOutlinedIcon from '@mui/icons-material/GavelOutlined';
@@ -2244,8 +2246,11 @@ export default function AdminWorkspace() {
 
   const effectiveEmail = localEmail || serverEmail || '';
 
+  // startTransition: panel-bytte kan mounte innhold som suspender (lazy
+  // undertrær). Synkron setState fra klikk + suspend = React #426 som blanker
+  // flaten til ErrorBoundary. Transition lar React holde forrige panel synlig.
   const handleSelect = useCallback((id: WorkspaceItemId) => {
-    setSelected(id);
+    startTransition(() => setSelected(id));
   }, []);
 
   if (!authChecked) {
@@ -2336,7 +2341,7 @@ export default function AdminWorkspace() {
           onSelect={handleSelect}
           inboxBadge={inboxBadge}
           product={product}
-          onProductChange={setProduct}
+          onProductChange={(next) => startTransition(() => setProduct(next))}
         />
       ) : null}
 
@@ -2345,10 +2350,52 @@ export default function AdminWorkspace() {
         <TopBar
           resolved={resolved}
           contentTab={contentTab}
-          onContentTabChange={setContentTab}
+          onContentTabChange={(tab) => startTransition(() => setContentTab(tab))}
         />
         <Box sx={{ flex: 1, px: { xs: 1.5, md: 3 }, py: { xs: 2, md: 3 } }}>
-          {resolved.render(contentTab)}
+          {/* key: boundary nullstilles automatisk ved panel-/fane-bytte, ellers
+              låses fallbacken fordi sidebar/topbar ligger utenfor boundaryen. */}
+          <ErrorBoundary
+            key={`${selected}-${contentTab}`}
+            componentName={`admin-workspace-panel:${selected}`}
+            fallback={
+              <Box
+                sx={{
+                  p: 4,
+                  borderRadius: 2,
+                  bgcolor: BRAND.panelBg,
+                  border: `1px solid ${BRAND.border}`,
+                  color: BRAND.text,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 1.5,
+                  alignItems: 'flex-start',
+                }}
+              >
+                <Typography variant="h6" sx={{ color: BRAND.text }}>
+                  Panelet krasjet
+                </Typography>
+                <Typography variant="body2" sx={{ color: BRAND.textMuted }}>
+                  Noe gikk galt i dette panelet. Velg et annet panel i menyen,
+                  eller last siden på nytt.
+                </Typography>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => window.location.reload()}
+                  sx={{
+                    color: BRAND.accent,
+                    borderColor: BRAND.border,
+                    '&:hover': { borderColor: BRAND.borderHover, bgcolor: BRAND.hoverBg },
+                  }}
+                >
+                  Last på nytt
+                </Button>
+              </Box>
+            }
+          >
+            {resolved.render(contentTab)}
+          </ErrorBoundary>
         </Box>
       </Box>
 
