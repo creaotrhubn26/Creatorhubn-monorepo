@@ -21,6 +21,7 @@ struct HubSidebar: View {
     let onSelect: (HubDestination) -> Void
     // Kollapsbar på alle flater — delt preferanse.
     @AppStorage("hubSidebarCollapsed") private var collapsed = false
+    @AppStorage("sbMentionCount") private var mentionCount = 0
 
     private static let items: [(HubDestination, String, String)] = [
         (.board, "rectangle.grid.2x2", "Board"),
@@ -59,9 +60,22 @@ struct HubSidebar: View {
                     HStack(spacing: 9) {
                         Image(systemName: icon).font(.system(size: 12))
                             .frame(width: 16)
+                            .overlay(alignment: .topTrailing) {
+                                if destination == .review && mentionCount > 0 && collapsed {
+                                    Circle().fill(.red).frame(width: 7, height: 7)
+                                        .offset(x: 4, y: -3)
+                                }
+                            }
                         if !collapsed {
                             Text(title).font(.system(size: 13, weight: .medium))
                             Spacer()
+                            if destination == .review && mentionCount > 0 {
+                                Text("@\(mentionCount)")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 5).padding(.vertical, 2)
+                                    .background(.red, in: Capsule())
+                            }
                         }
                     }
                     .foregroundStyle(isActive ? .white : BoardBrand.dim)
@@ -144,6 +158,9 @@ final class HubState: ObservableObject {
         var id: String
         var name: String
         var role: String
+        // E-post: mottaker for @mention-varsling (e-post + push). Valgfri —
+        // eldre lagrede team dekodes fint uten.
+        var email: String? = nil
     }
 
     @Published var mapPositions: [String: CGPoint] = [:]   // sceneId → punkt

@@ -269,7 +269,15 @@ struct ReviewView: View {
                 }
             }
         }
-        .task { await state.load() }
+        .task {
+            await state.load()
+            // @mentions regnes som sett når Review åpnes.
+            let me = await RoleRoomAPIClient.shared.userDisplayName ?? ""
+            if !me.isEmpty {
+                await RoleRoomAPIClient.shared.markMentionsRead(name: me)
+                UserDefaults.standard.set(0, forKey: "sbMentionCount")
+            }
+        }
         .sheet(isPresented: $showTeamEditor) {
             TeamEditorSheet(state: state)
         }
@@ -1389,11 +1397,21 @@ private struct TeamEditorSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                ForEach(team) { member in
-                    HStack {
-                        Text(member.name).foregroundStyle(.white)
-                        Spacer()
-                        Text(member.role).foregroundStyle(.secondary)
+                ForEach($team) { $member in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(member.name).foregroundStyle(.white)
+                            Spacer()
+                            Text(member.role).foregroundStyle(.secondary)
+                        }
+                        TextField("E-post (for @mention-varsling)",
+                                  text: Binding(
+                                    get: { member.email ?? "" },
+                                    set: { member.email = $0.isEmpty ? nil : $0 }))
+                            .font(.system(size: 12))
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.emailAddress)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 .onDelete { team.remove(atOffsets: $0) }

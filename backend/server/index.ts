@@ -827,6 +827,7 @@ import {
   sceneReadinessApplier,
 } from "./ai-scene-readiness-agent.js";
 import { setupCcapiRoutes } from "./ccapi-routes.js";
+import { registerAerospotRoutes } from "./aerospot-routes.js";
 import { setupMultiVendorCameraRoutes } from "./multi-vendor-camera-routes.js";
 import { setupCoverageTakeRoutes } from "./coverage-take-routes.js";
 import { createCoverageJobWorker } from "./coverage-job-queue.js";
@@ -15263,6 +15264,9 @@ setupCoverageTakeRoutes({ app, pool, requireUserSession });
 
 // Canon CCAPI-proxy — frontend snakker hit, vi snakker direkte mot kamera-AP
 setupCcapiRoutes({ app, pool, requireUserSession });
+
+// AeroSpot — flytrafikk, vær, loggbok, varsler + CCAPI camera-sync
+registerAerospotRoutes({ app, pool, requireUserSession });
 
 // Multi-vendor kamera-proxy — Sony Wi-Fi Remote + ARRI Web Remote
 // (Z CAM HTTP og GoPro BLE kommer senere; RED krever native SDK)
@@ -31874,6 +31878,7 @@ setupCastingManuscriptsRoutes({
   compatStoreGet,
   manuscriptsService,
   revisionsService: manuscriptRevisionsService,
+  pool,
 });
 setupRoleRoomCallSheetRoutes({ app, pool, requireUserSession });
 
@@ -33182,7 +33187,13 @@ type InviteRequestProffRiskIndicator = {
     | "debt_collection"
     | "forced_liquidation"
     | "bankruptcy_history"
-    | "tax_debt";
+    | "tax_debt"
+    | "new_registration"
+    | "missing_website"
+    | "missing_industry"
+    | "negative_equity"
+    | "low_equity_ratio"
+    | "operating_loss";
   severity: InviteRequestScreeningRiskLevel;
   description: string;
   date?: string;
@@ -33208,6 +33219,20 @@ type InviteRequestProffCompanyData = {
     profit?: number;
     year?: number;
   };
+  financials?: {
+    year: number;
+    revenue: number | null;
+    operatingResult: number | null;
+    netResult: number | null;
+    equity: number | null;
+    totalAssets: number | null;
+    equityRatio: number | null;
+    operatingMargin: number | null;
+    currency: string;
+  } | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string;
   keyPersons: Array<{
     name: string;
     role: string;
@@ -33241,6 +33266,8 @@ type InviteRequestBrregCompanySnapshot = {
   employees: number;
   website: string;
   operationalStatus: "active" | "inactive" | "bankruptcy" | "liquidation";
+  latitude?: number | null;
+  longitude?: number | null;
   source: "brreg_api" | "fallback";
 };
 
@@ -33426,6 +33453,127 @@ async function lookupInviteRequestBrregCompany(
   }
 }
 
+/** Hent siste årsregnskap fra Regnskapsregisteret (gratis, åpent API). */
+async function fetchInviteRequestFinancials(
+  orgNr: string,
+): Promise<{
+  year: number;
+  revenue: number | null;
+  operatingResult: number | null;
+  netResult: number | null;
+  equity: number | null;
+  totalAssets: number | null;
+  equityRatio: number | null;
+  operatingMargin: number | null;
+  currency: string;
+} | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    let r: Response;
+    try {
+      r = await fetch(
+        `https://data.brreg.no/regnskapsregisteret/regnskap/${orgNr}`,
+        {
+          headers: { Accept: "application/json", "User-Agent": "CreatorHub/1.0" },
+          signal: controller.signal,
+        },
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!r.ok) return null;
+    const body = (await r.json()) as Array<{
+      regnskapsperiode?: { tilDato?: string };
+      valuta?: string;
+      resultatregnskapResultat?: {
+        aarsresultat?: number;
+        driftsresultat?: {
+          driftsresultat?: number;
+          driftsinntekter?: { sumDriftsinntekter?: number };
+        };
+      };
+      egenkapitalGjeld?: {
+        egenkapital?: { sumEgenkapital?: number };
+        sumEgenkapitalGjeld?: number;
+      };
+    }>;
+    if (!Array.isArray(body) || body.length === 0) return null;
+    // Sorter etter periode Sluttdato synkende for å sikre nyeste først
+    const sorted = [...body].sort((a, b) =>
+      (b.regnskapsperiode?.tilDato ?? "").localeCompare(
+        a.regnskapsperiode?.tilDato ?? "",
+      ),
+    );
+    const entry = sorted[0];
+    const til = entry.regnskapsperiode?.tilDato;
+    const year = til ? Number(til.slice(0, 4)) : NaN;
+    if (!Number.isFinite(year)) return null;
+    const rr = entry.resultatregnskapResultat;
+    const revenue =
+      rr?.driftsresultat?.driftsinntekter?.sumDriftsinntekter ?? null;
+    const operatingResult = rr?.driftsresultat?.driftsresultat ?? null;
+    const netResult = rr?.aarsresultat ?? null;
+    const equity =
+      entry.egenkapitalGjeld?.egenkapital?.sumEgenkapital ?? null;
+    // sumEgenkapitalGjeld = egenkapital + gjeld = totalkapital (balance identity)
+    const totalAssets = entry.egenkapitalGjeld?.sumEgenkapitalGjeld ?? null;
+    return {
+      year,
+      revenue,
+      operatingResult,
+      netResult,
+      equity,
+      totalAssets,
+      equityRatio:
+        equity !== null && totalAssets !== null && totalAssets > 0
+          ? Math.round((equity / totalAssets) * 1000) / 1000
+          : null,
+      operatingMargin:
+        operatingResult !== null && revenue !== null && revenue > 0
+          ? Math.round((operatingResult / revenue) * 1000) / 1000
+          : null,
+      currency: entry.valuta ?? "NOK",
+    };
+  } catch (err) {
+    console.warn(`[invite-screening] Regnskapsregisteret lookup failed for ${orgNr}:`, err);
+    return null;
+  }
+}
+
+/** Geokod en norsk adresse via Kartverket/Geonorge (gratis, åpent API). */
+async function geocodeInviteRequestAddress(
+  addressText: string,
+): Promise<{ latitude: number; longitude: number } | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    let res: Response;
+    try {
+      const url = `https://ws.geonorge.no/adresser/v1/sok?sok=${encodeURIComponent(addressText)}&fuzzy=true&treffPerSide=1`;
+      res = await fetch(url, {
+        headers: { Accept: "application/json" },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!res.ok) return null;
+    const payload = (await res.json()) as {
+      adresser?: Array<{
+        representasjonspunkt?: { lat?: number; lon?: number };
+      }>;
+    };
+    const hit = payload.adresser?.[0]?.representasjonspunkt;
+    if (typeof hit?.lat !== "number" || typeof hit?.lon !== "number")
+      return null;
+    return { latitude: hit.lat, longitude: hit.lon };
+  } catch (err) {
+    console.warn(`[invite-screening] Geocoding failed for "${addressText}":`, err);
+    return null;
+  }
+}
+
 function buildInviteRequestRiskIndicator(
   type: InviteRequestProffRiskIndicator["type"],
   severity: InviteRequestProffRiskIndicator["severity"],
@@ -33440,11 +33588,11 @@ function buildInviteRequestRiskIndicator(
   };
 }
 
-function buildInviteRequestProffAnalysis(input: {
+async function buildInviteRequestProffAnalysis(input: {
   organizationNumber: string;
   companyName: string;
   brregLookup: InviteRequestBrregLookupResult;
-}): InviteRequestProffAnalysis {
+}): Promise<InviteRequestProffAnalysis> {
   const nowIso = new Date().toISOString();
   const company =
     input.brregLookup.company ||
@@ -33495,34 +33643,88 @@ function buildInviteRequestProffAnalysis(input: {
   ) {
     riskIndicators.push(
       buildInviteRequestRiskIndicator(
-        "tax_debt",
+        "new_registration",
         "medium",
         "Foretaket er nylig registrert og bør vurderes manuelt.",
         registrationDate.toISOString(),
       ),
     );
-    adminFlags.taxDebt = true;
   }
 
-  if (!company.website) {
+  // Ikke flagg manglende nettside/bransje for fallback-selskaper (disse har alltid tomme felt)
+  if (!company.website && input.brregLookup.lookupStatus === "verified") {
     riskIndicators.push(
       buildInviteRequestRiskIndicator(
-        "payment_default",
+        "missing_website",
         "low",
         "Ingen nettside er registrert på foretaket.",
       ),
     );
   }
 
-  if (!company.industry) {
+  if (!company.industry && input.brregLookup.lookupStatus === "verified") {
     riskIndicators.push(
       buildInviteRequestRiskIndicator(
-        "debt_collection",
-        "medium",
+        "missing_industry",
+        "low",
         "Næringskode mangler i registrene og bør gjennomgås.",
       ),
     );
-    adminFlags.debtCollection = true;
+  }
+
+  // Hent regnskapstall og geokoding i parallell
+  const addressText = [
+    company.businessAddress.adresse,
+    company.businessAddress.postnummer,
+    company.businessAddress.poststed,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  // Hopp over geokoding for fallback-adresser ("Ukjent adresse") og tomme adresser
+  const isRealAddress =
+    addressText &&
+    !addressText.startsWith("Ukjent") &&
+    input.brregLookup.lookupStatus === "verified";
+
+  const [financials, geo] = await Promise.all([
+    fetchInviteRequestFinancials(input.organizationNumber),
+    isRealAddress ? geocodeInviteRequestAddress(addressText) : null,
+  ]);
+
+  // Legg til økonomiske risikoindikatorer basert på regnskapstall
+  if (financials) {
+    if (financials.equity !== null && financials.equity < 0) {
+      riskIndicators.push(
+        buildInviteRequestRiskIndicator(
+          "negative_equity",
+          "high",
+          `Negativ egenkapital (${(financials.equity / 1000).toFixed(0)} kNOK) i ${financials.year}.`,
+        ),
+      );
+      adminFlags.highRisk = true;
+    } else if (
+      financials.equityRatio !== null &&
+      financials.equityRatio < 0.1
+    ) {
+      riskIndicators.push(
+        buildInviteRequestRiskIndicator(
+          "low_equity_ratio",
+          "medium",
+          `Lav soliditet (${(financials.equityRatio * 100).toFixed(0)}%) i ${financials.year}.`,
+        ),
+      );
+    }
+
+    if (financials.operatingMargin !== null && financials.operatingMargin < -0.3) {
+      riskIndicators.push(
+        buildInviteRequestRiskIndicator(
+          "operating_loss",
+          "medium",
+          `Stort driftsunderskudd (${(financials.operatingMargin * 100).toFixed(0)}% margin) i ${financials.year}.`,
+        ),
+      );
+    }
   }
 
   const severityScore: Record<
@@ -33555,24 +33757,64 @@ function buildInviteRequestProffAnalysis(input: {
       : riskScore >= 20
         ? "review"
         : "approve";
-  const summary =
-    approvalRecommendation === "approve"
-      ? "Org.nr er validert og screeningen viser ingen røde flagg."
-      : approvalRecommendation === "review"
-        ? "Org.nr er validert, men screeningen anbefaler manuell vurdering før godkjenning."
-        : "Screeningen fant alvorlige forhold. Forespørselen bør som hovedregel avvises.";
+
+  // Beregn ekte kredittkarakter basert på regnskapstall
+  let creditRating: string;
+  if (approvalRecommendation === "reject") {
+    creditRating = "C";
+  } else if (financials) {
+    // Terskel for "akseptabelt" underskudd er relativt til omsetning
+    const revenueAbs = Math.abs(financials.revenue ?? 0);
+    const netResult = financials.netResult ?? 0;
+    const acceptableLoss = revenueAbs > 0 ? revenueAbs * 0.05 : 500000;
+    if (
+      (financials.equityRatio ?? 0) >= 0.4 &&
+      (financials.operatingMargin ?? 0) >= 0.1 &&
+      netResult > 0
+    ) {
+      creditRating = "AAA";
+    } else if (
+      (financials.equityRatio ?? 0) >= 0.25 &&
+      netResult >= 0
+    ) {
+      creditRating = "AA";
+    } else if (
+      (financials.equity ?? 0) > 0 &&
+      netResult >= -acceptableLoss
+    ) {
+      creditRating = "A";
+    } else {
+      creditRating = "BB";
+    }
+  } else {
+    creditRating = approvalRecommendation === "review" ? "A" : "AA";
+  }
+
+  const summaryParts: string[] = [];
+  if (approvalRecommendation === "approve") {
+    summaryParts.push("Org.nr er validert og screeningen viser ingen røde flagg.");
+  } else if (approvalRecommendation === "review") {
+    summaryParts.push("Org.nr er validert, men screeningen anbefaler manuell vurdering før godkjenning.");
+  } else {
+    summaryParts.push("Screeningen fant alvorlige forhold. Forespørselen bør som hovedregel avvises.");
+  }
+  if (financials) {
+    summaryParts.push(
+      `Regnskapstall fra ${financials.year}: omsetning ${(financials.revenue ?? 0).toLocaleString("nb-NO")} kr, ` +
+      `egenkapital ${(financials.equity ?? 0).toLocaleString("nb-NO")} kr.`,
+    );
+  }
 
   return {
     organizationNumber: input.organizationNumber,
     companyName: company.name || input.companyName,
     status: company.operationalStatus,
     employees: company.employees || undefined,
-    creditRating:
-      approvalRecommendation === "reject"
-        ? "C"
-        : approvalRecommendation === "review"
-          ? "A"
-          : "AAA",
+    creditRating,
+    financials,
+    latitude: geo?.latitude ?? null,
+    longitude: geo?.longitude ?? null,
+    address: addressText || undefined,
     riskIndicators,
     keyPersons: [],
     businessSegments: company.industry ? [company.industry] : [],
@@ -33603,7 +33845,7 @@ function buildInviteRequestProffAnalysis(input: {
         : "fallback",
     riskLevel,
     riskScore,
-    summary,
+    summary: summaryParts.join(" "),
     brregVerified: input.brregLookup.lookupStatus === "verified",
     approvalRecommendation,
     adminFlags,
@@ -45163,6 +45405,12 @@ const ADMIN_STATS_PROFESSION_KEYS = [
   "videographer",
   "musicproducer",
   "vendor",
+  "user",
+  "education",
+  "enterprise",
+  "prototype_tester",
+  "couple",
+  "other",
 ] as const;
 
 type AdminStatsProfessionKey = (typeof ADMIN_STATS_PROFESSION_KEYS)[number];
@@ -45240,6 +45488,12 @@ function initializeAdminStatsProfessionBreakdown(): AdminStatsProfessionBreakdow
     videographer: 0,
     musicproducer: 0,
     vendor: 0,
+    user: 0,
+    education: 0,
+    enterprise: 0,
+    prototype_tester: 0,
+    couple: 0,
+    other: 0,
   };
 }
 
@@ -45252,6 +45506,12 @@ function initializeAdminStatsProfessionMetrics(): Record<
     videographer: { activeProjects: 0, totalRevenue: 0, avgRating: null },
     musicproducer: { activeProjects: 0, totalRevenue: 0, avgRating: null },
     vendor: { activeProjects: 0, totalRevenue: 0, avgRating: null },
+    user: { activeProjects: 0, totalRevenue: 0, avgRating: null },
+    education: { activeProjects: 0, totalRevenue: 0, avgRating: null },
+    enterprise: { activeProjects: 0, totalRevenue: 0, avgRating: null },
+    prototype_tester: { activeProjects: 0, totalRevenue: 0, avgRating: null },
+    couple: { activeProjects: 0, totalRevenue: 0, avgRating: null },
+    other: { activeProjects: 0, totalRevenue: 0, avgRating: null },
   };
 }
 
@@ -45278,11 +45538,31 @@ function normalizeAdminStatsProfession(
   if (
     normalized === "vendor" ||
     normalized === "leverandor" ||
-    normalized === "leverandør"
+    normalized === "leverandør" ||
+    normalized === "editingvendor"
   ) {
     return "vendor";
   }
-  return null;
+  if (normalized === "user" || normalized === "member") {
+    return "user";
+  }
+  if (
+    normalized === "education" ||
+    normalized === "educationinstitution" ||
+    normalized === "faglaerer"
+  ) {
+    return "education";
+  }
+  if (normalized === "enterprise" || normalized === "bedrift") {
+    return "enterprise";
+  }
+  if (normalized === "prototypetester") {
+    return "prototype_tester";
+  }
+  if (normalized === "couple" || normalized === "par") {
+    return "couple";
+  }
+  return "other";
 }
 
 function roundAdminMetric(value: number, decimals = 1): number {

@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 // Fase 2: sync mot The Role Room. Bruker NØYAKTIG samme HTTP-flate som
 // web-klienten (manuscriptService/settingsService):
@@ -960,6 +961,26 @@ actor RoleRoomAPIClient {
         var request = URLRequest(url: components.url!)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         return request
+    }
+
+    // ── @mention-varsler + APNs-token ──
+    func fetchUnreadMentions(name: String) async -> Int {
+        guard let result = try? await getJSON(
+            path: "/api/casting/storyboard-mentions",
+            query: ["name": name, "unread": "1"]) else { return 0 }
+        return (result["mentions"] as? [[String: Any]])?.count ?? 0
+    }
+
+    func markMentionsRead(name: String) async {
+        try? await sendJSON(path: "/api/casting/storyboard-mentions/read",
+                            method: "POST", body: ["name": name])
+    }
+
+    func registerDeviceToken(_ token: String) async {
+        try? await sendJSON(path: "/api/role-room/storyboard/device-token",
+                            method: "POST",
+                            body: ["token": token,
+                                   "deviceName": UIDevice.current.name])
     }
 
     private func getJSON(path: String, query: [String: String]) async throws -> [String: Any] {
