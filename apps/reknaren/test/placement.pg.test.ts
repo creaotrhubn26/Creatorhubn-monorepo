@@ -76,6 +76,21 @@ describe('aksjonærmodell for gevinstskatt', () => {
     expect(ov.gainTaxEstimateMinor).toBe(378_400n);
   });
 
+  it('skjermingsfradrag reduserer aksjegevinst-skatten (2025, 3,6 %)', async () => {
+    const org = await createOrganization(db, { name: 'Skjerming ENK', orgForm: 'ENK', vatStatus: 'not_registered', createdByUserId: userId });
+    const actor = { userId, role: 'owner' as const };
+    const p = await createPlacement(db, {
+      organizationId: org.id, actor, name: 'KLP Aksje', placementType: 'equity_fund', liquidity: 'long_term', openedAt: '2025-02-01',
+    });
+    await recordTaxReserve(db, { organizationId: org.id, actor, amountMinor: 100_000n, reservedAt: '2025-02-01', placementId: p.id });
+    await recordValuation(db, { placementId: p.id, valuedAt: '2025-06-01', marketValueMinor: 110_000n }); // gevinst 10 000
+
+    const ov = await taxReserveOverview(db, rules, { organizationId: org.id, orgForm: 'ENK', asOf: '2025-12-31' });
+    // Skjerming = 100 000 × 3,6 % = 3 600 → skattbart 6 400 × 22 % × 1,72 = 2 421.
+    expect(ov.placements[0]!.gainTaxMinor).toBe((6_400n * 22n * 172n) / (100n * 100n));
+    expect(ov.placements[0]!.gainTaxMinor).toBe(2_421n);
+  });
+
   it('fastsatt forskuddsskatt slår gjennom i oversiktens likviditetstrapp', async () => {
     const org = await createOrganization(db, { name: 'Forskudd ENK', orgForm: 'ENK', vatStatus: 'not_registered', createdByUserId: userId });
     const actor = { userId, role: 'owner' as const };

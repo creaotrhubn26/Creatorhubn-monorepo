@@ -218,6 +218,32 @@ export const NORWEGIAN_RULES: TaxRule[] = [
     ],
   },
   {
+    ruleId: 'no.tax.shielding-rate-shares',
+    shortName: 'Skjermingsrente aksjer',
+    plainExplanation:
+      'Skjermingsfradraget skjermer en risikofri avkastning på investert kapital fra skatt. Det beregnes som skjermingsgrunnlag (inngangsverdi) × skjermingsrente, og reduserer skattepliktig aksjegevinst/utbytte.',
+    technicalExplanation:
+      'Skjermingsrente for personlige aksjonærer, sktl. § 10-12. Fastsettes årlig etter inntektsårets slutt (gj.snitt 3-mnd statskasseveksler, nedjustert 22 %). 2025: 3,6 %. Andre år må verifiseres mot Skatteetaten før bruk.',
+    sourceIds: ['skatteetaten-selskapsskatt', 'lovdata-sktl'],
+    appliesToOrgForms: 'all',
+    appliesToVatStatus: 'all',
+    appliesToSituations: [],
+    calculationMethod: 'skjermingsgrunnlag × skjermingsrente; reduserer skattepliktig aksjeinntekt',
+    documentationRequirements: [],
+    riskLevel: 'medium',
+    lastReviewed: '2026-01-01',
+    reviewedBy: 'system-bootstrap',
+    versions: [
+      {
+        version: 1,
+        validFrom: '2025-01-01',
+        validTo: '2025-12-31',
+        parameters: { rate: { numerator: '36', denominator: '1000' } },
+        changeNote: 'Skjermingsrente aksjer 3,6 % for 2025 (Skatteetaten). Kun 2025 verifisert.',
+      },
+    ],
+  },
+  {
     ruleId: 'no.asset.expense-threshold',
     shortName: 'Grense for direkte kostnadsføring',
     plainExplanation:

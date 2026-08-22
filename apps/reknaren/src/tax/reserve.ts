@@ -97,12 +97,15 @@ export async function taxReserveOverview(
   // Skatt på gevinst per plassering: aksjonærmodell (oppjustering) for aksjer/aksjefond, ellers flat 22 %.
   const baseRate = rules.getRationalParamAt('no.tax.personal-base-rate', 'rate', params.asOf);
   const upscale = rules.getRationalParamAt('no.tax.share-income-upscaling', 'factor', params.asOf);
+  // Skjermingsrente: kun verifisert for enkelte år → best-effort, faller til null (ingen skjerming = konservativt).
+  let shielding: { numerator: bigint; denominator: bigint } | null = null;
+  try { shielding = rules.getRationalParamAt('no.tax.shielding-rate-shares', 'rate', params.asOf); } catch { shielding = null; }
   // Lot-sporede plasseringer: bruk gjenværende kostbasis fra lots (etter salg) som kostpris.
   const placements = await Promise.all(placementsRaw.map(async (p) => {
     const holdings = await lotHoldings(db, p.id, methodForType(p.placementType));
     const cost = holdings.hasLots ? holdings.costMinor : p.costMinor;
     const withCost = { ...p, costMinor: cost, unrealisedGainMinor: p.marketValueMinor - cost };
-    return { ...withCost, gainTaxMinor: placementGainTaxMinor(withCost, baseRate, upscale) };
+    return { ...withCost, gainTaxMinor: placementGainTaxMinor(withCost, baseRate, upscale, shielding) };
   }));
   // Realisert gevinst i år + skatt på den (kommer i tillegg til inntektsskatten).
   const year = Number(params.asOf.slice(0, 4));

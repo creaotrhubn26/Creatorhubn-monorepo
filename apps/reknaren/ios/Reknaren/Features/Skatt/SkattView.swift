@@ -410,7 +410,7 @@ private struct PlaceringSection: View {
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
                 if ov.unrealisedGainMinor.minor > 0 {
-                    Text("Urealisert gevinst \(ov.unrealisedGainMinor.kr). Anslått skatt på gevinsten: \(ov.gainTaxEstimateMinor.kr).")
+                    Text("Urealisert gevinst \(ov.unrealisedGainMinor.kr). Anslått skatt: \(ov.gainTaxEstimateMinor.kr) (aksjer etter oppjustering 1,72 og skjermingsfradrag; renter/bank flat 22 %).")
                 }
                 if ov.realisedGainMinor.minor != 0 {
                     Text("Realisert i år: \(ov.realisedGainMinor.kr). Skatt på realisert gevinst (kommer i tillegg): \(ov.realisedGainTaxMinor.kr). Aksjer beregnes FIFO, fond etter gjennomsnitt.")

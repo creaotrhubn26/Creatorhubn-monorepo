@@ -30,16 +30,21 @@ const EQUITY_KINDS: PlacementType[] = ['equity_fund', 'stock'];
 
 /**
  * Skatt på urealisert gevinst for én plassering. Tap → 0 (fradrag håndteres ved
- * realisering, fase 2b). Aksjeinntekt oppjusteres; renteinntekt skattlegges flatt.
+ * realisering). Aksjeinntekt oppjusteres og skjermes; renteinntekt skattlegges flatt.
+ * Skjerming = kostpris × skjermingsrente, trekkes fra aksjegevinsten før skatt.
  */
 export function placementGainTaxMinor(
-  p: Pick<Placement, 'placementType' | 'unrealisedGainMinor'>,
+  p: Pick<Placement, 'placementType' | 'unrealisedGainMinor' | 'costMinor'>,
   base: { numerator: bigint; denominator: bigint },       // alminnelig sats, f.eks. 22/100
   upscale: { numerator: bigint; denominator: bigint },    // oppjusteringsfaktor, f.eks. 172/100
+  shielding?: { numerator: bigint; denominator: bigint } | null, // skjermingsrente, f.eks. 36/1000
 ): bigint {
   if (p.unrealisedGainMinor <= 0n) return 0n;
   if (EQUITY_KINDS.includes(p.placementType)) {
-    return (p.unrealisedGainMinor * base.numerator * upscale.numerator) / (base.denominator * upscale.denominator);
+    const skjerming = shielding ? (p.costMinor * shielding.numerator) / shielding.denominator : 0n;
+    const taxable = p.unrealisedGainMinor - skjerming;
+    if (taxable <= 0n) return 0n;
+    return (taxable * base.numerator * upscale.numerator) / (base.denominator * upscale.denominator);
   }
   return (p.unrealisedGainMinor * base.numerator) / base.denominator;
 }
