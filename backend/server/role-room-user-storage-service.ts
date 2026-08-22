@@ -334,27 +334,27 @@ export async function getUserFilesPerProject(
   pool: Pool,
   userId: string,
 ): Promise<Array<{ projectId: string | null; projectName: string | null; fileCount: number; totalBytes: number }>> {
+  // NB: casting-prosjektene bor i legacy compat-storen, IKKE i en egen
+  // casting_projects-tabell — joinen mot den (og alias-casten i ORDER BY)
+  // knakk endepunktet i prod. Klienten mapper projectId → navn selv.
   const r = await pool.query<{
     project_id: string | null;
-    project_name: string | null;
     file_count: number;
     total_bytes: string;
   }>(
     `SELECT
        f.project_id,
-       p.name AS project_name,
        COUNT(*)::int AS file_count,
        COALESCE(SUM(f.size_bytes), 0)::text AS total_bytes
      FROM role_room_user_files f
-     LEFT JOIN casting_projects p ON p.id = f.project_id
      WHERE f.user_id = $1 AND f.deleted_at IS NULL
-     GROUP BY f.project_id, p.name
-     ORDER BY total_bytes::numeric DESC NULLS LAST`,
+     GROUP BY f.project_id
+     ORDER BY COALESCE(SUM(f.size_bytes), 0) DESC`,
     [userId],
   );
   return r.rows.map((row) => ({
     projectId: row.project_id,
-    projectName: row.project_name,
+    projectName: null,
     fileCount: row.file_count,
     totalBytes: Number(row.total_bytes),
   }));
