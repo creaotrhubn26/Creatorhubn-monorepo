@@ -13,7 +13,9 @@
  * ikke i SW — gir bedre kontroll over retry-logikk.
  */
 
-const SW_VERSION = 'v1';
+// v2: purger v1-cacher som kan være forgiftet med HTML lagret som JS-chunks
+// (Netlify SPA-fallback svarer 200 text/html for slettede asset-URLer).
+const SW_VERSION = 'v2';
 const STATIC_CACHE = `creatorhubn-static-${SW_VERSION}`;
 const API_CACHE = `creatorhubn-api-${SW_VERSION}`;
 const APP_SHELL_URLS = [
@@ -67,17 +69,27 @@ self.addEventListener('fetch', (event) => {
   // Static Vite-assets → cache-first (immutable)
   if (isStaticAsset(url.pathname)) {
     event.respondWith((async () => {
+      // En slettet asset-URL (gammel deploy) gir 200 text/html via Netlifys
+      // SPA-fallback — den må ALDRI caches eller serveres som JS/CSS, ellers
+      // forgiftes cachen permanent («Unexpected token '<'»).
+      const isHtml = (resp) =>
+        (resp.headers.get('content-type') || '').includes('text/html')
+        && !/\.html?$/.test(url.pathname);
       const cached = await caches.match(request);
-      if (cached) return cached;
+      if (cached && !isHtml(cached)) return cached;
+      if (cached) {
+        const cache = await caches.open(STATIC_CACHE);
+        await cache.delete(request).catch(() => {});
+      }
       try {
         const fresh = await fetch(request);
-        if (fresh.ok) {
+        if (fresh.ok && !isHtml(fresh)) {
           const cache = await caches.open(STATIC_CACHE);
           cache.put(request, fresh.clone()).catch(() => {});
         }
         return fresh;
       } catch (err) {
-        return cached || Response.error();
+        return Response.error();
       }
     })());
     return;
