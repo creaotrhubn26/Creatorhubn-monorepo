@@ -75,9 +75,9 @@ const WS_SCOPES = [
   "https://www.googleapis.com/auth/chat.spaces.create",
   "https://www.googleapis.com/auth/chat.messages",
   "https://www.googleapis.com/auth/chat.messages.readonly",
-  // YouTube (sensitive)
+  // YouTube (sensitive) — kun `youtube`: Google avviser youtube+youtube.upload
+  // i samme request (400 invalid_request); `youtube` er superset.
   "https://www.googleapis.com/auth/youtube",
-  "https://www.googleapis.com/auth/youtube.upload",
 ];
 
 const authUrl = (clientId, redirectUri, scopes, state) =>
