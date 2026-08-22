@@ -86,6 +86,7 @@ struct SceneSummary: Identifiable, Sendable {
     let hubMapPositions: String?
     let hubMapNotes: String?
     let hubTeam: String?
+    let hubInfo: String?
     // Manusfelter (Script-fanen)
     let sceneNumber: Int?
     let intExt: String?
@@ -804,6 +805,16 @@ actor RoleRoomAPIClient {
         var isImage: Bool { (contentType ?? "").hasPrefix("image/") }
     }
 
+    /// Lagringsstatus (kvote-måleren i hubben).
+    func fetchStorageStats() async -> (used: Int, quota: Int?)? {
+        guard let payload = try? await getJSON(path: "/api/role-room/storage/stats", query: [:]) else {
+            return nil
+        }
+        let stats = (payload["stats"] as? [String: Any]) ?? payload
+        guard let used = stats["usedBytes"] as? Int else { return nil }
+        return (used, stats["quotaBytes"] as? Int)
+    }
+
     /// Prosjektets filer i Role Room-lagringen (Assets-seksjonen i hubben).
     func listStorageFiles(projectId: String) async -> [StorageFileSummary] {
         guard let payload = try? await getJSON(
@@ -1022,6 +1033,7 @@ actor RoleRoomAPIClient {
             hubMapPositions: scene["hubMapPositions"] as? String,
             hubMapNotes: scene["hubMapNotes"] as? String,
             hubTeam: scene["hubTeam"] as? String,
+            hubInfo: scene["hubInfo"] as? String,
             sceneNumber: (scene["sceneNumber"] as? Int) ?? Int(scene["sceneNumber"] as? String ?? ""),
             intExt: (scene["intExt"] as? String) ?? (scene["int_ext"] as? String),
             location: (scene["locationName"] as? String) ?? (scene["location"] as? String),
