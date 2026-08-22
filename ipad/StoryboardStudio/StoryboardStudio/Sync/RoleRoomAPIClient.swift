@@ -60,6 +60,9 @@ struct FrameSummary: Identifiable, Sendable {
     // Referanse-underlag (kun visning i canvas — aldri i eksport)
     let underlayDataURL: String?
     let underlayOpacity: Double?
+    // Perspektiv-hjelpelinjer (persistert per frame; kun visning)
+    let perspectiveMode: Int?
+    let vanishingPoints: [[Double]]?
 }
 
 struct SceneSummary: Identifiable, Sendable {
@@ -589,6 +592,9 @@ actor RoleRoomAPIClient {
         guard (200...299).contains(status) else {
             throw status == 401 ? SyncError.unauthenticated : SyncError.http(status)
         }
+        lastDeletedScene = rawScenes[manuscriptId]?
+            .first { $0["id"] as? String == sceneId }
+            .map { (manuscriptId, $0) }
         rawScenes[manuscriptId]?.removeAll { $0["id"] as? String == sceneId }
     }
 
@@ -653,6 +659,49 @@ actor RoleRoomAPIClient {
                 frames[index]["shotNumber"] = prefix + letters
             }
         }
+    }
+
+    /// Presence: meld tilstedeværelse og få andre aktive (visningsnavn).
+    func reportPresence(manuscriptId: String) async -> [String] {
+        guard let name = userName else { return [] }
+        var request = (try? request(path: "/api/casting/manuscripts/\(manuscriptId)/presence",
+                                    query: [:]))
+        request?.httpMethod = "POST"
+        request?.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request?.httpBody = try? JSONSerialization.data(withJSONObject: ["displayName": name])
+        guard let request,
+              let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let others = payload["presence"] as? [[String: Any]] else { return [] }
+        return others.compactMap { ($0["displayName"] as? String) ?? ($0["userId"] as? String) }
+    }
+
+    /// Tegne-historikk for én frame (server bevarer 3 siste versjoner).
+    func frameHistory(manuscriptId: String, sceneId: String,
+                      frameId: String) async -> [(updatedAt: String, strokes: String)] {
+        await refreshScenes(manuscriptId: manuscriptId)
+        guard let scenes = rawScenes[manuscriptId],
+              let scene = scenes.first(where: { $0["id"] as? String == sceneId }),
+              let frames = scene["storyboardFrames"] as? [[String: Any]],
+              let frame = frames.first(where: { $0["id"] as? String == frameId }),
+              let history = frame["drawingHistory"] as? [[String: Any]] else { return [] }
+        return history.compactMap { entry in
+            guard let strokes = entry["strokes"] as? String else { return nil }
+            return ((entry["updatedAt"] as? String) ?? "", strokes)
+        }
+    }
+
+    // Slett-angre: siste slettede scene holdes i minnet til re-upsert.
+    private var lastDeletedScene: (manuscriptId: String, scene: [String: Any])?
+
+    func undoLastSceneDelete() async throws {
+        guard let deleted = lastDeletedScene else { return }
+        lastDeletedScene = nil
+        try await sendJSON(path: "/api/casting/scenes", method: "POST", body: deleted.scene)
+        var scenes = rawScenes[deleted.manuscriptId] ?? []
+        scenes.append(deleted.scene)
+        rawScenes[deleted.manuscriptId] = scenes
     }
 
     // MARK: HTTP
@@ -794,7 +843,9 @@ actor RoleRoomAPIClient {
                 updatedAt: frame["updatedAt"] as? String,
                 underlayDataURL: frame["underlayDataURL"] as? String,
                 underlayOpacity: (frame["underlayOpacity"] as? Double)
-                    ?? (frame["underlayOpacity"] as? Int).map(Double.init)
+                    ?? (frame["underlayOpacity"] as? Int).map(Double.init),
+                perspectiveMode: frame["perspectiveMode"] as? Int,
+                vanishingPoints: frame["vanishingPoints"] as? [[Double]]
             )
         }
         return SceneSummary(

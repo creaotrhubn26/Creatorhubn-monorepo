@@ -43,6 +43,19 @@ final class CanvasState: ObservableObject {
     // Bumpes ved ALLE strokes-mutasjoner (også flytt, som ikke endrer antall)
     // — rebuild- og autosynk-trigger.
     @Published var revision = 0
+    // Pensel-favoritter (persistert) — sorteres først i glyf-griden.
+    @Published var favoriteBrushes: Set<String> =
+        Set(UserDefaults.standard.stringArray(forKey: "sb.favBrushes") ?? [])
+
+    func toggleFavoriteBrush(_ type: BrushType) {
+        if favoriteBrushes.contains(type.rawValue) {
+            favoriteBrushes.remove(type.rawValue)
+        } else {
+            favoriteBrushes.insert(type.rawValue)
+        }
+        UserDefaults.standard.set(Array(favoriteBrushes), forKey: "sb.favBrushes")
+    }
+
     // Nylige farger (maks 8, persistert).
     @Published var recentColors: [String] =
         UserDefaults.standard.stringArray(forKey: "sb.recentColors") ?? []

@@ -145,6 +145,8 @@ final class BoardState: ObservableObject {
         }
     }
 
+    @Published var sceneDeleteUndoAvailable = false
+
     func deleteScene(sceneId: String) {
         syncStatus = "…"
         Task {
@@ -155,6 +157,23 @@ final class BoardState: ObservableObject {
                 selectedSceneIndex = min(selectedSceneIndex, max(0, scenes.count - 1))
                 activeFrameIndex = 0
                 syncStatus = "Scene slettet ✓"
+                sceneDeleteUndoAvailable = true
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                sceneDeleteUndoAvailable = false
+            } catch {
+                syncStatus = error.localizedDescription
+            }
+        }
+    }
+
+    func undoSceneDelete() {
+        syncStatus = "…"
+        sceneDeleteUndoAvailable = false
+        Task {
+            do {
+                try await RoleRoomAPIClient.shared.undoLastSceneDelete()
+                await reload()
+                syncStatus = "Scene gjenopprettet ✓"
             } catch {
                 syncStatus = error.localizedDescription
             }
@@ -345,6 +364,8 @@ struct NativeBoardView: View {
         .onChange(of: board.selectedSceneIndex) { board.activeFrameIndex = 0; loadActiveFrameIntoCanvas() }
         .onChange(of: board.scenes.count) { loadActiveFrameIntoCanvas() }
         .onChange(of: canvasState.revision) { scheduleAutosync() }
+        .onChange(of: onionMode) { applyUnderlay(to: renderer) }
+        .onChange(of: perspectiveMode) { persistPerspective() }
         .task {
             // Retry-løkke for usynkede frames (nett tilbake / feilet synk).
             while !Task.isCancelled {
@@ -356,9 +377,13 @@ struct NativeBoardView: View {
             // Live-polling (30 s, 304-billig med ETag): web-endringer dukker
             // opp uten app-restart. Aktiv frame reloades kun når vi ikke har
             // lokale usynkede endringer.
+            presentOthers = await RoleRoomAPIClient.shared.reportPresence(
+                manuscriptId: board.manuscript.id)
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 30_000_000_000)
                 guard !Task.isCancelled else { break }
+                presentOthers = await RoleRoomAPIClient.shared.reportPresence(
+                    manuscriptId: board.manuscript.id)
                 let changed = await board.refreshFromServer()
                 if changed,
                    canvasState.revision == loadedRevision,
@@ -404,6 +429,10 @@ struct NativeBoardView: View {
             board.frame.map { (scene.id, $0.id) }
         }
         loadedFrameUpdatedAt = board.frame?.updatedAt
+        perspectiveMode = board.frame?.perspectiveMode ?? 0
+        vanishingPoints = (board.frame?.vanishingPoints ?? []).compactMap { pair in
+            pair.count == 2 ? CGPoint(x: pair[0], y: pair[1]) : nil
+        }
         applyUnderlay(to: renderer)
         pendingFrameIds = PendingStrokeStore.pendingFrameIds()
         canvasState.revision += 1
@@ -416,22 +445,54 @@ struct NativeBoardView: View {
         }
     }
 
+    /// Gjenopprett en historikk-versjon: vanlig strokes-lagring (dagens
+    /// versjon havner selv i historikken server-side — angrbart).
+    private func restoreHistory(entry: (updatedAt: String, strokes: String)) {
+        guard let ref = historyFrameRef else { return }
+        showHistorySheet = false
+        let manuscriptId = board.manuscript.id
+        Task {
+            try? await RoleRoomAPIClient.shared.saveFrameStrokes(
+                manuscriptId: manuscriptId, sceneId: ref.sceneId,
+                frameId: ref.frameId, strokesJSON: entry.strokes)
+            await board.reload()
+            if board.frame?.id == ref.frameId { loadActiveFrameIntoCanvas() }
+            board.syncStatus = "Gjenopprettet ✓"
+        }
+    }
+
+    /// Persister perspektiv-oppsettet på framen (visnings-metadata; web
+    /// ignorerer feltene).
+    private func persistPerspective() {
+        guard board.frame != nil else { return }
+        board.patchActiveFrame([
+            "perspectiveMode": perspectiveMode,
+            "vanishingPoints": vanishingPoints.map { [Double($0.x), Double($0.y)] },
+        ])
+    }
+
     /// Dekod frame-underlag + ev. onion-skin (forrige shot) og sett på
     /// gitt renderer (inline og fullskjerm har hver sin instans).
     private func applyUnderlay(to target: MetalStrokeRenderer?) {
         let underlayImage = board.frame?.underlayDataURL.flatMap(decodeDataURL)
-        var onionImage: UIImage?
-        if onionSkin, let scene = board.scene, board.activeFrameIndex > 0,
-           scene.frames.indices.contains(board.activeFrameIndex - 1) {
-            let previous = scene.frames[board.activeFrameIndex - 1]
-            onionImage = FrameRenderService.image(for: previous, maxWidth: 1120)
-                ?? decodeDataURL(previous.thumbnailDataURL)
+        // Onion-kilder med alpha: forrige tydeligst, nabo nummer to svakere.
+        var onionLayers: [(image: UIImage, alpha: CGFloat)] = []
+        if onionMode > 0, let scene = board.scene {
+            func render(_ index: Int) -> UIImage? {
+                guard scene.frames.indices.contains(index) else { return nil }
+                return FrameRenderService.image(for: scene.frames[index], maxWidth: 1120)
+                    ?? decodeDataURL(scene.frames[index].thumbnailDataURL)
+            }
+            let current = board.activeFrameIndex
+            if let previous = render(current - 1) { onionLayers.append((previous, 0.35)) }
+            if onionMode == 2, let next = render(current + 1) { onionLayers.append((next, 0.2)) }
+            if onionMode == 3, let older = render(current - 2) { onionLayers.append((older, 0.2)) }
         }
         let opacity = board.frame?.underlayOpacity ?? 0.4
-        switch (underlayImage, onionImage) {
-        case (nil, nil):
+        switch (underlayImage, onionLayers.isEmpty) {
+        case (nil, true):
             target?.setUnderlay(cgImage: nil, opacity: 0)
-        case (let underlay?, nil):
+        case (let underlay?, true):
             target?.setUnderlay(cgImage: underlay.cgImage, opacity: opacity)
         default:
             // Komponer på papirfarget flate (samlet opacity 1 i shaderen).
@@ -446,8 +507,9 @@ struct NativeBoardView: View {
                 if let underlay = underlayImage {
                     underlay.draw(in: CGRect(origin: .zero, size: size), blendMode: .normal, alpha: opacity)
                 }
-                if let onion = onionImage {
-                    onion.draw(in: CGRect(origin: .zero, size: size), blendMode: .multiply, alpha: 0.35)
+                for layer in onionLayers {
+                    layer.image.draw(in: CGRect(origin: .zero, size: size),
+                                     blendMode: .multiply, alpha: layer.alpha)
                 }
             }
             target?.setUnderlay(cgImage: composed.cgImage, opacity: 1)
@@ -576,6 +638,23 @@ struct NativeBoardView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Synk nå")
+            }
+            if !presentOthers.isEmpty {
+                Label(presentOthers.joined(separator: ", "), systemImage: "eye")
+                    .font(.system(size: 11))
+                    .foregroundStyle(BoardBrand.accent)
+                    .lineLimit(1)
+                    .accessibilityLabel("Andre aktive: \(presentOthers.joined(separator: ", "))")
+            }
+            if board.sceneDeleteUndoAvailable {
+                Button { board.undoSceneDelete() } label: {
+                    Text("Angre sletting")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(BoardBrand.accent, in: Capsule())
+                }
+                .buttonStyle(.plain)
             }
             if let status = board.syncStatus {
                 Text(status).font(.system(size: 12)).foregroundStyle(BoardBrand.dim)
@@ -727,19 +806,22 @@ struct NativeBoardView: View {
             Rectangle().fill(BoardBrand.border).frame(width: 1, height: 20).padding(.horizontal, 4)
             ForEach([BoardTool.arrow, .rect, .text], id: \.self) { tool in toolButton(tool) }
             Rectangle().fill(BoardBrand.border).frame(width: 1, height: 20).padding(.horizontal, 4)
-            // Onion-skin: forrige shot bak aktiv frame
-            Button {
-                onionSkin.toggle()
-                applyUnderlay(to: renderer)
+            // Onion-skin: nabo-shots bak aktiv frame
+            Menu {
+                Picker("Onion-skin", selection: $onionMode) {
+                    Text("Av").tag(0)
+                    Text("Forrige shot").tag(1)
+                    Text("Forrige + neste").tag(2)
+                    Text("To tilbake").tag(3)
+                }
             } label: {
                 Image(systemName: "square.2.layers.3d.bottom.filled")
                     .font(.system(size: 14))
-                    .foregroundStyle(onionSkin ? .white : BoardBrand.dim)
+                    .foregroundStyle(onionMode > 0 ? .white : BoardBrand.dim)
                     .frame(width: 34, height: 30)
-                    .background(onionSkin ? BoardBrand.accent : Color.white.opacity(0.05),
+                    .background(onionMode > 0 ? BoardBrand.accent : Color.white.opacity(0.05),
                                 in: RoundedRectangle(cornerRadius: 7))
             }
-            .buttonStyle(.plain)
             .accessibilityLabel("Onion-skin")
             // Perspektiv-hjelpelinjer
             Menu {
@@ -825,6 +907,37 @@ struct NativeBoardView: View {
         }
         .sheet(isPresented: $showReauth) {
             NavigationStack { LoginView(sync: reauthSync) }
+        }
+        .sheet(isPresented: $showHistorySheet) {
+            NavigationStack {
+                List {
+                    if historyEntries.isEmpty {
+                        Text("Ingen tidligere versjoner — historikk lagres fra og med neste tegneendring.")
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(Array(historyEntries.enumerated()), id: \.offset) { _, entry in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(entry.updatedAt.isEmpty ? "Ukjent tidspunkt" : entry.updatedAt)
+                                    .font(.subheadline)
+                                let count = (try? StrokeSerialization.decodeFromWebJSON(entry.strokes))?.count ?? 0
+                                Text("\(count) strøk").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("Gjenopprett") {
+                                restoreHistory(entry: entry)
+                            }
+                            .buttonStyle(.borderedProminent).tint(BoardBrand.accent)
+                        }
+                    }
+                }
+                .navigationTitle("Tegne-historikk")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Lukk") { showHistorySheet = false }
+                    }
+                }
+            }
         }
         .onChange(of: reauthSync.isLoggedIn) {
             if reauthSync.isLoggedIn {
@@ -970,6 +1083,18 @@ struct NativeBoardView: View {
                                 frame: frame, projectTitle: board.manuscript.title)
                         } label: {
                             Label("Eksporter PNG", systemImage: "photo")
+                        }
+                        Button {
+                            guard let scene = board.scene else { return }
+                            historyFrameRef = (scene.id, frame.id)
+                            Task {
+                                historyEntries = await RoleRoomAPIClient.shared.frameHistory(
+                                    manuscriptId: board.manuscript.id,
+                                    sceneId: scene.id, frameId: frame.id)
+                                showHistorySheet = true
+                            }
+                        } label: {
+                            Label("Historikk…", systemImage: "clock.arrow.circlepath")
                         }
                         Button(role: .destructive) { pendingDeleteFrameId = frame.id } label: {
                             Label("Slett shot", systemImage: "trash")
@@ -1122,7 +1247,8 @@ struct NativeBoardView: View {
                     PerspectiveOverlay(
                         mode: perspectiveMode,
                         points: $vanishingPoints,
-                        editable: boardTool == .select)
+                        editable: boardTool == .select,
+                        onCommit: { persistPerspective() })
                 }
                 if boardTool == .arrow || boardTool == .rect || boardTool == .text {
                     annotationCapture(scale: scale)
@@ -1615,8 +1741,13 @@ struct NativeBoardView: View {
     @State private var draggedFrameId: String?
     @StateObject private var reauthSync = SyncState()
     @State private var showReauth = false
-    // Onion-skin: forrige shot i lav opacity bak aktiv frame (kontinuitet).
-    @State private var onionSkin = false
+    @State private var presentOthers: [String] = []
+    @State private var canUndoSceneDelete = false
+    @State private var historyFrameRef: (sceneId: String, frameId: String)?
+    @State private var historyEntries: [(updatedAt: String, strokes: String)] = []
+    @State private var showHistorySheet = false
+    // Onion-skin: 0=av, 1=forrige, 2=forrige+neste, 3=to tilbake.
+    @State private var onionMode = 0
     // Perspektiv-hjelpelinjer: 0=av, 1/2/3-punkts. VP-er normalisert 0–1
     // (y>1 = under canvas for 3-punkts). Kun visning — aldri i data/eksport.
     @State private var perspectiveMode = 0
@@ -1751,10 +1882,12 @@ struct NativeBoardView: View {
                 // Scrollbart glyf-grid — penselfamilien vokser.
                 ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 4) {
-                    ForEach(0..<((Self.brushChips.count + 4) / 5), id: \.self) { row in
+                    let chips = sortedBrushChips()
+                    ForEach(0..<((chips.count + 4) / 5), id: \.self) { row in
                         HStack(spacing: 5) {
-                            ForEach(Array(Self.brushChips[(row * 5)..<min(row * 5 + 5, Self.brushChips.count)]), id: \.0) { type, name in
+                            ForEach(Array(chips[(row * 5)..<min(row * 5 + 5, chips.count)]), id: \.0) { type, name in
                                 let selected = canvasState.brushType == type
+                                let favorite = canvasState.favoriteBrushes.contains(type.rawValue)
                                 Button { canvasState.selectBrush(type) } label: {
                                     BrushTipGlyph(type: type)
                                         .frame(width: 44, height: 26)
@@ -1763,9 +1896,25 @@ struct NativeBoardView: View {
                                         .overlay(RoundedRectangle(cornerRadius: 8)
                                             .stroke(selected ? BoardBrand.accent : BoardBrand.border,
                                                     lineWidth: selected ? 1.5 : 1))
+                                        .overlay(alignment: .topTrailing) {
+                                            if favorite {
+                                                Image(systemName: "star.fill")
+                                                    .font(.system(size: 6))
+                                                    .foregroundStyle(.yellow)
+                                                    .padding(2)
+                                            }
+                                        }
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel(name)
+                                .contextMenu {
+                                    Button {
+                                        canvasState.toggleFavoriteBrush(type)
+                                    } label: {
+                                        Label(favorite ? "Fjern favoritt" : "Favoritt",
+                                              systemImage: favorite ? "star.slash" : "star")
+                                    }
+                                }
                             }
                         }
                     }
@@ -1817,6 +1966,14 @@ struct NativeBoardView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity)
+    }
+
+    /// Favoritter først (stabil rekkefølge ellers).
+    private func sortedBrushChips() -> [(BrushType, String)] {
+        let favorites = canvasState.favoriteBrushes
+        guard !favorites.isEmpty else { return Self.brushChips }
+        return Self.brushChips.filter { favorites.contains($0.0.rawValue) }
+            + Self.brushChips.filter { !favorites.contains($0.0.rawValue) }
     }
 
     private func sliderRow(
@@ -2007,17 +2164,54 @@ enum AnimaticVideoExporter {
         guard writer.startWriting() else { return nil }
         writer.startSession(atSourceTime: .zero)
         var time = CMTime.zero
-        for frame in frames {
-            let image = FrameRenderService.image(for: frame, maxWidth: 1280)
+        let rendered: [UIImage?] = frames.map { frame in
+            FrameRenderService.image(for: frame, maxWidth: 1280)
                 ?? decodeDataURL(frame.thumbnailDataURL)
-            guard let buffer = pixelBuffer(image: image, shotNumber: frame.shotNumber,
-                                           size: videoSize) else { continue }
+        }
+        func append(_ buffer: CVPixelBuffer, at presentationTime: CMTime) async {
             while !input.isReadyForMoreMediaData {
                 try? await Task.sleep(nanoseconds: 20_000_000)
             }
-            adaptor.append(buffer, withPresentationTime: time)
-            time = CMTimeAdd(time, CMTime(seconds: max(0.5, frame.durationSec),
-                                          preferredTimescale: 600))
+            adaptor.append(buffer, withPresentationTime: presentationTime)
+        }
+        for (index, frame) in frames.enumerated() {
+            guard let buffer = pixelBuffer(image: rendered[index], shotNumber: frame.shotNumber,
+                                           size: videoSize) else { continue }
+            await append(buffer, at: time)
+            var holdSeconds = max(0.5, frame.durationSec)
+            // Dissolve/Fade mot NESTE shot: siste 0,5 s erstattes av 8
+            // interpolerte mellombilder (kryssfading av stillbilder).
+            let transition = (frame.transition ?? "").lowercased()
+            if index + 1 < frames.count,
+               transition.contains("dissolve") || transition.contains("fade"),
+               holdSeconds > 0.7 {
+                holdSeconds -= 0.5
+                var fadeTime = CMTimeAdd(time, CMTime(seconds: holdSeconds,
+                                                      preferredTimescale: 600))
+                let fadeSteps = 8
+                for step in 1...fadeSteps {
+                    let alpha = CGFloat(step) / CGFloat(fadeSteps + 1)
+                    let format = UIGraphicsImageRendererFormat()
+                    format.scale = 1
+                    let blended = UIGraphicsImageRenderer(size: videoSize, format: format)
+                        .image { context in
+                            UIColor.white.setFill()
+                            context.fill(CGRect(origin: .zero, size: videoSize))
+                            rendered[index]?.draw(in: aspectFit(rendered[index], in: videoSize),
+                                                  blendMode: .normal, alpha: 1 - alpha)
+                            rendered[index + 1]?.draw(in: aspectFit(rendered[index + 1], in: videoSize),
+                                                      blendMode: .normal, alpha: alpha)
+                        }
+                    if let fadeBuffer = pixelBuffer(image: blended, shotNumber: frame.shotNumber,
+                                                    size: videoSize) {
+                        await append(fadeBuffer, at: fadeTime)
+                    }
+                    fadeTime = CMTimeAdd(fadeTime, CMTime(seconds: 0.5 / Double(fadeSteps),
+                                                          preferredTimescale: 600))
+                }
+                holdSeconds += 0.5
+            }
+            time = CMTimeAdd(time, CMTime(seconds: holdSeconds, preferredTimescale: 600))
         }
         input.markAsFinished()
         writer.endSession(atSourceTime: time)
@@ -2025,6 +2219,17 @@ enum AnimaticVideoExporter {
             writer.finishWriting { continuation.resume() }
         }
         return writer.status == .completed ? url : nil
+    }
+
+    private static func aspectFit(_ image: UIImage?, in size: CGSize) -> CGRect {
+        guard let image, image.size.width > 0, image.size.height > 0 else {
+            return CGRect(origin: .zero, size: size)
+        }
+        let scale = min(size.width / image.size.width, size.height / image.size.height)
+        let drawSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        return CGRect(x: (size.width - drawSize.width) / 2,
+                      y: (size.height - drawSize.height) / 2,
+                      width: drawSize.width, height: drawSize.height)
     }
 
     /// Aspekt-fit på hvit flate; shots uten tegning får plakat med shot-nr.
@@ -2114,6 +2319,8 @@ struct AnimaticView: View {
                     if let frame = frames.indices.contains(index) ? frames[index] : nil {
                         if let image = decodeDataURL(frame.thumbnailDataURL) {
                             Image(uiImage: image).resizable().scaledToFit()
+                                .id(frame.id)
+                                .transition(.opacity)
                         } else {
                             RoundedRectangle(cornerRadius: 8).fill(Color(white: 0.94))
                                 .aspectRatio(2.39, contentMode: .fit)
@@ -2154,7 +2361,15 @@ struct AnimaticView: View {
             guard playing, frames.indices.contains(index) else { return }
             let seconds = max(0.5, frames[index].durationSec)
             try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-            if playing { index = (index + 1) % max(1, frames.count) }
+            if playing {
+                let transition = (frames[index].transition ?? "").lowercased()
+                let next = (index + 1) % max(1, frames.count)
+                if transition.contains("dissolve") || transition.contains("fade") {
+                    withAnimation(.easeInOut(duration: 0.45)) { index = next }
+                } else {
+                    index = next
+                }
+            }
         }
     }
 }
@@ -2653,6 +2868,7 @@ private struct PerspectiveOverlay: View {
     let mode: Int
     @Binding var points: [CGPoint]   // normalisert 0–1 (kan gå utenfor)
     let editable: Bool
+    var onCommit: () -> Void = {}
 
     private static let defaults: [Int: [CGPoint]] = [
         1: [CGPoint(x: 0.5, y: 0.45)],
@@ -2710,6 +2926,7 @@ private struct PerspectiveOverlay: View {
                                             x: value.location.x / size.width,
                                             y: value.location.y / size.height)
                                     }
+                                    .onEnded { _ in onCommit() }
                             )
                     }
                 }
