@@ -5,7 +5,6 @@ import { useQuery, useMutation, useQueryClient, QueryClientProvider } from '@tan
 import { useAuth } from "@/hooks/useAuth";
 import { useElementEdits, detectDesignWorkspace } from "@/components/workspace/elementEdits";
 import WorkspaceDesignOverlay from "@/components/workspace/WorkspaceDesignOverlay";
-import { SpeedInsights } from "@vercel/speed-insights/react";
 // Type definition for the current user response from /api/auth/current-user
 interface CurrentUser {
   id: string;
@@ -1171,7 +1170,9 @@ function App() {
                 <SmartFileManagerWidget />
                 <UniversalSessionManager />
                 <Toaster />
-                <SpeedInsights />
+                {/* SpeedInsights fjernet: Vercel-rest fra før Netlify-migreringen —
+                    /_vercel/speed-insights/script.js finnes ikke på Netlify og ga
+                    «Unexpected token '<'» (HTML-fallback) i konsollen på hver last. */}
                       </GlobalChatProvider>
                     </ProjectProvider>
                   </EnhancedMasterIntegrationProvider>
