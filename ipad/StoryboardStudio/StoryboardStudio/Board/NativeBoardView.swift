@@ -1072,8 +1072,22 @@ struct NativeBoardView: View {
         .sheet(isPresented: $showScript) {
             ScriptSheet(scenes: board.scenes, activeIndex: board.selectedSceneIndex)
         }
-        .sheet(isPresented: $showReview) {
-            ReviewSheet(board: board)
+        .fullScreenCover(isPresented: $showReview) {
+            // Den ekte Review-flaten (samme som hubben) — den gamle enkle
+            // ReviewSheet er pensjonert.
+            NavigationStack {
+                ReviewView(project: ProjectSummary(id: board.projectId ?? "",
+                                                   name: board.manuscript.title),
+                           manuscript: board.manuscript)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Board") {
+                                showReview = false
+                                Task { await board.reload() }
+                            }
+                        }
+                    }
+            }
         }
         .sheet(isPresented: $showBrushEditor) {
             BrushEditorSheet(canvasState: canvasState)
