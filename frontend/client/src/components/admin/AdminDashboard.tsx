@@ -995,7 +995,10 @@ export default function AdminDashboard({
   });
 
   const activateTab = (newValue: number) => {
-    setTabValue(newValue);
+    // startTransition: faner med lazy undertrær (bl.a. Innhold & Assets →
+    // visual-editor-chunkene) suspender ved mount. Synkron setState fra klikk
+    // + suspend = React #426 som kaster hele flaten til AdminErrorBoundary.
+    React.startTransition(() => setTabValue(newValue));
 
     // Broadcast tab change to other components
     communication.sendMessage({
@@ -1032,33 +1035,34 @@ export default function AdminDashboard({
     setAnchorEl(null);
   };
 
-  // Admin floating action button handlers (✅ corrected indices)
+  // Admin floating action button handlers — id-basert oppslag (tabIndexFor),
+  // aldri hardkodede indekser: de råtner hver gang adminTabs får en ny fane.
   const handleUserManagementOpen = () => {
-    activateTab(1); // Brukere & Roller
+    activateTab(tabIndexFor('brukere-roller'));
   };
 
   const handleSystemHealthOpen = () => {
-    activateTab(17); // Drift
+    activateTab(tabIndexFor('drift-helse'));
   };
 
   const handleAnalyticsOpen = () => {
-    activateTab(0); // Overblikk
+    activateTab(tabIndexFor('overblikk'));
   };
 
   const handleBackupOpen = () => {
-    activateTab(18); // Backup
+    activateTab(tabIndexFor('system-backup'));
   };
 
   const handleSecurityAuditOpen = () => {
-    activateTab(19); // GDPR
+    activateTab(tabIndexFor('gdpr-compliance'));
   };
 
   const handleBillingOpen = () => {
-    activateTab(7); // Økonomi
+    activateTab(tabIndexFor('okonomi'));
   };
 
   const handleAutomationsOpen = () => {
-    activateTab(21); // Automations
+    activateTab(tabIndexFor('automations'));
   };
 
   const handleLogsOpen = () => {
@@ -1120,19 +1124,19 @@ export default function AdminDashboard({
   };
 
   const handleSystemSettingsOpen = () => {
-    activateTab(17); // Drift (system settings)
+    activateTab(tabIndexFor('drift-helse')); // system settings
   };
 
   const handleStrategicNotesOpen = () => {
-    activateTab(23); // Stor Notatsløsning (Advanced Notes)
+    activateTab(tabIndexFor('advanced-notes'));
   };
 
   const handleMagicCreatorOpen = () => {
-    activateTab(22); // MagicCreator
+    activateTab(tabIndexFor('creatorhub-notes'));
   };
 
   const handleGoogleWorkspaceResellerOpen = () => {
-    activateTab(22); // MagicCreator (has Google Workspace content)
+    activateTab(tabIndexFor('creatorhub-notes')); // Google Workspace-innhold ligger her
   };
 
   // Admin action handlers with unified workflow integration
