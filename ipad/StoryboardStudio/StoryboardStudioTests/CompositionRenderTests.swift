@@ -757,7 +757,8 @@ final class CompositionRenderTests: XCTestCase {
             perspectiveMode: nil, vanishingPoints: nil, voiceoverDataURL: nil,
             imageUrl: imageUrl,
             reviewPriority: nil, reviewDueAt: nil,
-            reviewApprovedBy: nil, reviewApprovedAt: nil, reviewStarred: nil)
+            reviewApprovedBy: nil, reviewApprovedAt: nil, reviewStarred: nil,
+            reviewAssignee: nil, reviewColorLabel: nil, reviewSnoozedUntil: nil)
     }
 
     /// Tekst-annotasjoner skal med i eksport-render (CoreText-pass) —

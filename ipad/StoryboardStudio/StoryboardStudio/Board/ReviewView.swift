@@ -34,7 +34,14 @@ final class ReviewState: ObservableObject {
     }
 
     func frames(status: String) -> [(scene: SceneSummary, frame: FrameSummary)] {
-        var items = allFrames.filter { ($0.frame.frameStatus ?? "planned") == status }
+        var items = allFrames.filter { pair in
+            guard (pair.frame.frameStatus ?? "planned") == status else { return false }
+            // Snoozet: ute av køen til tidspunktet er passert
+            if let snoozed = pair.frame.reviewSnoozedUntil,
+               let until = ISO8601DateFormatter().date(from: snoozed),
+               until > Date() { return false }
+            return true
+        }
         if let roleFilter {
             items = items.filter { pair in
                 pair.frame.comments.contains { $0.role == roleFilter }
@@ -340,6 +347,12 @@ struct ReviewView: View {
             .padding(7)
             .background(isSelected ? BoardBrand.accent.opacity(0.16) : Color.white.opacity(0.02),
                         in: RoundedRectangle(cornerRadius: 9))
+            .overlay(alignment: .leading) {
+                if let hex = pair.frame.reviewColorLabel, let color = Color(hex: hex) {
+                    RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 3)
+                        .padding(.vertical, 6)
+                }
+            }
             .overlay(RoundedRectangle(cornerRadius: 9)
                 .stroke(isSelected ? BoardBrand.accent : .clear, lineWidth: 1.5))
         }
@@ -390,6 +403,25 @@ struct ReviewView: View {
                     .foregroundStyle((pair.frame.reviewStarred ?? false) ? .yellow : BoardBrand.dim)
             }
             .buttonStyle(.plain)
+            // Tildelt person (hubTeam)
+            Menu {
+                ForEach(Array(state.reviewers.enumerated()), id: \.offset) { _, reviewer in
+                    Button(reviewer.name) {
+                        state.patch(["reviewAssignee": reviewer.name])
+                    }
+                }
+                if pair.frame.reviewAssignee != nil {
+                    Button("Fjern tildeling", role: .destructive) {
+                        state.patch(["reviewAssignee": NSNull()])
+                    }
+                }
+            } label: {
+                Label(pair.frame.reviewAssignee ?? "Tildel",
+                      systemImage: "person.crop.circle")
+                    .font(.system(size: 11))
+                    .foregroundStyle(pair.frame.reviewAssignee != nil
+                                     ? BoardBrand.accent : BoardBrand.dim)
+            }
             if let due = dueLabel(pair.frame) {
                 Text(due.text)
                     .font(.system(size: 11, weight: .semibold))
@@ -452,7 +484,8 @@ struct ReviewView: View {
             perspectiveMode: nil, vanishingPoints: nil, voiceoverDataURL: nil,
             imageUrl: pair.frame.imageUrl,
             reviewPriority: nil, reviewDueAt: nil,
-            reviewApprovedBy: nil, reviewApprovedAt: nil, reviewStarred: nil)
+            reviewApprovedBy: nil, reviewApprovedAt: nil, reviewStarred: nil,
+            reviewAssignee: nil, reviewColorLabel: nil, reviewSnoozedUntil: nil)
         return FrameRenderService.image(for: ghost, maxWidth: 900)
     }
 
@@ -702,17 +735,60 @@ struct ReviewView: View {
                 if let pair = state.selectedPair {
                     inspectorSection("SHOT-INFO") {
                         inspectorRow("Scene / shot", pair.frame.shotNumber)
-                        inspectorRow("Type", pair.frame.shotType ?? "—")
-                        inspectorRow("Lens", pair.frame.lensMm.map { "\($0)mm" } ?? "—")
-                        inspectorRow("Bevegelse", pair.frame.movement ?? "—")
+                        // Redigerbart (mockup-dropdowns) — patcher framen direkte
+                        editRow("Type", value: pair.frame.shotType,
+                                options: ["WS", "MS", "CU", "ECU", "OTS", "POV", "INSERT"],
+                                key: "shotType")
+                        editRow("Lens", value: pair.frame.lensMm.map { "\($0)mm" },
+                                options: ["18mm", "24mm", "35mm", "50mm", "85mm", "135mm"],
+                                key: "lensMm", transform: { Int($0.dropLast(2)) ?? 35 })
+                        editRow("Bevegelse", value: pair.frame.movement,
+                                options: ["Static", "Pan", "Tilt", "Dolly", "Handheld", "Crane"],
+                                key: "movement")
                         inspectorRow("Varighet", String(format: "%.1f s", pair.frame.durationSec))
-                        inspectorRow("Overgang", pair.frame.transition ?? "—")
+                        editRow("Overgang", value: pair.frame.transition,
+                                options: ["Cut", "Dissolve", "Match Cut", "Smash Cut", "Wipe", "Fade"],
+                                key: "transition")
                     }
                     inspectorSection("PRODUKSJON") {
-                        inspectorRow("Tid på døgnet", pair.frame.timeOfDay ?? "—")
-                        inspectorRow("Vær", pair.frame.weather ?? "—")
-                        if !pair.frame.tags.isEmpty {
-                            inspectorRow("Tags", pair.frame.tags.joined(separator: ", "))
+                        editRow("Tid på døgnet", value: pair.frame.timeOfDay,
+                                options: ["Day", "Night", "Dawn", "Dusk"], key: "timeOfDay")
+                        editRow("Vær", value: pair.frame.weather,
+                                options: ["Clear", "Overcast", "Rain", "Snow", "Fog"], key: "weather")
+                        // Tags med fjerning + tillegg
+                        FlowTags(tags: pair.frame.tags) { removed in
+                            state.patch(["tags": pair.frame.tags.filter { $0 != removed }])
+                        }
+                        HStack(spacing: 6) {
+                            TextField("Ny tag", text: $newTag)
+                                .font(.system(size: 11)).foregroundStyle(.white)
+                                .textInputAutocapitalization(.characters)
+                                .onSubmit { addTag(pair) }
+                            Button { addTag(pair) } label: {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 10)).foregroundStyle(.white)
+                                    .frame(width: 20, height: 20)
+                                    .background(BoardBrand.accent, in: RoundedRectangle(cornerRadius: 6))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        // Fargelabels (mockup-swatchene)
+                        HStack(spacing: 7) {
+                            ForEach(Self.colorLabels, id: \.self) { hex in
+                                Button {
+                                    state.patch(["reviewColorLabel":
+                                        pair.frame.reviewColorLabel == hex ? NSNull() : hex])
+                                } label: {
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(Color(hex: hex) ?? .gray)
+                                        .frame(width: 22, height: 16)
+                                        .overlay(RoundedRectangle(cornerRadius: 4)
+                                            .stroke(pair.frame.reviewColorLabel == hex
+                                                    ? .white : BoardBrand.border,
+                                                    lineWidth: pair.frame.reviewColorLabel == hex ? 2 : 1))
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
                     }
                     inspectorSection("REVIEW-STATUS") {
@@ -769,6 +845,16 @@ struct ReviewView: View {
                             .font(.system(size: 12))
                             .foregroundStyle(BoardBrand.dim)
                             .buttonStyle(.plain)
+                        Button {
+                            let until = Date().addingTimeInterval(86_400)
+                            state.patch(["reviewSnoozedUntil":
+                                ISO8601DateFormatter().string(from: until)])
+                        } label: {
+                            Label("Utsett 24 t", systemImage: "zzz")
+                                .font(.system(size: 12))
+                                .foregroundStyle(BoardBrand.dim)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -789,6 +875,44 @@ struct ReviewView: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    @State private var newTag = ""
+
+    static let colorLabels = ["#ffffff", "#8b5cf6", "#ef6a6a", "#f0c243",
+                              "#4caf7d", "#3bb8c4"]
+
+    private func addTag(_ pair: (scene: SceneSummary, frame: FrameSummary)) {
+        let tag = newTag.trimmingCharacters(in: .whitespaces).uppercased()
+        newTag = ""
+        guard !tag.isEmpty, !pair.frame.tags.contains(tag) else { return }
+        state.patch(["tags": pair.frame.tags + [tag]])
+    }
+
+    /// Redigerbar inspector-rad (mockup-dropdown): meny som patcher feltet.
+    private func editRow(_ label: String, value: String?, options: [String],
+                         key: String,
+                         transform: ((String) -> any Sendable)? = nil) -> some View {
+        HStack {
+            Text(label).font(.system(size: 11)).foregroundStyle(BoardBrand.dim)
+            Spacer()
+            Menu {
+                ForEach(options, id: \.self) { option in
+                    Button(option) {
+                        state.patch([key: transform?(option) ?? option])
+                    }
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    Text(value ?? "—")
+                        .font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 7)).foregroundStyle(BoardBrand.label)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+            }
+        }
     }
 
     private func inspectorRow(_ label: String, _ value: String) -> some View {

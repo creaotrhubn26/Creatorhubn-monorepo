@@ -4415,7 +4415,7 @@ enum PendingStrokeStore {
     }
 }
 
-private struct FlowTags: View {
+struct FlowTags: View {
     let tags: [String]
     var onRemove: ((String) -> Void)?
 
