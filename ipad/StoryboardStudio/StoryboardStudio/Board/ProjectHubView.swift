@@ -19,6 +19,8 @@ struct HubSidebar: View {
     let storageQuota: Int?
     var active: HubDestination?
     let onSelect: (HubDestination) -> Void
+    // Kollapsbar på alle flater — delt preferanse.
+    @AppStorage("hubSidebarCollapsed") private var collapsed = false
 
     private static let items: [(HubDestination, String, String)] = [
         (.board, "rectangle.grid.2x2", "Board"),
@@ -31,9 +33,23 @@ struct HubSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(projectName)
-                .font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
-                .padding(.bottom, 10)
+            HStack {
+                if !collapsed {
+                    Text(projectName)
+                        .font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                        .lineLimit(1)
+                    Spacer()
+                }
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { collapsed.toggle() }
+                } label: {
+                    Image(systemName: collapsed ? "sidebar.left" : "sidebar.leading")
+                        .font(.system(size: 13)).foregroundStyle(BoardBrand.dim)
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.bottom, 10)
             ForEach(Self.items, id: \.0) { destination, icon, title in
                 let isActive = active == destination
                 Button {
@@ -42,8 +58,11 @@ struct HubSidebar: View {
                 } label: {
                     HStack(spacing: 9) {
                         Image(systemName: icon).font(.system(size: 12))
-                        Text(title).font(.system(size: 13, weight: .medium))
-                        Spacer()
+                            .frame(width: 16)
+                        if !collapsed {
+                            Text(title).font(.system(size: 13, weight: .medium))
+                            Spacer()
+                        }
                     }
                     .foregroundStyle(isActive ? .white : BoardBrand.dim)
                     .padding(.horizontal, 10).padding(.vertical, 8)
@@ -54,6 +73,7 @@ struct HubSidebar: View {
                 .buttonStyle(.plain)
             }
             Spacer()
+            if !collapsed {
             VStack(alignment: .leading, spacing: 5) {
                 Text("LAGRING")
                     .font(.system(size: 9, weight: .bold)).kerning(1)
@@ -71,9 +91,10 @@ struct HubSidebar: View {
                 Text("\(ByteCountFormatter.string(fromByteCount: Int64(storageUsed), countStyle: .file)) av \(ByteCountFormatter.string(fromByteCount: Int64(storageQuota ?? 1_073_741_824), countStyle: .file))")
                     .font(.system(size: 9)).foregroundStyle(BoardBrand.dim)
             }
+            }
         }
-        .padding(14)
-        .frame(width: 170)
+        .padding(collapsed ? 8 : 14)
+        .frame(width: collapsed ? 56 : 170)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(BoardBrand.panel)
     }
