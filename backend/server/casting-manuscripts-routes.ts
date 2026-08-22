@@ -564,7 +564,21 @@ export function setupCastingManuscriptsRoutes(
         manuscript_id: manuscriptId,
         createdAt: existing?.createdAt || payload.createdAt || now,
         updatedAt: now,
-      };
+      } as Record<string, unknown>;
+      // Tegne-historikk også på hele-scene-upsert (web-lagringsveien):
+      // match innkommende frames mot eksisterende på id.
+      const existingFrames: any[] = Array.isArray((existing as any)?.storyboardFrames)
+        ? (existing as any).storyboardFrames
+        : [];
+      if (Array.isArray((scene as any).storyboardFrames) && existingFrames.length) {
+        (scene as any).storyboardFrames = (scene as any).storyboardFrames.map(
+          (frame: any) =>
+            manuscriptsService.withDrawingHistory(
+              existingFrames.find((candidate) => candidate?.id === frame?.id),
+              frame,
+            ),
+        );
+      }
       const next = [...current];
       if (existingIndex >= 0) {
         next[existingIndex] = scene;
