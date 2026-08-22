@@ -914,7 +914,9 @@ const ROLE_ROOM_GOOGLE_SCOPES = [
   // Full Drive access is required for Showcase and other workspace flows
   // that list, create, move, and share arbitrary Drive files/folders.
   'https://www.googleapis.com/auth/drive',
-  'https://www.googleapis.com/auth/drive.file',
+  // drive.file er utelatt: Google avviser drive.file + youtube i samme request
+  // («scopes that cannot be requested together», 400 invalid_request), og full
+  // `drive` er uansett et superset.
   'https://www.googleapis.com/auth/drive.readonly',
   'https://www.googleapis.com/auth/drive.activity.readonly',
   'https://www.googleapis.com/auth/documents',

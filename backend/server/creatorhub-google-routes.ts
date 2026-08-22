@@ -116,7 +116,9 @@ const CREATORHUB_GOOGLE_SCOPES = [
   'email',
   'profile',
   'https://www.googleapis.com/auth/drive',
-  'https://www.googleapis.com/auth/drive.file',
+  // drive.file er utelatt: Google avviser drive.file + youtube i samme request
+  // («scopes that cannot be requested together», 400 invalid_request), og full
+  // `drive` er uansett et superset.
   'https://www.googleapis.com/auth/drive.readonly',
   // Meet-opptak-import: lese Meet-genererte Drive-filer (opptak/transkript).
   'https://www.googleapis.com/auth/drive.meet.readonly',
