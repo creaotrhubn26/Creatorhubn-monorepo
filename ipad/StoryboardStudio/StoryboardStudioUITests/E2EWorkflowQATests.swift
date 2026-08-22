@@ -26,6 +26,9 @@ final class E2EWorkflowQATests: XCTestCase {
         project.tap()
         let manuscript = app.cells.firstMatch
         if manuscript.waitForExistence(timeout: 8) { manuscript.tap() }
+        // Prosjekt-hub ligger nå foran boardet
+        let openBoard = app.buttons["Åpne board"].firstMatch
+        if openBoard.waitForExistence(timeout: 10) { openBoard.tap() }
         let canvas = app.otherElements["tegneflate"].firstMatch
         XCTAssertTrue(canvas.waitForExistence(timeout: 15), "board/canvas åpnet ikke")
         Thread.sleep(forTimeInterval: 2)

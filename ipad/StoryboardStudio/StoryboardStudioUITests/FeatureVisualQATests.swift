@@ -28,6 +28,9 @@ final class FeatureVisualQATests: XCTestCase {
         project.tap()
         let manuscript = app.cells.firstMatch
         if manuscript.waitForExistence(timeout: 8) { manuscript.tap() }
+        // Prosjekt-hub ligger nå foran boardet
+        let openBoard = app.buttons["Åpne board"].firstMatch
+        if openBoard.waitForExistence(timeout: 10) { openBoard.tap() }
 
         let perspective = app.buttons["Perspektiv"].firstMatch
         XCTAssertTrue(perspective.waitForExistence(timeout: 15), "board åpnet ikke")
@@ -80,6 +83,9 @@ final class FeatureVisualQATests: XCTestCase {
         app.staticTexts["TROLL"].firstMatch.tap()
         let manuscript = app.cells.firstMatch
         if manuscript.waitForExistence(timeout: 8) { manuscript.tap() }
+        // Prosjekt-hub ligger nå foran boardet
+        let openBoard = app.buttons["Åpne board"].firstMatch
+        if openBoard.waitForExistence(timeout: 10) { openBoard.tap() }
         let perspective = app.buttons["Perspektiv"].firstMatch
         XCTAssertTrue(perspective.waitForExistence(timeout: 15))
 
@@ -114,5 +120,32 @@ final class FeatureVisualQATests: XCTestCase {
             : app.buttons.matching(NSPredicate(format: "label == 'select'")).firstMatch.tap()
         Thread.sleep(forTimeInterval: 1)
         attachShot(app, name: "r7-06-selectmodus")
+    }
+
+    // Prosjekt-hub: visuell verifisering mot prod (TROLL).
+    @MainActor
+    func testProjectHubScreenshot() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchEnvironment["SB_TOKEN"] = "e2e-verify-daniel-2026"
+        app.launchEnvironment["SB_SERVER"] = "https://theroleroom.com"
+        app.launch()
+        let roleRoom = app.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH 'The Role Room'")).firstMatch
+        guard roleRoom.waitForExistence(timeout: 20) else { throw XCTSkip("prod/token") }
+        roleRoom.tap()
+        guard app.staticTexts["TROLL"].firstMatch.waitForExistence(timeout: 15) else {
+            throw XCTSkip("TROLL mangler")
+        }
+        app.staticTexts["TROLL"].firstMatch.tap()
+        let manuscript = app.cells.firstMatch
+        if manuscript.waitForExistence(timeout: 8) { manuscript.tap() }
+        XCTAssertTrue(app.buttons["Åpne board"].firstMatch.waitForExistence(timeout: 15),
+                      "hub åpnet ikke")
+        Thread.sleep(forTimeInterval: 3)
+        attachShot(app, name: "hub-01-oversikt")
+        app.swipeUp()
+        Thread.sleep(forTimeInterval: 1)
+        attachShot(app, name: "hub-02-nedre")
     }
 }

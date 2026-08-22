@@ -111,7 +111,7 @@ struct ManuscriptListView: View {
     var body: some View {
         List(manuscripts) { manuscript in
             NavigationLink(manuscript.title) {
-                NativeBoardView(manuscript: manuscript, projectId: project.id)
+                ProjectHubView(project: project, manuscript: manuscript)
             }
         }
         .overlay {

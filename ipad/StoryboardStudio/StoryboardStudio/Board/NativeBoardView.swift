@@ -9,7 +9,7 @@ import AVFoundation
 // commit); inaktive ruter viser synkede thumbnails. Inspector patcher
 // frame-felter rett mot samme scene-upsert som web.
 
-private enum BoardBrand {
+enum BoardBrand {
     static let accent = Color(red: 0.545, green: 0.361, blue: 0.965)      // #8b5cf6
     static let chrome = Color(red: 0.043, green: 0.043, blue: 0.055)      // #0b0b0e
     static let panel = Color(red: 0.078, green: 0.082, blue: 0.098)
@@ -45,7 +45,7 @@ private func pointInPolygon(_ point: CGPoint, polygon: [CGPoint]) -> Bool {
     return inside
 }
 
-private func decodeDataURL(_ dataURL: String?) -> UIImage? {
+func decodeDataURL(_ dataURL: String?) -> UIImage? {
     guard let dataURL, dataURL.hasPrefix("data:"),
           let comma = dataURL.firstIndex(of: ","),
           let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])) else { return nil }
@@ -330,8 +330,11 @@ struct NativeBoardView: View {
     @State private var showNewScenePrompt = false
     @Environment(\.dismiss) private var dismiss
 
-    init(manuscript: ManuscriptSummary, projectId: String? = nil) {
-        _board = StateObject(wrappedValue: BoardState(manuscript: manuscript, projectId: projectId))
+    init(manuscript: ManuscriptSummary, projectId: String? = nil,
+         initialSceneIndex: Int = 0) {
+        let state = BoardState(manuscript: manuscript, projectId: projectId)
+        state.selectedSceneIndex = initialSceneIndex
+        _board = StateObject(wrappedValue: state)
     }
 
     var body: some View {
