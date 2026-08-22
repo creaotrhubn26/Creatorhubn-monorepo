@@ -307,6 +307,25 @@ struct PencilStroke: Codable, Sendable, Equatable, Identifiable {
     // overlever native rundtur tapsfritt.
     var boardLayer: String?
     var textAnnotation: String?
+    // Annotasjonsform (presentasjons-boards): nil = ren tekst,
+    // "note" = post-it, "bubble" = snakkeboble. Optional → web-tolerant.
+    var annotationStyle: String?
+
+    init(id: String, points: [StrokePoint], inputType: String, color: String,
+         width: Double, opacity: Double, brush: BrushSpec? = nil,
+         boardLayer: String? = nil, textAnnotation: String? = nil,
+         annotationStyle: String? = nil) {
+        self.id = id
+        self.points = points
+        self.inputType = inputType
+        self.color = color
+        self.width = width
+        self.opacity = opacity
+        self.brush = brush
+        self.boardLayer = boardLayer
+        self.textAnnotation = textAnnotation
+        self.annotationStyle = annotationStyle
+    }
 }
 
 // Web BOARD_LAYERS-rekkefølge — strøk uten boardLayer regnes som Drawing.
