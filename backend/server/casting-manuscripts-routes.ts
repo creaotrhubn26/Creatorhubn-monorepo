@@ -720,15 +720,15 @@ export function setupCastingManuscriptsRoutes(
       let mentionBaseline: Array<Record<string, unknown>> | null = null;
       let mentionTeam: string | null = null;
       let mentionShot: string | undefined;
-      if (pool && Array.isArray((fields as any).comments)) {
+      if (pool && Array.isArray((fields as any).frameComments)) {
         try {
           const scenesBefore = await manuscriptsService.getScenes(manuscriptId);
           const sceneBefore = scenesBefore.find((s: any) => s?.id === sceneId) as any;
           const frameBefore = (sceneBefore?.storyboardFrames ?? []).find(
             (f: any) => f?.id === frameId,
           );
-          mentionBaseline = Array.isArray(frameBefore?.comments)
-            ? frameBefore.comments
+          mentionBaseline = Array.isArray(frameBefore?.frameComments)
+            ? frameBefore.frameComments
             : [];
           mentionShot = frameBefore?.shotNumber;
           mentionTeam =
@@ -757,7 +757,7 @@ export function setupCastingManuscriptsRoutes(
           pool,
           { manuscriptId, sceneId, frameId, shotNumber: mentionShot },
           mentionBaseline,
-          (fields as any).comments,
+          (fields as any).frameComments,
           team,
         );
       }
