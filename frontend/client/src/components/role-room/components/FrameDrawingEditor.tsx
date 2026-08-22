@@ -387,7 +387,7 @@ const PRO_BRUSH_OPTIONS: ProBrushType[] = [
   'eraser', 'kneaded', 'lightlift',
   'forest', 'debris', 'organictex', 'fur', 'toneblock', 'speedlines',
   'airbrush', 'wethair', 'softfocus', 'skintex', 'rocktex', 'gloss',
-  'wash', 'spikes',
+  'wash', 'spikes', 'fill', 'halftone', 'stamp', 'custom',
   // Klassiske
   'graphite', 'charcoal', 'conte', 'pen', 'marker', 'highlighter', 'watercolor',
 ];
@@ -415,6 +415,7 @@ const PRO_BRUSH_LABELS: Record<string, string> = {
   gloss: 'Glans',
   wash: 'Vask',
   spikes: 'Pigg',
+  fill: 'Fyll', halftone: 'Raster', stamp: 'Stamp', custom: 'Egen',
   pencil: 'Pencil',
   graphite: 'Graphite',
   charcoal: 'Charcoal',

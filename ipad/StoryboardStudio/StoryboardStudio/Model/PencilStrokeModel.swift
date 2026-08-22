@@ -61,6 +61,11 @@ enum BrushType: String, Codable, Sendable, CaseIterable {
     // Wash-klassen (blyant+lavering-referansen)
     case wash          // Lavering: bred flat halvtransparent tone m/ papirkant
     case spikes        // Pigg/skjell-pels i retningsfølgende rader (troll-pels)
+    // Research-runden: fyll, screen tone, stamps, egen penselspiss
+    case fill          // lukket omriss auto-fylles (SBP-paritet)
+    case halftone      // raster-tone (manga screen tone)
+    case stamp         // enkeltavtrykk fra egen PNG
+    case custom        // egen penselspiss (PNG) med vanlig strøk
 }
 
 // Spec-defaults per pensel (size px / opacity) — settes når penselen velges
@@ -105,6 +110,10 @@ enum BrushDefaults {
         case .rocktex: return "Stein — grov mineral-tekstur for fjell og mur."
         case .gloss: return "Glans — hvite høylys med taper (øyne, metall, vått)."
         case .wash: return "Vask — lavering i brede bånd; dybdelag og tåke."
+        case .fill: return "Fyll — tegn et lukket omriss, interiøret fylles automatisk."
+        case .halftone: return "Halftone — raster-tone (screen tone); trykk styrer dot-størrelse."
+        case .stamp: return "Stamp — enkeltavtrykk fra eget PNG-bilde (figurer, kamera-symboler)."
+        case .custom: return "Egen spiss — importert PNG som penselspiss med vanlig strøk."
         }
     }
 
@@ -140,6 +149,10 @@ enum BrushDefaults {
         case .wash: return (64, 0.3)
         case .spikes: return (26, 0.6)
         case .watercolor: return (46, 0.35)
+        case .fill: return (6, 0.85)
+        case .halftone: return (34, 0.85)
+        case .stamp: return (120, 0.95)
+        case .custom: return (12, 0.85)
         default: return nil
         }
     }
@@ -163,6 +176,11 @@ struct BrushSpec: Codable, Sendable, Equatable {
     var hatchLength: Double?       // multiplikator på merkelengde
     var envDensity: Double?        // miljøpensler: klynge-tetthet
     var envScale: Double?          // miljøpensler: struktur-størrelse
+    // Egen penselspiss/stamp: PNG som dataURL — bakes inn i strøket så
+    // dokumentet rendrer likt på alle enheter (web ignorerer feltet).
+    var stampDataURL: String?
+    // Fargevariasjon (color dynamics): 0..1 hue-jitter per dab.
+    var hueJitter: Double?
 
     static func preset(_ type: BrushType, size: Double, color: String, opacity: Double) -> BrushSpec {
         // Samme presets som web BRUSH_PRESETS.
@@ -334,6 +352,8 @@ extension BrushSpec {
         hatchLength = try container.decodeIfPresent(Double.self, forKey: .hatchLength)
         envDensity = try container.decodeIfPresent(Double.self, forKey: .envDensity)
         envScale = try container.decodeIfPresent(Double.self, forKey: .envScale)
+        stampDataURL = try container.decodeIfPresent(String.self, forKey: .stampDataURL)
+        hueJitter = try container.decodeIfPresent(Double.self, forKey: .hueJitter)
     }
 }
 

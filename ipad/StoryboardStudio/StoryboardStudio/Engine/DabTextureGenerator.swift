@@ -93,6 +93,18 @@ enum DabTextureGenerator {
                     pixels[y * size + x] = UInt8(min(255, alpha * 255))
                 }
             }
+        case .halftoneDot:
+            // Hard sirkel med minimal antialiasing — screen tone-raster.
+            for y in 0..<size {
+                for x in 0..<size {
+                    let dx = (Double(x) - center) / radius
+                    let dy = (Double(y) - center) / radius
+                    let dist = (dx * dx + dy * dy).squareRoot()
+                    guard dist <= 1 else { continue }
+                    let alpha = dist < 0.9 ? 1.0 : max(0, 1 - (dist - 0.9) / 0.1)
+                    pixels[y * size + x] = UInt8(min(255, alpha * 255))
+                }
+            }
         case .skinPore:
             // Porøs hud: svak myk base + tett felt av små porer (mørke
             // prikker med lysere ringer rundt — plot legger max, så vi

@@ -420,6 +420,7 @@ const PRO_BRUSH_TYPES: readonly ProBrushType[] = [
   'gloss',
   'wash',
   'spikes',
+  'fill', 'halftone', 'stamp', 'custom',
 ];
 const SELECTION_SNAP_GRID_SIZE = 50;
 const SELECTION_EDGE_SNAP_THRESHOLD = 18;
@@ -470,6 +471,7 @@ const STREAMLINE_BY_TYPE: Partial<Record<ProBrushType, number>> = {
   gloss: 0.4,
   wash: 0.18,
   spikes: 0.25,
+  fill: 0.3, halftone: 0.2, stamp: 2.5, custom: 0.12,
 };
 
 export function applyStreamline(points: PencilPoint[], amount: number): PencilPoint[] {
