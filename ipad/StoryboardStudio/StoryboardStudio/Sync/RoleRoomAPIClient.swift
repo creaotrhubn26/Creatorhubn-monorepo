@@ -34,6 +34,9 @@ struct ReviewComment: Identifiable, Sendable {
     // Tråder + reaksjoner
     let parentId: String?
     let likes: Int?
+    // Pin-lederlinje: valgfritt målpunkt (normalisert) linjen peker på
+    let targetX: Double?
+    let targetY: Double?
 }
 
 struct FrameSummary: Identifiable, Sendable {
@@ -1078,7 +1081,9 @@ actor RoleRoomAPIClient {
                         x: dict["x"] as? Double,
                         y: dict["y"] as? Double,
                         parentId: dict["parentId"] as? String,
-                        likes: dict["likes"] as? Int)
+                        likes: dict["likes"] as? Int,
+                        targetX: dict["targetX"] as? Double,
+                        targetY: dict["targetY"] as? Double)
                 },
                 updatedAt: frame["updatedAt"] as? String,
                 underlayDataURL: frame["underlayDataURL"] as? String,
