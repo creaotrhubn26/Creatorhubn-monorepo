@@ -801,8 +801,18 @@ actor RoleRoomAPIClient {
         let sizeBytes: Int
         let contentType: String?
         let uploadedAt: String
+        let entityType: String?
         var downloadPath: String { "/api/role-room/storage/files/\(id)/download" }
         var isImage: Bool { (contentType ?? "").hasPrefix("image/") }
+    }
+
+    /// Soft delete (papirkurv) — frigjør kvote.
+    func deleteStorageFile(fileId: String) async -> Bool {
+        guard var request = try? request(path: "/api/role-room/storage/files/\(fileId)",
+                                         query: [:]) else { return false }
+        request.httpMethod = "DELETE"
+        guard let (_, response) = try? await URLSession.shared.data(for: request) else { return false }
+        return (response as? HTTPURLResponse)?.statusCode == 200
     }
 
     /// Lagringsstatus (kvote-måleren i hubben).
@@ -828,7 +838,8 @@ actor RoleRoomAPIClient {
                 displayName: (entry["displayName"] as? String) ?? id,
                 sizeBytes: (entry["sizeBytes"] as? Int) ?? 0,
                 contentType: entry["contentType"] as? String,
-                uploadedAt: (entry["uploadedAt"] as? String) ?? "")
+                uploadedAt: (entry["uploadedAt"] as? String) ?? "",
+                entityType: entry["attachedToEntityType"] as? String)
         }
     }
 
