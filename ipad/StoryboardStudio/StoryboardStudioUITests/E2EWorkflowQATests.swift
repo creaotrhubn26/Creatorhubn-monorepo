@@ -6,6 +6,13 @@ import XCTest
 // steg; eksporteres med `xcresulttool export attachments`.
 final class E2EWorkflowQATests: XCTestCase {
 
+    /// iOS-varslingsdialogen (push) dukker ved første hub-innlasting.
+    func dismissPushPrompt() {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let allow = springboard.alerts.buttons["Allow"].firstMatch
+        if allow.waitForExistence(timeout: 3) { allow.tap() }
+    }
+
     @MainActor
     func testFullBoardWorkflow() throws {
         XCUIDevice.shared.orientation = .landscapeLeft
@@ -15,17 +22,10 @@ final class E2EWorkflowQATests: XCTestCase {
         app.launch()
 
         // ── 1: Login → TROLL → board ──
-        let roleRoom = app.staticTexts.matching(
-            NSPredicate(format: "label BEGINSWITH 'The Role Room'")).firstMatch
-        guard roleRoom.waitForExistence(timeout: 20) else {
-            throw XCTSkip("Auto-login feilet / prod utilgjengelig")
-        }
-        roleRoom.tap()
-        let project = app.staticTexts["TROLL"].firstMatch
-        guard project.waitForExistence(timeout: 15) else { throw XCTSkip("TROLL mangler") }
-        project.tap()
-        let manuscript = app.cells.firstMatch
-        if manuscript.waitForExistence(timeout: 8) { manuscript.tap() }
+        // Ny root-flyt: env-token lander rett i prosjekt-huben.
+        let hubReady = app.buttons["Åpne board"].firstMatch
+        guard hubReady.waitForExistence(timeout: 30) else { throw XCTSkip("prod/token") }
+        dismissPushPrompt()
         // Prosjekt-hub ligger nå foran boardet
         let openBoard = app.buttons["Åpne board"].firstMatch
         if openBoard.waitForExistence(timeout: 10) { openBoard.tap() }
