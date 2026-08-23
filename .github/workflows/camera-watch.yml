@@ -1,0 +1,54 @@
+name: Camera Watch
+
+# Månedlig vakt for nye kameralanseringer: sammenligner Camera Decisions
+# lanseringsliste med frontend/shared/camera-database.ts og oppretter/
+# oppdaterer et issue med modeller som mangler. Spesifikasjoner legges inn
+# manuelt (Utstyrsdatabase-adminen eller den statiske fila) — RAW-størrelser
+# og bitrates skal være riktige, ikke gjettet.
+
+on:
+  schedule:
+    - cron: '17 6 1 * *' # 1. hver måned 06:17 UTC
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Finn manglende kameraer
+        id: scan
+        run: |
+          node scripts/camera-watch/check-new-cameras.mjs > /tmp/result.json
+          cat /tmp/result.json
+          echo "missing_count=$(node -e 'console.log(JSON.parse(require("fs").readFileSync("/tmp/result.json","utf8")).missing.length)')" >> "$GITHUB_OUTPUT"
+
+      - name: Opprett/oppdater issue
+        if: steps.scan.outputs.missing_count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE="Kameradatabasen: nye lanseringer mangler"
+          BODY_FILE=/tmp/body.md
+          {
+            echo "Månedlig camera-watch fant modeller som ikke ligger i \`frontend/shared/camera-database.ts\`:"
+            echo
+            node -e 'JSON.parse(require("fs").readFileSync("/tmp/result.json","utf8")).missing.forEach(m => console.log("- [ ] " + m))'
+            echo
+            echo "Legg inn med spesifikasjoner (megapixels, averageRawSize, cardTypes, maxVideoBitrateMbps) — i Utstyrsdatabase-adminen (vises automatisk via /api/equipment/cameras) eller i den statiske fila."
+            echo
+            echo "_Kilde: cameradecision.com · generert av camera-watch_"
+          } > "$BODY_FILE"
+          EXISTING=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue edit "$EXISTING" --body-file "$BODY_FILE"
+            gh issue comment "$EXISTING" --body "Oppdatert $(date -u +%Y-%m-%d) — se oppdatert liste i beskrivelsen."
+          else
+            gh issue create --title "$TITLE" --body-file "$BODY_FILE" --label "vedlikehold"
+          fi

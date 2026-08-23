@@ -156,6 +156,7 @@ import OneDeskDownloadCard from '@/components/storage/OneDeskDownloadCard';
 import CaptureBetaSignupDialog from '@/components/project/CaptureBetaSignupDialog';
 import { getCamerasByProfession, getLogFormatsByCamera, getCameraBrand, VIDEO_CAMERA_DATABASE } from '../../data/video-camera-database';
 import { getPhotoCamerasByProfession, getPhotoCameraBrand, PHOTO_CAMERA_DATABASE } from '../../data/photo-camera-database';
+import { useCameraCatalog } from '../../hooks/useCameraCatalog';
 import { MemoryCardRecommendationEngine, getMemoryCardTypesByProfession, formatCurrency, CAMERA_MEMORY_CARD_COMPATIBILITY } from '../../data/memory-card-database';
 import EnhancedMemoryCardSelector from '../memory-card/EnhancedMemoryCardSelector';
 import { useNavigate } from 'react-router-dom';
@@ -1896,6 +1897,14 @@ useEffect(() => {
 
   // Existing client picker (Google Contacts)
   const [contactQuery, setContactQuery] = useState('');
+  // Selvoppdaterende kamerakatalog (statisk DB + Utstyrsdatabase-adminen)
+  const cameraCatalog = useCameraCatalog();
+  const cameraNameOptions = React.useMemo(() => {
+    const names = new Set<string>();
+    for (const c of cameraCatalog) names.add(`${c.brand} ${c.model}`);
+    for (const c of [...PHOTO_CAMERA_DATABASE, ...VIDEO_CAMERA_DATABASE] as any[]) names.add(`${c.brand} ${c.model}`);
+    return Array.from(names).sort();
+  }, [cameraCatalog]);
   const [contactOptions, setContactOptions] = useState<any[]>([]);
   const [selectedContact, setSelectedContact] = useState<any | null>(null);
 
@@ -4459,10 +4468,7 @@ useEffect(() => {
             <Autocomplete
               freeSolo
               fullWidth
-              options={[...PHOTO_CAMERA_DATABASE, ...VIDEO_CAMERA_DATABASE]
-                .map((c: any) => `${c.brand} ${c.model}`)
-                .filter((v, i, arr) => arr.indexOf(v) === i)
-                .sort()}
+              options={cameraNameOptions}
               value={projectData.primaryCamera || ''}
               onInputChange={(_e, val) => {
                 setProjectData(prev => ({ ...prev, primaryCamera: val }));
@@ -4475,10 +4481,7 @@ useEffect(() => {
             <Autocomplete
               freeSolo
               fullWidth
-              options={[...PHOTO_CAMERA_DATABASE, ...VIDEO_CAMERA_DATABASE]
-                .map((c: any) => `${c.brand} ${c.model}`)
-                .filter((v, i, arr) => arr.indexOf(v) === i)
-                .sort()}
+              options={cameraNameOptions}
               value={projectData.backupCamera || ''}
               onInputChange={(_e, val) => setProjectData(prev => ({ ...prev, backupCamera: val }))}
               renderInput={(params) => (

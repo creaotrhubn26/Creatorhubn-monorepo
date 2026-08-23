@@ -36,11 +36,9 @@ import {
   Check,
 } from '@mui/icons-material';
 import { 
-  WORLD_CAMERA_DATABASE, 
   calculateCapacityEstimates, 
-  searchCameras, 
-  getCameraByName
 } from '../../../../shared/camera-database';
+import { useCameraCatalog } from '../../hooks/useCameraCatalog';
 
 interface MemoryCardConfig {
   capacity: string;
@@ -91,9 +89,18 @@ export default function MemoryCardSelector({
   // Theming system
   const theming = useTheming('workspace');
   const [cameraSearch, setCameraSearch] = useState('');
+  // Selvoppdaterende katalog: statisk DB + kameraer fra Utstyrsdatabase-adminen.
+  const cameraCatalog = useCameraCatalog();
+  const findCamera = (name: string) =>
+    cameraCatalog.find((c) => `${c.brand} ${c.model}`.toLowerCase() === name.toLowerCase());
+  const searchCatalog = (q: string) => {
+    const needle = q.toLowerCase();
+    return cameraCatalog.filter((c) =>
+      `${c.brand} ${c.model} ${c.category}`.toLowerCase().includes(needle));
+  };
   
   // Get camera specs and calculate estimates
-  const cameraSpec = getCameraByName(selectedCamera) || WORLD_CAMERA_DATABASE[0];
+  const cameraSpec = findCamera(selectedCamera) || cameraCatalog[0];
   // Video-prosjekt/videograf → estimér opptaksminutter fra kameraets maks
   // bitrate (fallback 150 Mbps ≈ vanlig 4K10-bit) i stedet for bildeantall.
   const videoMode = profession === 'videographer' || projectType === 'video';
@@ -193,12 +200,12 @@ export default function MemoryCardSelector({
           />
           
           <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-            {WORLD_CAMERA_DATABASE.length} kameraer i databasen{videoMode ? ' — video-kapable vises øverst' : ''}
+            {cameraCatalog.length} kameraer i databasen{videoMode ? ' — video-kapable vises øverst' : ''}
           </Typography>
           
           <Box sx={{ maxHeight: 400, overflow: 'auto'}}>
             <List dense>
-              {(cameraSearch ? searchCameras(cameraSearch) : WORLD_CAMERA_DATABASE)
+              {(cameraSearch ? searchCatalog(cameraSearch) : cameraCatalog)
                 .slice()
                 .sort((a, b) => videoMode
                   ? (b.maxVideoBitrateMbps || 0) - (a.maxVideoBitrateMbps || 0)

@@ -86,6 +86,46 @@ export function setupEquipmentAdminRoutes(deps: EquipmentAdminRoutesDeps): void 
   const { app, requireAdminSession, db } = deps;
   const products = schema.products;
 
+  // ── Offentlig kamerakatalog (lesing, ingen auth) ──────────────────────
+  // Kilde for kameravelgerne i prosjekt-modalen: kameraer vedlikeholdes i
+  // Utstyrsdatabase-adminen (products-tabellen) med spesifikasjoner i
+  // technical_specs (megapixels, averageRawSize, averageCrawSize,
+  // maxVideoBitrateMbps, cardTypes, category). Frontenden merger denne
+  // lista med den innebygde statiske databasen (statisk = alltid fallback).
+  app.get("/api/equipment/cameras", async (_req, res) => {
+    try {
+      const rows = await db
+        .select({
+          brand: products.brand,
+          model: products.model,
+          type: products.type,
+          technicalSpecs: products.technicalSpecs,
+        })
+        .from(products)
+        .where(sql`${products.type} IN ('camera', 'camera_body', 'cinema', 'video_camera')`)
+        .orderBy(asc(products.brand), asc(products.model));
+      const cameras = rows.map((row) => {
+        const specs = (row.technicalSpecs ?? {}) as Record<string, unknown>;
+        return {
+          brand: row.brand,
+          model: row.model,
+          category: typeof specs.category === "string" ? specs.category
+            : row.type === "cinema" || row.type === "video_camera" ? "cinema" : "mirrorless",
+          megapixels: typeof specs.megapixels === "number" ? specs.megapixels : null,
+          averageRawSize: typeof specs.averageRawSize === "number" ? specs.averageRawSize : null,
+          averageCrawSize: typeof specs.averageCrawSize === "number" ? specs.averageCrawSize : null,
+          maxVideoBitrateMbps: typeof specs.maxVideoBitrateMbps === "number" ? specs.maxVideoBitrateMbps : null,
+          cardTypes: Array.isArray(specs.cardTypes) ? specs.cardTypes : [],
+          fileFormat: Array.isArray(specs.fileFormat) ? specs.fileFormat : [],
+        };
+      });
+      res.json({ success: true, cameras });
+    } catch (error) {
+      console.error("equipment cameras catalog error:", error);
+      res.status(500).json({ error: "Kunne ikke hente kamerakatalogen" });
+    }
+  });
+
   // ── Produkter ─────────────────────────────────────────────────────────
   app.get("/api/equipment-admin/products", async (req, res) => {
     if (!requireAdminSession(req, res)) return;
