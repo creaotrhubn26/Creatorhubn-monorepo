@@ -11,7 +11,9 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_API_BASE: &str = "https://creatorhubn.com";
+// www, ikke apex: apex 301/308-redirecter til www (Netlify), og reqwest
+// fjerner Authorization-headeren på cross-host-redirects.
+const DEFAULT_API_BASE: &str = "https://www.creatorhubn.com";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
