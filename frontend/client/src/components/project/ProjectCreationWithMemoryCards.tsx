@@ -39,6 +39,7 @@ import {
   FormControl,
   InputLabel,
   Select,
+  Menu,
   MenuItem,
   Chip,
   Switch,
@@ -137,6 +138,7 @@ import {
   VideoLibrary,
   LibraryMusic,
   CameraAlt,
+  MoreVert,
 } from '@mui/icons-material';
 import MemoryCardIcon from '../ui/MemoryCardIcon';
 import MemoryCardSelector from '../memory-card/MemoryCardSelector';
@@ -1860,6 +1862,8 @@ useEffect(() => {
   const [showScriptManager, setShowScriptManager] = useState<boolean>(false);
   const [showPreview, setShowPreview] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  // «⋯ Flere verktøy»-menyen i den forenklede handlingsraden
+  const [toolsMenuAnchor, setToolsMenuAnchor] = useState<null | HTMLElement>(null);
   const memoryPlanSavedRef = useRef(false);
 
   // Normalize multi-day event dates from initialData
@@ -4256,100 +4260,80 @@ useEffect(() => {
       )}
 
       {/* ==========================================
-         PROJECT MANAGEMENT TOOLBAR
+         HANDLINGSRAD — forenklet for forbruker: én tydelig primærhandling,
+         utkast-status, og power-verktøy bak «Flere verktøy»-menyen.
+         (Dupliser/Arkiver/Slett/Publiser vises kun for eksisterende prosjekt;
+         cache/synk/optimaliser/samarbeid er systemverktøy og er tatt ut av UI.)
          ========================================== */}
-      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent, mb: 2 }}>
-            <Settings sx={{ fontSize: 28 }} /> Prosjektverktøy
-          </Typography>
-          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 1 }}>
-            <Tooltip title="Lagre utkast">
-              <Badge badgeContent={hasUnsavedChanges ? '!' : 0} color="warning">
-                <Button variant="outlined" size="small" startIcon={<Save />} onClick={handleSaveDraft} disabled={!hasUnsavedChanges}>
-                  Lagre utkast
-                </Button>
-              </Badge>
-            </Tooltip>
-            <Tooltip title="Dupliser prosjekt">
-              <Button variant="outlined" size="small" startIcon={<Restore />} onClick={handleDuplicateProject} disabled={!currentProject?.id}>
-                Dupliser
-              </Button>
-            </Tooltip>
-            <Tooltip title="Arkiver prosjekt">
-              <Button variant="outlined" size="small" startIcon={<Drafts />} onClick={handleArchiveProject} disabled={!currentProject?.id}>
-                Arkiver
-              </Button>
-            </Tooltip>
-            <Tooltip title="Slett prosjekt">
-              <Button variant="outlined" size="small" color="error" startIcon={<Delete />} onClick={handleDeleteProject} disabled={!currentProject?.id}>
-                Slett
-              </Button>
-            </Tooltip>
-            <Tooltip title="Publiser prosjekt">
-              <Button variant="contained" size="small" startIcon={<Publish />} onClick={handlePublishProject} disabled={!currentProject?.id || draftMode === 'published'}>
-                Publiser
-              </Button>
-            </Tooltip>
-            <Tooltip title="Forhåndsvisning">
-              <IconButton size="small" onClick={handleTogglePreview}>
-                {showPreview ? <VisibilityOff /> : <Visibility />}
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Versjonhistorikk">
-              <IconButton size="small" onClick={() => { setShowVersionHistory(true); setShowHistoryDialog(true); }}>
-                <History />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Sammenlign versjoner">
-              <IconButton size="small" onClick={() => setShowComparisonDialog(true)}>
-                <Compare />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Utkast-panel">
-              <IconButton size="small" onClick={() => setDraftSidebarOpen(true)}>
-                <ChevronRight />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Helsesjekk">
-              <IconButton size="small" onClick={() => setShowHealthCheck(true)}>
-                <CheckCircle color={healthCheckPassed ? 'success' : 'action'} />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Importer lead">
-              <IconButton size="small" onClick={() => setShowLeadImport(true)}>
-                <PersonAdd />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Oppdater cache">
-              <IconButton size="small" onClick={handleRefreshProjectCache}>
-                <Refresh />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Synk frakoblet">
-              <IconButton size="small" onClick={handleSyncOffline}>
-                <CloudDone />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Optimaliser data">
-              <IconButton size="small" onClick={handleOptimizeProject}>
-                <CloudUpload />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Samarbeidsøkt">
-              <IconButton size="small" onClick={handleCreateCollabSession}>
-                <Groups />
-              </IconButton>
-            </Tooltip>
+      <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(20,22,30,0.92)' }}>
+        <CardContent sx={{ py: 2 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', sm: 'center' }}>
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<CheckCircle />}
+              onClick={() => setShowHealthCheck(true)}
+              disabled={isCreating || !!currentProject?.id}
+              sx={{ bgcolor: ws.accent, color: ws.accentContrast, fontWeight: 700, textTransform: 'none', px: 3, '&:hover': { bgcolor: ws.accentHover } }}
+            >
+              {currentProject?.id ? 'Prosjekt opprettet' : 'Opprett prosjekt'}
+            </Button>
+            <Button variant="outlined" size="small" startIcon={<Save />} onClick={handleSaveDraft} disabled={!hasUnsavedChanges}
+              sx={{ textTransform: 'none' }}>
+              {hasUnsavedChanges ? 'Lagre utkast' : 'Utkast lagret'}
+            </Button>
+            <Box sx={{ flex: 1 }} />
+            {publishedProject && (
+              <Chip icon={<CloudDone />} label="Publisert" size="small" color="success" />
+            )}
+            {traditionsInfo && (
+              <Chip icon={<Info />} label={`Tradisjon: ${traditionsInfo.displayName}`} size="small" />
+            )}
+            <Button variant="text" size="small" endIcon={<MoreVert />} onClick={(e) => setToolsMenuAnchor(e.currentTarget)}
+              sx={{ color: ws.textDim, textTransform: 'none' }}>
+              Flere verktøy
+            </Button>
+            <Menu anchorEl={toolsMenuAnchor} open={!!toolsMenuAnchor} onClose={() => setToolsMenuAnchor(null)}>
+              <MenuItem onClick={() => { setToolsMenuAnchor(null); handleTogglePreview(); }}>
+                {showPreview ? <VisibilityOff fontSize="small" style={{ marginRight: 10 }} /> : <Visibility fontSize="small" style={{ marginRight: 10 }} />}
+                Forhåndsvisning
+              </MenuItem>
+              <MenuItem onClick={() => { setToolsMenuAnchor(null); setShowVersionHistory(true); setShowHistoryDialog(true); }}>
+                <History fontSize="small" style={{ marginRight: 10 }} /> Versjonshistorikk
+              </MenuItem>
+              <MenuItem onClick={() => { setToolsMenuAnchor(null); setShowComparisonDialog(true); }}>
+                <Compare fontSize="small" style={{ marginRight: 10 }} /> Sammenlign versjoner
+              </MenuItem>
+              <MenuItem onClick={() => { setToolsMenuAnchor(null); setDraftSidebarOpen(true); }}>
+                <ChevronRight fontSize="small" style={{ marginRight: 10 }} /> Utkast-panel
+              </MenuItem>
+              <MenuItem onClick={() => { setToolsMenuAnchor(null); setShowLeadImport(true); }}>
+                <PersonAdd fontSize="small" style={{ marginRight: 10 }} /> Importer lead
+              </MenuItem>
+              {currentProject?.id && <Divider />}
+              {currentProject?.id && (
+                <MenuItem onClick={() => { setToolsMenuAnchor(null); handlePublishProject(); }} disabled={draftMode === 'published'}>
+                  <Publish fontSize="small" style={{ marginRight: 10 }} /> Publiser
+                </MenuItem>
+              )}
+              {currentProject?.id && (
+                <MenuItem onClick={() => { setToolsMenuAnchor(null); handleDuplicateProject(); }}>
+                  <Restore fontSize="small" style={{ marginRight: 10 }} /> Dupliser
+                </MenuItem>
+              )}
+              {currentProject?.id && (
+                <MenuItem onClick={() => { setToolsMenuAnchor(null); handleArchiveProject(); }}>
+                  <Drafts fontSize="small" style={{ marginRight: 10 }} /> Arkiver
+                </MenuItem>
+              )}
+              {currentProject?.id && (
+                <MenuItem onClick={() => { setToolsMenuAnchor(null); handleDeleteProject(); }} sx={{ color: '#fda4af' }}>
+                  <Delete fontSize="small" style={{ marginRight: 10 }} /> Slett
+                </MenuItem>
+              )}
+            </Menu>
           </Stack>
           {isCreating && <LinearProgress sx={{ mt: 2, borderRadius: 1 }} />}
-          {projectTypesLoading && <CircularProgress size={20} sx={{ ml: 1 }} />}
-          {publishedProject && (
-            <Chip icon={<CloudDone />} label={`Publisert: ${publishedProject.projectName || 'Prosjekt'}`} size="small" color="success" sx={{ mt: 1 }} />
-          )}
-          {traditionsInfo && (
-            <Chip icon={<Info />} label={`Tradisjon: ${traditionsInfo.displayName}`} size="small" sx={{ mt: 1, ml: 1 }} />
-          )}
         </CardContent>
       </Card>
 
