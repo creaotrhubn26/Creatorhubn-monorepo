@@ -381,6 +381,8 @@ export function setupAgencyLeadsRoutes(deps: AgencyLeadsRoutesDeps): void {
           page: req.get("referer") || (req.body && req.body.page) || null,
           utm: (req.body && req.body.utm) || null,
           relatedId: lead.id,
+          contactName: contactName || null,
+          contactEmail: email || null,
         });
       }
 

@@ -39,6 +39,11 @@ export type AdminInboundEvent = {
   link?: string;
   /** Kilde-radens id, for sporing/dedup. */
   relatedId?: string | null;
+  /** Strukturert kontaktinfo (når innsendingen har det) — gjør at admin kan
+   *  opprette prosjekt direkte fra forespørselen med kunden prefylt. */
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
 };
 
 const ADMIN_BASE = process.env.CREATORHUB_PUBLIC_URL ?? "https://creatorhubn.com";
@@ -70,6 +75,9 @@ function ensureAlertsTable(pool: Pool): Promise<void> {
           "cta TEXT",
           "page TEXT",
           "utm JSONB",
+          "contact_name TEXT",
+          "contact_email TEXT",
+          "contact_phone TEXT",
         ]) {
           await pool
             .query(`ALTER TABLE admin_inbound_alerts ADD COLUMN IF NOT EXISTS ${col}`)
@@ -105,8 +113,8 @@ export async function notifyAdmins(pool: Pool, event: AdminInboundEvent): Promis
   try {
     await ensureAlertsTable(pool);
     await pool.query(
-      `INSERT INTO admin_inbound_alerts (type, source, title, summary, cta, page, utm, link, related_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)`,
+      `INSERT INTO admin_inbound_alerts (type, source, title, summary, cta, page, utm, link, related_id, contact_name, contact_email, contact_phone)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12)`,
       [
         event.type,
         event.source,
@@ -117,6 +125,9 @@ export async function notifyAdmins(pool: Pool, event: AdminInboundEvent): Promis
         event.utm ? JSON.stringify(event.utm) : null,
         link,
         event.relatedId ?? null,
+        event.contactName ?? null,
+        event.contactEmail ?? null,
+        event.contactPhone ?? null,
       ],
     );
   } catch (err) {

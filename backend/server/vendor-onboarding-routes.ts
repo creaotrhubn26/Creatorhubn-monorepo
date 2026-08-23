@@ -338,6 +338,8 @@ export function setupVendorOnboardingRoutes(
         page: req.get("referer") || (req.body && req.body.page) || null,
         utm: (req.body && req.body.utm) || null,
         relatedId: vendorId,
+        contactName: vendorName || null,
+        contactEmail: businessInfo.contactEmail || null,
       });
 
       return res.json({

@@ -361,6 +361,8 @@ export function setupInviteRequestsRoutes(
         page: req.get("referer") || (req.body && req.body.page) || null,
         utm: (req.body && req.body.utm) || null,
         relatedId: result.rows[0].id,
+        contactName: `${firstName} ${lastName}`.trim() || null,
+        contactEmail: normalizedEmail || null,
       });
       res.status(201).json({
         success: true,

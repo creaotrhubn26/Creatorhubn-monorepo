@@ -25,7 +25,8 @@ import { useRealTime } from '../../contexts/RealTimeContext';
 import type { RealTimeEvent } from '../../contexts/RealTimeContext';
 // Comprehensive feature system integration
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
-import { useTheming } from '../../utils/theming-helper';
+import { ThemeProvider } from '@mui/material/styles';
+import { ws, workspaceDarkTheme } from '../workspace/workspaceTheme';
 import ScriptManager from '../davinci-resolve/ScriptManager';
 import { useExternalData } from '../../services/ExternalDataService';
 import {
@@ -190,7 +191,7 @@ const PROJECT_TYPES = {
   portrait: { name: 'Portrett', icon: PhotoCamera, color: '#2e7d32' },
   event: { name: 'Event', icon: Event, color: '#ff8c00' },
   commercial: { name: 'Kommersiell', icon: Business, color: '#ff8c00' },
-  video: { name: 'Video', icon: VideoLibrary, color: '#1565c0' },
+  video: { name: 'Video', icon: VideoLibrary, color: '#4c9aff' },
   music: { name: 'Musikk', icon: LibraryMusic, color: '#7b1fa2' },
   family: { name: 'Familie', icon: Group, color: '#00897b' },
   product: { name: 'Produkt', icon: ShoppingBag, color: '#ff8f00' }
@@ -1380,7 +1381,8 @@ export default function ProjectCreationWithMemoryCards({
 } = useExternalData();
   
   // Theming system
-  const theming = useTheming('photographer');
+  // Design: workspace-tokens (ws.*) + workspaceDarkTheme — IKKE profesjonsfarger.
+  // Modalen lever på /workspace-flatene; accent styres av CreatorHub Design-tokens.
   
   const { 
     settings, 
@@ -3249,15 +3251,16 @@ useEffect(() => {
   };
 
   return (
+    <ThemeProvider theme={workspaceDarkTheme}>
     <Box sx={{ p: { xs: 2, sm: 3, md: 4 }, maxWidth: '1200px', mx: 'auto' }}>
       {initialData && (
         <Alert severity="info" sx={{ 
           mb: 3, 
           borderRadius: 2,
-          borderLeft: `4px solid ${theming.colors.primary}`,
-          backgroundColor: `${theming.colors.primary}08`
+          borderLeft: `4px solid ${ws.accent}`,
+          backgroundColor: `${ws.accentSoft}`
         }}>
-          <Typography variant="body2" fontWeight={700} sx={{ color: theming.colors.primary }}>
+          <Typography variant="body2" fontWeight={700} sx={{ color: ws.accent }}>
             📨 {initialData.clientName} fra innsending
           </Typography>
           <Typography variant="caption" display="block" sx={{ mt: 0.5, color: 'text.secondary' }}>
@@ -3288,7 +3291,7 @@ useEffect(() => {
               display: 'flex', 
               alignItems: 'center', 
               gap: 1,
-              color: theming.colors.primary,
+              color: ws.accent,
               mb: 2
             }}
           >
@@ -3297,22 +3300,30 @@ useEffect(() => {
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'flex-end' }}>
             <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 50%' } }}>
               <Autocomplete
+                freeSolo
                 options={contactOptions}
-                getOptionLabel={(o: ContactOption) => o?.displayName || o?.email || ''}
-                onInputChange={(_: React.SyntheticEvent, val: string) => setContactQuery(val)}
-                onChange={(_: React.SyntheticEvent, val: ContactOption | null) => setSelectedContact(val)}
+                getOptionLabel={(o: ContactOption | string) => typeof o === 'string' ? o : (o?.displayName || o?.email || '')}
+                onInputChange={(_: React.SyntheticEvent, val: string) => {
+                  setContactQuery(val);
+                  // freeSolo: det du skriver ER klientnavnet — Google-treff er valgfritt
+                  setProjectData(prev => ({ ...prev, clientName: val }));
+                }}
+                onChange={(_: React.SyntheticEvent, val: ContactOption | string | null) => {
+                  if (typeof val === 'string') { setProjectData(prev => ({ ...prev, clientName: val })); return; }
+                  setSelectedContact(val);
+                }}
                 renderInput={(params) => (
                   <TextField 
                     {...params} 
-                    label="Søk navn eller e-post" 
-                    placeholder="Skriv for å søke..." 
+                    label="Navn (søk eller skriv)" 
+                    placeholder="Søk i kontakter — eller skriv navn manuelt" 
                     size="small"
                     sx={{
                       '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.95)', fontWeight: 600 },
                       '& .MuiOutlinedInput-root': {
-                        '& fieldset': { borderColor: '#1565c0', borderWidth: 1.5 },
-                        '&:hover fieldset': { borderColor: '#0d47a1' },
-                        '&.Mui-focused fieldset': { borderColor: '#1565c0', borderWidth: 2 }
+                        '& fieldset': { borderColor: ws.accent, borderWidth: 1.5 },
+                        '&:hover fieldset': { borderColor: ws.accentHover },
+                        '&.Mui-focused fieldset': { borderColor: ws.accent, borderWidth: 2 }
                       },
                       '& .MuiInputBase-input': { color: 'rgba(255,255,255,0.95)', fontWeight: 500 },
                       '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.70)', opacity: 1 }
@@ -3325,15 +3336,16 @@ useEffect(() => {
               <TextField
                 label="E-post"
                 value={projectData.clientEmail}
+                onChange={(e) => setProjectData(prev => ({ ...prev, clientEmail: e.target.value }))}
                 fullWidth
                 size="small"
-                slotProps={{ input: { readOnly: true } }}
+                placeholder="kunde@epost.no"
                 sx={{
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.95)', fontWeight: 600 },
                   '& .MuiOutlinedInput-root': {
-                    '& fieldset': { borderColor: '#1565c0', borderWidth: 1.5 },
-                    '&:hover fieldset': { borderColor: '#0d47a1' },
-                    '&.Mui-focused fieldset': { borderColor: '#1565c0', borderWidth: 2 }
+                    '& fieldset': { borderColor: ws.accent, borderWidth: 1.5 },
+                    '&:hover fieldset': { borderColor: ws.accentHover },
+                    '&.Mui-focused fieldset': { borderColor: ws.accent, borderWidth: 2 }
                   },
                   '& .MuiInputBase-input': { color: 'rgba(255,255,255,0.95)', fontWeight: 500 }
                 }}
@@ -3419,7 +3431,7 @@ useEffect(() => {
                 display: 'flex', 
                 alignItems: 'center', 
                 gap: 1,
-                color: theming.colors.primary,
+                color: ws.accent,
                 mb: 2
               }}
             >
@@ -3476,7 +3488,7 @@ useEffect(() => {
           }
         }}>
         <CardContent>
-          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700, color: '#1565c0', fontSize: '1rem' }}>
+          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 700, color: ws.accent, fontSize: '1rem' }}>
             Kontakt & Prosjekt-info
           </Typography>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
@@ -3542,7 +3554,7 @@ useEffect(() => {
           border: '1px solid rgba(21, 101, 192, 0.2)',
           background: 'linear-gradient(135deg, rgba(21, 101, 192, 0.08) 0%, rgba(21, 101, 192, 0.04) 100%)'
         }}>
-          <Typography variant="subtitle2" gutterBottom fontWeight={700} sx={{ color: '#1565c0' }}>
+          <Typography variant="subtitle2" gutterBottom fontWeight={700} sx={{ color: ws.accent }}>
             Forhåndsutfylt fra innsending:
           </Typography>
           <Stack spacing={1}>
@@ -3589,8 +3601,8 @@ useEffect(() => {
         }}
       >
         <DialogTitle sx={{ 
-          background: '#1565c0', 
-          color: 'white', 
+          background: ws.accent, 
+          color: ws.accentContrast, 
           fontWeight: 700,
           fontSize: '1.25rem',
           display: 'flex',
@@ -3617,14 +3629,14 @@ useEffect(() => {
           <Button 
             variant="outlined"
             onClick={() => { setConnectDialogOpen(false); setAskedConnectEvent(true); setConnectToEvent(false); }}
-            sx={{ borderColor: '#1565c0', color: '#1565c0' }}
+            sx={{ borderColor: ws.accent, color: ws.accent }}
           >
             Nei
           </Button>
           <Button 
             variant="contained" 
             onClick={() => { setConnectDialogOpen(false); setAskedConnectEvent(true); setConnectToEvent(true); }}
-            sx={{ bgcolor: '#1565c0', '&:hover': { bgcolor: '#0d47a1' } }}
+            sx={{ bgcolor: ws.accent, color: ws.accentContrast, '&:hover': { bgcolor: ws.accentHover } }}
           >
             Ja, koble
           </Button>
@@ -3633,7 +3645,7 @@ useEffect(() => {
 
       {/* Video Editor Integration Button */}
       {canOpenVideoEditor && (
-        <Card sx={{ mt: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+        <Card sx={{ mt: 3, background: ws.panelSolid, border: `1px solid ${ws.accentBorder}`, color: ws.text }}>
           <CardContent>
             <Stack direction="row" spacing={2} alignItems="center">
               <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', width: 56, height: 56 }}>
@@ -3659,7 +3671,7 @@ useEffect(() => {
                 onClick={handleOpenVideoEditor}
                 sx={{
                   bgcolor: 'white',
-                  color: '#667eea',
+                  color: ws.accent,
                   fontWeight: 600,
                   px: 3, '&:hover': {
                     bgcolor: 'rgba(255,255,255,0.9)'
@@ -3716,7 +3728,7 @@ useEffect(() => {
 
       {/* Virtual Studio Integration Button (Photographers only, non-wedding projects) */}
       {canOpenVirtualStudio && (
-        <Card sx={{ mt: 3, background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
+        <Card sx={{ mt: 3, background: ws.panelSolid, border: `1px solid ${ws.accentBorder}`, color: ws.text }}>
           <CardContent>
             <Stack direction="row" spacing={2} alignItems="center">
               <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', width: 56, height: 56 }}>
@@ -3742,7 +3754,7 @@ useEffect(() => {
                 onClick={handleOpenVirtualStudio}
                 sx={{
                   bgcolor: 'white',
-                  color: '#f5576c',
+                  color: ws.accent,
                   fontWeight: 600,
                   px: 3, '&:hover': {
                     bgcolor: 'rgba(255,255,255,0.9)'
@@ -3906,14 +3918,14 @@ useEffect(() => {
               display: 'flex', 
               alignItems: 'center', 
               gap: 1,
-              color: theming.colors.primary,
+              color: ws.accent,
               mb: 2
             }}
           >
             <Assignment sx={{ fontSize: 28 }} /> Prosjekttype
           </Typography>
           <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 600, '&.Mui-focused': { color: '#1565c0' } }}>Velg prosjekttype</InputLabel>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 600, '&.Mui-focused': { color: ws.accent } }}>Velg prosjekttype</InputLabel>
             <Select
               value={projectData.projectType || ''}
               onChange={(e) => {
@@ -3932,9 +3944,9 @@ useEffect(() => {
               }}
               label="Velg prosjekttype"
               sx={{
-                '& .MuiOutlinedInput-notchedOutline': { borderColor: '#1565c0', borderWidth: 1.5 },
-                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#0d47a1' },
-                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#1565c0', borderWidth: 2 },
+                '& .MuiOutlinedInput-notchedOutline': { borderColor: ws.accent, borderWidth: 1.5 },
+                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: ws.accentHover },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: ws.accent, borderWidth: 2 },
                 '& .MuiSelect-select': { color: 'rgba(255,255,255,0.95)', fontWeight: 500 }
               }}
               MenuProps={{
@@ -3943,8 +3955,8 @@ useEffect(() => {
                     bgcolor: '#2c2c2c',
                     '& .MuiMenuItem-root': {
                       color: 'white',
-                      '&:hover': { bgcolor: '#1565c0' },
-                      '&.Mui-selected': { bgcolor: '#1565c0', '&:hover': { bgcolor: '#0d47a1' } }
+                      '&:hover': { bgcolor: ws.accent },
+                      '&.Mui-selected': { bgcolor: ws.accent, '&:hover': { bgcolor: ws.accentHover } }
                     }
                   }
                 }
@@ -3993,11 +4005,11 @@ useEffect(() => {
             sx={{ 
               py: 1.5, 
               fontWeight: 600,
-              borderColor: theming.colors.primary,
-              color: theming.colors.primary,
+              borderColor: ws.accent,
+              color: ws.accent,
               '&:hover': {
-                backgroundColor: `${theming.colors.primary}08`,
-                borderColor: theming.colors.primary
+                backgroundColor: `${ws.accentSoft}`,
+                borderColor: ws.accent
               }
             }}
           >
@@ -4034,7 +4046,7 @@ useEffect(() => {
             variant="contained"
             disabled={!connectToEvent}
             onClick={handleOpenEventManagementClick}
-            sx={{ mt: 1, bgcolor: '#1565c0', '&:hover': { bgcolor: '#0d47a1' } }}
+            sx={{ mt: 1, bgcolor: ws.accent, color: ws.accentContrast, '&:hover': { bgcolor: ws.accentHover } }}
           >
             Åpne Event Management
           </Button>
@@ -4064,11 +4076,11 @@ useEffect(() => {
                 display: 'flex', 
                 alignItems: 'center', 
                 gap: 1,
-                color: theming.colors.primary,
+                color: ws.accent,
                 mb: 2
               }}
             >
-              <AccountBalance sx={{ color: theming.colors.primary }} />
+              <AccountBalance sx={{ color: ws.accent }} />
               Split Sheet Setup
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -4121,7 +4133,7 @@ useEffect(() => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 1,
-                color: theming.colors.primary,
+                color: ws.accent,
                 mb: 2
               }}
             >
@@ -4208,7 +4220,7 @@ useEffect(() => {
          ========================================== */}
       <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent, mb: 2 }}>
             <Settings sx={{ fontSize: 28 }} /> Prosjektverktøy
           </Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 1 }}>
@@ -4306,7 +4318,7 @@ useEffect(() => {
          ========================================== */}
       <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent, mb: 2 }}>
             <Timeline sx={{ fontSize: 28 }} /> Prosjektfaser
           </Typography>
           <Stepper activeStep={activeStep} orientation="vertical">
@@ -4346,7 +4358,7 @@ useEffect(() => {
          ========================================== */}
       <Accordion sx={{ mt: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', '&:before': { display: 'none' } }}>
         <AccordionSummary expandIcon={<ExpandMore />}>
-          <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent }}>
             <LocationOn sx={{ fontSize: 28 }} /> Lokasjonsintelligens
           </Typography>
         </AccordionSummary>
@@ -4414,7 +4426,7 @@ useEffect(() => {
       {!isMusicProducer && (
       <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent, mb: 2 }}>
             <Videocam sx={{ fontSize: 28 }} /> Kamera & Utstyr
           </Typography>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
@@ -4460,7 +4472,7 @@ useEffect(() => {
       <Collapse in={!!projectData.projectType && !isMusicProducer}>
         <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
           <CardContent>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent, mb: 2 }}>
               <CameraAlt sx={{ fontSize: 28 }} /> Shot List & Minnekort
             </Typography>
             <ShotListManager
@@ -4490,10 +4502,10 @@ useEffect(() => {
                     sx={{
                       fontWeight: 600,
                       color: active ? '#0b0c10' : '#f6f2ea',
-                      bgcolor: active ? theming.colors.primary : 'rgba(255,255,255,0.06)',
+                      bgcolor: active ? ws.accent : 'rgba(255,255,255,0.06)',
                       borderColor: 'rgba(255,255,255,0.35)',
-                      '& .MuiChip-icon': { color: active ? '#0b0c10' : theming.colors.primary },
-                      '&:hover': { bgcolor: active ? theming.colors.primary : 'rgba(255,255,255,0.12)' },
+                      '& .MuiChip-icon': { color: active ? '#0b0c10' : ws.accent },
+                      '&:hover': { bgcolor: active ? ws.accent : 'rgba(255,255,255,0.12)' },
                     }}
                   />
                 );
@@ -4532,7 +4544,7 @@ useEffect(() => {
          ========================================== */}
       <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 1 }}>
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent, mb: 1 }}>
             <img src="/creatorhub-one-logo.svg" alt="Creatorhub One" style={{ width: 30, height: 30, objectFit: 'contain' }} /> Backup-strategi: Creatorhub One
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -4560,7 +4572,7 @@ useEffect(() => {
       {currentProject?.id && (
         <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
           <CardContent>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 1 }}>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent, mb: 1 }}>
               Ekstern backup (offsite)
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -4618,7 +4630,7 @@ useEffect(() => {
       {currentProject?.id && (
         <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
           <CardContent>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent, mb: 2 }}>
               <Groups sx={{ fontSize: 28 }} /> Samarbeidspartnere
             </Typography>
             <ProjectCollaborators
@@ -4644,7 +4656,7 @@ useEffect(() => {
          ========================================== */}
       <Accordion sx={{ mt: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', '&:before': { display: 'none' } }}>
         <AccordionSummary expandIcon={<ExpandMore />}>
-          <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent }}>
             <AccessTime sx={{ fontSize: 28 }} /> Arbeidstid & Planlegging
           </Typography>
         </AccordionSummary>
@@ -4705,7 +4717,7 @@ useEffect(() => {
          ========================================== */}
       <Collapse in={showPreview}>
         <Paper sx={{ mt: 3, p: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(20,22,30,0.92)' }}>
-          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+          <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent }}>
             <Visibility sx={{ fontSize: 28 }} /> Prosjekt-forhåndsvisning
           </Typography>
           <Divider sx={{ my: 1.5 }} />
@@ -4989,7 +5001,7 @@ useEffect(() => {
       {projectData.projectType === 'wedding' && projectData.weddingCulture !== 'norsk' && (
         <Card sx={{ mt: 3, mb: 3, borderRadius: 3, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', background: 'rgba(20,22,30,0.92)' }}>
           <CardContent>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary, mb: 2 }}>
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, color: ws.accent, mb: 2 }}>
               <Info sx={{ fontSize: 28 }} /> Kulturelle seremonidager
             </Typography>
             <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 0.5 }}>
@@ -5020,7 +5032,7 @@ useEffect(() => {
       />
 
       {/* Create Project Button */}
-      <Card sx={{ mt: 3, background: `linear-gradient(135deg, ${theming.colors.primary}15 0%, ${theming.colors.primary}05 100%)` }}>
+      <Card sx={{ mt: 3, background: `linear-gradient(135deg, ${ws.accent}15 0%, ${ws.accent}05 100%)` }}>
         <CardContent>
           <Stack direction="row" spacing={2} justifyContent="flex-end" alignItems="center">
             <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
@@ -5053,7 +5065,7 @@ useEffect(() => {
                 }
               }}
               sx={{
-                bgcolor: theming.colors.primary,
+                bgcolor: ws.accent,
                 color: 'white',
                 px: 4,
                 py: 2,
@@ -5061,12 +5073,12 @@ useEffect(() => {
                 fontSize: '1.05rem',
                 textTransform: 'none',
                 borderRadius: 1.5,
-                boxShadow: `0 4px 12px ${theming.colors.primary}40`,
+                boxShadow: `0 4px 12px ${ws.accent}40`,
                 '&:hover': {
-                  bgcolor: theming.colors.primary,
+                  bgcolor: ws.accent,
                   opacity: 0.9,
                   transform: 'translateY(-2px)',
-                  boxShadow: `0 6px 16px ${theming.colors.primary}50`
+                  boxShadow: `0 6px 16px ${ws.accent}50`
                 },
                 '&:disabled': {
                   bgcolor: 'action.disabledBackground',
@@ -5131,8 +5143,8 @@ useEffect(() => {
                 }
               }}
               sx={{
-                color: theming.colors.primary,
-                borderColor: theming.colors.primary,
+                color: ws.accent,
+                borderColor: ws.accent,
                 px: 3,
                 py: 2,
                 fontWeight: 600,
@@ -5146,5 +5158,6 @@ useEffect(() => {
         </CardContent>
       </Card>
     </Box>
+    </ThemeProvider>
   );
 };

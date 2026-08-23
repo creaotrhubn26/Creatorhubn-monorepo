@@ -40,6 +40,7 @@ import {
   Done,
   FiberManualRecord,
   OpenInNew,
+  AddCircleOutline,
   Search as SearchIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -63,6 +64,9 @@ interface InboundAlert {
   utm?: unknown;
   link?: string | null;
   related_id?: string | null;
+  contact_name?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
   read_at?: string | null;
   created_at?: string | null;
 }
@@ -344,6 +348,27 @@ export default function InboundAlertsPanel() {
                       </Typography>
                     </TableCell>
                     <TableCell align="right">
+                      {alert.contact_email ? (
+                        <AdminButton
+                          tone="ghost"
+                          size="small"
+                          startIcon={<AddCircleOutline />}
+                          onClick={() => {
+                            // Workflow-kobling: opprett prosjekt i Team Workspace
+                            // med kunden fra forespørselen prefylt (initialData).
+                            const params = new URLSearchParams({
+                              opprett: '1',
+                              navn: alert.contact_name || '',
+                              epost: alert.contact_email || '',
+                              ...(alert.contact_phone ? { telefon: alert.contact_phone } : {}),
+                              kilde: alert.source || alert.type || 'forespørsel',
+                            });
+                            window.open(`/workspace?${params.toString()}`, '_blank', 'noopener');
+                          }}
+                        >
+                          Opprett prosjekt
+                        </AdminButton>
+                      ) : null}
                       {isUnread ? (
                         <AdminButton
                           tone="ghost"

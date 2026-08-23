@@ -42,7 +42,7 @@ export function setupAdminInboundAlertsRoutes(deps: AdminInboundAlertsDeps): voi
       }
       params.push(limit);
       const r = await pool.query(
-        `SELECT id, type, source, title, summary, cta, page, utm, link, related_id, read_at, created_at
+        `SELECT id, type, source, title, summary, cta, page, utm, link, related_id, contact_name, contact_email, contact_phone, read_at, created_at
            FROM admin_inbound_alerts
           ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
           ORDER BY created_at DESC

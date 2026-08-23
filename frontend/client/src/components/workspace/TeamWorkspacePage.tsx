@@ -8,7 +8,8 @@
  */
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRoute, useLocation } from 'wouter';
-import { Box, Typography, Stack, Snackbar, Alert, Dialog, DialogContent } from '@mui/material';
+import { Box, Typography, Stack, Snackbar, Alert, Dialog, DialogContent, IconButton } from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
 import { useAuth } from '@/hooks/useAuth';
 import { apiRequest } from '@/lib/queryClient';
 import ProjectCreationWithMemoryCards from '../project/ProjectCreationWithMemoryCards';
@@ -374,6 +375,20 @@ const TeamWorkspacePage: React.FC = () => {
 
       {/* Nytt prosjekt — ProjectCreationWithMemoryCards-wizarden */}
       <Dialog open={showCreate} onClose={() => setShowCreate(false)} fullWidth maxWidth="lg">
+        <Box sx={{
+          px: 3, py: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          bgcolor: ws.panelSolid, borderBottom: `1px solid ${ws.border}`,
+        }}>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 800, color: ws.text }}>Nytt prosjekt</Typography>
+            <Typography variant="caption" sx={{ color: ws.textDim }}>
+              Kunde, type og oppsett — prosjektet lander i Team Workspace.
+            </Typography>
+          </Box>
+          <IconButton aria-label="Lukk" onClick={() => setShowCreate(false)} sx={{ color: ws.textDim }}>
+            <CloseIcon />
+          </IconButton>
+        </Box>
         <DialogContent dividers sx={{ p: 0 }}>
           {showCreate && (
             <ProjectCreationWithMemoryCards
