@@ -50,5 +50,5 @@ jobs:
             gh issue edit "$EXISTING" --body-file "$BODY_FILE"
             gh issue comment "$EXISTING" --body "Oppdatert $(date -u +%Y-%m-%d) — se oppdatert liste i beskrivelsen."
           else
-            gh issue create --title "$TITLE" --body-file "$BODY_FILE" --label "vedlikehold"
+            gh issue create --title "$TITLE" --body-file "$BODY_FILE"
           fi
