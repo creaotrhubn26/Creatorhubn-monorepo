@@ -52,6 +52,8 @@ export default function IPadPairingSection() {
   const [bonjourStatus, setBonjourStatus] = useState<BonjourStatusEvent | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
   const [manualForm, setManualForm] = useState({ name: "", ip: "", port: "5050", deviceId: "" });
+  const [pairProgress, setPairProgress] = useState<"idle" | "waiting" | "failed">("idle");
+  const [pairError, setPairError] = useState<string | null>(null);
 
   const refreshAll = async () => {
     try {
@@ -92,7 +94,7 @@ export default function IPadPairingSection() {
         setPairProgress("failed");
         setPairError(e.payload.error ?? "Ukjent feil");
       }
-    }).then((un) => unlisteners.push(un));
+    }).then((un) => cleanups.push(un));
     const tick = window.setInterval(() => {
       void currentPairingPin().then(setPin);
     }, 1500);
