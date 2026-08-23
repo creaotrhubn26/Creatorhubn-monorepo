@@ -185,8 +185,12 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
     }
 
     try {
+      // users-tabellen har first_name/last_name/username — IKKE display_name/
+      // name (kolonnereferansen kastet 42703 → internal_error på all innlogging).
       const r = await pool.query<{ id: string; email: string; name: string | null; role: string | null }>(
-        `SELECT id, email, COALESCE(display_name, name, email) AS name, role
+        `SELECT id, email,
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', first_name, last_name)), ''), username, email) AS name,
+                role
            FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
         [verified.email],
       );
