@@ -139,7 +139,7 @@ export default function ShotListManager({
   const { user } = useAuth();
   
   // Theming system
-  const theming = useTheming('photographer');
+  const theming = useTheming('workspace');
   const queryClient = useQueryClient();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm')) || mobileMode;

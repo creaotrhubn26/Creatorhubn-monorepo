@@ -4,6 +4,7 @@
  * Camera-aware memory card selection with intelligent recommendations
  */
 
+import DeleteIcon from '@mui/icons-material/Delete';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Box,
@@ -131,7 +132,7 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
   const [showAdvanced, setShowAdvanced] = useState(false);
   
   // Theming system
-  const theming = useTheming('photographer');
+  const theming = useTheming('workspace');
   const [selectedCardType, setSelectedCardType] = useState<string>('');
   const [customCapacity, setCustomCapacity] = useState<string>('128GB');
   const [customQuantity, setCustomQuantity] = useState<number>(2);
@@ -549,7 +550,7 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
       </Typography>
       
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        AI-powered recommendations based on your selected cameras, project type, and profession.
+        Anbefalinger basert på valgte kameraer, prosjekttype og profesjon. Egne kort kan alltid legges til manuelt.
       </Typography>
 
       {/* Last Updated Indicator */}
@@ -575,7 +576,7 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
           {/* Feature indicators */}
                   {isRealTimePricingEnabled && (
                     <Chip 
-                      label="Real-time Pricing" 
+                      label="Prisliste: intern (NOK)" 
                       color="success" 
                       size="small" 
                       icon={theming.getThemedIcon('trendingUp','photographer','primary') as React.ReactElement}
@@ -583,7 +584,7 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
                   )}
                   {priceUpdateInterval && (
                     <Chip
-                      label="Auto update: 30m"
+                      label="Reberegnes automatisk"
                       color="default"
                       size="small"
                     />
@@ -697,36 +698,40 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
       )}
 
       {/* Optimal Configuration Summary */}
-      <Paper sx={{ p: 2, mb: 2, bgcolor: theming.colors.primary, border: `2px solid ${theming.colors.accent}`, ...theming.getThemedCardSx() }}>
+      {optimalConfig.totalCards > 0 && (
+      <Paper sx={{ p: 2, mb: 2, border: `2px solid ${theming.colors.accent}`, ...theming.getThemedCardSx() }}>
         <Typography variant="subtitle1" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <CameraSetupIcon sx={{ color: theming.colors.primary }} />
-          Optimal Configuration
+          Anbefalt oppsett
         </Typography>
         <Grid container spacing={2}>
           <Grid item xs={12} sm={4}>
             <Typography variant="body2">
-              <strong>Total Cards: </strong> {optimalConfig.totalCards}
+              <strong>Antall kort: </strong> {optimalConfig.totalCards}
             </Typography>
           </Grid>
           <Grid item xs={12} sm={4}>
             <Typography variant="body2">
-              <strong>Total Capacity: </strong> {optimalConfig.totalCapacity}
+              <strong>Total kapasitet: </strong> {optimalConfig.totalCapacity}
             </Typography>
           </Grid>
           <Grid item xs={12} sm={4}>
             <Typography variant="body2">
-              <strong>Estimated Cost: </strong> ${optimalConfig.estimatedCost}
+              <strong>Estimert kostnad: </strong> {formatCurrency(optimalConfig.estimatedCost, 'NOK')}
             </Typography>
           </Grid>
         </Grid>
       </Paper>
+      )}
 
-      {/* Intelligent Recommendations */}
+      {/* Intelligent Recommendations — krever valgte kameraer; uten dem er
+          motoren tom og seksjonen er kun støy for forbrukeren. */}
+      {selectedCameras.length > 0 && (
       <Accordion defaultExpanded>
         <AccordionSummary expandIcon={theming.getThemedIcon('expandMore','photographer','primary') as React.ReactElement}>
           <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
             <AutoAwesome sx={{ color: theming.colors.primary }} />
-            AI Recommendations ({recommendations.length})
+            AI-anbefalinger ({recommendations.length})
           </Typography>
         </AccordionSummary>
         <AccordionDetails>
@@ -848,12 +853,14 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
         </AccordionDetails>
       </Accordion>
 
+      )}
+
       {/* Custom Configuration */}
-      <Accordion>
+      <Accordion defaultExpanded>
         <AccordionSummary expandIcon={theming.getThemedIcon('expandMore','photographer','primary') as React.ReactElement}>
           <Typography variant="subtitle1" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
             <CameraSettingsIcon sx={{ color: theming.colors.primary }} />
-            Custom Configuration
+            Egne kort
           </Typography>
         </AccordionSummary>
         <AccordionDetails>
@@ -951,7 +958,7 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
                       onClick={() => handleCustomCardRemove(card.id)}
                       color="error"
                     >
-                      {theming.getThemedIcon('delete','photographer', 'primary')}
+                      <DeleteIcon fontSize="small" />
                     </IconButton>
                   </ListItem>
                 ))}
@@ -973,7 +980,7 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
-                <InputLabel>Backup Strategy</InputLabel>
+                <InputLabel>Sikkerhetskopi-strategi</InputLabel>
                 <Select
                   value={selection.backupStrategy}
                   onChange={(e) => updateSelection({ backupStrategy: e.target.value as BackupStrategy })}
@@ -1006,25 +1013,32 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
         </AccordionDetails>
       </Accordion>
 
-      {/* Selection Summary */}
-      <Paper sx={{ p: 2, mt: 2, bgcolor:'grey.50', ...theming.getThemedCardSx() }}>
-        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-          Selection Summary
-        </Typography>
+      {/* Pris & oppsummering — kollapsbar så prisdetaljene ikke dominerer
+          flaten; kompakt kost i headeren når noe er valgt. */}
+      <Accordion defaultExpanded sx={{ mt: 2 }}>
+        <AccordionSummary expandIcon={theming.getThemedIcon('expandMore','photographer','primary') as React.ReactElement}>
+          <Typography variant="subtitle1" sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+            Pris & oppsummering
+            {selection.totalCards > 0 && (
+              <Chip size="small" label={`${selection.totalCards} kort · ${currencyReferences?.NOK || formatCurrency(selection.estimatedCost, 'NOK')}`} />
+            )}
+          </Typography>
+        </AccordionSummary>
+        <AccordionDetails>
         <Grid container spacing={2}>
             <Grid item xs={12} sm={3}>
             <Typography variant="body2">
-              <strong>Total Cards: </strong> {selection.totalCards}
+              <strong>Antall kort: </strong> {selection.totalCards}
             </Typography>
           </Grid>
             <Grid item xs={12} sm={3}>
             <Typography variant="body2">
-              <strong>Total Capacity: </strong> {selection.totalCapacity}
+              <strong>Total kapasitet: </strong> {selection.totalCapacity}
             </Typography>
           </Grid>
             <Grid item xs={12} sm={3}>
             <Typography variant="body2">
-              <strong>Estimated Cost: </strong>{' '}
+              <strong>Estimert kostnad: </strong>{' '}
               {currencyReferences?.NOK || formatCurrency(selection.estimatedCost, 'NOK')}
             </Typography>
             <Typography variant="caption" color="text.secondary">
@@ -1033,11 +1047,12 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
           </Grid>
             <Grid item xs={12} sm={3}>
             <Typography variant="body2">
-              <strong>Backup Strategy: </strong> {selection.backupStrategy}
+              <strong>Sikkerhetskopi: </strong> {selection.backupStrategy}
             </Typography>
           </Grid>
         </Grid>
-      </Paper>
+        </AccordionDetails>
+      </Accordion>
 
       {/* Pricing Benefits Dialog */}
       <Dialog open={showPricingBenefits} onClose={() => setShowPricingBenefits(false)} maxWidth="lg" fullWidth>
