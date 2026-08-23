@@ -15,6 +15,7 @@ import {
   CircularProgress, IconButton, Dialog, DialogContent, ThemeProvider,
 } from '@mui/material';
 import Add from '@mui/icons-material/Add';
+import CloseIcon from '@mui/icons-material/Close';
 import Logout from '@mui/icons-material/Logout';
 import AccountCircle from '@mui/icons-material/AccountCircle';
 import FolderOpen from '@mui/icons-material/FolderOpen';
@@ -40,6 +41,26 @@ const WorkspaceHome: React.FC = () => {
   // ?pick=1 lar brukeren nå prosjektvelgeren bevisst uten å bli auto-sendt inn i
   // eneste-prosjektet (ellers uoppnåelig med nøyaktig ett prosjekt).
   const pickMode = typeof window !== 'undefined' && /(?:\?|&)pick=1/.test(window.location.search);
+  // ?opprett=1&navn=&epost=&telefon=&kilde= — workflow-kobling fra admin
+  // «Innkommende» (forespørsler): åpner prosjekt-wizarden med kunden prefylt.
+  const [createInitialData, setCreateInitialData] = useState<any | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('opprett') !== '1') return;
+    setCreateInitialData({
+      clientName: params.get('navn') || '',
+      clientEmail: params.get('epost') || '',
+      clientPhone: params.get('telefon') || '',
+      source: params.get('kilde') || 'forespørsel',
+    });
+    setShowCreate(true);
+    // Rydd URL-en så refresh/back ikke re-åpner modalen
+    params.delete('opprett'); params.delete('navn'); params.delete('epost');
+    params.delete('telefon'); params.delete('kilde');
+    const rest = params.toString();
+    window.history.replaceState(null, '', `/workspace${rest ? `?${rest}` : ''}`);
+  }, []);
 
   const profession = user?.profession;
   const userId = user?.id;
@@ -60,7 +81,7 @@ const WorkspaceHome: React.FC = () => {
       if (errored) { setLoadError(true); setLoading(false); return; }
       // Nøyaktig ett prosjekt → hopp rett inn (replace: ikke stable på historikken,
       // ellers blir Back en felle som umiddelbart redirecter framover igjen).
-      if (list.length === 1 && !redirected.current && !pickMode) {
+      if (list.length === 1 && !redirected.current && !pickMode && !createInitialData && !showCreate) {
         redirected.current = true;
         // startTransition: navigasjonen monterer den lazy-lastede
         // TeamWorkspacePage. Uten transition erstatter det synkront den
@@ -191,14 +212,32 @@ const WorkspaceHome: React.FC = () => {
         </Container>
 
         {/* Prosjekt-opprettelse — samme wizard som workspace/dashboard */}
-        <Dialog open={showCreate} onClose={() => setShowCreate(false)} fullWidth maxWidth="lg">
+        <Dialog open={showCreate} onClose={() => { setShowCreate(false); setCreateInitialData(null); }} fullWidth maxWidth="lg">
+          <Box sx={{
+            px: 3, py: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            bgcolor: ws.panelSolid, borderBottom: `1px solid ${ws.border}`,
+          }}>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 800, color: ws.text }}>Nytt prosjekt</Typography>
+              <Typography variant="caption" sx={{ color: ws.textDim }}>
+                {createInitialData?.source
+                  ? `Fra forespørsel: ${createInitialData.source}`
+                  : 'Kunde, type og oppsett — prosjektet lander i Team Workspace.'}
+              </Typography>
+            </Box>
+            <IconButton aria-label="Lukk" onClick={() => { setShowCreate(false); setCreateInitialData(null); }} sx={{ color: ws.textDim }}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
           <DialogContent dividers sx={{ p: 0 }}>
             {showCreate && (
               <ProjectCreationWithMemoryCards
                 profession={(profession as string) || 'photographer'}
                 userId={userId}
+                initialData={createInitialData || undefined}
                 onProjectCreated={(p: any) => {
                   setShowCreate(false);
+                  setCreateInitialData(null);
                   if (p?.id) startTransition(() => navigate(`/workspace/${p.id}`));
                 }}
               />

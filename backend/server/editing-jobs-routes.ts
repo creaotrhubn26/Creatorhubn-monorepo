@@ -223,6 +223,8 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
         page: req.get("referer") || (req.body && req.body.page) || null,
         utm: (req.body && req.body.utm) || null,
         relatedId: null,
+        contactName: b.name || null,
+        contactEmail: email || null,
       });
       res.json({ ok: true });
     } catch (err) {
@@ -326,6 +328,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
             summary: `Land: ${country} · Kontakt: ${email} · Tjenester: ${services.length ? services.join(", ") : "—"}`,
             link: "/admin",
             relatedId: existing.id,
+            contactEmail: email || null,
           });
           return res.json({ ok: true, applicationId: existing.id, reopened: true });
         }
@@ -350,6 +353,7 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
           summary: `Land: ${country} · Kontakt: ${email} · Tjenester: ${services.length ? services.join(", ") : "—"}`,
           link: "/admin",
           relatedId: r.rows[0].id,
+          contactEmail: email || null,
         });
         return res.json({ ok: true, applicationId: r.rows[0].id });
       } catch (e: unknown) {

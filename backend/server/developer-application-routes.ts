@@ -196,6 +196,8 @@ export function registerDeveloperApplicationRoutes({ app, pool }: Deps): void {
         page: req.get("referer") || (req.body && req.body.page) || null,
         utm: (req.body && req.body.utm) || null,
         relatedId: applicationId,
+        contactName: fullName || null,
+        contactEmail: email || null,
       });
 
       res.status(201).json({

@@ -514,6 +514,8 @@ export function setupRoleRoomEducationInquiriesRoutes(
           page: req.get("referer") || (req.body && req.body.page) || null,
           utm: (req.body && req.body.utm) || null,
           relatedId: inviteRequestId,
+          contactName: contactName || null,
+          contactEmail: contactEmail || null,
         });
       }
 

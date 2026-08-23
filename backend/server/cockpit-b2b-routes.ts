@@ -566,6 +566,8 @@ export function setupCockpitB2BRoutes(deps: CockpitB2BRoutesDeps): void {
         page: req.get("referer") || (req.body && req.body.page) || null,
         utm: (req.body && req.body.utm) || null,
         relatedId: r.rows[0].id,
+        contactName: name || null,
+        contactEmail: email || null,
       });
 
       return res.status(201).json({ ok: true, registration_id: r.rows[0].id });

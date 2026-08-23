@@ -307,6 +307,8 @@ export function registerOrgSelfOnboardRoutes({ app, pool }: Deps): void {
         page: req.get("referer") || (req.body && req.body.page) || null,
         utm: (req.body && req.body.utm) || null,
         relatedId: orgId,
+        contactName: contactName || null,
+        contactEmail: email || null,
       });
 
       res.status(201).json({
