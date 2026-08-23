@@ -3298,7 +3298,7 @@ useEffect(() => {
             <People sx={{ fontSize: 28 }} /> Velg kontakt
           </Typography>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'flex-end' }}>
-            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 50%' } }}>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 40%' } }}>
               <Autocomplete
                 freeSolo
                 options={contactOptions}
@@ -3332,7 +3332,7 @@ useEffect(() => {
                 )}
               />
             </Box>
-            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 25%' } }}>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 20%' } }}>
               <TextField
                 label="E-post"
                 value={projectData.clientEmail}
@@ -3340,6 +3340,25 @@ useEffect(() => {
                 fullWidth
                 size="small"
                 placeholder="kunde@epost.no"
+                sx={{
+                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.95)', fontWeight: 600 },
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': { borderColor: ws.accent, borderWidth: 1.5 },
+                    '&:hover fieldset': { borderColor: ws.accentHover },
+                    '&.Mui-focused fieldset': { borderColor: ws.accent, borderWidth: 2 }
+                  },
+                  '& .MuiInputBase-input': { color: 'rgba(255,255,255,0.95)', fontWeight: 500 }
+                }}
+              />
+            </Box>
+            <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 15%' } }}>
+              <TextField
+                label="Telefon"
+                value={projectData.clientPhone}
+                onChange={(e) => setProjectData(prev => ({ ...prev, clientPhone: e.target.value }))}
+                fullWidth
+                size="small"
+                placeholder="+47 …"
                 sx={{
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.95)', fontWeight: 600 },
                   '& .MuiOutlinedInput-root': {
@@ -3502,12 +3521,28 @@ useEffect(() => {
                   Draft ID: {sessionId}
                 </Typography>
               )}
-              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
-                Gjester: {projectData.guestCount || '-'}
-              </Typography>
-              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
-                Dato: {projectData.eventDate || '-'}
-              </Typography>
+              {projectData.projectType === 'wedding' && (
+                <TextField
+                  label="Gjester"
+                  value={projectData.guestCount}
+                  onChange={(e) => setProjectData(prev => ({ ...prev, guestCount: e.target.value }))}
+                  size="small"
+                  type="number"
+                  placeholder="Antall gjester"
+                  sx={{ mt: 1, mr: 1.5, width: 140 }}
+                />
+              )}
+              {/* Native datovelger — dato lagres på prosjektet og vises i
+                  WorkspaceShell-headeren + prosjektkortet (sync med workspace). */}
+              <TextField
+                label="Dato"
+                type="date"
+                value={projectData.eventDate}
+                onChange={(e) => setProjectData(prev => ({ ...prev, eventDate: e.target.value }))}
+                size="small"
+                InputLabelProps={{ shrink: true }}
+                sx={{ mt: 1, mr: 1.5, width: 170 }}
+              />
               {projectData.eventDates && Object.keys(projectData.eventDates).length > 0 && (
                 <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                   Datoer: {Object.keys(projectData.eventDates)
@@ -3516,9 +3551,14 @@ useEffect(() => {
                     .join(', ')}
                 </Typography>
               )}
-              <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
-                Lokasjon: {projectData.location || '-'}
-              </Typography>
+              <TextField
+                label="Lokasjon"
+                value={projectData.location}
+                onChange={(e) => setProjectData(prev => ({ ...prev, location: e.target.value }))}
+                size="small"
+                placeholder="Sted/adresse"
+                sx={{ mt: 1, width: 220 }}
+              />
               <Typography variant="body2" display="block" sx={{ color: 'rgba(255,255,255,0.95)', fontWeight: 500, lineHeight: 1.8 }}>
                 Prosjekttype: {projectData.projectType || '-'}
               </Typography>
