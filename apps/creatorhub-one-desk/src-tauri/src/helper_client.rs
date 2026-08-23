@@ -51,13 +51,6 @@ pub fn ensure_config_dir() -> Result<(), String> {
     std::fs::create_dir_all(&dir).map_err(|e| format!("Create config dir: {}", e))
 }
 
-/// Legacy single-project config path. Beholdt for migration —
-/// projects.rs leser denne ved første kall hvis projects.json ikke
-/// finnes ennå.
-pub fn config_path() -> PathBuf {
-    config_dir().join("config.json")
-}
-
 /// Returnerer den aktive prosjekt-config-en. Delegerer til projects-
 /// modulen som håndterer multi-project + migration fra gammel
 /// config.json. Eksisterende callers (copy_session, capture_mirror,

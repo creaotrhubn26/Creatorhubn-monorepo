@@ -102,7 +102,6 @@ fn now_ms() -> u64 {
 /// internt Mutex — flere writers (én per destinasjon i parallel)
 /// kan dele samme handle.
 pub struct SessionLog {
-    session_id: String,
     path: PathBuf,
     inner: Mutex<()>,
 }
@@ -113,7 +112,6 @@ impl SessionLog {
         let dir = sessions_dir()?;
         let path = dir.join(format!("{}.jsonl", session_id));
         let log = Self {
-            session_id: session_id.to_string(),
             path: path.clone(),
             inner: Mutex::new(()),
         };
@@ -133,10 +131,6 @@ impl SessionLog {
         Ok(log)
     }
 
-    pub fn session_id(&self) -> &str {
-        &self.session_id
-    }
-
     /// Åpne eksisterende log-fil for å appende videre events (brukes
     /// ved resume). Feiler hvis log-fila ikke eksisterer.
     pub fn open_existing(session_id: &str) -> Result<Self, String> {
@@ -146,7 +140,6 @@ impl SessionLog {
             return Err(format!("log-fil for {} finnes ikke", session_id));
         }
         Ok(Self {
-            session_id: session_id.to_string(),
             path,
             inner: Mutex::new(()),
         })
