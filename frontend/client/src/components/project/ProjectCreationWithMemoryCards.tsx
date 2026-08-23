@@ -156,7 +156,7 @@ import OneDeskDownloadCard from '@/components/storage/OneDeskDownloadCard';
 import CaptureBetaSignupDialog from '@/components/project/CaptureBetaSignupDialog';
 import { getCamerasByProfession, getLogFormatsByCamera, getCameraBrand } from '../../data/video-camera-database';
 import { getPhotoCamerasByProfession, getPhotoCameraBrand } from '../../data/photo-camera-database';
-import { MemoryCardRecommendationEngine, getMemoryCardTypesByProfession, formatCurrency } from '../../data/memory-card-database';
+import { MemoryCardRecommendationEngine, getMemoryCardTypesByProfession, formatCurrency, CAMERA_MEMORY_CARD_COMPATIBILITY } from '../../data/memory-card-database';
 import EnhancedMemoryCardSelector from '../memory-card/EnhancedMemoryCardSelector';
 import { useNavigate } from 'react-router-dom';
 import type { ProjectToEditorData, EditorToProjectResult } from '../../utils/story-arc-project-integration';
@@ -1504,7 +1504,7 @@ export default function ProjectCreationWithMemoryCards({
     activeDays: [1],
     memoryCardConfigs: [] as MemoryCardConfig[],
     selectedMemoryCards: [] as SelectedMemoryCard[],
-    selectedCameras: [] as Array<{ name: string; brand: string; model?: string }>,
+    selectedCameras: (initialData as any)?.selectedCameras || ([] as Array<{ id: string; name: string; brand: string; model?: string }>),
     enhancedMemoryCardSelection: null as { totalCards?: number; totalCapacity?: string; estimatedCost?: number; backupStrategy?: string; autoBackup?: boolean; recommendations?: unknown[]; customCards?: unknown[] } | null, // Enhanced memory card selection
     memoryCardBudget: 'mid' as 'budget' | 'mid' | 'premium' | 'professional',
     editingSoftware: '',
@@ -4543,6 +4543,38 @@ useEffect(() => {
               }}
             />
             <Box sx={{ mt: 2 }}>
+              {/* Kameravelger — EKTE kilde for anbefalingsmotoren:
+                  CAMERA_MEMORY_CARD_COMPATIBILITY (slots + kort-kompatibilitet
+                  per kamera). Uten valgte kameraer har motoren ingen input. */}
+              <Autocomplete
+                multiple
+                options={CAMERA_MEMORY_CARD_COMPATIBILITY}
+                getOptionLabel={(o) => `${o.cameraBrand} ${o.cameraModel}`}
+                isOptionEqualToValue={(o, v) => o.cameraId === v.cameraId}
+                value={CAMERA_MEMORY_CARD_COMPATIBILITY.filter((c) =>
+                  (projectData.selectedCameras || []).some((sel: any) => sel.id === c.cameraId),
+                )}
+                onChange={(_e, val) => {
+                  setProjectData(prev => ({
+                    ...prev,
+                    selectedCameras: val.map((c) => ({
+                      id: c.cameraId,
+                      name: `${c.cameraBrand} ${c.cameraModel}`,
+                      brand: c.cameraBrand,
+                      model: c.cameraModel,
+                    })),
+                  }));
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Kameraer for prosjektet"
+                    placeholder="Velg kameraer — gir ekte minnekort-anbefalinger"
+                    size="small"
+                  />
+                )}
+                sx={{ mb: 2 }}
+              />
               <EnhancedMemoryCardSelector
                 selectedCameras={projectData.selectedCameras || []}
                 projectType={projectData.projectType}

@@ -576,7 +576,7 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
           {/* Feature indicators */}
                   {isRealTimePricingEnabled && (
                     <Chip 
-                      label="Real-time Pricing" 
+                      label="Prisliste: intern (NOK)" 
                       color="success" 
                       size="small" 
                       icon={theming.getThemedIcon('trendingUp','photographer','primary') as React.ReactElement}
@@ -584,7 +584,7 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
                   )}
                   {priceUpdateInterval && (
                     <Chip
-                      label="Auto update: 30m"
+                      label="Reberegnes automatisk"
                       color="default"
                       size="small"
                     />
@@ -1013,11 +1013,18 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
         </AccordionDetails>
       </Accordion>
 
-      {/* Selection Summary */}
-      <Paper sx={{ p: 2, mt: 2, bgcolor:'grey.50', ...theming.getThemedCardSx() }}>
-        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-          Selection Summary
-        </Typography>
+      {/* Pris & oppsummering — kollapsbar så prisdetaljene ikke dominerer
+          flaten; kompakt kost i headeren når noe er valgt. */}
+      <Accordion defaultExpanded sx={{ mt: 2 }}>
+        <AccordionSummary expandIcon={theming.getThemedIcon('expandMore','photographer','primary') as React.ReactElement}>
+          <Typography variant="subtitle1" sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+            Pris & oppsummering
+            {selection.totalCards > 0 && (
+              <Chip size="small" label={`${selection.totalCards} kort · ${currencyReferences?.NOK || formatCurrency(selection.estimatedCost, 'NOK')}`} />
+            )}
+          </Typography>
+        </AccordionSummary>
+        <AccordionDetails>
         <Grid container spacing={2}>
             <Grid item xs={12} sm={3}>
             <Typography variant="body2">
@@ -1044,7 +1051,8 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
             </Typography>
           </Grid>
         </Grid>
-      </Paper>
+        </AccordionDetails>
+      </Accordion>
 
       {/* Pricing Benefits Dialog */}
       <Dialog open={showPricingBenefits} onClose={() => setShowPricingBenefits(false)} maxWidth="lg" fullWidth>
