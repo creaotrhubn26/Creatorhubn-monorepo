@@ -432,6 +432,19 @@ export const WORLD_CAMERA_DATABASE: CameraSpec[] = [
   { brand: 'Fujifilm', model: 'GFX100RF', megapixels: 102, fileFormat: ['RAF', 'JPEG'], averageRawSize: 110, averageCrawSize: 70, cardTypes: ['SD UHS-II'], category: 'medium_format', year: 2025, maxVideoBitrateMbps: 200 },
   { brand: 'OM System', model: 'OM-3', megapixels: 20, fileFormat: ['ORF', 'JPEG'], averageRawSize: 22, cardTypes: ['SD UHS-II'], category: 'mirrorless', year: 2025, maxVideoBitrateMbps: 202 },
   { brand: 'Sigma', model: 'BF', megapixels: 24, fileFormat: ['DNG', 'JPEG'], averageRawSize: 30, cardTypes: ['Intern lagring 230GB'], category: 'mirrorless', year: 2025, maxVideoBitrateMbps: 300 },
+  // ── Cinema-kameraer 2022–2025 (kildebelagt aug 2026: CineD/YMCinema/produsent) ──
+  { brand: 'ARRI', model: 'Alexa 35', megapixels: 12, fileFormat: ['ARRIRAW', 'ProRes'], averageRawSize: 20, cardTypes: ['Codex Compact Drive'], category: 'cinema', year: 2022, maxVideoBitrateMbps: 4600 },
+  { brand: 'ARRI', model: 'Alexa Mini LF', megapixels: 9, fileFormat: ['ARRIRAW', 'ProRes'], averageRawSize: 18, cardTypes: ['Codex Compact Drive'], category: 'cinema', year: 2019, maxVideoBitrateMbps: 4100 },
+  { brand: 'Sony', model: 'BURANO', megapixels: 36, fileFormat: ['X-OCN', 'XAVC'], averageRawSize: 40, cardTypes: ['CFexpress Type B'], category: 'cinema', year: 2023, maxVideoBitrateMbps: 3200 },
+  { brand: 'Sony', model: 'VENICE 2', megapixels: 36, fileFormat: ['X-OCN', 'ProRes'], averageRawSize: 40, cardTypes: ['AXS Memory'], category: 'cinema', year: 2022, maxVideoBitrateMbps: 5200 },
+  { brand: 'Canon', model: 'EOS C400', megapixels: 24, fileFormat: ['Cinema RAW Light', 'XF-AVC'], averageRawSize: 28, cardTypes: ['CFexpress Type B', 'SD UHS-II'], category: 'cinema', year: 2024, maxVideoBitrateMbps: 2600 },
+  { brand: 'Canon', model: 'EOS C500 Mark II', megapixels: 19, fileFormat: ['Cinema RAW Light', 'XF-AVC'], averageRawSize: 24, cardTypes: ['CFexpress Type B', 'SD UHS-II'], category: 'cinema', year: 2019, maxVideoBitrateMbps: 2100 },
+  { brand: 'RED', model: 'Komodo-X 6K', megapixels: 19, fileFormat: ['R3D'], averageRawSize: 25, cardTypes: ['CFexpress Type B'], category: 'cinema', year: 2023, maxVideoBitrateMbps: 2800 },
+  { brand: 'RED', model: 'V-RAPTOR X 8K VV', megapixels: 35, fileFormat: ['R3D'], averageRawSize: 40, cardTypes: ['CFexpress Type B'], category: 'cinema', year: 2024, maxVideoBitrateMbps: 4400 },
+  { brand: 'Blackmagic', model: 'PYXIS 6K', megapixels: 24, fileFormat: ['BRAW'], averageRawSize: 28, cardTypes: ['CFexpress Type B', 'SD UHS-II'], category: 'cinema', year: 2024, maxVideoBitrateMbps: 1200 },
+  { brand: 'Blackmagic', model: 'PYXIS 12K', megapixels: 80, fileFormat: ['BRAW'], averageRawSize: 60, cardTypes: ['CFexpress Type B'], category: 'cinema', year: 2025, maxVideoBitrateMbps: 5000 },
+  { brand: 'Blackmagic', model: 'URSA Cine 12K LF', megapixels: 80, fileFormat: ['BRAW'], averageRawSize: 60, cardTypes: ['Blackmagic Media Module'], category: 'cinema', year: 2024, maxVideoBitrateMbps: 7000 },
+  { brand: 'DJI', model: 'Ronin 4D 6K', megapixels: 24, fileFormat: ['ProRes', 'H.264'], averageRawSize: 28, cardTypes: ['DJI PROSSD', 'CFexpress Type B'], category: 'cinema', year: 2021, maxVideoBitrateMbps: 1800 },
 ];
 
 // Video Light Equipment Database
