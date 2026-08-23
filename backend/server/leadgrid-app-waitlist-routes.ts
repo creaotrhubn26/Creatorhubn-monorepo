@@ -22,6 +22,32 @@ const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,24}$/;
 const clip = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Samme visuelle språk som leadgrid-drips-routes.ts (mørk bg #0a0512,
+// lilla #a78bfa branding, gradient-CTA) — så alle Leadgrid-transaksjons-
+// e-poster føles som samme avsender.
+function launchEmailHtml(appStoreUrl: string): string {
+  return `
+    <div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#0a0512;color:#fff;">
+      <h1 style="color:#a78bfa;font-size:24px;margin:0 0 16px;">Leadgrid</h1>
+      <p>Hei!</p>
+      <p>Leadgrid for iPhone/iPad er nå live på App Store — takk for at du ventet på ventelisten.</p>
+      <div style="background:rgba(255,255,255,0.04);padding:16px;border-radius:8px;margin:20px 0;">
+        <p style="margin:0 0 8px;"><strong>📍 Kartbasert prospektering</strong></p>
+        <p style="margin:0 0 12px;color:rgba(255,255,255,0.7);font-size:14px;">Finn og organiser leads rett fra kartet i felten</p>
+        <p style="margin:0 0 8px;"><strong>🔄 Synkronisert med web</strong></p>
+        <p style="margin:0;color:rgba(255,255,255,0.7);font-size:14px;">Samme data som Leadgrid-kontoen din på nett</p>
+      </div>
+      <p>
+        <a href="${appStoreUrl}" style="background:#a78bfa;color:#0a0512;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block;">
+          Last ned på App Store
+        </a>
+      </p>
+      <p style="color:rgba(255,255,255,0.5);font-size:12px;margin-top:32px;">
+        Du får denne e-posten fordi du meldte deg på venteliste for Leadgrid-appen på leadgrid.no.
+      </p>
+    </div>`;
+}
+
 type SessionData = { userId: string; role?: string; email?: string };
 
 let schemaReady = false;
@@ -124,10 +150,9 @@ export function registerLeadgridAppWaitlistRoutes(deps: {
       for (const row of pending.rows) {
         const result = await sendEmail({
           to: row.email,
-          subject: "Leadgrid er nå på App Store",
-          html: `<p>Hei!</p>
-                 <p>Leadgrid-appen for iPhone/iPad er nå live på App Store — takk for at du ventet.</p>
-                 <p><a href="${appStoreUrl}">Last ned Leadgrid på App Store</a></p>`,
+          subject: "Leadgrid er nå på App Store 🚀",
+          html: launchEmailHtml(appStoreUrl),
+          text: `Leadgrid for iPhone/iPad er nå live på App Store — takk for at du ventet.\n\nLast ned: ${appStoreUrl}`,
           fromName: "Leadgrid",
         });
         if (result.success) {

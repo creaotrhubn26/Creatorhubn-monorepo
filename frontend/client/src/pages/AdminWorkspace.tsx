@@ -103,6 +103,7 @@ import MarketingCockpitTab from './admin-room/MarketingCockpitTab';
 import RoleRoomAgentTab from './admin-room/RoleRoomAgentTab';
 import ContentCalendarTab from './admin-room/ContentCalendarTab';
 import { SakerTab } from './admin-workspace/SakerTab';
+import { LeadgridAppWaitlistTab } from './admin-workspace/LeadgridAppWaitlistTab';
 
 import {
   activityLogApi,
@@ -1816,6 +1817,12 @@ function resolveContent(
         breadcrumbs: ['Creatorhub AS', 'Markedsføring', 'Cockpit'],
         render: () => <MarketingCockpitTab />,
       };
+    case 'leadgrid-app-waitlist':
+      return {
+        title: 'App-venteliste',
+        breadcrumbs: ['Creatorhub AS', 'Markedsføring', 'Leadgrid: App-venteliste'],
+        render: () => <LeadgridAppWaitlistTab />,
+      };
     case 'operating-system':
       return {
         title: 'Operativsystem',
@@ -1912,6 +1919,7 @@ function resolveContent(
               { id: 'business-dna', label: 'Business DNA' },
               { id: 'marketing-catalog', label: 'Katalog' },
               { id: 'marketing-cockpit', label: 'Marketing Cockpit' },
+              { id: 'leadgrid-app-waitlist', label: 'Leadgrid: App-venteliste' },
               { id: 'content-marketing', label: 'Content marketing' },
               { id: 'content-calendar', label: 'Content-kalender' },
               { id: 'newsletter-studio', label: 'Newsletter Studio' },
