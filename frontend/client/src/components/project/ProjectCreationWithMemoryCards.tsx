@@ -154,8 +154,8 @@ import CloudErasePanel from '@/components/storage/CloudErasePanel';
 import DeliverFromArchiveDialog from '@/components/storage/DeliverFromArchiveDialog';
 import OneDeskDownloadCard from '@/components/storage/OneDeskDownloadCard';
 import CaptureBetaSignupDialog from '@/components/project/CaptureBetaSignupDialog';
-import { getCamerasByProfession, getLogFormatsByCamera, getCameraBrand } from '../../data/video-camera-database';
-import { getPhotoCamerasByProfession, getPhotoCameraBrand } from '../../data/photo-camera-database';
+import { getCamerasByProfession, getLogFormatsByCamera, getCameraBrand, VIDEO_CAMERA_DATABASE } from '../../data/video-camera-database';
+import { getPhotoCamerasByProfession, getPhotoCameraBrand, PHOTO_CAMERA_DATABASE } from '../../data/photo-camera-database';
 import { MemoryCardRecommendationEngine, getMemoryCardTypesByProfession, formatCurrency, CAMERA_MEMORY_CARD_COMPATIBILITY } from '../../data/memory-card-database';
 import EnhancedMemoryCardSelector from '../memory-card/EnhancedMemoryCardSelector';
 import { useNavigate } from 'react-router-dom';
@@ -4454,23 +4454,36 @@ useEffect(() => {
             <Videocam sx={{ fontSize: 28 }} /> Kamera & Utstyr
           </Typography>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-            <TextField
-              label="Hovedkamera"
-              value={projectData.primaryCamera}
-              onChange={(e) => {
-                setProjectData(prev => ({ ...prev, primaryCamera: e.target.value }));
-                detectCameraInfo(e.target.value);
+            {/* Forslagsliste fra foto- + video-kameradatabasene (fritekst
+                fortsatt mulig via freeSolo — LOG-deteksjonen kjører uansett). */}
+            <Autocomplete
+              freeSolo
+              fullWidth
+              options={[...PHOTO_CAMERA_DATABASE, ...VIDEO_CAMERA_DATABASE]
+                .map((c: any) => `${c.brand} ${c.model}`)
+                .filter((v, i, arr) => arr.indexOf(v) === i)
+                .sort()}
+              value={projectData.primaryCamera || ''}
+              onInputChange={(_e, val) => {
+                setProjectData(prev => ({ ...prev, primaryCamera: val }));
+                detectCameraInfo(val);
               }}
-              size="small"
-              fullWidth
-              placeholder="f.eks. Sony A7S III"
+              renderInput={(params) => (
+                <TextField {...params} label="Hovedkamera" size="small" placeholder="Velg eller skriv — f.eks. Sony A7S III" />
+              )}
             />
-            <TextField
-              label="Backup-kamera"
-              value={projectData.backupCamera}
-              onChange={(e) => setProjectData(prev => ({ ...prev, backupCamera: e.target.value }))}
-              size="small"
+            <Autocomplete
+              freeSolo
               fullWidth
+              options={[...PHOTO_CAMERA_DATABASE, ...VIDEO_CAMERA_DATABASE]
+                .map((c: any) => `${c.brand} ${c.model}`)
+                .filter((v, i, arr) => arr.indexOf(v) === i)
+                .sort()}
+              value={projectData.backupCamera || ''}
+              onInputChange={(_e, val) => setProjectData(prev => ({ ...prev, backupCamera: val }))}
+              renderInput={(params) => (
+                <TextField {...params} label="Backup-kamera" size="small" placeholder="Velg eller skriv" />
+              )}
             />
           </Stack>
           {projectData.detectedLogFormats?.length > 0 && (
