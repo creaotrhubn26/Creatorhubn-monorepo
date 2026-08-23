@@ -84,7 +84,7 @@ export default function MemoryCardSelector({
   const [showCameraDialog, setShowCameraDialog] = useState(false);
   
   // Theming system
-  const theming = useTheming('workspace');
+  const theming = useTheming('photographer');
   const [cameraSearch, setCameraSearch] = useState('');
   
   // Get camera specs and calculate estimates

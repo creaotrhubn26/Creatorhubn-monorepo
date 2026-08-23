@@ -246,16 +246,6 @@ export function useTheming(profession?: string): ThemingReturn {
     switch (prof) {
       case 'photographer':
         return buildProfessionColors('#2e7d32', '#E8F5E8', '#1B5E20', '#C8E6C9', '#2E7D32');
-      case 'workspace':
-        // Team Workspace-flater: følger --ws-accent*-CSS-varene (CreatorHub
-        // Design-tokens) i stedet for profesjonsfarge — én accent, hele veien.
-        return buildProfessionColors(
-          'var(--ws-accent, #ff8c00)',
-          'var(--ws-accent-soft, rgba(255,140,0,0.14))',
-          'var(--ws-accent-hover, #e67e00)',
-          'var(--ws-accent-soft, rgba(255,140,0,0.14))',
-          'var(--ws-accent-hover, #e67e00)',
-        );
       case 'videographer':
         return buildProfessionColors('#1565c0', '#E3F2FD', '#0D47A1', '#BBDEFB', '#1565C0');
       case 'music_producer':

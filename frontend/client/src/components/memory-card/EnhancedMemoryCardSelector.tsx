@@ -131,7 +131,7 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
   const [showAdvanced, setShowAdvanced] = useState(false);
   
   // Theming system
-  const theming = useTheming('workspace');
+  const theming = useTheming('photographer');
   const [selectedCardType, setSelectedCardType] = useState<string>('');
   const [customCapacity, setCustomCapacity] = useState<string>('128GB');
   const [customQuantity, setCustomQuantity] = useState<number>(2);
