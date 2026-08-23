@@ -4,6 +4,8 @@
  */
 
 import { useTheming } from '../../utils/theming-helper';
+import AddIcon from '@mui/icons-material/Add';
+import RemoveIcon from '@mui/icons-material/Remove';
 import React, { useState } from 'react';
 import {
   Box,
@@ -267,7 +269,7 @@ export default function MemoryCardSelector({
                         disabled={count === 0}
                         color="primary"
                       >
-                        {theming.getThemedIcon('remove')}
+                        <RemoveIcon fontSize="small" />
                       </IconButton>
                       
                       <Chip 
@@ -281,7 +283,7 @@ export default function MemoryCardSelector({
                         onClick={() => updateCardCount(capacity, 1)}
                         color="primary"
                       >
-                        {theming.getThemedIcon('add')}
+                        <AddIcon fontSize="small" />
                       </IconButton>
                     </Box>
                   </Box>

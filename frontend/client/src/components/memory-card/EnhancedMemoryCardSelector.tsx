@@ -4,6 +4,7 @@
  * Camera-aware memory card selection with intelligent recommendations
  */
 
+import DeleteIcon from '@mui/icons-material/Delete';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Box,
@@ -957,7 +958,7 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
                       onClick={() => handleCustomCardRemove(card.id)}
                       color="error"
                     >
-                      {theming.getThemedIcon('delete','photographer', 'primary')}
+                      <DeleteIcon fontSize="small" />
                     </IconButton>
                   </ListItem>
                 ))}
