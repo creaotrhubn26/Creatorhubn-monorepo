@@ -416,6 +416,22 @@ export const WORLD_CAMERA_DATABASE: CameraSpec[] = [
   { brand: 'RED', model: 'Komodo 6K', megapixels: 19, fileFormat: ['R3D'], averageRawSize: 25, cardTypes: ['CFast 2.0'], category: 'cinema', year: 2020, maxVideoBitrateMbps: 2200 },
   { brand: 'Blackmagic', model: 'Pocket Cinema 6K Pro', megapixels: 21, fileFormat: ['BRAW'], averageRawSize: 25, cardTypes: ['CFast 2.0', 'SD UHS-II'], category: 'cinema', year: 2021, maxVideoBitrateMbps: 2400 },
   { brand: 'Blackmagic', model: 'URSA Mini Pro 12K', megapixels: 80, fileFormat: ['BRAW'], averageRawSize: 60, cardTypes: ['CFast 2.0', 'SD UHS-II'], category: 'cinema', year: 2020, maxVideoBitrateMbps: 5000 },
+  // ── 2024–2026-lanseringer (kildebelagt aug 2026: DPReview/B&H/produsent) ──
+  { brand: 'Canon', model: 'EOS R5 Mark II', megapixels: 45, fileFormat: ['CR3', 'JPEG'], averageRawSize: 50, averageCrawSize: 25, cardTypes: ['CFexpress Type B', 'SD UHS-II'], category: 'mirrorless', year: 2024, maxVideoBitrateMbps: 2600 },
+  { brand: 'Canon', model: 'EOS R1', megapixels: 24, fileFormat: ['CR3', 'JPEG'], averageRawSize: 28, averageCrawSize: 15, cardTypes: ['CFexpress Type B'], category: 'mirrorless', year: 2024, maxVideoBitrateMbps: 2600 },
+  { brand: 'Canon', model: 'EOS R6 Mark III', megapixels: 32, fileFormat: ['CR3', 'JPEG'], averageRawSize: 36, averageCrawSize: 19, cardTypes: ['CFexpress Type B', 'SD UHS-II'], category: 'mirrorless', year: 2025, maxVideoBitrateMbps: 2600 },
+  { brand: 'Canon', model: 'EOS R50 V', megapixels: 24, fileFormat: ['CR3', 'JPEG'], averageRawSize: 28, averageCrawSize: 15, cardTypes: ['SD UHS-II'], category: 'mirrorless', year: 2025, maxVideoBitrateMbps: 230 },
+  { brand: 'Sony', model: 'A1 II', megapixels: 50, fileFormat: ['ARW', 'JPEG'], averageRawSize: 55, averageCrawSize: 35, cardTypes: ['CFexpress Type A', 'SD UHS-II'], category: 'mirrorless', year: 2024, maxVideoBitrateMbps: 600 },
+  { brand: 'Sony', model: 'A7 V', megapixels: 33, fileFormat: ['ARW', 'JPEG'], averageRawSize: 38, averageCrawSize: 24, cardTypes: ['CFexpress Type A', 'SD UHS-II'], category: 'mirrorless', year: 2025, maxVideoBitrateMbps: 600 },
+  { brand: 'Nikon', model: 'ZR', megapixels: 24, fileFormat: ['R3D', 'NEV', 'JPEG'], averageRawSize: 30, cardTypes: ['CFexpress Type B', 'microSD'], category: 'cinema', year: 2025, maxVideoBitrateMbps: 3600 },
+  { brand: 'Nikon', model: 'Z5 II', megapixels: 24, fileFormat: ['NEF', 'JPEG'], averageRawSize: 30, averageCrawSize: 20, cardTypes: ['SD UHS-II'], category: 'mirrorless', year: 2025, maxVideoBitrateMbps: 144 },
+  { brand: 'Nikon', model: 'Z50 II', megapixels: 21, fileFormat: ['NEF', 'JPEG'], averageRawSize: 25, cardTypes: ['SD UHS-II'], category: 'mirrorless', year: 2024, maxVideoBitrateMbps: 144 },
+  { brand: 'Panasonic', model: 'Lumix S1R II', megapixels: 44, fileFormat: ['RW2', 'JPEG'], averageRawSize: 50, cardTypes: ['CFexpress Type B', 'SD UHS-II'], category: 'mirrorless', year: 2025, maxVideoBitrateMbps: 800 },
+  { brand: 'Panasonic', model: 'Lumix S1 II', megapixels: 24, fileFormat: ['RW2', 'JPEG'], averageRawSize: 30, cardTypes: ['CFexpress Type B', 'SD UHS-II'], category: 'mirrorless', year: 2025, maxVideoBitrateMbps: 800 },
+  { brand: 'Fujifilm', model: 'X-E5', megapixels: 40, fileFormat: ['RAF', 'JPEG'], averageRawSize: 45, averageCrawSize: 30, cardTypes: ['SD UHS-II'], category: 'mirrorless', year: 2025, maxVideoBitrateMbps: 200 },
+  { brand: 'Fujifilm', model: 'GFX100RF', megapixels: 102, fileFormat: ['RAF', 'JPEG'], averageRawSize: 110, averageCrawSize: 70, cardTypes: ['SD UHS-II'], category: 'medium_format', year: 2025, maxVideoBitrateMbps: 200 },
+  { brand: 'OM System', model: 'OM-3', megapixels: 20, fileFormat: ['ORF', 'JPEG'], averageRawSize: 22, cardTypes: ['SD UHS-II'], category: 'mirrorless', year: 2025, maxVideoBitrateMbps: 202 },
+  { brand: 'Sigma', model: 'BF', megapixels: 24, fileFormat: ['DNG', 'JPEG'], averageRawSize: 30, cardTypes: ['Intern lagring 230GB'], category: 'mirrorless', year: 2025, maxVideoBitrateMbps: 300 },
 ];
 
 // Video Light Equipment Database
