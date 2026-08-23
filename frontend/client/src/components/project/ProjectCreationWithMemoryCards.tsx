@@ -4549,6 +4549,7 @@ useEffect(() => {
               })}
             </Stack>
             <MemoryCardSelector
+              projectType={projectData.projectType}
               profession={memoryCardProfession}
               onCardsSelected={(cards) => {
                 const mapped: SelectedMemoryCard[] = cards.map(c => ({ type: 'SD', capacity: c.capacity, count: c.count, estimatedPhotos: c.estimatedPhotos.raw + c.estimatedPhotos.craw }));
