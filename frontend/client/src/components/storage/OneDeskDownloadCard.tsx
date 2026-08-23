@@ -29,7 +29,6 @@ import {
   Typography,
 } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
-import LaunchIcon from '@mui/icons-material/Launch';
 import AppleIcon from '@mui/icons-material/Apple';
 
 interface ReleaseAsset {
@@ -144,16 +143,8 @@ export default function OneDeskDownloadCard() {
 
         {error && (
           <Alert severity="warning" sx={{ mt: 2 }}>
-            Kunne ikke hente siste versjon fra GitHub ({error}). Du kan
-            besøke{' '}
-            <Link
-              href={`https://github.com/${REPO}/releases`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              releases-siden
-            </Link>{' '}
-            manuelt.
+            Kunne ikke hente siste versjon akkurat nå ({error}). Prøv igjen
+            om litt.
           </Alert>
         )}
 
@@ -203,15 +194,8 @@ export default function OneDeskDownloadCard() {
               </Button>
             ) : (
               <Alert severity="info">
-                Ingen .dmg-fil i denne utgivelsen — sjekk{' '}
-                <Link
-                  href={release.html_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  release-siden
-                </Link>{' '}
-                for alternative formater.
+                Denne utgivelsen mangler nedlastbar .dmg — ny versjon kommer
+                snart.
               </Alert>
             )}
 
@@ -274,16 +258,6 @@ export default function OneDeskDownloadCard() {
           )}
         </DialogContent>
         <DialogActions>
-          {release && (
-            <Link
-              href={release.html_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              sx={{ mr: 'auto', display: 'flex', alignItems: 'center', gap: 0.5, fontSize: 13 }}
-            >
-              Åpne på GitHub <LaunchIcon sx={{ fontSize: 13 }} />
-            </Link>
-          )}
           <Button onClick={() => setShowNotes(false)}>Lukk</Button>
         </DialogActions>
       </Dialog>
