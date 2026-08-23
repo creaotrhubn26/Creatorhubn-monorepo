@@ -137,6 +137,18 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
   const [customCapacity, setCustomCapacity] = useState<string>('128GB');
   const [customQuantity, setCustomQuantity] = useState<number>(2);
   const [showPricingBenefits, setShowPricingBenefits] = useState(false);
+  // Brukervalgt reberegningsintervall (minutter; 0 = av). Persistert lokalt.
+  const [updateIntervalMin, setUpdateIntervalMin] = useState<number>(() => {
+    try {
+      const stored = window.localStorage.getItem('memoryCardPriceIntervalMin');
+      const parsed = stored == null ? NaN : parseInt(stored, 10);
+      return Number.isFinite(parsed) ? parsed : 30;
+    } catch { return 30; }
+  });
+  const changeUpdateInterval = (minutes: number) => {
+    setUpdateIntervalMin(minutes);
+    try { window.localStorage.setItem('memoryCardPriceIntervalMin', String(minutes)); } catch { /* ignore */ }
+  };
   const [expandedRecommendation, setExpandedRecommendation] = useState<string | null>(null);
   const [showPriceSources, setShowPriceSources] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -367,14 +379,15 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
     };
 
     refreshPricing();
-    const intervalId = window.setInterval(refreshPricing, 30 * 60 * 1000);
+    if (updateIntervalMin <= 0) return undefined; // Av — kun manuell/initiell beregning
+    const intervalId = window.setInterval(refreshPricing, updateIntervalMin * 60 * 1000);
     setPriceUpdateInterval(intervalId);
 
     return () => {
       window.clearInterval(intervalId);
       setPriceUpdateInterval(null);
     };
-}, [isRealTimePricingEnabled, isAnalyticsEnabled, updateSelection]);
+}, [isRealTimePricingEnabled, isAnalyticsEnabled, updateSelection, updateIntervalMin]);
 
   useEffect(() => {
     let isActive = true;
@@ -584,7 +597,7 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
                   )}
                   {priceUpdateInterval && (
                     <Chip
-                      label="Reberegnes automatisk"
+                      label={updateIntervalMin > 0 ? `Reberegnes hvert ${updateIntervalMin}. min` : 'Automatisk reberegning av'}
                       color="default"
                       size="small"
                     />
@@ -620,7 +633,7 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
       {selectedCameras.length > 0 && (
         <Alert severity="info" sx={{ mb: 2 }}>
           <Typography variant="body2">
-            <strong>Camera Compatibility: </strong> Analyzing {selectedCameras.length} selected camera(s) for optimal memory card recommendations.
+            <strong>Kamera-kompatibilitet: </strong> Analyserer {selectedCameras.length} valgt(e) kamera(er) for optimale minnekort-anbefalinger.
           </Typography>
         </Alert>
       )}
@@ -629,8 +642,8 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
       {isCameraDiscoveryEnabled && discoveredCameras.length > 0 && (
         <Alert severity="success" sx={{ mb: 2 }}>
           <Typography variant="body2">
-            <strong>Camera Discovery Active: </strong> {discoveredCameras.length} cameras discovered, 
-            {discoveredCameras.filter(c => c.isNew).length} new cameras available.
+            <strong>Kamera-oppdagelse aktiv: </strong> {discoveredCameras.length} kamera(er) registrert, 
+            {discoveredCameras.filter(c => c.isNew).length} nye.
           </Typography>
         </Alert>
       )}
@@ -1073,6 +1086,18 @@ const EnhancedMemoryCardSelector: React.FC<EnhancedMemoryCardSelectorProps> = ({
           Oppdateringsfrekvens og Priskilder
         </DialogTitle>
         <DialogContent>
+          <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+            <Typography variant="subtitle2">Ditt reberegningsintervall:</Typography>
+            {[0, 15, 30, 60, 120].map((minutes) => (
+              <Chip
+                key={minutes}
+                label={minutes === 0 ? 'Av' : `${minutes} min`}
+                color={updateIntervalMin === minutes ? 'primary' : 'default'}
+                onClick={() => changeUpdateInterval(minutes)}
+                size="small"
+              />
+            ))}
+          </Box>
           <UpdateFrequencyRecommendations />
         </DialogContent>
         <DialogActions>

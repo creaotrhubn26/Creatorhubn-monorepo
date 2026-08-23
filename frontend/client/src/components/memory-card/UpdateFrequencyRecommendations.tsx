@@ -70,14 +70,14 @@ const UPDATE_FREQUENCIES: UpdateFrequency[] = [
     description: 'Kontinuerlig prisovervåking med umiddelbare oppdateringer',
     useCase: 'High-frequency trading, critical business decisions',
     pros: [
-      'Immediate price change detection','Best for time-sensitive decisions','Maximum accuracy for current prices','Real-time market analysis'
+      'Umiddelbar prisendrings-deteksjon','Best for tidskritiske beslutninger','Maksimal presisjon på gjeldende priser','Sanntids markedsanalyse'
     ],
     cons: [
-      'High server load and costs','May hit API rate limits','Increased bandwidth usage','Potential for false alerts'
+      'Høy serverlast og kostnad','Kan treffe API-grenser','Økt båndbreddebruk','Potential for false alerts'
     ],
     cost: 'high',
     reliability: 'medium',
-    recommendedFor: ['Professional traders','Critical business operations','High-value projects'],
+    recommendedFor: ['Profesjonelle innkjøpere','Kritiske driftsbehov','Høyverdi-prosjekter'],
     icon: '⚡'
 ,},
   {
@@ -85,16 +85,16 @@ const UPDATE_FREQUENCIES: UpdateFrequency[] = [
     name: 'Hyppig (15–30 min)',
     interval:  30,
     description: 'Jevnlige oppdateringer gjennom arbeidsdagen',
-    useCase: 'Active project planning, client consultations',
+    useCase: 'Aktiv prosjektplanlegging, kundemøter',
     pros: [
-      'Good balance of accuracy and efficiency','Suitable for most business needs','Reasonable server load','Quick response to significant changes'
+      'God balanse mellom presisjon og effektivitet','Passer de fleste behov','Moderat serverlast','Rask respons på store endringer'
     ],
     cons: [
-      'May miss very short-term price changes','Moderate server costs','Some delay in price updates'
+      'Kan gå glipp av helt kortsiktige endringer','Moderate serverkostnader','Noe forsinkelse i oppdateringer'
     ],
     cost: 'medium',
     reliability: 'high',
-    recommendedFor: ['Professional photographers','Videographers','Project managers'],
+    recommendedFor: ['Profesjonelle fotografer','Videografer','Prosjektledere'],
     icon: '🔄'
 ,},
   {
@@ -102,16 +102,16 @@ const UPDATE_FREQUENCIES: UpdateFrequency[] = [
     name: 'Standard (1–2 timer)',
     interval: 10,
     description: 'Jevnlige oppdateringer i arbeidstiden',
-    useCase: 'General project planning, cost estimation',
+    useCase: 'Generell planlegging, kostnadsestimering',
     pros: [
-      'Low server load and costs','Reliable and stable','Good for general planning','Minimal API rate limit issues'
+      'Lav serverlast og kostnad','Pålitelig og stabil','God for generell planlegging','Minimalt med API-begrensninger'
     ],
     cons: [
-      'May miss short-term price changes','Less responsive to market changes','Potential for outdated pricing'
+      'Kan gå glipp av kortsiktige prisendringer','Mindre responsiv på markedsendringer','Risiko for utdaterte priser'
     ],
     cost: 'low',
     reliability: 'high',
-    recommendedFor: ['Small businesses','General users','Budget-conscious operations'],
+    recommendedFor: ['Små virksomheter','Vanlige brukere','Budsjettbevisste'],
     icon: '📊'
 ,},
   {
@@ -119,16 +119,16 @@ const UPDATE_FREQUENCIES: UpdateFrequency[] = [
     name: 'Daglig (24 timer)',
     interval: 140,
     description: 'Prisoppdatering én gang daglig',
-    useCase: 'Long-term planning, budget estimation',
+    useCase: 'Langsiktig planlegging og trendanalyse',
     pros: [
-      'Very low costs','Minimal server load','Good for trend analysis','Stable and predictable'
+      'Svært lav kostnad','Minimal serverlast','God for trendanalyse','Stabil og forutsigbar'
     ],
     cons: [
-      'May miss daily price fluctuations','Not suitable for time-sensitive decisions','Potential for significant price gaps'
+      'Kan gå glipp av daglige svingninger','Ikke egnet for tidskritiske beslutninger','Risiko for store prisgap'
     ],
     cost: 'low',
     reliability: 'high',
-    recommendedFor: ['Long-term planning','Budget estimation','Trend analysis'],
+    recommendedFor: ['Langtidsplanlegging','Budsjett-estimering','Trendanalyse'],
     icon: '📅'
 ,},
   {
@@ -145,7 +145,7 @@ const UPDATE_FREQUENCIES: UpdateFrequency[] = [
     ],
     cost: 'low',
     reliability: 'high',
-    recommendedFor: ['Market research','Trend analysis','Academic studies'],
+    recommendedFor: ['Markedsundersøkelser','Trendanalyse','Studier'],
     icon: '📈'
 ,}
 ];
@@ -192,7 +192,7 @@ const UpdateFrequencyRecommendations: React.FC<UpdateFrequencyRecommendationsPro
   onFrequencySelect
 }) => {
   // Theming system
-  const theming = useTheming('photographer');
+  const theming = useTheming('workspace');
   const getCostColor = (cost: string) => {
     switch (cost) {
       case 'low': return 'success';
@@ -421,7 +421,7 @@ const UpdateFrequencyRecommendations: React.FC<UpdateFrequencyRecommendationsPro
                       {config.description}
                     </Typography>
                     <Typography variant="body2" gutterBottom>
-                      <strong>Recommended Interval: </strong> {config.interval} minutes
+                      <strong>Anbefalt intervall: </strong> {config.interval} minutes
                     </Typography>
                     <Typography variant="body2">
                       <strong>Sources: </strong> {config.sources.join('')}
