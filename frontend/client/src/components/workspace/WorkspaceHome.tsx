@@ -43,21 +43,26 @@ const WorkspaceHome: React.FC = () => {
   const pickMode = typeof window !== 'undefined' && /(?:\?|&)pick=1/.test(window.location.search);
   // ?opprett=1&navn=&epost=&telefon=&kilde= — workflow-kobling fra admin
   // «Innkommende» (forespørsler): åpner prosjekt-wizarden med kunden prefylt.
+  // ?new=1 — samme modal uten prefill (f.eks. Creatorhub One Desk sin
+  // «ingen prosjekter»-skjerm, som bare vil rett til wizarden).
   const [createInitialData, setCreateInitialData] = useState<any | null>(null);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get('opprett') !== '1') return;
-    setCreateInitialData({
-      clientName: params.get('navn') || '',
-      clientEmail: params.get('epost') || '',
-      clientPhone: params.get('telefon') || '',
-      source: params.get('kilde') || 'forespørsel',
-    });
+    const isPlainNew = params.get('new') === '1';
+    if (params.get('opprett') !== '1' && !isPlainNew) return;
+    if (!isPlainNew) {
+      setCreateInitialData({
+        clientName: params.get('navn') || '',
+        clientEmail: params.get('epost') || '',
+        clientPhone: params.get('telefon') || '',
+        source: params.get('kilde') || 'forespørsel',
+      });
+    }
     setShowCreate(true);
     // Rydd URL-en så refresh/back ikke re-åpner modalen
     params.delete('opprett'); params.delete('navn'); params.delete('epost');
-    params.delete('telefon'); params.delete('kilde');
+    params.delete('telefon'); params.delete('kilde'); params.delete('new');
     const rest = params.toString();
     window.history.replaceState(null, '', `/workspace${rest ? `?${rest}` : ''}`);
   }, []);
