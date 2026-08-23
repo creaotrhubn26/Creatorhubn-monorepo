@@ -29,7 +29,7 @@ targets:
       properties:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        CFBundleDisplayName: Storyboard Studio
+        CFBundleDisplayName: Storyboard Room
         CFBundleName: StoryboardStudio
         UILaunchScreen: {}
         NSMicrophoneUsageDescription: Mikrofonen brukes til å spille inn voiceover per shot i animatic-en.
@@ -51,9 +51,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.StoryboardStudio
         INFOPLIST_FILE: StoryboardStudio/Generated/Info.plist
-        # APNs for @mention-varsler: aktiver linjen under NÅR push-capability
-        # er slått på for App ID-en i developer-portalen (krever innlogging).
-        # CODE_SIGN_ENTITLEMENTS: StoryboardStudio/StoryboardStudio.entitlements
+        # APNs for @mention-varsler (push-capability aktivert 2026-08-23).
+        CODE_SIGN_ENTITLEMENTS: StoryboardStudio/StoryboardStudio.entitlements
         # iPad-only i fase 1 (artist-flaten er bygget for Pencil + stor skjerm).
         TARGETED_DEVICE_FAMILY: "2"
         IPHONEOS_DEPLOYMENT_TARGET: "17.0"
