@@ -54,6 +54,8 @@ interface MemoryCardConfig {
 interface MemoryCardSelectorProps {
   equipment?: string;
   profession: 'photographer' | 'videographer';
+  /** Prosjekttype — 'video' gir minutt-estimater i stedet for bilde-antall. */
+  projectType?: string;
   onCardsSelected: (cards: MemoryCardConfig[]) => void;
   onCameraChanged?: (camera: string) => void;
   initialCards?: MemoryCardConfig[]
@@ -75,6 +77,7 @@ const CAPACITY_ESTIMATES = {
 };
 
 export default function MemoryCardSelector({
+  projectType,
   equipment = 'Canon EOS R5',
   profession,
   onCardsSelected,
@@ -91,6 +94,16 @@ export default function MemoryCardSelector({
   
   // Get camera specs and calculate estimates
   const cameraSpec = getCameraByName(selectedCamera) || WORLD_CAMERA_DATABASE[0];
+  // Video-prosjekt/videograf → estimér opptaksminutter fra kameraets maks
+  // bitrate (fallback 150 Mbps ≈ vanlig 4K10-bit) i stedet for bildeantall.
+  const videoMode = profession === 'videographer' || projectType === 'video';
+  const videoBitrateMbps = cameraSpec?.maxVideoBitrateMbps || 150;
+  const videoMinutesFor = (capacityGB: number) =>
+    Math.floor((capacityGB * 1000 * 8) / (videoBitrateMbps * 60));
+  const formatVideoMinutes = (minutes: number) =>
+    minutes >= 60 ? `${Math.floor(minutes / 60)} t ${minutes % 60} min` : `${minutes} min`;
+  const capacityGBFor = (capacity: string) =>
+    capacity.endsWith('TB') ? parseFloat(capacity) * 1024 : parseFloat(capacity);
   const staticEstimateKey = Object.keys(CAPACITY_ESTIMATES).find((key) =>
     selectedCamera.toLowerCase().includes(key.toLowerCase())
   ) as keyof typeof CAPACITY_ESTIMATES | undefined;
@@ -180,12 +193,16 @@ export default function MemoryCardSelector({
           />
           
           <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-            {WORLD_CAMERA_DATABASE.length} kameraer tilgjengelig fra hele verden
+            {WORLD_CAMERA_DATABASE.length} kameraer i databasen{videoMode ? ' — video-kapable vises øverst' : ''}
           </Typography>
           
           <Box sx={{ maxHeight: 400, overflow: 'auto'}}>
             <List dense>
               {(cameraSearch ? searchCameras(cameraSearch) : WORLD_CAMERA_DATABASE)
+                .slice()
+                .sort((a, b) => videoMode
+                  ? (b.maxVideoBitrateMbps || 0) - (a.maxVideoBitrateMbps || 0)
+                  : 0)
                 .slice(0, 50) // Limit to first 50 results
                 .map((camera) => (
                 <ListItemButton
@@ -254,12 +271,25 @@ export default function MemoryCardSelector({
                     {isSelected && <Check color="primary" fontSize="small" />}
                   </Box>
 
-                  <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                    ~{estimate.raw.toLocaleString()} RAW bilder
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
-                    ~{estimate.craw.toLocaleString()} C-RAW bilder
-                  </Typography>
+                  {videoMode ? (
+                    <>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        ~{formatVideoMinutes(videoMinutesFor(capacityGBFor(capacity)))} video
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                        ved {videoBitrateMbps} Mbps ({cameraSpec?.model || 'kamera'})
+                      </Typography>
+                    </>
+                  ) : (
+                    <>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        ~{estimate.raw.toLocaleString()} RAW bilder
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                        ~{estimate.craw.toLocaleString()} C-RAW bilder
+                      </Typography>
+                    </>
+                  )}
 
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
