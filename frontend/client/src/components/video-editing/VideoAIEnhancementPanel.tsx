@@ -9,7 +9,7 @@ import { useProject } from '../../contexts/ProjectContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useTheme as useCustomTheme } from '../../contexts/ThemeContext';
 import { useRealTime } from '../../contexts/RealTimeContext';
-import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
+import { useVisualEditorOptional } from '../admin/visual-editor/VisualEditorContext';
 import {
   Box,
   Typography,
@@ -131,7 +131,8 @@ export default function VideoAIEnhancementPanel({
   const { settings } = useSettings();
   const { getProfessionTheme } = useCustomTheme();
   const { isConnected, emitEvent } = useRealTime();
-  const { addNotification } = useVisualEditor();
+  // Optional: kan rendres utenfor VisualEditorProvider — kastende hook = krasj.
+  const addNotification = useVisualEditorOptional()?.addNotification ?? (() => {});
   const { user } = useAuth();
   
   // Auth headers for API requests

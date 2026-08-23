@@ -8,7 +8,7 @@ import { useProject } from '../../contexts/ProjectContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useTheme as useCustomTheme } from '../../contexts/ThemeContext';
 import { useRealTime } from '../../contexts/RealTimeContext';
-import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
+import { useVisualEditorOptional } from '../admin/visual-editor/VisualEditorContext';
 import PhotoBatchProcessor from '../photo-editing/PhotoBatchProcessor';
 import ImageHistogram from '../photo-editing/ImageHistogram';
 import PhotoAnalysisAndFeedback from '../photo-editing/PhotoAnalysisAndFeedback';
@@ -243,7 +243,8 @@ export default function PhotographerPhotoSuite({
   const { settings, updateSetting, getSetting } = useSettings();
   const { getProfessionTheme } = useCustomTheme();
   const { isConnected, emitEvent, onEvent, offEvent } = useRealTime();
-  const { addNotification } = useVisualEditor();
+  // Optional: kan rendres utenfor VisualEditorProvider — kastende hook = krasj.
+  const addNotification = useVisualEditorOptional()?.addNotification ?? (() => {});
   const { user } = useAuth();
   
   // Auth headers for API requests

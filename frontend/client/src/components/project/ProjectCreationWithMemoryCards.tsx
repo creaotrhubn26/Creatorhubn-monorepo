@@ -141,7 +141,7 @@ import MemoryCardIcon from '../ui/MemoryCardIcon';
 import MemoryCardSelector from '../memory-card/MemoryCardSelector';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
+import { useVisualEditorOptional } from '../admin/visual-editor/VisualEditorContext';
 import { useLeadImport } from '@/hooks/useLeadImport';
 import ProjectHealthCheck from './ProjectHealthCheck';
 import ProjectCollaborators from './ProjectCollaborators';
@@ -1412,7 +1412,9 @@ export default function ProjectCreationWithMemoryCards({
   const professionAdapterData = useProfessionAdapter();
 
   // Toast notification system
-  const visualEditorContext = useVisualEditor();
+  // Optional: modalen mountes utenfor VisualEditorProvider (bl.a. /workspace)
+  // — den kastende hooken tok da ned hele flaten til app-router-boundaryen.
+  const visualEditorContext = useVisualEditorOptional();
   const addNotification = visualEditorContext?.addNotification || ((notification: Omit<{ id: string; type: 'info' | 'success' | 'warning' | 'error'; title: string; message: string; timestamp: Date; read: boolean; action?: { label: string; callback: () => void } }, 'id' | 'timestamp'>) => {
     console.log('Visual Editor context not available, ', notification);
   });
