@@ -1023,11 +1023,19 @@ export default function CastingStandaloneApp() {
       <MuiThemeProvider theme={muiTheme}>
         <CssBaseline />
         <RoleRoomGdprNotice />
-        <AuthProvider>
-          <EnhancedMasterIntegrationProvider>
-            <CastingStandaloneAppContent />
-          </EnhancedMasterIntegrationProvider>
-        </AuthProvider>
+        {/* Ingen ErrorBoundary rundt hele treet tidligere — en uncaught
+            render-feil (f.eks. mobil-viewport framer-motion-krasj på
+            leadgrid.no) unmounter hele React-treet i React 18 og etterlater
+            en tom, svart side uten feilmelding. Boundary her sikrer at
+            brukeren ser noe i stedet, uansett hvilken barne-komponent som
+            faktisk kaster. */}
+        <ErrorBoundary componentName="casting-main-root">
+          <AuthProvider>
+            <EnhancedMasterIntegrationProvider>
+              <CastingStandaloneAppContent />
+            </EnhancedMasterIntegrationProvider>
+          </AuthProvider>
+        </ErrorBoundary>
       </MuiThemeProvider>
     </QueryClientProvider>
   );
