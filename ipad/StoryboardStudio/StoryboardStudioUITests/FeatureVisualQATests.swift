@@ -6,6 +6,13 @@ import XCTest
 // via `xcrun xcresulttool export attachments`.
 final class FeatureVisualQATests: XCTestCase {
 
+    /// iOS-varslingsdialogen (push) dukker ved første hub-innlasting.
+    func dismissPushPrompt() {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let allow = springboard.alerts.buttons["Allow"].firstMatch
+        if allow.waitForExistence(timeout: 3) { allow.tap() }
+    }
+
     @MainActor
     func testBoardPerspectiveAndOnionSkinScreenshots() throws {
         let app = XCUIApplication()
@@ -14,20 +21,10 @@ final class FeatureVisualQATests: XCTestCase {
         app.launch()
 
         // Auto-login (env-token): rotliste → Role Room → TROLL → manus → board.
-        let roleRoom = app.staticTexts.matching(
-            NSPredicate(format: "label BEGINSWITH 'The Role Room'"))
-            .firstMatch
-        guard roleRoom.waitForExistence(timeout: 20) else {
-            throw XCTSkip("Auto-login feilet / prod utilgjengelig")
-        }
-        roleRoom.tap()
-        let project = app.staticTexts["TROLL"].firstMatch
-        guard project.waitForExistence(timeout: 15) else {
-            throw XCTSkip("TROLL-prosjektet ikke i listen")
-        }
-        project.tap()
-        let manuscript = app.cells.firstMatch
-        if manuscript.waitForExistence(timeout: 8) { manuscript.tap() }
+        // Ny root-flyt: env-token lander rett i prosjekt-huben.
+        let hubReady = app.buttons["Åpne board"].firstMatch
+        guard hubReady.waitForExistence(timeout: 30) else { throw XCTSkip("prod/token") }
+        dismissPushPrompt()
         // Prosjekt-hub ligger nå foran boardet
         let openBoard = app.buttons["Åpne board"].firstMatch
         if openBoard.waitForExistence(timeout: 10) { openBoard.tap() }
@@ -73,16 +70,10 @@ final class FeatureVisualQATests: XCTestCase {
         app.launchEnvironment["SB_TOKEN"] = "e2e-verify-daniel-2026"
         app.launchEnvironment["SB_SERVER"] = "https://theroleroom.com"
         app.launch()
-        let roleRoom = app.staticTexts.matching(
-            NSPredicate(format: "label BEGINSWITH 'The Role Room'")).firstMatch
-        guard roleRoom.waitForExistence(timeout: 20) else { throw XCTSkip("prod/token") }
-        roleRoom.tap()
-        guard app.staticTexts["TROLL"].firstMatch.waitForExistence(timeout: 15) else {
-            throw XCTSkip("TROLL mangler")
-        }
-        app.staticTexts["TROLL"].firstMatch.tap()
-        let manuscript = app.cells.firstMatch
-        if manuscript.waitForExistence(timeout: 8) { manuscript.tap() }
+        // Ny root-flyt: env-token lander rett i prosjekt-huben.
+        let hubReady = app.buttons["Åpne board"].firstMatch
+        guard hubReady.waitForExistence(timeout: 30) else { throw XCTSkip("prod/token") }
+        dismissPushPrompt()
         // Prosjekt-hub ligger nå foran boardet
         let openBoard = app.buttons["Åpne board"].firstMatch
         if openBoard.waitForExistence(timeout: 10) { openBoard.tap() }
@@ -130,16 +121,10 @@ final class FeatureVisualQATests: XCTestCase {
         app.launchEnvironment["SB_TOKEN"] = "e2e-verify-daniel-2026"
         app.launchEnvironment["SB_SERVER"] = "https://theroleroom.com"
         app.launch()
-        let roleRoom = app.staticTexts.matching(
-            NSPredicate(format: "label BEGINSWITH 'The Role Room'")).firstMatch
-        guard roleRoom.waitForExistence(timeout: 20) else { throw XCTSkip("prod/token") }
-        roleRoom.tap()
-        guard app.staticTexts["TROLL"].firstMatch.waitForExistence(timeout: 15) else {
-            throw XCTSkip("TROLL mangler")
-        }
-        app.staticTexts["TROLL"].firstMatch.tap()
-        let manuscript = app.cells.firstMatch
-        if manuscript.waitForExistence(timeout: 8) { manuscript.tap() }
+        // Ny root-flyt: env-token lander rett i prosjekt-huben.
+        let hubReady = app.buttons["Åpne board"].firstMatch
+        guard hubReady.waitForExistence(timeout: 30) else { throw XCTSkip("prod/token") }
+        dismissPushPrompt()
         XCTAssertTrue(app.buttons["Åpne board"].firstMatch.waitForExistence(timeout: 15),
                       "hub åpnet ikke")
         Thread.sleep(forTimeInterval: 3)
@@ -157,16 +142,10 @@ final class FeatureVisualQATests: XCTestCase {
         app.launchEnvironment["SB_TOKEN"] = "e2e-verify-daniel-2026"
         app.launchEnvironment["SB_SERVER"] = "https://theroleroom.com"
         app.launch()
-        let roleRoom = app.staticTexts.matching(
-            NSPredicate(format: "label BEGINSWITH 'The Role Room'")).firstMatch
-        guard roleRoom.waitForExistence(timeout: 20) else { throw XCTSkip("prod/token") }
-        roleRoom.tap()
-        guard app.staticTexts["TROLL"].firstMatch.waitForExistence(timeout: 15) else {
-            throw XCTSkip("TROLL mangler")
-        }
-        app.staticTexts["TROLL"].firstMatch.tap()
-        let manuscript = app.cells.firstMatch
-        if manuscript.waitForExistence(timeout: 8) { manuscript.tap() }
+        // Ny root-flyt: env-token lander rett i prosjekt-huben.
+        let hubReady = app.buttons["Åpne board"].firstMatch
+        guard hubReady.waitForExistence(timeout: 30) else { throw XCTSkip("prod/token") }
+        dismissPushPrompt()
         let assets = app.buttons["Assets"].firstMatch
         XCTAssertTrue(assets.waitForExistence(timeout: 15), "sidebar-Assets mangler")
         assets.tap()
@@ -182,16 +161,10 @@ final class FeatureVisualQATests: XCTestCase {
         app.launchEnvironment["SB_TOKEN"] = "e2e-verify-daniel-2026"
         app.launchEnvironment["SB_SERVER"] = "https://theroleroom.com"
         app.launch()
-        let roleRoom = app.staticTexts.matching(
-            NSPredicate(format: "label BEGINSWITH 'The Role Room'")).firstMatch
-        guard roleRoom.waitForExistence(timeout: 20) else { throw XCTSkip("prod/token") }
-        roleRoom.tap()
-        guard app.staticTexts["TROLL"].firstMatch.waitForExistence(timeout: 15) else {
-            throw XCTSkip("TROLL mangler")
-        }
-        app.staticTexts["TROLL"].firstMatch.tap()
-        let manuscript = app.cells.firstMatch
-        if manuscript.waitForExistence(timeout: 8) { manuscript.tap() }
+        // Ny root-flyt: env-token lander rett i prosjekt-huben.
+        let hubReady = app.buttons["Åpne board"].firstMatch
+        guard hubReady.waitForExistence(timeout: 30) else { throw XCTSkip("prod/token") }
+        dismissPushPrompt()
         let review = app.buttons["Review"].firstMatch
         XCTAssertTrue(review.waitForExistence(timeout: 15), "sidebar-Review mangler")
         review.tap()

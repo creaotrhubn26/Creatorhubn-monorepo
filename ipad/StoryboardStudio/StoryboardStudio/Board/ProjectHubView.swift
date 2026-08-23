@@ -85,6 +85,7 @@ struct HubSidebar: View {
                                 in: RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(title)
             }
             Spacer()
             if !collapsed {
