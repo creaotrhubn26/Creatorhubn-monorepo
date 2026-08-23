@@ -67186,7 +67186,10 @@ registerLeadgridCrashRoutes({ app, pool, requireUserSession });
 // «Kom i gang» fra Leadgrid-login: e-post → lead (offentlig, dedupet).
 registerLeadgridSignupInterestRoutes({ app, pool });
 registerLeadgridDemoRequestRoutes({ app, pool });
-registerLeadgridAppWaitlistRoutes({ app, pool });
+registerLeadgridAppWaitlistRoutes({
+  app, pool, activeSessions,
+  isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
+});
 
 // /api/leadgrid/pondus/* — 10 endpoints (Leadgrid Pondus-maler:
 // SuperAdmin publiserer maler, alle innloggede leser publiserte).
