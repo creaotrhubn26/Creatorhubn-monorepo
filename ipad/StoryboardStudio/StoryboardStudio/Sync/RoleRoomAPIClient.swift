@@ -44,7 +44,7 @@ struct FrameSummary: Identifiable, Sendable {
     let id: String
     let shotNumber: String
     let detail: String
-    let strokesJSON: String?
+    var strokesJSON: String?
     // Intensjonslaget (native Board) — samme felter som web-Inspector
     let description: String
     let notes: String?
@@ -66,7 +66,7 @@ struct FrameSummary: Identifiable, Sendable {
     let frameStatus: String?
     let comments: [ReviewComment]
     // Konfliktdeteksjon (samme-frame-merge): serverens updatedAt ved lasting
-    let updatedAt: String?
+    var updatedAt: String?
     // Referanse-underlag (kun visning i canvas — aldri i eksport)
     let underlayDataURL: String?
     let underlayOpacity: Double?
@@ -97,7 +97,7 @@ struct FrameSummary: Identifiable, Sendable {
 struct SceneSummary: Identifiable, Sendable {
     let id: String
     let heading: String
-    let frames: [FrameSummary]
+    var frames: [FrameSummary]
     // Presentasjonsmetadata (pitch-formatet): konsept-linje + footer-
     // seksjoner (JSON [{title, items[]}]) — lagres på første scene.
     let presentationConcept: String?
