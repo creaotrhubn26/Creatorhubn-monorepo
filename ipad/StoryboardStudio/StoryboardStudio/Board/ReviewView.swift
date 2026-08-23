@@ -11,7 +11,11 @@ final class ReviewState: ObservableObject {
     let project: ProjectSummary
     let manuscript: ManuscriptSummary
     @Published var scenes: [SceneSummary] = []
-    @Published var selected: (sceneId: String, frameId: String)?
+    @Published var selected: (sceneId: String, frameId: String)? {
+        didSet {
+            if oldValue?.frameId != selected?.frameId { redlineRedoStack = [] }
+        }
+    }
     @Published var statusFilter: String?
     @Published var roleFilter: String?
     @Published var sortMode = "Sekvens"     // Sekvens / Frist / Prioritet
@@ -113,7 +117,83 @@ final class ReviewState: ObservableObject {
 
     /// Redline: reviewer-strøk på lag «Review» — synlig i review og board,
     /// filtrert fra eksport. Lagres som vanlige strokes (historikk gjelder).
-    func appendRedline(_ stroke: PencilStroke) {
+    /// Skriv nye strokes lokalt (øyeblikkelig UI) — serveren er allerede
+    /// oppdatert; full reload er unødvendig og treg (hele scenes-payloaden).
+    private func applyStrokesLocally(sceneId: String, frameId: String,
+                                     json: String, updatedAt: String?) {
+        guard let sceneIndex = scenes.firstIndex(where: { $0.id == sceneId }),
+              let frameIndex = scenes[sceneIndex].frames.firstIndex(where: { $0.id == frameId })
+        else { return }
+        scenes[sceneIndex].frames[frameIndex].strokesJSON = json
+        if let updatedAt {
+            scenes[sceneIndex].frames[frameIndex].updatedAt = updatedAt
+        }
+    }
+
+    /// Lagre redline-endring: server først, så lokal apply (ingen reload).
+    private func saveRedlines(_ strokes: [PencilStroke], doneStatus: String) {
+        guard let selected, let pair = selectedPair else { return }
+        let manuscriptId = manuscript.id
+        status = "…"
+        Task {
+            do {
+                let json = try StrokeSerialization.encodeToWebJSON(strokes)
+                let result = try await RoleRoomAPIClient.shared.saveFrameStrokes(
+                    manuscriptId: manuscriptId, sceneId: selected.sceneId,
+                    frameId: selected.frameId, strokesJSON: json,
+                    baseUpdatedAt: pair.frame.updatedAt)
+                applyStrokesLocally(sceneId: selected.sceneId, frameId: selected.frameId,
+                                    json: json, updatedAt: result.updatedAt)
+                status = doneStatus
+            } catch {
+                status = error.localizedDescription
+            }
+        }
+    }
+
+    func appendRedline(_ stroke: PencilStroke, fromRedo: Bool = false) {
+        guard let pair = selectedPair else { return }
+        if !fromRedo { redlineRedoStack = [] }   // nytt strøk bryter redo-kjeden
+        var strokes = (try? StrokeSerialization.decodeFromWebJSON(
+            pair.frame.strokesJSON ?? "[]")) ?? []
+        strokes.append(stroke)
+        saveRedlines(strokes, doneStatus: "Markering lagret ✓")
+    }
+
+    /// Objekt-visk for redlines: fjern Review-strøk som berøres av dragsporet.
+    func eraseRedlines(near points: [CGPoint], tolerance: Double = 40) {
+        guard let pair = selectedPair else { return }
+        var strokes = (try? StrokeSerialization.decodeFromWebJSON(
+            pair.frame.strokesJSON ?? "[]")) ?? []
+        var removed: [PencilStroke] = []
+        strokes.removeAll { stroke in
+            guard stroke.boardLayer == "Review" else { return false }
+            let hit = stroke.points.contains { strokePoint in
+                points.contains { dragPoint in
+                    let dx = strokePoint.x - Double(dragPoint.x)
+                    let dy = strokePoint.y - Double(dragPoint.y)
+                    return dx * dx + dy * dy < tolerance * tolerance
+                }
+            }
+            if hit { removed.append(stroke) }
+            return hit
+        }
+        guard !removed.isEmpty else { return }
+        redlineRedoStack.append(contentsOf: removed)
+        saveRedlines(strokes, doneStatus: "Visket \(removed.count) markering\(removed.count == 1 ? "" : "er") ✓")
+    }
+
+    /// Angrede redlines — kan gjenopprettes med redo til nytt strøk tegnes
+    /// eller shot byttes.
+    @Published var redlineRedoStack: [PencilStroke] = []
+
+    func redoRedline() {
+        guard let stroke = redlineRedoStack.popLast() else { return }
+        appendRedline(stroke, fromRedo: true)
+    }
+
+    /// Angre siste redline (fjerner siste strøk på Review-laget).
+    func undoRedline(removeAll: Bool = false) {
         guard let selected, let pair = selectedPair else { return }
         let manuscriptId = manuscript.id
         status = "…"
@@ -121,14 +201,25 @@ final class ReviewState: ObservableObject {
             do {
                 var strokes = (try? StrokeSerialization.decodeFromWebJSON(
                     pair.frame.strokesJSON ?? "[]")) ?? []
-                strokes.append(stroke)
+                if removeAll {
+                    redlineRedoStack.append(
+                        contentsOf: strokes.filter { $0.boardLayer == "Review" })
+                    strokes.removeAll { $0.boardLayer == "Review" }
+                } else if let index = strokes.lastIndex(where: { $0.boardLayer == "Review" }) {
+                    redlineRedoStack.append(strokes[index])
+                    strokes.remove(at: index)
+                } else {
+                    status = ""
+                    return
+                }
                 let json = try StrokeSerialization.encodeToWebJSON(strokes)
-                _ = try await RoleRoomAPIClient.shared.saveFrameStrokes(
+                let result = try await RoleRoomAPIClient.shared.saveFrameStrokes(
                     manuscriptId: manuscriptId, sceneId: selected.sceneId,
                     frameId: selected.frameId, strokesJSON: json,
                     baseUpdatedAt: pair.frame.updatedAt)
-                await load()
-                status = "Markering lagret ✓"
+                applyStrokesLocally(sceneId: selected.sceneId, frameId: selected.frameId,
+                                    json: json, updatedAt: result.updatedAt)
+                status = removeAll ? "Markeringer fjernet ✓" : "Markering angret ✓"
             } catch {
                 status = error.localizedDescription
             }
@@ -592,7 +683,13 @@ struct ReviewView: View {
     }
 
     /// Panel-verktøy i boardstil — flytende pill, verktøyene virker på panelet.
-    private func previewToolbar() -> some View {
+    private func hasRedlines(_ pair: (scene: SceneSummary, frame: FrameSummary)) -> Bool {
+        let strokes = (try? StrokeSerialization.decodeFromWebJSON(
+            pair.frame.strokesJSON ?? "[]")) ?? []
+        return strokes.contains { $0.boardLayer == "Review" }
+    }
+
+    private func previewToolbar(_ pair: (scene: SceneSummary, frame: FrameSummary)) -> some View {
         HStack(spacing: 2) {
             toolButton("mappin.circle", "Pin", active: pinMode) {
                 pinMode.toggle()
@@ -607,6 +704,27 @@ struct ReviewView: View {
             toolButton("scribble", "Tegn", active: redlineMode == "draw") {
                 redlineMode = redlineMode == "draw" ? nil : "draw"
                 pinMode = false
+            }
+            toolButton("eraser", "Visk", active: redlineMode == "erase") {
+                redlineMode = redlineMode == "erase" ? nil : "erase"
+                pinMode = false
+            }
+            if hasRedlines(pair) {
+                toolButton("arrow.uturn.backward", "Angre", active: false) {
+                    state.undoRedline()
+                }
+                .contextMenu {
+                    Button(role: .destructive) {
+                        state.undoRedline(removeAll: true)
+                    } label: {
+                        Label("Fjern alle markeringer", systemImage: "trash")
+                    }
+                }
+            }
+            if !state.redlineRedoStack.isEmpty {
+                toolButton("arrow.uturn.forward", "Gjør om", active: false) {
+                    state.redoRedline()
+                }
             }
             Divider().frame(height: 16).overlay(Color.white.opacity(0.15))
             toolButton("arrow.up.left.and.arrow.down.right", "Fullskjerm", active: false) {
@@ -634,7 +752,7 @@ struct ReviewView: View {
         VStack(spacing: 10) {
             HStack {
                 Spacer()
-                previewToolbar()
+                previewToolbar(pair)
                 Spacer()
             }
             if compareMode {
@@ -813,6 +931,13 @@ struct ReviewView: View {
         guard redlinePoints.count > 1, viewSize.width > 0 else { return }
         let scaleX = pair.frame.drawingWidth / viewSize.width
         let scaleY = pair.frame.drawingHeight / viewSize.height
+        if redlineMode == "erase" {
+            let contentPoints = redlinePoints.map {
+                CGPoint(x: Double($0.x) * scaleX, y: Double($0.y) * scaleY)
+            }
+            state.eraseRedlines(near: contentPoints)
+            return
+        }
         var t = Date().timeIntervalSince1970 * 1000
         func point(_ p: CGPoint) -> StrokePoint {
             t += 8
