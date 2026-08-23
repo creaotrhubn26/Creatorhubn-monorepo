@@ -20,12 +20,15 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Link,
   Stack,
   Typography,
 } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
-import LaunchIcon from '@mui/icons-material/Launch';
 import AppleIcon from '@mui/icons-material/Apple';
 
 interface ReleaseAsset {
@@ -39,6 +42,8 @@ interface ReleaseData {
   name: string;
   published_at: string;
   html_url: string;
+  /** Release-notatene (markdown) fra GitHub-releasen. */
+  body?: string | null;
   assets: ReleaseAsset[];
 }
 
@@ -68,6 +73,7 @@ function humanSize(bytes: number): string {
 
 export default function OneDeskDownloadCard() {
   const [release, setRelease] = useState<ReleaseData | null>(null);
+  const [showNotes, setShowNotes] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -137,16 +143,8 @@ export default function OneDeskDownloadCard() {
 
         {error && (
           <Alert severity="warning" sx={{ mt: 2 }}>
-            Kunne ikke hente siste versjon fra GitHub ({error}). Du kan
-            besøke{' '}
-            <Link
-              href={`https://github.com/${REPO}/releases`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              releases-siden
-            </Link>{' '}
-            manuelt.
+            Kunne ikke hente siste versjon akkurat nå ({error}). Prøv igjen
+            om litt.
           </Alert>
         )}
 
@@ -169,13 +167,14 @@ export default function OneDeskDownloadCard() {
                 Publisert{' '}
                 {new Date(release.published_at).toLocaleDateString('nb-NO')}
               </Typography>
+              {/* Dialog i appen — ikke hopp til GitHub for «hva er nytt» */}
               <Link
-                href={release.html_url}
-                target="_blank"
-                rel="noopener noreferrer"
+                component="button"
+                type="button"
+                onClick={() => setShowNotes(true)}
                 sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 0.5, fontSize: 12 }}
               >
-                Release-notater <LaunchIcon sx={{ fontSize: 12 }} />
+                Hva er nytt?
               </Link>
             </Stack>
 
@@ -195,15 +194,8 @@ export default function OneDeskDownloadCard() {
               </Button>
             ) : (
               <Alert severity="info">
-                Ingen .dmg-fil i denne utgivelsen — sjekk{' '}
-                <Link
-                  href={release.html_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  release-siden
-                </Link>{' '}
-                for alternative formater.
+                Denne utgivelsen mangler nedlastbar .dmg — ny versjon kommer
+                snart.
               </Alert>
             )}
 
@@ -243,6 +235,32 @@ export default function OneDeskDownloadCard() {
           </Stack>
         )}
       </CardContent>
+
+      {/* «Hva er nytt»-dialog: viser release-notatene direkte fra GitHub-
+          responsen vi allerede har hentet — GitHub-lenka er sekundær. */}
+      <Dialog open={showNotes} onClose={() => setShowNotes(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>
+          Hva er nytt{release ? ` — ${release.tag_name.replace(TAG_PREFIX, 'v')}` : ''}
+        </DialogTitle>
+        <DialogContent dividers>
+          {release?.body ? (
+            <Typography
+              variant="body2"
+              component="pre"
+              sx={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', m: 0 }}
+            >
+              {release.body}
+            </Typography>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Ingen notater for denne utgivelsen.
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowNotes(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 }

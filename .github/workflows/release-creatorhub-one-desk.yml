@@ -273,7 +273,7 @@ jobs:
           cat > "staging/creatorhub-one-desk-${{ matrix.arch_label }}.json" <<EOF
           {
             "version": "${{ steps.ver.outputs.version }}",
-            "notes": "Se release-notes på GitHub",
+            "notes": "Ny versjon av Creatorhub One Desk er klar — oppdater for siste forbedringer.",
             "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "platforms": {
               "${{ matrix.arch_label == 'darwin-aarch64' && 'darwin-aarch64' || 'darwin-x86_64' }}": {
