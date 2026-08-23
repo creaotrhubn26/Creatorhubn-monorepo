@@ -3298,15 +3298,23 @@ useEffect(() => {
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'flex-end' }}>
             <Box sx={{ flex: { xs: '1 1 100%', md: '1 1 50%' } }}>
               <Autocomplete
+                freeSolo
                 options={contactOptions}
-                getOptionLabel={(o: ContactOption) => o?.displayName || o?.email || ''}
-                onInputChange={(_: React.SyntheticEvent, val: string) => setContactQuery(val)}
-                onChange={(_: React.SyntheticEvent, val: ContactOption | null) => setSelectedContact(val)}
+                getOptionLabel={(o: ContactOption | string) => typeof o === 'string' ? o : (o?.displayName || o?.email || '')}
+                onInputChange={(_: React.SyntheticEvent, val: string) => {
+                  setContactQuery(val);
+                  // freeSolo: det du skriver ER klientnavnet — Google-treff er valgfritt
+                  setProjectData(prev => ({ ...prev, clientName: val }));
+                }}
+                onChange={(_: React.SyntheticEvent, val: ContactOption | string | null) => {
+                  if (typeof val === 'string') { setProjectData(prev => ({ ...prev, clientName: val })); return; }
+                  setSelectedContact(val);
+                }}
                 renderInput={(params) => (
                   <TextField 
                     {...params} 
-                    label="Søk navn eller e-post" 
-                    placeholder="Skriv for å søke..." 
+                    label="Navn (søk eller skriv)" 
+                    placeholder="Søk i kontakter — eller skriv navn manuelt" 
                     size="small"
                     sx={{
                       '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.95)', fontWeight: 600 },
@@ -3326,9 +3334,10 @@ useEffect(() => {
               <TextField
                 label="E-post"
                 value={projectData.clientEmail}
+                onChange={(e) => setProjectData(prev => ({ ...prev, clientEmail: e.target.value }))}
                 fullWidth
                 size="small"
-                slotProps={{ input: { readOnly: true } }}
+                placeholder="kunde@epost.no"
                 sx={{
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.95)', fontWeight: 600 },
                   '& .MuiOutlinedInput-root': {
