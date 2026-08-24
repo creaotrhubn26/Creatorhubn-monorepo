@@ -66,6 +66,7 @@ type CreatorHubGoogleOauthState = {
   createdByEmail?: string | null;
   targetConnectionUserId?: string | null;
   targetConnectionEmail?: string | null;
+  youtube?: boolean;
   createdAt: number;
 };
 
@@ -88,6 +89,7 @@ type CreatorHubGoogleTransferPayload = {
   };
   googleEmail: string;
   googleSubject: string;
+  youtube?: boolean;
   profile: Record<string, unknown>;
   tokenBundle?: {
     accessToken?: string | null;
@@ -149,6 +151,16 @@ const CREATORHUB_GOOGLE_SCOPES = [
   // identisk liste uten youtube går rett til samtykkeskjermen. YouTube må bes
   // om i egen, inkrementell consent (samme mønster som
   // ROLE_ROOM_GOOGLE_YOUTUBE_ANALYTICS_SCOPES i role-room-routes.ts).
+] as const;
+
+// Egen inkrementell YouTube-consent (kan ikke kombineres med bunten over —
+// Google avviser hele requesten). Lagres som egen credential
+// (oauth_app='creatorhub_youtube') med eget refresh-token.
+const CREATORHUB_YOUTUBE_SCOPES = [
+  'openid',
+  'email',
+  'profile',
+  'https://www.googleapis.com/auth/youtube',
 ] as const;
 
 // Slice 9X.80 — bump fra 15 → 60 min så brukere som blir avbrutt
@@ -729,6 +741,9 @@ export function createCreatorHubGoogleRouter(
       }
 
       const mode = readStringValue(req.body?.mode) === 'link' ? 'link' : 'login';
+      // YouTube-consent er en EGEN bunt/credential (Google avviser youtube +
+      // Workspace-bunten i samme request) — kun gyldig i link-modus.
+      const wantsYoutube = mode === 'link' && req.body?.youtube === true;
       const requestUser = await resolveOptionalRequestUser(req, pool, activeSessions);
       const targetConnectionUserId = readStringValue(req.body?.targetConnectionUserId)
         ?? requestUser?.userId
@@ -751,6 +766,7 @@ export function createCreatorHubGoogleRouter(
         createdByEmail: requestUser?.email ?? null,
         targetConnectionUserId,
         targetConnectionEmail,
+        youtube: wantsYoutube,
         createdAt: Date.now(),
       });
 
@@ -762,7 +778,7 @@ export function createCreatorHubGoogleRouter(
       const loginHint = targetConnectionEmail ?? requestUser?.email ?? readStringValue(req.body?.email);
       const authorizationUrl = oauthClient.generateAuthUrl({
         access_type: 'offline',
-        scope: [...CREATORHUB_GOOGLE_SCOPES],
+        scope: wantsYoutube ? [...CREATORHUB_YOUTUBE_SCOPES] : [...CREATORHUB_GOOGLE_SCOPES],
         // ALDRI true: Google fletter da kontoens TIDLIGERE grants (f.eks. gamle
         // youtube.upload/yt-analytics-grants fra før scope-oppryddingen) inn i
         // requesten og avviser hele innloggingen med «scopes that cannot be
@@ -936,10 +952,13 @@ export function createCreatorHubGoogleRouter(
         return;
       }
 
+      const linkOauthApp: GoogleWorkspaceOauthApp = oauthState.youtube
+        ? 'creatorhub_youtube'
+        : CREATORHUB_GOOGLE_OAUTH_APP;
       const existingSubjectConnection = await getGoogleConnectionBySubject(
         pool,
         googleSubject,
-        CREATORHUB_GOOGLE_OAUTH_APP,
+        linkOauthApp,
       );
       if (existingSubjectConnection && existingSubjectConnection.user_id !== linkTargetUserId) {
         redirectWithError(
@@ -960,6 +979,7 @@ export function createCreatorHubGoogleRouter(
         targetConnectionEmail: linkTargetEmail,
         googleEmail,
         googleSubject,
+        youtube: oauthState.youtube === true,
         profile: googleProfile,
         tokenBundle,
       });
@@ -1080,7 +1100,7 @@ export function createCreatorHubGoogleRouter(
         googleSubject: payload.googleSubject,
         googleProfile: payload.profile,
         tokenBundle: payload.tokenBundle,
-        oauthApp: CREATORHUB_GOOGLE_OAUTH_APP,
+        oauthApp: payload.youtube ? 'creatorhub_youtube' : CREATORHUB_GOOGLE_OAUTH_APP,
       });
 
       creatorHubGoogleTransferStore.delete(transferId);

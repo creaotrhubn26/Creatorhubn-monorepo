@@ -263,7 +263,9 @@ function mapPublishingPlaylist(item: any): PublishingPlaylist {
 export async function buildAuthorizedYoutubeClient(pool: Pool, userId: string, req?: Request) {
   const authorized = await resolveRoleRoomGoogleConnection(pool, userId, {
     allowFallbackToAnyUser: false,
-    preferredOauthApps: derivePreferredGoogleWorkspaceOauthApps(req),
+    // Den dedikerte YouTube-consenten (egen credential) foretrekkes; eldre
+    // Workspace-tilkoblinger som fortsatt bærer youtube-scopet er fallback.
+    preferredOauthApps: ['creatorhub_youtube', ...derivePreferredGoogleWorkspaceOauthApps(req)],
   });
 
   return {
