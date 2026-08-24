@@ -21,7 +21,7 @@ import CheckCircleOutline from '@mui/icons-material/CheckCircleOutline';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
-import { WsCard, WsSectionTitle, WsTag, WsImg } from '../ui';
+import { WsCard, WsSectionTitle, WsTag, WsImg, wsAlert, wsPrompt } from '../ui';
 import { useWsLocale, makeT, type WsDict } from '../wsLocale';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab).
@@ -103,9 +103,9 @@ const KundevisningTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   }, [projectId, isReal]);
 
   const respondToReview = async (commentId: string) => {
-    const response = window.prompt(t('promptReply')); if (!response) return;
+    const response = await wsPrompt(t('promptReply')); if (!response) return;
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/client-reviews/${commentId}/respond`, { method: 'POST', body: { response: response.trim() } }); loadReviews(); }
-    catch (e: any) { window.alert(e?.message || t('replyFailed')); }
+    catch (e: any) { wsAlert(e?.message || t('replyFailed')); }
   };
   const reviewIcon = (type: string) => type === 'heart' || type === 'love' || type === 'favorite' ? 'Favorite' : type === 'change' || type === 'change-request' || type === 'revision' ? 'EditOutlined' : type === 'approval' || type === 'approve' ? 'CheckCircleOutline' : 'ChatBubbleOutline';
 

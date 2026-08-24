@@ -14,7 +14,7 @@ import Star from '@mui/icons-material/Star';
 import ErrorOutline from '@mui/icons-material/ErrorOutline';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
-import { WsCard, WsSectionTitle, WsStat, WsPills, WsTag, WsTable, WsImageGrid } from '../ui';
+import { WsCard, WsSectionTitle, WsStat, WsPills, WsTag, WsTable, WsImageGrid, wsAlert } from '../ui';
 import { useProjectImages } from '../useProjectImages';
 import { useCaptureRealtime } from '../useCaptureRealtime';
 
@@ -47,7 +47,7 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const sendComment = async () => {
     const body = comment.trim(); if (!body || !projectId || projectId === 'sample') return;
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/notes`, { method: 'POST', body: { body, context: 'shotlist' } }); setComment(''); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke sende'); }
+    catch (e: any) { wsAlert(e?.message || 'Kunne ikke sende'); }
   };
   const refs = useProjectImages(projectId, 'references');
 

@@ -14,7 +14,7 @@ import Flag from '@mui/icons-material/Flag';
 import UploadFile from '@mui/icons-material/UploadFile';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsSectionTitle, WsBar, WsPills, WsTag, WsTable } from '../ui';
+import { WsCard, WsSectionTitle, WsBar, WsPills, WsTag, WsTable, wsAlert, wsPrompt } from '../ui';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab).
@@ -135,12 +135,12 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
   const addMilestone = async () => {
     if (!isReal) return;
-    const title = window.prompt(t('promptMsTitle')); if (!title?.trim()) return;
-    const date = window.prompt(t('promptMsDate')) || '';
+    const title = await wsPrompt(t('promptMsTitle')); if (!title?.trim()) return;
+    const date = await wsPrompt(t('promptMsDate')) || '';
     try {
       await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/milestones`, { method: 'POST', body: { title: title.trim(), dueDate: date.trim() || null, category: 'Milepæler' } });
       loadMs();
-    } catch (e: any) { window.alert(e?.message || t('addMsFailed')); }
+    } catch (e: any) { wsAlert(e?.message || t('addMsFailed')); }
   };
 
   const importPlan = async (file: File) => {
@@ -155,8 +155,8 @@ const ProsjektplanTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         n++;
       }
       loadMs();
-      window.alert(`${n} ${n === 1 ? t('importedOne') : t('importedMany')}`);
-    } catch (e: any) { window.alert(e?.message || t('importFailed')); }
+      wsAlert(`${n} ${n === 1 ? t('importedOne') : t('importedMany')}`);
+    } catch (e: any) { wsAlert(e?.message || t('importFailed')); }
   };
 
   useEffect(() => {

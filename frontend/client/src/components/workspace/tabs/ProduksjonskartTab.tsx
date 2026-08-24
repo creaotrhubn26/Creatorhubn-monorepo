@@ -20,7 +20,7 @@ import NotificationsActive from '@mui/icons-material/NotificationsActive';
 import Send from '@mui/icons-material/Send';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
-import { WsCard, WsSectionTitle, WsRing, WsPills, WsTag, WsTable, WsImageGrid } from '../ui';
+import { WsCard, WsSectionTitle, WsRing, WsPills, WsTag, WsTable, WsImageGrid, wsAlert } from '../ui';
 import { useProjectImages } from '../useProjectImages';
 
 const ROWS = [
@@ -63,7 +63,7 @@ const ProduksjonskartTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const addNote = async () => {
     const body = noteText.trim(); if (!body || savingNote) return; setSavingNote(true);
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/notes`, { method: 'POST', body: { body, context: 'produksjonskart' } }); setNoteText(''); loadNotes(); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke lagre notat'); }
+    catch (e: any) { wsAlert(e?.message || 'Kunne ikke lagre notat'); }
     finally { setSavingNote(false); }
   };
 

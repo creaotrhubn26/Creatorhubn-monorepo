@@ -17,7 +17,7 @@ import AutoAwesome from '@mui/icons-material/AutoAwesome';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
-import { WsCard, WsTag, WsModal } from '../ui';
+import { WsCard, WsTag, WsModal, wsAlert, wsConfirm } from '../ui';
 import AiBuyCreditsModal from '../AiBuyCreditsModal';
 import CinematicVideoPlayer from '@/components/gallery/CinematicVideoPlayer';
 
@@ -44,8 +44,8 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const loadAiCfg = () => apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/config`).then((r: any) => setAiCfg(r || null)).catch(() => {});
   const [credits, setCredits] = useState<any | null>(null); const [buyOpen, setBuyOpen] = useState(false);
   const loadCredits = () => apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits`).then((r: any) => setCredits(r || null)).catch(() => {});
-  const buyPack = async (packId: string) => { try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/checkout`, { method: 'POST', body: { packId } }); if (r?.url) window.location.href = r.url; } catch (e: any) { window.alert(e?.message || 'Feil'); } };
-  const setConsent = async (c: boolean) => { try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/consent`, { method: 'PUT', body: { consented: c } }); loadAiCfg(); } catch (e: any) { window.alert(e?.message || 'Feil'); } };
+  const buyPack = async (packId: string) => { try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/checkout`, { method: 'POST', body: { packId } }); if (r?.url) window.location.href = r.url; } catch (e: any) { wsAlert(e?.message || 'Feil'); } };
+  const setConsent = async (c: boolean) => { try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/consent`, { method: 'PUT', body: { consented: c } }); loadAiCfg(); } catch (e: any) { wsAlert(e?.message || 'Feil'); } };
   const openRe = () => { setRePrompt(''); setReJob(null); setReOpen(true); };
   const startRestyle = async () => {
     if (!current?.id || !rePrompt.trim() || reBusy) return;
@@ -62,7 +62,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     } catch (e: any) {
       const msg = String(e?.message || '').toLowerCase();
       if (msg.includes('kreditt') || msg.includes('insufficient')) { setReOpen(false); setBuyOpen(true); }
-      else window.alert(e?.message || 'Restyle feilet');
+      else wsAlert(e?.message || 'Restyle feilet');
       setReJob({ status: 'failed' });
     }
     finally { setReBusy(false); loadCredits(); }
@@ -70,7 +70,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
   const load = () => {
     loadAiCfg(); loadCredits();
-    try { const p = new URLSearchParams(window.location.search); if (p.get('ai_credits') === 'ok' && p.get('cs')) { apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/confirm`, { method: 'POST', body: { sessionId: p.get('cs') } }).then(() => { loadCredits(); window.alert('Kreditter lagt til ✓'); }).catch(() => {}).finally(() => { const u = new URL(window.location.href); u.searchParams.delete('ai_credits'); u.searchParams.delete('cs'); window.history.replaceState({}, '', u.toString()); }); } } catch { /* */ }
+    try { const p = new URLSearchParams(window.location.search); if (p.get('ai_credits') === 'ok' && p.get('cs')) { apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/confirm`, { method: 'POST', body: { sessionId: p.get('cs') } }).then(() => { loadCredits(); wsAlert('Kreditter lagt til ✓'); }).catch(() => {}).finally(() => { const u = new URL(window.location.href); u.searchParams.delete('ai_credits'); u.searchParams.delete('cs'); window.history.replaceState({}, '', u.toString()); }); } } catch { /* */ }
     if (!isReal) { setLoading(false); return; }
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/video-room`)
       .then((r: any) => setData(r || null)).catch(() => {}).finally(() => setLoading(false));
@@ -99,7 +99,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const addComment = async ({ timecodeSec, comment }: any) => {
     if (!isReal || !current) return;
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/video-comments`, { method: 'POST', body: { versionId: current.id, timecodeSec, comment, authorKind: 'creator' } }); load(); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke kommentere'); }
+    catch (e: any) { wsAlert(e?.message || 'Kunne ikke kommentere'); }
   };
   const resolveComment = async (c: any) => {
     if (!isReal) return;
@@ -109,9 +109,9 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   };
   const approve = async () => {
     if (!isReal || !current) return;
-    if (!window.confirm('Godkjenn denne versjonen?')) return;
+    if (!await wsConfirm('Godkjenn denne versjonen?')) return;
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/video-versions/${current.id}/approve`, { method: 'POST', body: {} }); load(); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke godkjenne'); }
+    catch (e: any) { wsAlert(e?.message || 'Kunne ikke godkjenne'); }
   };
   // Last opp videofil → B2 (server-side multer) m/ fremdrift via XHR.
   const uploadVersion = async () => {
@@ -133,7 +133,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         xhr.send(fd);
       });
       setAddOpen(false); setVFile(null); setVLabel(''); setUploadPct(0); load();
-    } catch (e: any) { window.alert(e?.message || 'Kunne ikke laste opp'); }
+    } catch (e: any) { wsAlert(e?.message || 'Kunne ikke laste opp'); }
     finally { setBusy(false); }
   };
 

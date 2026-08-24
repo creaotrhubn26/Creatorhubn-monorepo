@@ -20,7 +20,7 @@ import TeamMembersDirectory from '../universal/split-sheets/TeamMembersDirectory
 import SplitSheetRoleWizard from '../universal/split-sheets/SplitSheetRoleWizard';
 import { ws } from './workspaceTheme';
 import { wsIcon } from './crewIcons';
-import { WsCard, WsTag } from './ui';
+import { WsCard, WsTag, wsAlert } from './ui';
 
 const isMusic = (p?: string) => ['music_producer', 'music-producer', 'musician', 'music'].includes(String(p || '').toLowerCase());
 // split_sheet_contributors.role har CHECK-constraint (kun disse slug-ene). Wizardens
@@ -86,8 +86,8 @@ const WorkspaceSplitSheet: React.FC<{ projectId: string; profession?: string; us
   const [sending, setSending] = useState(false);
   const sendInvites = async (sheetId: string) => {
     if (!sheetId || sending) return; setSending(true);
-    try { const r: any = await apiRequest(`/api/split-sheets/${encodeURIComponent(sheetId)}/send-invites`, { method: 'POST', body: {} }); window.alert(`Signeringslenken er sendt til ${r?.sent || 0} av ${r?.total || 0} bidragsytere med e-post.`); loadStatus(sheetId); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke sende. Sjekk at bidragsyterne har e-post.'); }
+    try { const r: any = await apiRequest(`/api/split-sheets/${encodeURIComponent(sheetId)}/send-invites`, { method: 'POST', body: {} }); wsAlert(`Signeringslenken er sendt til ${r?.sent || 0} av ${r?.total || 0} bidragsytere med e-post.`); loadStatus(sheetId); }
+    catch (e: any) { wsAlert(e?.message || 'Kunne ikke sende. Sjekk at bidragsyterne har e-post.'); }
     finally { setSending(false); }
   };
 

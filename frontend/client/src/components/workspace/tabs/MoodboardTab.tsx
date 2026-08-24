@@ -18,7 +18,7 @@ import Palette from '@mui/icons-material/Palette';
 import CheckCircle from '@mui/icons-material/CheckCircle';
 import Search from '@mui/icons-material/Search';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsSectionTitle, WsStat, WsPills, WsTag, WsImageGrid, WsModal } from '../ui';
+import { WsCard, WsSectionTitle, WsStat, WsPills, WsTag, WsImageGrid, WsModal, wsAlert } from '../ui';
 import AiBuyCreditsModal from '../AiBuyCreditsModal';
 import { useProjectImages } from '../useProjectImages';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
@@ -130,12 +130,12 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [conceptBusy, setConceptBusy] = useState(false);
   const [conceptStatus, setConceptStatus] = useState('');
   const loadCredits = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits`).then((r: any) => setCredits(r || null)).catch(() => {}); };
-  const buyPack = async (id: string) => { try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/checkout`, { method: 'POST', body: { packId: id } }); if (r?.url) window.location.href = r.url; } catch (e: any) { window.alert(e?.message || t('error')); } };
+  const buyPack = async (id: string) => { try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/checkout`, { method: 'POST', body: { packId: id } }); if (r?.url) window.location.href = r.url; } catch (e: any) { wsAlert(e?.message || t('error')); } };
   useEffect(() => {
     if (!isReal) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/config`).then((r: any) => setAiCfg(r || null)).catch(() => {});
     loadCredits();
-    try { const p = new URLSearchParams(window.location.search); if (p.get('ai_credits') === 'ok' && p.get('cs')) { apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/confirm`, { method: 'POST', body: { sessionId: p.get('cs') } }).then(() => { loadCredits(); window.alert(t('creditsAdded')); }).catch(() => {}).finally(() => { const u = new URL(window.location.href); u.searchParams.delete('ai_credits'); u.searchParams.delete('cs'); window.history.replaceState({}, '', u.toString()); }); } } catch { /* */ }
+    try { const p = new URLSearchParams(window.location.search); if (p.get('ai_credits') === 'ok' && p.get('cs')) { apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/confirm`, { method: 'POST', body: { sessionId: p.get('cs') } }).then(() => { loadCredits(); wsAlert(t('creditsAdded')); }).catch(() => {}).finally(() => { const u = new URL(window.location.href); u.searchParams.delete('ai_credits'); u.searchParams.delete('cs'); window.history.replaceState({}, '', u.toString()); }); } } catch { /* */ }
     // eslint-disable-next-line
   }, [projectId]);
   const generateConcept = async () => {
@@ -156,7 +156,7 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       if (!mountedRef.current) return;
       const msg = String(e?.message || '').toLowerCase();
       if (msg.includes('kreditt') || msg.includes('insufficient')) { setConceptOpen(false); setBuyOpen(true); }
-      else window.alert(e?.message || t('conceptFailed'));
+      else wsAlert(e?.message || t('conceptFailed'));
       setConceptStatus('');
     } finally { if (mountedRef.current) setConceptBusy(false); }
   };
@@ -165,14 +165,14 @@ const MoodboardTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     if (!isReal || genNotes) return;
     setGenNotes(true);
     try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/moodboard-meta/generate-notes`, { method: 'POST', body: {} }); setMeta((m: any) => ({ ...(m || {}), style: r.styleDirection, notes: r.notes, mustCapture: r.mustCapture })); }
-    catch (e: any) { window.alert(e?.message || t('notesFailed')); }
+    catch (e: any) { wsAlert(e?.message || t('notesFailed')); }
     finally { setGenNotes(false); }
   };
   const extractPalette = async () => {
     if (!isReal || extracting) return;
     setExtracting(true);
     try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/moodboard-meta/extract-palette`, { method: 'POST', body: {} }); setMeta((m: any) => ({ ...(m || {}), palette: r.palette })); }
-    catch (e: any) { window.alert(e?.message || t('paletteFailed')); }
+    catch (e: any) { wsAlert(e?.message || t('paletteFailed')); }
     finally { setExtracting(false); }
   };
   useEffect(() => {
@@ -327,7 +327,7 @@ const MetaEditDialog: React.FC<{ open: boolean; onClose: () => void; projectId: 
         body: { style: style.trim(), notes: notes.split('\n').map((s) => s.trim()).filter(Boolean), mustCapture: must.split('\n').map((s) => ({ label: s.trim(), done: false })).filter((x) => x.label), palette: palette.filter((c) => c.hex).map((c) => ({ name: c.name.trim() || c.hex, hex: c.hex })) },
       });
       onSaved();
-    } catch (e: any) { window.alert(e?.message || t('couldNotSave')); } finally { setBusy(false); }
+    } catch (e: any) { wsAlert(e?.message || t('couldNotSave')); } finally { setBusy(false); }
   };
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">

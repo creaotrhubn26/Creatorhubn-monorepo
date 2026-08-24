@@ -17,7 +17,7 @@ import OpenInNew from '@mui/icons-material/OpenInNew';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
-import { WsCard, WsSectionTitle, WsTag, WsBar } from '../ui';
+import { WsCard, WsSectionTitle, WsTag, WsBar, wsAlert, wsPrompt } from '../ui';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab).
@@ -97,12 +97,12 @@ const AvtalerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const editPrice = async () => {
     if (!isReal) return;
     const cur = pricing?.servicePriceGross ?? pricing?.servicePrice ?? 0;
-    const val = window.prompt(t('promptPrice'), String(cur));
+    const val = await wsPrompt(t('promptPrice'), String(cur));
     if (val == null) return;
     const num = Number(val.replace(/[^0-9.]/g, ''));
     if (!Number.isFinite(num)) return;
     try { await apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}`, { method: 'PATCH', body: { servicePrice: num } }); load(); }
-    catch (e: any) { window.alert(e?.message || t('priceFailed')); }
+    catch (e: any) { wsAlert(e?.message || t('priceFailed')); }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId]);
 

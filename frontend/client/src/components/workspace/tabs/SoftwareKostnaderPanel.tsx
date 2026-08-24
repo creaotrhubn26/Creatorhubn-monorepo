@@ -14,7 +14,7 @@ import Check from '@mui/icons-material/Check';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
-import { WsCard, WsTag } from '../ui';
+import { WsCard, WsTag, wsAlert } from '../ui';
 
 const fmtKr = (n?: number) => (n && n > 0 ? `${Math.round(n).toLocaleString('nb-NO')} kr` : '—');
 const CYCLE_LABEL = { monthly: 'mnd', yearly: 'år', engang: 'engang', unknown: '' };
@@ -97,19 +97,19 @@ const SoftwareKostnaderPanel: React.FC<{ userId?: string; onEquipmentChange?: ()
     finally { setScanning(false); }
   };
 
-  const approve = async (id: number) => { setBusyId(id); try { await apiRequest(`/api/software/expenses/${id}`, { method: 'PATCH', body: { status: 'bekreftet' } }); load(); } catch (e: any) { window.alert(e?.message || 'Feilet'); } finally { setBusyId(null); } };
-  const reject = async (id: number) => { setBusyId(id); try { await apiRequest(`/api/software/expenses/${id}`, { method: 'DELETE' }); load(); } catch (e: any) { window.alert(e?.message || 'Feilet'); } finally { setBusyId(null); } };
+  const approve = async (id: number) => { setBusyId(id); try { await apiRequest(`/api/software/expenses/${id}`, { method: 'PATCH', body: { status: 'bekreftet' } }); load(); } catch (e: any) { wsAlert(e?.message || 'Feilet'); } finally { setBusyId(null); } };
+  const reject = async (id: number) => { setBusyId(id); try { await apiRequest(`/api/software/expenses/${id}`, { method: 'DELETE' }); load(); } catch (e: any) { wsAlert(e?.message || 'Feilet'); } finally { setBusyId(null); } };
   const importEquipment = async (id: number) => {
     setBusyId(id);
     try {
       const r: any = await apiRequest(`/api/software/expenses/${id}/import-equipment`, { method: 'POST', body: {} });
       setScanMsg({ tone: 'green', text: r?.reklamasjonExpiry ? `Lagt til i utstyr. Reklamasjonsrett ut ${new Date(r.reklamasjonExpiry).toLocaleDateString('nb-NO')}.` : 'Lagt til i utstyr.' });
       load(); if (onEquipmentChange) onEquipmentChange();
-    } catch (e: any) { window.alert(e?.message || 'Kunne ikke legge til'); } finally { setBusyId(null); }
+    } catch (e: any) { wsAlert(e?.message || 'Kunne ikke legge til'); } finally { setBusyId(null); }
   };
 
   const saveManual = async () => {
-    if (!form.vendor.trim() && !form.product.trim()) { window.alert('Fyll inn leverandør eller produkt.'); return; }
+    if (!form.vendor.trim() && !form.product.trim()) { wsAlert('Fyll inn leverandør eller produkt.'); return; }
     setSaving(true);
     try {
       await apiRequest('/api/software/expenses', { method: 'POST', body: {
@@ -120,7 +120,7 @@ const SoftwareKostnaderPanel: React.FC<{ userId?: string; onEquipmentChange?: ()
       } });
       setOpen(false); setForm({ vendor: '', product: '', category: CATS[0], amount: '', currency: 'NOK', billingCycle: 'monthly', isSubscription: true, renewalDate: '' });
       load();
-    } catch (e: any) { window.alert(e?.message || 'Kunne ikke lagre'); }
+    } catch (e: any) { wsAlert(e?.message || 'Kunne ikke lagre'); }
     finally { setSaving(false); }
   };
 

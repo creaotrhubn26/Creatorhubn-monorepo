@@ -10,7 +10,7 @@ import Add from '@mui/icons-material/Add';
 import CheckCircle from '@mui/icons-material/CheckCircle';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsSectionTitle, WsRing, WsPills, WsTag, WsImageGrid, WsModal, WsErrorState } from '../ui';
+import { WsCard, WsSectionTitle, WsRing, WsPills, WsTag, WsImageGrid, WsModal, WsErrorState, wsAlert, wsConfirm, wsPrompt } from '../ui';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab).
@@ -123,10 +123,10 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
   const markApproved = async () => {
     const g = galleries[0];
-    if (!g?.id) { window.alert(t('noGalleryApprove')); return; }
-    if (!window.confirm(t('approveConfirm'))) return;
+    if (!g?.id) { wsAlert(t('noGalleryApprove')); return; }
+    if (!await wsConfirm(t('approveConfirm'))) return;
     try { await apiRequest(`/api/photographer/galleries/${g.id}/mark-complete`, { method: 'POST' }); load(); }
-    catch (e: any) { window.alert(e?.message || t('couldNotMark')); }
+    catch (e: any) { wsAlert(e?.message || t('couldNotMark')); }
   };
 
   const shareGallery = (sharePath: string) => {
@@ -138,19 +138,19 @@ const LeveranserTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
   const addDeliverable = async () => {
     if (!isReal) return;
-    const title = window.prompt(t('promptTitle')); if (!title) return;
-    const type = window.prompt(t('promptType')) || null;
+    const title = await wsPrompt(t('promptTitle')); if (!title) return;
+    const type = await wsPrompt(t('promptType')) || null;
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/deliverables`, { method: 'POST', body: { title: title.trim(), type } }); load(); }
-    catch (e: any) { window.alert(e?.message || t('couldNotAdd')); }
+    catch (e: any) { wsAlert(e?.message || t('couldNotAdd')); }
   };
 
   const markDeliverableDone = async () => {
     if (!isReal) return;
     const pending = (real || []).find((d: any) => !['delivered', 'done', 'completed'].includes(d.status));
-    if (!pending?.id) { window.alert(t('noOpenDeliverables')); return; }
-    if (!window.confirm(t('deliverConfirm').replace('{title}', pending.title))) return;
+    if (!pending?.id) { wsAlert(t('noOpenDeliverables')); return; }
+    if (!await wsConfirm(t('deliverConfirm').replace('{title}', pending.title))) return;
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/deliverables/${pending.id}`, { method: 'PATCH', body: { status: 'delivered' } }); load(); }
-    catch (e: any) { window.alert(e?.message || t('couldNotMark')); }
+    catch (e: any) { wsAlert(e?.message || t('couldNotMark')); }
   };
 
   // Ekte prosjekt → ekte data (tomt = tom-tilstand). Mock kun på /workspace/sample.
