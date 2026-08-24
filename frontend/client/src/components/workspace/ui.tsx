@@ -3,10 +3,54 @@
  * ui.tsx — delte byggeklosser for Team Workspace-tabbene (dark CreatorHub).
  */
 import React, { useRef, useState } from 'react';
-import { Box, Stack, Typography, IconButton, Dialog, DialogTitle, DialogContent } from '@mui/material';
+import { Box, Stack, Typography, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button } from '@mui/material';
 import AddPhotoAlternate from '@mui/icons-material/AddPhotoAlternate';
 import Close from '@mui/icons-material/Close';
 import { ws } from './workspaceTheme';
+
+/** Ett-felts inndata-dialog — ws-stilet erstatning for window.prompt() */
+export const WsPromptDialog: React.FC<{
+  open: boolean;
+  title: string;
+  label?: string;
+  placeholder?: string;
+  submitLabel?: string;
+  cancelLabel?: string;
+  onClose: () => void;
+  onSubmit: (value: string) => Promise<void> | void;
+}> = ({ open, title, label, placeholder, submitLabel = 'Legg til', cancelLabel = 'Avbryt', onClose, onSubmit }) => {
+  const [value, setValue] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  React.useEffect(() => { if (open) { setValue(''); setBusy(false); setError(null); } }, [open]);
+  const submit = async () => {
+    const v = value.trim(); if (!v || busy) return;
+    setBusy(true); setError(null);
+    try { await onSubmit(v); onClose(); }
+    catch (e: any) { setError(e?.message || 'Kunne ikke lagre'); setBusy(false); }
+  };
+  return (
+    <Dialog open={open} onClose={busy ? undefined : onClose} fullWidth maxWidth="xs">
+      <DialogTitle sx={{ fontSize: 16, fontWeight: 700 }}>{title}</DialogTitle>
+      <DialogContent>
+        <TextField
+          autoFocus fullWidth size="small" label={label} placeholder={placeholder}
+          value={value} onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
+          error={!!error} helperText={error || undefined} disabled={busy}
+          sx={{ mt: 0.5 }}
+        />
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button size="small" onClick={onClose} disabled={busy} sx={{ color: ws.textDim, textTransform: 'none' }}>{cancelLabel}</Button>
+        <Button size="small" variant="contained" onClick={submit} disabled={busy || !value.trim()}
+          sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accent } }}>
+          {submitLabel}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
 
 /** Gjenbrukbar modal (for «Se alle» / detalj-visninger) */
 export const WsModal: React.FC<{ open: boolean; onClose: () => void; title: string; children: React.ReactNode; maxWidth?: any }> = ({ open, onClose, title, children, maxWidth = 'md' }) => (

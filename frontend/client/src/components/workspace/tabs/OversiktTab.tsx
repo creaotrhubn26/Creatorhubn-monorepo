@@ -19,7 +19,7 @@ import Warning from '@mui/icons-material/Warning';
 import Add from '@mui/icons-material/Add';
 import { ws } from '../workspaceTheme';
 import { useWorkspaceCategory } from '../useWorkspaceCategory';
-import { WsCard, WsSectionTitle, WsRing, WsBar, WsImageGrid } from '../ui';
+import { WsCard, WsSectionTitle, WsRing, WsBar, WsImageGrid, WsPromptDialog } from '../ui';
 import { crewIcon, wsIcon } from '../crewIcons';
 import WorkspaceChatPanel from '../WorkspaceChatPanel';
 import GettingStartedChecklist from '../../onboarding/GettingStartedChecklist';
@@ -50,8 +50,8 @@ const T: WsDict = {
   hoursAgo: { no: 't siden', en: 'h ago' },
   daysAgo: { no: 'd siden', en: 'd ago' },
   // prompts/alerts
-  newCheckPrompt: { no: 'Nytt sjekkpunkt:', en: 'New checklist item:' },
-  newTaskPrompt: { no: 'Ny oppgave:', en: 'New task:' },
+  newCheckPrompt: { no: 'Nytt sjekkpunkt', en: 'New checklist item' },
+  newTaskPrompt: { no: 'Ny oppgave', en: 'New task' },
   addFailed: { no: 'Kunne ikke legge til', en: 'Could not add' },
   // fremdrift
   progressLabel: { no: 'Fremdrift', en: 'Progress' },
@@ -236,11 +236,12 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
     setChecks((p) => (p || []).map((c) => (c.id === id ? { ...c, checked: !checked } : c)));
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist/${id}`, { method: 'PATCH', body: { checked: !checked } }).catch(() => {});
   };
-  const addCheck = async () => {
-    if (!isReal) return;
-    const label = window.prompt(t('newCheckPrompt')); if (!label) return;
-    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`, { method: 'POST', body: { label: label.trim() } }); apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`).then((r: any) => setChecks(r?.items || [])); }
-    catch (e: any) { window.alert(e?.message || t('addFailed')); }
+  // ws-stilet dialog i stedet for window.prompt (mode: 'check' | crewRole-streng)
+  const [promptMode, setPromptMode] = useState<{ kind: 'task'; crew: string } | { kind: 'check' } | null>(null);
+  const addCheck = () => { if (isReal) setPromptMode({ kind: 'check' }); };
+  const submitCheck = async (label: string) => {
+    await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`, { method: 'POST', body: { label } });
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`).then((r: any) => setChecks(r?.items || []));
   };
   const checkItems = isReal ? (checks || []).map((c) => ({ id: c.id, t: c.label, ok: c.checked, real: true })) : CHECKLIST;
   const refs = useProjectImages(projectId, 'references');
@@ -306,11 +307,11 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
     setTasks((p) => (p || []).map((t) => (t.id === id ? { ...t, status: status === 'done' ? 'todo' : 'done' } : t)));
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks/${id}`, { method: 'PATCH', body: { status: status === 'done' ? 'todo' : 'done' } }).catch(loadTasks);
   };
-  const addTask = async (crewRole: string) => {
-    if (!isReal) return;
-    const title = window.prompt(t('newTaskPrompt')); if (!title) return;
-    try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks`, { method: 'POST', body: { title: title.trim(), crewRole } }); loadTasks(); }
-    catch (e: any) { window.alert(e?.message || t('addFailed')); }
+  const addTask = (crewRole: string) => { if (isReal) setPromptMode({ kind: 'task', crew: crewRole }); };
+  const submitTask = async (title: string) => {
+    if (promptMode?.kind !== 'task') return;
+    await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks`, { method: 'POST', body: { title, crewRole: promptMode.crew } });
+    loadTasks();
   };
 
   // Rolle-kolonnene er DATA: GET /crew-roles gir eier-kategoriens default-sett
@@ -693,6 +694,13 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
             </Stack>
           </WsCard>
         )}
+        <WsPromptDialog
+          open={!!promptMode}
+          title={promptMode?.kind === 'check' ? t('newCheckPrompt') : t('newTaskPrompt')}
+          label={promptMode?.kind === 'check' ? t('checklistTitle') : t('addTaskBtn')}
+          onClose={() => setPromptMode(null)}
+          onSubmit={promptMode?.kind === 'check' ? submitCheck : submitTask}
+        />
         <WorkspaceChatPanel projectId={projectId} category={wsCategory} />
       </Box>
     </Stack>
