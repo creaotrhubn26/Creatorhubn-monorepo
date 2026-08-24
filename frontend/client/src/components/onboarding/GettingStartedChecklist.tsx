@@ -111,8 +111,19 @@ const GettingStartedChecklist: React.FC<Props> = ({ userId, profession, projectI
     // Team-steget er Enterprise-gated (team er en Enterprise-funksjon).
     ...(state.isEnterprise ? [{ key: 'team', label: 'Inviter teamet ditt', desc: 'Legg til medarbeidere på et prosjekt', done: state.teamInvited,
       cta: 'Inviter', onClick: () => (state.firstProjectId ? navigate(`/workspace/${state.firstProjectId}/team`) : (onNewProject ? onNewProject() : navigate('/dashboard'))) }] : []),
+    // «Koble til» starter Google-samtykkeflyten direkte (samme mønster som
+    // SessionsDialog) — navigerte tidligere til /settings, som åpnet
+    // universaldashboardet i stedet for tilkoblingen.
     { key: 'verktoy', label: 'Koble til verktøyene dine', desc: 'Google Workspace, lagring og backup', done: state.toolsConnected,
-      cta: 'Koble til', onClick: () => navigate('/settings') },
+      cta: 'Koble til', onClick: async () => {
+        try {
+          const r: any = await apiRequest('/api/creatorhub/google/oauth/start', { method: 'POST', body: {
+            mode: 'link', returnPath: window.location.pathname + window.location.search, browserOrigin: window.location.origin,
+          } });
+          if (r?.authorizationUrl) { window.location.href = r.authorizationUrl; return; }
+        } catch { /* fall tilbake til settings under */ }
+        navigate('/settings');
+      } },
   ];
   const doneCount = items.filter((i) => i.done).length;
   const pct = Math.round((doneCount / items.length) * 100);
