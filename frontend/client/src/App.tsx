@@ -79,6 +79,7 @@ import InviteRequestStatus from '@/pages/InviteRequestStatus';
 import LandingMobile from '@/pages/landing-mobile';
 import LandingDesktop from '@/pages/landing-desktop';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
+import { WsDialogHost } from '@/components/workspace/ui';
 import LandingResponsive from '@/pages/LandingResponsive';
 import About from '@/pages/about';
 import SubscriptionSelectionPage from '@/pages/SubscriptionSelectionPage';
@@ -1170,6 +1171,7 @@ function App() {
                 <SmartFileManagerWidget />
                 <UniversalSessionManager />
                 <Toaster />
+                <WsDialogHost />
                 {/* SpeedInsights fjernet: Vercel-rest fra før Netlify-migreringen —
                     /_vercel/speed-insights/script.js finnes ikke på Netlify og ga
                     «Unexpected token '<'» (HTML-fallback) i konsollen på hver last. */}

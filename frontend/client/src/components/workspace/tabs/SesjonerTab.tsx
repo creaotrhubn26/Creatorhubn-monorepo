@@ -23,7 +23,7 @@ import Delete from '@mui/icons-material/Delete';
 import { apiRequest } from '@/lib/queryClient';
 import { useTeamAccess } from '@/hooks/useTeamAccess';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsTag, WsStat, WsSectionTitle } from '../ui';
+import { WsCard, WsTag, WsStat, WsSectionTitle, wsAlert, wsConfirm } from '../ui';
 import WarmupDialog from '../../universal/showcase/WarmupDialog';
 
 const TYPE: Record<string, string> = { recording: 'Opptak', mixing: 'Miksing', mastering: 'Mastering', collaboration: 'Samarbeid' };
@@ -244,7 +244,7 @@ const SesjonerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                       </Typography>
                     </Box>
                     <WsTag label={`${w.completions?.length || 0}${bandSize ? `/${bandSize}` : ''} ✓`} tone={w.completions?.length ? 'green' : 'neutral'} />
-                    <Button size="small" onClick={async () => { if (!window.confirm(`Slette rutinen «${w.title}»?`)) return; try { await apiRequest(`/api/warmups/${encodeURIComponent(w.id)}`, { method: 'DELETE' }); loadWellbeing(audioRoomId); } catch { /* stille */ } }}
+                    <Button size="small" onClick={async () => { if (!await wsConfirm(`Slette rutinen «${w.title}»?`)) return; try { await apiRequest(`/api/warmups/${encodeURIComponent(w.id)}`, { method: 'DELETE' }); loadWellbeing(audioRoomId); } catch { /* stille */ } }}
                       sx={{ minWidth: 0, color: ws.textFaint, '&:hover': { color: ws.red } }}><Delete sx={{ fontSize: 16 }} /></Button>
                   </Stack>
                 ))}
@@ -360,10 +360,10 @@ const RemindBandDialog: React.FC<{ open: boolean; onClose: () => void; audioRoom
         },
       });
       if (r?.scheduled) {
-        window.alert(`Påminnelsen er planlagt til ${fmtDateTime(r.sendAt)} (leveres innen ~30 min etter tidspunktet).`);
+        wsAlert(`Påminnelsen er planlagt til ${fmtDateTime(r.sendAt)} (leveres innen ~30 min etter tidspunktet).`);
         loadPlanned(); setWhenMode('now'); setSendAt('');
       } else {
-        window.alert(`Påminnelse sendt til ${r?.recipients ?? 0} medlem(mer) — ${r?.emails ?? 0} e-post${r?.sms ? `, ${r.sms} SMS` : ''}.`);
+        wsAlert(`Påminnelse sendt til ${r?.recipients ?? 0} medlem(mer) — ${r?.emails ?? 0} e-post${r?.sms ? `, ${r.sms} SMS` : ''}.`);
         onClose();
       }
     } catch (e: any) { setError(e?.message || 'Kunne ikke sende påminnelsen'); } finally { setBusy(false); }

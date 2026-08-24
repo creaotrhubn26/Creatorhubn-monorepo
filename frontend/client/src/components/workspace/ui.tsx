@@ -16,13 +16,14 @@ export const WsPromptDialog: React.FC<{
   placeholder?: string;
   submitLabel?: string;
   cancelLabel?: string;
+  defaultValue?: string;
   onClose: () => void;
   onSubmit: (value: string) => Promise<void> | void;
-}> = ({ open, title, label, placeholder, submitLabel = 'Legg til', cancelLabel = 'Avbryt', onClose, onSubmit }) => {
+}> = ({ open, title, label, placeholder, submitLabel = 'Legg til', cancelLabel = 'Avbryt', defaultValue, onClose, onSubmit }) => {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  React.useEffect(() => { if (open) { setValue(''); setBusy(false); setError(null); } }, [open]);
+  React.useEffect(() => { if (open) { setValue(defaultValue || ''); setBusy(false); setError(null); } }, [open, defaultValue]);
   const submit = async () => {
     const v = value.trim(); if (!v || busy) return;
     setBusy(true); setError(null);
@@ -46,6 +47,79 @@ export const WsPromptDialog: React.FC<{
         <Button size="small" variant="contained" onClick={submit} disabled={busy || !value.trim()}
           sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accent } }}>
           {submitLabel}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+/**
+ * Global dialog-tjeneste — drop-in-erstatning for window.alert/confirm/prompt
+ * i workspace-flatene. Krever at <WsDialogHost /> er montert (App.tsx);
+ * uten host faller kallene tilbake til native window.*-dialogene.
+ */
+type WsDlgReq =
+  | { kind: 'alert'; message: string; resolve: () => void }
+  | { kind: 'confirm'; message: string; resolve: (ok: boolean) => void }
+  | { kind: 'prompt'; title: string; defaultValue?: string; resolve: (v: string | null) => void };
+
+let wsDlgPush: ((r: WsDlgReq) => void) | null = null;
+
+export const wsAlert = (message: unknown): Promise<void> =>
+  new Promise((resolve) => {
+    const m = String(message ?? '');
+    if (wsDlgPush) wsDlgPush({ kind: 'alert', message: m, resolve });
+    else { window.alert(m); resolve(); }
+  });
+
+export const wsConfirm = (message: unknown): Promise<boolean> =>
+  new Promise((resolve) => {
+    const m = String(message ?? '');
+    if (wsDlgPush) wsDlgPush({ kind: 'confirm', message: m, resolve });
+    else resolve(window.confirm(m));
+  });
+
+export const wsPrompt = (title: unknown, defaultValue?: unknown): Promise<string | null> =>
+  new Promise((resolve) => {
+    const t = String(title ?? '');
+    const d = defaultValue == null ? undefined : String(defaultValue);
+    if (wsDlgPush) wsDlgPush({ kind: 'prompt', title: t, defaultValue: d, resolve });
+    else resolve(window.prompt(t, d));
+  });
+
+export const WsDialogHost: React.FC = () => {
+  const [queue, setQueue] = useState<WsDlgReq[]>([]);
+  React.useEffect(() => {
+    wsDlgPush = (r) => setQueue((q) => [...q, r]);
+    return () => { wsDlgPush = null; };
+  }, []);
+  const cur = queue[0];
+  const done = () => setQueue((q) => q.slice(1));
+  if (!cur) return null;
+  if (cur.kind === 'prompt') {
+    return (
+      <WsPromptDialog
+        open title={cur.title} defaultValue={cur.defaultValue} submitLabel="OK"
+        onClose={() => { cur.resolve(null); done(); }}
+        onSubmit={(v) => { cur.resolve(v); }}
+      />
+    );
+  }
+  const isConfirm = cur.kind === 'confirm';
+  const cancel = () => { if (isConfirm) (cur.resolve as (ok: boolean) => void)(false); else (cur.resolve as () => void)(); done(); };
+  const ok = () => { if (isConfirm) (cur.resolve as (ok: boolean) => void)(true); else (cur.resolve as () => void)(); done(); };
+  return (
+    <Dialog open onClose={cancel} fullWidth maxWidth="xs">
+      <DialogContent sx={{ pt: 3 }}>
+        <Typography sx={{ fontSize: 14, whiteSpace: 'pre-wrap' }}>{cur.message}</Typography>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        {isConfirm && (
+          <Button size="small" onClick={cancel} sx={{ color: ws.textDim, textTransform: 'none' }}>Avbryt</Button>
+        )}
+        <Button size="small" variant="contained" onClick={ok} autoFocus
+          sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accent } }}>
+          OK
         </Button>
       </DialogActions>
     </Dialog>

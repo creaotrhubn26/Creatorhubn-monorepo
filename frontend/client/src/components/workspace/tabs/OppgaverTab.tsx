@@ -12,7 +12,7 @@ import ArrowForward from '@mui/icons-material/ArrowForward';
 import ArrowBack from '@mui/icons-material/ArrowBack';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsStat, WsTag } from '../ui';
+import { WsCard, WsStat, WsTag, wsAlert, wsPrompt } from '../ui';
 import { useWsLocale, makeT, type WsDict } from '../wsLocale';
 import { crewRoleDef, CREW_ROLE_CATALOG } from '@shared/crew-roles';
 import { crewIcon } from '../crewIcons';
@@ -79,10 +79,10 @@ const OppgaverTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   };
   const add = async (col: string, crewRole: string) => {
     setAddMenu(null);
-    if (!isReal) { window.alert(t('sampleOnly')); return; }
-    const title = window.prompt(t('promptNewTask')); if (!title) return;
+    if (!isReal) { wsAlert(t('sampleOnly')); return; }
+    const title = await wsPrompt(t('promptNewTask')); if (!title) return;
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks`, { method: 'POST', body: { title: title.trim(), crewRole, status: col } }); load(); }
-    catch (e: any) { window.alert(e?.message || t('addFailed')); }
+    catch (e: any) { wsAlert(e?.message || t('addFailed')); }
   };
 
   const byCol = (key: string) => tasks.filter((t) => (t.status || 'todo') === key);

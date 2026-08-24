@@ -16,7 +16,7 @@ import CheckCircle from '@mui/icons-material/CheckCircle';
 import Link from '@mui/icons-material/Link';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsTag, WsStat, WsPills, WsErrorState } from '../ui';
+import { WsCard, WsTag, WsStat, WsPills, WsErrorState, wsAlert } from '../ui';
 
 const STATUS: Record<string, [string, string]> = {
   recording: ['Opptak', 'neutral'], mixing: ['Miksing', 'amber'],
@@ -70,7 +70,7 @@ const LaaterTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     try {
       await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/easeverse-tracks/${encodeURIComponent(track.id)}/status`, { method: 'PATCH', body: { status } });
       setTracks((p) => (p || []).map((t) => (t.id === track.id ? { ...t, status } : t)));
-    } catch (e: any) { window.alert(e?.message || 'Kunne ikke oppdatere status (kun eieren av låten kan endre den).'); }
+    } catch (e: any) { wsAlert(e?.message || 'Kunne ikke oppdatere status (kun eieren av låten kan endre den).'); }
     finally { setBusy(false); }
   };
 
@@ -79,9 +79,9 @@ const LaaterTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     setBusy(true);
     try {
       const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/link-easeverse`, { method: 'POST', body: { trackId: track.id } });
-      if (r?.bandSynced) window.alert(`Koblet! ${r.bandSynced} bidragsyter(e) synket til bandet.`);
+      if (r?.bandSynced) wsAlert(`Koblet! ${r.bandSynced} bidragsyter(e) synket til bandet.`);
       load();
-    } catch (e: any) { window.alert(e?.message || 'Kunne ikke koble låten.'); }
+    } catch (e: any) { wsAlert(e?.message || 'Kunne ikke koble låten.'); }
     finally { setBusy(false); }
   };
 

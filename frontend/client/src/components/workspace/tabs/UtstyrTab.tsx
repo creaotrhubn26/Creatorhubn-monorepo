@@ -16,7 +16,7 @@ import PriceCheck from '@mui/icons-material/PriceCheck';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
-import { WsCard, WsTag } from '../ui';
+import { WsCard, WsTag, wsAlert } from '../ui';
 import SoftwareKostnaderPanel from './SoftwareKostnaderPanel';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
 
@@ -165,7 +165,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
   };
 
   const save = async () => {
-    if (!form.brand.trim() || !form.model.trim() || !userId) { window.alert(t('brandModelRequired')); return; }
+    if (!form.brand.trim() || !form.model.trim() || !userId) { wsAlert(t('brandModelRequired')); return; }
     setSaving(true);
     try {
       await apiRequest(`/api/equipment/inventory`, {
@@ -183,7 +183,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
       });
       setOpen(false); setForm({ name: '', brand: '', model: '', category: cats[0], condition: 'excellent', licenseType: 'perpetual', billingCycle: 'monthly', subCost: '', renewalDate: '' }); setVal(null);
       load();
-    } catch (e: any) { window.alert(e?.message || t('couldNotSave')); }
+    } catch (e: any) { wsAlert(e?.message || t('couldNotSave')); }
     finally { setSaving(false); }
   };
 

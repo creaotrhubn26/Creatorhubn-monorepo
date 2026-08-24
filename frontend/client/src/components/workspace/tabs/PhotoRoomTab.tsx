@@ -21,7 +21,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import AutoFixHigh from '@mui/icons-material/AutoFixHigh';
 import Movie from '@mui/icons-material/Movie';
-import { WsCard, WsTag, WsModal } from '../ui';
+import { WsCard, WsTag, WsModal, wsAlert, wsConfirm } from '../ui';
 import { wsIcon } from '../crewIcons';
 import AiBuyCreditsModal from '../AiBuyCreditsModal';
 
@@ -56,7 +56,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const loadCredits = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits`).then((r: any) => setCredits(r || null)).catch(() => {}); };
   const buyPack = async (packId: string) => {
     try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/checkout`, { method: 'POST', body: { packId } }); if (r?.url) window.location.href = r.url; }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke starte kjøp'); }
+    catch (e: any) { wsAlert(e?.message || 'Kunne ikke starte kjøp'); }
   };
   // Confirm-ved-retur fra Stripe (?ai_credits=ok&cs=<session>)
   useEffect(() => {
@@ -65,7 +65,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       const p = new URLSearchParams(window.location.search);
       if (p.get('ai_credits') === 'ok' && p.get('cs')) {
         apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/confirm`, { method: 'POST', body: { sessionId: p.get('cs') } })
-          .then(() => { loadCredits(); window.alert('Kreditter lagt til ✓'); }).catch(() => {})
+          .then(() => { loadCredits(); wsAlert('Kreditter lagt til ✓'); }).catch(() => {})
           .finally(() => { const u = new URL(window.location.href); u.searchParams.delete('ai_credits'); u.searchParams.delete('cs'); window.history.replaceState({}, '', u.toString()); });
       }
     } catch { /* */ }
@@ -110,18 +110,18 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const addComment = async () => {
     if (!cText.trim() || !isReal) return;
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-comments`, { method: 'POST', body: { comment: cText.trim(), scope: cScope, assetId: sel?.id, authorKind: 'creator' } }); setCText(''); apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-comments`).then((r: any) => setComments(r?.comments || [])); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke kommentere'); }
+    catch (e: any) { wsAlert(e?.message || 'Kunne ikke kommentere'); }
   };
   const approveSelection = async () => {
     if (!isReal) return;
-    if (!window.confirm('Godkjenn alle flaggede bilder?')) return;
-    try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-review/approve`, { method: 'POST', body: {} }); window.alert(`${r?.approved || 0} bilder godkjent.`); load(); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke godkjenne'); }
+    if (!await wsConfirm('Godkjenn alle flaggede bilder?')) return;
+    try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/photo-review/approve`, { method: 'POST', body: {} }); wsAlert(`${r?.approved || 0} bilder godkjent.`); load(); }
+    catch (e: any) { wsAlert(e?.message || 'Kunne ikke godkjenne'); }
   };
 
   const setConsent = async (consented: boolean) => {
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/consent`, { method: 'PUT', body: { consented } }); loadAiCfg(); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke lagre samtykke'); }
+    catch (e: any) { wsAlert(e?.message || 'Kunne ikke lagre samtykke'); }
   };
   const QUICK_PROMPTS = ['Fjern bakgrunnen, behold personen', 'Demp sterke reflekser i bakgrunnen', 'Fjern uønskede objekter i bakgrunnen', 'Gjør lyset varmere og mykere'];
   const openAi = () => { setAiPrompt(''); setAiJob(null); setBaPos(50); setSuggestions([]); setAiOpen(true); };
@@ -142,7 +142,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     } catch (e: any) {
       const msg = String(e?.message || '').toLowerCase();
       if (msg.includes('kreditt') || msg.includes('insufficient')) { setAiOpen(false); setBuyOpen(true); }
-      else window.alert(e?.message || 'AI-redigering feilet');
+      else wsAlert(e?.message || 'AI-redigering feilet');
       setAiJob({ status: 'failed' });
     }
     finally { setAiBusy(false); }
@@ -173,7 +173,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     } catch (e: any) {
       const msg = String(e?.message || '').toLowerCase();
       if (msg.includes('kreditt') || msg.includes('insufficient')) { setAnimOpen(false); setBuyOpen(true); }
-      else window.alert(e?.message || 'AI-video feilet');
+      else wsAlert(e?.message || 'AI-video feilet');
       setAnimJob({ status: 'failed' });
     }
     finally { setAnimBusy(false); }
@@ -185,7 +185,7 @@ const PhotoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     if (!sel?.id || suggesting) return;
     setSuggesting(true); setSuggestions([]);
     try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/suggest`, { method: 'POST', body: { assetId: sel.id, mode } }); setSuggestions(Array.isArray(r?.suggestions) ? r.suggestions : []); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke foreslå'); }
+    catch (e: any) { wsAlert(e?.message || 'Kunne ikke foreslå'); }
     finally { setSuggesting(false); }
   };
   const aiAvailable = aiCfg?.enabled && aiCfg?.whitelisted;

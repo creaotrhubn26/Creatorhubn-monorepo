@@ -23,7 +23,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { useTeamAccess } from '@/hooks/useTeamAccess';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
-import { WsCard, WsTag } from '../ui';
+import { WsCard, WsTag, wsAlert, wsConfirm } from '../ui';
 
 const fmtTime = (s: number) => { const n = Math.max(0, Math.floor(Number(s) || 0)); const m = Math.floor(n / 60); const sec = n % 60; return `${m}:${String(sec).padStart(2, '0')}`; };
 const detectOS = (): 'Windows' | 'macOS' => { const p = ((navigator as any).userAgent + ' ' + (navigator as any).platform).toLowerCase(); if (p.includes('win')) return 'Windows'; return 'macOS'; };
@@ -68,7 +68,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       const u = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = u; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(u), 5000);
-    } catch (e: any) { window.alert(e?.message || 'Kunne ikke laste ned'); }
+    } catch (e: any) { wsAlert(e?.message || 'Kunne ikke laste ned'); }
   };
   const loadShowcaseRelease = async (rid: string | null) => {
     if (!rid) return;
@@ -85,7 +85,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     try {
       const r: any = await apiRequest(`/api/audio-showcases/${encodeURIComponent(roomId)}/release`, { method: 'POST' });
       if (r?.release) { setRelease(r.release); const v: any = await apiRequest(`/api/releases/${encodeURIComponent(r.release.id)}/validate`); setValidation(v || null); }
-    } catch (e: any) { window.alert(e?.message || 'Kunne ikke klargjøre utgivelse'); }
+    } catch (e: any) { wsAlert(e?.message || 'Kunne ikke klargjøre utgivelse'); }
     finally { setRelBusy(false); }
   };
 
@@ -104,13 +104,13 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const makePtCode = async () => {
     if (ptBusy) return; setPtBusy(true);
     try { const r: any = await apiRequest(`/api/protools/pair/start`, { method: 'POST' }); if (r?.code) setPtCode({ code: r.code, expiresAt: Date.now() + (r.expiresInSeconds || 600) * 1000 }); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke lage paringskode'); }
+    catch (e: any) { wsAlert(e?.message || 'Kunne ikke lage paringskode'); }
     finally { setPtBusy(false); }
   };
   const unlinkPt = async () => {
-    if (ptBusy || !window.confirm('Koble fra Pro Tools-companionen på denne maskinen?')) return; setPtBusy(true);
+    if (ptBusy || !await wsConfirm('Koble fra Pro Tools-companionen på denne maskinen?')) return; setPtBusy(true);
     try { await apiRequest(`/api/protools/web/unlink-device`, { method: 'POST' }); setPtCode(null); loadPt(); }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke koble fra'); }
+    catch (e: any) { wsAlert(e?.message || 'Kunne ikke koble fra'); }
     finally { setPtBusy(false); }
   };
 
@@ -131,7 +131,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     try {
       await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/members`, { method: 'POST', body: { name: invite.name.trim(), role: invite.role.trim() || 'Bidragsyter', instrument: invite.instrument.trim() || undefined, email: invite.email.trim() || undefined } });
       setInvite(null); loadMembers(); if (!roomId) { try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room`); setRoomId(r?.audioRoomId || null); } catch { /* */ } }
-    } catch (e: any) { window.alert(e?.message === 'member_exists' ? 'Medlemmet finnes allerede' : (e?.message || 'Kunne ikke legge til')); }
+    } catch (e: any) { wsAlert(e?.message === 'member_exists' ? 'Medlemmet finnes allerede' : (e?.message || 'Kunne ikke legge til')); }
     finally { setSaving(false); }
   };
   useEffect(() => {
@@ -174,10 +174,10 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
         setRoomId(r.audioRoomId);
         try { const s: any = await apiRequest(`/api/audio-showcases/${r.audioRoomId}`); setSummary(s); } catch { /* */ }
         loadEv(); loadMembers();
-        if (r.bandSynced > 0) window.alert(`${r.bandSynced} bandmedlem${r.bandSynced === 1 ? '' : 'mer'} fra EaseVerse lagt til i lydrommet med invitasjons-lenker.`);
+        if (r.bandSynced > 0) wsAlert(`${r.bandSynced} bandmedlem${r.bandSynced === 1 ? '' : 'mer'} fra EaseVerse lagt til i lydrommet med invitasjons-lenker.`);
       }
     }
-    catch (e: any) { window.alert(e?.message || 'Kunne ikke koble track'); }
+    catch (e: any) { wsAlert(e?.message || 'Kunne ikke koble track'); }
     finally { setLinking(null); }
   };
   const evStatus: any = { recording: ['Opptak', ws.textDim], mixing: ['Miksing', ws.amber], mastering: ['Mastering', ws.blue], completed: ['Ferdig', ws.green] };

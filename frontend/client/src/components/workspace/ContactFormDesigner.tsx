@@ -17,7 +17,7 @@ import Check from '@mui/icons-material/Check';
 import ArrowBack from '@mui/icons-material/ArrowBack';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from './workspaceTheme';
-import { WsCard, WsTag } from './ui';
+import { WsCard, WsTag, wsAlert } from './ui';
 
 const FIELD_TYPES = [
   { v: 'text', l: 'Tekst' }, { v: 'email', l: 'E-post' }, { v: 'tel', l: 'Telefon' },
@@ -92,12 +92,12 @@ const ContactFormDesigner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
   const save = async () => {
     if (!form) return;
-    if (!form.fields?.some((f: any) => f.mapTo === 'email')) { window.alert('Skjemaet må ha minst ett felt som lagres som «E-post» (det er slik forespørselen rutes til deg).'); return; }
+    if (!form.fields?.some((f: any) => f.mapTo === 'email')) { wsAlert('Skjemaet må ha minst ett felt som lagres som «E-post» (det er slik forespørselen rutes til deg).'); return; }
     setSaving(true);
     try {
       const r: any = await apiRequest(`/api/contact-forms/${form.id}`, { method: 'PUT', body: { title: form.title, intro: form.intro, fields: form.fields, branding: form.branding, isActive: true } });
       if (r?.form) setForm(r.form);
-    } catch (e: any) { window.alert(e?.message || 'Kunne ikke lagre'); }
+    } catch (e: any) { wsAlert(e?.message || 'Kunne ikke lagre'); }
     finally { setSaving(false); }
   };
 

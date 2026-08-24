@@ -14,7 +14,7 @@ import Close from '@mui/icons-material/Close';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
-import { WsCard, WsTag, WsImageGrid, WsModal, WsErrorState } from '../ui';
+import { WsCard, WsTag, WsImageGrid, WsModal, WsErrorState, wsAlert, wsPrompt } from '../ui';
 import AiBuyCreditsModal from '../AiBuyCreditsModal';
 import { useProjectImages } from '../useProjectImages';
 import { useCaptureRealtime } from '../useCaptureRealtime';
@@ -115,14 +115,14 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   useEffect(() => { loadFolders(); /* eslint-disable-next-line */ }, [projectId, isReal]);
 
   const newFolder = async () => {
-    const name = window.prompt(t('folderPrompt')); if (!name) return;
+    const name = await wsPrompt(t('folderPrompt')); if (!name) return;
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media-folders`, { method: 'POST', body: { name: name.trim() } }); loadFolders(); }
-    catch (e: any) { window.alert(e?.message || t('folderCreateFailed')); }
+    catch (e: any) { wsAlert(e?.message || t('folderCreateFailed')); }
   };
   const applyTemplate = async (key: string) => {
     setTplMenu(null);
     try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media-folders/apply-template`, { method: 'POST', body: { template: key } }); setFolders(Array.isArray(r?.folders) ? r.folders : []); }
-    catch (e: any) { window.alert(e?.message || t('templateFailed')); }
+    catch (e: any) { wsAlert(e?.message || t('templateFailed')); }
   };
   const delFolder = async (id: string) => {
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/media-folders/${id}`, { method: 'DELETE' }); loadFolders(); } catch { /* */ }
@@ -165,11 +165,11 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [credits, setCredits] = useState<any | null>(null);
   const [buyOpen, setBuyOpen] = useState(false);
   const loadCredits = () => { if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits`).then((r: any) => setCredits(r || null)).catch(() => {}); };
-  const buyPack = async (id: string) => { try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/checkout`, { method: 'POST', body: { packId: id } }); if (r?.url) window.location.href = r.url; } catch (e: any) { window.alert(e?.message || t('error')); } };
+  const buyPack = async (id: string) => { try { const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/checkout`, { method: 'POST', body: { packId: id } }); if (r?.url) window.location.href = r.url; } catch (e: any) { wsAlert(e?.message || t('error')); } };
   useEffect(() => {
     if (!isReal) return;
     loadCredits();
-    try { const p = new URLSearchParams(window.location.search); if (p.get('ai_credits') === 'ok' && p.get('cs')) { apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/confirm`, { method: 'POST', body: { sessionId: p.get('cs') } }).then(() => { loadCredits(); window.alert(t('creditsAdded')); }).catch(() => {}).finally(() => { const u = new URL(window.location.href); u.searchParams.delete('ai_credits'); u.searchParams.delete('cs'); window.history.replaceState({}, '', u.toString()); }); } } catch { /* */ }
+    try { const p = new URLSearchParams(window.location.search); if (p.get('ai_credits') === 'ok' && p.get('cs')) { apiRequest(`/api/projects/${encodeURIComponent(projectId)}/ai/credits/confirm`, { method: 'POST', body: { sessionId: p.get('cs') } }).then(() => { loadCredits(); wsAlert(t('creditsAdded')); }).catch(() => {}).finally(() => { const u = new URL(window.location.href); u.searchParams.delete('ai_credits'); u.searchParams.delete('cs'); window.history.replaceState({}, '', u.toString()); }); } } catch { /* */ }
     // eslint-disable-next-line
   }, [projectId]);
   const triggerEnhance = async (assetIds?: string[]) => {
@@ -177,12 +177,12 @@ const MediaTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     setEnhancing(true);
     try {
       const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/enhance-picks`, { method: 'POST', body: assetIds?.length ? { assetIds } : {} });
-      window.alert(`${t('enhanceSent').replace('{n}', String(r?.queued ?? 0))}${r?.failures?.length ? ` (${r.failures.length} ${t('failedWord')})` : ''}`);
+      wsAlert(`${t('enhanceSent').replace('{n}', String(r?.queued ?? 0))}${r?.failures?.length ? ` (${r.failures.length} ${t('failedWord')})` : ''}`);
       loadAi(); loadCredits();
     } catch (e: any) {
       const msg = String(e?.message || '').toLowerCase();
       if (msg.includes('kreditt') || msg.includes('insufficient')) setBuyOpen(true);
-      else window.alert(e?.message || t('enhanceFailed'));
+      else wsAlert(e?.message || t('enhanceFailed'));
     }
     finally { setEnhancing(false); }
   };

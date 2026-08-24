@@ -21,7 +21,7 @@ import Payments from '@mui/icons-material/Payments';
 import Send from '@mui/icons-material/Send';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
-import { WsCard, WsTag, WsStat, WsPills, WsErrorState } from '../ui';
+import { WsCard, WsTag, WsStat, WsPills, WsErrorState, wsAlert, wsConfirm, wsPrompt } from '../ui';
 import { useWsLocale } from '../wsLocale';
 
 // Lokal no/en-ordbok for fanen (samme mønster som editingMarketplaceStrings).
@@ -146,18 +146,18 @@ const OppdragTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       load();
     } catch (e: any) {
       const msg = String(e?.message || '');
-      window.alert(msg.includes('compliance') ? t('complianceMsg') : msg || t('acceptFailed'));
+      wsAlert(msg.includes('compliance') ? t('complianceMsg') : msg || t('acceptFailed'));
     } finally { setBusyId(null); }
   };
   const decline = async (job: any) => {
     if (busyId) return;
-    const reason = window.prompt(t('declineReason')) ?? null;
-    if (reason === null && !window.confirm(t('declineConfirm'))) return;
+    const reason = await wsPrompt(t('declineReason')) ?? null;
+    if (reason === null && !await wsConfirm(t('declineConfirm'))) return;
     setBusyId(job.id);
     try {
       await apiRequest(`/api/editing/jobs/${encodeURIComponent(job.id)}/decline`, { method: 'POST', body: { reason: reason || undefined } });
       load();
-    } catch (e: any) { window.alert(e?.message || t('declineFailed')); }
+    } catch (e: any) { wsAlert(e?.message || t('declineFailed')); }
     finally { setBusyId(null); }
   };
 
@@ -281,7 +281,7 @@ const JobMessagesDialog: React.FC<{ job: any | null; locale: 'no' | 'en'; onClos
       const r: any = await apiRequest(`/api/editing/jobs/${encodeURIComponent(job.id)}/messages`, { method: 'POST', body: { body: text } });
       if (r?.message) setMessages((p) => [...p, r.message]);
       setBody('');
-    } catch (e: any) { window.alert(e?.message || t('msgFailed')); }
+    } catch (e: any) { wsAlert(e?.message || t('msgFailed')); }
     finally { setBusy(false); }
   };
 
