@@ -497,6 +497,10 @@ export const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
       method: 'POST',
       body: {
         mode: 'link',
+        // CreatorHub: YouTube-scopet ligger i en EGEN consent-bunt (Google
+        // avviser det kombinert med Workspace-bunten) — denne flaten trenger
+        // nettopp YouTube, så be om den bunten.
+        ...(isRoleRoomVariant ? {} : { youtube: true }),
         ...(resolvedUserId ? { targetConnectionUserId: resolvedUserId } : {}),
         returnPath: window.location.pathname + window.location.search,
         browserOrigin: window.location.origin,

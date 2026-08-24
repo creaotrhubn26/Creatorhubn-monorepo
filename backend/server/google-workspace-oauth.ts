@@ -1,6 +1,9 @@
 import type { Request } from 'express';
 
-export type GoogleWorkspaceOauthApp = 'creatorhub' | 'role_room';
+// 'creatorhub_youtube' er en SEPARAT credential for YouTube-consenten (Google
+// avviser youtube-scopet kombinert med Workspace-bunten) — samme OAuth-klient
+// og callback som 'creatorhub', men egen rad/refresh-token per scope-bunt.
+export type GoogleWorkspaceOauthApp = 'creatorhub' | 'role_room' | 'creatorhub_youtube';
 
 type GoogleWorkspaceOauthConfig = {
   app: GoogleWorkspaceOauthApp;
@@ -21,9 +24,9 @@ function readStringValue(value: unknown): string | null {
 }
 
 function defaultCallbackPath(app: GoogleWorkspaceOauthApp): string {
-  return app === 'creatorhub'
-    ? '/api/creatorhub/google/oauth/callback'
-    : '/api/role-room/google/oauth/callback';
+  return app === 'role_room'
+    ? '/api/role-room/google/oauth/callback'
+    : '/api/creatorhub/google/oauth/callback';
 }
 
 function isLocalhostHostname(hostname: string): boolean {
@@ -36,7 +39,7 @@ function isRenderHostname(hostname: string): boolean {
 }
 
 function getDefaultPublicOrigin(app: GoogleWorkspaceOauthApp): string {
-  if (app === 'creatorhub') {
+  if (app !== 'role_room') {
     return (
       readStringValue(process.env.CREATORHUB_PUBLIC_URL)
       ?? readStringValue(process.env.APP_URL)
@@ -129,9 +132,9 @@ function defaultRedirectUri(app: GoogleWorkspaceOauthApp, req?: Request): string
     return `${requestOrigin}${defaultCallbackPath(app)}`;
   }
 
-  return app === 'creatorhub'
-    ? 'http://localhost:5000/api/creatorhub/google/oauth/callback'
-    : 'http://localhost:5000/api/role-room/google/oauth/callback';
+  return app === 'role_room'
+    ? 'http://localhost:5000/api/role-room/google/oauth/callback'
+    : 'http://localhost:5000/api/creatorhub/google/oauth/callback';
 }
 
 function resolveGoogleWorkspaceRedirectUri(
@@ -254,7 +257,7 @@ export function getGoogleWorkspaceOauthConfig(
   app: GoogleWorkspaceOauthApp,
   req?: Request,
 ): GoogleWorkspaceOauthConfig {
-  const envPrefix = app === 'creatorhub' ? 'CREATORHUB_GOOGLE' : 'ROLE_ROOM_GOOGLE';
+  const envPrefix = app === 'role_room' ? 'ROLE_ROOM_GOOGLE' : 'CREATORHUB_GOOGLE';
   const clientId = readStringValue(process.env[`${envPrefix}_CLIENT_ID`]);
   const clientSecret = readStringValue(process.env[`${envPrefix}_CLIENT_SECRET`]);
   const redirectUri = resolveGoogleWorkspaceRedirectUri(
