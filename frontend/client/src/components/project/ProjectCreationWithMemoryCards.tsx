@@ -3550,6 +3550,17 @@ useEffect(() => {
                   sx={{ mt: 1, mr: 1.5, width: 140 }}
                 />
               )}
+              {/* Prosjektnavn — Helsesjekkens viktigste krav; fantes ikke som
+                  felt i modalen før (kun prefill via initialData). */}
+              <TextField
+                label="Prosjektnavn"
+                value={projectData.projectName}
+                onChange={(e) => setProjectData(prev => ({ ...prev, projectName: e.target.value }))}
+                size="small"
+                placeholder="f.eks. Høstkampanje 2026"
+                required
+                sx={{ mt: 1, mr: 1.5, width: 260, display: 'block' }}
+              />
               {/* Native datovelger — dato lagres på prosjektet og vises i
                   WorkspaceShell-headeren + prosjektkortet (sync med workspace). */}
               <TextField
