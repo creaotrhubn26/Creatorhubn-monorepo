@@ -47,6 +47,13 @@ interface SessionData {
 /// the client can switch on it without `instanceof` checks. Adding a
 /// new kind is additive — old clients ignore unknown kinds.
 export type UserEvent =
+  /// Samkjøringsboardet eller sjekklisten i Team Workspace endret seg —
+  /// åpne Oversikt-faner hos andre team-medlemmer refetcher.
+  | {
+      kind: "board.updated";
+      projectId: string;
+      timestamp: string;
+    }
   | {
       kind: "asset.hearted";
       assetId: string;
