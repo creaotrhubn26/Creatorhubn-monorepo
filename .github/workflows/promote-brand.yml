@@ -1,0 +1,72 @@
+# Promoter main til ett merke-nettsted.
+#
+# creatorhubn.com deployes automatisk fra main. leadgrid.no og
+# theroleroom.com deployes fra hver sin live/*-gren, slik at en regresjon på
+# main ikke når dem før du bevisst promoterer. Denne workflowen flytter
+# live-grenen til ønsket commit (default: main-HEAD) — Netlify bygger da KUN
+# den ene siten.
+#
+# Kjør: Actions → «Promoter merke» → Run workflow → velg merke.
+name: Promoter merke
+
+on:
+  workflow_dispatch:
+    inputs:
+      brand:
+        description: Hvilket nettsted skal oppdateres
+        required: true
+        type: choice
+        options:
+          - leadgrid.no
+          - theroleroom.com
+          - begge
+      ref:
+        description: 'Commit/gren som skal ut (tomt = main-HEAD)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Finn commit som skal promoteres
+        id: target
+        run: |
+          REF="${{ inputs.ref }}"
+          if [ -z "$REF" ]; then REF="origin/main"; fi
+          SHA=$(git rev-parse "$REF")
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Promoterer $SHA — $(git log -1 --format=%s "$SHA")"
+
+      - name: Flytt live-gren(er)
+        run: |
+          set -e
+          SHA='${{ steps.target.outputs.sha }}'
+          promote() {
+            # --force-with-lease ville trenge lokal ref; live-grenene eies av
+            # denne workflowen, så rett push er trygt og forutsigbart.
+            git push --force origin "$SHA:refs/heads/$1"
+            echo "✓ $2 → $SHA"
+          }
+          case '${{ inputs.brand }}' in
+            leadgrid.no)     promote live/leadgrid "leadgrid.no" ;;
+            theroleroom.com) promote live/roleroom "theroleroom.com" ;;
+            begge)           promote live/leadgrid "leadgrid.no"; promote live/roleroom "theroleroom.com" ;;
+          esac
+
+      - name: Oppsummering
+        run: |
+          {
+            echo "### Promotert: ${{ inputs.brand }}"
+            echo ""
+            echo "Commit: \`${{ steps.target.outputs.sha }}\`"
+            echo ""
+            echo "Netlify bygger nå kun det valgte nettstedet. creatorhubn.com er upåvirket."
+          } >> "$GITHUB_STEP_SUMMARY"
