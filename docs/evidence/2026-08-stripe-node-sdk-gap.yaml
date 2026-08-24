@@ -6,7 +6,7 @@ claim: >
   bootstrap run (no prior state to diff against) and is first surfaced here
   because the 22.4.0 → 22.5.0 bump was the only vendor version change this
   run (2026-08-24).
-source_type: package_registry_metadata
+source_type: changelog
 source: >
   https://github.com/stripe/stripe-node CHANGELOG.md (v22.5.0, 2026-08-10)
   cross-checked via `git ls-remote --tags`; installed version from
