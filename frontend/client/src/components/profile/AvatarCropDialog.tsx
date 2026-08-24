@@ -73,8 +73,19 @@ const AvatarCropDialog: React.FC<{
   };
   const endDrag = () => { dragRef.current = null; };
 
+  // Zoom ankrer på MASKENS senter, ikke bildets: uten å skalere forskyvningen
+  // glir motivet ut av masken når man zoomer etter å ha dratt bildet på plass.
+  const applyZoom = useCallback((next: number) => {
+    const target = Math.min(MAX_ZOOM, Math.max(1, next));
+    setZoom((prev) => {
+      const ratio = target / prev;
+      setOffset((o) => ({ x: o.x * ratio, y: o.y * ratio }));
+      return target;
+    });
+  }, []);
+
   const onWheel = (e: React.WheelEvent) => {
-    setZoom((z) => Math.min(MAX_ZOOM, Math.max(1, z - e.deltaY * 0.0015)));
+    applyZoom(zoom - e.deltaY * 0.0015);
   };
 
   const confirm = () => {
@@ -143,7 +154,7 @@ const AvatarCropDialog: React.FC<{
           <ZoomOut sx={{ fontSize: 18, color: ws.textDim }} />
           <Slider
             value={zoom} min={1} max={MAX_ZOOM} step={0.01}
-            onChange={(_e, v) => setZoom(Array.isArray(v) ? v[0] : v)}
+            onChange={(_e, v) => applyZoom(Array.isArray(v) ? v[0] : v)}
             aria-label="Zoom"
             sx={{ color: ws.accent }}
           />
