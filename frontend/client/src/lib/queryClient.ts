@@ -90,6 +90,22 @@ async function hydrateStoredUserFromToken(token: string): Promise<Record<string,
 /**
  * Get authorization header for API requests
  */
+// Mange eldre komponenter sendte `Authorization: Bearer ${user.id}` — en
+// bruker-ID er ikke et session-token, så backend resolvet dem til "guest".
+// Denne gir det faktiske lagrede tokenet (sync, til raw fetch-kall).
+export function getStoredAuthToken(): string {
+  try {
+    return (
+      localStorage.getItem('creatorhub_auth_token') ||
+      localStorage.getItem('role_room_auth_token') ||
+      localStorage.getItem('token') ||
+      ''
+    ).trim();
+  } catch {
+    return '';
+  }
+}
+
 export async function getAuthHeader(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
 

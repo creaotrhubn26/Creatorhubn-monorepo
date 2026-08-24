@@ -11,7 +11,7 @@ import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from './hooks/useDynamicProfessions';
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, getStoredAuthToken } from '@/lib/queryClient';
 import {
   Box,
   Card as MuiCard,
@@ -159,7 +159,7 @@ export default function UniversalDashboardNotificationIntegration({
     try {
       const response = await fetch(`/api/project-admin/connections/${userId}`, {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${getStoredAuthToken() || userId}`,
       },
     });
 
@@ -180,7 +180,7 @@ export default function UniversalDashboardNotificationIntegration({
     try {
       const response = await fetch(`/api/dashboard-integration/status/${userId}`, {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${getStoredAuthToken() || userId}`,
       },
     });
 
@@ -239,7 +239,7 @@ export default function UniversalDashboardNotificationIntegration({
     try {
       const response = await fetch(`/api/notifications/recent/${userId}?limit=10`, {
         headers: {
-          Authorization: `Bearer ${userId}`,
+          Authorization: `Bearer ${getStoredAuthToken() || userId}`,
       },
     });
 

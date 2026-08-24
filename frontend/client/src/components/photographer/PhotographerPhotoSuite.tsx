@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, getStoredAuthToken } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useProject } from '../../contexts/ProjectContext';
@@ -248,7 +248,7 @@ export default function PhotographerPhotoSuite({
   const { user } = useAuth();
   
   // Auth headers for API requests
-  const auth = user ? { Authorization: `Bearer ${user.d}` } : {};
+  const auth = user ? { Authorization: `Bearer ${getStoredAuthToken() || user?.id}` } : {};
 
   // Apply profession-specific theme
   const professionTheme = getProfessionTheme(profession);
