@@ -145,10 +145,17 @@ export function setupProjectTeamRoutes(deps: ProjectTeamRoutesDeps): void {
         return res.status(403).json({ error: "Ingen tilgang til prosjektet" });
       }
       await ensureProjectTeamSchema(pool);
+      // Eier kan ligge i public.projects ELLER legacy.projects (workspace) —
+      // uten legacy-grenen ble owner null og «Ansvarlig»-lister tomme.
       const owner = await pool.query(
         `SELECT p.user_id, u.email, u.first_name, u.last_name
            FROM projects p LEFT JOIN users u ON u.id = p.user_id
-          WHERE p.id = $1 LIMIT 1`,
+          WHERE p.id::text = $1
+        UNION ALL
+        SELECT lp.user_id, u.email, u.first_name, u.last_name
+           FROM legacy.projects lp LEFT JOIN users u ON u.id::text = lp.user_id
+          WHERE lp.id = $1
+        LIMIT 1`,
         [projectId],
       );
       const members = await pool.query(
