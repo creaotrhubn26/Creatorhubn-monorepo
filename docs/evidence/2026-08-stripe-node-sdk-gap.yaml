@@ -1,0 +1,70 @@
+claim: >
+  backend/package.json pins "stripe": "^19.3.0". The Documentation
+  Intelligence release-monitor tracks stripe-node's latest release as
+  v22.5.0 (2026-08-10) — three majors ahead of what is installed. This gap
+  predates this evidence record; it was not flagged in the 2026-08-09
+  bootstrap run (no prior state to diff against) and is first surfaced here
+  because the 22.4.0 → 22.5.0 bump was the only vendor version change this
+  run (2026-08-24).
+source_type: package_registry_metadata
+source: >
+  https://github.com/stripe/stripe-node CHANGELOG.md (v22.5.0, 2026-08-10)
+  cross-checked via `git ls-remote --tags`; installed version from
+  backend/package.json.
+authority_tier: 1
+vendor: Stripe
+product: stripe-node SDK
+version_scope: "installed 19.3.0 / tracked latest 22.5.0"
+publication_date: "2026-08-24"
+evidence_summary: >
+  repo-intelligence: stripe-node is used across ~25 backend files
+  (backend/server/academy-stripe-webhook-routes.ts,
+  backend/server/post-agent-stripe-webhook.ts,
+  backend/server/role-room-seat-stripe-sync.ts,
+  backend/server/leadgrid-billing-routes.ts, backend/migrations/
+  255_academy_stripe_connect.sql, and others — full list in
+  docs/baselines/external-api-usage.txt under "== stripe ==") spanning
+  Academy billing, Role Room seat billing, Leadgrid billing, storage-quota
+  billing, and Post Agent Stripe Connect. Both webhook handlers
+  (academy-stripe-webhook-routes.ts:97, post-agent-stripe-webhook.ts:113)
+  use stripe.webhooks.constructEvent — synchronous verify+parse, unaffected
+  by 22.5.0's new constructEventWithoutVerification (that helper targets a
+  queue-based webhook architecture we do not have). No AWS EventBridge/
+  Azure Event Grid usage found in the repo, so 22.4.0's native
+  EventBridge/EventGrid event support is not applicable either.
+interpretation: >
+  Nothing in stripe-node 19.3.0 → 22.5.0 is a forced break for our current
+  usage (verified only for the >=19.x → 22.x changelog headlines scanned
+  this run, not a full line-by-line diff of all ~35 intermediate releases).
+  The real risk is accumulating pinned-API-version drift: each stripe-node
+  major bumps Stripe's account-pinned API version by default on upgrade,
+  and the longer we wait, the larger a single upgrade jump becomes.
+project_impact: >
+  No immediate action required — v22.5.0 introduces no symbols we would
+  adopt today. Recommend a dedicated stripe-node major-version upgrade
+  pass (19 → 22) get scoped as its own migration (compatibility-solver +
+  migration-engine), separate from routine weekly monitoring, given the
+  breadth of billing surfaces touched (Academy, Role Room, Leadgrid,
+  storage quota, Post Agent Connect).
+confidence: probable
+decision: >
+  HOLD on the SDK bump itself (no blocker, no forcing new feature) —
+  routine weekly monitoring will keep tracking stripe-node's latest, but
+  will not re-flag this same gap every week. Re-open when either (a) a
+  new stripe-node feature is source-confirmed to intersect one of the
+  billing files above, or (b) the gap is deliberately scoped as a
+  migration.
+affected:
+  - backend/server/academy-stripe-webhook-routes.ts
+  - backend/server/post-agent-stripe-webhook.ts
+  - backend/server/role-room-seat-stripe-sync.ts
+  - backend/server/leadgrid-billing-routes.ts
+  - backend/server/storage-billing-admin-routes.ts
+  - backend/server/photographer-stripe-connect-routes.ts
+  - backend/migrations/255_academy_stripe_connect.sql
+lesson: >
+  The weekly latest-versions.yaml tracker watches the vendor's absolute
+  latest release, not our installed version — a real drift gap can exist
+  silently for a long time if nothing forces a diff against package.json.
+  This run added repo_pinned_version_note to latest-versions.yaml so future
+  runs surface the gap size without re-deriving it from scratch.
