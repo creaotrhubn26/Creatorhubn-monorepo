@@ -25,6 +25,7 @@ import {
 } from '@mui/material';
 import Lock from '@mui/icons-material/Lock';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
+import CropRotate from '@mui/icons-material/CropRotate';
 import ArrowBack from '@mui/icons-material/ArrowBack';
 import Check from '@mui/icons-material/Check';
 import Upgrade from '@mui/icons-material/Upgrade';
@@ -37,6 +38,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { ws, workspaceDarkTheme, workspaceCategoryFor, navForCategory } from '@/components/workspace/workspaceTheme';
 import { getProfessionDisplayName, getProfessionIconColor } from '@shared/profession-types';
 import { getTierLabel, resolveTesterAccess } from '@/lib/tester-access-tiers';
+import AvatarCropDialog from '@/components/profile/AvatarCropDialog';
 
 const BG = ws.bg;                 // #0a0f1a
 const PANEL = ws.panel;           // glassmorphism
@@ -118,10 +120,14 @@ const MinProfil: React.FC = () => {
   })();
 
   const set = (k: string) => (e: any) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  // Opplasting går via utsnitts-dialogen: vi lagrer det beskårne bildet, ikke
+  // originalen. Da blir alle avatar-flater (shell, chat, board, team) riktige
+  // uten at de trenger å kjenne noe focal point — og filen krymper til ~kB.
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
   const onAvatar = (file?: File) => {
     if (!file) return;
     const r = new FileReader();
-    r.onload = () => setAvatar(typeof r.result === 'string' ? r.result : null);
+    r.onload = () => setCropSrc(typeof r.result === 'string' ? r.result : null);
     r.readAsDataURL(file);
   };
 
@@ -177,6 +183,12 @@ const MinProfil: React.FC = () => {
                 <PhotoCamera sx={{ fontSize: 17 }} />
                 <input type="file" accept="image/*" hidden onChange={(e) => { onAvatar(e.target.files?.[0]); e.target.value = ''; }} />
               </IconButton>
+              {avatar && (
+                <IconButton size="small" onClick={() => setCropSrc(avatar)} aria-label="Juster utsnitt"
+                  sx={{ position: 'absolute', bottom: -4, left: -4, bgcolor: ws.panelSolid, color: ws.text, border: `1px solid ${BORDER}`, '&:hover': { bgcolor: ws.panelAlt } }}>
+                  <CropRotate sx={{ fontSize: 16 }} />
+                </IconButton>
+              )}
             </Box>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography variant="h5" sx={{ fontWeight: 800 }}>{`${form.firstName} ${form.lastName}`.trim() || 'Ditt navn'}</Typography>
@@ -365,6 +377,18 @@ const MinProfil: React.FC = () => {
           </Grid>
         </Grid>
       </Container>
+
+      <AvatarCropDialog
+
+        open={!!cropSrc}
+
+        src={cropSrc}
+
+        onClose={() => setCropSrc(null)}
+
+        onConfirm={(dataUrl) => { setAvatar(dataUrl); setCropSrc(null); }}
+
+      />
 
       <Snackbar open={!!toast} autoHideDuration={3500} onClose={() => setToast('')} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity={/kunne ikke|feil/i.test(toast) ? 'error' : 'success'} variant="filled" onClose={() => setToast('')}>{toast}</Alert>
