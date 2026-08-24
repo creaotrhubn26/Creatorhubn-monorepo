@@ -1,0 +1,667 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		01D5CBA399E5CE52B5C2412A /* SessionSummarySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82B6E54C44A0BE077D049061 /* SessionSummarySheet.swift */; };
+		045F5E1D98BC4471485777A6 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6326A33B25AB1F187678B6A /* NotificationService.swift */; };
+		0A7527728818EE28901A1014 /* GearProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0EDA3A3A440E84A4FF9294A /* GearProfileView.swift */; };
+		0E79B223569C8467E923377A /* PhoneCameraStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A36548CCC876CABCA10D2EEB /* PhoneCameraStore.swift */; };
+		0EDBC0E34D44C3D97347E68D /* CommunityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB2DF0C5AC7EF7989E59EB7B /* CommunityView.swift */; };
+		1359E86229ABB3905AA2A7D8 /* AeroSpotApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87473616C01ED193C2AFF3B6 /* AeroSpotApp.swift */; };
+		1A6D526584A3A8125A51D71F /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3C1E335D7244261700C43F0 /* AuthStore.swift */; };
+		1D7CD4C50CDA057A716CA6AD /* CCAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B86046256CE1ED253693193C /* CCAPIClient.swift */; };
+		223539F7C47A5B8494B3753A /* LiveMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F44E2AD38B780F76A91F9305 /* LiveMapView.swift */; };
+		269A36E7ACF97FCD54EE73CB /* EventDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF759154AF42732DD8CF91A4 /* EventDetailView.swift */; };
+		28DF631E67921465F46C9048 /* RarityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CD99376A7E221621B5EDE14 /* RarityService.swift */; };
+		2B6E4763BBD81FDD519B4927 /* RunwayService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D566420EFA1B78D478632F14 /* RunwayService.swift */; };
+		356897206AA2806B223B7C74 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AE09A37F74190C615D9D9CC /* SessionStore.swift */; };
+		3C1AB63EC777154718FBDC9E /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 774123FB53963AFF7B3DA1E8 /* HomeView.swift */; };
+		3E65A24B889E67C28D4F4B99 /* BackendAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF4425C3535D21FDC877326C /* BackendAPI.swift */; };
+		4A5E38AA6A53A4541B583AFC /* EventSubmitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62CC3A8010A2683A16B7F185 /* EventSubmitView.swift */; };
+		57DC571BE1557A7D11AE65FC /* PhotoDownloadStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 775C0879A26DA77D92AFACBD /* PhotoDownloadStore.swift */; };
+		6309B9DEC356E85D0E79260F /* TipEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF898425276D395C717F8650 /* TipEngine.swift */; };
+		6874814F3A30C49D3C05061B /* GearStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA555EEECDFF42C24360BFD /* GearStore.swift */; };
+		692A3DBF825708EE488D8737 /* LogbookView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD819EF87990F69939C02C51 /* LogbookView.swift */; };
+		726BE4BC9A92A7E0906DDCE2 /* CCAPITypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38B324DA4F3909C2A716DAD2 /* CCAPITypes.swift */; };
+		770065676CAB23B1771FA41F /* FrameAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7106AB9DDCE6FF74C110A728 /* FrameAnalyzer.swift */; };
+		77E8EAB9F4BE4FEEBE28D39E /* SunService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D03E10B656CC7E4697912BA /* SunService.swift */; };
+		7E9D75AE1FB6E7A98ED01C79 /* OSLData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 599702E5A1E80AF90FFA000E /* OSLData.swift */; };
+		84F3477340458C754FFFA425 /* ModerationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87C5B8B8393D19E7F54E777F /* ModerationView.swift */; };
+		8A25E766CCF94E8B94ED7503 /* CCAPIError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98141811FD380542A00B6474 /* CCAPIError.swift */; };
+		902DD67643E25C33D5938C13 /* Geo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D6837029FA7C4D757B750F2 /* Geo.swift */; };
+		9F7A445EFE605CE689E0C928 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 76ACB14E783B1D06934C54AE /* Assets.xcassets */; };
+		AE610E23765BD891E955F20A /* LiveViewStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A797D30EF515734CCD74C7C /* LiveViewStore.swift */; };
+		AE75E1833A766CB865F43EE4 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8534489BF580ABFC34967992 /* AuthView.swift */; };
+		C070268D9407194F553235C8 /* CCAPISessionRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F07618A244E237005C1C13 /* CCAPISessionRecorder.swift */; };
+		C43AB9C243B35D1DDE3FFC26 /* CameraAssistView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 633EE008D41980F006251774 /* CameraAssistView.swift */; };
+		C70A74E14ADBF9A81F0B2E2A /* CameraSyncStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77223422353CE0842A30AE92 /* CameraSyncStore.swift */; };
+		C7FC55A8A217795B733B2BE1 /* SpottingScoreService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 151C194DE255640A43449D52 /* SpottingScoreService.swift */; };
+		C869A58D37BB3F983FB24A59 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9B630C5C0A624791A452B2E /* Models.swift */; };
+		CD705178C696E2A9E59AEDBA /* CCAPIInsecureTrust.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13E752FE691A5FAE4D597DF1 /* CCAPIInsecureTrust.swift */; };
+		D01BDCD71FDA096CA6169530 /* CameraRecommendationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17F01A8E79445DF95C639883 /* CameraRecommendationService.swift */; };
+		D2B57A87FFA2D9830D5BE520 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB92339D34582303B24ADB10 /* ProfileView.swift */; };
+		D6125E8D1EFCE572185616B6 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFF62ACBB7D55B5F2FC91012 /* Theme.swift */; };
+		E42A3CCAC801F296FC37114D /* AirportCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE7572D22A860C21B01DD2E1 /* AirportCatalog.swift */; };
+		F2D25083CF8C274B42D166E5 /* EventsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6643700E40109DA4CAE58F87 /* EventsView.swift */; };
+		F7B6BD18F235D972BFED5825 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5647A0F298D736E097F56DC5 /* Components.swift */; };
+		FDEAEF4992817BEC937CE5A6 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFFDE5BAE305E567813B18EC /* AppModel.swift */; };
+		FF0D5766D1BE68E6472F6659 /* AeroSpotServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC665283AFB83F1C9E1E3E20 /* AeroSpotServiceTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		30BE93E337BCDFFFA057CA2F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5DC006235E4ACC14A61FDAE8 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3370CCA1417D3DA300D21B45;
+			remoteInfo = AeroSpot;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		13E752FE691A5FAE4D597DF1 /* CCAPIInsecureTrust.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCAPIInsecureTrust.swift; sourceTree = "<group>"; };
+		151C194DE255640A43449D52 /* SpottingScoreService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpottingScoreService.swift; sourceTree = "<group>"; };
+		17F01A8E79445DF95C639883 /* CameraRecommendationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraRecommendationService.swift; sourceTree = "<group>"; };
+		1A797D30EF515734CCD74C7C /* LiveViewStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveViewStore.swift; sourceTree = "<group>"; };
+		1D6837029FA7C4D757B750F2 /* Geo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Geo.swift; sourceTree = "<group>"; };
+		2CD99376A7E221621B5EDE14 /* RarityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RarityService.swift; sourceTree = "<group>"; };
+		38B324DA4F3909C2A716DAD2 /* CCAPITypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCAPITypes.swift; sourceTree = "<group>"; };
+		4D03E10B656CC7E4697912BA /* SunService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SunService.swift; sourceTree = "<group>"; };
+		5647A0F298D736E097F56DC5 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
+		599702E5A1E80AF90FFA000E /* OSLData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OSLData.swift; sourceTree = "<group>"; };
+		5AE09A37F74190C615D9D9CC /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
+		5C35316BB822AD2AC8E3932E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		62CC3A8010A2683A16B7F185 /* EventSubmitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventSubmitView.swift; sourceTree = "<group>"; };
+		633EE008D41980F006251774 /* CameraAssistView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraAssistView.swift; sourceTree = "<group>"; };
+		6643700E40109DA4CAE58F87 /* EventsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsView.swift; sourceTree = "<group>"; };
+		7106AB9DDCE6FF74C110A728 /* FrameAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameAnalyzer.swift; sourceTree = "<group>"; };
+		73B2C4FF99DB549CEE77E9D2 /* AeroSpotTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = AeroSpotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		76ACB14E783B1D06934C54AE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		77223422353CE0842A30AE92 /* CameraSyncStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraSyncStore.swift; sourceTree = "<group>"; };
+		774123FB53963AFF7B3DA1E8 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		775C0879A26DA77D92AFACBD /* PhotoDownloadStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoDownloadStore.swift; sourceTree = "<group>"; };
+		82B6E54C44A0BE077D049061 /* SessionSummarySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSummarySheet.swift; sourceTree = "<group>"; };
+		8534489BF580ABFC34967992 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
+		87473616C01ED193C2AFF3B6 /* AeroSpotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AeroSpotApp.swift; sourceTree = "<group>"; };
+		87C5B8B8393D19E7F54E777F /* ModerationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModerationView.swift; sourceTree = "<group>"; };
+		98141811FD380542A00B6474 /* CCAPIError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCAPIError.swift; sourceTree = "<group>"; };
+		A36548CCC876CABCA10D2EEB /* PhoneCameraStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneCameraStore.swift; sourceTree = "<group>"; };
+		AF759154AF42732DD8CF91A4 /* EventDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventDetailView.swift; sourceTree = "<group>"; };
+		B86046256CE1ED253693193C /* CCAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCAPIClient.swift; sourceTree = "<group>"; };
+		BFA555EEECDFF42C24360BFD /* GearStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GearStore.swift; sourceTree = "<group>"; };
+		C0EDA3A3A440E84A4FF9294A /* GearProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GearProfileView.swift; sourceTree = "<group>"; };
+		CC665283AFB83F1C9E1E3E20 /* AeroSpotServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AeroSpotServiceTests.swift; sourceTree = "<group>"; };
+		D1F07618A244E237005C1C13 /* CCAPISessionRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CCAPISessionRecorder.swift; sourceTree = "<group>"; };
+		D566420EFA1B78D478632F14 /* RunwayService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunwayService.swift; sourceTree = "<group>"; };
+		D9B630C5C0A624791A452B2E /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		DF4425C3535D21FDC877326C /* BackendAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendAPI.swift; sourceTree = "<group>"; };
+		DF898425276D395C717F8650 /* TipEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipEngine.swift; sourceTree = "<group>"; };
+		E3C1E335D7244261700C43F0 /* AuthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthStore.swift; sourceTree = "<group>"; };
+		E5FEBAA6C14F8B19BA738579 /* AeroSpot.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AeroSpot.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E6326A33B25AB1F187678B6A /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		EB92339D34582303B24ADB10 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		EFFDE5BAE305E567813B18EC /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		F44E2AD38B780F76A91F9305 /* LiveMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveMapView.swift; sourceTree = "<group>"; };
+		FB2DF0C5AC7EF7989E59EB7B /* CommunityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityView.swift; sourceTree = "<group>"; };
+		FD819EF87990F69939C02C51 /* LogbookView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogbookView.swift; sourceTree = "<group>"; };
+		FE7572D22A860C21B01DD2E1 /* AirportCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirportCatalog.swift; sourceTree = "<group>"; };
+		FFF62ACBB7D55B5F2FC91012 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0A3172B1356080956405F0B7 /* CaptureApp */ = {
+			isa = PBXGroup;
+			children = (
+				1036C0AAD320AD641AF66C26 /* CaptureApp */,
+			);
+			path = CaptureApp;
+			sourceTree = "<group>";
+		};
+		0F1DEDEA85A5A52AEFCDF2FA /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				1D6837029FA7C4D757B750F2 /* Geo.swift */,
+				D9B630C5C0A624791A452B2E /* Models.swift */,
+				FFF62ACBB7D55B5F2FC91012 /* Theme.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		1036C0AAD320AD641AF66C26 /* CaptureApp */ = {
+			isa = PBXGroup;
+			children = (
+				1E49B8F8DAF87B9CB0DB67B2 /* Core */,
+			);
+			path = CaptureApp;
+			sourceTree = "<group>";
+		};
+		1E49B8F8DAF87B9CB0DB67B2 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				977430217C8F7A86512BF133 /* Capture */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		39F31088F6C96F8BE6384A5B = {
+			isa = PBXGroup;
+			children = (
+				FA4F627423A61ED60DE8FD31 /* AeroSpot */,
+				62C88BFAE6FD4857A7BF028F /* AeroSpotTests */,
+				F0931C189580889BCAEA8C69 /* ipad */,
+				4C3A5C096083224DC3E25720 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		4C3A5C096083224DC3E25720 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E5FEBAA6C14F8B19BA738579 /* AeroSpot.app */,
+				73B2C4FF99DB549CEE77E9D2 /* AeroSpotTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		62C88BFAE6FD4857A7BF028F /* AeroSpotTests */ = {
+			isa = PBXGroup;
+			children = (
+				CC665283AFB83F1C9E1E3E20 /* AeroSpotServiceTests.swift */,
+			);
+			path = AeroSpotTests;
+			sourceTree = "<group>";
+		};
+		977430217C8F7A86512BF133 /* Capture */ = {
+			isa = PBXGroup;
+			children = (
+				B86046256CE1ED253693193C /* CCAPIClient.swift */,
+				98141811FD380542A00B6474 /* CCAPIError.swift */,
+				13E752FE691A5FAE4D597DF1 /* CCAPIInsecureTrust.swift */,
+				D1F07618A244E237005C1C13 /* CCAPISessionRecorder.swift */,
+				38B324DA4F3909C2A716DAD2 /* CCAPITypes.swift */,
+			);
+			path = Capture;
+			sourceTree = "<group>";
+		};
+		C3265D7D7EC892A427977E54 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				87473616C01ED193C2AFF3B6 /* AeroSpotApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		EFDCB4EFA6216BED45FC02DA /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				FE7572D22A860C21B01DD2E1 /* AirportCatalog.swift */,
+				EFFDE5BAE305E567813B18EC /* AppModel.swift */,
+				E3C1E335D7244261700C43F0 /* AuthStore.swift */,
+				DF4425C3535D21FDC877326C /* BackendAPI.swift */,
+				17F01A8E79445DF95C639883 /* CameraRecommendationService.swift */,
+				77223422353CE0842A30AE92 /* CameraSyncStore.swift */,
+				7106AB9DDCE6FF74C110A728 /* FrameAnalyzer.swift */,
+				BFA555EEECDFF42C24360BFD /* GearStore.swift */,
+				1A797D30EF515734CCD74C7C /* LiveViewStore.swift */,
+				E6326A33B25AB1F187678B6A /* NotificationService.swift */,
+				599702E5A1E80AF90FFA000E /* OSLData.swift */,
+				A36548CCC876CABCA10D2EEB /* PhoneCameraStore.swift */,
+				775C0879A26DA77D92AFACBD /* PhotoDownloadStore.swift */,
+				2CD99376A7E221621B5EDE14 /* RarityService.swift */,
+				D566420EFA1B78D478632F14 /* RunwayService.swift */,
+				5AE09A37F74190C615D9D9CC /* SessionStore.swift */,
+				151C194DE255640A43449D52 /* SpottingScoreService.swift */,
+				4D03E10B656CC7E4697912BA /* SunService.swift */,
+				DF898425276D395C717F8650 /* TipEngine.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		F0931C189580889BCAEA8C69 /* ipad */ = {
+			isa = PBXGroup;
+			children = (
+				0A3172B1356080956405F0B7 /* CaptureApp */,
+			);
+			name = ipad;
+			path = ..;
+			sourceTree = "<group>";
+		};
+		F21E86AD4DEE36273E71BB6C /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				8534489BF580ABFC34967992 /* AuthView.swift */,
+				633EE008D41980F006251774 /* CameraAssistView.swift */,
+				FB2DF0C5AC7EF7989E59EB7B /* CommunityView.swift */,
+				5647A0F298D736E097F56DC5 /* Components.swift */,
+				AF759154AF42732DD8CF91A4 /* EventDetailView.swift */,
+				62CC3A8010A2683A16B7F185 /* EventSubmitView.swift */,
+				6643700E40109DA4CAE58F87 /* EventsView.swift */,
+				C0EDA3A3A440E84A4FF9294A /* GearProfileView.swift */,
+				774123FB53963AFF7B3DA1E8 /* HomeView.swift */,
+				F44E2AD38B780F76A91F9305 /* LiveMapView.swift */,
+				FD819EF87990F69939C02C51 /* LogbookView.swift */,
+				87C5B8B8393D19E7F54E777F /* ModerationView.swift */,
+				EB92339D34582303B24ADB10 /* ProfileView.swift */,
+				82B6E54C44A0BE077D049061 /* SessionSummarySheet.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		F957947FAA8D470D92954800 /* Generated */ = {
+			isa = PBXGroup;
+			children = (
+				5C35316BB822AD2AC8E3932E /* Info.plist */,
+			);
+			path = Generated;
+			sourceTree = "<group>";
+		};
+		FA4F627423A61ED60DE8FD31 /* AeroSpot */ = {
+			isa = PBXGroup;
+			children = (
+				76ACB14E783B1D06934C54AE /* Assets.xcassets */,
+				C3265D7D7EC892A427977E54 /* App */,
+				0F1DEDEA85A5A52AEFCDF2FA /* Core */,
+				F957947FAA8D470D92954800 /* Generated */,
+				EFDCB4EFA6216BED45FC02DA /* Services */,
+				F21E86AD4DEE36273E71BB6C /* Views */,
+			);
+			path = AeroSpot;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		3370CCA1417D3DA300D21B45 /* AeroSpot */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 45A553AD616DA5ECCE4B2B26 /* Build configuration list for PBXNativeTarget "AeroSpot" */;
+			buildPhases = (
+				95D0115ECE27C0E91E2DA405 /* Sources */,
+				2F2E500D98C5DE78D20B1240 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AeroSpot;
+			packageProductDependencies = (
+			);
+			productName = AeroSpot;
+			productReference = E5FEBAA6C14F8B19BA738579 /* AeroSpot.app */;
+			productType = "com.apple.product-type.application";
+		};
+		6814CD62F2C813D595F1555D /* AeroSpotTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D379A77E822749B5592F5C74 /* Build configuration list for PBXNativeTarget "AeroSpotTests" */;
+			buildPhases = (
+				0D163632264D5671D49B9ABD /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				1F17905C38DD3F7AC55206F6 /* PBXTargetDependency */,
+			);
+			name = AeroSpotTests;
+			packageProductDependencies = (
+			);
+			productName = AeroSpotTests;
+			productReference = 73B2C4FF99DB549CEE77E9D2 /* AeroSpotTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5DC006235E4ACC14A61FDAE8 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					3370CCA1417D3DA300D21B45 = {
+						DevelopmentTeam = 9TAUZCPK95;
+						ProvisioningStyle = Automatic;
+					};
+					6814CD62F2C813D595F1555D = {
+						DevelopmentTeam = 9TAUZCPK95;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 08564CFC948AE2D1A6722E7F /* Build configuration list for PBXProject "AeroSpotApp" */;
+			developmentRegion = nb;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				nb,
+			);
+			mainGroup = 39F31088F6C96F8BE6384A5B;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 4C3A5C096083224DC3E25720 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				3370CCA1417D3DA300D21B45 /* AeroSpot */,
+				6814CD62F2C813D595F1555D /* AeroSpotTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		2F2E500D98C5DE78D20B1240 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9F7A445EFE605CE689E0C928 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0D163632264D5671D49B9ABD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FF0D5766D1BE68E6472F6659 /* AeroSpotServiceTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		95D0115ECE27C0E91E2DA405 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1359E86229ABB3905AA2A7D8 /* AeroSpotApp.swift in Sources */,
+				E42A3CCAC801F296FC37114D /* AirportCatalog.swift in Sources */,
+				FDEAEF4992817BEC937CE5A6 /* AppModel.swift in Sources */,
+				1A6D526584A3A8125A51D71F /* AuthStore.swift in Sources */,
+				AE75E1833A766CB865F43EE4 /* AuthView.swift in Sources */,
+				3E65A24B889E67C28D4F4B99 /* BackendAPI.swift in Sources */,
+				1D7CD4C50CDA057A716CA6AD /* CCAPIClient.swift in Sources */,
+				8A25E766CCF94E8B94ED7503 /* CCAPIError.swift in Sources */,
+				CD705178C696E2A9E59AEDBA /* CCAPIInsecureTrust.swift in Sources */,
+				C070268D9407194F553235C8 /* CCAPISessionRecorder.swift in Sources */,
+				726BE4BC9A92A7E0906DDCE2 /* CCAPITypes.swift in Sources */,
+				C43AB9C243B35D1DDE3FFC26 /* CameraAssistView.swift in Sources */,
+				D01BDCD71FDA096CA6169530 /* CameraRecommendationService.swift in Sources */,
+				C70A74E14ADBF9A81F0B2E2A /* CameraSyncStore.swift in Sources */,
+				0EDBC0E34D44C3D97347E68D /* CommunityView.swift in Sources */,
+				F7B6BD18F235D972BFED5825 /* Components.swift in Sources */,
+				269A36E7ACF97FCD54EE73CB /* EventDetailView.swift in Sources */,
+				4A5E38AA6A53A4541B583AFC /* EventSubmitView.swift in Sources */,
+				F2D25083CF8C274B42D166E5 /* EventsView.swift in Sources */,
+				770065676CAB23B1771FA41F /* FrameAnalyzer.swift in Sources */,
+				0A7527728818EE28901A1014 /* GearProfileView.swift in Sources */,
+				6874814F3A30C49D3C05061B /* GearStore.swift in Sources */,
+				902DD67643E25C33D5938C13 /* Geo.swift in Sources */,
+				3C1AB63EC777154718FBDC9E /* HomeView.swift in Sources */,
+				223539F7C47A5B8494B3753A /* LiveMapView.swift in Sources */,
+				AE610E23765BD891E955F20A /* LiveViewStore.swift in Sources */,
+				692A3DBF825708EE488D8737 /* LogbookView.swift in Sources */,
+				C869A58D37BB3F983FB24A59 /* Models.swift in Sources */,
+				84F3477340458C754FFFA425 /* ModerationView.swift in Sources */,
+				045F5E1D98BC4471485777A6 /* NotificationService.swift in Sources */,
+				7E9D75AE1FB6E7A98ED01C79 /* OSLData.swift in Sources */,
+				0E79B223569C8467E923377A /* PhoneCameraStore.swift in Sources */,
+				57DC571BE1557A7D11AE65FC /* PhotoDownloadStore.swift in Sources */,
+				D2B57A87FFA2D9830D5BE520 /* ProfileView.swift in Sources */,
+				28DF631E67921465F46C9048 /* RarityService.swift in Sources */,
+				2B6E4763BBD81FDD519B4927 /* RunwayService.swift in Sources */,
+				356897206AA2806B223B7C74 /* SessionStore.swift in Sources */,
+				01D5CBA399E5CE52B5C2412A /* SessionSummarySheet.swift in Sources */,
+				C7FC55A8A217795B733B2BE1 /* SpottingScoreService.swift in Sources */,
+				77E8EAB9F4BE4FEEBE28D39E /* SunService.swift in Sources */,
+				D6125E8D1EFCE572185616B6 /* Theme.swift in Sources */,
+				6309B9DEC356E85D0E79260F /* TipEngine.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		1F17905C38DD3F7AC55206F6 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3370CCA1417D3DA300D21B45 /* AeroSpot */;
+			targetProxy = 30BE93E337BCDFFFA057CA2F /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		20F1047D4C0D3F0D00655778 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = AeroSpot/Generated/Info.plist;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.creatorhubn.aerospot;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		262DDC78B2E6D918C11BAEDC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.creatorhubn.AeroSpotTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AeroSpot.app/AeroSpot";
+			};
+			name = Debug;
+		};
+		58B561D2A95075FD211DA6EE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = AeroSpot/Generated/Info.plist;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.creatorhubn.aerospot;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		877A19E7060C79C9C135D4B0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 9TAUZCPK95;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6;
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
+		A069F27B24C0A745084E7E13 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.creatorhubn.AeroSpotTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AeroSpot.app/AeroSpot";
+			};
+			name = Release;
+		};
+		DAF102D0EA8F8D9AD0F11A3B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 9TAUZCPK95;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6;
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		08564CFC948AE2D1A6722E7F /* Build configuration list for PBXProject "AeroSpotApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DAF102D0EA8F8D9AD0F11A3B /* Debug */,
+				877A19E7060C79C9C135D4B0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		45A553AD616DA5ECCE4B2B26 /* Build configuration list for PBXNativeTarget "AeroSpot" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				20F1047D4C0D3F0D00655778 /* Debug */,
+				58B561D2A95075FD211DA6EE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D379A77E822749B5592F5C74 /* Build configuration list for PBXNativeTarget "AeroSpotTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				262DDC78B2E6D918C11BAEDC /* Debug */,
+				A069F27B24C0A745084E7E13 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 5DC006235E4ACC14A61FDAE8 /* Project object */;
+}

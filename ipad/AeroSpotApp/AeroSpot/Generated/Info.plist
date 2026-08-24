@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>AeroSpot</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>AeroSpot bruker kameraet som søker og gir deg live tips om komposisjon, horisont og eksponering mens du sikter på flyet.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>AeroSpot kobler til Canon-kameraet ditt over lokalt Wi-Fi (CCAPI) for live kamerainnstillinger og automatisk loggbok.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>AeroSpot bruker posisjonen din til å finne nærmeste flyplass, avstand til fly og de beste spottepunktene rundt deg.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>AeroSpot lagrer bildene du tar med det tilkoblede kameraet i fotobiblioteket ditt når auto-nedlasting er på.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>AeroSpot leser EXIF fra bildene du velger for å fylle ut loggboken automatisk.</string>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arm64</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+</dict>
+</plist>
