@@ -203,6 +203,7 @@ type WorkspaceItemId =
   | 'operating-system'
   | 'role-room-agent'
   | 'content-calendar'
+  | 'leadgrid-app-waitlist'
   | 'role-room-economy'
   | 'newsletter-studio'
   | 'ai-citation'
