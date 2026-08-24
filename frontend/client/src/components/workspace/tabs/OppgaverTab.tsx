@@ -11,10 +11,10 @@ import Add from '@mui/icons-material/Add';
 import ArrowForward from '@mui/icons-material/ArrowForward';
 import ArrowBack from '@mui/icons-material/ArrowBack';
 import { apiRequest } from '@/lib/queryClient';
-import { ws } from '../workspaceTheme';
+import { ws, workspaceCategoryFor } from '../workspaceTheme';
 import { WsCard, WsStat, WsTag, wsAlert, wsPrompt } from '../ui';
 import { useWsLocale, makeT, type WsDict } from '../wsLocale';
-import { crewRoleDef, CREW_ROLE_CATALOG } from '@shared/crew-roles';
+import { crewRoleDef, resolveCrewRoles } from '@shared/crew-roles';
 import { crewIcon } from '../crewIcons';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab).
@@ -54,7 +54,11 @@ const SAMPLE = [
   { id: 's6', title: 'Highlight-klipp', crewRole: 'editor', status: 'todo' },
 ];
 
-const OppgaverTab: React.FC<{ projectId: string }> = ({ projectId }) => {
+const OppgaverTab: React.FC<{ projectId: string; profession?: string }> = ({ projectId, profession }) => {
+  // Kategori-filtrert «legg til oppgave»-rolleliste — dumpet tidligere ALLE 17
+  // roller uansett profesjon (en frisør så «Videograf»/«Drone» som tildelbare
+  // roller på egne oppgaver).
+  const addTaskRoles = resolveCrewRoles(workspaceCategoryFor(profession), []).roles;
   // Utenlandske partner-vendors får engelsk UI — locale fra WsLocaleProvider.
   const locale = useWsLocale();
   const t = makeT(T, locale);
@@ -141,7 +145,7 @@ const OppgaverTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       </Stack>
 
       <Menu open={!!addMenu} anchorEl={addMenu?.el} onClose={() => setAddMenu(null)}>
-        {CREW_ROLE_CATALOG.map((c) => <MenuItem key={c.key} onClick={() => add(addMenu?.col, c.key)} sx={{ gap: 1, fontSize: 13 }}>{crewIcon(c.icon, { fontSize: 16 })} {locale === 'en' ? c.labelEn : c.label}</MenuItem>)}
+        {addTaskRoles.map((c) => <MenuItem key={c.key} onClick={() => add(addMenu?.col, c.key)} sx={{ gap: 1, fontSize: 13 }}>{crewIcon(c.icon, { fontSize: 16 })} {locale === 'en' ? c.labelEn : c.label}</MenuItem>)}
       </Menu>
     </Box>
   );

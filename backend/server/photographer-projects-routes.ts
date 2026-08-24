@@ -659,8 +659,21 @@ export function setupPhotographerProjectsRoutes(
          LIMIT 1`,
         [projectId],
       );
-      if (!projectQ.rows.length) return res.status(404).json({ error: 'project_not_found' });
-      const p = projectQ.rows[0];
+      // canAccessProject over slipper inn workspace-prosjekter, som ligger i
+      // legacy.projects. Da må detalj-spørringen lese den tabellen også —
+      // ellers slipper eieren gjennom vakten og får 404 på sitt eget prosjekt.
+      let projectRow = projectQ.rows[0];
+      if (!projectRow) {
+        const legacyQ = await pool.query(
+          `SELECT id, title, name, description, category AS project_type,
+                  status, event_date, location, created_at, updated_at
+             FROM legacy.projects WHERE id = $1 LIMIT 1`,
+          [projectId],
+        ).catch(() => ({ rows: [] as any[] }));
+        projectRow = legacyQ.rows[0];
+      }
+      if (!projectRow) return res.status(404).json({ error: 'project_not_found' });
+      const p = projectRow;
 
       const [timeQ, galleryQ] = await Promise.all([
         pool

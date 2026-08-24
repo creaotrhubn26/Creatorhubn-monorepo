@@ -7,23 +7,31 @@
  * Vedlikehold/firmware: viser enheter med tilgjengelig firmware-oppdatering.
  */
 import React, { useEffect, useState } from 'react';
-import { Box, Stack, Typography, Button, Dialog, DialogContent, DialogActions, IconButton, TextField, MenuItem, CircularProgress } from '@mui/material';
+import { Box, Stack, Typography, Button, Dialog, DialogContent, DialogActions, IconButton, TextField, MenuItem, CircularProgress, Autocomplete } from '@mui/material';
 import Inventory2 from '@mui/icons-material/Inventory2';
 import AddCircleOutline from '@mui/icons-material/AddCircleOutline';
 import SystemUpdateAlt from '@mui/icons-material/SystemUpdateAlt';
 import Close from '@mui/icons-material/Close';
 import PriceCheck from '@mui/icons-material/PriceCheck';
+import Payments from '@mui/icons-material/Payments';
+import Search from '@mui/icons-material/Search';
+import Sort from '@mui/icons-material/Sort';
+import ViewModule from '@mui/icons-material/ViewModule';
+import ViewList from '@mui/icons-material/ViewList';
 import { apiRequest } from '@/lib/queryClient';
-import { ws } from '../workspaceTheme';
+import { ws, workspaceCategoryFor } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
-import { WsCard, WsTag, wsAlert } from '../ui';
+import { WsCard, WsTag, WsStat, WsPageTitle, WsTable, wsAlert, wsConfirm } from '../ui';
 import SoftwareKostnaderPanel from './SoftwareKostnaderPanel';
+import GearNewsTab from '../../dashboard/GearNewsTab';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
+import { useCameraCatalog } from '@/hooks/useCameraCatalog';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab). Kategori-VERDIENE
 // (sendes til API-et) er uendret — kun visningen oversettes via CAT_EN.
 const T: WsDict = {
   titleMusic: { no: 'Studio-utstyr', en: 'Studio equipment' },
+  titleVendor: { no: 'Lager', en: 'Warehouse' },
   title: { no: 'Utstyr', en: 'Inventory' },
   subRegister: { no: 'Registrer', en: 'Register' },
   subItemsMusic: { no: 'utstyr, programvare (DAW) og plugins', en: 'gear, software (DAW) and plugins' },
@@ -53,6 +61,7 @@ const T: WsDict = {
   add: { no: 'Legg til', en: 'Add' },
   emptyMusicItems: { no: 'mikrofoner, lydkort, monitorer …', en: 'microphones, audio interfaces, monitors …' },
   emptyVisualItems: { no: 'kameraer, objektiver, lys …', en: 'cameras, lenses, lights …' },
+  emptyGenericItems: { no: 'programvare, datautstyr, lagring …', en: 'software, computer equipment, storage …' },
   emptyRest: { no: '— så henter vi markedsverdien automatisk.', en: '— and we will fetch the market value automatically.' },
   reklamasjon: { no: 'Reklamasjon', en: 'Consumer warranty' },
   garanti: { no: 'Garanti', en: 'Warranty' },
@@ -79,6 +88,32 @@ const T: WsDict = {
   costKr: { no: 'Kostnad (kr)', en: 'Cost (kr)' },
   cancel: { no: 'Avbryt', en: 'Cancel' },
   saving: { no: 'Lagrer…', en: 'Saving…' },
+  filterAll: { no: 'Alle', en: 'All' },
+  searchEq: { no: 'Søk utstyr…', en: 'Search equipment…' },
+  searchNoHits: { no: 'Ingen utstyr matcher søket.', en: 'No equipment matches the search.' },
+  sortNew: { no: 'Nyeste', en: 'Newest' },
+  sortValue: { no: 'Etter verdi', en: 'By value' },
+  sortName: { no: 'Etter navn', en: 'By name' },
+  catalog: { no: 'Katalog', en: 'Catalog' },
+  supplier: { no: 'Leverandør', en: 'Supplier' },
+  memCards: { no: 'Anbefalte minnekort', en: 'Recommended memory cards' },
+  closeDet: { no: 'Lukk', en: 'Close' },
+  units: { no: 'enheter', en: 'units' },
+  viewCards: { no: 'Kort', en: 'Cards' },
+  viewTable: { no: 'Tabell', en: 'Table' },
+  editBtn: { no: 'Rediger', en: 'Edit' },
+  cloneBtn: { no: 'Klon', en: 'Clone' },
+  deleteBtn: { no: 'Slett', en: 'Delete' },
+  delConfirm: { no: 'Slette dette utstyret permanent?', en: 'Permanently delete this equipment?' },
+  fwSync: { no: 'Synkroniser nå', en: 'Sync now' },
+  fwCheckedAt: { no: 'sjekket', en: 'checked' },
+  fwAllOk: { no: 'Alle enheter er oppdatert ✓', en: 'All devices up to date ✓' },
+  renewOk: { no: 'Ingen fornyelser innen 30 dager ✓', en: 'No renewals within 30 days ✓' },
+  status: { no: 'Status', en: 'Status' },
+  statuses: {
+    no: { available: 'Tilgjengelig', 'in use': 'I bruk', maintenance: 'Vedlikehold', loan: 'Utlånt' },
+    en: { available: 'Available', 'in use': 'In use', maintenance: 'Maintenance', loan: 'Loaned' },
+  } as any,
 };
 // Engelske visningsnavn for kategori-verdiene (verdiene lagres uendret).
 const CAT_EN: Record<string, string> = {
@@ -86,11 +121,30 @@ const CAT_EN: Record<string, string> = {
   'Kamera': 'Camera', 'Objektiv': 'Lens', 'Blits / lys': 'Flash / lighting', 'Stativ / rigg': 'Tripod / rig', 'Lyd': 'Audio', 'Drone': 'Drone', 'Minnekort / lagring': 'Memory card / storage', 'Redigeringsprogramvare': 'Editing software', 'Plugin / preset': 'Plugin / preset', 'LUT / fargepakke': 'LUT / color pack', 'Skylagring / tjeneste': 'Cloud storage / service', 'Tilbehør': 'Accessories',
 };
 
-const isMusic = (p?: string) => ['music_producer', 'music-producer', 'musician', 'music'].includes(String(p || '').toLowerCase());
 const fmtKr = (n?: number) => (n && n > 0 ? `${Math.round(n).toLocaleString('nb-NO')} kr` : '—');
 const CATS_MUSIC = ['Mikrofon', 'Lydkort / interface', 'Studiomonitor', 'Hodetelefoner', 'MIDI / keyboard', 'Preamp / kompressor', 'Instrument', 'DAW (programvare)', 'Plugin', 'Virtuelt instrument', 'Samplepakke / lydbibliotek', 'Kabler / tilbehør', 'Annet'];
 const CATS_VISUAL = ['Kamera', 'Objektiv', 'Blits / lys', 'Stativ / rigg', 'Lyd', 'Drone', 'Minnekort / lagring', 'Redigeringsprogramvare', 'Plugin / preset', 'LUT / fargepakke', 'Skylagring / tjeneste', 'Tilbehør', 'Annet'];
-const SOFTWARE_CATS = new Set(['DAW (programvare)', 'Plugin', 'Virtuelt instrument', 'Samplepakke / lydbibliotek', 'Redigeringsprogramvare', 'Plugin / preset', 'LUT / fargepakke', 'Skylagring / tjeneste']);
+// Vendor/service har ikke foto/video/musikk-gear — generisk sett i stedet for å
+// arve CATS_VISUAL (som ga en utstyrsutleie/frisør kamera- og objektiv-kategorier).
+const CATS_GENERIC = ['Programvare / lisens', 'Datautstyr', 'Lagring / backup', 'Kjøretøy / transport', 'Tilbehør', 'Annet'];
+const CATS_BY_CATEGORY: Record<string, string[]> = { music: CATS_MUSIC, visual: CATS_VISUAL, vendor: CATS_GENERIC, service: CATS_GENERIC };
+
+// Katalogen kjenner engelske kategorinøkler; normalizeCatalogCategory på serveren
+// kjenner ikke de norske etikettene og ville sluppet «Kamera» rått gjennom til et
+// filter som ikke matcher noe. Kategorier uten katalog-motpart står med vilje
+// ikke her — da søkes det uten kategorifilter i stedet for å treffe null.
+const CAT_TO_CATALOG: Record<string, string> = {
+  'Kamera': 'cameras',
+  'Objektiv': 'lenses',
+  'Blits / lys': 'flash',
+  'Lyd': 'audio',
+  'Mikrofon': 'audio',
+  'Drone': 'video',
+  'Stativ / rigg': 'accessories',
+  'Minnekort / lagring': 'accessories',
+  'Tilbehør': 'accessories',
+};
+const SOFTWARE_CATS = new Set(['DAW (programvare)', 'Plugin', 'Virtuelt instrument', 'Samplepakke / lydbibliotek', 'Redigeringsprogramvare', 'Plugin / preset', 'LUT / fargepakke', 'Skylagring / tjeneste', 'Programvare / lisens']);
 const ti = { '& .MuiOutlinedInput-root': { fontSize: 13.5, color: ws.text, bgcolor: ws.panel, '& fieldset': { borderColor: ws.borderSoft }, '&:hover fieldset': { borderColor: ws.accentBorder }, '&.Mui-focused fieldset': { borderColor: ws.accent } }, '& input::placeholder': { color: ws.textFaint, opacity: 1 }, '& .MuiInputLabel-root': { color: ws.textDim } };
 
 const specOf = (it: any) => it?.specifications || it?.settings?.specifications || {};
@@ -115,8 +169,17 @@ const leftLabel = (iso?: string, locale: 'no' | 'en' = 'no') => {
 };
 
 const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: string }> = ({ profession, userId }) => {
-  const music = isMusic(profession);
-  const cats = music ? CATS_MUSIC : CATS_VISUAL;
+  // Kategorien styrer hvilket gear-sett/tittel som vises — utledet via samme
+  // sentrale normalisering som sidenavet bruker (workspaceCategoryFor), i stedet
+  // for en egen, ufullstendig profesjons-liste som ikke kjente igjen 'musicproducer'.
+  const category = workspaceCategoryFor(profession);
+  const music = category === 'music';
+  const vendor = category === 'vendor';
+  const cats = CATS_BY_CATEGORY[category] || CATS_VISUAL;
+  // Samme kamerakatalog som prosjekt-wizarden bruker. Fanen hadde bare
+  // fritekstfelt, så registrert gear og katalogen var to adskilte verdener —
+  // og fritekst gir dårligere katalog-oppslag enn et valgt merke/modell-par.
+  const cameraCatalog = useCameraCatalog();
   const [items, setItems] = useState<any[]>([]);
   const [firmware, setFirmware] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -125,9 +188,19 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
   const [val, setVal] = useState<any | null>(null);   // markedsverdi-resultat
   const [valBusy, setValBusy] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [eq, setEq] = useState('');
+  const [catFilter, setCatFilter] = useState('alle');
+  const [sortSel, setSortSel] = useState<'new' | 'value' | 'name'>('new');
+  const [detItem, setDetItem] = useState<any | null>(null);
+  const [editTarget, setEditTarget] = useState<any | null>(null);
+  const [activeU, setActiveU] = useState<'gear' | 'news'>('gear');
+  const [gridView, setGridView] = useState<'cards' | 'table'>('cards');
+  const [fwBusy, setFwBusy] = useState(false);
+  const [fwChecked, setFwChecked] = useState<Date | null>(null);
   // Utenlandske partner-vendors får engelsk UI (WsLocaleProvider i TeamWorkspacePage).
   const locale = useWsLocale();
   const t = makeT(T, locale);
+  const tabTitle = music ? t('titleMusic') : vendor ? t('titleVendor') : t('title');
   const dl = wsDateLocale(locale);
   const catLabel = (c?: string) => (locale === 'en' ? (CAT_EN[c] || c) : c);
 
@@ -152,9 +225,27 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
     if (!q) return;
     setValBusy(true); setVal(null);
     try {
-      // 1) katalog-søk (foto/video-tungt) — bruk pris hvis treff
-      const c: any = await apiRequest(`/api/equipment/search?q=${encodeURIComponent(q)}&limit=1`).catch(() => null);
-      const hit = c?.data?.[0];
+      // 1) kuratert katalog først — den har ekte MSRP. Det brede katalog-søket
+      //    under gir bare en bøttepris per prisklasse (44 990 for «professional»),
+      //    så et treff her er alltid mer nøyaktig.
+      const cur: any = await apiRequest(`/api/photographer/equipment/catalog?q=${encodeURIComponent(q)}`).catch(() => null);
+      const curHit = (cur?.data || cur?.items || [])[0];
+      if (curHit?.msrpNok) { setVal({ nok: curHit.msrpNok, source: 'katalog', note: `${curHit.brand || ''} ${curHit.model || ''}`.trim() }); return; }
+
+      // 2) bredt katalog-søk. Kategorien brukeren valgte MÅ sendes med — uten
+      //    den er søket ren substrengmatch, og «canon r5» traff SmallRig-buret
+      //    «Full Cage for Canon EOS R5 Mark II» til 1 790 kr.
+      const qs = new URLSearchParams({ q, limit: '10' });
+      if (form.brand) qs.set('brand', form.brand);
+      const cat = CAT_TO_CATALOG[form.category];
+      if (cat) qs.set('category', cat);
+      const c: any = await apiRequest(`/api/equipment/search?${qs.toString()}`).catch(() => null);
+      const hits: any[] = c?.data || [];
+      const norm = (s: string) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      // Eksakt modell foran delvis: ellers vinner «EOS R5 Mark II» over «EOS R5».
+      const hit = hits.find((h) => norm(`${h.brand} ${h.model}`) === norm(q))
+        || (form.model ? hits.find((h) => norm(h.model) === norm(form.model)) : null)
+        || hits[0];
       if (hit?.priceNOK) { setVal({ nok: hit.priceNOK, source: 'katalog', note: `${hit.brand || ''} ${hit.model || ''}`.trim(), supplier: hit.norwegianSupplier }); return; }
       // 2) AI-estimat (musikk/studio-gear som mangler i katalogen)
       const a: any = await apiRequest(`/api/equipment/estimate-value`, { method: 'POST', body: { name: form.name, brand: form.brand, model: form.model, category: form.category } });
@@ -164,51 +255,119 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
     finally { setValBusy(false); }
   };
 
+  const openAdd = (it?: any) => {
+    const s = it ? specOf(it) : {};
+    setEditTarget(it || null);
+    setForm(it ? {
+      name: s.name || '', brand: it.brand || '', model: it.model || '',
+      category: it.category || cats[0], condition: it.condition || 'excellent',
+      licenseType: s.licenseType || 'perpetual', billingCycle: s.billingCycle || 'monthly',
+      subCost: s.subscriptionCost ? String(s.subscriptionCost) : '', renewalDate: s.renewalDate || '',
+    } : { name: '', brand: '', model: '', category: cats[0], condition: 'excellent', licenseType: 'perpetual', billingCycle: 'monthly', subCost: '', renewalDate: '' });
+    setVal(it ? (gearValue(it) ? { nok: gearValue(it), source: s.valueSource || null, note: s.valueNote || null } : { nok: null, source: 'none' }) : null);
+    setOpen(true);
+  };
   const save = async () => {
     if (!form.brand.trim() || !form.model.trim() || !userId) { wsAlert(t('brandModelRequired')); return; }
     setSaving(true);
     try {
-      await apiRequest(`/api/equipment/inventory`, {
-        method: 'POST',
-        body: {
-          userId, profession: profession || null,
-          name: form.name || `${form.brand} ${form.model}`, brand: form.brand, model: form.model,
-          category: form.category, condition: form.condition,
-          specifications: {
-            marketValueNok: val?.nok || null, valueSource: val?.source || null, valueNote: val?.note || null,
-            licenseType: form.licenseType,
-            ...(form.licenseType === 'subscription' ? { billingCycle: form.billingCycle, subscriptionCost: Number(form.subCost) || null, renewalDate: form.renewalDate || null } : {}),
-          },
+      const body = {
+        name: form.name || `${form.brand} ${form.model}`, brand: form.brand, model: form.model,
+        category: form.category, condition: form.condition,
+        specifications: {
+          marketValueNok: val?.nok || null, valueSource: val?.source || null, valueNote: val?.note || null,
+          licenseType: form.licenseType,
+          ...(form.licenseType === 'subscription' ? { billingCycle: form.billingCycle, subscriptionCost: Number(form.subCost) || null, renewalDate: form.renewalDate || null } : {}),
         },
-      });
-      setOpen(false); setForm({ name: '', brand: '', model: '', category: cats[0], condition: 'excellent', licenseType: 'perpetual', billingCycle: 'monthly', subCost: '', renewalDate: '' }); setVal(null);
+      };
+      if (editTarget?.id) await apiRequest(`/api/equipment/inventory/${encodeURIComponent(editTarget.id)}`, { method: 'PATCH', body });
+      else await apiRequest(`/api/equipment/inventory`, { method: 'POST', body: { userId, profession: profession || null, ...body } });
+      setOpen(false); setEditTarget(null);
+      setForm({ name: '', brand: '', model: '', category: cats[0], condition: 'excellent', licenseType: 'perpetual', billingCycle: 'monthly', subCost: '', renewalDate: '' }); setVal(null);
       load();
     } catch (e: any) { wsAlert(e?.message || t('couldNotSave')); }
     finally { setSaving(false); }
   };
+  const delItem = async () => {
+    if (!detItem?.id || !await wsConfirm(t('delConfirm'))) return;
+    try { await apiRequest(`/api/equipment/inventory/${encodeURIComponent(detItem.id)}`, { method: 'DELETE' }); setDetItem(null); load(); }
+    catch (e: any) { wsAlert(e?.message || t('couldNotSave')); }
+  };
+  const cloneItem = async () => {
+    if (!detItem) return;
+    try {
+      const s = specOf(detItem);
+      const r: any = await apiRequest(`/api/equipment/inventory`, {
+        method: 'POST',
+        body: { userId, profession: profession || null, name: `${detItem.name || `${detItem.brand} ${detItem.model}`} (klon)`, brand: detItem.brand, model: detItem.model, category: detItem.category, condition: detItem.condition, specifications: { ...s } },
+      });
+      load();
+      setDetItem(null);
+      if (r?.id) openAdd({ ...detItem, id: r.id, name: r.name });
+    } catch (e: any) { wsAlert(e?.message || t('couldNotSave')); }
+  };
+  const syncFirmware = async () => {
+    if (!userId || fwBusy) return;
+    setFwBusy(true);
+    try {
+      const r: any = await apiRequest(`/api/equipment/sync-firmware`, { method: 'POST', body: { profession: profession || null } });
+      const arr = Array.isArray(r?.updates) ? r.updates : [];
+      setFirmware(arr.filter((f: any) => !SOFTWARE_CATS.has(f.deviceType || f.category)));
+      setFwChecked(new Date());
+    } catch { /* hold gjeldende */ }
+    finally { setFwBusy(false); }
+  };
 
   const totalValue = items.reduce((s, it) => s + (gearValue(it) || 0), 0);
+  const monthly = items.reduce((s, it) => s + monthlyOf(it), 0);
+  const catCounts = items.reduce((m: any, it: any) => { const k = it.category || t('unknown'); m[k] = (m[k] || 0) + 1; return m; }, {});
+  const catSums = items.reduce((m: any, it: any) => { const k = it.category || t('unknown'); m[k] = (m[k] || 0) + (gearValue(it) || 0); return m; }, {});
+  const ql = eq.trim().toLowerCase();
+  let visible = items
+    .filter((it: any) => catFilter === 'alle' || (it.category || t('unknown')) === catFilter)
+    .filter((it: any) => !ql || [it.name, it.brand, it.model, it.category].filter(Boolean).some((x: any) => String(x).toLowerCase().includes(ql)));
+  if (sortSel === 'value') visible = [...visible].sort((a, b) => (gearValue(b) || 0) - (gearValue(a) || 0));
+  else if (sortSel === 'name') visible = [...visible].sort((a, b) => String(a.name || `${a.brand} ${a.model}`).localeCompare(String(b.name || `${b.brand} ${b.model}`)));
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}><CircularProgress sx={{ color: ws.accent }} /></Box>;
 
   return (
-    <Box sx={{ maxWidth: 960, mx: 'auto' }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="flex-end" sx={{ mb: 2 }}>
-        <Box>
-          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>{music ? t('titleMusic') : t('title')}</Typography>
-          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{t('subRegister')} {music ? t('subItemsMusic') : t('subItems')}{t('subRest')}{totalValue ? ` ${t('totalValue')} ${fmtKr(totalValue)}.` : ''}</Typography>
-        </Box>
-        <Button variant="contained" startIcon={<AddCircleOutline />} onClick={() => setOpen(true)} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{t('addEquipment')}</Button>
+    <Box sx={{ maxWidth: 1040, mx: 'auto' }}>
+      {/* Intern fane: Utstyr / Gearnyheter */}
+      <Stack direction="row" spacing={0.5} sx={{ mb: 1.5 }} alignItems="center">
+        {([['gear', tabTitle], ['news', 'Gearnyheter']] as const).map(([k, l]) => (
+          <Box key={k} onClick={() => setActiveU(k)} sx={{ px: 1.1, py: 0.45, borderRadius: 999, fontSize: 12, fontWeight: activeU === k ? 800 : 500, cursor: 'pointer', color: activeU === k ? ws.accentContrast : ws.textDim, bgcolor: activeU === k ? ws.accent : 'transparent', border: `1px solid ${activeU === k ? ws.accent : ws.border}` }}>{l}</Box>
+        ))}
       </Stack>
+      {activeU === 'news' ? (
+        (() => {
+          const p = String(profession || '').toLowerCase();
+          const gearProf = p.includes('video') ? 'videographer' : p.includes('music') || p.includes('produsent') ? 'music_producer' : p.includes('vendor') || p.includes('leverandør') ? 'vendor' : p.includes('enterprise') ? 'enterprise' : 'photographer';
+          return <GearNewsTab embedded profession={gearProf as any} />;
+        })()
+      ) : (<>
+      <WsPageTitle
+        icon={<Inventory2 sx={{ fontSize: 21, color: '#fff' }} />}
+        title={tabTitle}
+        sub={`${items.length} ${music ? t('subItemsMusic') : t('subItems')} · ${t('totalValue')} ${fmtKr(totalValue)}${monthly ? ` · ${fmtKr(monthly)}/${t('perMonth')} løpende` : ''}`}
+        actions={<Button variant="contained" startIcon={<AddCircleOutline />} onClick={() => openAdd()} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{t('addEquipment')}</Button>}
+      />
+
+      {/* Stat-rad */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', lg: 'repeat(4, 1fr)' }, gap: 1.5, mb: 2 }}>
+        <WsStat icon={<Inventory2 sx={{ fontSize: 20 }} />} label={music ? t('subItemsMusic') : t('subItems')} value={items.length} sub={t('unknown') !== 'Ukjent' ? String(Object.keys(catCounts).length) : String(Object.keys(catCounts).length)} tone={ws.accentSoft} />
+        <WsStat icon={<PriceCheck sx={{ fontSize: 20 }} />} label={t('totalValue')} value={<Typography sx={{ fontSize: 17, fontWeight: 800 }}>{fmtKr(totalValue)}</Typography>} sub={`${items.filter((i) => gearValue(i) > 0).length} med verdi`} tone={ws.greenSoft} />
+        <WsStat icon={<Payments sx={{ fontSize: 20 }} />} label={`${t('recurring')} ${t('perMonth')}`} value={<Typography sx={{ fontSize: 17, fontWeight: 800 }}>{monthly ? fmtKr(monthly) : '—'}</Typography>} sub={`≈ ${fmtKr(monthly * 12)}/${t('perYear')}`} tone={ws.amberSoft} />
+        <WsStat icon={<SystemUpdateAlt sx={{ fontSize: 20 }} />} label={t('firmwareAvail')} value={firmware.length} sub={firmware.length ? `${firmware.filter((f: any) => f.priority === 'high').length} ${t('important')}` : '—'} tone={ws.redSoft} />
+      </Box>
 
       {/* Programvare & abonnement — Gmail-kvittering-skann + manuell + kostnadsoversikt */}
-      <SoftwareKostnaderPanel userId={userId} onEquipmentChange={load} />
+      <SoftwareKostnaderPanel userId={userId} onEquipmentChange={load} category={category} />
 
       {/* Utstyrs-lisenser — abonnement knyttet til registrert utstyr */}
       {(() => {
         const subs = items.filter((it) => specOf(it).licenseType === 'subscription');
         if (subs.length === 0) return null;
-        const monthly = items.reduce((s, it) => s + monthlyOf(it), 0);
         const upcoming = subs.map((it) => ({ it, d: daysUntil(specOf(it).renewalDate) })).filter((x) => x.d != null && x.d <= 30).sort((a, b) => (a.d as number) - (b.d as number));
         return (
           <WsCard sx={{ mb: 2 }}>
@@ -230,19 +389,29 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
                 );
               })}
             </Stack>
-            {upcoming.length > 0 && <Typography sx={{ fontSize: 11.5, color: ws.amber, mt: 1, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('WarningAmber', { fontSize: 13 })}{upcoming.length} {upcoming.length === 1 ? t('renewal') : t('renewals')} {t('within30')}</Typography>}
+            {upcoming.length > 0
+              ? <Typography sx={{ fontSize: 11.5, color: ws.amber, mt: 1, display: 'inline-flex', alignItems: 'center', gap: 0.4 }}>{wsIcon('WarningAmber', { fontSize: 13 })}{upcoming.length} {upcoming.length === 1 ? t('renewal') : t('renewals')} {t('within30')}</Typography>
+              : <Typography sx={{ fontSize: 12, color: ws.green, fontWeight: 700, mt: 1 }}>{t('renewOk')}</Typography>}
           </WsCard>
         );
       })()}
 
       {/* Firmware / vedlikehold */}
-      {firmware.length > 0 && (
-        <WsCard sx={{ mb: 2, borderColor: ws.accentBorder }}>
-          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
-            <SystemUpdateAlt sx={{ fontSize: 18, color: ws.accent }} />
+      {items.length > 0 && (
+        <WsCard sx={{ mb: 2, borderColor: firmware.length ? ws.accentBorder : 'rgba(52,211,153,.4)' }}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: firmware.length ? 1.25 : 0 }}>
+            <SystemUpdateAlt sx={{ fontSize: 18, color: firmware.length ? ws.accent : ws.green }} />
             <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{t('firmwareAvail')}</Typography>
-            <WsTag label={`${firmware.length}`} tone="amber" />
+            {firmware.length > 0 && <WsTag label={`${firmware.length}`} tone="amber" />}
+            <Box sx={{ flex: 1 }} />
+            {userId && (
+              <Button size="small" disabled={fwBusy} onClick={syncFirmware} startIcon={wsIcon('Cached', { fontSize: 14 })} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700, fontSize: 11 }}>{fwBusy ? t('fetching') : t('fwSync')}</Button>
+            )}
+            {fwChecked && <Typography sx={{ fontSize: 10.5, color: ws.textFaint }}>{t('fwCheckedAt')} {fwChecked.toLocaleTimeString(dl, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</Typography>}
           </Stack>
+          {firmware.length === 0 ? (
+            <Typography sx={{ fontSize: 12.5, color: ws.green, fontWeight: 700 }}>{t('fwAllOk')}</Typography>
+          ) : (
           <Stack spacing={0.75}>
             {firmware.slice(0, 8).map((f: any, i: number) => {
               const dev = [f.deviceBrand, f.deviceModel].filter(Boolean).join(' ') || f.deviceName || f.name || f.model || t('device');
@@ -258,7 +427,27 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
               );
             })}
           </Stack>
+          )}
         </WsCard>
+      )}
+
+      {/* Søk + kategori-filter + sortering */}
+      {items.length > 0 && (
+        <Stack direction="row" spacing={1} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 0.75 }} alignItems="center">
+          <TextField size="small" placeholder={t('searchEq')} value={eq} onChange={(e) => setEq(e.target.value)} InputProps={{ startAdornment: <Search sx={{ fontSize: 16, color: ws.textFaint, mr: 0.5 }} /> }} sx={{ width: 210, '& .MuiOutlinedInput-root': { bgcolor: ws.panelInput, fontSize: 13 } }} />
+          <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+            <Box onClick={() => setCatFilter('alle')} sx={{ px: 1.15, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 12, fontWeight: catFilter === 'alle' ? 700 : 500, color: catFilter === 'alle' ? ws.accent : ws.textDim, bgcolor: catFilter === 'alle' ? ws.accentSoft : 'rgba(255,255,255,0.04)', border: `1px solid ${catFilter === 'alle' ? ws.accentBorder : 'transparent'}` }}>{t('filterAll')} {items.length}</Box>
+            {Object.entries(catCounts).map(([c, n]) => (
+              <Box key={c} onClick={() => setCatFilter((f) => (f === c ? 'alle' : c))} sx={{ px: 1.15, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 12, fontWeight: catFilter === c ? 700 : 500, color: catFilter === c ? ws.accent : ws.textDim, bgcolor: catFilter === c ? ws.accentSoft : 'rgba(255,255,255,0.04)', border: `1px solid ${catFilter === c ? ws.accentBorder : 'transparent'}` }}>{catLabel(c)} {n}{catSums[c] ? ` · ${fmtKr(catSums[c])}` : ''}</Box>
+            ))}
+          </Stack>
+          <Box sx={{ flex: 1 }} />
+          <Box onClick={() => setGridView((v) => (v === 'cards' ? 'table' : 'cards'))} title="Visning" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 11.5, fontWeight: 700, color: ws.textDim, border: `1px solid ${ws.border}`, '&:hover': { color: ws.accent } }}>{gridView === 'cards' ? <ViewList sx={{ fontSize: 14 }} /> : <ViewModule sx={{ fontSize: 14 }} />}{gridView === 'cards' ? t('viewTable') : t('viewCards')}</Box>
+          <Box onClick={() => setSortSel((s) => (s === 'new' ? 'value' : s === 'value' ? 'name' : 'new'))} title="Sortering" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.4, borderRadius: 2, cursor: 'pointer', fontSize: 11.5, fontWeight: 700, color: ws.textDim, border: `1px solid ${ws.border}`, '&:hover': { color: ws.accent } }}><Sort sx={{ fontSize: 14 }} />{sortSel === 'new' ? t('sortNew') : sortSel === 'value' ? t('sortValue') : t('sortName')}</Box>
+        </Stack>
+      )}
+      {catFilter !== 'alle' && (
+        <Typography sx={{ fontSize: 11.5, color: ws.textDim, mb: 1 }}>{catLabel(catFilter)}: {items.filter((i: any) => (i.category || t('unknown')) === catFilter).length} {t('units')} · {fmtKr(catSums[catFilter] || 0)} {t('totalValue').toLowerCase()}</Typography>
       )}
 
       {/* Inventar */}
@@ -267,13 +456,38 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
           <Stack alignItems="center" sx={{ py: 5 }} spacing={1}>
             <Inventory2 sx={{ fontSize: 36, color: ws.textFaint }} />
             <Typography sx={{ fontSize: 13.5, fontWeight: 700 }}>{t('emptyTitle')}</Typography>
-            <Typography sx={{ fontSize: 12.5, color: ws.textDim, textAlign: 'center', maxWidth: 440 }}>{t('add')} {music ? t('emptyMusicItems') : t('emptyVisualItems')} {t('emptyRest')}</Typography>
+            <Typography sx={{ fontSize: 12.5, color: ws.textDim, textAlign: 'center', maxWidth: 440 }}>{t('add')} {music ? t('emptyMusicItems') : (category === 'vendor' || category === 'service') ? t('emptyGenericItems') : t('emptyVisualItems')} {t('emptyRest')}</Typography>
           </Stack>
         </WsCard>
+      ) : gridView === 'table' ? (
+        visible.length === 0 ? <WsCard><Typography sx={{ fontSize: 12.5, color: ws.textDim, py: 3, textAlign: 'center' }}>{t('searchNoHits')}</Typography></WsCard> : (
+          <WsCard sx={{ mb: 1.5 }}>
+            <WsTable
+              columns={[t('device'), t('category'), t('marketValue'), t('garanti'), t('status')]}
+              onRowClick={(i) => setDetItem(visible[i])}
+              rows={visible.map((it: any) => {
+                const w = warrantyOf(it); const wL = leftLabel(w, locale);
+                return [
+                  <Box key="n" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {it.imageUrl
+                      ? <Box sx={{ width: 28, height: 28, borderRadius: 0.75, background: `center/cover no-repeat url(${it.imageUrl})`, flexShrink: 0 }} />
+                      : <Box sx={{ width: 28, height: 28, borderRadius: 0.75, bgcolor: ws.panelAlt, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Inventory2 sx={{ fontSize: 14, color: ws.textFaint }} /></Box>}
+                    <Typography sx={{ fontSize: 13, fontWeight: 600 }}>{it.name || `${it.brand} ${it.model}`}</Typography>
+                  </Box>,
+                  <Typography key="c" sx={{ fontSize: 12, color: ws.textDim }}>{catLabel(it.category)}</Typography>,
+                  <Typography key="v" sx={{ fontSize: 12, fontWeight: 700, color: gearValue(it) > 0 ? ws.green : ws.textFaint }}>{gearValue(it) > 0 ? fmtKr(gearValue(it)) : '—'}</Typography>,
+                  <Typography key="g" sx={{ fontSize: 12, color: ws.textDim }}>{w ? wL : '—'}</Typography>,
+                  <Box key="s" sx={{ display: 'inline-flex' }}><WsTag label={it.condition || it.status || '—'} tone="neutral" /></Box>,
+                ];
+              })}
+            />
+          </WsCard>
+        )
       ) : (
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
-          {items.map((it: any) => (
-            <WsCard key={it.id}>
+          {visible.length === 0 && <Typography sx={{ fontSize: 12.5, color: ws.textDim, py: 3, textAlign: 'center', gridColumn: '1 / -1' }}>{t('searchNoHits')}</Typography>}
+          {visible.map((it: any) => (
+            <WsCard key={it.id} onClick={() => setDetItem(it)} ariaLabel="Åpne detaljer" sx={{ cursor: 'pointer', transition: 'border-color .12s, box-shadow .12s', '&:hover': { borderColor: ws.accentBorder, boxShadow: '0 2px 12px rgba(0,0,0,.25)' } }}>
               <Stack direction="row" spacing={1.5} alignItems="center">
                 <Box sx={{ width: 52, height: 52, borderRadius: 1.5, bgcolor: ws.panelAlt, flexShrink: 0, backgroundImage: it.imageUrl ? `url(${it.imageUrl})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {!it.imageUrl && <Inventory2 sx={{ color: ws.textFaint, fontSize: 22 }} />}
@@ -299,7 +513,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth
         PaperProps={{ sx: { bgcolor: ws.panelSolid, backgroundImage: 'none', border: `1px solid ${ws.border}`, borderRadius: `${ws.radius}px` } }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2.5, pt: 2, pb: 0.5 }}>
-          <Typography sx={{ fontSize: 16, fontWeight: 800 }}>{t('addEquipment')}</Typography>
+          <Typography sx={{ fontSize: 16, fontWeight: 800 }}>{editTarget ? t('editBtn') : t('addEquipment')}</Typography>
           <IconButton onClick={() => setOpen(false)} sx={{ color: ws.textDim }}><Close /></IconButton>
         </Stack>
         <DialogContent>
@@ -310,7 +524,25 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
             {(() => { const sw = SOFTWARE_CATS.has(form.category); return (
             <Stack direction="row" spacing={1.5}>
               <TextField size="small" label={sw ? t('vendor') : t('brand')} placeholder={sw ? (music ? 'FabFilter' : 'Adobe') : (music ? 'Neumann' : 'Canon')} value={form.brand} onChange={(e) => { setForm({ ...form, brand: e.target.value }); setVal(null); }} fullWidth sx={ti} />
-              <TextField size="small" label={sw ? t('nameVersion') : t('model')} placeholder={sw ? (music ? 'Pro-Q 3' : 'Lightroom') : (music ? 'U 87 Ai' : 'R5')} value={form.model} onChange={(e) => { setForm({ ...form, model: e.target.value }); setVal(null); }} fullWidth sx={ti} />
+              {form.category === 'Kamera' && cameraCatalog.length > 0 ? (
+                <Autocomplete
+                  freeSolo   // manuell inntasting skal fortsatt gå
+                  size="small"
+                  fullWidth
+                  options={cameraCatalog.filter((c: any) => !form.brand || String(c.brand).toLowerCase() === String(form.brand).toLowerCase())}
+                  getOptionLabel={(o: any) => (typeof o === 'string' ? o : `${o.brand} ${o.model}`)}
+                  inputValue={form.model}
+                  onInputChange={(_e, v, reason) => { if (reason === 'input') { setForm({ ...form, model: v }); setVal(null); } }}
+                  onChange={(_e, v: any) => {
+                    if (!v || typeof v === 'string') return;
+                    setForm({ ...form, brand: v.brand, model: v.model });
+                    setVal(null);
+                  }}
+                  renderInput={(params) => <TextField {...params} label={t('model')} placeholder="R5" sx={ti} />}
+                />
+              ) : (
+                <TextField size="small" label={sw ? t('nameVersion') : t('model')} placeholder={sw ? (music ? 'Pro-Q 3' : 'Lightroom') : (music ? 'U 87 Ai' : 'R5')} value={form.model} onChange={(e) => { setForm({ ...form, model: e.target.value }); setVal(null); }} fullWidth sx={ti} />
+              )}
             </Stack>
             ); })()}
 
@@ -363,6 +595,89 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
           <Button onClick={save} disabled={saving || !form.brand.trim() || !form.model.trim()} variant="contained" sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{saving ? t('saving') : t('add')}</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Utstyrsdetaljer */}
+      <Dialog open={!!detItem} onClose={() => setDetItem(null)} maxWidth="sm" fullWidth
+        PaperProps={{ sx: { bgcolor: ws.panelSolid, backgroundImage: 'none', border: `1px solid ${ws.border}`, borderRadius: `${ws.radius}px` } }}>
+        {(() => {
+          const it = detItem; if (!it) return null;
+          const s = specOf(it);
+          const rk = reklamOf(it); const rkL = leftLabel(rk, locale);
+          const w = warrantyOf(it); const wL = leftLabel(w, locale);
+          const sub = s.licenseType === 'subscription';
+          const d = daysUntil(s.renewalDate);
+          return (
+            <>
+              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2.5, pt: 2, pb: 0.5 }}>
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  {it.imageUrl
+                    ? <Box sx={{ width: 44, height: 44, borderRadius: 1.5, background: `center/cover no-repeat url(${it.imageUrl})`, flexShrink: 0, border: `1px solid ${ws.borderSoft}` }} />
+                    : <Box sx={{ width: 44, height: 44, borderRadius: 1.5, bgcolor: ws.panelAlt, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Inventory2 sx={{ color: ws.textFaint, fontSize: 20 }} /></Box>}
+                  <Box>
+                    <Typography sx={{ fontSize: 16, fontWeight: 800 }}>{it.name || `${it.brand} ${it.model}`}</Typography>
+                    <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>{[it.brand, it.model, catLabel(it.category)].filter(Boolean).join(' · ')}</Typography>
+                  </Box>
+                </Stack>
+                <IconButton onClick={() => setDetItem(null)} sx={{ color: ws.textDim }}><Close /></IconButton>
+              </Stack>
+              <DialogContent>
+                <Stack spacing={0.75}>
+                  {/* Verdier */}
+                  <Box sx={{ p: 1.25, borderRadius: `${ws.radiusSm}px`, bgcolor: ws.accentSoft, border: `1px solid ${ws.accentBorder}` }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Typography sx={{ fontSize: 12, color: ws.textDim, fontWeight: 700 }}>{t('marketValue')}</Typography>
+                      <Typography sx={{ fontSize: 17, fontWeight: 800, color: ws.accent }}>{fmtKr(gearValue(it))}</Typography>
+                    </Stack>
+                    {(s.valueNote || s.valueSource) && <Typography sx={{ fontSize: 11, color: ws.textDim, mt: 0.5 }}>{s.valueSource === 'ai' ? `${t('aiEstimate')}` : s.valueSource === 'katalog' ? t('fromCatalog') : ''}{s.valueNote ? ` · ${s.valueNote}` : ''}</Typography>}
+                    {s.newNok && s.usedNok ? <Typography sx={{ fontSize: 11.5, color: ws.textDim, mt: 0.5 }}>{t('newVersion')} {fmtKr(s.newNok)} / {t('used')} {fmtKr(s.usedNok)}</Typography> : null}
+                  </Box>
+                  {/* Status / garanti-rad */}
+                  <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                    {it.condition && <WsTag label={it.condition} tone="neutral" />}
+                    {rk && <WsTag label={`${t('reklamasjon')}: ${rkL}`} tone={rkL === 'utløpt' || rkL === 'expired' ? 'neutral' : 'amber'} />}
+                    {w && <WsTag label={`${t('garanti')}: ${wL}`} tone={wL === 'utløpt' || wL === 'expired' ? 'neutral' : 'green'} />}
+                    {receiptOf(it) && <WsTag label={t('receipt')} tone="neutral" />}
+                  </Stack>
+                  {/* Lisens */}
+                  {sub && (
+                    <Box>
+                      <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.textFaint, mb: 0.5 }}>{t('license')}</Typography>
+                      <Stack direction="row" justifyContent="space-between">
+                        <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{t('subscription')} · {fmtKr(Number(s.subscriptionCost))}/{s.billingCycle === 'yearly' ? t('perYear') : t('perMonth')}</Typography>
+                        {s.renewalDate && <WsTag label={d != null && d <= 7 ? `${t('renewsIn')} ${d} d` : `${t('renews')} ${new Date(s.renewalDate).toLocaleDateString(dl, { day: '2-digit', month: 'short' })}`} tone={d != null && d <= 7 ? 'red' : 'neutral'} />}
+                      </Stack>
+                    </Box>
+                  )}
+                  {/* Katalog / koblinger */}
+                  {(it.supplierUrl || it.catalogDescription || it.purchaseVendor) && (
+                    <Box>
+                      <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.textFaint, mb: 0.5 }}>{t('catalog')}</Typography>
+                      {it.purchaseVendor && <Typography sx={{ fontSize: 12, color: ws.textDim }}>{t('supplier')}: {it.purchaseVendor}</Typography>}
+                      {it.catalogDescription && <Typography sx={{ fontSize: 12, color: ws.textDim }}>{it.catalogDescription}</Typography>}
+                      {it.supplierUrl && <Button size="small" component="a" href={it.supplierUrl} target="_blank" rel="noopener" sx={{ mt: 0.5, color: ws.accent, textTransform: 'none', fontWeight: 700, fontSize: 12 }}>Åpne hos leverandør →</Button>}
+                    </Box>
+                  )}
+                  {Array.isArray(it.recommendedMemoryCards) && it.recommendedMemoryCards.length > 0 && (
+                    <Box>
+                      <Typography sx={{ fontSize: 12, fontWeight: 700, color: ws.textFaint, mb: 0.5 }}>{t('memCards')}</Typography>
+                      <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                        {it.recommendedMemoryCards.map((m: any, i: number) => <WsTag key={i} label={m.summary || m.name || m.label || m} tone="neutral" />)}
+                      </Stack>
+                    </Box>
+                  )}
+                </Stack>
+              </DialogContent>
+              <DialogActions sx={{ px: 2.5, pb: 2, flexWrap: 'wrap', gap: 0.75 }}>
+                <Button size="small" startIcon={wsIcon('Edit', { fontSize: 14 })} onClick={() => { setDetItem(null); openAdd(it); }} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700 }}>{t('editBtn')}</Button>
+                <Button size="small" onClick={cloneItem} sx={{ color: ws.textDim, textTransform: 'none', fontWeight: 700 }}>{t('cloneBtn')}</Button>
+                <Button size="small" onClick={delItem} sx={{ color: '#f87171', textTransform: 'none', fontWeight: 700, ml: 'auto' }}>{t('deleteBtn')}</Button>
+                <Button size="small" onClick={() => setDetItem(null)} sx={{ color: ws.textDim, textTransform: 'none' }}>{t('closeDet')}</Button>
+              </DialogActions>
+            </>
+          );
+        })()}
+      </Dialog>
+      </>)}
     </Box>
   );
 };

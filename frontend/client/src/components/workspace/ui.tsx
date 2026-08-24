@@ -137,11 +137,24 @@ export const WsModal: React.FC<{ open: boolean; onClose: () => void; title: stri
   </Dialog>
 );
 
-export const WsCard: React.FC<{ children: React.ReactNode; sx?: any; pad?: number }> = ({ children, sx, pad = 2 }) => (
-  <Box sx={{
-    bgcolor: ws.panel, border: `1px solid ${ws.border}`, borderRadius: `${ws.radius}px`,
-    p: pad, ...sx,
-  }}>
+export const WsCard: React.FC<{ children: React.ReactNode; sx?: any; pad?: number; onClick?: () => void; ariaLabel?: string }> = ({ children, sx, pad = 2, onClick, ariaLabel }) => (
+  <Box
+    onClick={onClick}
+    // Et klikkbart kort må være et fokuserbart kontrollelement, ellers er det
+    // usynlig for tastatur og skjermlesere.
+    {...(onClick ? {
+      role: 'button' as const,
+      tabIndex: 0,
+      'aria-label': ariaLabel,
+      onKeyDown: (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); }
+      },
+    } : {})}
+    sx={{
+      bgcolor: ws.panel, border: `1px solid ${ws.border}`, borderRadius: `${ws.radius}px`,
+      p: pad, ...sx,
+    }}
+  >
     {children}
   </Box>
 );
@@ -281,7 +294,29 @@ export const WsImg: React.FC<{ ratio?: string; label?: string; sx?: any }> = ({ 
  * media / reference-archive). Uten onUpload brukes lokal forhåndsvisning slik at
  * UX-en fungerer allerede nå.
  */
-export interface WsImageItem { id: string; url: string; label?: string; rating?: number; flag?: boolean }
+export const WsPageTitle: React.FC<{ icon?: React.ReactNode; title: string; sub?: string; actions?: React.ReactNode; children?: React.ReactNode }> = ({ icon, title, sub, actions, children }) => (
+  <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+    <Stack direction="row" alignItems="center" spacing={1.5} sx={{ flex: 1, minWidth: 0 }}>
+      {icon && (
+        <Box sx={{ width: 40, height: 40, borderRadius: 2.5, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #6366f1, #22d3ee)', boxShadow: '0 4px 16px rgba(99,102,241,.4)' }}>{icon}</Box>
+      )}
+      <Box sx={{ minWidth: 0 }}>
+        <Stack direction="row" alignItems="center" spacing={1.25}>
+          <Typography sx={{ fontSize: 22, fontWeight: 900, letterSpacing: -0.4, lineHeight: 1.2, background: 'linear-gradient(90deg, #f5f5f8, #a5b4fc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</Typography>
+          {children}
+        </Stack>
+        {sub && <Typography sx={{ fontSize: 11.5, color: ws.textDim }}>{sub}</Typography>}
+      </Box>
+    </Stack>
+    {actions && <Stack direction="row" spacing={1} alignItems="center">{actions}</Stack>}
+  </Stack>
+);
+
+// Kanonisk bilde-type for workspace. useProjectImages re-eksporterer denne, så
+// bilder fra API-et og bilder i UI-et er samme type — to parallelle
+// definisjoner ga «WsImageItem is not assignable to WsImageItem».
+// category er nullbar fordi API-et sender null for ukategoriserte bilder.
+export interface WsImageItem { id: string; url: string; label?: string; rating?: number; flag?: boolean; category?: string | null }
 export const WsImageGrid: React.FC<{
   images?: WsImageItem[];
   columns?: number;

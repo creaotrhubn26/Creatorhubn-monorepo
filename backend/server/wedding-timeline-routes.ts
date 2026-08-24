@@ -1,6 +1,7 @@
 import express from "express";
 import type { Pool } from "pg";
 import { readString } from "./_shared";
+import { canAccessProject } from "./project-team-routes";
 
 const isUuid = (s: string | null | undefined): s is string =>
   !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
@@ -33,19 +34,12 @@ export function setupWeddingTimelineRoutes(
     const uid = compatResolveUserId(req);
     return isUuid(uid) ? uid : null;
   };
-  // Eier innloggeren prosjektet? Samme mønster som photographer-projects-
-  // routes / projects-outliers-routes: sjekk både public.projects og
-  // legacy.projects på (id, user_id).
+  // Eier ELLER aktivt team-medlem. Den lokale kopien her sjekket bare
+  // user_id, så et team-medlem som ser prosjektet overalt ellers i
+  // workspace fikk 404 på tidslinjen. Én kilde til sannhet i stedet.
   async function callerOwnsProject(projectId: string, userId: string): Promise<boolean> {
     if (!isUuid(projectId)) return false;
-    const r = await pool.query(
-      `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2
-        UNION ALL
-       SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
-       LIMIT 1`,
-      [projectId, userId],
-    );
-    return (r.rowCount ?? 0) > 0;
+    return canAccessProject(pool, userId, projectId);
   }
   // Kan innloggeren se/endre denne timeline-raden? Eier via user_id ELLER
   // eier prosjektet tidslinjen henger på.
