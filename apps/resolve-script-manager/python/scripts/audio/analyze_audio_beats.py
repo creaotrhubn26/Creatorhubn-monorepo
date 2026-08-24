@@ -94,9 +94,22 @@ def _analyze_with_librosa(wav_path: str) -> dict[str, Any] | None:
         # Confidence = peak/std ratio på tempogram
         peak = float(np.max(tempogram))
         std = float(np.std(tempogram)) + 1e-6
-        confidence = min(1.0, peak / (std * 4))
+        tempo_confidence = min(1.0, peak / (std * 4))
 
-        bpm = float(tempo)
+        # Kryss-sjekk mot hvor JEVN den faktiske beat-spacing-en er — tempogrammet
+        # kan peake skarpt selv når enkelt-beats er urytmisk plassert (sparsomt/
+        # perkussivt materiale), så tempogram alene overvurderer sikkerheten der.
+        if len(beat_times) >= 3:
+            intervals = np.diff(beat_times)
+            interval_cv = float(np.std(intervals) / (np.mean(intervals) + 1e-6))
+            interval_confidence = max(0.0, 1.0 - interval_cv)
+        else:
+            interval_confidence = 0.3  # for lite data til å si noe — moderat lav
+        confidence = min(tempo_confidence, interval_confidence)
+
+        # librosa >= 0.10 returnerer tempo som 1-elements array, ikke skalar —
+        # float() på et array er deprecated (blir hard feil i fremtidig NumPy).
+        bpm = float(np.asarray(tempo).reshape(-1)[0])
         beats_per_bar = 4
         # Downbeats: hver 4. beat (4/4 antakelse — kan utvides)
         downbeat_times = beat_times[::beats_per_bar]

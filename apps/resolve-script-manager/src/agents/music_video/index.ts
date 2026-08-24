@@ -5,14 +5,17 @@
  *   - Chapter-taxonomi følger sang-struktur (intro/verse/chorus/bridge/outro)
  *     i stedet for vielse-seremoni-flow
  *   - Signal-vekter prioriterer rhythm-sync, performance-energi, atmosfære
+ *     (⚠️ aspirational: signalWeights leses IKKE av noe auto-pilot ennå —
+ *     useAutoPilot.ts sin pipeline er hardkodet for Wedding og har ingen
+ *     per-agent-config-hook. Data-modellen er klar; scoring-koblingen mangler.)
  *   - Look-packs er stylized for genre (cinematic film, neon night, gritty
  *     doc, stadium broadcast, lo-fi VHS, minimal modern, sun-bleached, club)
  *   - Claude-persona er Music Video Director som kjenner MTV-cuts,
  *     beat-sync, hook-emphasis, lip-sync-awareness, genre-aestetikk
  *   - Default-varighet 3:30 (typisk single-lengde) i stedet for 4-5 min
  *     wedding-highlight
- *   - Aspect default 9:16 for hyper-pop/TikTok-først, men 16:9 for
- *     concert-broadcast
+ *   - Aspect default 16:9 (concert-broadcast-orientert). defaultAspect leses
+ *     ikke av UI-en ennå, så dette er kun dokumentasjon av intensjonen.
  */
 
 import type { AgentConfig } from "../types";

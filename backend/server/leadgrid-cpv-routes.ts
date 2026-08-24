@@ -41,6 +41,10 @@ const CPV_KART: Array<{ ord: string[]; cpv: string }> = [
   { ord: ["grave", "maskinentreprenør", "grunnarbeid"], cpv: "45112000" },
   { ord: ["regnskap", "revisjon", "økonomi"], cpv: "79210000" },
   { ord: ["reklame", "marked", "kommunikasjon", "design"], cpv: "79340000" },
+  // 2026-08-19: brede engros/detalj-selgere (BROAD_NACE_DIVISIONS i
+  // leadgrid-project-lead-discovery-routes.ts) har ingen søkbar Places-
+  // kundetype — anbud/CPV er den reelle discovery-veien for dem.
+  { ord: ["kontorrekvisita", "kontorprodukter", "kontormateriell", "kontorutstyr"], cpv: "30190000" },
 ];
 
 /** Egnede CPV-koder for en bedrift ut fra kategori/navn-tekst. */

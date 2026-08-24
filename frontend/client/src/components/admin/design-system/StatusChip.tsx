@@ -25,6 +25,15 @@ const TONE_COLOR: Record<StatusTone, string> = {
   neutral: adminTokens.color.textMuted,
 };
 
+const TONE_BG: Record<StatusTone, string> = {
+  success: "rgba(76, 175, 80, 0.12)",
+  warning: "rgba(255, 152, 0, 0.12)",
+  error: "rgba(244, 67, 54, 0.12)",
+  info: "rgba(41, 182, 246, 0.12)",
+  brand: "rgba(255, 140, 0, 0.12)",
+  neutral: "rgba(255, 255, 255, 0.06)",
+};
+
 const STATUS_MAP: Record<string, { tone: StatusTone; label: string }> = {
   active: { tone: "success", label: "Aktiv" },
   approved: { tone: "success", label: "Godkjent" },
@@ -60,18 +69,22 @@ export const StatusChip: React.FC<StatusChipProps> = ({
   ...rest
 }) => {
   let color: string = adminTokens.color.textMuted;
+  let bg: string = TONE_BG.neutral;
   let text: React.ReactNode = label;
 
   if (role) {
     const r = ROLE_MAP[String(role).toLowerCase()] ?? { color: adminTokens.color.textMuted, label: role };
     color = r.color;
+    bg = "rgba(255, 255, 255, 0.06)";
     text = text ?? r.label;
   } else if (status && STATUS_MAP[String(status).toLowerCase()]) {
     const s = STATUS_MAP[String(status).toLowerCase()];
     color = TONE_COLOR[s.tone];
+    bg = TONE_BG[s.tone];
     text = text ?? s.label;
   } else if (tone) {
     color = TONE_COLOR[tone];
+    bg = TONE_BG[tone];
   }
   text = text ?? status ?? "—";
 
@@ -83,7 +96,7 @@ export const StatusChip: React.FC<StatusChipProps> = ({
       aria-label={typeof text === "string" ? text : undefined}
       sx={{
         color,
-        backgroundColor: "transparent",
+        backgroundColor: bg,
         border: `1px solid ${color}`,
         fontWeight: 600,
         ...sx,

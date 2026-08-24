@@ -22,23 +22,6 @@ import type { Pool } from "pg";
 import { CcapiError, getCcapiClient, clearCcapiClient } from "./ccapi-client.js";
 import { discoverCcapiCameras } from "./ccapi-discovery.js";
 
-const HEADER_USER = "x-role-room-user-id";
-
-function readUserId(req: Request): string | null {
-  const header = req.header(HEADER_USER);
-  if (typeof header === "string" && header.trim().length > 0) return header.trim();
-  return null;
-}
-
-function requireUser(req: Request, res: Response): string | null {
-  const userId = readUserId(req);
-  if (!userId) {
-    res.status(401).json({ error: "user-id-header mangler" });
-    return null;
-  }
-  return userId;
-}
-
 function ipAddressValid(ip: string): boolean {
   // Liberal IPv4-validering — vi stoler ikke på den, men hindrer
   // åpenbart-feil input fra å bli sendt videre
@@ -53,6 +36,16 @@ export interface CcapiRoutesDeps {
 
 export function setupCcapiRoutes(deps: CcapiRoutesDeps): void {
   const { app, pool, requireUserSession } = deps;
+
+  // userId hentes ALLTID fra den autentiserte sesjonen — aldri fra en
+  // klient-satt header. Tidligere leste vi x-role-room-user-id, som er
+  // fritt spoofbar → hvem som helst kunne styre andres registrerte
+  // kameraer (IDOR). requireUserSession svarer 401 hvis ingen sesjon.
+  function requireUser(req: Request, res: Response): string | null {
+    const session = requireUserSession(req, res);
+    if (!session) return null;
+    return session.userId;
+  }
 
   // ── Discover: returner kameraer registrert i DB ──────────────────
   //

@@ -89,6 +89,7 @@ struct LeadgridTabHeader<Extra: View>: View {
     @State private var activeCalendarSheet: CalendarSheetKind?
     @State private var bookMeetingDay: Int = Calendar.current.component(.day, from: Date())
     @State private var followUpDate: Date = Date()
+    @State private var addLeadToast: String?
 
     enum CalendarSheetKind: String, Identifiable {
         case bookMeeting, addLead, newFollowUp
@@ -223,8 +224,31 @@ struct LeadgridTabHeader<Extra: View>: View {
             case .bookMeeting:
                 BookMeetingSheet(dayOfMonth: bookMeetingDay)
             case .addLead:
-                AddLeadSheet { _ in
-                    // Sheet håndterer egen dismiss + save.
+                AddLeadSheet { newLead in
+                    // 2026-08-16: kallet manglet helt — se KartView.swift for samme fiks.
+                    guard let api = state.api, !DemoModeManager.isActiveNonisolated else {
+                        addLeadToast = DemoModeManager.isActiveNonisolated ? "Demo-modus — ikke lagret" : "Ikke innlogget"
+                        return
+                    }
+                    Task {
+                        do {
+                            let newId = try await api.createLeadAtPin(
+                                name: newLead.companyName, company: newLead.companyName,
+                                phone: newLead.phone, email: newLead.email,
+                                industryId: nil, leadTemperature: nil,
+                                latitude: newLead.coord.latitude, longitude: newLead.coord.longitude,
+                                address: newLead.address
+                            )
+                            addLeadToast = "«\(newLead.companyName)» lagt til"
+                            // Bytt til Kart-fanen og vis hvor den havnet (2026-08-19).
+                            state.pendingMapFocus = AppState.PendingMapFocus(
+                                id: newId, name: newLead.companyName, address: newLead.address,
+                                lat: newLead.coord.latitude, lon: newLead.coord.longitude
+                            )
+                        } catch {
+                            addLeadToast = "Kunne ikke lagre lead — prøv igjen"
+                        }
+                    }
                 }
             case .newFollowUp:
                 NewFollowUpSheet(
@@ -243,6 +267,21 @@ struct LeadgridTabHeader<Extra: View>: View {
                 )
             }
         }
+        .overlay(alignment: .top) {
+            if let toast = addLeadToast {
+                Text(toast)
+                    .font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.top, 64)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .task {
+                        try? await Task.sleep(nanoseconds: 2_500_000_000)
+                        addLeadToast = nil
+                    }
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 1.0), value: addLeadToast)
     }
 
     /// Ekte rolle fra org-medlemskapet (var hardkodet «Salgssjef» for alle

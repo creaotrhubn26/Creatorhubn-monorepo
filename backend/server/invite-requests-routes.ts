@@ -6,6 +6,10 @@ import {
   sendTransactionalEmail,
   isTransactionalEmailConfigured,
 } from "./transactional-email-service";
+import {
+  renderPresetToHtml,
+  type EmailPreset,
+} from "../../frontend/shared/email-render.js";
 
 const _inviteRateBuckets = new Map<string, number[]>();
 function _inviteRateLimited(ip: string): boolean {
@@ -203,6 +207,7 @@ export function setupInviteRequestsRoutes(
       processedBy: r.processed_by || null,
       selectedPlan: r.selected_plan || null,
       planName: r.plan_name || null,
+      role: r.role || "user",
       planPrice: r.plan_price ? parseFloat(r.plan_price) : null,
       paymentCompleted: r.payment_completed || false,
       paymentTransactionId: r.payment_transaction_id || null,
@@ -291,7 +296,7 @@ export function setupInviteRequestsRoutes(
         ) ||
         String(businessAddress || "").trim() ||
         null;
-      const proffAnalysis = buildInviteRequestProffAnalysis({
+      const proffAnalysis = await buildInviteRequestProffAnalysis({
         organizationNumber: normalizedOrganizationNumber,
         companyName: persistedCompanyName,
         brregLookup,
@@ -475,7 +480,7 @@ export function setupInviteRequestsRoutes(
         const brregLookup = await lookupInviteRequestBrregCompany(
           String(inviteRequest.organization_number),
         );
-        screening = buildInviteRequestProffAnalysis({
+        screening = await buildInviteRequestProffAnalysis({
           organizationNumber: String(inviteRequest.organization_number),
           companyName: toAdminString(inviteRequest.company_name) || "",
           brregLookup,
@@ -520,7 +525,7 @@ export function setupInviteRequestsRoutes(
             .json({ success: false, error: "Fant ikke foretaket i BRREG" });
         }
 
-        const analysis = buildInviteRequestProffAnalysis({
+        const analysis = await buildInviteRequestProffAnalysis({
           organizationNumber,
           companyName:
             brregLookup.company?.name || `Foretak ${organizationNumber}`,
@@ -561,7 +566,7 @@ export function setupInviteRequestsRoutes(
             .json({ success: false, error: "Fant ikke foretaket i BRREG" });
         }
 
-        const analysis = buildInviteRequestProffAnalysis({
+        const analysis = await buildInviteRequestProffAnalysis({
           organizationNumber,
           companyName:
             brregLookup.company?.name || `Foretak ${organizationNumber}`,
@@ -632,7 +637,7 @@ export function setupInviteRequestsRoutes(
         const brregLookup = await lookupInviteRequestBrregCompany(
           String(request.organization_number),
         );
-        const analysis = buildInviteRequestProffAnalysis({
+        const analysis = await buildInviteRequestProffAnalysis({
           organizationNumber: String(request.organization_number),
           companyName: toAdminString(request.company_name) || "",
           brregLookup,
@@ -888,6 +893,8 @@ export function setupInviteRequestsRoutes(
           });
         }
 
+        const { templateId, personalMessage } = req.body || {};
+
         // Tracket lenke + åpnings-pixel: token = invite_requests.id (uuid) —
         // track-endepunktene i prototype-tester-invites-routes faller tilbake
         // til den når tokenet ikke finnes i prototype_tester_invites.
@@ -896,44 +903,64 @@ export function setupInviteRequestsRoutes(
         const clickUrl = `${baseUrl}/api/prototype-tester-invites/track/click/${t}`;
         const openPixelUrl = `${baseUrl}/api/prototype-tester-invites/track/open/${t}`;
         const loginUrl = `${baseUrl}/login`;
+        const dashboardUrl = `${baseUrl}/admin`;
         const name =
           [row.first_name, row.last_name].filter(Boolean).join(" ") ||
           String(row.email);
-        const esc = (s: unknown) =>
-          String(s ?? "")
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;");
+
+        let html: string;
+        let subject: string;
+        let textBody: string;
+
+        if (templateId) {
+          const presetMap: Record<string, EmailPreset> = {};
+          try {
+            const mod = await import("../../frontend/shared/email-presets.js");
+            for (const p of mod.ADMIN_EMAIL_DESIGNER_PRESETS) {
+              presetMap[p.id] = p;
+            }
+          } catch { /* fall through */ }
+
+          const preset = presetMap[templateId];
+          if (preset) {
+            const variables: Record<string, string | number | undefined> = {
+              firstName: row.first_name || "",
+              companyName: row.company_name || "",
+              profession: row.profession || "",
+              loginUrl,
+              dashboardUrl,
+              clickUrl,
+              personalMessage: personalMessage || "",
+              planName: row.plan_name || "Basic",
+              platformFee: "20 %",
+              portalUrl: dashboardUrl,
+              guideUrl: `${baseUrl}/guides`,
+              prototypeUntil: "",
+            };
+            const rendered = renderPresetToHtml(preset.template, variables);
+            html = rendered.html;
+            subject = rendered.subject;
+            textBody = rendered.text;
+          } else {
+            html = buildHardcodedInviteHtml(name, clickUrl, loginUrl);
+            subject = "Du er godkjent i Creatorhubn — kom i gang";
+            textBody = `Hei ${name},\n\nSøknaden din om tilgang til Creatorhubn er godkjent. Logg inn her: ${loginUrl}\n\nHilsen Creatorhubn`;
+          }
+        } else {
+          html = buildHardcodedInviteHtml(name, clickUrl, loginUrl);
+          subject = "Du er godkjent i Creatorhubn — kom i gang";
+          textBody = `Hei ${name},\n\nSøknaden din om tilgang til Creatorhubn er godkjent. Logg inn her: ${loginUrl}\n\nHilsen Creatorhubn`;
+        }
 
         const emailResult = await sendTransactionalEmail({
           pool,
           to: String(row.email),
-          subject: "Du er godkjent i Creatorhubn — kom i gang",
+          subject,
           fromLabel: "Creatorhubn",
           kind: "invite_request_invite",
           sentByUserId: session.userId,
-          text: `Hei ${name},\n\nSøknaden din om tilgang til Creatorhubn er godkjent. Logg inn her: ${loginUrl}\n\nHilsen Creatorhubn`,
-          html: `
-    <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a1a1a;">
-      <h2 style="margin:0 0 16px;">Hei ${esc(name)},</h2>
-      <p style="font-size:15px;line-height:1.6;">
-        Søknaden din om tilgang til Creatorhubn er <b>godkjent</b>! Kontoen din er klar.
-      </p>
-      <div style="text-align:center;margin:32px 0;">
-        <a href="${clickUrl}" style="display:inline-block;background:#ffba6c;color:#150d05;padding:14px 28px;border-radius:999px;text-decoration:none;font-weight:700;">Logg inn og kom i gang</a>
-      </div>
-      <p style="font-size:13px;color:#666;line-height:1.5;">
-        Hvis knappen ikke fungerer:<br>
-        <a href="${clickUrl}" style="color:#1976d2;word-break:break-all;">${esc(loginUrl)}</a>
-      </p>
-      <hr style="border:none;border-top:1px solid #eee;margin:32px 0 16px;">
-      <p style="font-size:12px;color:#999;">
-        Du får denne fordi du søkte om tilgang via creatorhubn.com.
-        Hvis dette er en feil, kan du ignorere e-posten.
-      </p>
-      <img src="${openPixelUrl}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0;">
-    </div>`,
+          text: textBody,
+          html,
         });
 
         if (!emailResult.sent) {
@@ -961,4 +988,224 @@ export function setupInviteRequestsRoutes(
       }
     },
   );
+
+  // ──────────────────────────────────────────────────────────────────────
+  // POST /api/invites/admin/create-and-send
+  // Admin creates an invite and sends it in one step (no pending state).
+  // ──────────────────────────────────────────────────────────────────────
+  app.post(
+    "/api/invites/admin/create-and-send",
+    async (req, res) => {
+      try {
+        const session = requireInviteRequestApproverSession(req, res);
+        if (!session) return;
+
+        if (!isTransactionalEmailConfigured()) {
+          return res.status(503).json({
+            error: "E-post er ikke konfigurert (Resend/Gmail).",
+          });
+        }
+
+        const {
+          email,
+          firstName,
+          lastName,
+          profession,
+          companyName,
+          organizationNumber,
+          businessAddress,
+          phoneNumber,
+          website,
+          selectedPlan,
+          planName,
+          roleId,
+          templateId,
+          personalMessage,
+          adminNotes,
+        } = req.body;
+
+        const normalizedEmail = String(email || "").trim().toLowerCase();
+        const normalizedOrgNr = String(organizationNumber || "").replace(/\D/g, "");
+        const trimmedName = String(companyName || "").trim();
+
+        if (!normalizedEmail || !firstName || !lastName || !profession || !trimmedName || !normalizedOrgNr) {
+          return res.status(400).json({ error: "Alle obligatoriske felt må fylles ut." });
+        }
+
+        if (!isValidNorwegianOrgNumber(normalizedOrgNr)) {
+          return res.status(400).json({ error: "Organisasjonsnummer må være et gyldig norsk organisasjonsnummer." });
+        }
+
+        const brregLookup = await lookupInviteRequestBrregCompany(normalizedOrgNr);
+        if (brregLookup.lookupStatus === "not_found") {
+          return res.status(400).json({ error: "Organisasjonsnummeret ble ikke funnet i Brønnøysundregistrene." });
+        }
+
+        const persistedCompanyName = brregLookup.company?.name?.trim() || trimmedName;
+        const persistedAddress = formatInviteRequestBrregAddress(brregLookup.company?.businessAddress) || String(businessAddress || "").trim() || null;
+
+        const inviteColumns = await getTableColumns("invite_requests");
+        const insertCols: string[] = [];
+        const insertVals: unknown[] = [];
+        const placeholders: string[] = [];
+
+        const push = (col: string, val: unknown) => {
+          if (!inviteColumns.has(col)) return;
+          insertCols.push(col);
+          insertVals.push(val);
+          placeholders.push(`$${insertVals.length}`);
+        };
+
+        push("email", normalizedEmail);
+        push("first_name", firstName);
+        push("last_name", lastName);
+        push("profession", profession);
+        push("company_name", persistedCompanyName);
+        push("organization_number", normalizedOrgNr);
+        push("business_address", persistedAddress);
+        push("phone_number", phoneNumber || null);
+        push("website", website || null);
+        push("status", "approved");
+        push("selected_plan", selectedPlan || null);
+        push("plan_name", planName || null);
+        push("role", roleId || "user");
+        push("user_journey_status", "invite_sent");
+        push("source", "admin_direct");
+        push("admin_notes", adminNotes || null);
+        push("processed_by", session.userId);
+        push("processed_at", new Date());
+        if (inviteColumns.has("created_at")) push("created_at", new Date());
+        if (inviteColumns.has("updated_at")) push("updated_at", new Date());
+
+        const result = await pool.query(
+          `INSERT INTO invite_requests (${insertCols.join(", ")})
+           VALUES (${placeholders.join(", ")})
+           RETURNING *`,
+          insertVals,
+        );
+
+        const newRow = result.rows[0];
+
+        const baseUrl = safeAppBaseUrl(req);
+        const t = encodeURIComponent(String(newRow.id));
+        const clickUrl = `${baseUrl}/api/prototype-tester-invites/track/click/${t}`;
+        const openPixelUrl = `${baseUrl}/api/prototype-tester-invites/track/open/${t}`;
+        const loginUrl = `${baseUrl}/login`;
+        const dashboardUrl = `${baseUrl}/admin`;
+        const fullName = [firstName, lastName].filter(Boolean).join(" ") || normalizedEmail;
+
+        const variables: Record<string, string | number | undefined> = {
+          firstName,
+          companyName: persistedCompanyName,
+          profession,
+          loginUrl,
+          dashboardUrl,
+          clickUrl,
+          personalMessage: personalMessage || "",
+          planName: planName || "Basic",
+          platformFee: "20 %",
+          portalUrl: dashboardUrl,
+          guideUrl: `${baseUrl}/guides`,
+          prototypeUntil: "",
+        };
+
+        let html: string;
+        let subject: string;
+        let textBody: string;
+
+        if (templateId) {
+          const presetMap: Record<string, EmailPreset> = {};
+          try {
+            const mod = await import("../../frontend/shared/email-presets.js");
+            for (const p of mod.ADMIN_EMAIL_DESIGNER_PRESETS) {
+              presetMap[p.id] = p;
+            }
+          } catch {
+            // presets not available — fall through to hardcoded
+          }
+
+          const preset = presetMap[templateId];
+          if (preset) {
+            const rendered = renderPresetToHtml(preset.template, variables);
+            html = rendered.html;
+            subject = rendered.subject;
+            textBody = rendered.text;
+          } else {
+            html = buildHardcodedInviteHtml(fullName, clickUrl, loginUrl);
+            subject = "Du er godkjent i Creatorhubn — kom i gang";
+            textBody = `Hei ${fullName},\n\nSøknaden din om tilgang til Creatorhubn er godkjent. Logg inn her: ${loginUrl}\n\nHilsen Creatorhubn`;
+          }
+        } else {
+          html = buildHardcodedInviteHtml(fullName, clickUrl, loginUrl);
+          subject = "Du er godkjent i Creatorhubn — kom i gang";
+          textBody = `Hei ${fullName},\n\nSøknaden din om tilgang til Creatorhubn er godkjent. Logg inn her: ${loginUrl}\n\nHilsen Creatorhubn`;
+        }
+
+        const emailResult = await sendTransactionalEmail({
+          pool,
+          to: normalizedEmail,
+          subject,
+          fromLabel: "Creatorhubn",
+          kind: "invite_request_invite",
+          sentByUserId: session.userId,
+          text: textBody,
+          html,
+        });
+
+        if (!emailResult.sent) {
+          return res.status(502).json({
+            error: `E-post kunne ikke sendes (${emailResult.reason || "ukjent feil"}).`,
+            requestId: newRow.id,
+          });
+        }
+
+        await pool.query(
+          `UPDATE invite_requests SET invite_sent_at = NOW(), invite_sent_count = 1, updated_at = NOW() WHERE id = $1`,
+          [newRow.id],
+        );
+
+        const proffAnalysis = await buildInviteRequestProffAnalysis({
+          organizationNumber: normalizedOrgNr,
+          companyName: persistedCompanyName,
+          brregLookup,
+        });
+        await upsertInviteRequestProffScreening(newRow.id, normalizedOrgNr, proffAnalysis);
+
+        res.status(201).json({
+          success: true,
+          message: "Invitasjon opprettet og sendt",
+          requestId: newRow.id,
+          provider: emailResult.provider,
+          request: mapInviteRow({ ...newRow, invite_sent_at: new Date(), invite_sent_count: 1 }, proffAnalysis),
+        });
+      } catch (error) {
+        console.error("Error creating and sending invite:", error);
+        res.status(500).json({ error: "Kunne ikke opprette og sende invitasjon" });
+      }
+    },
+  );
+}
+
+function buildHardcodedInviteHtml(name: string, clickUrl: string, loginUrl: string): string {
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a1a1a;">
+      <h2 style="margin:0 0 16px;">Hei ${esc(name)},</h2>
+      <p style="font-size:15px;line-height:1.6;">
+        Søknaden din om tilgang til Creatorhubn er <b>godkjent</b>! Kontoen din er klar.
+      </p>
+      <div style="text-align:center;margin:32px 0;">
+        <a href="${clickUrl}" style="display:inline-block;background:#ffba6c;color:#150d05;padding:14px 28px;border-radius:999px;text-decoration:none;font-weight:700;">Logg inn og kom i gang</a>
+      </div>
+      <p style="font-size:13px;color:#666;line-height:1.5;">
+        Hvis knappen ikke fungerer:<br>
+        <a href="${clickUrl}" style="color:#1976d2;word-break:break-all;">${esc(loginUrl)}</a>
+      </p>
+      <hr style="border:none;border-top:1px solid #eee;margin:32px 0 16px;">
+      <p style="font-size:12px;color:#999;">
+        Du får denne fordi du søkte om tilgang via creatorhubn.com.
+        Hvis dette er en feil, kan du ignorere e-posten.
+      </p>
+    </div>`;
 }

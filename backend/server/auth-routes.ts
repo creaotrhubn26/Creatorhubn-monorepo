@@ -417,6 +417,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
       _clearFailedLogins(normalizedEmail);
       activeSessions.set(sessionToken, sessionData);
       await persistAuthSession(pool, sessionToken, sessionData);
+      pool.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [dbUser.id]).catch(() => {});
 
       console.log(
         `[Auth] Login: ${dbUser.email} as ${roleRoomSessionRole} (session: ${sessionToken.substring(0, 8)}...)`,
@@ -616,6 +617,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
       const sessionToken = String(pending.responsePayload.token);
       activeSessions.set(sessionToken, pending.sessionData);
       await persistAuthSession(pool, sessionToken, pending.sessionData);
+      pool.query("UPDATE users SET last_login_at = NOW() WHERE email = $1", [pending.sessionData.email]).catch(() => {});
       console.log(`[Auth] 2FA login completed for ${pending.sessionData.email}${result.usedBackupCode ? " (backup-code)" : ""}`);
       res.setHeader('Cache-Control', 'no-store');
       return res.json({

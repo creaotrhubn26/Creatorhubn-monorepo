@@ -7,9 +7,24 @@ import SwiftUI
 
 struct LeadgridHubView: View {
     @Environment(AppState.self) private var appState
+    /// 2026-08-19: unngår nestet NavigationStack når denne pushes inn i en
+    /// eksisterende stack (PhoneMerTab/iPad-sidebar-detail har begge sin
+    /// egen) — samme mønster som LeadgridGoDashboardView/KvalitetView/
+    /// AnbudView/SalgsledelseView allerede bruker.
+    var embedded: Bool = false
 
     var body: some View {
-        NavigationStack {
+        Group {
+            if embedded {
+                content
+            } else {
+                NavigationStack { content }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
             List {
                 // Plan-quota øverst (fase 16) — viser kun hvis api + orgId klar.
                 if let api = appState.api, let orgId = appState.activeOrganizationId {
@@ -240,6 +255,5 @@ struct LeadgridHubView: View {
                     appState.handleLeadgridNotificationTap(payload)
                 }
             }
-        }
     }
 }

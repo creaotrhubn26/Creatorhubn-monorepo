@@ -23,6 +23,7 @@ import crypto from "crypto";
 import Stripe from "stripe";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
 import { notifyAdmins } from "./admin-notify.js";
+import { lookupCompanyForNewLead } from "./lead-brreg-service.js";
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -107,10 +108,19 @@ export function registerOrgSelfOnboardRoutes({ app, pool }: Deps): void {
         userId = existingR.rows[0].user_id;
       } else {
         userId = crypto.randomUUID();
+        // users.password er NOT NULL uten default — trenger en ikke-null
+        // placeholder inntil bruker setter passord via magic-link (samme
+        // mønster som google-id-token-service.ts). Uten denne feiler INSERT
+        // med "null value in column password violates not-null constraint".
+        const bcrypt = await import("bcrypt");
+        const placeholderPassword = await bcrypt.default.hash(
+          `${crypto.randomUUID()}${crypto.randomUUID()}`,
+          10,
+        );
         await client.query(
-          `INSERT INTO users (id, email, role, created_at)
-           VALUES ($1, $2, 'member', now())`,
-          [userId, email],
+          `INSERT INTO users (id, email, password, role, created_at)
+           VALUES ($1, $2, $3, 'member', now())`,
+          [userId, email, placeholderPassword],
         );
         isNewUser = true;
       }
@@ -144,6 +154,21 @@ export function registerOrgSelfOnboardRoutes({ app, pool }: Deps): void {
         ],
       );
       const orgId = orgR.rows[0].id;
+
+      // 4b) Selgerorgens egen NACE (2026-08-19, best-effort, blokkerer
+      // aldri onboarding) — lead-discoverys ICP-utledning kan bruke dette
+      // som sterkt signal i tillegg til nettside-skann-teksten.
+      if (orgNumber) {
+        lookupCompanyForNewLead(orgNumber)
+          .then((r) => {
+            if (!r.found || !r.company) return;
+            return client.query(
+              `UPDATE organizations SET nace_code = $1, nace_description = $2 WHERE id = $3`,
+              [r.company.naceCode, r.company.naceDescription, orgId],
+            );
+          })
+          .catch((e) => console.warn("[self-onboard] nace-oppslag feilet:", (e as Error).message));
+      }
 
       // 5) Legg bruker som admin
       await client.query(

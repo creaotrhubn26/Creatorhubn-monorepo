@@ -1052,7 +1052,7 @@ export default function GoogleAnalyticsDashboardEnhanced({
                       Datakilder
                     </Typography>
                     <Typography variant="body1" sx={{ color: ink, fontWeight: 700 }}>
-                      `creatorhub_users` og `creatorhub_analytics_events`
+                      `users` og `analytics_events`
                     </Typography>
                   </Box>
                 </Stack>

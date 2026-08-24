@@ -12,7 +12,7 @@
  *   • Alle innloggede kan lese publiserte Leadgrid-globale maler + evt.
  *     org-lokale publiserte maler for sin egen org.
  *
- * Endepunkter (10):
+ * Endepunkter (12):
  *   GET    /templates?category=&kind=&published=all
  *   GET    /templates/:id
  *   POST   /templates
@@ -23,6 +23,10 @@
  *   POST   /templates/:id/rollback/:version
  *   GET    /content-by-step?template_id=&step_key=
  *   POST   /content-by-step
+ *   POST   /objections/bulk-attach — legg samme innvending til alle
+ *          maler i én kategori (samme org-scoping som POST /templates)
+ *   GET    /templates/:id/usage-detail — per-mal drill-down (utfalls-
+ *          fordeling, per-selger, siste 20 logger)
  *
  * Forutsetter mig 0355 (parallell migrasjon):
  *   - pondus_templates
@@ -35,6 +39,7 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
+import crypto from "crypto";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import { assertAnyEntitled, LEADBOOK_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
 
@@ -368,6 +373,59 @@ export function registerPondusRoutes(deps: PondusRoutesDeps): void {
       return res
         .status(500)
         .json({ error: "pondus_template_create_failed", detail: String("internal_error") });
+    }
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // POST bulk-attach objection — legg samme innvending til alle maler
+  // i én kategori. Samme tilgangsmodell som create-template (org-leder
+  // scopet til egen org, SuperAdmin til Leadgrid-globale). Ingen
+  // versjons-bump/snapshot her (lavere ceremoni enn full mal-redigering
+  // — se buildSnapshot for det tyngre sporet).
+  // ───────────────────────────────────────────────────────────────
+  app.post("/api/leadgrid/pondus/objections/bulk-attach", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const admin = isPlatformAdmin(session);
+    let scopeOrgId: string | null = null;
+    if (!admin) {
+      const userOrgId = await resolveOrgIdForUser(pool, session.userId);
+      if (!userOrgId || !(await canManageOrgTemplates(pool, userOrgId, session.userId))) {
+        return res.status(403).json({ error: "forbidden_superadmin_only" });
+      }
+      scopeOrgId = userOrgId;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const category = readString(body.category).trim();
+    if (!category) return res.status(400).json({ error: "missing_category" });
+    const prompt = readString(body.prompt).trim();
+    if (!prompt) return res.status(400).json({ error: "missing_prompt" });
+    const response = readString(body.response).trim();
+    if (!response) return res.status(400).json({ error: "missing_response" });
+
+    const objection = { id: crypto.randomUUID(), prompt, response };
+
+    try {
+      // scopeOrgId null (SuperAdmin) => Leadgrid-globale maler (org_id IS NULL).
+      // scopeOrgId satt (org-leder) => kun egen org sine maler.
+      const r = await pool.query(
+        `UPDATE pondus_templates
+            SET objections = objections || $1::jsonb,
+                updated_at = NOW()
+          WHERE category = $2
+            AND org_id IS NOT DISTINCT FROM $3::uuid
+         RETURNING id, name, description, category, kind, score, steps, objections, analysis,
+                   created_by, org_id, is_published, published_at, published_by,
+                   version, created_at, updated_at`,
+        [JSON.stringify([objection]), category, scopeOrgId],
+      );
+      const templates = r.rows.map((row) => mapTemplateRow(row as Record<string, unknown>));
+      return res.json({ updated: templates.length, templates });
+    } catch (err) {
+      console.error("[pondus] objections bulk-attach failed:", err);
+      return res
+        .status(500)
+        .json({ error: "pondus_objection_bulk_attach_failed", detail: String("internal_error") });
     }
   });
 
@@ -892,23 +950,41 @@ export function registerPondusUsageRoutes(deps: PondusRoutesDeps): void {
     }
   });
 
-  // ── GET /api/leadgrid/pondus/usage/stats ────────────────────────────
+  // ── GET /api/leadgrid/pondus/usage/stats?period=7d|30d|90d|ytd ───────
   // Aggregert bruk for org-en: per mal (totalt, i dag, siste 30d,
   // møte-rate = (meeting_booked+won)/totalt) + topp-nivå KPI-er
   // (bruk i dag, distinkte brukere siste 30d for team-adopsjon).
+  //
+  // `period` er valgfri og filtrerer KUN per-mal-radene (used_total +
+  // rate-feltene) til det tidsvinduet — brukes av PondusTeamUsageModal
+  // sin periode-velger. Uten `period` = all-time (uendret oppførsel for
+  // eksisterende callere, bl.a. LeadbookLiveStore).
   app.get("/api/leadgrid/pondus/usage/stats", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
     try {
       const orgId = await resolveOrgIdForUser(pool, session.userId);
+      const periodParam = readString(req.query.period).trim();
+      const periodDays: Record<string, number> = { "7d": 7, "30d": 30, "90d": 90 };
+      const sinceClause = periodParam === "ytd"
+        ? "date_trunc('year', NOW())"
+        : periodDays[periodParam]
+          ? `NOW() - INTERVAL '${periodDays[periodParam]} days'`
+          : null;
       const perTemplate = await pool.query(
         `SELECT template_id::text,
                 COUNT(*)::int                                                        AS used_total,
                 COUNT(*) FILTER (WHERE used_at::date = CURRENT_DATE)::int            AS used_today,
                 COUNT(*) FILTER (WHERE used_at > NOW() - INTERVAL '30 days')::int    AS used_30d,
-                COUNT(*) FILTER (WHERE outcome IN ('meeting_booked','won'))::int     AS meetings
+                COUNT(*) FILTER (WHERE outcome IN ('meeting_booked','won'))::int     AS meetings,
+                -- Svarrate: andel logget bruk som IKKE endte i no_answer.
+                COUNT(*) FILTER (WHERE outcome != 'no_answer')::int                 AS responded,
+                -- Konvertering: won / (won+lost) blant avgjorte utfall.
+                COUNT(*) FILTER (WHERE outcome = 'won')::int                        AS won,
+                COUNT(*) FILTER (WHERE outcome IN ('won','lost'))::int              AS decided
            FROM pondus_template_usage
           WHERE organization_id = $1
+            ${sinceClause ? `AND used_at >= ${sinceClause}` : ""}
           GROUP BY template_id`,
         [orgId],
       );
@@ -934,6 +1010,12 @@ export function registerPondusUsageRoutes(deps: PondusRoutesDeps): void {
           meeting_rate: Number(row.used_total) > 0
             ? Math.round((Number(row.meetings) / Number(row.used_total)) * 100) / 100
             : 0,
+          response_rate: Number(row.used_total) > 0
+            ? Math.round((Number(row.responded) / Number(row.used_total)) * 100) / 100
+            : 0,
+          conversion_rate: Number(row.decided) > 0
+            ? Math.round((Number(row.won) / Number(row.decided)) * 100) / 100
+            : 0,
         })),
         totals: {
           used_today: Number(t?.used_today ?? 0),
@@ -947,6 +1029,69 @@ export function registerPondusUsageRoutes(deps: PondusRoutesDeps): void {
     } catch (err) {
       console.error("[pondus] usage stats failed:", err);
       return res.status(500).json({ error: "pondus_usage_stats_failed", detail: String("internal_error") });
+    }
+  });
+
+  // ── GET /api/leadgrid/pondus/templates/:id/usage-detail ─────────────
+  // Per-mal drill-down: utfalls-fordeling + siste 20 logger + per-selger
+  // brekk-ned. Scopet til org-en (samme org-sjekk som usage/stats — ingen
+  // per-template eierskaps-sjekk, all bruk er allerede org-scopet ved
+  // logging i POST /templates/:id/usage).
+  app.get("/api/leadgrid/pondus/templates/:id/usage-detail", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const templateId = readString(req.params.id).trim();
+    if (!isUuid(templateId)) return res.status(400).json({ error: "invalid_template_id" });
+    try {
+      const orgId = await resolveOrgIdForUser(pool, session.userId);
+      const outcomes = await pool.query<{ outcome: string; n: number }>(
+        `SELECT outcome, COUNT(*)::int AS n
+           FROM pondus_template_usage
+          WHERE template_id = $1::uuid AND organization_id = $2
+          GROUP BY outcome`,
+        [templateId, orgId],
+      );
+      const bySeller = await pool.query(
+        `SELECT u.id AS user_id,
+                COALESCE(NULLIF(TRIM(u.first_name || ' ' || COALESCE(u.last_name, '')), ''), u.username, u.email) AS name,
+                COUNT(*)::int AS used,
+                COUNT(*) FILTER (WHERE pu.outcome IN ('meeting_booked','won'))::int AS meetings
+           FROM pondus_template_usage pu
+           JOIN users u ON u.id = pu.user_id
+          WHERE pu.template_id = $1::uuid AND pu.organization_id = $2
+          GROUP BY u.id, name
+          ORDER BY used DESC
+          LIMIT 20`,
+        [templateId, orgId],
+      );
+      const recent = await pool.query(
+        `SELECT pu.used_at,
+                pu.outcome,
+                COALESCE(NULLIF(TRIM(u.first_name || ' ' || COALESCE(u.last_name, '')), ''), u.username, u.email) AS user_name
+           FROM pondus_template_usage pu
+           JOIN users u ON u.id = pu.user_id
+          WHERE pu.template_id = $1::uuid AND pu.organization_id = $2
+          ORDER BY pu.used_at DESC
+          LIMIT 20`,
+        [templateId, orgId],
+      );
+      return res.json({
+        outcomes: Object.fromEntries(outcomes.rows.map((r) => [r.outcome, Number(r.n)])),
+        by_seller: bySeller.rows.map((r) => ({
+          user_id: String((r as Record<string, unknown>).user_id),
+          name: String((r as Record<string, unknown>).name),
+          used: Number((r as Record<string, unknown>).used),
+          meetings: Number((r as Record<string, unknown>).meetings),
+        })),
+        recent: recent.rows.map((r) => ({
+          used_at: (r as Record<string, unknown>).used_at,
+          outcome: String((r as Record<string, unknown>).outcome),
+          user_name: String((r as Record<string, unknown>).user_name),
+        })),
+      });
+    } catch (err) {
+      console.error("[pondus] usage-detail failed:", err);
+      return res.status(500).json({ error: "pondus_usage_detail_failed", detail: String("internal_error") });
     }
   });
 }

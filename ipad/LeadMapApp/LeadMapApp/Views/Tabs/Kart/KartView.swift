@@ -523,6 +523,33 @@ struct KartView: View {
             .map(KartPreviewData.adapt)
     }
 
+    /// «AI-foreslåtte»-laget (2026-08-19) — var 100% hardkodet demo-mock
+    /// («Konkurrent har gått fra dem» osv., diktet opp) som viste TOMT
+    /// kart i ekte modus selv om laget var slått på. Ekte modus: topp 5
+    /// blant kartLeads med høyest aiOpportunityScore (samme felt som
+    /// allerede driver score-fargen på pinnene) — ærlig begrunnelse fra
+    /// data vi faktisk har (neste handling / status), ikke oppdiktede
+    /// konkurrent-narrativer.
+    private var aiLeadSuggestions: [AILeadSuggestion] {
+        if DemoModeManager.isActiveNonisolated {
+            return OverlayData.aiLeads
+        }
+        return kartLeads
+            .compactMap { lead -> (MapLeadMock, Int)? in
+                guard let score = lead.aiScore, score >= 70 else { return nil }
+                return (lead, score)
+            }
+            .sorted { $0.1 > $1.1 }
+            .prefix(5)
+            .map { lead, score in
+                AILeadSuggestion(
+                    name: lead.name, lat: lead.lat, lon: lead.lon,
+                    reason: lead.nextAction ?? "AI-score \(score) — \(lead.status.label)",
+                    score: score
+                )
+            }
+    }
+
     /// Ekte modus: detail-panelet viser først noe når brukeren faktisk
     /// har valgt en pin/rad (selectedLead init-es med mock-placeholder
     /// som ellers ville lekke). Demo beholder pre-valgt lead.
@@ -897,6 +924,21 @@ struct KartView: View {
     @State private var measureMode: Bool = false
     @State private var measurePointA: CLLocationCoordinate2D?
     @State private var measurePointB: CLLocationCoordinate2D?
+    /// Ekte kjøretid via MKDirections (2026-08-17) — erstatter tidligere
+    /// `km * 2`-gjetning. Nil mens den regnes ut eller hvis ingen bilrute
+    /// finnes (øy/ferje) — banneret faller da tilbake til luftlinje-visning.
+    @State private var measureDriveMinutes: Int?
+    @State private var measureRouteTask: Task<Void, Never>?
+
+    // «Finn leads her» — Continuous Discovery (2026-08-19).
+    @State private var discoveryState = DiscoveryRunState()
+    @State private var discoverySheetOpen = false
+    @State private var discoveryPollTask: Task<Void, Never>?
+    @State private var discoveryRadiusKmUsed: Int?
+    /// 2026-08-19: "Søk anbud i stedet"-veien for brede B2B-selgere uten
+    /// søkbar Places-kundetype — se LeadDiscoveryError.industryRequired.
+    @State private var anbudSheetOpen = false
+    @State private var anbudCpvOverride: [String] = []
 
     // MARK: - Dørsalg-modus (2026-07-18)
     // Husstandsadresser fra Kartverket som EGEN kartflate for dørsalg-org-er.
@@ -1075,7 +1117,7 @@ struct KartView: View {
             }
         }
         if activeOverlays.contains(.aiLeads) {
-            ForEach(OverlayData.aiLeads) { s in
+            ForEach(aiLeadSuggestions) { s in
                 Annotation("", coordinate: CLLocationCoordinate2D(latitude: s.lat, longitude: s.lon)) {
                     AISuggestionPin(score: s.score)
                 }
@@ -1271,9 +1313,70 @@ struct KartView: View {
         .onReceive(NotificationCenter.default.publisher(for: .leadgridNewLead)) { _ in
             addLeadOpen = true
         }
+        // Nyopprettet lead (fra ethvert av de 4 «Legg til lead»-
+        // inngangspunktene) — zoom dit + velg pinnen, så man faktisk ser
+        // hvor den havnet i stedet for kun en toast (2026-08-19). `.task(id:)`
+        // ikke `.onChange` — på iPad-landscape er KartView bak en
+        // NavigationSplitView-detail-side som mountes LAZY (motsatt av
+        // MainTabViews TabView, som holder alle tabs i live). Verdien er
+        // ofte allerede satt FØR KartView i det hele tatt eksisterer
+        // (sidebar-bytte skjer samtidig) — onChange reagerer aldri på det,
+        // kun task(id:) kjører også ved fersk fremvisning.
+        .task(id: appState.pendingMapFocus) {
+            guard let focus = appState.pendingMapFocus else { return }
+            // Refetch FØR select — uten dette er pinnen usynlig (leaden
+            // finnes ennå ikke i appState.leads, kun i det midlertidige
+            // MapLeadMock-objektet under). Best effort: zoomer uansett
+            // selv om refetchen feiler, siden kameraposisjonen ikke
+            // avhenger av den.
+            if !DemoModeManager.isActiveNonisolated {
+                await appState.refreshLeads()
+            }
+            selectAndZoom(MapLeadMock(
+                id: focus.id, name: focus.name, address: focus.address,
+                kmAway: 0, status: .new, lastActivity: nil,
+                lat: focus.lat, lon: focus.lon
+            ))
+            // Nullstill NESTE runloop-tick (ikke synkront) — sidebar/
+            // MainTabView observerer samme property for å bytte fane; å
+            // nulle ut synkront her risikerer at DERES onChange ser
+            // old==new==nil og aldri bytter fane (2026-08-19).
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            appState.pendingMapFocus = nil
+        }
         // Mac Catalyst Cmd+F → fokuser søkefelt.
         .onReceive(NotificationCenter.default.publisher(for: .leadgridFocusSearch)) { _ in
             searchFieldFocused = true
+        }
+        // «Finn leads her» — progress-sheet for Continuous Discovery.
+        .sheet(isPresented: $discoverySheetOpen) {
+            DiscoveryProgressView(
+                state: discoveryState,
+                discoveryQueryHint: nil,
+                radiusKmHint: discoveryRadiusKmUsed,
+                onCancel: {
+                    discoveryPollTask?.cancel()
+                    discoverySheetOpen = false
+                },
+                onShowOnMap: {
+                    discoverySheetOpen = false
+                    Task { await appState.refreshLeads() }
+                },
+                onImportMore: {
+                    discoverySheetOpen = false
+                    discoverLeadsHere()
+                },
+                onClose: { discoverySheetOpen = false },
+                onSearchAnbud: { cpvCodes in
+                    discoverySheetOpen = false
+                    anbudCpvOverride = cpvCodes
+                    anbudSheetOpen = true
+                }
+            )
+            .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $anbudSheetOpen) {
+            AnbudView(initialCpvOverride: anbudCpvOverride)
         }
         // Canvas-laget: hent stedfestede notater når laget slås på.
         .task(id: activeOverlays.contains(.canvasNotater)) {
@@ -1313,7 +1416,31 @@ struct KartView: View {
         .sheet(isPresented: $addLeadOpen) {
             AddLeadSheet { newLead in
                 addLeadOpen = false
-                // I prod ville vi sende dette til APIClient.createLead
+                // 2026-08-16: kallet manglet helt — leaden ble aldri lagret
+                // noe sted (kun lukket sheeten). Ekte create-kall nå.
+                guard let api = appState.api, !DemoModeManager.isActiveNonisolated else {
+                    showToast(DemoModeManager.isActiveNonisolated ? "Demo-modus — ikke lagret" : "Ikke innlogget")
+                    return
+                }
+                Task {
+                    do {
+                        let newId = try await api.createLeadAtPin(
+                            name: newLead.companyName, company: newLead.companyName,
+                            phone: newLead.phone, email: newLead.email,
+                            industryId: nil, leadTemperature: nil,
+                            latitude: newLead.coord.latitude, longitude: newLead.coord.longitude,
+                            address: newLead.address
+                        )
+                        showToast("«\(newLead.companyName)» lagt til")
+                        // Vis hvor den faktisk havnet, ikke bare en toast (2026-08-19).
+                        appState.pendingMapFocus = AppState.PendingMapFocus(
+                            id: newId, name: newLead.companyName, address: newLead.address,
+                            lat: newLead.coord.latitude, lon: newLead.coord.longitude
+                        )
+                    } catch {
+                        showToast("Kunne ikke lagre lead — prøv igjen")
+                    }
+                }
             }
         }
         // Kjøregodtgjørelse (statens sats) — ekte km fra nav-ruta.
@@ -2379,6 +2506,11 @@ struct KartView: View {
     private var mapCard: some View {
         ZStack(alignment: .bottomTrailing) {
             // Selve kart-flate
+            // 2026-08-17: mål-verktøyet kunne KUN plukke punkt ved å treffe en
+            // eksisterende lead-pin (ingen generisk trykk-hvor-som-helst-
+            // håndtering fantes) — ubrukelig med få/ingen leads i synsfeltet.
+            // MapReader lar oss konvertere ethvert kart-trykk til koordinat.
+            MapReader { proxy in
             Map(position: $camera, interactionModes: [.pan, .zoom]) {
                 // "Meg her"-annotasjon: profil-avatar på user-location.
                 // Vises kun når CLLocationManager har fått en fix.
@@ -2475,6 +2607,42 @@ struct KartView: View {
                         .stroke(KrBrand.green, style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [8, 6]))
                 }
 
+                // Drabare håndtak for punkt A/B (2026-08-17) — punktene var
+                // usynlige utenom polylinjen, umulig å justere presist uten
+                // å trykke helt på nytt. Egne markører + dra-gest via
+                // MapReader-proxyen (koordinat-rom "kartMalRom" delt med
+                // Map-viewet under).
+                if measureMode, let a = measurePointA {
+                    Annotation("", coordinate: a) {
+                        measureHandle()
+                            .gesture(
+                                DragGesture(coordinateSpace: .named("kartMalRom"))
+                                    .onChanged { value in
+                                        if let coord = proxy.convert(value.location, from: .named("kartMalRom")) {
+                                            measurePointA = coord
+                                        }
+                                    }
+                                    // Kjøretid (MKDirections) hentes kun ved slipp — ellers
+                                    // spammes nettverket på hvert dra-frame.
+                                    .onEnded { _ in scheduleDriveTimeFetch() }
+                            )
+                    }
+                }
+                if measureMode, let b = measurePointB {
+                    Annotation("", coordinate: b) {
+                        measureHandle()
+                            .gesture(
+                                DragGesture(coordinateSpace: .named("kartMalRom"))
+                                    .onChanged { value in
+                                        if let coord = proxy.convert(value.location, from: .named("kartMalRom")) {
+                                            measurePointB = coord
+                                        }
+                                    }
+                                    .onEnded { _ in scheduleDriveTimeFetch() }
+                            )
+                    }
+                }
+
                 // Navigasjon: solid «casing»-rute (ekte nav-vei-design).
                 navRouteMapContent
 
@@ -2520,6 +2688,15 @@ struct KartView: View {
             }
             .environment(\.colorScheme, .dark)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .coordinateSpace(.named("kartMalRom"))
+            // Fritt trykk hvor som helst på kartet i mål-modus — pin-
+            // annotasjonene fanger fortsatt sine egne trykk først (presist
+            // punkt på leaden), dette er kun bakgrunnen/basiskartet.
+            .onTapGesture { screenPoint in
+                guard measureMode, let coord = proxy.convert(screenPoint, from: .local) else { return }
+                pickMeasurePoint(coord)
+            }
+            } // MapReader
 
             // FAB-stack bunn-HØYRE. Knappene fungerer nå:
             //   + / − manipulerer span på currentRegion (zoom 2x/0.5x)
@@ -2576,6 +2753,17 @@ struct KartView: View {
                 // Skjult i dørsalg — husstander skal aldri inn i CRM.
                 if !dorsalgModus {
                     mapFABButton(icon: "mappin.and.ellipse", action: dropPinAtCenter)
+                        .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
+                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
+                }
+
+                // «Finn leads her» — Continuous Discovery (mig 0352/0353,
+                // 2026-08-19 Daniel-feedback): hele kjeden (API + state-
+                // maskin + DiscoveryProgressView) var ferdig bygd men uten
+                // noen trigger noe sted. Søker bedrifter i synlig kart-
+                // område (Google Places + Claude), pinner dem som leads.
+                if !dorsalgModus {
+                    mapFABButton(icon: "sparkle.magnifyingglass", action: discoverLeadsHere)
                         .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
                         .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
                 }
@@ -3333,15 +3521,18 @@ struct KartView: View {
 
     private func mapFAB(icon: String) -> some View {
         Image(systemName: icon)
-            .font(.appScaled(size: 13, weight: .semibold))
+            .font(.appScaled(size: 15, weight: .semibold))
             .foregroundStyle(.white)
-            .frame(width: 32, height: 32)
+            // 2026-08-17: 32pt var under Apples 44pt touch-mål-minimum
+            // (samme bug som Team-fanens kart-kontroller).
+            .frame(width: 44, height: 44)
     }
 
     /// Tappbar versjon av mapFAB — wraps Image i en Button m/ plain-style.
     private func mapFABButton(icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             mapFAB(icon: icon)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .macCatalystHover()
@@ -3473,14 +3664,114 @@ struct KartView: View {
         showToast("Pin droppet — fyller ut lead...")
     }
 
+    /// «Finn leads her» (2026-08-19) — søker bedrifter i synlig kart-
+    /// område via /discover-leads (Google Places + Claude), pinner dem
+    /// som leads. Radius fra kartets span (halv-diagonal, klampet 1-25 km
+    /// — Places-søket blir upresist utenfor det). Poller den eksisterende
+    /// bulk-URL-research-batchen (samme motor discover-leads bygger på)
+    /// hvert 2. sek til status ikke lenger er active.
+    private func discoverLeadsHere() {
+        guard !DemoModeManager.isActiveNonisolated else {
+            showToast("Demo-modus — Finn leads er ikke tilgjengelig")
+            return
+        }
+        guard let api = appState.api, let projectId = appState.activeProjectId else {
+            showToast("Ingen aktivt prosjekt")
+            return
+        }
+        discoveryPollTask?.cancel()
+        let center = currentRegion.center
+        let radiusKm = min(25, max(1, Int((currentRegion.span.latitudeDelta * 111 / 2).rounded())))
+        discoveryRadiusKmUsed = radiusKm
+        discoveryState.begin(projectName: nil)
+        discoverySheetOpen = true
+        discoveryPollTask = Task {
+            do {
+                let start = try await api.discoverLeadsForProject(
+                    projectId: projectId,
+                    request: LeadDiscoveryRequest(
+                        geo: LeadDiscoveryGeo(lat: center.latitude, lng: center.longitude, radiusKm: radiusKm)
+                    )
+                )
+                guard !Task.isCancelled else { return }
+                guard let batchId = start.batchId, start.foundCount > 0 else {
+                    discoveryState.stage = .failed(start.message ?? "Fant ingen nye bedrifter i dette området.")
+                    return
+                }
+                discoveryState.batchId = batchId
+                discoveryState.projectName = start.projectName
+                discoveryState.total = start.foundCount
+                discoveryState.stage = .foundCandidates(start.foundCount)
+                while !Task.isCancelled {
+                    let detail = try await api.fetchBulkUrlResearchBatch(batchId: batchId)
+                    guard !Task.isCancelled else { return }
+                    discoveryState.items = detail.items
+                    discoveryState.completed = detail.summary.completed
+                    discoveryState.failed = detail.summary.failed
+                    discoveryState.pinned = detail.summary.pinned
+                    discoveryState.total = detail.summary.total
+                    if detail.batch.status.isActive {
+                        discoveryState.stage = detail.summary.completed + detail.summary.failed > 0 ? .processing : .foundCandidates(detail.summary.total)
+                        try await Task.sleep(nanoseconds: 2_000_000_000)
+                        continue
+                    }
+                    discoveryState.stage = .finalizing
+                    let result = try await api.fetchLeadDiscoveryResult(projectId: projectId, batchId: batchId)
+                    guard !Task.isCancelled else { return }
+                    discoveryState.stage = .success(DiscoverySuccessSummary(
+                        totalPinned: result.breakdown.exact + result.breakdown.geocoded + result.breakdown.approximate + result.breakdown.unknown,
+                        totalAttempted: result.summary.total,
+                        breakdown: DiscoveryConfidenceBreakdown(
+                            exact: result.breakdown.exact, geocoded: result.breakdown.geocoded,
+                            approximate: result.breakdown.approximate, unknown: result.breakdown.unknown,
+                            failed: result.breakdown.failed
+                        ),
+                        totalDurationSeconds: discoveryState.elapsedSeconds,
+                        projectName: result.project.name
+                    ))
+                    break
+                }
+            } catch LeadDiscoveryError.industryRequired(let cpvSuggestion, let reason) {
+                guard !Task.isCancelled else { return }
+                discoveryState.stage = .failed(
+                    reason ?? "Fant ingen søkbar kundetype for kart-søk i din bransje.",
+                    cpvSuggestion: cpvSuggestion
+                )
+            } catch {
+                guard !Task.isCancelled else { return }
+                discoveryState.stage = .failed("Kunne ikke søke — prøv igjen.")
+            }
+        }
+    }
+
+    /// Drabart håndtak for mål-verktøyets punkt A/B.
+    private func measureHandle() -> some View {
+        Circle()
+            .fill(KrBrand.green)
+            .frame(width: 22, height: 22)
+            .overlay(Circle().stroke(.white, lineWidth: 3))
+            .shadow(color: .black.opacity(0.4), radius: 3, y: 1)
+            .contentShape(Circle().inset(by: -12))  // større dra-treffflate enn synlig sirkel
+    }
+
     /// Toggle mål-modus. Resetter punkter når avskrudd.
+    /// 2026-08-17 (Daniel-feedback): A/B plasseres nå med én gang ved
+    /// aktivering (kart-senter + ~500 m unna) i stedet for tom «trykk
+    /// punkt A»-tilstand — begge håndtak er drabare fra første stund.
     private func toggleMeasureMode() {
         measureMode.toggle()
         if !measureMode {
             measurePointA = nil
             measurePointB = nil
+            measureRouteTask?.cancel()
+            measureDriveMinutes = nil
         } else {
-            showToast("Tap to pins på kartet for å måle")
+            let center = currentRegion.center
+            let lonDelta = 0.5 / (111.32 * cos(center.latitude * .pi / 180))
+            measurePointA = center
+            measurePointB = CLLocationCoordinate2D(latitude: center.latitude, longitude: center.longitude + lonDelta)
+            showToast("Dra punktene for å justere, eller trykk et nytt sted")
+            scheduleDriveTimeFetch()
         }
     }
 
@@ -3494,6 +3785,37 @@ struct KartView: View {
             // 3. tap = restart
             measurePointA = coord
             measurePointB = nil
+        }
+        scheduleDriveTimeFetch()
+    }
+
+    /// Ekte kjøretid via MKDirections (2026-08-17, Daniel-feedback) —
+    /// erstatter tidligere `km * 2`-gjetning (falsk presisjon, ingen
+    /// hensyn til vei/ferje/bru). Debounced 400 ms + kansellerer forrige
+    /// forespørsel, så kontinuerlig dra ikke spammer nettverket.
+    /// `measureDriveMinutes` forblir nil (banneret faller tilbake til
+    /// luftlinje) hvis ingen bilrute finnes, f.eks. rent øy-til-øy.
+    private func scheduleDriveTimeFetch() {
+        measureRouteTask?.cancel()
+        guard let a = measurePointA, let b = measurePointB else {
+            measureDriveMinutes = nil
+            return
+        }
+        measureDriveMinutes = nil
+        measureRouteTask = Task {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
+            let request = MKDirections.Request()
+            request.source = MKMapItem(placemark: MKPlacemark(coordinate: a))
+            request.destination = MKMapItem(placemark: MKPlacemark(coordinate: b))
+            request.transportType = .automobile
+            let minutes: Int? = try? await {
+                let response = try await MKDirections(request: request).calculate()
+                guard let route = response.routes.first else { return nil }
+                return Int((route.expectedTravelTime / 60).rounded())
+            }()
+            guard !Task.isCancelled else { return }
+            measureDriveMinutes = minutes
         }
     }
 
@@ -3534,16 +3856,21 @@ struct KartView: View {
                     .foregroundStyle(.white)
                 if let a = measurePointA, let b = measurePointB {
                     let km = distanceKm(a, b)
-                    let drive = Int(km * 2)
-                    Text(String(format: "%.2f km · %d min kjøring", km, drive))
-                        .font(.appScaled(size: 11, weight: .semibold))
-                        .foregroundStyle(KrBrand.green)
+                    if let drive = measureDriveMinutes {
+                        Text(String(format: "%.2f km · %d min kjøring", km, drive))
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(KrBrand.green)
+                    } else {
+                        Text(String(format: "%.2f km · beregner kjøretid…", km))
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(KrBrand.green)
+                    }
                 } else if measurePointA != nil {
-                    Text("Tap pin B")
+                    Text("Trykk punkt B")
                         .font(.appScaled(size: 11))
                         .foregroundStyle(KrBrand.textSecondary)
                 } else {
-                    Text("Tap pin A")
+                    Text("Trykk punkt A")
                         .font(.appScaled(size: 11))
                         .foregroundStyle(KrBrand.textSecondary)
                 }

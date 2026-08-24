@@ -21,7 +21,19 @@ struct LeadgridRoutePlannerView: View {
     @State private var locationManager = CLLocationManager()
     @State private var selectedStop: LeadgridRouteStop?
 
-    enum Phase { case form, planning, route }
+    // 2026-08-19: flerdagers-tur ("kjør en uke i Nord-Norge") — se
+    // planTrip()/tripView() nedenfor. Egen state fremfor å overlaste
+    // routeDetail/phase.form, som er enkelt-dags-flyten uendret.
+    @State private var multiDayMode = false
+    @State private var tripDays = 3
+    @State private var tripStartDate = Date()
+    @State private var tripPlan: LeadgridRouteTripPlanResponse?
+    @State private var selectedDayIndex = 0
+    @State private var tripCameraPosition: MapCameraPosition = .automatic
+    @State private var prewarming = false
+    @State private var prewarmedDayCount = 0
+
+    enum Phase { case form, planning, route, trip }
 
     var body: some View {
         Group {
@@ -34,6 +46,10 @@ struct LeadgridRoutePlannerView: View {
             case .route:
                 if let route = routeDetail {
                     routeView(route)
+                }
+            case .trip:
+                if let tripPlan {
+                    tripView(tripPlan)
                 }
             }
         }
@@ -61,14 +77,24 @@ struct LeadgridRoutePlannerView: View {
                 }
             }
             Section {
+                Toggle("Flerdagerstur", isOn: $multiDayMode.animation())
+                if multiDayMode {
+                    DatePicker("Startdato", selection: $tripStartDate, displayedComponents: .date)
+                    Stepper("Antall dager: \(tripDays)", value: $tripDays, in: 1...14)
+                    Text("Hver dag planlegges som en egen dagsrute — dag 2 starter der dag 1 sluttet, så turen henger geografisk sammen i stedet for å hoppe frem og tilbake.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Section {
                 Button {
-                    Task { await planRoute() }
+                    Task { multiDayMode ? await planTrip() : await planRoute() }
                 } label: {
                     if planning {
                         ProgressView()
                             .frame(maxWidth: .infinity)
                     } else {
-                        Label("Planlegg dagsrute", systemImage: "map.fill")
+                        Label(multiDayMode ? "Planlegg \(tripDays)-dagers tur" : "Planlegg dagsrute", systemImage: "map.fill")
                             .frame(maxWidth: .infinity)
                     }
                 }
@@ -144,6 +170,134 @@ struct LeadgridRoutePlannerView: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Trip view (flerdagers, 2026-08-19)
+
+    @ViewBuilder
+    private func tripView(_ plan: LeadgridRouteTripPlanResponse) -> some View {
+        VStack(spacing: 0) {
+            dayTabBar(plan)
+            let day = plan.days.indices.contains(selectedDayIndex) ? plan.days[selectedDayIndex] : nil
+            if let route = day?.route {
+                prewarmBar(plan)
+                tripMapView(route)
+                    .frame(maxHeight: 260)
+                HStack(spacing: 12) {
+                    statPill(icon: "location.fill", value: formatDistance(route.totalDistanceMeters ?? 0))
+                    statPill(icon: "clock.fill", value: formatDuration(route.totalDriveSeconds ?? 0))
+                    statPill(icon: "list.number", value: "\(route.stops.count) stopp")
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                List {
+                    ForEach(route.stops) { stop in
+                        Button { selectedStop = stop } label: { stopRow(stop) }
+                            .buttonStyle(.plain)
+                    }
+                }
+            } else {
+                Spacer()
+                VStack(spacing: 8) {
+                    Image(systemName: "mappin.slash").font(.largeTitle).foregroundStyle(.secondary)
+                    Text(day?.message ?? "Ingen leads denne dagen").foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                Spacer()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func dayTabBar(_ plan: LeadgridRouteTripPlanResponse) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(plan.days) { day in
+                    Button {
+                        selectedDayIndex = day.dayIndex - 1
+                    } label: {
+                        VStack(spacing: 2) {
+                            Text("Dag \(day.dayIndex)").font(.caption.bold())
+                            Text(day.plannedDate.suffix(5)).font(.caption2)
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(
+                            selectedDayIndex == day.dayIndex - 1 ? Color.purple : Color(.tertiarySystemBackground),
+                            in: Capsule()
+                        )
+                        .foregroundStyle(selectedDayIndex == day.dayIndex - 1 ? .white : (day.route == nil ? .secondary : .primary))
+                    }
+                }
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+        }
+        .background(.regularMaterial)
+    }
+
+    /// Best-effort: MapKit har ingen offentlig API for garantert offline
+    /// kart-nedlasting (i motsetning til f.eks. Google Maps SDK). Dette
+    /// panorerer kartet gjennom hele turens område mens man har nett, som
+    /// nudger MapKits egen interne fliscache — reelt, men ikke garantert.
+    @ViewBuilder
+    private func prewarmBar(_ plan: LeadgridRouteTripPlanResponse) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wifi").font(.caption2).foregroundStyle(.secondary)
+            if prewarming {
+                Text("Forhåndslaster kart · dag \(prewarmedDayCount)/\(plan.days.count) …")
+                    .font(.caption2).foregroundStyle(.secondary)
+                ProgressView().controlSize(.mini)
+            } else {
+                Text("Forhåndsvarm kartet for hele turen før du kjører ut dødsoner — best-effort, ikke garantert.")
+                    .font(.caption2).foregroundStyle(.secondary)
+                Spacer()
+                Button("Forhåndsvarm") { Task { await prewarmMapForTrip(plan) } }
+                    .font(.caption2.bold())
+                    .disabled(plan.days.allSatisfy { $0.route == nil })
+            }
+        }
+        .padding(.horizontal).padding(.vertical, 6)
+        .background(Color.purple.opacity(0.06))
+    }
+
+    @ViewBuilder
+    private func tripMapView(_ route: LeadgridRouteDetail) -> some View {
+        Map(position: $tripCameraPosition) {
+            if let start = startLocation {
+                Marker("Start", systemImage: "house.fill", coordinate: start)
+                    .tint(.blue)
+            }
+            ForEach(route.stops) { stop in
+                if let lat = stop.latitude, let lng = stop.longitude {
+                    Annotation(
+                        stop.name ?? "Lead",
+                        coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng)
+                    ) {
+                        ZStack {
+                            Circle().fill(.purple).frame(width: 28, height: 28)
+                            Text("\(stop.position)").foregroundStyle(.white).font(.caption.bold())
+                        }
+                    }
+                }
+            }
+        }
+        .onAppear { focusTripCamera(on: route) }
+        .onChange(of: selectedDayIndex) { _, _ in
+            guard let days = tripPlan?.days, days.indices.contains(selectedDayIndex),
+                  let r = days[selectedDayIndex].route else { return }
+            focusTripCamera(on: r)
+        }
+    }
+
+    private func focusTripCamera(on route: LeadgridRouteDetail) {
+        let coords = route.stops.compactMap { stop -> CLLocationCoordinate2D? in
+            guard let lat = stop.latitude, let lng = stop.longitude else { return nil }
+            return CLLocationCoordinate2D(latitude: lat, longitude: lng)
+        }
+        let allCoords = coords + (startLocation.map { [$0] } ?? [])
+        withAnimation(.easeInOut(duration: 0.4)) {
+            tripCameraPosition = .region(computeRegion(allCoords))
         }
     }
 
@@ -338,6 +492,58 @@ struct LeadgridRoutePlannerView: View {
             phase = .form
         }
         planning = false
+    }
+
+    @MainActor
+    private func planTrip() async {
+        guard let start = startLocation else { return }
+        planning = true
+        errorText = nil
+        phase = .planning
+        do {
+            let plan = try await api.planRouteTrip(
+                startDate: Self.isoDateFormatter.string(from: tripStartDate),
+                days: tripDays,
+                startLat: start.latitude,
+                startLng: start.longitude
+            )
+            if plan.days.allSatisfy({ $0.route == nil }) {
+                errorText = "Ingen aktuelle leads i din sone for noen av dagene."
+                phase = .form
+            } else {
+                tripPlan = plan
+                selectedDayIndex = plan.days.firstIndex { $0.route != nil } ?? 0
+                phase = .trip
+            }
+        } catch {
+            errorText = "Kunne ikke planlegge tur: \(error.localizedDescription)"
+            phase = .form
+        }
+        planning = false
+    }
+
+    private static let isoDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+
+    /// Panorerer kartet gjennom hver dags område i turen mens man har nett
+    /// — se prewarmBar() for begrunnelse/begrensning.
+    @MainActor
+    private func prewarmMapForTrip(_ plan: LeadgridRouteTripPlanResponse) async {
+        prewarming = true
+        prewarmedDayCount = 0
+        for day in plan.days {
+            guard let route = day.route else { continue }
+            selectedDayIndex = day.dayIndex - 1
+            focusTripCamera(on: route)
+            prewarmedDayCount += 1
+            try? await Task.sleep(nanoseconds: 900_000_000)
+        }
+        prewarming = false
     }
 
     @MainActor

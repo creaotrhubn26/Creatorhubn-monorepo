@@ -79,3 +79,25 @@ struct LeadgridRouteFullResponse: Codable, Sendable {
     let route: LeadgridRoute
     let stops: [LeadgridRouteStop]
 }
+
+// MARK: - Flerdagers-tur (2026-08-19, /routes/plan-trip)
+
+struct LeadgridRouteTripSummary: Codable, Sendable {
+    let id: String
+    let name: String?
+    let startDate: String
+    let endDate: String
+}
+
+struct LeadgridRouteTripDay: Codable, Sendable, Identifiable {
+    let dayIndex: Int
+    let plannedDate: String
+    let route: LeadgridRouteDetail?
+    let message: String?
+    var id: Int { dayIndex }
+}
+
+struct LeadgridRouteTripPlanResponse: Codable, Sendable {
+    let trip: LeadgridRouteTripSummary
+    let days: [LeadgridRouteTripDay]
+}

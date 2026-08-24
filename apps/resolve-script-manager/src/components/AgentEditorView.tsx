@@ -413,7 +413,7 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
       } | undefined;
       if (!v) throw new Error("Ingen analyse-output");
       setBeatAnalysis(v);
-      setBpm(Math.round(v.bpm));
+      setBpm(Math.min(220, Math.max(60, Math.round(v.bpm))));
       if (v.totalDurationSec > 0) {
         setSongLengthSec(Math.round(v.totalDurationSec));
       }
@@ -802,7 +802,7 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
                 <span style={{ minWidth: 36 }}>BPM</span>
                 <input type="number" min={60} max={220}
                        value={bpm}
-                       onChange={e => setBpm(parseInt(e.target.value) || 120)}
+                       onChange={e => setBpm(Math.min(220, Math.max(60, parseInt(e.target.value) || 120)))}
                        style={inputStyle} />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8,
@@ -810,7 +810,7 @@ export function AgentEditorView({ sourcePath, onClose, config }: Props) {
                 <span style={{ minWidth: 36 }}>Lengde</span>
                 <input type="number" min={30} max={600}
                        value={songLengthSec}
-                       onChange={e => setSongLengthSec(parseInt(e.target.value) || 210)}
+                       onChange={e => setSongLengthSec(Math.min(600, Math.max(30, parseInt(e.target.value) || 210)))}
                        style={inputStyle} />
                 <span style={{ fontSize: 10, color: "var(--text-3, #a89cb8)" }}>sek</span>
               </div>

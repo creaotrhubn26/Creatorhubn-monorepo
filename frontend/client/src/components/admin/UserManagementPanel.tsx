@@ -74,6 +74,7 @@ import AcademyAdminPanel from './AcademyAdminPanel';
 import EnterpriseInquiriesPanel from './EnterpriseInquiriesPanel';
 import { useAdminPresence, OnlineStatusDot } from './shared/useAdminPresence';
 import UserGenAiUsageDialog from './UserGenAiUsageDialog';
+import CreateInviteDialog from './CreateInviteDialog';
 import {
   AdminButton,
   StatusChip,
@@ -501,7 +502,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
   });
 
   const users = useMemo(() => usersData, [usersData]);
-  const roles = useMemo(() => rolesData, [rolesData]);
+  const roles = useMemo(() => Array.isArray(rolesData) ? rolesData : [], [rolesData]);
   const roleById = useMemo(
     () => new Map(roles.map((role) => [role.id, role])),
     [roles],
@@ -1091,109 +1092,7 @@ export default function UserManagementPanel(_: UserManagementPanelProps) {
   };
 
     return (
-      <Dialog open={inviteDialogOpen} onClose={() => setInviteDialogOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
-        <DialogTitle>
-          <Box display="flex" alignItems="center" gap={1}>
-            <PersonAddIcon sx={{ color: adminTokens.color.brand }} />
-            Inviter ny bruker
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <TextField
-              fullWidth
-              label="E-postadresse"
-              value={formData.email}
-              onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-              required
-              type="email"
-            />
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <TextField
-                fullWidth
-                label="Fornavn"
-                value={formData.firstName}
-                onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))}
-              />
-              <TextField
-                fullWidth
-                label="Etternavn"
-                value={formData.lastName}
-                onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))}
-              />
-            </Box>
-            <FormControl fullWidth>
-              <InputLabel>Tilgangsrolle</InputLabel>
-              <Select
-                value={formData.role}
-                onChange={(e) =>
-                  setFormData((prev) => {
-                    const nextRole = e.target.value;
-                    const previousDefaultProfession = getDefaultProfessionForRole(prev.role);
-                    const nextProfession =
-                      !prev.profession || prev.profession === previousDefaultProfession
-                        ? getDefaultProfessionForRole(nextRole)
-                        : prev.profession;
-                    return { ...prev, role: nextRole, profession: nextProfession };
-                  })
-                }
-                label="Tilgangsrolle"
-              >
-                {roles.map((role: Role) => (
-                  <MenuItem key={role.id} value={role.id}>
-                    {role.name} - {role.description}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl fullWidth>
-              <InputLabel>Profesjon</InputLabel>
-              <Select
-                value={formData.profession}
-                onChange={(e) => setFormData(prev => ({ ...prev, profession: e.target.value }))}
-                label="Profesjon"
-              >
-                {professionIds.map((id) => {
-                  const branding = theming.getProfessionBranding(id);
-                  return (
-                    <MenuItem key={id} value={id}>
-                      {branding.label}
-                    </MenuItem>
-                  );
-                })}
-              </Select>
-            </FormControl>
-            <TextField
-              fullWidth
-              label="Bedrift"
-              value={formData.businessName}
-              onChange={(e) => setFormData(prev => ({ ...prev, businessName: e.target.value }))}
-            />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={formData.sendInvite}
-                  onChange={(e) => setFormData(prev => ({ ...prev, sendInvite: e.target.checked }))}
-                />
-            }
-              label="Send invitasjon på e-post"
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <AdminButton tone="ghost" onClick={() => setInviteDialogOpen(false)}>
-            Avbryt
-          </AdminButton>
-          <AdminButton
-            tone="primary"
-            onClick={handleSubmit}
-            loading={createUserMutation.isPending}
-            disabled={createUserMutation.isPending}
-          >
-            {createUserMutation.isPending ? 'Oppretter...' : 'Opprett bruker'}
-          </AdminButton>
-        </DialogActions>
-      </Dialog>
+      <CreateInviteDialog open={inviteDialogOpen} onClose={() => setInviteDialogOpen(false)} />
     );
 };
 

@@ -86,26 +86,16 @@
   status = 200
   force = true
 
-[[redirects]]
-  from = "/sitemap.xml"
-  to = "https://creatorhub-backend-rtbl.onrender.com/api/theroleroom-sitemap.xml"
-  status = 200
-  force = true
-# Skygget: /sitemap.xml → /creatorhubn-sitemap.xml (duplikat, første-treff vant)
+# 2026-08-20: /robots.txt, /sitemap.xml, /llms.txt (og all geo-prerendert
+# bot-innhold) er nå host+User-Agent-betinget rutet av
+# netlify/edge-functions/host-routes.ts — Netlify [[redirects]] har ingen
+# native Host/UA-betingelser (i motsetning til Vercels `has:`), så de
+# unconditional theroleroom-only redirectene som sto her FØR (arvet fra
+# vercel.json's evalueringsrekkefølge, aldri korrekt på Netlify) er
+# fjernet — de serverte theroleroom sin robots/sitemap/llms.txt til ALLE
+# tre domener, inkl. leadgrid.no og creatorhubn.com.
 
 # ─────────────────────── INTERNE REWRITES (200) ───────────────────────
-
-[[redirects]]
-  from = "/robots.txt"
-  to = "/theroleroom-robots.txt"
-  status = 200
-  force = true
-# Skygget: /robots.txt → /creatorhubn-robots.txt (duplikat, første-treff vant)
-
-[[redirects]]
-  from = "/llms.txt"
-  to = "/theroleroom-llms.txt"
-  status = 200
 
 [[redirects]]
   from = "/link"

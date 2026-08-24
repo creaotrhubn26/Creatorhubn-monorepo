@@ -5,16 +5,9 @@
  */
 
 import type { CameraAdapter, CameraStateSnapshot, NormalizedCameraSettings } from "./types";
+import { ccapiHeaders } from "@/lib/ccapiAuth";
 
 const BASE = "/api/arri";
-
-function getUserIdHeader(): string {
-  if (typeof window !== "undefined") {
-    const stored = window.localStorage.getItem("role-room-user-id");
-    if (stored) return stored;
-  }
-  return "dev-user";
-}
 
 // ARRI bruker voltage (typisk 12-17V på Alexa Mini LF battery) — vi
 // normaliserer til percent med konservativ kurve.
@@ -41,7 +34,7 @@ export class ArriWebAdapter implements CameraAdapter {
   async connect(): Promise<void> {
     const response = await fetch(`${BASE}/connect`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-role-room-user-id": getUserIdHeader() },
+      headers: ccapiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ ipAddress: this.ipAddress, port: this.port }),
     });
     if (!response.ok) {
@@ -64,7 +57,7 @@ export class ArriWebAdapter implements CameraAdapter {
   async fetchState(): Promise<CameraStateSnapshot> {
     const response = await fetch(
       `${BASE}/cameras/${encodeURIComponent(this.ipAddress)}/state`,
-      { headers: { "x-role-room-user-id": getUserIdHeader() } },
+      { headers: ccapiHeaders() },
     );
     const body = await response.json();
     const info = body.info ?? {};
@@ -122,7 +115,7 @@ export class ArriWebAdapter implements CameraAdapter {
       `${BASE}/cameras/${encodeURIComponent(this.ipAddress)}/settings`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-role-room-user-id": getUserIdHeader() },
+        headers: ccapiHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(body),
       },
     );
@@ -132,7 +125,7 @@ export class ArriWebAdapter implements CameraAdapter {
   async startRecording(): Promise<void> {
     const response = await fetch(
       `${BASE}/cameras/${encodeURIComponent(this.ipAddress)}/record/start`,
-      { method: "POST", headers: { "x-role-room-user-id": getUserIdHeader() } },
+      { method: "POST", headers: ccapiHeaders() },
     );
     if (!response.ok) throw new Error("ARRI record start failed");
   }
@@ -140,7 +133,7 @@ export class ArriWebAdapter implements CameraAdapter {
   async stopRecording(): Promise<void> {
     const response = await fetch(
       `${BASE}/cameras/${encodeURIComponent(this.ipAddress)}/record/stop`,
-      { method: "POST", headers: { "x-role-room-user-id": getUserIdHeader() } },
+      { method: "POST", headers: ccapiHeaders() },
     );
     if (!response.ok) throw new Error("ARRI record stop failed");
   }

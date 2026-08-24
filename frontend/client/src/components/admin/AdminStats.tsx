@@ -1,7 +1,7 @@
 import { useTheming } from '../../utils/theming-helper';
 import * as React from 'react';
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import {
   apiRequest,
@@ -72,6 +72,11 @@ import {
 interface AdminStatsProps {
   userEmail?: string;
   isAdmin?: boolean;
+}
+
+interface SubscriptionBreakdownEntry {
+  plan: string;
+  count: number;
 }
 
 interface PlatformStats {
@@ -161,6 +166,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
   const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const isMobile = useIsMobile();
+  const queryClient = useQueryClient();
 
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -205,6 +211,14 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
     setSelectedMetric(null);
 };
 
+  const skeletonPulse = {
+    animation: 'pulse 1.5s ease-in-out infinite',
+    '@keyframes pulse': {
+      '0%, 100%': { opacity: 1 },
+      '50%': { opacity: 0.4 },
+    },
+  };
+
   // Fetch platform-wide stats - SANNTID OPPDATERING
   const { data: platformStats, isLoading: isPlatformStatsLoading, error: platformStatsError } = useQuery({
     queryKey: ['/api/admin/platform-stats'],
@@ -218,7 +232,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
 });
 
   // Fetch enhanced dashboard with enterprise data - SANNTID
-  const { data: dashboardData } = useQuery({
+  const { data: dashboardData, isLoading: isDashboardLoading } = useQuery({
     queryKey: ['/api/admin/dashboard'],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
@@ -230,7 +244,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
   });
 
   // Fetch profession-specific stats for admin overview - SANNTID
-  const { data: professionStats } = useQuery({
+  const { data: professionStats, isLoading: isProfessionStatsLoading } = useQuery({
     queryKey: ['/api/admin/profession-stats'],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
@@ -242,7 +256,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
   });
 
   // Fetch Academy revenue stats - SANNTID
-  const { data: academyRevenue } = useQuery({
+  const { data: academyRevenue, isLoading: isAcademyRevenueLoading } = useQuery({
     queryKey: ['/api/academy/admin/revenue/overview'],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
@@ -254,7 +268,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
   });
 
   // Fetch Academy analytics - SANNTID
-  const { data: academyStats } = useQuery({
+  const { data: academyStats, isLoading: isAcademyStatsLoading } = useQuery({
     queryKey: ['/api/admin/academy/analytics/overview'],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
@@ -266,7 +280,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
   });
 
   // ✅ Fetch real-time email conversion stats
-  const { data: emailConversionStats } = useQuery({
+  const { data: emailConversionStats, isLoading: isEmailConversionLoading } = useQuery({
     queryKey: ['/api/admin/email-conversion-stats'],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
@@ -278,7 +292,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
   });
 
   // Fetch Role Room live stats for the admin dashboard
-  const { data: roleRoomStats } = useQuery({
+  const { data: roleRoomStats, isLoading: isRoleRoomLoading } = useQuery({
     queryKey: ['/api/role-room/admin/stats'],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
@@ -318,7 +332,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
   const activeProjectsTrend = stats ? calculateTrend(stats.activeProjects?.current || 0, stats.activeProjects?.previous || 0) : { percentage: 0, isPositive: true };
   const revenueTrend = stats ? calculateTrend(stats.totalRevenue?.current || 0, stats.totalRevenue?.previous || 0) : { percentage: 0, isPositive: true };
   const subscriptionBreakdown = Array.isArray(dashboardData?.dashboard?.quickStats?.subscriptionBreakdown)
-    ? dashboardData.dashboard.quickStats.subscriptionBreakdown.filter((entry: any) => entry && typeof entry.plan === 'string')
+    ? dashboardData.dashboard.quickStats.subscriptionBreakdown.filter((entry: SubscriptionBreakdownEntry) => entry && typeof entry.plan === 'string')
     : [];
   const activeInsightSources = [
     stats,
@@ -412,22 +426,51 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
 
       {!hasAnyInsightData ? (
         <Alert severity="info" sx={{ mb: 4, borderRadius: '18px' }}>
-          Ingen admindata er tilgjengelig akkurat nå. Dette betyr vanligvis at en eller flere
-          datakilder ikke har svart ennå, ikke at Daniel mangler admin-tilgang.
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            Ingen admindata er tilgjengelig akkurat nå. Dette betyr vanligvis at en eller flere
+            datakilder ikke har svart ennå.
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => queryClient.invalidateQueries()}
+              sx={{ borderRadius: '12px', textTransform: 'none' }}
+            >
+              Prøv igjen
+            </Button>
+          </Box>
         </Alert>
       ) : null}
 
       {/* Enterprise KPIs */}
-      {dashboardData?.dashboard?.quickStats && (
+      {isDashboardLoading ? (
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          {[1, 2, 3, 4].map((i) => (
+            <Grid xs={12} md={6} lg={3} key={i}>
+              <MuiCard sx={{ height: '100%' }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+                    <Avatar sx={{ bgcolor: 'rgba(255,140,0,0.1)', width: 48, height: 48, ...skeletonPulse }} />
+                    <Box sx={{ flex: 1 }}>
+                      <Box sx={{ height: 24, width: '60%', bgcolor: 'rgba(255,140,0,0.1)', borderRadius: 1, ...skeletonPulse }} />
+                      <Box sx={{ height: 14, width: '40%', bgcolor: 'rgba(255,140,0,0.06)', borderRadius: 1, mt: 0.5, ...skeletonPulse }} />
+                    </Box>
+                  </Box>
+                </CardContent>
+              </MuiCard>
+            </Grid>
+          ))}
+        </Grid>
+      ) : dashboardData?.dashboard?.quickStats && (
         <Grid container spacing={3} sx={{ mb: 4 }}>
           <Grid xs={12} md={6} lg={3}>
-            <MuiCard sx={{ height: '100%', transition: 'all 0.3s ease', '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }, border: '2px solid #ff8c00' }}>
+            <MuiCard sx={{ height: '100%', transition: 'all 0.3s ease', '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }, border: '1px solid rgba(255,255,255,0.08)' }}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
                   <Avatar sx={{ bgcolor: '#ff8c0020', color: '#ff8c00', width: 48, height: 48 }}>
                     {theming.getThemedIcon('group')}
                   </Avatar>
-                  <Chip size="small" label="Enterprise" color="warning" />
                 </Box>
                 <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.primary, mb: 1 }}>
                   {dashboardData.dashboard.quickStats.totalCustomers}
@@ -440,13 +483,12 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
           </Grid>
 
           <Grid xs={12} md={6} lg={3}>
-            <MuiCard sx={{ height: '100%', transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }, border: '2px solid #4caf50' }}>
+            <MuiCard sx={{ height: '100%', transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }, border: '1px solid rgba(255,255,255,0.08)' }}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
                   <Avatar sx={{ bgcolor: '#4caf5020', color: '#4caf50', width: 48, height: 48 }}>
                     {theming.getThemedIcon('money')}
                   </Avatar>
-                  <Chip size="small" label="Enterprise" color="success" />
                 </Box>
                 <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.primary, mb: 1 }}>
                   {dashboardData.dashboard.quickStats.totalRevenue} kr
@@ -459,13 +501,12 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
           </Grid>
 
           <Grid xs={12} md={6} lg={3}>
-            <MuiCard sx={{ height: '100%', transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }, border: '2px solid #2196f3' }}>
+            <MuiCard sx={{ height: '100%', transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }, border: '1px solid rgba(255,255,255,0.08)' }}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
                   <Avatar sx={{ bgcolor: '#2196f320', color: '#2196f3', width: 48, height: 48 }}>
                     {theming.getThemedIcon('trendingUp')}
                   </Avatar>
-                  <Chip size="small" label="Enterprise" color="primary" />
                 </Box>
                 <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.primary, mb: 1 }}>
                   {dashboardData.dashboard.quickStats.activeDeals}
@@ -478,13 +519,12 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
           </Grid>
 
           <Grid xs={12} md={6} lg={3}>
-            <MuiCard sx={{ height: '100%', transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }, border: '2px solid #9c27b0' }}>
+            <MuiCard sx={{ height: '100%', transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }, border: '1px solid rgba(255,255,255,0.08)' }}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
                   <Avatar sx={{ bgcolor: '#9c27b020', color: '#ce93d8', width: 48, height: 48 }}>
                     {theming.getThemedIcon('star')}
                   </Avatar>
-                  <Chip size="small" label="Enterprise" color="secondary" />
                 </Box>
                 <Typography variant="h4" sx={{ fontWeight: 700, color: themeColors.primary, mb: 1 }}>
                   {dashboardData.dashboard.quickStats.activeSubscriptions}
@@ -499,10 +539,36 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       )}
 
       {/* Email Conversion Tracking (Real-time) */}
-      {emailConversionStats && (
+      {isEmailConversionLoading ? (
         <Grid container spacing={3} sx={{ mb: 4 }}>
           <Grid xs={12}>
-            <MuiCard sx={{ border: '2px solid #ea4335' }}>
+            <MuiCard>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                  <Avatar sx={{ bgcolor: 'rgba(234,67,53,0.1)', width: 48, height: 48, ...skeletonPulse }} />
+                  <Box sx={{ flex: 1 }}>
+                    <Box sx={{ height: 20, width: '50%', bgcolor: 'rgba(234,67,53,0.1)', borderRadius: 1, ...skeletonPulse }} />
+                    <Box sx={{ height: 14, width: '30%', bgcolor: 'rgba(234,67,53,0.06)', borderRadius: 1, mt: 0.5, ...skeletonPulse }} />
+                  </Box>
+                </Box>
+                <Grid container spacing={2}>
+                  {[1, 2, 3, 4].map((i) => (
+                    <Grid xs={6} md={3} key={i}>
+                      <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }}>
+                        <Box sx={{ height: 28, width: '60%', bgcolor: 'rgba(255,255,255,0.06)', borderRadius: 1, ...skeletonPulse }} />
+                        <Box sx={{ height: 14, width: '40%', bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1, mt: 0.5, ...skeletonPulse }} />
+                      </Box>
+                    </Grid>
+                  ))}
+                </Grid>
+              </CardContent>
+            </MuiCard>
+          </Grid>
+        </Grid>
+      ) : emailConversionStats && (
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid xs={12}>
+            <MuiCard sx={{ border: '1px solid rgba(255,255,255,0.08)' }}>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                   <Email sx={{ color: '#ea4335', fontSize: 32 }} />
@@ -511,7 +577,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                       Email Conversion Tracking (Real-Time)
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      Last 30 days • Updates every 5 seconds
+                      Alle tider • Oppdateres hvert 20. sek
                     </Typography>
                   </Box>
                   <Chip 
@@ -584,13 +650,25 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                   The Role Room
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Live DB-tall • oppdateres hvert 15. sek
+                  Live DB-tall • oppdateres hvert 30. sek
                 </Typography>
               </Box>
               <Chip label="LIVE" size="small" color="secondary" sx={{ fontWeight: 700 }} />
             </Box>
 
-            {/* KPI row */}
+            {isRoleRoomLoading ? (
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <Grid xs={6} md={4} lg={2} key={i}>
+                    <Box sx={{ p: 2, borderRadius: 2, bgcolor: 'rgba(130,110,255,0.04)', textAlign: 'center' }}>
+                      <Box sx={{ height: 32, width: '60%', bgcolor: 'rgba(130,110,255,0.1)', borderRadius: 1, mx: 'auto', ...skeletonPulse }} />
+                      <Box sx={{ height: 14, width: '70%', bgcolor: 'rgba(130,110,255,0.06)', borderRadius: 1, mt: 1, mx: 'auto', ...skeletonPulse }} />
+                    </Box>
+                  </Grid>
+                ))}
+              </Grid>
+            ) : (
+            <>
             <Grid container spacing={2} sx={{ mb: 3 }}>
               {[
                 { label: 'Kreative brukere',    value: roleRoomStats?.kreative,            color: '#8a6eff', icon: <Group /> },
@@ -622,7 +700,6 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
               ))}
             </Grid>
 
-            {/* Recent projects */}
             {Array.isArray(roleRoomStats?.recentProjects) && roleRoomStats.recentProjects.length > 0 && (
               <Box>
                 <Typography variant="subtitle2" sx={{ mb: 1.5, color: 'text.secondary', letterSpacing: '0.06em', textTransform: 'uppercase', fontSize: '0.72rem' }}>
@@ -657,17 +734,19 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 </AdminTableContainer>
               </Box>
             )}
+            </>
+            )}
           </CardContent>
         </MuiCard>
       </Box>
 
-      {/* Google Analytics 4 Dashboard - FULL CONTROL */}
+      {/* CreatorHub Analytics Dashboard */}
       <Box sx={{ mb: 4 }}>
         {googleAnalyticsFeedsEnabled ? (
           <GoogleAnalyticsDashboard />
         ) : (
           <Alert severity="info" sx={{ borderRadius: '18px' }}>
-            Google Analytics-feedene er ikke tilgjengelige i production ennå. Oversikten skjuler
+            Analytics-feedene er ikke tilgjengelige i production ennå. Oversikten skjuler
             derfor dette panelet i stedet for å spamme 404-feil i konsollen.
           </Alert>
         )}
@@ -718,11 +797,11 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
               <Grid container spacing={3}>
                 {/* Total Courses */}
                 <Grid xs={12} sm={6} md={3}>
-                  <MuiCard sx={{
-                    height: '100%',
-                    bgcolor: 'rgba(255,152,0,0.12)',
-                    border: '2px solid #ff8c00',
-                    transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 4 }
+                   <MuiCard sx={{
+                     height: '100%',
+                     bgcolor: 'rgba(255,152,0,0.12)',
+                     border: '1px solid rgba(255,255,255,0.08)',
+                     transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 4 }
                   }}>
                     <CardContent>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
@@ -742,11 +821,11 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
 
                 {/* Published Courses */}
                 <Grid xs={12} sm={6} md={3}>
-                  <MuiCard sx={{
-                    height: '100%',
-                    bgcolor: 'rgba(76,175,80,0.12)',
-                    border: '2px solid #4caf50',
-                    transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 4 }
+                   <MuiCard sx={{
+                     height: '100%',
+                     bgcolor: 'rgba(76,175,80,0.12)',
+                     border: '1px solid rgba(255,255,255,0.08)',
+                     transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 4 }
                   }}>
                     <CardContent>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
@@ -771,11 +850,11 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
 
                 {/* Total Enrollments */}
                 <Grid xs={12} sm={6} md={3}>
-                  <MuiCard sx={{
-                    height: '100%',
-                    bgcolor: 'rgba(33,150,243,0.08)',
-                    border: '2px solid #2196f3',
-                    transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 4 }
+                   <MuiCard sx={{
+                     height: '100%',
+                     bgcolor: 'rgba(33,150,243,0.08)',
+                     border: '1px solid rgba(255,255,255,0.08)',
+                     transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 4 }
                   }}>
                     <CardContent>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
@@ -795,11 +874,11 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
 
                 {/* Total Instructors */}
                 <Grid xs={12} sm={6} md={3}>
-                  <MuiCard sx={{
-                    height: '100%',
-                    bgcolor: 'rgba(156,39,176,0.14)',
-                    border: '2px solid #9c27b0',
-                    transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 4 }
+                   <MuiCard sx={{
+                     height: '100%',
+                     bgcolor: 'rgba(156,39,176,0.14)',
+                     border: '1px solid rgba(255,255,255,0.08)',
+                     transition: 'all 0.3s ease','&:hover': { transform: 'translateY(-4px)', boxShadow: 4 }
                   }}>
                     <CardContent>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
@@ -827,12 +906,6 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 >
                   Administrer Kurs
                 </AdminButton>
-                <AdminButton
-                  tone="secondary"
-                  startIcon={<Analytics />}
-                >
-                  Detaljert Analyse
-                </AdminButton>
               </Box>
             </CardContent>
           </MuiCard>
@@ -846,9 +919,14 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
             sx={{ 
               height: '100%', 
               transition: 'all 0.3s ease', 
-              cursor: 'pointer','&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }
+              cursor: 'pointer',
+              '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 },
+              '&:focus-visible': { outline: '2px solid #ff8c00', outlineOffset: 2 }
           }}
             onClick={() => handleCardClick('users')}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleCardClick('users'); }}
           >
             <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
@@ -880,9 +958,14 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
             sx={{ 
               height: '100%', 
               transition: 'all 0.3s ease', 
-              cursor: 'pointer','&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }
+              cursor: 'pointer',
+              '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 },
+              '&:focus-visible': { outline: '2px solid #ff8c00', outlineOffset: 2 }
           }}
             onClick={() => handleCardClick('projects')}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleCardClick('projects'); }}
           >
             <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
@@ -914,9 +997,14 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
             sx={{ 
               height: '100%', 
               transition: 'all 0.3s ease', 
-              cursor: 'pointer','&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }
+              cursor: 'pointer',
+              '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 },
+              '&:focus-visible': { outline: '2px solid #ff8c00', outlineOffset: 2 }
           }}
             onClick={() => handleCardClick('revenue')}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleCardClick('revenue'); }}
           >
             <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
@@ -948,9 +1036,14 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
             sx={{ 
               height: '100%', 
               transition: 'all 0.3s ease', 
-              cursor: 'pointer','&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }
+              cursor: 'pointer',
+              '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 },
+              '&:focus-visible': { outline: '2px solid #ff8c00', outlineOffset: 2 }
           }}
             onClick={() => handleCardClick('subscriptions')}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleCardClick('subscriptions'); }}
           >
             <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
@@ -985,7 +1078,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                   height: '100%', 
                   transition: 'all 0.3s ease', 
                   cursor: 'pointer',
-                  border: '2px solid #9c27b0','&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }
+                  border: '1px solid rgba(255,255,255,0.08)','&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }
               }}
                 onClick={() => handleCardClick('academy_students')}
               >
@@ -1016,7 +1109,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                   height: '100%', 
                   transition: 'all 0.3s ease', 
                   cursor: 'pointer',
-                  border: '2px solid #e91e63','&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }
+                  border: '1px solid rgba(255,255,255,0.08)','&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }
               }}
                 onClick={() => handleCardClick('academy_instructors')}
               >
@@ -1047,7 +1140,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                   height: '100%', 
                   transition: 'all 0.3s ease', 
                   cursor: 'pointer',
-                  border: '2px solid #ff8c00','&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }
+                  border: '1px solid rgba(255,255,255,0.08)','&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }
               }}
                 onClick={() => handleCardClick('academy_revenue')}
               >
@@ -1256,7 +1349,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
       </MuiCard>
 
       {/* System Health */}
-      <MuiCard>
+      <MuiCard sx={{ mb: 4 }}>
         <CardContent sx={theming.getThemedCardSx()}>
           <Typography variant="h6" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, color: themeColors.primary }}>
             {theming.getThemedIcon('assessment')}
@@ -1556,7 +1649,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                       Abonnementstyper
                     </Typography>
                     {subscriptionBreakdown.length > 0 ? (
-                      subscriptionBreakdown.map((entry: any) => (
+                      subscriptionBreakdown.map((entry: SubscriptionBreakdownEntry) => (
                         <Typography variant="body2" key={entry.plan}>
                           {entry.plan}: {entry.count}
                         </Typography>
@@ -1856,10 +1949,10 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
               </Grid>
               <Alert severity="success" sx={{ mt: 3 }}>
                 <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
-                  Instruktører tjener 80-85% av kursinntektene
+                  Instruktører tjener 80% av kursinntektene
                 </Typography>
                 <Typography variant="caption" display="block">
-                  Pro Plan: 80% til instruktør | Enterprise Plan: 85% til instruktør
+                  Fast plattformavgift: 20% • Instruktører beholder 80%
                 </Typography>
                 <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
                   Dette er betydelig høyere enn konkurrenter som Udemy (50%) og Skillshare (30-50%)
@@ -1889,7 +1982,7 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                       Platform (15-20%): {formatValue(academyRevenue.totalPlatformRevenue || 0, 'currency')}
                     </Typography>
                     <Typography variant="body2">
-                      Instruktører (80-85%): {formatValue(academyRevenue.totalInstructorRevenue || 0, 'currency')}
+                      Instruktører (80%): {formatValue(academyRevenue.totalInstructorRevenue || 0, 'currency')}
                     </Typography>
                   </Paper>
                 </Grid>
@@ -1970,12 +2063,12 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                   {formatValue(academyRevenue.totalInstructorRevenue || 0, 'currency')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Total inntekt til instruktører (80-85% av kurssalg)
+                  Total inntekt til instruktører (80% av kurssalg)
                 </Typography>
               </Paper>
               <Alert severity="info">
                 <Typography variant="body2">
-                  Instruktører beholder 80-85% av kursinntektene. Dette motiverer kvalitetsinnhold
+                  Instruktører beholder 80% av kursinntektene. Dette motiverer kvalitetsinnhold
                   og gjør CreatorHub Academy konkurransedyktig sammenlignet med Udemy (50%) og andre plattformer.
                 </Typography>
               </Alert>
@@ -1989,12 +2082,12 @@ export default function AdminStats({ userEmail, isAdmin = false }: AdminStatsPro
                 <AccountBalance sx={{ color: '#ff9800' }} />
                 Ventende Utbetalinger - Krever Godkjenning
               </Typography>
-              <Alert severity="warning" sx={{ mb: 3 }}>
+              <Alert severity="info" sx={{ mb: 3 }}>
                 <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                  {academyRevenue.pendingPayouts || 0} utbetalingsforespørsler venter på godkjenning
+                  Utbetalingsfunksjonen er ikke implementert ennå
                 </Typography>
                 <Typography variant="caption" display="block">
-                  Total beløp: {formatValue(academyRevenue.pendingPayoutAmount || 0, 'currency')}
+                  Backend returnerer alltid 0 forespørsler inntil videre
                 </Typography>
               </Alert>
               <Button

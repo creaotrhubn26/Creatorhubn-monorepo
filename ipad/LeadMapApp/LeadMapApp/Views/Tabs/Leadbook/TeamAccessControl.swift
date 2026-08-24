@@ -97,6 +97,12 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
     // AI-strukturering av eksempler (2026-07-17) — Claude-kall er kostnads-
     // bærende → egen nøkkel, styrbar per plan uavhengig av Eksempler-fanen.
     case leadbookAIStrukturering = "Leadbook · AI-strukturering"
+    // Lydopptak fase 2 (2026-08-16, docs/leadgrid-gdpr-lydopptak.md) — on-
+    // device transkripsjon av kundesamtaler. DEFAULT AV (isExplicitlyEnabled-
+    // mønsteret): org-admin må bekrefte §7-compliance-sjekklisten (ansatt-
+    // drøfting, skriftlig rutine, informasjonsskriv, innsyn) FØR nøkkelen
+    // kan åpnes — se POST /org/leadbook-lydopptak-compliance.
+    case leadbookLydopptak = "Leadbook · Lydopptak"
     // Utstyrsregister (2026-07-17) — org-eid utstyr utlevert til medlemmer
     // (nettbrett/telefon/laptop/klær/ID-kort) m/ hendelseslogg.
     case utstyrsregister = "Utstyr · Organisasjonsutstyr"
@@ -202,6 +208,7 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case .omradeTildeling: return "map.circle.fill"
         // AI
         case .leadbookAIStrukturering: return "sparkles"
+        case .leadbookLydopptak: return "waveform.badge.mic"
         // Utstyr
         case .utstyrsregister: return "shippingbox.fill"
         // Dørsalg
@@ -217,7 +224,7 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
         case .analyse, .team, .salgsledelse, .omradeTildeling,
              .utstyrsregister: return .analyseTeam
         case .leadbookOversikt, .leadbookMaler, .leadbookPondus, .leadbookEksempler,
-             .leadbookInnsikt, .leadbookAIStrukturering: return .leadbook
+             .leadbookInnsikt, .leadbookAIStrukturering, .leadbookLydopptak: return .leadbook
         case .varsler, .tilganger, .integrasjoner, .fakturering: return .admin
         case .teamExportCSV, .teamExportPDF, .teamImportExcel, .teamShareReport,
              .teamMarkAllRead, .teamCustomDashboard: return .rapportExport

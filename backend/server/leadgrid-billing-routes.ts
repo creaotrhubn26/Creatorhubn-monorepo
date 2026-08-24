@@ -23,6 +23,18 @@ import { sendTransactionalEmail } from "./transactional-email-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
+/** AI-strukturering-tillegget (Claude-kall, kostnadsbærende) — samme
+ *  price-ID brukes i /billing/provision (include_ai=true) og her i
+ *  webhooken for å auto-gi leadbookAIStrukturering-entitlement når
+ *  fakturaen som faktisk inneholder tillegget betales (2026-08-17,
+ *  lukker gapet der betalt AI-tillegg ikke automatisk ga tilgang —
+ *  superadmin måtte huske et helt separat manuelt steg i entitlement-
+ *  matrisen). Hoistet til modul-nivå så webhook-handleren (som ikke
+ *  kjører inne i registerLeadgridBillingRoutes) også kan lese den.
+ */
+const AI_STRUCTURE_PRICE = process.env.LEADGRID_PRICE_AI_STRUCTURE
+  ?? "price_1TuGibApjenweKvPiMk8meKH";
+
 interface Deps {
   app: Express;
   pool: Pool;
@@ -124,6 +136,32 @@ export async function handleLeadgridInvoicePaid(
     );
     // Drop grace hvis det fantes
     await pool.query(`DELETE FROM plan_grace WHERE organization_id = $1`, [org.id]);
+  }
+
+  // Auto-gi leadbookAIStrukturering når den betalte fakturaen faktisk
+  // inneholder AI-tillegget (2026-08-17). Feature-nøkkelen er fail-CLOSED
+  // (se leadgrid-leadbook-examples-routes.ts) — uten dette måtte en
+  // superadmin huske et helt separat manuelt steg i entitlement-matrisen
+  // hver gang en kunde betalte for tillegget. UPSERT er idempotent
+  // (kjøres på nytt for hver periode/faktura uten problem).
+  try {
+    const hasAiAddOn = (invoice.lines?.data ?? []).some((line) => {
+      const priceId = (line as any).price?.id ?? (line as any).pricing?.price_details?.price;
+      return priceId === AI_STRUCTURE_PRICE;
+    });
+    if (hasAiAddOn) {
+      await pool.query(
+        `INSERT INTO leadgrid_org_entitlements
+           (organization_id, feature_key, state, updated_by)
+         VALUES ($1, 'leadbookAIStrukturering', 'included', NULL)
+         ON CONFLICT (organization_id, feature_key) DO UPDATE
+           SET state = 'included', updated_at = now()
+         WHERE leadgrid_org_entitlements.state <> 'locked'`,
+        [org.id],
+      );
+    }
+  } catch (e) {
+    console.error("[leadgrid-billing] auto-entitlement (leadbookAIStrukturering) failed", e);
   }
 
   // Marker drypp som konvertert — stopper videre drypp-mails
@@ -244,8 +282,7 @@ export function registerLeadgridBillingRoutes({
       year: process.env.LEADGRID_PRICE_AGENCY_YEAR ?? "price_1TjcdqApjenweKvPJeskBX00",
     },
   };
-  const AI_PRICE = process.env.LEADGRID_PRICE_AI_STRUCTURE
-    ?? "price_1TuGibApjenweKvPiMk8meKH";
+  const AI_PRICE = AI_STRUCTURE_PRICE;
 
   app.post("/api/leadgrid/billing/provision", async (req, res) => {
     const session = await requireSuperAdmin(req, res, pool, activeSessions);

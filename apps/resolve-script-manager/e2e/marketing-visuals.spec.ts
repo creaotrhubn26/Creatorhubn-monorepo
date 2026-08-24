@@ -15,6 +15,10 @@ function anthropic(textOrObj: unknown) {
 async function setupRoutes(page: Page) {
   await page.route('**/api/post-agent/me', (route) =>
     route.fulfill({ json: { id: 'u1', email: 't@test.no', name: 'Test', role: 'producer' } }));
+  // Marketing er en egen à-la-carte-entitlement (skilt ut fra demo_studio etter at
+  // testen ble skrevet) — uten denne mocken viser panelet «MODUL LÅST», ikke innholdet.
+  await page.route('**/api/post-agent/modules/entitlements', (route) =>
+    route.fulfill({ json: { modules: ['demo_studio', 'marketing'] } }));
   await page.route('**/api/post-agent/anthropic/messages', (route) => {
     const body = route.request().postDataJSON() as { messages?: Array<{ content: unknown }> };
     const last = body.messages?.[body.messages.length - 1];

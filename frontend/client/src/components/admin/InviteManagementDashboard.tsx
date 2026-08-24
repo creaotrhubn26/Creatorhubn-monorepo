@@ -70,6 +70,7 @@ import {
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import FikenIntegrationRequestsPanel from './FikenIntegrationRequestsPanel';
+import CreateInviteDialog from './CreateInviteDialog';
 import { AdminButton, useIsMobile } from './design-system';
 
 // Custom styled connector for journey stepper
@@ -255,6 +256,7 @@ export default function InviteManagementDashboard() {
   const [reviewStatus, setReviewStatus] = useState('');
   const [adminNotes, setAdminNotes] = useState('');
   const [search, setSearch] = useState('');
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
 
   // Send invite email mutation
   const sendInviteMutation = useMutation({
@@ -400,9 +402,14 @@ export default function InviteManagementDashboard() {
   return (
     <ThemeProvider theme={adminDarkTheme}>
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" component="h2" sx={{ mb: 3, color: themeColors.primary }}>
-        Invitasjonshåndtering
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, gap: 2 }}>
+        <Typography variant="h4" component="h2" sx={{ color: themeColors.primary, flexGrow: 1 }}>
+          Invitasjonshåndtering
+        </Typography>
+        <AdminButton tone="primary" startIcon={<PersonAdd />} onClick={() => setShowCreateDialog(true)}>
+          Inviter ny bruker
+        </AdminButton>
+      </Box>
 
       {/* Main View Tabs - Invites vs Fiken */}
       <Paper sx={{ mb: 3 }}>
@@ -948,6 +955,8 @@ export default function InviteManagementDashboard() {
       </Dialog>
         </>
       )}
+
+      <CreateInviteDialog open={showCreateDialog} onClose={() => setShowCreateDialog(false)} />
     </Box>
     </ThemeProvider>
   );

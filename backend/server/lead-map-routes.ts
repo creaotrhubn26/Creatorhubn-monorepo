@@ -55,6 +55,7 @@ function buildNotes(body: {
   return parts.join("\n");
 }
 import { notifyStatusChanged } from "./lead-map-notification-service.js";
+import { lookupCompanyForNewLead } from "./lead-brreg-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -487,6 +488,22 @@ export function setupLeadMapRoutes(deps: Deps): void {
       return res.json({ results: r.results });
     } catch (err) {
       return res.status(500).json({ error: "places_failed", detail: "internal_error" });
+    }
+  });
+
+  // GET /company-lookup?q= — ekte BRREG-oppslag for «Legg til lead»-skjemaets
+  // scan-felt (2026-08-16). Erstatter en klient-side mock som alltid fylte
+  // inn samme fiktive «Nordic Elektro AS» uansett hva brukeren skrev inn.
+  app.get("/api/admin-room/lead-map/company-lookup", async (req: Request, res: Response) => {
+    const session = await getUser(req, pool, activeSessions);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    const q = typeof req.query.q === "string" ? req.query.q : "";
+    if (!q.trim()) return res.status(400).json({ error: "mangler_sok" });
+    try {
+      const result = await lookupCompanyForNewLead(q);
+      return res.json(result);
+    } catch (err) {
+      return res.status(500).json({ error: "lookup_failed", detail: "internal_error" });
     }
   });
 

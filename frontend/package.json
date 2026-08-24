@@ -8,8 +8,9 @@
   },
   "scripts": {
     "dev": "NODE_OPTIONS='--max-old-space-size=12288' vite --port 5001 --strictPort",
-    "build": "NODE_OPTIONS='--max-old-space-size=8192' vite build && npm run build:geo",
+    "build": "NODE_OPTIONS='--max-old-space-size=8192' vite build && npm run build:geo && npm run build:netlify-host-routes",
     "build:geo": "vite build --config vite.geo-ssr.config.ts && node scripts/run-geo-prerender.mjs",
+    "build:netlify-host-routes": "node scripts/generate-netlify-host-routes.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "audit:a11y": "sh ./scripts/run-axe-audit.sh",

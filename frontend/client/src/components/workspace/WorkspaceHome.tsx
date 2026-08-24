@@ -31,15 +31,20 @@ const CATEGORY_LABEL = { visual: 'Foto & video', music: 'Musikk', service: 'Tjen
 const WorkspaceHome: React.FC = () => {
   const [, navigate] = useLocation();
   const { user, logout } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [projects, setProjects] = useState<any[]>([]);
-  const [showCreate, setShowCreate] = useState(false);
-  const [loadError, setLoadError] = useState(false);
-  const [reloadKey, setReloadKey] = useState(0);
-  const redirected = useRef(false);
   // ?pick=1 lar brukeren nå prosjektvelgeren bevisst uten å bli auto-sendt inn i
   // eneste-prosjektet (ellers uoppnåelig med nøyaktig ett prosjekt).
   const pickMode = typeof window !== 'undefined' && /(?:\?|&)pick=1/.test(window.location.search);
+  // ?new=1 — ekstern lenke inn til "opprett prosjekt" (f.eks. Creatorhub One
+  // Desk sin "ingen prosjekter"-skjerm) åpner wizarden direkte i stedet for
+  // å lande på tomme prosjektlisten.
+  const newProjectMode = typeof window !== 'undefined' && /(?:\?|&)new=1/.test(window.location.search);
+
+  const [loading, setLoading] = useState(true);
+  const [projects, setProjects] = useState<any[]>([]);
+  const [showCreate, setShowCreate] = useState(newProjectMode);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const redirected = useRef(false);
 
   const profession = user?.profession;
   const userId = user?.id;
@@ -60,7 +65,7 @@ const WorkspaceHome: React.FC = () => {
       if (errored) { setLoadError(true); setLoading(false); return; }
       // Nøyaktig ett prosjekt → hopp rett inn (replace: ikke stable på historikken,
       // ellers blir Back en felle som umiddelbart redirecter framover igjen).
-      if (list.length === 1 && !redirected.current && !pickMode) {
+      if (list.length === 1 && !redirected.current && !pickMode && !newProjectMode) {
         redirected.current = true;
         // startTransition: navigasjonen monterer den lazy-lastede
         // TeamWorkspacePage. Uten transition erstatter det synkront den

@@ -1272,6 +1272,9 @@ struct LeadbookExampleDetailSheet: View {
     // 2026-07-17: backend-eksempel-tilstand (publisering + tilbakemeldinger)
     @State private var didPublish = false
     @State private var isPublishing = false
+    @State private var showDeleteConfirm = false
+    @State private var isDeleting = false
+    @State private var deleteToast: String?
     @State private var extraFeedback: [APIClient.LeadbookExampleFeedbackDTO] = []
     @State private var feedbackText = ""
     @State private var feedbackDim: LeadbookExample.Dimension?
@@ -1389,6 +1392,16 @@ struct LeadbookExampleDetailSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Lukk") { dismiss() }.tint(LBrand.textSecondary)
                 }
+                // Selvbetjent sletting (§7 «selgere kan be om sletting»,
+                // 2026-08-16): kladd slettes umiddelbart, publisert flagges
+                // + varsler ledere. Kun for ekte eksempler (backendId satt).
+                if canEdit, example.backendId != nil {
+                    ToolbarItem(placement: .destructiveAction) {
+                        Button(role: .destructive) { showDeleteConfirm = true } label: {
+                            Image(systemName: "trash")
+                        }
+                    }
+                }
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 0) {
                         Text(example.title).font(.appScaled(size: 13, weight: .bold)).foregroundStyle(.white)
@@ -1441,7 +1454,7 @@ struct LeadbookExampleDetailSheet: View {
                 }
             }
             .overlay(alignment: .top) {
-                if let t = saveToast {
+                if let t = saveToast ?? deleteToast {
                     Label(t, systemImage: "checkmark.circle.fill")
                         .font(.appScaled(size: 12, weight: .bold)).foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 8)
@@ -1451,7 +1464,21 @@ struct LeadbookExampleDetailSheet: View {
                 }
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: saveToast)
+            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: deleteToast)
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: pencilMode)
+            .confirmationDialog(
+                example.isDraft ? "Slett dette utkastet?" : "Be om sletting av dette eksempelet?",
+                isPresented: $showDeleteConfirm, titleVisibility: .visible
+            ) {
+                Button(example.isDraft ? "Slett" : "Send forespørsel", role: .destructive) {
+                    Task { await requestDeletion() }
+                }
+                Button("Avbryt", role: .cancel) {}
+            } message: {
+                Text(example.isDraft
+                     ? "Kladden slettes umiddelbart — kan ikke angres."
+                     : "Publisert eksempel — leder må godkjenne før det anonymiseres og arkiveres.")
+            }
             .task { onOpenBackendExample() }
         }
     }
@@ -1588,12 +1615,24 @@ struct LeadbookExampleDetailSheet: View {
     }
 
     /// 2026-07-17: leder publiserer utkast → synlig for hele teamet.
+    /// 2026-08-16 (§6 GDPR-pakken): navne-redaksjon on-device (NLTagger)
+    /// sendes MED denne PATCH-en — backenden kjører uansett sitt eget
+    /// regex-pass (telefon/e-post/org.nr) på draft→published, uavhengig
+    /// av om dette klient-passet fant noe. To lag, ikke ett.
     @MainActor
     private func publish() async {
         guard let api = appState.api, let id = example.backendId, !isPublishing else { return }
         isPublishing = true
         do {
-            try await api.updateLeadbookExample(id: id, ["status": "published"])
+            let redactedTranscript = example.transcript.map { line -> [String: Any] in
+                ["speaker": line.speaker.rawValue,
+                 "text": LeadbookAnonymizer.redactNames(line.text),
+                 "at_sec": line.timestamp]
+            }
+            try await api.updateLeadbookExample(id: id, [
+                "status": "published",
+                "transcript": redactedTranscript,
+            ])
             didPublish = true
             saveToast = "Eksempelet er publisert"
             onChanged?()
@@ -1602,6 +1641,27 @@ struct LeadbookExampleDetailSheet: View {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { saveToast = nil }
         isPublishing = false
+    }
+
+    /// Selvbetjent sletting (2026-08-16, §7): kladd slettes umiddelbart av
+    /// backend; publisert flagges for leder-godkjenning + anonymisering.
+    @MainActor
+    private func requestDeletion() async {
+        guard let api = appState.api, let id = example.backendId, !isDeleting else { return }
+        isDeleting = true
+        do {
+            try await api.leadbookRequestExampleDeletion(exampleId: id)
+            deleteToast = example.isDraft
+                ? "Slettet"
+                : "Sletteforespørsel sendt til ledere"
+            onChanged?()
+            if example.isDraft {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { dismiss() }
+            }
+        } catch {
+            deleteToast = "Kunne ikke be om sletting — prøv igjen"
+        }
+        isDeleting = false
     }
 
     private var playerCanvas: some View {

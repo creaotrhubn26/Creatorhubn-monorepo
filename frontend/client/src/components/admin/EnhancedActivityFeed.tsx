@@ -11,7 +11,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box,
-  Card,
+  Card as MuiCard,
   CardContent,
   Typography,
   List,
@@ -19,10 +19,8 @@ import {
   ListItemAvatar,
   ListItemText,
   Avatar,
-  Chip,
   IconButton,
   Divider,
-  Badge,
   Tooltip,
   Dialog,
   DialogTitle,
@@ -41,6 +39,7 @@ import {
   FormControl,
   InputLabel,
   InputAdornment,
+  ThemeProvider,
 } from '@mui/material';
 import {
   Science,
@@ -88,7 +87,9 @@ import { useLocation } from 'wouter';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
-import { AdminButton, useIsMobile } from './design-system';
+import { AdminButton, StatusChip, useIsMobile } from './design-system';
+import { adminDarkTheme } from './adminDarkTheme';
+import { adminTokens } from './design-system/adminTokens';
 
 interface ActivityItem {
   id: string;
@@ -272,36 +273,36 @@ useEffect(() => {
 
   const getActivityIcon = (type: string) => {
     switch (type) {
-      case 'prototype_feedback': return <Feedback sx={{ color: '#2196f3' }} />;
-      case 'invite_request': return <PersonAdd sx={{ color: '#ff8c00' }} />;
-      case 'bug_report': return <BugReport sx={{ color: '#f44336' }} />;
-      case 'feature_vote': return <ThumbUp sx={{ color: '#4caf50' }} />;
-      case 'user_approved': return <CheckCircle sx={{ color: '#4caf50' }} />;
-      case 'user_rejected': return <Cancel sx={{ color: '#f44336' }} />;
-      case 'account_activated': return <AccountCircle sx={{ color: '#4caf50' }} />;
+      case 'prototype_feedback': return <Feedback sx={{ color: adminTokens.color.info }} />;
+      case 'invite_request': return <PersonAdd sx={{ color: adminTokens.color.brand }} />;
+      case 'bug_report': return <BugReport sx={{ color: adminTokens.color.error }} />;
+      case 'feature_vote': return <ThumbUp sx={{ color: adminTokens.color.success }} />;
+      case 'user_approved': return <CheckCircle sx={{ color: adminTokens.color.success }} />;
+      case 'user_rejected': return <Cancel sx={{ color: adminTokens.color.error }} />;
+      case 'account_activated': return <AccountCircle sx={{ color: adminTokens.color.success }} />;
       case 'subscription_created': return <CardMembership sx={{ color: '#ce93d8' }} />;
-      case 'payment_completed': return <Payment sx={{ color: '#2e7d32' }} />;
-      case 'user_login': return <Login sx={{ color: '#60a5fa' }} />;
-      case 'feature_enabled': return <SettingsIcon sx={{ color: '#ff9800' }} />;
-      default: return <DashboardIcon sx={{ color: '#9e9e9e' }} />;
+      case 'payment_completed': return <Payment sx={{ color: adminTokens.color.success }} />;
+      case 'user_login': return <Login sx={{ color: adminTokens.color.info }} />;
+      case 'feature_enabled': return <SettingsIcon sx={{ color: adminTokens.color.warning }} />;
+      default: return <DashboardIcon sx={{ color: adminTokens.color.textMuted }} />;
     }
   };
 
   const getActivityColor = (type: string) => {
     const colors: Record<string, string> = {
-      prototype_feedback: '#2196f3',
-      invite_request: '#ff8c00',
-      bug_report: '#f44336',
-      feature_vote: '#4caf50',
-      user_approved: '#4caf50',
-      user_rejected: '#f44336',
-      account_activated: '#4caf50',
+      prototype_feedback: adminTokens.color.info,
+      invite_request: adminTokens.color.brand,
+      bug_report: adminTokens.color.error,
+      feature_vote: adminTokens.color.success,
+      user_approved: adminTokens.color.success,
+      user_rejected: adminTokens.color.error,
+      account_activated: adminTokens.color.success,
       subscription_created: '#9c27b0',
-      payment_completed: '#2e7d32',
-      user_login: '#1976d2',
-      feature_enabled: '#ff9800'
+      payment_completed: adminTokens.color.success,
+      user_login: adminTokens.color.info,
+      feature_enabled: adminTokens.color.warning,
     };
-    return colors[type] || '#9e9e9e';
+    return colors[type] || adminTokens.color.textMuted;
   };
 
   const handleActivityClick = (activity: ActivityItem) => {
@@ -340,17 +341,12 @@ useEffect(() => {
             secondaryAction={
               <Stack direction="row" spacing={1} alignItems="center">
                 {activity.priority === 'critical' && (
-                  <Chip label="CRITICAL" size="small" color="error" sx={{ fontSize: '0.65rem', height: 18, fontWeight: 'bold' }} />
+                  <StatusChip tone="error" label="CRITICAL" size="small" sx={{ fontSize: '0.65rem', height: 18, fontWeight: 'bold' }} />
                 )}
                 {activity.status && (
-                  <Chip
-                    label={activity.status}
+                  <StatusChip
+                    status={activity.status}
                     size="small"
-                    color={
-                      activity.status === 'approved' || activity.status === 'active' || activity.status === 'paid' ? 'success' :
-                      activity.status === 'rejected' ? 'error' :
-                      activity.status === 'pending' ? 'warning' : 'default'
-                    }
                     sx={{ fontSize: '0.7rem', height: 20 }}
                   />
                 )}
@@ -372,7 +368,7 @@ useEffect(() => {
                     {activity.title}
                   </Typography>
                   {activity.user.profession && (
-                    <Chip label={activity.user.profession} size="small" sx={{ fontSize: '0.65rem', height: 18 }} />
+                    <StatusChip label={activity.user.profession} size="small" sx={{ fontSize: '0.65rem', height: 18 }} />
                   )}
                 </Stack>
               }
@@ -423,13 +419,17 @@ useEffect(() => {
             <TimelineConnector />
           </TimelineSeparator>
           <TimelineContent>
-            <Paper
-              elevation={1}
+            <MuiCard
               role="button"
               tabIndex={0}
               sx={{
                 p: 2,
-                cursor: 'pointer','&:hover': { bgcolor: 'action.hover' }
+                cursor: 'pointer',
+                bgcolor: adminTokens.color.surface,
+                border: `1px solid ${adminTokens.color.border}`,
+                borderRadius: `${adminTokens.radius.md}px`,
+                boxShadow: 'none',
+                '&:hover': { bgcolor: adminTokens.color.surfaceHover }
               }}
               onClick={() => handleActivityClick(activity)}
               onKeyDown={(e) => {
@@ -444,17 +444,12 @@ useEffect(() => {
                   {activity.title}
                 </Typography>
                 {activity.user.profession && (
-                  <Chip label={activity.user.profession} size="small" sx={{ fontSize: '0.65rem', height: 18 }} />
+                  <StatusChip label={activity.user.profession} size="small" sx={{ fontSize: '0.65rem', height: 18 }} />
                 )}
                 {activity.status && (
-                  <Chip
-                    label={activity.status}
+                  <StatusChip
+                    status={activity.status}
                     size="small"
-                    color={
-                      activity.status === 'approved' || activity.status === 'active' || activity.status === 'paid' ? 'success' :
-                      activity.status === 'rejected' ? 'error' :
-                      activity.status === 'pending' ? 'warning' : 'default'
-                    }
                     sx={{ fontSize: '0.7rem', height: 18 }}
                   />
                 )}
@@ -465,7 +460,7 @@ useEffect(() => {
               <Typography variant="caption" color="text.secondary">
                 {activity.user.name}
               </Typography>
-            </Paper>
+            </MuiCard>
           </TimelineContent>
         </TimelineItem>
       ))}
@@ -473,8 +468,15 @@ useEffect(() => {
   );
 
   return (
-    <Card>
-      <CardContent>
+    <ThemeProvider theme={adminDarkTheme}>
+    <MuiCard
+      sx={{
+        border: `1px solid ${adminTokens.color.border}`,
+        borderRadius: `${adminTokens.radius.lg}px`,
+        boxShadow: '0 18px 36px rgba(0,0,0,0.30)',
+      }}
+    >
+      <CardContent sx={theming.getThemedCardSx()}>
         {!activityFeedEnabled && !pendingCountsEnabled ? (
           <Alert severity="info" sx={{ mb: 3, borderRadius: '18px' }}>
             Aktivitetsstrømmen er ikke live i production ennå. Panelet er derfor satt i passiv
@@ -499,10 +501,10 @@ useEffect(() => {
             
             <Stack direction="row" spacing={1}>
               {pendingCounts && pendingCounts.total > 0 && (
-                <Chip
+                <StatusChip
+                  tone="warning"
                   label={`${pendingCounts.total} pending`}
                   size="small"
-                  color="warning"
                   icon={<Notifications />}
                 />
               )}
@@ -576,7 +578,7 @@ useEffect(() => {
 
           {/* Advanced Filters (Collapsible) */}
           <Collapse in={showAdvancedFilters}>
-            <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+            <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: adminTokens.color.surface, border: `1px solid ${adminTokens.color.border}` }}>
               <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600}}>
                 Advanced Filters
               </Typography>
@@ -655,31 +657,31 @@ useEffect(() => {
           {pendingCounts && (
             <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
               {pendingCounts.inviteRequests > 0 && (
-                <Chip
+                <StatusChip
+                  tone="warning"
                   icon={<PersonAdd />}
                   label={`${pendingCounts.inviteRequests} invite requests`}
                   size="small"
-                  color="warning"
                   onClick={() => setLocation('/admin/invite-system')}
                   sx={{ cursor: 'pointer' }}
                 />
               )}
               {pendingCounts.prototypeFeedback > 0 && (
-                <Chip
+                <StatusChip
+                  tone="info"
                   icon={<Feedback />}
                   label={`${pendingCounts.prototypeFeedback} feedback items`}
                   size="small"
-                  color="info"
                   onClick={() => setLocation('/admin?tab=5')}
                   sx={{ cursor: 'pointer' }}
                 />
               )}
               {pendingCounts.bugReports > 0 && (
-                <Chip
+                <StatusChip
+                  tone="error"
                   icon={<BugReport />}
                   label={`${pendingCounts.bugReports} bug reports`}
                   size="small"
-                  color="error"
                   onClick={() => setLocation('/admin?tab=5')}
                   sx={{ cursor: 'pointer' }}
                 />
@@ -788,6 +790,7 @@ useEffect(() => {
           <AdminButton tone="ghost" onClick={() => setPushSettingsOpen(false)}>Lukk</AdminButton>
         </DialogActions>
       </Dialog>
-    </Card>
+    </MuiCard>
+    </ThemeProvider>
   );
 }

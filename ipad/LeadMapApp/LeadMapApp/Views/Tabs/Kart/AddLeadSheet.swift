@@ -33,6 +33,7 @@ private enum AlBrand {
 struct AddLeadSheet: View {
     let onSave: (NewLeadData) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
 
     @State private var mode: InputMode = .ai
     enum InputMode: String, CaseIterable {
@@ -60,9 +61,10 @@ struct AddLeadSheet: View {
     @State private var website: String = ""
     @State private var phone: String = ""
     @State private var email: String = ""
-    @State private var industry: String = "Elektro"
-    @State private var employees: String = "25-50"
-    @State private var revenue: String = "10-20 mill."
+    @State private var industry: String = ""
+    @State private var employees: String = ""
+    @State private var revenue: String = ""
+    @State private var scanError: String?
     @State private var notat: String = ""
 
     @State private var contactName: String = ""
@@ -79,6 +81,13 @@ struct AddLeadSheet: View {
         let address: String
         let status: MapLeadMock.PinStatus
         let coord: CLLocationCoordinate2D
+        // 2026-08-16: phone/email persisteres nå reelt (from-pin støtter
+        // dem). org.nr/nettside/kontaktperson/notat/ansatte/omsetning
+        // samles fortsatt i skjemaet men har intet lagringssted i
+        // crm_customers via dette endepunktet ennå — kjent gap, ikke et
+        // stille datatap (se runScan()-kommentaren over).
+        let phone: String
+        let email: String
     }
 
     var body: some View {
@@ -216,14 +225,15 @@ struct AddLeadSheet: View {
             }
 
             HStack(spacing: 6) {
-                Image(systemName: scanComplete ? "checkmark.seal.fill" : "info.circle")
+                Image(systemName: scanError != nil ? "exclamationmark.triangle.fill" : (scanComplete ? "checkmark.seal.fill" : "info.circle"))
                     .font(.appScaled(size: 11))
-                    .foregroundStyle(scanComplete ? AlBrand.green : AlBrand.textTertiary)
-                Text(scanComplete
-                     ? "Auto-fylt fra nettside + Brønnøysund. Sjekk feltene under."
-                     : "Henter: nettside-meta, kontakt-info, org.nr, koord., bransje, omsetning, ansatte.")
+                    .foregroundStyle(scanError != nil ? AlBrand.orange : (scanComplete ? AlBrand.green : AlBrand.textTertiary))
+                Text(scanError
+                     ?? (scanComplete
+                         ? "Hentet fra Brønnøysundregisteret. Telefon/e-post/kontaktperson må fylles inn manuelt."
+                         : "Slår opp org.nr, bedriftsnavn eller nettside-domene i Brønnøysundregisteret."))
                     .font(.appScaled(size: 11))
-                    .foregroundStyle(AlBrand.textSecondary)
+                    .foregroundStyle(scanError != nil ? AlBrand.orange : AlBrand.textSecondary)
                 Spacer()
             }
         }
@@ -235,26 +245,45 @@ struct AddLeadSheet: View {
         )
     }
 
+    /// Ekte BRREG-oppslag (2026-08-16) — erstatter en mock som alltid fylte
+    /// inn samme fiktive «Nordic Elektro AS» uansett input. Kun det BRREG
+    /// faktisk har (navn/org.nr/adresse/bransje/ansatte) fylles — telefon/
+    /// e-post/omsetning/kontaktperson må fortsatt fylles manuelt (ikke i
+    /// Enhetsregisteret).
     private func runScan() {
         scanning = true
-        // Mocket: fyller felter etter 1.2s
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-            companyName = "Nordic Elektro AS"
-            orgNumber = "912 345 678"
-            address = "Storgata 12"
-            postalCode = "0184"
-            city = "Oslo"
-            website = "nordicelektro.no"
-            phone = "+47 22 33 44 55"
-            email = "post@nordicelektro.no"
-            industry = "Elektro"
-            employees = "25-50"
-            revenue = "10-20 mill."
-            contactName = "Anders Johansen"
-            contactRole = "Daglig leder"
-            notat = "Interessert i nytt el-anlegg til kontorbygg. Følge opp prisforslag og referanseprosjekter."
-            scanning = false
-            scanComplete = true
+        scanError = nil
+        Task {
+            defer { scanning = false }
+            guard let api = appState.api else {
+                scanError = "Ikke innlogget mot backend."
+                return
+            }
+            do {
+                let result = try await api.lookupCompany(query: urlOrSearch)
+                guard result.found, let c = result.company else {
+                    scanError = "Fant ingen bedrift i Brønnøysundregisteret for «\(urlOrSearch)». Fyll inn manuelt."
+                    return
+                }
+                companyName = c.name
+                orgNumber = c.orgNr
+                address = c.address ?? ""
+                postalCode = c.postalCode ?? ""
+                city = c.city ?? city
+                website = c.website ?? website
+                industry = c.naceDescription ?? ""
+                employees = c.employees.map { "\($0)" } ?? ""
+                // 2026-08-16: kartforhåndsvisningen stod hardkodet på Oslo
+                // sentrum for ALLE scan-opprettede leads — Kartverket-
+                // geokodet adresse fra backend flyttes nå pinnen dit den
+                // faktisk hører hjemme.
+                if let lat = c.latitude, let lon = c.longitude {
+                    pinCoord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                }
+                scanComplete = true
+            } catch {
+                scanError = "Oppslag feilet — prøv igjen. (\(error.localizedDescription))"
+            }
         }
     }
 
@@ -457,7 +486,9 @@ struct AddLeadSheet: View {
                     companyName: companyName.isEmpty ? "Ny lead" : companyName,
                     address: "\(address), \(postalCode) \(city)",
                     status: status,
-                    coord: pinCoord
+                    coord: pinCoord,
+                    phone: phone,
+                    email: email
                 ))
             } label: {
                 HStack(spacing: 6) {

@@ -194,6 +194,80 @@ actor CCAPIClient {
         try await post(path: path, body: ["action": "release", "af": af])
     }
 
+    // MARK: - Live view (§shooting/liveview)
+
+    /// Starter live view-stream på kameraet. `size`: "small"/"medium"/"off".
+    /// Spec: CCAPI Reference §6.2 shooting/liveview. Lagt til for AeroSpot;
+    /// additiv — rører ikke eksisterende flows.
+    func startLiveView(size: String = "medium") async throws {
+        try await post(
+            path: "/ccapi/ver100/shooting/liveview",
+            body: ["liveviewsize": size, "cameradisplay": "on"],
+        )
+    }
+
+    func stopLiveView() async throws {
+        try await post(
+            path: "/ccapi/ver100/shooting/liveview",
+            body: ["liveviewsize": "off", "cameradisplay": "on"],
+        )
+    }
+
+    /// Henter ett live view-JPEG-frame (flip-endepunktet). Gjentatte kall
+    /// gir en enkel MJPEG-aktig stream uten chunked-parsing.
+    func liveViewFrame() async throws -> Data {
+        try await getRawData(path: "/ccapi/ver100/shooting/liveview/flip")
+    }
+
+    /// Rå GET som returnerer bytes (JPEG) i stedet for JSON-dekoding.
+    private func getRawData(path: String, timeout: TimeInterval? = nil) async throws -> Data {
+        guard let url = URL(string: path, relativeTo: baseURL) else {
+            throw CCAPIError.invalidResponse("bad URL: \(path)")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        if let timeout { request.timeoutInterval = timeout }
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let urlError as URLError where urlError.code == .timedOut {
+            throw CCAPIError.timedOut
+        } catch let urlError as URLError {
+            throw CCAPIError.network(String(describing: urlError.code))
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw CCAPIError.invalidResponse("not HTTPURLResponse")
+        }
+        if http.statusCode == 503 { throw CCAPIError.cameraBusy }
+        guard (200..<300).contains(http.statusCode) else {
+            throw CCAPIError.httpStatus(code: http.statusCode, body: nil)
+        }
+        return data
+    }
+
+    /// Skriv én shooting-setting (tv/av/iso) — PUT /shooting/settings/{kind}.
+    /// Canon forventer { "value": "..." }. Lagt til for AeroSpots «Bruk på kamera».
+    func setShootingSetting(_ kind: String, value: String) async throws {
+        try await put(path: "/ccapi/ver100/shooting/settings/\(kind)", body: ["value": value])
+    }
+
+    private func put(path: String, body: [String: any Sendable]) async throws {
+        let url = baseURL.appendingPathComponent(path)
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw CCAPIError.invalidResponse("not HTTPURLResponse")
+        }
+        if http.statusCode == 503 { throw CCAPIError.cameraBusy }
+        guard (200..<300).contains(http.statusCode) else {
+            throw CCAPIError.httpStatus(code: http.statusCode, body: String(data: data, encoding: .utf8))
+        }
+    }
+
     private func post(path: String, body: [String: any Sendable]) async throws {
         let url = baseURL.appendingPathComponent(path)
         var request = URLRequest(url: url)

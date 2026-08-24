@@ -734,6 +734,17 @@ actor APIClient {
         return r.suggestion
     }
 
+    /// Ekte AI bak Leadbook «AI-foreslå»-knappen i innvending-editoren
+    /// (2026-08-17). Samme gating som strengthen: leder + AI-entitlement.
+    func suggestObjectionResponse(objection: String, category: String?) async throws -> String {
+        struct Resp: Codable { let suggestion: String }
+        var body: [String: Any] = ["objection": objection]
+        if let category, !category.isEmpty { body["category"] = category }
+        let r: Resp = try await post(
+            "/api/leadgrid/leadbook/objections/ai-suggest", body: body)
+        return r.suggestion
+    }
+
     /// AI-kostnadsoversikt (kun ledere). cost_usd kommer som streng fra
     /// pg NUMERIC — lenient decoding.
     struct AIUsageBucketDTO: Codable {
@@ -1121,6 +1132,35 @@ actor APIClient {
         if !extracted.website.isEmpty { body["website"] = extracted.website }
         if !extracted.raw.isEmpty { body["raw_text"] = extracted.raw }
         return try await post("/api/admin-room/lead-map/leads/from-card", body: body)
+    }
+
+    // MARK: - Company lookup for «Legg til lead» (2026-08-16)
+
+    struct CompanyLookupResult: Decodable {
+        struct Company: Decodable {
+            let name: String
+            let orgNr: String
+            let naceDescription: String?
+            let employees: Int?
+            let address: String?
+            let postalCode: String?
+            let city: String?
+            let website: String?
+            let isBankrupt: Bool
+            let latitude: Double?
+            let longitude: Double?
+        }
+        let found: Bool
+        let company: Company?
+    }
+
+    /// Ekte BRREG-oppslag — org.nr (9 siffer), bedriftsnavn, eller nettside
+    /// (best-effort domenegjetning, BRREG støtter ikke hjemmeside-søk).
+    func lookupCompany(query: String) async throws -> CompanyLookupResult {
+        guard let enc = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            return CompanyLookupResult(found: false, company: nil)
+        }
+        return try await get("/api/admin-room/lead-map/company-lookup?q=\(enc)")
     }
 
     // MARK: - Drop-pin lead-create (PR feat/leadmap-ipad-center-fab-droppin)
@@ -2199,6 +2239,17 @@ actor APIClient {
         )
         req.httpBody = try JSONSerialization.data(withJSONObject: request.toDict())
         let (data, response) = try await session.data(for: req)
+        // 2026-08-19: HTTP 400 `industry_required` kan bære en Anbud/CPV-
+        // forslags-payload (broad-NACE-selgere) — dekod denne FØR generisk
+        // validate() kaster en tom APIError.statusCode(400) som mister den.
+        if let http = response as? HTTPURLResponse, http.statusCode == 400,
+           let errResp = try? Self.decoder.decode(LeadDiscoveryIndustryRequiredResponse.self, from: data),
+           errResp.error == "industry_required" {
+            throw LeadDiscoveryError.industryRequired(
+                cpvSuggestion: errResp.suggestAnbudCpv ?? [],
+                reason: errResp.suggestAnbudReason,
+            )
+        }
         try Self.validate(response)
         return try Self.decoder.decode(LeadDiscoveryStartResponse.self, from: data)
     }
@@ -3808,6 +3859,29 @@ extension APIClient {
     /// Hent en lagret rute med oppdaterte stopp-statuser (for innsjekk-flyt).
     func fetchRoute(_ id: String) async throws -> LeadgridRouteFullResponse {
         try await get("/api/leadgrid/routes/\(id)")
+    }
+
+    /// 2026-08-19: flerdagers "Dagsrute" — planlegger `days` dager i strekk,
+    /// geografisk kjedet (dag N+1 starter der dag N sluttet). Samme
+    /// in-grid-utvelgelse som planRoute(), bare loopet med ekskludering av
+    /// tidligere dagers leads server-side.
+    func planRouteTrip(
+        startDate: String,
+        days: Int,
+        startLat: Double,
+        startLng: Double,
+        perDayLimit: Int = 12
+    ) async throws -> LeadgridRouteTripPlanResponse {
+        try await post(
+            "/api/leadgrid/routes/plan-trip",
+            body: [
+                "start_date": startDate,
+                "days": days,
+                "start_lat": startLat,
+                "start_lng": startLng,
+                "per_day_limit": perDayLimit,
+            ]
+        )
     }
 }
 

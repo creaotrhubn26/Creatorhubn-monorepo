@@ -30,8 +30,17 @@ struct DarkMKMapView: UIViewRepresentable {
         map.showsScale = false
         map.showsBuildings = false
         map.isPitchEnabled = false
+        // 2026-08-17: native pinch/pan var aldri deaktivert — stjal touch fra
+        // +/−/fullskjerm-knappene som ligger oppå kartet (SwiftUI-knappen
+        // fikk aldri treffe, kartets egne gest-recognizers reagerte i stedet
+        // med et lite rubber-band-«rist»). Kortet har egne dedikerte kontroller,
+        // så fri panorering/knip skal ikke være mulig her uansett.
+        map.isScrollEnabled = false
+        map.isZoomEnabled = false
+        map.isRotateEnabled = false
         map.delegate = context.coordinator
         map.setRegion(region, animated: false)
+        context.coordinator.lastRegion = region
 
         // Standard dark veikart (overrideUserInterfaceStyle = .dark) + muted emphasis
         let conf = MKStandardMapConfiguration(elevationStyle: .flat, emphasisStyle: .muted)
@@ -56,6 +65,25 @@ struct DarkMKMapView: UIViewRepresentable {
         map.removeOverlays(map.overlays)
         map.removeAnnotations(map.annotations)
         addOverlaysAndAnnotations(to: map, context: context)
+        // 2026-08-16: `region` ble kun satt i makeUIView — +/−/fullskjerm-
+        // knappene endret @State (spanLat/spanLon/regionCenter) og trigget
+        // en re-render hit, men kartkameraet flyttet seg aldri siden
+        // updateUIView ignorerte den nye regionen. Sammenlign mot forrige
+        // anvendte region (toleranse) så vi ikke fighter brukerens egen
+        // manuelle panorering hver gang overlays oppdateres.
+        let unchanged = context.coordinator.lastRegion.map { regionsMatch($0, region) } ?? false
+        if !unchanged {
+            map.setRegion(region, animated: true)
+            context.coordinator.lastRegion = region
+        }
+    }
+
+    private func regionsMatch(_ a: MKCoordinateRegion, _ b: MKCoordinateRegion) -> Bool {
+        let tol = 0.0001
+        return abs(a.center.latitude - b.center.latitude) < tol
+            && abs(a.center.longitude - b.center.longitude) < tol
+            && abs(a.span.latitudeDelta - b.span.latitudeDelta) < tol
+            && abs(a.span.longitudeDelta - b.span.longitudeDelta) < tol
     }
 
     private func addOverlaysAndAnnotations(to map: MKMapView, context: Context) {
@@ -75,6 +103,7 @@ struct DarkMKMapView: UIViewRepresentable {
         var territories: [GeoJSONTerritory]
         var onSelectTerritory: (GeoJSONTerritory) -> Void
         weak var mapView: MKMapView?
+        var lastRegion: MKCoordinateRegion?
         init(territories: [GeoJSONTerritory], onSelectTerritory: @escaping (GeoJSONTerritory) -> Void) {
             self.territories = territories
             self.onSelectTerritory = onSelectTerritory
@@ -655,7 +684,7 @@ struct TeamAreasCard: View {
                         .background(TBrand.cardHi.opacity(0.6), in: Capsule())
                 }
                 Spacer()
-                Button { showAssign = true } label: {
+                Button { editingTeam = nil; showAssign = true } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "plus")
                             .font(.appScaled(size: 11, weight: .bold))
@@ -696,7 +725,22 @@ struct TeamAreasCard: View {
             SellerPerformanceModal(member: member)
         }
         .sheet(isPresented: $showAssign) {
-            AssignAreaSheet()
+            AssignAreaSheet(preselectedTeam: editingTeam)
+        }
+        .fullScreenCover(isPresented: $isFullscreen) {
+            NavigationStack {
+                mapView
+                    .background(TBrand.card)
+                    .navigationTitle("Teamets områder")
+                    .toolbarBackground(TBrand.card, for: .navigationBar)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Lukk") { isFullscreen = false }
+                                .foregroundStyle(.white)
+                        }
+                    }
+            }
+            .preferredColorScheme(.dark)
         }
         .task(id: kommuneTaskKey) {
             // Last ekte kommunegrenser fra Kartverket. Demo: demo-teamenes
@@ -736,6 +780,13 @@ struct TeamAreasCard: View {
     @State private var territories: [GeoJSONTerritory] = GeoJSONLoader.loadTerritories()
     @State private var selectedMember: TeamMember?
     @State private var showAssign: Bool = false
+    /// Satt når sheeten åpnes ved trykk på et teams område på kartet
+    /// (rediger); nil ved «Tildel område»-knappen (opprett nytt).
+    @State private var editingTeam: LeadgridSalesTeam?
+    /// 2026-08-17: ekspander-knappen (arrow.up.left.and.arrow.down.right)
+    /// gjorde ALDRI kortet fullskjerm — den resatte bare kamera til Oslo-
+    /// senter, til tross for ikonet. Nå åpner den et ekte fullskjerm-kart.
+    @State private var isFullscreen: Bool = false
     /// Ekte kommunegrenser for team-storens tildelte kommuner, keyet på
     /// kommunenummer. Fylles av `.task(id:)` i ekte modus.
     @State private var kommuneOmrader: [String: KartverketService.KommuneOmrade] = [:]
@@ -807,44 +858,57 @@ struct TeamAreasCard: View {
     }
 
     private var mapView: some View {
-        ZStack(alignment: .topTrailing) {
+        // 2026-08-17: kontrollene sentrert vertikalt på høyre kant (var
+        // topTrailing) — lettere å nå med tommelen når man holder iPaden.
+        ZStack(alignment: .trailing) {
             DarkMKMapView(
                 region: MKCoordinateRegion(center: regionCenter,
                                             span: MKCoordinateSpan(latitudeDelta: spanLat, longitudeDelta: spanLon)),
                 territories: effectiveTerritories,
                 onSelectTerritory: { t in
-                    // Match GeoJSON-medlem mot TeamData.members
-                    if let m = TeamData.members.first(where: { $0.name.contains(t.memberName) }) {
-                        selectedMember = m
+                    // 2026-08-16: i ekte modus er territory-eieren et TEAM
+                    // (leadgrid_sales_teams), ikke en demo-selger — matchet
+                    // aldri mot TeamData.members, så trykk gjorde ingenting.
+                    // Nå: ekte modus åpner AssignAreaSheet forhåndsutfylt
+                    // med teamet så du kan endre kommune/eier direkte.
+                    if DemoModeManager.isActiveNonisolated {
+                        if let m = TeamData.members.first(where: { $0.name.contains(t.memberName) }) {
+                            selectedMember = m
+                        }
+                    } else if let team = LeadgridSalesTeamStore.shared.teams.first(where: { $0.name == t.memberName }) {
+                        editingTeam = team
+                        showAssign = true
                     }
                 }
             )
 
             // Zoom + fullscreen controls
-            VStack(spacing: 4) {
+            VStack(spacing: 8) {
                 mapControlButton("plus") { zoomBy(0.7) }
                 mapControlButton("minus") { zoomBy(1.4) }
-                mapControlButton("arrow.up.left.and.arrow.down.right") {
-                    withAnimation {
-                        regionCenter = CLLocationCoordinate2D(latitude: 59.920, longitude: 10.780)
-                        spanLat = 0.30
-                        spanLon = 0.55
-                    }
+                // Samme knapp brukes i kortet OG i fullskjerm-visningen
+                // (begge viser `mapView`) — ikon/handling reflekterer
+                // gjeldende tilstand så trykk igjen minimerer.
+                mapControlButton(isFullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right") {
+                    isFullscreen.toggle()
                 }
             }
-            .padding(.trailing, 8).padding(.top, 8)
+            .padding(.trailing, 8)
         }
     }
 
     private func mapControlButton(_ icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
-                // Fast 32pt kart-kontroll — skal ikke AX-skalere
-                .font(.system(size: 12, weight: .bold))
+                // 2026-08-16: 32pt var under Apples 44pt touch-mål-minimum
+                // — vanskelig å treffe presist på iPad/finger. Fast 44pt,
+                // skal ikke AX-skalere (kart-kontroll, ikke tekst).
+                .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(.white)
-                .frame(width: 32, height: 32)
-                .background(TBrand.card.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(TBrand.stroke, lineWidth: 1))
+                .frame(width: 44, height: 44)
+                .background(TBrand.card.opacity(0.9), in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(TBrand.stroke, lineWidth: 1))
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

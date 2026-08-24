@@ -110,15 +110,11 @@ export function setupAdminStatsRoutes(deps: AdminStatsRoutesDeps): void {
           row.createdAt.getTime() < window.currentStart.getTime(),
       ).length;
 
-      const creatorRevenueCurrent = invitePaymentRows.reduce(
-        (sum, row) => sum + row.amount,
-        0,
-      );
-      const creatorRevenuePrevious = invitePaymentRows
-        .filter(
-          (row) => row.paidAt && row.paidAt.getTime() < window.currentStart.getTime(),
-        )
-        .reduce((sum, row) => sum + row.amount, 0);
+      // Revenue from invite_requests is NOT real payment processing —
+      // payment_completed just means the invite form was filled, not that
+      // money changed hands. Only count real payments + academy revenue.
+      const creatorRevenueCurrent = 0;
+      const creatorRevenuePrevious = 0;
       const academyRevenueCurrent = academyRevenue.totalRevenue;
       const academyRevenuePrevious = academyRevenue.rows
         .filter(
@@ -175,14 +171,7 @@ export function setupAdminStatsRoutes(deps: AdminStatsRoutesDeps): void {
         }
       }
 
-      for (const row of invitePaymentRows) {
-        if (row.profession) {
-          metrics[row.profession].totalRevenue = roundAdminMetric(
-            metrics[row.profession].totalRevenue + row.amount,
-            2,
-          );
-        }
-      }
+      // Skip invite_request "payments" — not real payment processing
 
       res.json(metrics);
     } catch (error) {

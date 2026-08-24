@@ -386,7 +386,7 @@ struct LeadbookView: View {
             let templateName = notif.userInfo?["templateName"] as? String
             selectPondusTemplate(id: templateId, name: templateName)
         }
-        .sheet(isPresented: $showNewTemplate) { NewTemplateSheet() }
+        .sheet(isPresented: $showNewTemplate) { PondusTemplateEditor(store: pondusStore) }
         // 2026-07-17: wiret «Ny innvending» i +-menyen til eksisterende
         // NewObjectionSheet (var død knapp).
         .sheet(isPresented: $showNewObjection) { NewObjectionSheet() }

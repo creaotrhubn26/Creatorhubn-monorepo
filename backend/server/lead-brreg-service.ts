@@ -23,6 +23,7 @@
 
 import type { Pool } from "pg";
 import { fetchIprProfile, type IprProfile } from "./lead-ip-service.js";
+import { classifyByNace } from "./role-room-agent-nace-profile.js";
 
 const BRREG_API = "https://data.brreg.no/enhetsregisteret/api";
 const FETCH_TIMEOUT_MS = 10_000;
@@ -104,6 +105,10 @@ export interface EnrichmentResult {
     isBankrupt: boolean;
     isInLiquidation: boolean;
     status: "active" | "in_liquidation" | "bankrupt";
+    /** Kartverket-geokodet fra forretningsadressen (kun satt av
+     *  lookupCompanyForNewLead — null hvis geokoding feilet/ingen adresse). */
+    latitude: number | null;
+    longitude: number | null;
   };
   contacts?: Array<{
     role: string;
@@ -313,6 +318,97 @@ async function getCompanyFinancials(orgNr: string): Promise<CompanyFinancials | 
   }
 }
 
+/**
+ * Oppslag FØR en lead finnes (2026-08-16) — «Legg til lead»-skjemaets
+ * scan-felt (Kart/Leads-fanen) var 100% mocket (fylte alltid inn samme
+ * fiktive «Nordic Elektro AS» uansett input). Denne slår faktisk opp mot
+ * BRREG: 9-sifret org.nr → direkte detalj-oppslag; ellers fritekst-søk
+ * (fungerer for både bedriftsnavn og — best-effort — domenenavnet i en
+ * nettside-URL, siden BRREG ikke støtter søk på hjemmeside direkte).
+ */
+
+/**
+ * Kartverket/Geonorge fremover-geokoding (2026-08-16) — scan-opprettede
+ * leads fikk ALDRI koordinater (AddLeadSheets kartforhåndsvisning stod
+ * hardkodet på Oslo sentrum uansett bedrift), i motsetning til pin-drop-
+ * flyten som allerede bruker Kartverket for reverse-geocoding. Samme
+ * gratis Geonorge-adresse-API, bare fremover: tekst → koordinat.
+ */
+async function geocodeBrregAddress(
+  addressText: string,
+): Promise<{ latitude: number; longitude: number } | null> {
+  try {
+    const url = `https://ws.geonorge.no/adresser/v1/sok?sok=${encodeURIComponent(addressText)}&fuzzy=true&treffPerSide=1`;
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!res.ok) return null;
+    const payload = (await res.json()) as { adresser?: Array<{ representasjonspunkt?: { lat?: number; lon?: number } }> };
+    const hit = payload.adresser?.[0]?.representasjonspunkt;
+    if (typeof hit?.lat !== "number" || typeof hit?.lon !== "number") return null;
+    return { latitude: hit.lat, longitude: hit.lon };
+  } catch {
+    return null;
+  }
+}
+
+export async function lookupCompanyForNewLead(
+  rawQuery: string,
+): Promise<{ found: boolean; company?: EnrichmentResult["company"] }> {
+  const query = rawQuery.trim();
+  if (!query) return { found: false };
+
+  const orgNr = /^\d[\d .]{7,}\d$/.test(query) ? query.replace(/[^\d]/g, "") : null;
+  let unit: BrregUnit | null = null;
+
+  if (orgNr && orgNr.length === 9) {
+    unit = await getCompanyByOrgNr(orgNr).catch(() => null);
+  }
+  if (!unit) {
+    // Nettside-input ("nordicelektro.no"): domenets rot brukes som navne-
+    // søk-gjetning — BRREG-API-et har ingen hjemmeside-søk. Fritekst
+    // (bedriftsnavn) går rett gjennom uendret.
+    const searchTerm = query.includes(".") && !query.includes(" ")
+      ? query.replace(/^https?:\/\//i, "").replace(/^www\./i, "").split(".")[0]
+      : query;
+    const hit = await findOrgNumberByName(searchTerm).catch(() => null);
+    if (hit) unit = await getCompanyByOrgNr(hit.orgNr).catch(() => null);
+  }
+  if (!unit) return { found: false };
+
+  const address = unit.forretningsadresse?.adresse?.join(", ") || null;
+  const postalCode = unit.forretningsadresse?.postnummer ?? null;
+  const city = unit.forretningsadresse?.poststed ?? null;
+  const geocodeQuery = address ? `${address}, ${postalCode ?? ""} ${city ?? ""}`.trim() : null;
+  const geo = geocodeQuery ? await geocodeBrregAddress(geocodeQuery) : null;
+
+  return {
+    found: true,
+    company: {
+      name: unit.navn,
+      orgNr: unit.organisasjonsnummer,
+      orgForm: unit.organisasjonsform?.beskrivelse ?? null,
+      registeredAt: unit.registreringsdatoEnhetsregisteret ?? null,
+      naceCode: unit.naeringskode1?.kode ?? null,
+      // Bruk klassifisert bransje-profil (samme motor som Role Room Agent)
+      // fremfor rå NACE-tekst ("96.02 Frisering..."), fallback til rå tekst
+      // for koder tabellen bevisst ikke tar stilling til (2026-08-16).
+      naceDescription: classifyByNace(unit.naeringskode1?.kode ?? null)?.industry
+        ?? unit.naeringskode1?.beskrivelse
+        ?? null,
+      employees: unit.antallAnsatte ?? null,
+      address,
+      postalCode,
+      city,
+      municipality: unit.forretningsadresse?.kommune ?? null,
+      website: unit.hjemmeside ?? null,
+      isBankrupt: Boolean(unit.konkurs),
+      isInLiquidation: Boolean(unit.underAvvikling || unit.underTvangsavviklingEllerTvangsopplosning),
+      status: unit.konkurs ? "bankrupt" : (unit.underAvvikling ? "in_liquidation" : "active"),
+      latitude: geo?.latitude ?? null,
+      longitude: geo?.longitude ?? null,
+    },
+  };
+}
+
 export async function enrichLeadWithBrreg(
   pool: Pool,
   args: {
@@ -421,6 +517,8 @@ export async function enrichLeadWithBrreg(
         : (company.underAvvikling || company.underTvangsavviklingEllerTvangsopplosning)
         ? "in_liquidation"
         : "active",
+      latitude: null,
+      longitude: null,
     },
     contacts,
     financials,

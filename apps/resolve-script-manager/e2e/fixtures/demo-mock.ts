@@ -81,5 +81,6 @@ export function installDemoMock() {
   } catch { /* ignore */ }
 
   localStorage.setItem('trrpa.firstRunComplete', 'skipped');
+  localStorage.setItem('trrpa.photoshopTourCompleted', '1'); // blokkerer ellers klikk på rå Home-goto()
   localStorage.setItem('trrpa.settings', JSON.stringify({ RR_BEARER_TOKEN: 'test-token', RR_POST_AGENT_BASE_URL: 'https://example.test/api/post-agent' }));
 }

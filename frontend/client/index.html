@@ -59,8 +59,8 @@
       (function () {
         var host = (location.hostname || '').toLowerCase();
         if (!/^(www\.)?theroleroom\.com$/.test(host)) return;
-        var title = 'The Role Room | Casting, crew og produksjonsplanlegging';
-        var description = 'The Role Room er produksjonsflaten i CreatorHub for casting, team, talentportal og koordinering av opptaksdager.';
+        var title = 'The Role Room — Fra klasserom til kino, ett system for film- og innholdsproduksjon';
+        var description = 'Operativsystemet som følger deg fra utdanning til bransje — fra idé via casting og gjennomføring til produksjonen er distribuert og sett av publikum. LTI 1.3/Feide-integrasjon kobler filmutdanning rett på samme system.';
         var origin = 'https://theroleroom.com';
         var image = origin + '/role-room-assets/landing_backdrop_with_logo.webp';
         document.title = title;
@@ -71,6 +71,38 @@
         setAttr('meta[name="description"]', 'content', description);
         setAttr('link[rel="canonical"]', 'href', origin + '/');
         setAttr('meta[property="og:site_name"]', 'content', 'The Role Room');
+        setAttr('meta[property="og:title"]', 'content', title);
+        setAttr('meta[property="og:description"]', 'content', description);
+        setAttr('meta[property="og:url"]', 'content', origin + '/');
+        setAttr('meta[property="og:image"]', 'content', image);
+        setAttr('meta[name="twitter:title"]', 'content', title);
+        setAttr('meta[name="twitter:description"]', 'content', description);
+        setAttr('meta[name="twitter:image"]', 'content', image);
+      })();
+    </script>
+    <script>
+      // Host-aware SEO override for leadgrid.no (2026-08-20) — samme mønster
+      // som theroleroom.com over. Bots dekkes nå av
+      // netlify/edge-functions/host-routes.ts (server-side, treffer også
+      // ikke-JS-crawlere), men ekte menneskelige besøkende på leadgrid.no
+      // fikk ALDRI en client-side title-patch her — fanen viste "CreatorHub
+      // Norge" permanent (ingen JS-korreksjon fantes for dette hostet i det
+      // hele tatt). Tekst matcher den geo-prerenderte /geo/leadgrid/landing.html.
+      (function () {
+        var host = (location.hostname || '').toLowerCase();
+        if (!/^(leadgrid\.no|www\.leadgrid\.no|leadgrid\.theroleroom\.com)$/.test(host)) return;
+        var title = 'Leadgrid — Gjør kartet om til kunder';
+        var description = 'Kartbasert CRM for lokale muligheter. Leadgrid hjelper team med å finne, organisere, følge opp og vinne lokale leads — alt i ett visuelt system.';
+        var origin = 'https://leadgrid.no';
+        var image = origin + '/leadgrid/backdrop2.png';
+        document.title = title;
+        function setAttr(selector, attr, value) {
+          var el = document.querySelector(selector);
+          if (el) el.setAttribute(attr, value);
+        }
+        setAttr('meta[name="description"]', 'content', description);
+        setAttr('link[rel="canonical"]', 'href', origin + '/');
+        setAttr('meta[property="og:site_name"]', 'content', 'Leadgrid');
         setAttr('meta[property="og:title"]', 'content', title);
         setAttr('meta[property="og:description"]', 'content', description);
         setAttr('meta[property="og:url"]', 'content', origin + '/');

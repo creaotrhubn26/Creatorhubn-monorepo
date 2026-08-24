@@ -174,7 +174,7 @@ export interface SSBPopulationData {
 
 // Proff.no API Interfaces
 export interface ProffRiskIndicator {
-  type: 'payment_default' | 'debt_collection' | 'forced_liquidation' | 'bankruptcy_history' | 'tax_debt';
+  type: 'payment_default' | 'debt_collection' | 'forced_liquidation' | 'bankruptcy_history' | 'tax_debt' | 'new_registration' | 'missing_website' | 'missing_industry' | 'negative_equity' | 'low_equity_ratio' | 'operating_loss';
   severity: 'low' | 'medium' | 'high' | 'critical';
   description: string;
   date?: string;
@@ -207,6 +207,20 @@ export interface ProffCompanyData {
     profit?: number;
     year?: number;
   };
+  financials?: {
+    year: number;
+    revenue: number | null;
+    operatingResult: number | null;
+    netResult: number | null;
+    equity: number | null;
+    totalAssets: number | null;
+    equityRatio: number | null;
+    operatingMargin: number | null;
+    currency: string;
+  } | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string;
   keyPersons: ProffKeyPerson[];
   businessSegments: string[];
   marketIntelligence?: {
@@ -1532,6 +1546,10 @@ class ExternalDataService {
           keyPersons: response.data.keyPersons || [],
           businessSegments: response.data.businessSegments || [],
           marketIntelligence: response.data.marketIntelligence,
+          financials: response.data.financials || null,
+          latitude: response.data.latitude ?? null,
+          longitude: response.data.longitude ?? null,
+          address: response.data.address,
           lastUpdated: response.data.lastUpdated || new Date().toISOString(),
           source: 'proff_api'
         };

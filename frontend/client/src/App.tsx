@@ -1133,7 +1133,27 @@ function App() {
                   <Route path="/visual-editor-enhanced" component={() => <VisualEditorEnhancedGuard><EnhancedVisualEditorPage /></VisualEditorEnhancedGuard>} />
                   <Route path="/visual-editor-enhanced/:projectId" component={({ params }) => <VisualEditorEnhancedGuard><EnhancedVisualEditorPage projectId={params.projectId} /></VisualEditorEnhancedGuard>} />
                   <Route path="/evendi" component={() => <VisualEditorEnhancedGuard><EventiOnePager /></VisualEditorEnhancedGuard>} />
-                  
+                  <Route path="/aerospot/arrangorer">
+                    {() => {
+                      const AeroSpotArrangorer = React.lazy(() => import('./pages/AeroSpotArrangorer'));
+                      return (
+                        <React.Suspense fallback={<div style={{ background: '#050B14', height: '100vh' }} />}>
+                          <AeroSpotArrangorer />
+                        </React.Suspense>
+                      );
+                    }}
+                  </Route>
+                  <Route path="/aerospot">
+                    {() => {
+                      const AeroSpotApp = React.lazy(() => import('./components/aerospot/AeroSpotApp'));
+                      return (
+                        <React.Suspense fallback={<div style={{ background: '#050B14', height: '100vh' }} />}>
+                          <AeroSpotApp />
+                        </React.Suspense>
+                      );
+                    }}
+                  </Route>
+
                   {/* Unified Dashboard Routes */}
                   <Route path="/templates" component={() => <TemplateDashboard onTemplatesClick={() => {}} onCategoriesClick={() => {}} onSearchClick={() => {}} onPreviewClick={() => {}} />} />
                   <Route path="/export-presets" component={() => <ExportPresetsDashboard onPresetsClick={() => {}} onPlatformsClick={() => {}} onFormatsClick={() => {}} onPreviewClick={() => {}} />} />

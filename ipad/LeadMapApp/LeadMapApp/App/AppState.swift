@@ -445,6 +445,22 @@ final class AppState {
     /// etter konsum. Buffres for cold-start-tap via AppStateBridge.
     var pendingNotificationTap: [String: String]?
 
+    // ── Fokusér nyopprettet lead på kartet (2026-08-19, Daniel-feedback) ──
+    /// Settes av alle 4 «Legg til lead»-inngangspunktene (Kart/Oversikt/
+    /// Leads/header-snarveien) rett etter vellykket lagring — man visste
+    /// aldri hvor leaden faktisk havnet på kartet, kun en toast. MainTabView
+    /// observerer og bytter til Kart-fanen; KartView konsumerer og
+    /// kamera-zoomer + velger pinnen (samme mønster som eksisterende
+    /// pin-tap via `selectAndZoom`). Nil-es etter konsum.
+    struct PendingMapFocus: Equatable {
+        let id: String
+        let name: String
+        let address: String
+        let lat: Double
+        let lon: Double
+    }
+    var pendingMapFocus: PendingMapFocus?
+
     // ── Super-admin (fase 18) ──────────────────────────────────
     /// User-level role fra /api/auth/user (uavhengig av active org).
     /// 'super_admin' låser opp SuperAdminHub for Daniel's B2B-pipeline.

@@ -12,13 +12,19 @@
  *      ved mismatch, så config og routing ikke kan skli fra hverandre.
  */
 
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const frontendRoot = resolve(here, '..');
-const ssrBundle = resolve(frontendRoot, 'client/dist-geo/geo-prerender-entry.js');
+// 2026-08-20: Rollup velger .js/.mjs for SSR-bundlen avhengig av package.json
+// "type"-oppløsning — hardkodet .js feilet lokalt (Rollup skrev .mjs) med
+// ERR_MODULE_NOT_FOUND. Sjekk begge i stedet for å anta én av dem.
+const ssrBundleJs = resolve(frontendRoot, 'client/dist-geo/geo-prerender-entry.js');
+const ssrBundleMjs = resolve(frontendRoot, 'client/dist-geo/geo-prerender-entry.mjs');
+const ssrBundle = existsSync(ssrBundleJs) ? ssrBundleJs : ssrBundleMjs;
 const outDir = resolve(frontendRoot, 'client/dist/geo');
 const vercelJsonPath = resolve(frontendRoot, 'vercel.json');
 

@@ -475,7 +475,7 @@ export function setupRoleRoomEducationInquiriesRoutes(
       });
 
       const inviteRequestId = normalizeMailConfigValue(inviteRequest?.id) || null;
-      const proffAnalysis = buildInviteRequestProffAnalysis({
+      const proffAnalysis = await buildInviteRequestProffAnalysis({
         organizationNumber,
         companyName,
         brregLookup,

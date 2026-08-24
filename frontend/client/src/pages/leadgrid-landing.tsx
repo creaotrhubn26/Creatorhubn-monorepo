@@ -188,6 +188,17 @@ export default function LeadgridLanding() {
     window.addEventListener('leadgrid:book-demo', open);
     return () => window.removeEventListener('leadgrid:book-demo', open);
   }, []);
+  // Header "Logg inn" pekte til creatorhubn.com (web-appen). Leadgrid er nå
+  // en iOS-app i TestFlight, ikke på App Store ennå — venteliste-modal
+  // erstatter web-login-lenken til appen er live. Custom-event samme
+  // mønster som «Book demo» over — StickyHeader er en egen komponent uten
+  // tilgang til denne state-en direkte.
+  const [appWaitlistOpen, setAppWaitlistOpen] = useState(false);
+  useEffect(() => {
+    const open = () => setAppWaitlistOpen(true);
+    window.addEventListener('leadgrid:app-waitlist', open);
+    return () => window.removeEventListener('leadgrid:app-waitlist', open);
+  }, []);
   useEffect(() => {
     // GA4 page view (ekspl. tracket fordi SPA-routing ikke fyrer auto)
     trackPageView('/leadgrid', 'Leadgrid: Gjør kartet om til kunder');
@@ -313,6 +324,7 @@ export default function LeadgridLanding() {
       <LeadgridExperience onStartFree={() => setExpStartOpen(true)} />
       <StartFreeDialog open={expStartOpen} onClose={() => setExpStartOpen(false)} />
       <BookDemoDialog open={demoOpen} onClose={() => setDemoOpen(false)} />
+      <AppWaitlistDialog open={appWaitlistOpen} onClose={() => setAppWaitlistOpen(false)} />
       <HeroSection />
       <TrustStrip />
       <HowItWorksSection />
@@ -391,7 +403,7 @@ function StickyHeader() {
             <Button
               variant="text"
               sx={{ color: PALETTE.textMuted, fontWeight: 500, textTransform: 'none' }}
-              href="https://creatorhubn.com"
+              onClick={() => window.dispatchEvent(new Event('leadgrid:app-waitlist'))}
             >
               Logg inn
             </Button>
@@ -764,14 +776,18 @@ const lgField = {
 function BookDemoDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [company, setCompany] = useState('');
+  // 2026-08-19: org.nr erstatter fritekst-firmanavn — vi trenger å vite
+  // HVA slags bedrift interessenten driver (Brreg-bransje/NACE) for å
+  // kunne vise en relevant demo, ikke bare et navn.
+  const [orgNumber, setOrgNumber] = useState('');
   const [preferred, setPreferred] = useState('');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
-  const canSend = email.includes('@') && email.includes('.');
+  const orgNumberDigits = orgNumber.replace(/\D/g, '');
+  const canSend = email.includes('@') && email.includes('.') && orgNumberDigits.length === 9;
 
   async function submit() {
     setSubmitting(true);
@@ -781,13 +797,13 @@ function BookDemoDialog({ open, onClose }: { open: boolean; onClose: () => void 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: name.trim(), email: email.trim(), company: company.trim(),
+          name: name.trim(), email: email.trim(), org_number: orgNumberDigits,
           preferred: preferred.trim(), note: note.trim(),
         }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) { setError(data.error === 'invalid_email' ? 'Ugyldig e-post' : 'Noe gikk galt, prøv igjen'); setSubmitting(false); return; }
-      try { trackEvent('leadgrid_demo_requested', { has_company: !!company.trim() }); } catch { /* */ }
+      try { trackEvent('leadgrid_demo_requested', { has_org_number: orgNumberDigits.length === 9 }); } catch { /* */ }
       setDone(true);
     } catch (e: any) {
       setError(String(e?.message ?? e));
@@ -797,7 +813,7 @@ function BookDemoDialog({ open, onClose }: { open: boolean; onClose: () => void 
 
   function close() {
     setDone(false); setError(null); setSubmitting(false);
-    setName(''); setEmail(''); setCompany(''); setPreferred(''); setNote('');
+    setName(''); setEmail(''); setOrgNumber(''); setPreferred(''); setNote('');
     onClose();
   }
 
@@ -830,9 +846,12 @@ function BookDemoDialog({ open, onClose }: { open: boolean; onClose: () => void 
               <TextField fullWidth label="Navn" value={name}
                 onChange={(e) => setName(e.target.value)}
                 InputLabelProps={{ sx: { color: PALETTE.textMuted } }} sx={lgField} />
-              <TextField fullWidth label="Firma" value={company}
-                onChange={(e) => setCompany(e.target.value)}
-                InputLabelProps={{ sx: { color: PALETTE.textMuted } }} sx={lgField} />
+              <TextField fullWidth required label="Organisasjonsnummer" value={orgNumber}
+                onChange={(e) => setOrgNumber(e.target.value)} placeholder="923 456 789"
+                helperText="Vi slår opp firma og bransje automatisk i Brønnøysundregistrene"
+                InputLabelProps={{ sx: { color: PALETTE.textMuted } }}
+                FormHelperTextProps={{ sx: { color: PALETTE.textMuted } }}
+                sx={lgField} />
               <TextField fullWidth label="Ønsket tidspunkt (valgfritt)" value={preferred}
                 onChange={(e) => setPreferred(e.target.value)} placeholder="F.eks. torsdag formiddag"
                 InputLabelProps={{ sx: { color: PALETTE.textMuted } }} sx={lgField} />
@@ -849,6 +868,83 @@ function BookDemoDialog({ open, onClose }: { open: boolean; onClose: () => void 
           <Button variant="contained" disabled={!canSend || submitting} onClick={submit}
             sx={{ bgcolor: PALETTE.accent, color: '#1a0535', fontWeight: 700, px: 3, borderRadius: 999, '&:hover': { bgcolor: PALETTE.accentBright } }}>
             {submitting ? <CircularProgress size={20} sx={{ color: '#1a0535' }} /> : 'Send forespørsel'}
+          </Button>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// Leadgrid-appen (iOS) er i TestFlight, ikke live på App Store ennå.
+// Header-«Logg inn» åpner denne i stedet for å lenke til creatorhubn.com —
+// samler e-post og varsler ved lansering.
+function AppWaitlistDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [email, setEmail] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  const canSend = email.includes('@') && email.includes('.');
+
+  async function submit() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const r = await fetch('/api/leadgrid/app-waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { setError(data.error === 'invalid_email' ? 'Ugyldig e-post' : 'Noe gikk galt, prøv igjen'); setSubmitting(false); return; }
+      try { trackEvent('leadgrid_app_waitlist_joined', {}); } catch { /* */ }
+      setDone(true);
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    }
+    setSubmitting(false);
+  }
+
+  function close() {
+    setDone(false); setError(null); setSubmitting(false); setEmail('');
+    onClose();
+  }
+
+  return (
+    <Dialog
+      open={open} onClose={close} maxWidth="sm" fullWidth
+      PaperProps={{ sx: { bgcolor: '#0a0512', color: '#fff', border: '1px solid rgba(167, 139, 250, 0.20)', borderRadius: 3 } }}
+    >
+      <DialogTitle sx={{ pb: 1 }}>
+        <Typography variant="overline" sx={{ color: PALETTE.accent, letterSpacing: 2 }}>Leadgrid-appen</Typography>
+        <Typography variant="h5" fontWeight={700}>{done ? 'Du er på listen!' : 'Kommer snart til App Store'}</Typography>
+        {!done && (
+          <Typography variant="body2" sx={{ color: PALETTE.textMuted, mt: 1 }}>
+            Leadgrid for iPhone/iPad testes i TestFlight nå. Legg igjen e-posten din, så varsler vi deg
+            i det appen er live på App Store.
+          </Typography>
+        )}
+      </DialogTitle>
+      <DialogContent>
+        {done ? (
+          <Alert severity="success" sx={{ mb: 1 }}>
+            Vi varsler <b>{email}</b> så snart appen er tilgjengelig på App Store.
+          </Alert>
+        ) : (
+          <>
+            {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+            <TextField fullWidth required label="E-post" type="email" value={email}
+              onChange={(e) => setEmail(e.target.value)} placeholder="ola@bedrift.no"
+              InputLabelProps={{ sx: { color: PALETTE.textMuted } }} sx={{ ...lgField, mt: 1 }} />
+          </>
+        )}
+      </DialogContent>
+      <DialogActions sx={{ p: 3, pt: 1 }}>
+        <Button onClick={close} sx={{ color: PALETTE.textMuted }}>{done ? 'Lukk' : 'Avbryt'}</Button>
+        {!done && (
+          <Button variant="contained" disabled={!canSend || submitting} onClick={submit}
+            sx={{ bgcolor: PALETTE.accent, color: '#1a0535', fontWeight: 700, px: 3, borderRadius: 999, '&:hover': { bgcolor: PALETTE.accentBright } }}>
+            {submitting ? <CircularProgress size={20} sx={{ color: '#1a0535' }} /> : 'Varsle meg'}
           </Button>
         )}
       </DialogActions>

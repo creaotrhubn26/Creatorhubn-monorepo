@@ -224,7 +224,7 @@ export default function SEOBotAnalyticsDashboard() {
             SEO Bot Analytics Dashboard
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Professional bot detection like Screaming Frog + Real-time analytics
+            Sanntids sporing av SEO-, sosiale og AI-crawlere
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
@@ -259,7 +259,7 @@ export default function SEOBotAnalyticsDashboard() {
             loading={initializeMutation.isPending}
             disabled={initializeMutation.isPending}
           >
-            {initializeMutation.isPending ? 'Initializing...' : 'Initialize Bot DB'}
+            {initializeMutation.isPending ? 'Oppdaterer...' : 'Oppdater data'}
           </AdminButton>
         </Box>
       </Box>
@@ -441,7 +441,7 @@ export default function SEOBotAnalyticsDashboard() {
               </>
             ) : (
               <Alert severity="info">
-                No bot analytics data available. Run "Initialize Bot DB" to start tracking.
+                Ingen bot-data i dette tidsrommet. Crawlere spores automatisk fra og med nå.
               </Alert>
             )}
           </Box>
@@ -451,10 +451,10 @@ export default function SEOBotAnalyticsDashboard() {
         <TabPanel value={tabValue} index={1}>
           <Box sx={{ p: 3 }}>
             <Typography variant="h6" component="h3" gutterBottom>
-              JavaScript Rendering Tests
+              HTML Content Audit
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Test if search bots can see your JavaScript-rendered content
+              Hva ser søkemotorer når de henter siden din? Sjekk innhold, viewport og strukturerte data.
             </Typography>
 
             {/* Test Controls */}
@@ -502,7 +502,7 @@ export default function SEOBotAnalyticsDashboard() {
               <Box sx={{ mb: 3 }}>
                 <LinearProgress />
                 <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
-                  Fetching HTML, rendering with JavaScript, comparing content...
+                  Henter HTML og analyserer innhold for crawlers...
                 </Typography>
               </Box>
             )}
@@ -513,42 +513,30 @@ export default function SEOBotAnalyticsDashboard() {
                   <Grid container spacing={2}>
                     <Grid item xs={12} md={6}>
                       <Typography variant="subtitle2" gutterBottom>
-                        HTML-Only Content
+                        Synlig tekst
                       </Typography>
-                      <Typography variant="h6">{renderTestMutation.data.testResults.htmlOnlyWordCount} words</Typography>
+                      <Typography variant="h6">{renderTestMutation.data.testResults.htmlOnlyWordCount} ord</Typography>
                       <Typography variant="caption" color="text.secondary">
-                        What bots without JS see
+                        Ord crawlers kan lese i HTML-responsen
                       </Typography>
                     </Grid>
                     <Grid item xs={12} md={6}>
                       <Typography variant="subtitle2" gutterBottom>
-                        JS-Rendered Content
+                        SEO-status
                       </Typography>
-                      <Typography variant="h6">{renderTestMutation.data.testResults.jsRenderedWordCount} words</Typography>
+                      <Typography variant="h6">
+                        {renderTestMutation.data.testResults.seoIssues?.length > 0
+                          ? `${renderTestMutation.data.testResults.seoIssues.length} funnet`
+                          : 'Ingen problemer'}
+                      </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        What modern bots see
+                        Mangler viewport, strukturert data, osv.
                       </Typography>
-                    </Grid>
-                    <Grid item xs={12}>
-                      <Typography variant="subtitle2" gutterBottom>
-                        Content Match
-                      </Typography>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <LinearProgress
-                          variant="determinate"
-                          value={renderTestMutation.data.testResults.contentMatchPercent}
-                          sx={{ flex: 1, height: 10, borderRadius: 5 }}
-                          color={renderTestMutation.data.testResults.contentMatchPercent > 80 ? 'success' : 'warning'}
-                        />
-                        <Typography variant="h6">
-                          {renderTestMutation.data.testResults.contentMatchPercent}%
-                        </Typography>
-                      </Box>
                     </Grid>
                     {renderTestMutation.data.testResults.seoIssues?.length > 0 && (
                       <Grid item xs={12}>
                         <Alert severity="warning">
-                          <Typography variant="subtitle2" gutterBottom>SEO Issues Found:</Typography>
+                          <Typography variant="subtitle2" gutterBottom>SEO-problemer:</Typography>
                           <ul style={{ margin: 0, paddingLeft: 20 }}>
                             {renderTestMutation.data.testResults.seoIssues.map((issue: string, idx: number) => (
                               <li key={idx}>{issue}</li>
@@ -560,7 +548,7 @@ export default function SEOBotAnalyticsDashboard() {
                     {renderTestMutation.data.testResults.recommendations?.length > 0 && (
                       <Grid item xs={12}>
                         <Alert severity="info">
-                          <Typography variant="subtitle2" gutterBottom>Recommendations:</Typography>
+                          <Typography variant="subtitle2" gutterBottom>Forslag:</Typography>
                           <ul style={{ margin: 0, paddingLeft: 20 }}>
                             {renderTestMutation.data.testResults.recommendations.map((rec: string, idx: number) => (
                               <li key={idx}>{rec}</li>
@@ -787,10 +775,10 @@ export default function SEOBotAnalyticsDashboard() {
         <TabPanel value={tabValue} index={5}>
           <Box sx={{ p: 3 }}>
             <Typography variant="h6" component="h3" gutterBottom>
-              AI-Powered SEO Recommendations
+              SEO-anbefalinger
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Actionable insights to improve bot crawling and SEO
+              Automatiserte forslag basert på crawl-mønstre og mobiltestresultater
             </Typography>
 
             {recsLoading ? (
