@@ -124,6 +124,27 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
   // reaching the DB when activeSessions is empty after a Render restart).
   const isUuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 
+  // Lettvekts avatar-utlevering: profilbildet lagres som data-URI (kan være
+  // flere MB) i users.profile_image_url — flatene refererer denne URL-en i
+  // stedet for å frakte blobben i hver profil-/team-respons. Åpen GET (som
+  // Gravatar): utleverer KUN bildet, med cache.
+  app.get("/api/users/:id/avatar", async (req, res) => {
+    const id = String(req.params.id || "").trim();
+    if (!isUuid(id)) return res.status(400).json({ error: "invalid_id" });
+    try {
+      const r = await pool.query(`SELECT profile_image_url FROM users WHERE id = $1`, [id]);
+      const raw = r.rows[0]?.profile_image_url as string | undefined;
+      if (!raw) return res.status(404).json({ error: "no_avatar" });
+      if (/^https?:\/\//i.test(raw)) return res.redirect(302, raw);
+      const m = /^data:([^;,]+)(;base64)?,([\s\S]*)$/.exec(raw);
+      if (!m) return res.status(404).json({ error: "no_avatar" });
+      const buf = m[2] ? Buffer.from(m[3], "base64") : Buffer.from(decodeURIComponent(m[3]), "utf8");
+      res.setHeader("Content-Type", m[1] || "image/jpeg");
+      res.setHeader("Cache-Control", "public, max-age=300");
+      res.send(buf);
+    } catch { res.status(500).json({ error: "failed" }); }
+  });
+
   app.get("/api/user/profile", async (req, res) => {
     // compatResolveUserId slår opp activeSessions → returnerer ekte userId (UUID)
     // når session finnes. getUserIdFromAuth returnerer rå Bearer-token (ikke UUID)

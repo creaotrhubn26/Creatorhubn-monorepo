@@ -400,6 +400,23 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   }, [channelId]);
 
   // Deltakere utledes fra avsenderne i kanalen (ingen egen tabell nødvendig).
+  // Profilbilder: e-post/navn → avatar-URL fra team/members (lettvekts-rute;
+  // meldinger bærer bare senderId/senderName, aldri bildet selv).
+  const [avatarMap, setAvatarMap] = useState<Record<string, string>>({});
+  useEffect(() => {
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team/members`)
+      .then((r: any) => {
+        const map: Record<string, string> = {};
+        const put = (key?: string | null, url?: string | null) => { if (key && url) map[String(key).toLowerCase()] = url; };
+        if (r?.owner) { put(r.owner.email, r.owner.avatarUrl); put(r.owner.name, r.owner.avatarUrl); }
+        for (const m of (Array.isArray(r?.members) ? r.members : [])) { put(m.email, m.avatarUrl); put(m.name, m.avatarUrl); }
+        setAvatarMap(map);
+      })
+      .catch(() => {});
+  }, [projectId]);
+  const avatarFor = (senderId?: string | null, senderName?: string | null) =>
+    avatarMap[String(senderId || '').toLowerCase()] || avatarMap[String(senderName || '').toLowerCase()] || undefined;
+
   const participants = useMemo(() => {
     const seen = new Map();
     for (const m of messages) {
@@ -916,7 +933,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
           const reactions = (m.metadata?.reactions && typeof m.metadata.reactions === 'object') ? m.metadata.reactions : {};
           return (<React.Fragment key={m.id}>{sep}
             <Stack direction="row" spacing={1} className="ws-msg-row" sx={{ alignItems: 'flex-start', flexDirection: mine ? 'row-reverse' : 'row', '&:hover .ws-msg-actions': { opacity: 1 } }}>
-              <Avatar sx={{ width: 30, height: 30, fontSize: 12, bgcolor: mine ? ws.accent : 'rgba(255,255,255,0.12)', color: mine ? ws.accentContrast : ws.text }}>
+              <Avatar src={avatarFor(m.senderId, m.senderName)} sx={{ width: 30, height: 30, fontSize: 12, bgcolor: mine ? ws.accent : 'rgba(255,255,255,0.12)', color: mine ? ws.accentContrast : ws.text }}>
                 {initials(m.senderName || maskId(m.senderId))}
               </Avatar>
               <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start' }}>
@@ -1063,7 +1080,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
         <Box role="menu" aria-label={t('members')}>
         {participants.map((p) => (
           <MenuItem key={p.id} role="menuitem" onClick={() => { if (mentionMode) insertAtCursor(`@${p.name} `); setMembersAnchor(null); }} sx={{ gap: 1, fontSize: 13 }}>
-            <Avatar sx={{ width: 24, height: 24, fontSize: 11, bgcolor: p.mine ? ws.accent : 'rgba(255,255,255,0.12)', color: p.mine ? ws.accentContrast : ws.text }}>{initials(p.name)}</Avatar>
+            <Avatar src={avatarFor(p.id, p.name)} sx={{ width: 24, height: 24, fontSize: 11, bgcolor: p.mine ? ws.accent : 'rgba(255,255,255,0.12)', color: p.mine ? ws.accentContrast : ws.text }}>{initials(p.name)}</Avatar>
             {p.name}{p.mine ? ` (${t('you')})` : ''}
           </MenuItem>
         ))}
