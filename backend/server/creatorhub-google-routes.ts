@@ -143,9 +143,12 @@ const CREATORHUB_GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/chat.spaces.create',
   'https://www.googleapis.com/auth/chat.memberships.readonly',
   'https://www.googleapis.com/auth/chat.messages.reactions.create',
-  // Google avviser å kombinere `youtube` og `youtube.upload` i samme request
-  // (Error 400 invalid_request). `youtube` dekker opplasting + videoadministrasjon.
-  'https://www.googleapis.com/auth/youtube',
+  // MERK: `youtube` er FJERNET fra bunten (2026-08-24). Google avviser nå hele
+  // autorisasjonsforespørselen med «Something went wrong» (unknownerror) når
+  // youtube-scopet kombineres med denne Workspace-bunten — verifisert empirisk:
+  // identisk liste uten youtube går rett til samtykkeskjermen. YouTube må bes
+  // om i egen, inkrementell consent (samme mønster som
+  // ROLE_ROOM_GOOGLE_YOUTUBE_ANALYTICS_SCOPES i role-room-routes.ts).
 ] as const;
 
 // Slice 9X.80 — bump fra 15 → 60 min så brukere som blir avbrutt
