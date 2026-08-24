@@ -241,6 +241,15 @@ export function createCommunicationRouter(
         [projectId, user.userId],
       ).catch(() => ({ rows: [] as any[] }));
       if (owner.rows[0]) return { displayName: String(owner.rows[0].display_name || user.email) };
+      // Workspace-prosjekter ligger i legacy.projects (ikke public.projects) —
+      // uten denne sjekken fikk eieren 403 på hele Team Chat i nye prosjekter.
+      const legacyOwner = await pool.query(
+        `SELECT COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.name, u.email) AS display_name
+           FROM legacy.projects p JOIN users u ON u.id::text = p.user_id
+          WHERE p.id = $1 AND p.user_id = $2 LIMIT 1`,
+        [projectId, user.userId],
+      ).catch(() => ({ rows: [] as any[] }));
+      if (legacyOwner.rows[0]) return { displayName: String(legacyOwner.rows[0].display_name || user.email) };
       const mem = await pool.query(
         `SELECT COALESCE(NULLIF(TRIM(m.name), ''), NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.name, m.email) AS display_name
            FROM project_team_members m LEFT JOIN users u ON u.id = m.user_id
