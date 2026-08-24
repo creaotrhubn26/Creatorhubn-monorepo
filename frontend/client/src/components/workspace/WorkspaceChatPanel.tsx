@@ -13,7 +13,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Stack, Typography, Avatar, IconButton, TextField, CircularProgress, Chip, Popover, Menu, MenuItem, Tooltip, InputAdornment } from '@mui/material';
 import Edit from '@mui/icons-material/Edit';
 import DeleteOutline from '@mui/icons-material/DeleteOutline';
-import { wsConfirm, wsPrompt } from './ui';
+import { wsConfirm, wsPrompt, WsModal } from './ui';
+
+// Guidene lastes kun når modal åpnes (samme innhold som /guide/chat og
+// /guide/actions — sidene finnes fortsatt for dyplenking).
+const ChatGuideLazy = React.lazy(() => import('@/pages/chat-guide'));
+const ActionsGuideLazy = React.lazy(() => import('@/pages/chat-actions-guide'));
 import Search from '@mui/icons-material/Search';
 import PeopleAlt from '@mui/icons-material/PeopleAlt';
 import MoreVert from '@mui/icons-material/MoreVert';
@@ -200,6 +205,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState('');
+  const [guideOpen, setGuideOpen] = useState<null | 'chat' | 'actions'>(null);
   const [retryFn, setRetryFn] = useState<null | (() => void)>(null);
   const humanErr = (e: any) => {
     const m = String(e?.message || e || '');
@@ -1026,6 +1032,14 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
         </Stack>
       </Box>
 
+      {/* Guide-modal (chat / handlinger) */}
+      <WsModal open={!!guideOpen} onClose={() => setGuideOpen(null)} title={guideOpen === 'actions' ? t('actionsGuide') : t('guide')} maxWidth="md">
+        <React.Suspense fallback={<Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress size={22} /></Box>}>
+          {guideOpen === 'chat' && <ChatGuideLazy embedded />}
+          {guideOpen === 'actions' && <ActionsGuideLazy embedded />}
+        </React.Suspense>
+      </WsModal>
+
       {/* Deltakere / mention-plukker */}
       <Popover open={!!membersAnchor} anchorEl={membersAnchor} onClose={() => setMembersAnchor(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}
         PaperProps={{ sx: { bgcolor: ws.panelSolid, color: ws.text, border: `1px solid ${ws.border}`, minWidth: 200 } }}>
@@ -1054,8 +1068,8 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
       <Menu anchorEl={moreAnchor} open={!!moreAnchor} onClose={() => setMoreAnchor(null)} PaperProps={{ sx: { bgcolor: ws.panelSolid, color: ws.text, border: `1px solid ${ws.border}` } }}>
         <MenuItem onClick={() => { setMoreAnchor(null); scrollDown(); }} sx={{ gap: 1, fontSize: 13 }}><KeyboardArrowDown sx={{ fontSize: 18 }} /> {t('jumpToLatest')}</MenuItem>
         <MenuItem onClick={() => { setMoreAnchor(null); load(false); }} sx={{ gap: 1, fontSize: 13 }}><Refresh sx={{ fontSize: 18 }} /> {t('refresh')}</MenuItem>
-        <MenuItem component="a" href="/guide/chat" target="_blank" rel="noopener" onClick={() => setMoreAnchor(null)} sx={{ gap: 1, fontSize: 13 }}><HelpOutlineIcon sx={{ fontSize: 18 }} /> {t('guide')}</MenuItem>
-        <MenuItem component="a" href="/guide/actions" target="_blank" rel="noopener" onClick={() => setMoreAnchor(null)} sx={{ gap: 1, fontSize: 13 }}><AutoAwesome sx={{ fontSize: 18 }} /> {t('actionsGuide')}</MenuItem>
+        <MenuItem onClick={() => { setMoreAnchor(null); setGuideOpen('chat'); }} sx={{ gap: 1, fontSize: 13 }}><HelpOutlineIcon sx={{ fontSize: 18 }} /> {t('guide')}</MenuItem>
+        <MenuItem onClick={() => { setMoreAnchor(null); setGuideOpen('actions'); }} sx={{ gap: 1, fontSize: 13 }}><AutoAwesome sx={{ fontSize: 18 }} /> {t('actionsGuide')}</MenuItem>
         {captureRelevant && shotAutoCheck !== null && (
           <MenuItem onClick={toggleShotAutoCheck} disabled={autoCheckBusy} sx={{ gap: 1, fontSize: 13 }}>
             <PlaylistAddCheck sx={{ fontSize: 18, color: shotAutoCheck ? ws.accent : ws.textDim }} />

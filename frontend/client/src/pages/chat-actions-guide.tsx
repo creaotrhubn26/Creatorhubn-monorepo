@@ -54,7 +54,7 @@ const SectionHeading: React.FC<{ id: string; tag: string; title: string }> = ({ 
   </Stack>
 );
 
-const ChatActionsGuidePage: React.FC = () => {
+const ChatActionsGuidePage: React.FC<{ embedded?: boolean }> = ({ embedded }) => {
   React.useEffect(() => {
     const prev = document.title;
     document.title = 'Handlinger i Team Chat — guide · CreatorHubn';
@@ -63,12 +63,14 @@ const ChatActionsGuidePage: React.FC = () => {
   const goBack = () => { if (window.history.length > 1) window.history.back(); else window.location.assign('/'); };
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: BG, color: TEXT, '& :focus-visible': { outline: `2px solid ${ACCENT}`, outlineOffset: 2 } }}>
-      <Box component="main" sx={{ maxWidth: 760, mx: 'auto', px: { xs: 2, sm: 3 }, py: { xs: 4, sm: 7 } }}>
+    <Box sx={{ minHeight: embedded ? 'auto' : '100vh', bgcolor: BG, color: TEXT, '& :focus-visible': { outline: `2px solid ${ACCENT}`, outlineOffset: 2 } }}>
+      <Box component="main" sx={{ maxWidth: 760, mx: 'auto', px: { xs: 2, sm: 3 }, py: embedded ? 2 : { xs: 4, sm: 7 } }}>
+        {!embedded && (
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 4 }}>
           <IconButton onClick={goBack} aria-label="Tilbake" sx={{ color: MUTED, border: `1px solid ${BORDER}` }}><ArrowBack fontSize="small" /></IconButton>
           <Chip icon={<Bolt sx={{ fontSize: '16px !important', color: `${ACCENT} !important` }} />} label="Team Chat" size="small" sx={{ bgcolor: 'rgba(255,140,0,0.1)', color: ACCENT, fontWeight: 700 }} />
         </Stack>
+        )}
 
         <Box component="header" sx={{ mb: 6 }}>
           <Typography component="h1" sx={{ fontSize: { xs: '1.9rem', sm: '2.4rem' }, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.12, mb: 1.5 }}>Handlinger — gjør det fra chatten</Typography>
