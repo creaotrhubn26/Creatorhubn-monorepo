@@ -11,6 +11,9 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Stack, Typography, Avatar, IconButton, TextField, CircularProgress, Chip, Popover, Menu, MenuItem, Tooltip, InputAdornment } from '@mui/material';
+import Edit from '@mui/icons-material/Edit';
+import DeleteOutline from '@mui/icons-material/DeleteOutline';
+import { wsConfirm, wsPrompt } from './ui';
 import Search from '@mui/icons-material/Search';
 import PeopleAlt from '@mui/icons-material/PeopleAlt';
 import MoreVert from '@mui/icons-material/MoreVert';
@@ -77,6 +80,19 @@ const T: WsDict = {
   send: { no: 'Send melding', en: 'Send message' },
   removeAttachment: { no: 'Fjern vedlegg', en: 'Remove attachment' },
   clearTag: { no: 'Fjern merkelapp', en: 'Clear tag' },
+  errForbidden: { no: 'Du har ikke tilgang til denne kanalen.', en: 'You do not have access to this channel.' },
+  errAuth: { no: 'Økten er utløpt — logg inn på nytt.', en: 'Session expired — sign in again.' },
+  errGeneric: { no: 'Kunne ikke sende meldingen.', en: 'Could not send the message.' },
+  retry: { no: 'Prøv igjen', en: 'Retry' },
+  loadOlder: { no: 'Last eldre meldinger', en: 'Load older messages' },
+  today: { no: 'I dag', en: 'Today' },
+  yesterday: { no: 'I går', en: 'Yesterday' },
+  typing: { no: 'skriver …', en: 'is typing …' },
+  edited: { no: 'redigert', en: 'edited' },
+  editMsg: { no: 'Rediger melding', en: 'Edit message' },
+  deleteMsg: { no: 'Slett melding', en: 'Delete message' },
+  deleteConfirm: { no: 'Slette meldingen?', en: 'Delete this message?' },
+  newSinceLabel: { no: 'nye', en: 'new' },
   clearSearch: { no: 'Tøm søket', en: 'Clear search' },
   you: { no: 'Deg', en: 'You' },
   title: { no: 'Team Chat', en: 'Team Chat' },
@@ -184,6 +200,13 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState('');
+  const [retryFn, setRetryFn] = useState<null | (() => void)>(null);
+  const humanErr = (e: any) => {
+    const m = String(e?.message || e || '');
+    if (/403|forbidden/i.test(m)) return t('errForbidden');
+    if (/401|unauthorized/i.test(m)) return t('errAuth');
+    return t('errGeneric');
+  };
   const endRef = useRef(null);
   const listRef = useRef(null);
   const inputRef = useRef(null);
@@ -255,6 +278,85 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
       });
     } catch { /* sekundær */ } finally { if (initial) setLoading(false); }
   };
+  // Uleste: lagre «sist lest» per kanal (leses også av shell-badgen).
+  const markRead = (msgs: any[]) => {
+    try {
+      const last = msgs.length ? msgs[msgs.length - 1].timestamp : null;
+      if (last && !document.hidden) localStorage.setItem('chat-lastread-' + channelId, String(last));
+    } catch { /* */ }
+  };
+  const [olderBusy, setOlderBusy] = useState(false);
+  const loadOlder = async () => {
+    if (olderBusy || messages.length === 0) return;
+    setOlderBusy(true);
+    try {
+      const before = messages[0]?.timestamp;
+      const r = await apiRequest(`/api/communication/messages/${encodeURIComponent(channelId)}?limit=100&before=${encodeURIComponent(before)}`);
+      const older = Array.isArray(r?.messages) ? r.messages : [];
+      if (older.length) setMessages((prev) => [...older, ...prev]);
+      setHasOlder(older.length >= 100);
+    } catch { /* */ } finally { setOlderBusy(false); }
+  };
+  const [hasOlder, setHasOlder] = useState(false);
+  useEffect(() => { setHasOlder(messages.length >= 100); markRead(messages); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [messages]);
+
+  // «X skriver …» + live-refetch via bruker-events-WS (chat.message/chat.typing).
+  const [typingName, setTypingName] = useState<string | null>(null);
+  const typingTimer = useRef<any>(null);
+  const lastTypingSent = useRef(0);
+  const sendTyping = () => {
+    const now = Date.now();
+    if (now - lastTypingSent.current < 2500) return;
+    lastTypingSent.current = now;
+    apiRequest('/api/chat/typing', { method: 'POST', body: { conversationId: channelId } }).catch(() => {});
+  };
+  useEffect(() => {
+    const token = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token') || localStorage.getItem('role_room_auth_token');
+    if (!token) return;
+    const wsBase = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_WS_BASE)
+      ? (import.meta as any).env.VITE_WS_BASE
+      : 'wss://creatorhub-backend-rtbl.onrender.com';
+    let alive = true; let sock: WebSocket | null = null; let retry: any = null; let deb: any = null;
+    const connect = () => {
+      if (!alive) return;
+      clearTimeout(retry);
+      try { sock = new WebSocket(`${wsBase}/api/ipad/ws/events?token=${encodeURIComponent(token)}`); }
+      catch { retry = setTimeout(connect, 8000); return; }
+      sock.onclose = () => { if (alive) retry = setTimeout(connect, 8000); };
+      sock.onerror = () => { try { sock && sock.close(); } catch { /* */ } };
+      sock.onmessage = (ev) => {
+        let payload: any = null;
+        try { payload = JSON.parse(ev.data); } catch { /* */ }
+        const e = payload?.event;
+        if (!e || e.channelId !== channelId) return;
+        if (e.kind === 'chat.message') { clearTimeout(deb); deb = setTimeout(() => load(false), 200); }
+        if (e.kind === 'chat.typing') {
+          setTypingName(e.name || null);
+          clearTimeout(typingTimer.current);
+          typingTimer.current = setTimeout(() => setTypingName(null), 3500);
+        }
+      };
+    };
+    connect();
+    return () => { alive = false; clearTimeout(retry); clearTimeout(deb); clearTimeout(typingTimer.current); try { sock && sock.close(); } catch { /* */ } };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelId]);
+
+  const reactToMsg = (id: string, emoji: string) => {
+    apiRequest(`/api/chat/messages/${encodeURIComponent(id)}/reactions`, { method: 'POST', body: { emoji } })
+      .then(() => load(false)).catch(() => {});
+  };
+  const editMsg = async (m: any) => {
+    const next = await wsPrompt(t('editMsg'), m.content || '');
+    if (next == null || !next.trim() || next === m.content) return;
+    try { await apiRequest(`/api/chat/messages/${encodeURIComponent(m.id)}`, { method: 'PATCH', body: { content: next.trim() } }); load(false); }
+    catch (e) { setErr(humanErr(e)); setRetryFn(null); }
+  };
+  const deleteMsg = async (m: any) => {
+    if (!(await wsConfirm(t('deleteConfirm')))) return;
+    try { await apiRequest(`/api/chat/messages/${encodeURIComponent(m.id)}`, { method: 'DELETE' }); load(false); }
+    catch (e) { setErr(humanErr(e)); setRetryFn(null); }
+  };
 
   // Prosjekt-hendelser (leveranser, oppgaver, møter, låter, oppdrag) flettes
   // inn i tidslinjen så chatten blir prosjektets puls.
@@ -322,11 +424,12 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
     try {
       const fd = new FormData(); fd.append('file', file);
       const headers = await getAuthHeader(); delete headers['Content-Type'];
-      const res = await fetch(buildApiUrl('/api/upload/image'), { method: 'POST', headers, body: fd });
+      const isImage = String(file.type || '').startsWith('image/');
+      const res = await fetch(buildApiUrl(isImage ? '/api/upload/image' : '/api/upload/file'), { method: 'POST', headers, body: fd });
       if (!res.ok) { setErr(t('uploadFailed')); return; }
       const { url } = await res.json();
       if (!url) { setErr(t('uploadFailed')); return; }
-      setPending((p) => [...p, { filename: file.name.slice(0, 120) || 'bilde', downloadUrl: url, mimeType: file.type || 'image/*', fileSize: file.size || 1 }]);
+      setPending((p) => [...p, { filename: file.name.slice(0, 120) || 'fil', downloadUrl: url, mimeType: file.type || 'application/octet-stream', fileSize: file.size || 1 }]);
     } catch { setErr(t('uploadFailed')); } finally { setUploading(false); }
   };
 
@@ -347,7 +450,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
       });
       setText(''); setTag(null); setPending([]);
       await load(false); scrollDown();
-    } catch (e) { setErr(e?.message || t('sendFailed')); } finally { setSending(false); }
+    } catch (e) { setErr(humanErr(e)); setRetryFn(() => send); } finally { setSending(false); }
   };
 
   // ── Handlinger fra chatten («Action») ────────────────────────────────────
@@ -749,13 +852,48 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
           <Typography sx={{ fontSize: 13, color: ws.textDim, textAlign: 'center', py: 4 }}>
             {(query || pinnedOnly) ? t('noMatches') : room === 'shared' ? t('emptyShared') : t('emptyChat')}
           </Typography>
-        ) : feed.map((it) => {
-          if (it._t === 'act') return renderActivity(it.a);
+        ) : (<>
+        {hasOlder && (
+          <Button size="small" onClick={loadOlder} disabled={olderBusy} sx={{ alignSelf: 'center', color: ws.textDim, textTransform: 'none', fontSize: 12 }}>
+            {olderBusy ? <CircularProgress size={14} /> : t('loadOlder')}
+          </Button>
+        )}
+        {feed.map((it, idx) => {
+          // Dag-separator når datoen skifter i tidslinjen.
+          const ts = it._t === 'act' ? it.a?.ts : it.m?.timestamp;
+          const prevIt = idx > 0 ? feed[idx - 1] : null;
+          const prevTs = prevIt ? (prevIt._t === 'act' ? prevIt.a?.ts : prevIt.m?.timestamp) : null;
+          const dayLabel = (() => {
+            if (!ts) return null;
+            const d = new Date(ts); const p = prevTs ? new Date(prevTs) : null;
+            if (p && d.toDateString() === p.toDateString()) return null;
+            const now = new Date(); const yd = new Date(now.getTime() - 86400000);
+            if (d.toDateString() === now.toDateString()) return t('today');
+            if (d.toDateString() === yd.toDateString()) return t('yesterday');
+            return d.toLocaleDateString(wsDateLocale(locale), { day: 'numeric', month: 'short' });
+          })();
+          const sep = dayLabel ? (
+            <Stack key={`sep-${idx}`} direction="row" alignItems="center" spacing={1} sx={{ my: 0.5 }}>
+              <Box sx={{ flex: 1, height: 1, bgcolor: ws.borderSoft }} />
+              <Typography sx={{ fontSize: 10.5, color: ws.textFaint, fontWeight: 700 }}>{dayLabel}</Typography>
+              <Box sx={{ flex: 1, height: 1, bgcolor: ws.borderSoft }} />
+            </Stack>
+          ) : null;
+          if (it._t === 'act') return <React.Fragment key={`f-${idx}`}>{sep}{renderActivity(it.a)}</React.Fragment>;
           const m = it.m;
+          // Systemmeldinger (Samkjøringsboard m.fl.) — kompakt senterlinje, ikke boble.
+          if (String(m.senderId || '').startsWith('system:')) {
+            return (
+              <React.Fragment key={m.id}>{sep}
+                <Typography sx={{ textAlign: 'center', fontSize: 11.5, color: ws.textDim, py: 0.25 }}>{m.content}</Typography>
+              </React.Fragment>
+            );
+          }
           const mine = String(m.senderId || '').toLowerCase() === String(myId).toLowerCase();
           const tagMeta = m.tag && TAG_META[m.tag];
-          return (
-            <Stack key={m.id} direction="row" spacing={1} sx={{ alignItems: 'flex-start', flexDirection: mine ? 'row-reverse' : 'row' }}>
+          const reactions = (m.metadata?.reactions && typeof m.metadata.reactions === 'object') ? m.metadata.reactions : {};
+          return (<React.Fragment key={m.id}>{sep}
+            <Stack direction="row" spacing={1} className="ws-msg-row" sx={{ alignItems: 'flex-start', flexDirection: mine ? 'row-reverse' : 'row', '&:hover .ws-msg-actions': { opacity: 1 } }}>
               <Avatar sx={{ width: 30, height: 30, fontSize: 12, bgcolor: mine ? ws.accent : 'rgba(255,255,255,0.12)', color: mine ? ws.accentContrast : ws.text }}>
                 {initials(m.senderName || maskId(m.senderId))}
               </Avatar>
@@ -771,29 +909,68 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
                 )}
                 {m.content && !['reference', 'task', 'meeting', 'approval'].includes(m.metadata?.action) && !parseShotUpdate(m) && (
                   <Box sx={{ mt: 0.25, px: 1.25, py: 0.75, borderRadius: 2, bgcolor: mine ? ws.accentSoft : 'rgba(255,255,255,0.05)', border: mine ? `1px solid ${ws.accentBorder}` : 'none', display: 'inline-block', maxWidth: '100%' }}>
-                    <Typography sx={{ fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.content}</Typography>
+                    <Typography sx={{ fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                      {String(m.content).split(/(@[\wæøåÆØÅ.-]+(?: [A-ZÆØÅ][\wæøå.-]+)?)/g).map((part, pi) =>
+                        part.startsWith('@')
+                          ? <Box key={pi} component="span" sx={{ color: ws.accent, fontWeight: 700 }}>{part}</Box>
+                          : part)}
+                      {m.metadata?.editedAt && <Box component="span" sx={{ fontSize: 10, color: ws.textFaint, ml: 0.5 }}>({t('edited')})</Box>}
+                    </Typography>
                   </Box>
                 )}
                 {renderShotCard(m)}
                 {!parseShotUpdate(m) && renderAttachments(m.attachments)}
                 {renderCard(m)}
                 {renderRequest(m)}
+                {Object.keys(reactions).length > 0 && (
+                  <Stack direction="row" spacing={0.5} sx={{ mt: 0.4, flexWrap: 'wrap' }}>
+                    {Object.entries(reactions).map(([emo, who]: any) => (
+                      <Chip key={emo} size="small" label={`${emo} ${who.length}`} onClick={() => reactToMsg(m.id, emo)}
+                        sx={{ height: 20, fontSize: 11, cursor: 'pointer', bgcolor: who.map((w: string) => w.toLowerCase()).includes(String(myId).toLowerCase()) ? ws.accentSoft : 'rgba(255,255,255,0.05)', color: ws.text, border: `1px solid ${ws.borderSoft}` }} />
+                    ))}
+                  </Stack>
+                )}
+                <Stack direction="row" spacing={0.25} className="ws-msg-actions" sx={{ mt: 0.25, opacity: 0, transition: 'opacity .15s' }}>
+                  {['👍', '❤️', '✅'].map((emo) => (
+                    <IconButton key={emo} size="small" onClick={() => reactToMsg(m.id, emo)} sx={{ p: 0.25, fontSize: 13 }}>{emo}</IconButton>
+                  ))}
+                  {mine && (
+                    <>
+                      <Tooltip title={t('editMsg')}><IconButton size="small" onClick={() => editMsg(m)} sx={{ p: 0.25, color: ws.textDim }}><Edit sx={{ fontSize: 14 }} /></IconButton></Tooltip>
+                      <Tooltip title={t('deleteMsg')}><IconButton size="small" onClick={() => deleteMsg(m)} sx={{ p: 0.25, color: ws.textDim }}><DeleteOutline sx={{ fontSize: 14 }} /></IconButton></Tooltip>
+                    </>
+                  )}
+                </Stack>
               </Box>
             </Stack>
-          );
+          </React.Fragment>);
         })}
+        </>)}
         <div ref={endRef} />
       </Box>
 
       {/* Komponist */}
       <Box sx={{ px: 1.5, py: 1.25, borderTop: `1px solid ${ws.border}` }}>
-        {err && <Typography role="alert" sx={{ fontSize: 12, color: ws.red, mb: 0.75 }}>{err}</Typography>}
+        {typingName && <Typography sx={{ fontSize: 11, color: ws.textDim, mb: 0.5, fontStyle: 'italic' }}>{typingName} {t('typing')}</Typography>}
+        {err && (
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
+            <Typography role="alert" sx={{ fontSize: 12, color: ws.red }}>{err}</Typography>
+            {retryFn && <Button size="small" onClick={() => { setErr(''); retryFn(); }} sx={{ color: ws.accent, textTransform: 'none', fontSize: 11, minWidth: 0, p: 0.25 }}>{t('retry')}</Button>}
+          </Stack>
+        )}
         {/* Ventende vedlegg */}
         {pending.length > 0 && (
           <Stack direction="row" spacing={1} sx={{ mb: 1, flexWrap: 'wrap' }}>
             {pending.map((a, i) => (
               <Box key={i} sx={{ position: 'relative' }}>
-                <Box component="img" src={a.downloadUrl} alt={a.filename} sx={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 1.5, border: `1px solid ${ws.border}` }} />
+                {String(a.mimeType || '').startsWith('image/') ? (
+                  <Box component="img" src={a.downloadUrl} alt={a.filename} sx={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 1.5, border: `1px solid ${ws.border}` }} />
+                ) : (
+                  <Box sx={{ width: 100, height: 52, borderRadius: 1.5, border: `1px solid ${ws.border}`, display: 'flex', alignItems: 'center', gap: 0.5, px: 0.75, overflow: 'hidden' }}>
+                    <AttachFile sx={{ fontSize: 16, color: ws.textDim }} />
+                    <Typography sx={{ fontSize: 10, color: ws.text, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{a.filename}</Typography>
+                  </Box>
+                )}
                 <IconButton size="small" aria-label={t('removeAttachment')} onClick={() => setPending((p) => p.filter((_, j) => j !== i))}
                   sx={{ position: 'absolute', top: -8, right: -8, bgcolor: ws.panelSolid, color: ws.text, p: 0.25, '&:hover': { bgcolor: ws.panelAlt } }}><Close sx={{ fontSize: 14 }} /></IconButton>
               </Box>
@@ -823,6 +1000,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
               // «/» i tomt felt → åpne Action-launcheren.
               if (v === '/' && !text) { if (actionBtnRef.current) { setActionAnchor(actionBtnRef.current); setActionQuery(''); } return; }
               setText(v);
+              sendTyping();
             }}
             inputProps={{ 'aria-label': t('composerPlaceholder') }}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent?.isComposing) { e.preventDefault(); send(); } }}
@@ -835,7 +1013,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
         </Stack>
         <Stack direction="row" spacing={1} sx={{ mt: 1 }} justifyContent="space-between">
           <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
-            <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { void uploadImage(e.target.files?.[0]); e.target.value = ''; }} />
+            <input ref={fileRef} type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,audio/*,video/*" hidden onChange={(e) => { void uploadImage(e.target.files?.[0]); e.target.value = ''; }} />
             <Tooltip title={t('attach')}><span><IconButton size="small" aria-label={t('attach')} disabled={uploading} onClick={() => fileRef.current?.click()} sx={{ color: ws.textDim }}>{uploading ? <CircularProgress size={16} /> : <AttachFile sx={{ fontSize: 17 }} />}</IconButton></span></Tooltip>
             <Tooltip title={t('mention')}><IconButton size="small" aria-label={t('mention')} onClick={(e) => { setMentionMode(true); setMembersAnchor(e.currentTarget); }} sx={{ color: ws.textDim }}><AlternateEmail sx={{ fontSize: 17 }} /></IconButton></Tooltip>
             <Tooltip title={t('emoji')}><IconButton size="small" aria-label={t('emoji')} onClick={(e) => setEmojiAnchor(e.currentTarget)} sx={{ color: ws.textDim }}><EmojiEmotions sx={{ fontSize: 17 }} /></IconButton></Tooltip>

@@ -47952,6 +47952,27 @@ app.post("/api/upload/audio", audioUpload.single("file"), async (req, res) => {
 
 // Generisk bilde-opplasting (profilbilde/cover for Audio Showcase) — B2 (varig)
 // m/ fallback til lokal disk. Erstatter data-URL-inlining.
+// Generisk fil-opplasting for chat-vedlegg (dokumenter i tillegg til bilder).
+// Allowlist — aldri kjørbare filer.
+const CHAT_FILE_MIME_ALLOW = /^(image\/|application\/pdf$|application\/msword$|application\/vnd\.openxmlformats-officedocument\.|application\/vnd\.ms-excel$|application\/vnd\.ms-powerpoint$|text\/(plain|csv)$|application\/zip$|audio\/|video\/)/;
+app.post("/api/upload/file", showcaseMediaUpload.single("file"), async (req, res) => {
+  const session = requireUserSession(req, res);
+  if (!session) return;
+  const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket?.remoteAddress ?? "?";
+  if (_uploadRateLimited(`upload:${session.userId}:${ip}`)) return res.status(429).json({ success: false, error: "too_many_requests" });
+  try {
+    if (!req.file) return res.status(400).json({ success: false, error: "Missing file" });
+    const mime = String(req.file.mimetype || "");
+    if (!CHAT_FILE_MIME_ALLOW.test(mime)) return res.status(400).json({ success: false, error: "Filtypen støttes ikke" });
+    const durable = await uploadShowcaseMediaToB2(req.file.buffer, mime, req.file.originalname || "fil");
+    const url = durable || (await storeAudioFile(req.file.buffer, req.file.originalname || "fil", mime)).url;
+    res.json({ success: true, url, durable: Boolean(durable) });
+  } catch (error) {
+    console.error("File upload error:", error);
+    res.status(500).json({ success: false, error: "internal_error" });
+  }
+});
+
 app.post("/api/upload/image", showcaseMediaUpload.single("file"), async (req, res) => {
   const session = requireUserSession(req, res);
   if (!session) return;

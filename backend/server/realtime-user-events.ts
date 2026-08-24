@@ -54,6 +54,29 @@ export type UserEvent =
       projectId: string;
       timestamp: string;
     }
+  /// Ny/endret/slettet melding eller reaksjon i en prosjekt-chatkanal —
+  /// åpne chat-paneler refetcher og oppdaterer uleste-tellere.
+  | {
+      kind: "chat.message";
+      channelId: string;
+      projectId: string;
+      timestamp: string;
+    }
+  /// Noen skriver i en prosjekt-chatkanal (throttlet fra klienten).
+  | {
+      kind: "chat.typing";
+      channelId: string;
+      name: string;
+      timestamp: string;
+    }
+  /// Du ble @-nevnt i en prosjekt-chatkanal.
+  | {
+      kind: "chat.mention";
+      channelId: string;
+      projectId: string;
+      fromName: string;
+      timestamp: string;
+    }
   | {
       kind: "asset.hearted";
       assetId: string;
