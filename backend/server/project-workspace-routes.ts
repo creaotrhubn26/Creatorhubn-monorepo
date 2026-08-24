@@ -19,6 +19,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type express from "express";
+import { broadcastUserEvent } from "./realtime-user-events";
 import crypto from "crypto";
 import multer from "multer";
 import { canAccessProject } from "./project-team-routes";
@@ -99,6 +100,8 @@ async function ensureSchema(pool: any): Promise<void> {
           updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )`,
         `CREATE INDEX IF NOT EXISTS idx_pbt_project ON project_board_tasks (project_id, crew_role, order_index)`,
+        `ALTER TABLE project_board_tasks ADD COLUMN IF NOT EXISTS assigned_to VARCHAR(64)`,
+        `ALTER TABLE project_board_tasks ADD COLUMN IF NOT EXISTS assigned_name VARCHAR(120)`,
         `CREATE TABLE IF NOT EXISTS project_checklist_items (
           id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           project_id  VARCHAR(64) NOT NULL,
@@ -190,7 +193,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         `SELECT * FROM project_board_tasks WHERE project_id = $1 ORDER BY crew_role, order_index, created_at`,
         [req.params.projectId],
       );
-      res.json({ tasks: r.rows.map((t: any) => ({ id: t.id, crewRole: t.crew_role, title: t.title, timeLabel: t.time_label, status: t.status, orderIndex: t.order_index })) });
+      res.json({ tasks: r.rows.map((t: any) => ({ id: t.id, crewRole: t.crew_role, title: t.title, timeLabel: t.time_label, status: t.status, orderIndex: t.order_index, assignedTo: t.assigned_to || null, assignedName: t.assigned_name || null })) });
     } catch (e) { console.error("GET board-tasks", e); res.status(500).json({ error: "failed" }); }
   });
   // ─────────── Crew-roller som DATA (blandede team) ───────────
@@ -221,6 +224,53 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET crew-roles", e); res.status(500).json({ error: "failed" }); }
   });
 
+  // Samkjøringsboard: varsle prosjektets ANDRE team-medlemmer (samme mønster
+  // som notifyVideoRoomUpdated) så åpne Oversikt-faner refetcher boardet/
+  // sjekklisten instant i stedet for å vente på neste sidelast.
+  async function notifyBoardUpdated(projectId: string, actorUserId: string): Promise<void> {
+    try {
+      const owner = await pool.query(`SELECT user_id FROM projects WHERE id = $1`, [projectId]).catch(() => ({ rows: [] }));
+      const members = await pool.query(
+        `SELECT user_id FROM project_team_members WHERE project_id = $1 AND status = 'active' AND deactivated_at IS NULL AND user_id IS NOT NULL`,
+        [projectId],
+      ).catch(() => ({ rows: [] }));
+      const recipients = new Set<string>([
+        ...(owner.rows[0]?.user_id ? [String(owner.rows[0].user_id)] : []),
+        ...members.rows.map((r: any) => String(r.user_id)),
+      ]);
+      recipients.delete(actorUserId);
+      const timestamp = new Date().toISOString();
+      for (const recipientId of recipients) broadcastUserEvent(recipientId, { kind: "board.updated", projectId, timestamp });
+    } catch { /* best-effort */ }
+  }
+
+  // Systemspor i prosjektets hovedkanal («project-<id>» i communication_*) —
+  // teamet ser board-endringer passivt i Team Chat uten å åpne boardet.
+  async function postBoardChatNote(projectId: string, text: string): Promise<void> {
+    try {
+      const channelId = `project-${projectId}`;
+      await pool.query(
+        `INSERT INTO communication_channels (id, name, type) VALUES ($1, '# Produksjon', 'team') ON CONFLICT (id) DO NOTHING`,
+        [channelId],
+      );
+      await pool.query(
+        `INSERT INTO communication_messages (channel_id, sender_id, message_type, content, metadata, is_system_generated)
+         VALUES ($1, 'system:samkjoringsboard', 'text', $2, $3, true)`,
+        [channelId, text, JSON.stringify({ senderName: "Samkjøringsboard" })],
+      );
+    } catch { /* best-effort */ }
+  }
+
+  async function boardActorName(userId: string): Promise<string> {
+    try {
+      const r = await pool.query(
+        `SELECT COALESCE(NULLIF(TRIM(first_name || ' ' || last_name), ''), email) AS n FROM users WHERE id::text = $1`,
+        [userId],
+      );
+      return r.rows[0]?.n || "Et teammedlem";
+    } catch { return "Et teammedlem"; }
+  }
+
   app.post("/api/projects/:projectId/board-tasks", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
@@ -229,12 +279,16 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const title = typeof b.title === "string" ? b.title.trim() : "";
       if (!title) return res.status(400).json({ error: "title_required" });
       const r = await pool.query(
-        `INSERT INTO project_board_tasks (project_id, crew_role, title, time_label, status, order_index, created_by)
-         VALUES ($1, $2, $3, $4, $5, COALESCE($6, 0), $7) RETURNING *`,
-        [req.params.projectId, (b.crewRole || "begge"), title, b.timeLabel || null, b.status || "todo", b.orderIndex ?? null, uid],
+        `INSERT INTO project_board_tasks (project_id, crew_role, title, time_label, status, order_index, created_by, assigned_to, assigned_name)
+         VALUES ($1, $2, $3, $4, $5, COALESCE($6, 0), $7, $8, $9) RETURNING *`,
+        [req.params.projectId, (b.crewRole || "begge"), title, b.timeLabel || null, b.status || "todo", b.orderIndex ?? null, uid,
+         (typeof b.assignedTo === "string" && b.assignedTo) || null, (typeof b.assignedName === "string" && b.assignedName) || null],
       );
       const t = r.rows[0];
-      res.status(201).json({ id: t.id, crewRole: t.crew_role, title: t.title, timeLabel: t.time_label, status: t.status, orderIndex: t.order_index });
+      void notifyBoardUpdated(req.params.projectId, uid);
+      void boardActorName(uid).then((actor) =>
+        postBoardChatNote(req.params.projectId, `➕ ${actor} la til «${t.title}»${t.assigned_name ? ` → ${t.assigned_name}` : ""}`));
+      res.status(201).json({ id: t.id, crewRole: t.crew_role, title: t.title, timeLabel: t.time_label, status: t.status, orderIndex: t.order_index, assignedTo: t.assigned_to || null, assignedName: t.assigned_name || null });
     } catch (e) { console.error("POST board-tasks", e); res.status(500).json({ error: "failed" }); }
   });
   app.patch("/api/projects/:projectId/board-tasks/:id", async (req, res) => {
@@ -246,18 +300,27 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         `UPDATE project_board_tasks SET
             title = COALESCE($1, title), status = COALESCE($2, status),
             time_label = COALESCE($3, time_label), crew_role = COALESCE($4, crew_role),
+            assigned_to = CASE WHEN $5::text IS NULL THEN assigned_to WHEN $5 = '' THEN NULL ELSE $5 END,
+            assigned_name = CASE WHEN $6::text IS NULL THEN assigned_name WHEN $6 = '' THEN NULL ELSE $6 END,
             updated_at = NOW()
-          WHERE id = $5 AND project_id = $6 RETURNING *`,
-        [b.title ?? null, b.status ?? null, b.timeLabel ?? null, b.crewRole ?? null, req.params.id, req.params.projectId],
+          WHERE id = $7 AND project_id = $8 RETURNING *`,
+        [b.title ?? null, b.status ?? null, b.timeLabel ?? null, b.crewRole ?? null,
+         typeof b.assignedTo === "string" ? b.assignedTo : null, typeof b.assignedName === "string" ? b.assignedName : null,
+         req.params.id, req.params.projectId],
       );
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
       const t = r.rows[0];
-      res.json({ id: t.id, crewRole: t.crew_role, title: t.title, timeLabel: t.time_label, status: t.status, orderIndex: t.order_index });
+      void notifyBoardUpdated(req.params.projectId, uid);
+      if (b.status === "done") {
+        void boardActorName(uid).then((actor) =>
+          postBoardChatNote(req.params.projectId, `✓ ${actor} fullførte «${t.title}»`));
+      }
+      res.json({ id: t.id, crewRole: t.crew_role, title: t.title, timeLabel: t.time_label, status: t.status, orderIndex: t.order_index, assignedTo: t.assigned_to || null, assignedName: t.assigned_name || null });
     } catch (e) { console.error("PATCH board-tasks", e); res.status(500).json({ error: "failed" }); }
   });
   app.delete("/api/projects/:projectId/board-tasks/:id", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
-    try { await ensureSchema(pool); await pool.query(`DELETE FROM project_board_tasks WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]); res.json({ success: true }); }
+    try { await ensureSchema(pool); await pool.query(`DELETE FROM project_board_tasks WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]); void notifyBoardUpdated(req.params.projectId, uid); res.json({ success: true }); }
     catch (e) { console.error("DELETE board-tasks", e); res.status(500).json({ error: "failed" }); }
   });
 
@@ -2923,6 +2986,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         [req.params.projectId, label, b.checked ?? false, b.category || null, b.orderIndex ?? null],
       );
       const i = r.rows[0];
+      void notifyBoardUpdated(req.params.projectId, uid);
       res.status(201).json({ id: i.id, label: i.label, checked: i.checked, category: i.category });
     } catch (e) { console.error("POST checklist", e); res.status(500).json({ error: "failed" }); }
   });
@@ -2937,12 +3001,13 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       );
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
       const i = r.rows[0];
+      void notifyBoardUpdated(req.params.projectId, uid);
       res.json({ id: i.id, label: i.label, checked: i.checked, category: i.category });
     } catch (e) { console.error("PATCH checklist", e); res.status(500).json({ error: "failed" }); }
   });
   app.delete("/api/projects/:projectId/checklist/:id", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
-    try { await ensureSchema(pool); await pool.query(`DELETE FROM project_checklist_items WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]); res.json({ success: true }); }
+    try { await ensureSchema(pool); await pool.query(`DELETE FROM project_checklist_items WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]); void notifyBoardUpdated(req.params.projectId, uid); res.json({ success: true }); }
     catch (e) { console.error("DELETE checklist", e); res.status(500).json({ error: "failed" }); }
   });
 

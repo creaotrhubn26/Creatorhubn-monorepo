@@ -6,7 +6,7 @@
  * board-tasks, checklist, team-sync, capture/DIT); /workspace/sample viser demo.
  */
 import React, { useState, useEffect } from 'react';
-import { Box, Stack, Typography, Avatar, IconButton, Button, Chip } from '@mui/material';
+import { Box, Stack, Typography, Avatar, IconButton, Button, Chip, Menu, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Tooltip } from '@mui/material';
 import { useLocation } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
 import AccessTime from '@mui/icons-material/AccessTime';
@@ -17,6 +17,8 @@ import CheckCircle from '@mui/icons-material/CheckCircle';
 import RadioButtonUnchecked from '@mui/icons-material/RadioButtonUnchecked';
 import Warning from '@mui/icons-material/Warning';
 import Add from '@mui/icons-material/Add';
+import PlayCircle from '@mui/icons-material/PlayCircle';
+import PersonAddAlt from '@mui/icons-material/PersonAddAlt';
 import { ws } from '../workspaceTheme';
 import { useWorkspaceCategory } from '../useWorkspaceCategory';
 import { WsCard, WsSectionTitle, WsRing, WsBar, WsImageGrid, WsPromptDialog } from '../ui';
@@ -77,6 +79,15 @@ const T: WsDict = {
   today: { no: 'I dag', en: 'Today' },
   // samkjøringsboard
   syncBoard: { no: 'Samkjøringsboard', en: 'Coordination board' },
+  taskTitleLabel: { no: 'Tittel', en: 'Title' },
+  taskTimeLabel: { no: 'Tid (valgfritt)', en: 'Time (optional)' },
+  taskAssigneeLabel: { no: 'Ansvarlig (valgfritt)', en: 'Assignee (optional)' },
+  noAssignee: { no: 'Ingen', en: 'None' },
+  removeAssignee: { no: 'Fjern ansvarlig', en: 'Remove assignee' },
+  assignTask: { no: 'Tildel ansvarlig', en: 'Assign task' },
+  myTask: { no: 'Din oppgave', en: 'Your task' },
+  cancelWord: { no: 'Avbryt', en: 'Cancel' },
+  addWord: { no: 'Legg til', en: 'Add' },
   addTaskBtn: { no: 'Legg til oppgave', en: 'Add task' },
   // Team Sync
   teamSyncTitle: { no: 'Samkjøring (Team Sync)', en: 'Team Sync' },
@@ -213,6 +224,48 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
       .then((r: any) => { setTasks(Array.isArray(r?.tasks) ? r.tasks : []); })
       .catch(() => {});
   };
+  const loadChecks = () => {
+    if (!isReal) return;
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`)
+      .then((r: any) => { setChecks(Array.isArray(r?.items) ? r.items : []); })
+      .catch(() => {});
+  };
+
+  // Live: bruker-events-WS (samme kanal/mønster som VideoRoomTab) → boardet og
+  // sjekklisten refetches instant når ANDRE team-medlemmer endrer noe
+  // (board.updated broadcastes fra project-workspace-routes.ts).
+  useEffect(() => {
+    if (!isReal) return;
+    const token = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token') || localStorage.getItem('role_room_auth_token');
+    if (!token) return;
+    const wsBase = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_WS_BASE)
+      ? (import.meta as any).env.VITE_WS_BASE
+      : 'wss://creatorhub-backend-rtbl.onrender.com';
+    let alive = true;
+    let sock: WebSocket | null = null;
+    let retry: any = null;
+    let deb: any = null;
+    const connect = () => {
+      if (!alive) return;
+      clearTimeout(retry);
+      try { sock = new WebSocket(`${wsBase}/api/ipad/ws/events?token=${encodeURIComponent(token)}`); }
+      catch { retry = setTimeout(connect, 8000); return; }
+      sock.onopen = () => { if (alive) setBoardLive(true); };
+      sock.onclose = () => { if (alive) { setBoardLive(false); retry = setTimeout(connect, 8000); } };
+      sock.onerror = () => { try { sock && sock.close(); } catch { /* */ } };
+      sock.onmessage = (ev) => {
+        let payload: any = null;
+        try { payload = JSON.parse(ev.data); } catch { /* */ }
+        const e = payload?.event;
+        if (e?.kind !== 'board.updated' || e?.projectId !== projectId) return;
+        clearTimeout(deb);
+        deb = setTimeout(() => { loadTasks(); loadChecks(); }, 250);
+      };
+    };
+    connect();
+    return () => { alive = false; clearTimeout(retry); clearTimeout(deb); try { sock && sock.close(); } catch { /* */ } };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, isReal]);
 
   useEffect(() => {
     if (!isReal) return;
@@ -225,9 +278,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
         .catch(() => {});
     }
     loadTasks();
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`)
-      .then((r: any) => { setChecks(Array.isArray(r?.items) ? r.items : []); })
-      .catch(() => {});
+    loadChecks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
@@ -238,10 +289,33 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
   };
   // ws-stilet dialog i stedet for window.prompt (mode: 'check' | crewRole-streng)
   const [promptMode, setPromptMode] = useState<{ kind: 'task'; crew: string } | { kind: 'check' } | null>(null);
+  // Samkjøring: team-medlemmer (eier + aktive) til tildeling, min id til
+  // «din oppgave»-uthevelse, og live-refresh via bruker-events-WS.
+  const myId = (() => { try { return JSON.parse(localStorage.getItem('creatorhub_auth_user') || 'null')?.id || null; } catch { return null; } })();
+  const [team, setTeam] = useState<{ userId: string | null; name: string }[]>([]);
+  useEffect(() => {
+    if (!isReal) { setTeam([]); return; }
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team/members`)
+      .then((r: any) => {
+        const rows: { userId: string | null; name: string }[] = [];
+        if (r?.owner?.name) rows.push({ userId: r.owner.userId || null, name: r.owner.name });
+        for (const m of (Array.isArray(r?.members) ? r.members : [])) {
+          const name = m?.name || m?.email; if (!name) continue;
+          if (rows.some((x) => x.userId && m.userId && x.userId === m.userId)) continue;
+          rows.push({ userId: m.userId || null, name });
+        }
+        setTeam(rows);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, isReal]);
+  const [taskDlg, setTaskDlg] = useState<{ crew: string; title: string; time: string; assignee: number } | null>(null);
+  const [assignMenu, setAssignMenu] = useState<{ anchor: HTMLElement; taskId: string } | null>(null);
+  const [boardLive, setBoardLive] = useState(false);
   const addCheck = () => { if (isReal) setPromptMode({ kind: 'check' }); };
   const submitCheck = async (label: string) => {
     await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`, { method: 'POST', body: { label } });
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`).then((r: any) => setChecks(r?.items || []));
+    loadChecks();
   };
   const checkItems = isReal ? (checks || []).map((c) => ({ id: c.id, t: c.label, ok: c.checked, real: true })) : CHECKLIST;
   const refs = useProjectImages(projectId, 'references');
@@ -302,15 +376,35 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
   });
   const cap = isReal ? capture : { hasSession: true, shootingNow: true, session: { name: 'EOS R5 — Vielse' }, assets: { total: 842, securedToB2: 842, securedPct: 100, lastCaptureAt: new Date().toISOString() } };
 
+  // Tri-state: todo → in_progress → done → todo (optimistisk, PATCH bak).
   const toggleTask = async (id: string, status: string) => {
     if (!isReal) return;
-    setTasks((p) => (p || []).map((t) => (t.id === id ? { ...t, status: status === 'done' ? 'todo' : 'done' } : t)));
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks/${id}`, { method: 'PATCH', body: { status: status === 'done' ? 'todo' : 'done' } }).catch(loadTasks);
+    const next = status === 'todo' ? 'in_progress' : status === 'in_progress' ? 'done' : 'todo';
+    setTasks((p) => (p || []).map((t) => (t.id === id ? { ...t, status: next } : t)));
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks/${id}`, { method: 'PATCH', body: { status: next } }).catch(loadTasks);
   };
-  const addTask = (crewRole: string) => { if (isReal) setPromptMode({ kind: 'task', crew: crewRole }); };
-  const submitTask = async (title: string) => {
-    if (promptMode?.kind !== 'task') return;
-    await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks`, { method: 'POST', body: { title, crewRole: promptMode.crew } });
+  const assignTask = async (taskId: string, member: { userId: string | null; name: string } | null) => {
+    setAssignMenu(null);
+    if (!isReal) return;
+    const body = { assignedTo: member?.userId || '', assignedName: member?.name || '' };
+    setTasks((p) => (p || []).map((t) => (t.id === taskId ? { ...t, assignedTo: member?.userId || null, assignedName: member?.name || null } : t)));
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks/${taskId}`, { method: 'PATCH', body }).catch(loadTasks);
+  };
+  const addTask = (crewRole: string) => { if (isReal) setTaskDlg({ crew: crewRole, title: '', time: '', assignee: -1 }); };
+  const submitTaskDlg = async () => {
+    if (!taskDlg || !taskDlg.title.trim()) return;
+    const member = taskDlg.assignee >= 0 ? team[taskDlg.assignee] : null;
+    await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks`, {
+      method: 'POST',
+      body: {
+        title: taskDlg.title.trim(),
+        crewRole: taskDlg.crew,
+        timeLabel: taskDlg.time || null,
+        assignedTo: member?.userId || null,
+        assignedName: member?.name || null,
+      },
+    });
+    setTaskDlg(null);
     loadTasks();
   };
 
@@ -364,7 +458,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
   const crewFallbackKey = crewData?.fallbackKey || catDefaults.fallbackKey;
   const COLS = roleDefs.map((r: any) => ({ role: locale === 'en' ? (r.labelEn || r.label) : r.label, icon: r.icon || 'Person', crew: r.key }));
   const realBoard = tasks && tasks.length > 0
-    ? COLS.map((c) => ({ ...c, tasks: tasks.filter((t) => (t.crewRole || crewFallbackKey) === c.crew).map((t) => ({ id: t.id, t: t.title, time: t.timeLabel || '', done: t.status === 'done', real: true })) }))
+    ? COLS.map((c) => ({ ...c, tasks: tasks.filter((t) => (t.crewRole || crewFallbackKey) === c.crew).map((t) => ({ id: t.id, t: t.title, time: t.timeLabel || '', done: t.status === 'done', status: t.status || 'todo', assignedTo: t.assignedTo || null, assignedName: t.assignedName || null, real: true })) }))
     : null;
   const boardCols = isReal ? (realBoard || COLS.map((c) => ({ role: c.role || c.label || c.crew, icon: c.icon || 'Groups', crew: c.crew, tasks: [] }))) : BOARD.map((c, i) => ({ role: c.role, icon: c.icon, crew: COLS[i]?.crew || 'begge', tasks: c.tasks }));
 
@@ -556,6 +650,19 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
               {RULER.map((t) => <Typography key={t} sx={{ fontSize: 11, color: ws.textFaint }}>{t}</Typography>)}
             </Stack>
             <Box sx={{ position: 'relative', height: 1, bgcolor: ws.border, mt: 0.5 }}>
+              {/* Oppgaver med klokkeslett fra Samkjøringsboardet — små prikker
+                  på linjalen (grønn = fullført) så tid og board henger sammen. */}
+              {isReal && (tasks || []).map((task: any) => {
+                const m = /^(\d{1,2}):(\d{2})/.exec(task.timeLabel || '');
+                if (!m) return null;
+                const pct = ((Number(m[1]) * 60 + Number(m[2])) - 8 * 60) / (14 * 60) * 100;
+                if (pct < 0 || pct > 100) return null;
+                return (
+                  <Tooltip key={task.id} title={`${task.timeLabel} — ${task.title}${task.assignedName ? ` (${task.assignedName})` : ''}`}>
+                    <Box sx={{ position: 'absolute', left: `${pct}%`, top: -3.5, transform: 'translateX(-50%)', width: 8, height: 8, borderRadius: '50%', bgcolor: task.status === 'done' ? ws.green : ws.amber, cursor: 'default' }} />
+                  </Tooltip>
+                );
+              })}
               {nowVisible && (
                 // «Nå»-markør: etikett over linjalen + kort tick. Kort tick (ikke
                 // en 60px-linje) så den ikke vasker over fase-kortenes tekst under.
@@ -586,7 +693,16 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
 
         {/* Samkjøringsboard */}
         <WsCard sx={{ mb: 2 }}>
-          <WsSectionTitle icon={<ViewKanban sx={{ fontSize: 18, color: ws.textDim }} />} title={t('syncBoard')} />
+          <WsSectionTitle
+            icon={<ViewKanban sx={{ fontSize: 18, color: ws.textDim }} />}
+            title={t('syncBoard')}
+            action={boardLive ? (
+              <Stack direction="row" spacing={0.5} alignItems="center">
+                <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ws.green }} />
+                <Typography sx={{ fontSize: 10, color: ws.green, fontWeight: 700 }}>LIVE</Typography>
+              </Stack>
+            ) : undefined}
+          />
           <Stack direction="row" spacing={1.5} sx={{ overflowX: 'auto' }}>
             {boardCols.map((col) => (
               <Box key={col.role} sx={{ minWidth: 220, flex: 1 }}>
@@ -595,24 +711,48 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                   <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: ws.textDim }}>{col.role}</Typography>
                 </Stack>
                 <Stack spacing={1}>
-                  {col.tasks.map((task, i) => (
+                  {col.tasks.map((task: any, i) => {
+                    const mine = !!(task.assignedTo && myId && task.assignedTo === myId);
+                    const st = task.status || (task.done ? 'done' : 'todo');
+                    return (
                     <Box key={task.id || i} sx={{
                       p: 1.25, borderRadius: `${ws.radiusSm}px`, bgcolor: 'rgba(255,255,255,0.03)',
-                      border: `1px solid ${ws.borderSoft}`,
+                      border: `1px solid ${mine ? ws.accentBorder : ws.borderSoft}`,
                     }}>
                       <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
-                        <Box>
+                        <Box sx={{ minWidth: 0 }}>
                           <Typography sx={{ fontSize: 12.5, fontWeight: 600, color: ws.text }}>{task.t}</Typography>
                           {task.time && <Typography sx={{ fontSize: 11, color: ws.textFaint, mt: 0.25 }}>{task.time}</Typography>}
                         </Box>
-                        <Box onClick={() => task.real && toggleTask(task.id, task.done ? 'done' : 'todo')} sx={{ cursor: task.real ? 'pointer' : 'default', display: 'flex' }}>
-                          {task.done
+                        <Box onClick={() => task.real && toggleTask(task.id, st)} sx={{ cursor: task.real ? 'pointer' : 'default', display: 'flex' }}>
+                          {st === 'done'
                             ? <CheckCircle sx={{ fontSize: 18, color: ws.green }} />
-                            : <RadioButtonUnchecked sx={{ fontSize: 18, color: ws.textFaint }} />}
+                            : st === 'in_progress'
+                              ? <PlayCircle sx={{ fontSize: 18, color: ws.amber }} />
+                              : <RadioButtonUnchecked sx={{ fontSize: 18, color: ws.textFaint }} />}
                         </Box>
                       </Stack>
+                      {task.real && (
+                        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.75 }}>
+                          {task.assignedName ? (
+                            <Tooltip title={mine ? t('myTask') : task.assignedName}>
+                              <Chip
+                                size="small"
+                                avatar={<Avatar sx={{ bgcolor: mine ? ws.accent : 'rgba(255,255,255,0.12)', color: mine ? ws.accentContrast : ws.text, fontSize: 9, fontWeight: 700 }}>{String(task.assignedName).split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}</Avatar>}
+                                label={task.assignedName}
+                                onClick={(e: any) => setAssignMenu({ anchor: e.currentTarget, taskId: task.id })}
+                                sx={{ height: 20, fontSize: 10.5, color: ws.textDim, bgcolor: 'transparent', border: `1px solid ${ws.borderSoft}`, cursor: 'pointer', maxWidth: 150 }}
+                              />
+                            </Tooltip>
+                          ) : (
+                            <IconButton size="small" title={t('assignTask')} onClick={(e) => setAssignMenu({ anchor: e.currentTarget, taskId: task.id })} sx={{ p: 0.25, color: ws.textFaint }}>
+                              <PersonAddAlt sx={{ fontSize: 15 }} />
+                            </IconButton>
+                          )}
+                        </Stack>
+                      )}
                     </Box>
-                  ))}
+                  ); })}
                   <Button size="small" startIcon={<Add sx={{ fontSize: 15 }} />} onClick={() => addTask(col.crew)} disabled={!isReal} sx={{ color: ws.textDim, textTransform: 'none', justifyContent: 'flex-start' }}>
                     {t('addTaskBtn')}
                   </Button>
@@ -695,12 +835,53 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
           </WsCard>
         )}
         <WsPromptDialog
-          open={!!promptMode}
-          title={promptMode?.kind === 'check' ? t('newCheckPrompt') : t('newTaskPrompt')}
-          label={promptMode?.kind === 'check' ? t('checklistTitle') : t('addTaskBtn')}
+          open={promptMode?.kind === 'check'}
+          title={t('newCheckPrompt')}
+          label={t('checklistTitle')}
           onClose={() => setPromptMode(null)}
-          onSubmit={promptMode?.kind === 'check' ? submitCheck : submitTask}
+          onSubmit={submitCheck}
         />
+        {/* Ny oppgave: tittel + tid + ansvarlig (samkjøring — hvem gjør hva når) */}
+        <Dialog open={!!taskDlg} onClose={() => setTaskDlg(null)} fullWidth maxWidth="xs">
+          <DialogTitle sx={{ fontSize: 16, fontWeight: 700 }}>{t('newTaskPrompt')}</DialogTitle>
+          <DialogContent>
+            <Stack spacing={1.5} sx={{ mt: 0.5 }}>
+              <TextField
+                autoFocus fullWidth size="small" label={t('taskTitleLabel')}
+                value={taskDlg?.title || ''}
+                onChange={(e) => setTaskDlg((d) => (d ? { ...d, title: e.target.value } : d))}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitTaskDlg(); } }}
+              />
+              <TextField
+                fullWidth size="small" type="time" label={t('taskTimeLabel')} InputLabelProps={{ shrink: true }}
+                value={taskDlg?.time || ''}
+                onChange={(e) => setTaskDlg((d) => (d ? { ...d, time: e.target.value } : d))}
+              />
+              <TextField
+                fullWidth size="small" select label={t('taskAssigneeLabel')}
+                value={taskDlg?.assignee ?? -1}
+                onChange={(e) => setTaskDlg((d) => (d ? { ...d, assignee: Number(e.target.value) } : d))}
+              >
+                <MenuItem value={-1}>{t('noAssignee')}</MenuItem>
+                {team.map((m, i) => <MenuItem key={i} value={i}>{m.name}</MenuItem>)}
+              </TextField>
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button size="small" onClick={() => setTaskDlg(null)} sx={{ color: ws.textDim, textTransform: 'none' }}>{t('cancelWord')}</Button>
+            <Button size="small" variant="contained" onClick={submitTaskDlg} disabled={!taskDlg?.title.trim()}
+              sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accent } }}>
+              {t('addWord')}
+            </Button>
+          </DialogActions>
+        </Dialog>
+        {/* Tildel-meny på eksisterende oppgavekort */}
+        <Menu anchorEl={assignMenu?.anchor} open={!!assignMenu} onClose={() => setAssignMenu(null)}>
+          {team.map((m, i) => (
+            <MenuItem key={i} onClick={() => assignMenu && assignTask(assignMenu.taskId, m)} sx={{ fontSize: 13 }}>{m.name}</MenuItem>
+          ))}
+          <MenuItem onClick={() => assignMenu && assignTask(assignMenu.taskId, null)} sx={{ fontSize: 13, color: ws.textDim }}>{t('removeAssignee')}</MenuItem>
+        </Menu>
         <WorkspaceChatPanel projectId={projectId} category={wsCategory} />
       </Box>
     </Stack>
