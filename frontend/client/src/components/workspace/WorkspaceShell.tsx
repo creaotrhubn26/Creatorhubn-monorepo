@@ -8,6 +8,7 @@
  */
 
 import React from 'react';
+import GoogleReauthBanner from './GoogleReauthBanner';
 import { ThemeProvider } from '@mui/material/styles';
 import {
   Box, Stack, Typography, Avatar, AvatarGroup, Chip, Button, IconButton, Badge, Tooltip,
@@ -388,6 +389,7 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
 
           {/* Aktivt tab */}
           <Box sx={{ flex: 1, overflowY: 'auto', p: 3 }}>
+            <GoogleReauthBanner />
             {children}
           </Box>
         </Box>
