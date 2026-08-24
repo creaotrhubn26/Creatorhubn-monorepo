@@ -1336,15 +1336,19 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
             formations={formations}
             dancers={dancers}
             hiddenDancerIds={hiddenDancerIds}
-            onToggleHidden={(id) => setHiddenDancerIds((prev) => {
+            // Å vise en skjult danser mounter en ny <Dancer3D> med drei-<Text>,
+            // som suspender på fonten. Samme #426-felle som stage-mode under.
+            onToggleHidden={(id) => React.startTransition(() => setHiddenDancerIds((prev) => {
               const next = new Set(prev);
               if (next.has(id)) next.delete(id); else next.add(id);
               return next;
-            })}
+            }))}
             showPaths={showPaths}
+            // showPaths går ikke til StageMap3D — mounter ingen <Text>, trenger ingen transition.
             onToggleShowPaths={() => setShowPaths((v) => !v)}
             showIds={showIds}
-            onToggleShowIds={() => setShowIds((v) => !v)}
+            // Slår på en ekstra <Text> per danser.
+            onToggleShowIds={() => React.startTransition(() => setShowIds((v) => !v))}
             stageOpacity={stageOpacity}
             onStageOpacityChange={setStageOpacity}
             stageMode={stageMode}
