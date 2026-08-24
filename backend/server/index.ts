@@ -973,6 +973,7 @@ import { setupUniversalCrmRoutes } from "./universal-crm-routes";
 import { setupWeddingRoutes } from "./wedding-routes";
 import { setupWeddingTimelineRoutes } from "./wedding-timeline-routes";
 import { setupProjectsRoutes } from "./projects-routes";
+import { setupWorkflowOrchestrationRoutes } from "./workflow-orchestration-routes";
 import { setupRoleRoomDealsRoutes } from "./role-room-deals-routes";
 import { setupRoleRoomInvitesTicketsRoutes } from "./role-room-invites-tickets-routes";
 import { setupProjectsOutliersRoutes } from "./projects-outliers-routes";
@@ -67755,6 +67756,8 @@ setupWeddingTimelineRoutes({
   compatResolveUserId,
   resolveMeetingNotesProjectContext,
 });
+setupWorkflowOrchestrationRoutes({ app, pool, compatResolveUserId });
+
 setupProjectsRoutes({
   app,
   pool,
