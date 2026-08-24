@@ -54,7 +54,7 @@ const SectionHeading: React.FC<{ id: string; tag: string; title: string }> = ({ 
   </Stack>
 );
 
-const ChatGuidePage: React.FC = () => {
+const ChatGuidePage: React.FC<{ embedded?: boolean }> = ({ embedded }) => {
   React.useEffect(() => {
     const prev = document.title;
     document.title = 'Team Chat — guide · CreatorHubn';
@@ -63,12 +63,14 @@ const ChatGuidePage: React.FC = () => {
   const goBack = () => { if (window.history.length > 1) window.history.back(); else window.location.assign('/'); };
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: BG, color: TEXT, '& :focus-visible': { outline: `2px solid ${ACCENT}`, outlineOffset: 2 } }}>
-      <Box component="main" sx={{ maxWidth: 760, mx: 'auto', px: { xs: 2, sm: 3 }, py: { xs: 4, sm: 7 } }}>
+    <Box sx={{ minHeight: embedded ? 'auto' : '100vh', bgcolor: BG, color: TEXT, '& :focus-visible': { outline: `2px solid ${ACCENT}`, outlineOffset: 2 } }}>
+      <Box component="main" sx={{ maxWidth: 760, mx: 'auto', px: { xs: 2, sm: 3 }, py: embedded ? 2 : { xs: 4, sm: 7 } }}>
+        {!embedded && (
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 4 }}>
           <IconButton onClick={goBack} aria-label="Tilbake" sx={{ color: MUTED, border: `1px solid ${BORDER}` }}><ArrowBack fontSize="small" /></IconButton>
           <Chip icon={<Forum sx={{ fontSize: '16px !important', color: `${ACCENT} !important` }} />} label="Workspace" size="small" sx={{ bgcolor: 'rgba(255,140,0,0.1)', color: ACCENT, fontWeight: 700 }} />
         </Stack>
+        )}
 
         <Box component="header" sx={{ mb: 6 }}>
           <Typography component="h1" sx={{ fontSize: { xs: '1.9rem', sm: '2.4rem' }, fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.12, mb: 1.5 }}>Team Chat</Typography>
@@ -110,9 +112,12 @@ const ChatGuidePage: React.FC = () => {
               <P><EmojiEmotions sx={{ fontSize: 15, verticalAlign: 'text-bottom', color: MUTED }} aria-hidden /> åpner en emoji-plukker som setter tegnet inn der markøren står. <AlternateEmail sx={{ fontSize: 15, verticalAlign: 'text-bottom', color: MUTED }} aria-hidden /> lar deg <Em>nevne</Em> noen — velg fra deltakerlista, så settes <Ui>@Navn</Ui> inn i meldingen.</P>
               <Shot src="/guides/chat/04-emoji.png" alt="Emoji-plukkeren åpen over skrivefeltet med et rutenett av emojis" caption="Emoji-plukkeren — trykk en emoji for å sette den inn i meldingen." />
             </Step>
-            <Step n={2} color={GREEN} title="Legg ved bilde">
-              <P><AttachFile sx={{ fontSize: 15, verticalAlign: 'text-bottom', color: MUTED }} aria-hidden /> laster opp et bilde (f.eks. cover, skjermbilde eller referanse). Det vises som miniatyr før du sender, og som klikkbart bilde i tråden — trykk for å åpne i full størrelse.</P>
+            <Step n={2} color={GREEN} title="Legg ved filer">
+              <P><AttachFile sx={{ fontSize: 15, verticalAlign: 'text-bottom', color: MUTED }} aria-hidden /> laster opp bilder <Em>og dokumenter</Em> — PDF, Word/Excel, tekst, zip, lyd og video. Bilder vises som miniatyr før sending og klikkbart i tråden; andre filer som en fil-brikke med navn.</P>
               <Shot src="/guides/chat/03-sent-attachment.png" alt="En sendt melding med «Oppdatering»-merkelapp og et vedlagt album-cover-bilde" caption="Sendt melding med merkelapp og vedlagt bilde, klikkbart i tråden." />
+            </Step>
+            <Step n={3} color={GREEN} title="Reager, rediger og slett">
+              <P>Hold pekeren over en melding for å <Em>reagere</Em> med 👍 ❤️ ✅ — reaksjonene vises som tellende brikker under meldingen, og et nytt trykk fjerner din. På <Em>egne</Em> meldinger får du også penn og søppelbøtte: rediger teksten (meldingen merkes <Ui>(redigert)</Ui>) eller slett den helt.</P>
             </Step>
           </Box>
         </Box>
@@ -134,6 +139,9 @@ const ChatGuidePage: React.FC = () => {
               <P><PeopleAlt sx={{ fontSize: 15, verticalAlign: 'text-bottom', color: MUTED }} aria-hidden /> viser deltakerne i kanalen. Klikk et navn for å nevne personen i meldingen. <Em>Flere valg</Em>-menyen (⋮) har <Ui>Hopp til nyeste</Ui> og <Ui>Oppdater</Ui>.</P>
               <Shot src="/guides/chat/05-members.png" alt="Deltaker-popover som lister Nora Vik, Daniel (Deg) og Amir Hassan" caption="Deltakerlista — klikk et navn for å nevne personen." />
             </Step>
+            <Step n={4} title="Bla i historikken">
+              <P>Tråden grupperes med <Em>dag-skiller</Em> («I dag», «I går», dato). Lange prosjekter kuttes ikke: trykk <Ui>Last eldre meldinger</Ui> øverst for å hente neste side av historikken.</P>
+            </Step>
           </Box>
         </Box>
 
@@ -144,8 +152,10 @@ const ChatGuidePage: React.FC = () => {
             <Typography component="h2" id="chat-tips" sx={{ fontSize: '1.02rem', fontWeight: 800 }}>Godt å vite</Typography>
           </Stack>
           <Box component="ul" sx={{ m: 0, pl: 2.5, '& li': { fontSize: '0.88rem', color: MUTED, lineHeight: 1.6, mb: 1 }, '& li::marker': { color: FAINT } }}>
-            <li><Em>Chatten er per prosjekt</Em> — hver workspace har sin egen kanal, så samtaler holder seg til riktig produksjon.</li>
-            <li><Em>Nye meldinger hentes automatisk</Em> — panelet oppdaterer seg selv, og du kan alltids trykke «Oppdater» i ⋮-menyen.</li>
+            <li><Em>Chatten er per prosjekt</Em> — hver workspace har sin egen kanal, så samtaler holder seg til riktig produksjon. <Em>Team</Em>-rommet er internt; <Em>Delt</Em>-rommet ser også kunden.</li>
+            <li><Em>Chatten er live</Em> — nye meldinger dukker opp umiddelbart, du ser <Em>«X skriver …»</Em> når et teammedlem er i gang, og uleste meldinger telles på Chat-punktet i sidemenyen.</li>
+            <li><Em>@-omtaler</Em> utheves i oransje i meldingen, så det er lett å se når noen snakker til deg.</li>
+            <li><Em>Samkjøringsboardet melder fra selv</Em> — når oppgaver legges til eller fullføres, dukker en diskret systemlinje opp i tråden.</li>
             <li><Em>Utenlandske samarbeidspartnere</Em> ser panelet på engelsk automatisk — samme tråd, oversatt grensesnitt.</li>
           </Box>
         </Box>
