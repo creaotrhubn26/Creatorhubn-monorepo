@@ -84,7 +84,7 @@ export default function ProjectHealthCheck({
   const [healthScore, setHealthScore] = useState(false);
   
   // Theming system
-  const theming = useTheming('photographer');
+  const theming = useTheming('workspace');
 
   // Analyser prosjektdata ved åpning
   useEffect(() => {
@@ -121,7 +121,7 @@ export default function ProjectHealthCheck({
   });
   }
 
-    if (!projectData.projectDate) {
+    if (!projectData.projectDate && !projectData.eventDate) {
       foundIssues.push({
         id: 'missing_project_date',
         severity: 'error',
@@ -162,7 +162,9 @@ export default function ProjectHealthCheck({
     if (!projectData.deliveryMethod) {
       foundIssues.push({
         id: 'missing_delivery_method',
-        severity: 'error',
+        // warning: leveransevalg settes senere i Team Workspace — finnes ikke
+        // som felt i opprettelses-modalen og skal ikke blokkere opprettelse.
+        severity: 'warning',
         field: 'Leveransevalg',
         message: 'Leveransemethod må velges',
         action: 'Gå til leveranse og prising',
@@ -182,7 +184,8 @@ export default function ProjectHealthCheck({
       
       foundIssues.push({
         id: 'missing_pricing',
-        severity: 'error',
+        // warning: prising settes via Pris-pakke/Team Workspace senere.
+        severity: 'warning',
         field: 'Prising',
         message: `${professionTerms[profession]} eller tilpasset pris må velges`,
         action: 'Gå til leveranse og prising',
@@ -348,7 +351,7 @@ export default function ProjectHealthCheck({
         <Box display="flex" alignItems="center" gap={2}>
           <ProfessionIcon color="primary" />
           <Typography variant="h5" sx={{ color: theming.colors.primary }}>
-            Health Check - Prosjektvalidering
+            Helsesjekk — prosjektvalidering
           </Typography>
         </Box>
       </DialogTitle>
