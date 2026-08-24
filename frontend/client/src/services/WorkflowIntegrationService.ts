@@ -71,21 +71,15 @@ export class WorkflowIntegrationService {
     photographerId: string;
   }) {
     try {
-      const timeline = await apiRequest('/api/wedding-timeline/auto-create', {
+      // Gjenbruker den eksisterende fulle ruta i wedding-timeline-routes.ts
+      // (oppretter wedding_timelines-rad og merker prosjekt-metadata selv).
+      const timeline = await apiRequest(`/api/wedding/timeline/project/${project.id}`, {
         method: 'POST',
         body: {
-          projectId: project.id,
-          photographerId: project.photographerId,
           coupleName: project.clientName,
           weddingDate: project.weddingDate,
-          venue: project.venue || ', ',
+          venue: project.venue || '',
           culturalType: project.weddingCulture || 'norsk',
-          clientEmail: project.clientEmail,
-          clientPhone: project.clientPhone,
-          // Auto-enable client access
-          clientAccessEnabled: true,
-          // Generate default events based on culture
-          autoGenerateEvents: true,
         },
       });
 
@@ -137,21 +131,6 @@ export class WorkflowIntegrationService {
       console.error('❌ Failed to auto-create event timeline:', error);
       // Don't throw - this is optional enhancement
       return null;
-    }
-  }
-
-  /**
-   * GAP 2: Sync wedding timeline to project timeline
-   */
-  static async syncWeddingToProjectTimeline(weddingTimelineId: string, projectId: string) {
-    try {
-      await apiRequest(`/api/wedding-timeline/${weddingTimelineId}/sync-to-project`, {
-        method: 'POST',
-        body: { projectId },
-      });
-      console.log('✅ Wedding timeline synced to project timeline');
-    } catch (error) {
-      console.error('❌ Failed to sync timelines:', error);
     }
   }
 
@@ -331,10 +310,6 @@ export class WorkflowIntegrationService {
           photographerId: project.userId,
         });
 
-        // Sync to project timeline if created successfully
-        if (weddingTimeline) {
-          await this.syncWeddingToProjectTimeline(weddingTimeline.id, project.id);
-        }
       }
 
       // Step 4: Set up default guidelines
