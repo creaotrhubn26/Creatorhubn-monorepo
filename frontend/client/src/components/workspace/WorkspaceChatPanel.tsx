@@ -284,6 +284,22 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
       });
     } catch { /* sekundær */ } finally { if (initial) setLoading(false); }
   };
+  // Delt/Team-bytte og vindu-fokus henter ferskt — 15s-pollen alene lot
+  // Delt-fanen stå tom til neste tick når meldinger kom inn fra andre
+  // flater (kunde-svar via galleriet, API, andre faner).
+  useEffect(() => {
+    if (!loading) load(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room]);
+  useEffect(() => {
+    const onFocus = () => load(false);
+    const onVis = () => { if (!document.hidden) load(false); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
+    return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVis); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelId]);
+
   // Uleste: lagre «sist lest» per kanal (leses også av shell-badgen).
   const markRead = (msgs: any[]) => {
     try {
