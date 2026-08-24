@@ -1361,6 +1361,101 @@ export function setupClientGalleryRoutes(
     }
   });
 
+  // ─── Delt chat (kunde ↔ team) ──────────────────────────────────────────
+  // Kundens leseflate for «Delt»-rommet i Team Chat. Serverer KUN meldinger
+  // med metadata.visibility='shared' — filteret håndheves her (server-side)
+  // så interne team-meldinger aldri kan nå klienten. accessToken er auth
+  // (samme gate som resten av galleriet, inkl. passord).
+  app.get("/api/client/gallery/:accessToken/chat", async (req, res) => {
+    const accessToken = String(req.params.accessToken || "").trim();
+    if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
+    try {
+      const access = await gateGalleryAccess(accessToken, readGalleryPasswordHeader(req));
+      if (!access.ok) {
+        return res.status(access.status).json({
+          error: access.error,
+          ...(access.requiresPassword ? { requiresPassword: true } : {}),
+        });
+      }
+      const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
+      if (!gallery?.projectId) return res.json({ messages: [] });
+      const r = await pool.query(
+        `SELECT id, content, metadata, created_at
+           FROM communication_messages
+          WHERE channel_id = $1 AND metadata->>'visibility' = 'shared'
+          ORDER BY created_at DESC LIMIT 100`,
+        [`project-${gallery.projectId}`],
+      );
+      // Kun visningsnavn eksponeres — aldri sender_id (e-post) eller annen
+      // metadata fra teamets side.
+      const messages = r.rows.reverse().map((m: any) => ({
+        id: m.id,
+        senderName: (m.metadata?.senderName as string) || "Team",
+        fromClient: m.metadata?.fromClient === true,
+        content: m.content,
+        timestamp: m.created_at,
+      }));
+      res.json({ messages });
+    } catch (e) {
+      console.error("GET client gallery chat", e);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  app.post("/api/client/gallery/:accessToken/chat", async (req, res) => {
+    const accessToken = String(req.params.accessToken || "").trim();
+    if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
+    const content = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+    if (!content) return res.status(400).json({ error: "message_required" });
+    if (content.length > 2000) return res.status(400).json({ error: "message_too_long" });
+    try {
+      const access = await gateGalleryAccess(accessToken, readGalleryPasswordHeader(req));
+      if (!access.ok) {
+        return res.status(access.status).json({
+          error: access.error,
+          ...(access.requiresPassword ? { requiresPassword: true } : {}),
+        });
+      }
+      const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
+      if (!gallery?.projectId) return res.status(404).json({ error: "not_found" });
+      const channelId = `project-${gallery.projectId}`;
+      const clientName =
+        (typeof req.body?.clientName === "string" && req.body.clientName.trim().slice(0, 80)) ||
+        gallery.clientName || "Kunde";
+      await pool.query(
+        `INSERT INTO communication_channels (id, name, type) VALUES ($1, '# Produksjon', 'team') ON CONFLICT (id) DO NOTHING`,
+        [channelId],
+      );
+      await pool.query(
+        `INSERT INTO communication_messages (channel_id, sender_id, message_type, content, metadata)
+         VALUES ($1, $2, 'text', $3, $4)`,
+        [channelId, `client:${accessToken.slice(0, 8)}`, content,
+         JSON.stringify({ visibility: "shared", senderName: clientName, fromClient: true })],
+      );
+      // Live-varsel + uleste hos teamet (eier i public/legacy + aktive medlemmer).
+      try {
+        const pid = String(gallery.projectId);
+        const [pubOwner, legOwner, members] = await Promise.all([
+          pool.query(`SELECT user_id::text AS uid FROM projects WHERE id::text = $1`, [pid]).catch(() => ({ rows: [] as any[] })),
+          pool.query(`SELECT user_id AS uid FROM legacy.projects WHERE id = $1`, [pid]).catch(() => ({ rows: [] as any[] })),
+          pool.query(`SELECT user_id::text AS uid FROM project_team_members WHERE project_id = $1 AND status = 'active' AND deactivated_at IS NULL AND user_id IS NOT NULL`, [pid]).catch(() => ({ rows: [] as any[] })),
+        ]);
+        const timestamp = new Date().toISOString();
+        const seen = new Set<string>();
+        for (const row of [...pubOwner.rows, ...legOwner.rows, ...members.rows]) {
+          const uid = String(row.uid || "");
+          if (!uid || seen.has(uid)) continue;
+          seen.add(uid);
+          broadcastUserEvent(uid, { kind: "chat.message", channelId, projectId: pid, timestamp });
+        }
+      } catch { /* best-effort */ }
+      res.status(201).json({ success: true });
+    } catch (e) {
+      console.error("POST client gallery chat", e);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
   app.post("/api/client/gallery/:accessToken/comments", async (req, res) => {
     const accessToken = String(req.params.accessToken || "").trim();
     if (!accessToken) return res.status(400).json({ error: "missing_access_token" });
