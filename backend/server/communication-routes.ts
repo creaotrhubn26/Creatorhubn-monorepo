@@ -236,7 +236,7 @@ export function createCommunicationRouter(
   const resolveProjectAccess = async (projectId: string, user: AuthedUser): Promise<{ displayName: string } | null> => {
     try {
       const owner = await pool.query(
-        `SELECT COALESCE(NULLIF(TRIM(CONCAT_WS(' ', first_name, last_name)), ''), name, email) AS display_name
+        `SELECT COALESCE(NULLIF(TRIM(CONCAT_WS(' ', first_name, last_name)), ''), email) AS display_name
            FROM projects p JOIN users u ON u.id = p.user_id
           WHERE p.id::text = $1 AND p.user_id::text = $2 LIMIT 1`,
         [projectId, user.userId],
@@ -245,14 +245,14 @@ export function createCommunicationRouter(
       // Workspace-prosjekter ligger i legacy.projects (ikke public.projects) —
       // uten denne sjekken fikk eieren 403 på hele Team Chat i nye prosjekter.
       const legacyOwner = await pool.query(
-        `SELECT COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.name, u.email) AS display_name
+        `SELECT COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.email) AS display_name
            FROM legacy.projects p JOIN users u ON u.id::text = p.user_id
           WHERE p.id = $1 AND p.user_id = $2 LIMIT 1`,
         [projectId, user.userId],
       ).catch(() => ({ rows: [] as any[] }));
       if (legacyOwner.rows[0]) return { displayName: String(legacyOwner.rows[0].display_name || user.email) };
       const mem = await pool.query(
-        `SELECT COALESCE(NULLIF(TRIM(m.name), ''), NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.name, m.email) AS display_name
+        `SELECT COALESCE(NULLIF(TRIM(m.name), ''), NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), m.email) AS display_name
            FROM project_team_members m LEFT JOIN users u ON u.id = m.user_id
           WHERE m.project_id = $1 AND m.deactivated_at IS NULL
             AND (m.user_id = $2 OR LOWER(m.email) = LOWER($3)) LIMIT 1`,
@@ -267,8 +267,8 @@ export function createCommunicationRouter(
   const projectTeamRecipients = async (projectId: string): Promise<{ userId: string; name: string }[]> => {
     try {
       const [pubOwner, legOwner, members] = await Promise.all([
-        pool.query(`SELECT u.id::text AS uid, COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.name, u.email) AS n FROM projects p JOIN users u ON u.id = p.user_id WHERE p.id::text = $1`, [projectId]).catch(() => ({ rows: [] as any[] })),
-        pool.query(`SELECT u.id::text AS uid, COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.name, u.email) AS n FROM legacy.projects p JOIN users u ON u.id::text = p.user_id WHERE p.id = $1`, [projectId]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT u.id::text AS uid, COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.email) AS n FROM projects p JOIN users u ON u.id = p.user_id WHERE p.id::text = $1`, [projectId]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT u.id::text AS uid, COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.email) AS n FROM legacy.projects p JOIN users u ON u.id::text = p.user_id WHERE p.id = $1`, [projectId]).catch(() => ({ rows: [] as any[] })),
         pool.query(`SELECT m.user_id::text AS uid, COALESCE(NULLIF(TRIM(m.name), ''), m.email) AS n FROM project_team_members m WHERE m.project_id = $1 AND m.status = 'active' AND m.deactivated_at IS NULL AND m.user_id IS NOT NULL`, [projectId]).catch(() => ({ rows: [] as any[] })),
       ]);
       const seen = new Map<string, string>();
