@@ -421,6 +421,17 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
       const projectId = crypto.randomUUID();
       const customerId = data.customerId || data.customer_id || null;
 
+      // legacy.projects.user_id har FK til legacy.users — nye brukere finnes
+      // kun i moderne `users`, så prosjektopprettelse FK-feilet (500) for dem.
+      // Speil brukeren inn (idempotent) før insert.
+      await pool.query(
+        `INSERT INTO legacy.users (id, email, first_name, last_name, profession, role)
+         SELECT u.id::varchar, u.email, u.first_name, u.last_name, u.profession, u.role
+         FROM users u WHERE u.id::text = $1
+         ON CONFLICT (id) DO NOTHING`,
+        [userId],
+      );
+
       const result = await pool.query(
         `INSERT INTO legacy.projects 
           (id, user_id, title, name, description, profession, category, status,
