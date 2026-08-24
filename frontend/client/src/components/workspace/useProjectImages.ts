@@ -10,7 +10,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
 
-export interface WsImageItem { id: string; url: string; label?: string; category?: string | null }
+export type { WsImageItem } from './ui';
+import type { WsImageItem } from './ui';
 
 export function useProjectImages(projectId: string, panel: string) {
   const [images, setImages] = useState<WsImageItem[]>([]);
