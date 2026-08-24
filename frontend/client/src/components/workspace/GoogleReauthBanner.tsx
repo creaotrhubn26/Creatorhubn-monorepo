@@ -28,8 +28,25 @@ const GoogleReauthBanner: React.FC = () => {
     // fantes denne koden bare i universaldashboardet, så en reconnect som
     // returnerte til /workspace forkastet tokenene i det stille og
     // tilkoblingen forble needs_reauth.
-    const params = new URLSearchParams(window.location.search);
+    // Les retur-parametrene fra navigasjons-entryen (original-URL) i tillegg
+    // til location.search: andre globale handlere (bl.a. chat-widgetens
+    // clearCreatorHubGoogleIntentFromUrl) kan rydde URL-en før dette panelet
+    // mountes (WorkspaceHome viser spinner mens prosjektlista hentes), og da
+    // ble tokenene stille forkastet og tilkoblingen forble needs_reauth.
+    let params = new URLSearchParams(window.location.search);
+    if (!params.get('chGoogleStatus')) {
+      try {
+        const navUrl = (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.name;
+        if (navUrl) params = new URL(navUrl).searchParams;
+      } catch { /* */ }
+    }
     const transferId = params.get('chGoogleTransfer');
+    // Én fullføring per transfer (reload-vern; /link sletter payloaden ved
+    // suksess, så et dobbelt forsøk ville bare gitt 404).
+    try {
+      if (transferId && sessionStorage.getItem('chg-linked-' + transferId)) return;
+      if (transferId) sessionStorage.setItem('chg-linked-' + transferId, '1');
+    } catch { /* */ }
     const cleanUrl = () => {
       const u = new URL(window.location.href);
       for (const k of ['chGoogleStatus', 'chGoogleMode', 'chGoogleTransfer', 'chGoogleMessage']) u.searchParams.delete(k);
