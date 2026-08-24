@@ -191,7 +191,7 @@ const TeamWorkspacePage: React.FC = () => {
     // som hundefrisør fikk før feilaktig «Fotograf»).
     role: getProfessionDisplayName(user?.profession) || 'Medlem',
     email: user?.email || null,
-    avatarUrl: user?.avatarUrl || null,
+    avatarUrl: user?.avatarUrl || (user?.id ? `/api/users/${user.id}/avatar` : null),
   };
 
   // Antall nye innkommende henvendelser (leads) → badge på Forespørsler-fanen.

@@ -738,7 +738,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
                             <Tooltip title={mine ? t('myTask') : task.assignedName}>
                               <Chip
                                 size="small"
-                                avatar={<Avatar sx={{ bgcolor: mine ? ws.accent : 'rgba(255,255,255,0.12)', color: mine ? ws.accentContrast : ws.text, fontSize: 9, fontWeight: 700 }}>{String(task.assignedName).split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}</Avatar>}
+                                avatar={<Avatar src={task.assignedTo ? `/api/users/${task.assignedTo}/avatar` : undefined} sx={{ bgcolor: mine ? ws.accent : 'rgba(255,255,255,0.12)', color: mine ? ws.accentContrast : ws.text, fontSize: 9, fontWeight: 700 }}>{String(task.assignedName).split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}</Avatar>}
                                 label={task.assignedName}
                                 onClick={(e: any) => setAssignMenu({ anchor: e.currentTarget, taskId: task.id })}
                                 sx={{ height: 20, fontSize: 10.5, color: ws.textDim, bgcolor: 'transparent', border: `1px solid ${ws.borderSoft}`, cursor: 'pointer', maxWidth: 150 }}

@@ -129,6 +129,8 @@ function mapMember(r: any): any {
     status: r.status || "pending",
     invitedAt: r.invited_at,
     acceptedAt: r.accepted_at || null,
+    // Bilde hentes via lettvekts-ruta (blobben fraktes aldri i team-responsen).
+    avatarUrl: r.user_id ? `/api/users/${r.user_id}/avatar` : null,
   };
 }
 
@@ -170,6 +172,7 @@ export function setupProjectTeamRoutes(deps: ProjectTeamRoutesDeps): void {
           userId: ownerRow.user_id,
           email: ownerRow.email,
           name: [ownerRow.first_name, ownerRow.last_name].filter(Boolean).join(" ") || ownerRow.email,
+          avatarUrl: ownerRow.user_id ? `/api/users/${ownerRow.user_id}/avatar` : null,
           isOwner: true,
         } : null,
         isOwner: ownerRow?.user_id === session.userId,
