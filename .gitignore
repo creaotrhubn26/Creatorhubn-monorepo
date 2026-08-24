@@ -163,6 +163,9 @@ recordings/
 !.claude/agents/
 .claude/agents/*
 !.claude/agents/*.md
+# Deploy-rutingen (hvilken gren treffer hvilket merke) er delt prosjektdata,
+# ikke lokale innstillinger — den skal følge repoet.
+!.claude/deploy-targets.json
 backend/*.traineddata
 output_*.png
 .tmp-*
