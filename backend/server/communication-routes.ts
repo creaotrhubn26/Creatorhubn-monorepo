@@ -14,7 +14,8 @@ import multer from 'multer';
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { eq, desc, and, sql, isNull } from 'drizzle-orm';
+import { eq, desc, and, sql, isNull, lt } from 'drizzle-orm';
+import { broadcastUserEvent } from './realtime-user-events.js';
 import type { Pool } from 'pg';
 import { google } from 'googleapis';
 import * as schema from '../migrations/schema.js';
@@ -261,6 +262,43 @@ export function createCommunicationRouter(
       return null;
     } catch { return null; }
   };
+  // Prosjektets team (eier i public/legacy + aktive medlemmer) med navn —
+  // brukes til chat-live-events og @-mention-varsling.
+  const projectTeamRecipients = async (projectId: string): Promise<{ userId: string; name: string }[]> => {
+    try {
+      const [pubOwner, legOwner, members] = await Promise.all([
+        pool.query(`SELECT u.id::text AS uid, COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.name, u.email) AS n FROM projects p JOIN users u ON u.id = p.user_id WHERE p.id::text = $1`, [projectId]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT u.id::text AS uid, COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.name, u.email) AS n FROM legacy.projects p JOIN users u ON u.id::text = p.user_id WHERE p.id = $1`, [projectId]).catch(() => ({ rows: [] as any[] })),
+        pool.query(`SELECT m.user_id::text AS uid, COALESCE(NULLIF(TRIM(m.name), ''), m.email) AS n FROM project_team_members m WHERE m.project_id = $1 AND m.status = 'active' AND m.deactivated_at IS NULL AND m.user_id IS NOT NULL`, [projectId]).catch(() => ({ rows: [] as any[] })),
+      ]);
+      const seen = new Map<string, string>();
+      for (const r of [...pubOwner.rows, ...legOwner.rows, ...members.rows]) {
+        if (r.uid && !seen.has(r.uid)) seen.set(r.uid, String(r.n || ''));
+      }
+      return [...seen.entries()].map(([userId, name]) => ({ userId, name }));
+    } catch { return []; }
+  };
+
+  // Live-varsel til teamet om chat-endring (ny/endret/slettet melding,
+  // reaksjon) + @-mention-events. Best-effort — velter aldri skrivet.
+  const notifyChatUpdated = async (
+    channelId: string, actorUserId: string | null, content?: string, actorName?: string,
+  ): Promise<void> => {
+    try {
+      const projectId = await projectIdFromChannel(channelId);
+      if (!projectId) return;
+      const team = await projectTeamRecipients(projectId);
+      const timestamp = new Date().toISOString();
+      for (const r of team) {
+        if (actorUserId && r.userId === actorUserId) continue;
+        broadcastUserEvent(r.userId, { kind: 'chat.message', channelId, projectId, timestamp });
+        if (content && r.name && content.toLowerCase().includes(('@' + r.name).toLowerCase())) {
+          broadcastUserEvent(r.userId, { kind: 'chat.mention', channelId, projectId, fromName: actorName || 'Et teammedlem', timestamp });
+        }
+      }
+    } catch { /* best-effort */ }
+  };
+
   // Gate lesing/skriving av en prosjekt-kanal. For ikke-prosjekt-kanaler
   // returnerer den { ok:true, user:null } (uendret oppførsel).
   const guardProjectChannel = async (
@@ -2822,6 +2860,9 @@ export function createCommunicationRouter(
       const gate = await guardChannelAccess(channelId, req, res);
       if (!gate.ok) return;
       const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 100), 500);
+      // ?before=<ISO>: hent side med eldre meldinger (for «Last eldre» i panelet).
+      const beforeRaw = String(req.query.before || '').trim();
+      const before = beforeRaw && !Number.isNaN(Date.parse(beforeRaw)) ? new Date(beforeRaw).toISOString() : null;
 
       const messages = await db
         .select({
@@ -2841,7 +2882,9 @@ export function createCommunicationRouter(
           deliveredAt: schema.communicationMessages.deliveredAt,
         })
         .from(schema.communicationMessages)
-        .where(eq(schema.communicationMessages.channelId, channelId))
+        .where(before
+          ? and(eq(schema.communicationMessages.channelId, channelId), lt(schema.communicationMessages.createdAt, before))
+          : eq(schema.communicationMessages.channelId, channelId))
         // Hent de NYESTE `limit` meldingene (desc), og snu til stigende for
         // visning. Tidligere hentet asc+limit de ELDSTE, så nye meldinger
         // aldri kom med når en kanal passerte limit-taket.
@@ -2990,11 +3033,100 @@ export function createCommunicationRouter(
         timestamp: toNonEmptyString(msg.timestamp) || undefined,
       });
 
+      void notifyChatUpdated(channelId, gate.user?.userId || null, persistedContent, gate.access?.displayName);
       res.json({ success: true, id: persisted.id, attachments });
     } catch (error) {
       console.error('Error saving chat message:', error);
       res.status(500).json({ error: 'Failed to save message' });
     }
+  });
+
+  // ─── Rediger/slett egen melding + reaksjoner + skriver-indikator ─────────
+  const loadOwnMessage = async (messageId: string, req: Request, res: Response) => {
+    const row = await pool.query(
+      `SELECT id, channel_id, sender_id, content, metadata FROM communication_messages WHERE id = $1 LIMIT 1`,
+      [messageId],
+    );
+    const msg = row.rows[0];
+    if (!msg) { res.status(404).json({ error: 'not_found' }); return null; }
+    const gate = await guardChannelAccess(msg.channel_id, req, res);
+    if (!gate.ok) return null;
+    return { msg, gate };
+  };
+
+  router.patch('/api/chat/messages/:id', async (req, res) => {
+    try {
+      const found = await loadOwnMessage(req.params.id, req, res);
+      if (!found) return;
+      const { msg, gate } = found;
+      const isMine = gate.user && String(msg.sender_id).toLowerCase() === String(gate.user.email).toLowerCase();
+      if (!isMine) return res.status(403).json({ error: 'forbidden' });
+      const content = toNonEmptyString((req.body || {}).content);
+      if (!content) return res.status(400).json({ error: 'content_required' });
+      await pool.query(
+        `UPDATE communication_messages SET content = $1, metadata = COALESCE(metadata, '{}')::jsonb || $2::jsonb WHERE id = $3`,
+        [content, JSON.stringify({ editedAt: new Date().toISOString() }), msg.id],
+      );
+      void notifyChatUpdated(msg.channel_id, gate.user?.userId || null);
+      res.json({ success: true });
+    } catch (e) { console.error('PATCH chat message', e); res.status(500).json({ error: 'failed' }); }
+  });
+
+  router.delete('/api/chat/messages/:id', async (req, res) => {
+    try {
+      const found = await loadOwnMessage(req.params.id, req, res);
+      if (!found) return;
+      const { msg, gate } = found;
+      const isMine = gate.user && String(msg.sender_id).toLowerCase() === String(gate.user.email).toLowerCase();
+      if (!isMine) return res.status(403).json({ error: 'forbidden' });
+      await pool.query(`DELETE FROM communication_messages WHERE id = $1`, [msg.id]);
+      void notifyChatUpdated(msg.channel_id, gate.user?.userId || null);
+      res.json({ success: true });
+    } catch (e) { console.error('DELETE chat message', e); res.status(500).json({ error: 'failed' }); }
+  });
+
+  // Toggle én reaksjon (emoji) per bruker per melding. Lagres i
+  // metadata.reactions = { "👍": ["epost", …] }.
+  router.post('/api/chat/messages/:id/reactions', async (req, res) => {
+    try {
+      const found = await loadOwnMessage(req.params.id, req, res);
+      if (!found) return;
+      const { msg, gate } = found;
+      const emoji = toNonEmptyString((req.body || {}).emoji);
+      if (!emoji || emoji.length > 8) return res.status(400).json({ error: 'emoji_required' });
+      const who = (gate.user?.email || '').toLowerCase();
+      if (!who) return res.status(401).json({ error: 'unauthorized' });
+      const meta = getMessageMetadataRecord(msg.metadata);
+      const reactions: Record<string, string[]> = (meta.reactions && typeof meta.reactions === 'object' && !Array.isArray(meta.reactions)) ? (meta.reactions as Record<string, string[]>) : {};
+      const list = Array.isArray(reactions[emoji]) ? reactions[emoji].map((v) => String(v).toLowerCase()) : [];
+      reactions[emoji] = list.includes(who) ? list.filter((v) => v !== who) : [...list, who];
+      if (reactions[emoji].length === 0) delete reactions[emoji];
+      await pool.query(
+        `UPDATE communication_messages SET metadata = COALESCE(metadata, '{}')::jsonb || $1::jsonb WHERE id = $2`,
+        [JSON.stringify({ reactions }), msg.id],
+      );
+      void notifyChatUpdated(msg.channel_id, gate.user?.userId || null);
+      res.json({ success: true, reactions });
+    } catch (e) { console.error('POST reaction', e); res.status(500).json({ error: 'failed' }); }
+  });
+
+  // «Skriver …» — throttlet fra klienten; ren broadcast, ingenting lagres.
+  router.post('/api/chat/typing', async (req, res) => {
+    try {
+      const channelId = normalizeChannelId((req.body || {}).conversationId || '');
+      const gate = await guardChannelAccess(channelId, req, res);
+      if (!gate.ok) return;
+      const projectId = await projectIdFromChannel(channelId);
+      if (projectId && gate.user) {
+        const team = await projectTeamRecipients(projectId);
+        const timestamp = new Date().toISOString();
+        for (const r of team) {
+          if (r.userId === gate.user.userId) continue;
+          broadcastUserEvent(r.userId, { kind: 'chat.typing', channelId, name: gate.access?.displayName || 'Et teammedlem', timestamp });
+        }
+      }
+      res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: 'failed' }); }
   });
 
   // ─── PATCH /api/communication/messages/:id ────────────────

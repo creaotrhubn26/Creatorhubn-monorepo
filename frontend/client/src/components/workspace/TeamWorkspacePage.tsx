@@ -196,6 +196,25 @@ const TeamWorkspacePage: React.FC = () => {
 
   // Antall nye innkommende henvendelser (leads) → badge på Forespørsler-fanen.
   const [inboundCount, setInboundCount] = useState(0);
+  // Uleste chat-meldinger → badge på Chat-punktet i sidebaren. «Sist lest»
+  // skrives av WorkspaceChatPanel (localStorage chat-lastread-<kanal>).
+  const [chatUnread, setChatUnread] = useState(0);
+  useEffect(() => {
+    if (!projectId) return;
+    const channel = `project-${projectId}`;
+    const check = async () => {
+      try {
+        const r: any = await apiRequest(`/api/communication/messages/${encodeURIComponent(channel)}?limit=30`);
+        const msgs = Array.isArray(r?.messages) ? r.messages : [];
+        const lastRead = new Date(localStorage.getItem('chat-lastread-' + channel) || 0).getTime();
+        const myEmail = (() => { try { return String(JSON.parse(localStorage.getItem('creatorhub_auth_user') || 'null')?.email || '').toLowerCase(); } catch { return ''; } })();
+        setChatUnread(msgs.filter((m: any) => new Date(m.timestamp).getTime() > lastRead && String(m.senderId || '').toLowerCase() !== myEmail && !String(m.senderId || '').startsWith('system:')).length);
+      } catch { /* stille */ }
+    };
+    check();
+    const iv = setInterval(check, 30000);
+    return () => clearInterval(iv);
+  }, [projectId]);
   useEffect(() => {
     if (!user?.id) { setInboundCount(0); return; }
     apiRequest('/api/foresporsler/inbound')
@@ -314,7 +333,7 @@ const TeamWorkspacePage: React.FC = () => {
       activeTab={tab}
       onTab={goTab}
       navItems={nav}
-      badges={{ foresporsler: inboundCount, kundevisning: clientActivityUnseen, 'sound-room': bandUnseen }}
+      badges={{ foresporsler: inboundCount, kundevisning: clientActivityUnseen, 'sound-room': bandUnseen, chat: chatUnread }}
       onClientView={() => goTab('kundevisning')}
       onInvite={() => goTab('team')}
     >
