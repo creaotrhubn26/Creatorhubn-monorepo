@@ -350,8 +350,11 @@ export class WorkflowIntegrationService {
         success: true,
       };
     } catch (error) {
-      console.error('❌ Workflow orchestration failed:', error);
-      throw error;
+      // Ikke-fatal: showcase/timeline-endepunktene finnes ikke i backend
+      // ennå (404). Prosjektet ER opprettet — å kaste her fikk UI-et til å
+      // vise «Failed to create project» og hoppe over navigasjonen.
+      console.warn('Workflow orchestration skipped (non-fatal):', error);
+      return { showcase: null, eventTimeline: null, weddingTimeline: null, guidelines: null, success: false };
     }
   }
 }
