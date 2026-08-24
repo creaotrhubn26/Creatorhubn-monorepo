@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState } from 'react';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, getStoredAuthToken } from '@/lib/queryClient';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -147,7 +147,7 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
       return apiRequest(`/api/projects/${projectId}/showcases`, {
         headers: {
           'x-user-id': user?.id || 'photographer-session',
-          'Authorization': `Bearer ${user?.id}`
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`
         }
   });
   },
@@ -161,7 +161,7 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
         headers: {
           'Content-Type':'application/json',
           'x-user-id': user?.id || 'photographer-session',
-          'Authorization': `Bearer ${user?.id}`
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`
         },
         body: JSON.stringify(showcaseData),
     });
@@ -183,7 +183,7 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': user?.id || 'photographer-session',
-          'Authorization': `Bearer ${user?.id}`
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`
         },
         body: JSON.stringify(showcaseData)
       });
@@ -205,7 +205,7 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
         method: 'DELETE',
         headers: {
           'x-user-id': user?.id || 'photographer-session',
-          'Authorization': `Bearer ${user?.id}`
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`
         }
       });
       if (!response.ok) throw new Error('Failed to delete showcase');
@@ -372,7 +372,7 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': user?.id || 'photographer-session',
-          'Authorization': `Bearer ${user?.id}`
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`
         },
         body: JSON.stringify({
           projectId,
@@ -401,7 +401,7 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
         method: 'GET',
         headers: {
           'x-user-id': user?.id || 'photographer-session',
-          'Authorization': `Bearer ${user?.id}`
+          'Authorization': `Bearer ${getStoredAuthToken() || user?.id}`
         }
       });
       
