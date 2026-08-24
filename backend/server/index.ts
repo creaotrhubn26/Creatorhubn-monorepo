@@ -67886,6 +67886,7 @@ setupEquipmentCatalogRoutes({
   parseLimitParam,
   readString,
   resolveAuthenticSupplierEquipmentImage,
+  scoreCatalogImageMatch,
 });
 setupEquipmentFirmwareRoutes({
   app, pool, db, schema,

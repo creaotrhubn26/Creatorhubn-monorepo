@@ -2,9 +2,9 @@
 import React, { useMemo, useState } from 'react';
 import {
   Article,
+  Business,
   CameraAlt,
   Close,
-  DirectionsBusiness,
   LibraryMusic,
   OpenInNew,
   Search,
@@ -118,7 +118,7 @@ function getProfessionConfig(profession: GearNewsTabProps['profession']): Profes
     case 'vendor':
       return {
         title: 'Leverandør Nyheter',
-        icon: <DirectionsBusiness />,
+        icon: <Business />,
         color: '#2563eb',
         categories: ['AV-utstyr', 'Sceneteknikk', 'Lys', 'Lyd', 'Streaming', 'Installasjoner'],
         description: 'Siste nytt innen profesjonelt AV-utstyr og installasjoner',

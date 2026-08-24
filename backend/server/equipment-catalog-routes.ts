@@ -34,6 +34,12 @@ export interface EquipmentCatalogRoutesDeps {
   matchesEquipmentSearchQuery: (item: CompatCatalogItem, query: string) => boolean;
   normalizeCatalogCategory: (raw: string) => string;
   normalizeProductImageCategory: (value: string) => CompatCatalogItem["category"] | null;
+  scoreCatalogImageMatch: (
+    item: CompatCatalogItem,
+    brand: string,
+    model: string,
+    category: CompatCatalogItem["category"] | null,
+  ) => number;
   parseLimitParam: (raw: unknown, fallbackValue: number) => number;
   readString: (value: unknown) => string | null;
   resolveAuthenticSupplierEquipmentImage: (
@@ -53,6 +59,7 @@ export function setupEquipmentCatalogRoutes(deps: EquipmentCatalogRoutesDeps): v
     matchesEquipmentSearchQuery,
     normalizeCatalogCategory,
     normalizeProductImageCategory,
+    scoreCatalogImageMatch,
     parseLimitParam,
     readString,
     resolveAuthenticSupplierEquipmentImage,
@@ -73,7 +80,7 @@ export function setupEquipmentCatalogRoutes(deps: EquipmentCatalogRoutesDeps): v
     const limit = parseLimitParam(req.query.limit, 80);
     try {
       const catalog = await loadUnifiedEquipmentCatalog();
-      const filtered = catalog
+      const matched = catalog
         .filter((item) => {
           if (brand && brand !== "alle" && item.brand.toLowerCase() !== brand)
             return false;
@@ -81,8 +88,19 @@ export function setupEquipmentCatalogRoutes(deps: EquipmentCatalogRoutesDeps): v
           if (Number.isFinite(year) && item.releaseYear !== year) return false;
           if (!q) return true;
           return matchesEquipmentSearchQuery(item, q);
-        })
-        .slice(0, limit);
+        });
+      // Uten dette lå treffene i katalogens egen rekkefølge — nyeste utgivelsesår
+      // først — så et 2025-tilbehør slo kamerahuset søket faktisk gjaldt
+      // («canon r5» → SmallRig Full Cage for Canon EOS R5 Mark II, 1 790 kr).
+      // Scoreren vekter merke, kategori og eksakt modell over årstall.
+      const filtered = (q || brand
+        ? matched.slice().sort(
+            (a, b) =>
+              scoreCatalogImageMatch(b, brand, q, (category || null) as CompatCatalogItem["category"] | null) -
+              scoreCatalogImageMatch(a, brand, q, (category || null) as CompatCatalogItem["category"] | null),
+          )
+        : matched
+      ).slice(0, limit);
 
       const previewEnriched = await Promise.all(
         filtered.map((item, index) =>

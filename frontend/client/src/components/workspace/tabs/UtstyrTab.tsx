@@ -7,7 +7,7 @@
  * Vedlikehold/firmware: viser enheter med tilgjengelig firmware-oppdatering.
  */
 import React, { useEffect, useState } from 'react';
-import { Box, Stack, Typography, Button, Dialog, DialogContent, DialogActions, IconButton, TextField, MenuItem, CircularProgress } from '@mui/material';
+import { Box, Stack, Typography, Button, Dialog, DialogContent, DialogActions, IconButton, TextField, MenuItem, CircularProgress, Autocomplete } from '@mui/material';
 import Inventory2 from '@mui/icons-material/Inventory2';
 import AddCircleOutline from '@mui/icons-material/AddCircleOutline';
 import SystemUpdateAlt from '@mui/icons-material/SystemUpdateAlt';
@@ -25,6 +25,7 @@ import { WsCard, WsTag, WsStat, WsPageTitle, WsTable, wsAlert, wsConfirm } from 
 import SoftwareKostnaderPanel from './SoftwareKostnaderPanel';
 import GearNewsTab from '../../dashboard/GearNewsTab';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
+import { useCameraCatalog } from '@/hooks/useCameraCatalog';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab). Kategori-VERDIENE
 // (sendes til API-et) er uendret — kun visningen oversettes via CAT_EN.
@@ -127,6 +128,22 @@ const CATS_VISUAL = ['Kamera', 'Objektiv', 'Blits / lys', 'Stativ / rigg', 'Lyd'
 // arve CATS_VISUAL (som ga en utstyrsutleie/frisør kamera- og objektiv-kategorier).
 const CATS_GENERIC = ['Programvare / lisens', 'Datautstyr', 'Lagring / backup', 'Kjøretøy / transport', 'Tilbehør', 'Annet'];
 const CATS_BY_CATEGORY: Record<string, string[]> = { music: CATS_MUSIC, visual: CATS_VISUAL, vendor: CATS_GENERIC, service: CATS_GENERIC };
+
+// Katalogen kjenner engelske kategorinøkler; normalizeCatalogCategory på serveren
+// kjenner ikke de norske etikettene og ville sluppet «Kamera» rått gjennom til et
+// filter som ikke matcher noe. Kategorier uten katalog-motpart står med vilje
+// ikke her — da søkes det uten kategorifilter i stedet for å treffe null.
+const CAT_TO_CATALOG: Record<string, string> = {
+  'Kamera': 'cameras',
+  'Objektiv': 'lenses',
+  'Blits / lys': 'flash',
+  'Lyd': 'audio',
+  'Mikrofon': 'audio',
+  'Drone': 'video',
+  'Stativ / rigg': 'accessories',
+  'Minnekort / lagring': 'accessories',
+  'Tilbehør': 'accessories',
+};
 const SOFTWARE_CATS = new Set(['DAW (programvare)', 'Plugin', 'Virtuelt instrument', 'Samplepakke / lydbibliotek', 'Redigeringsprogramvare', 'Plugin / preset', 'LUT / fargepakke', 'Skylagring / tjeneste', 'Programvare / lisens']);
 const ti = { '& .MuiOutlinedInput-root': { fontSize: 13.5, color: ws.text, bgcolor: ws.panel, '& fieldset': { borderColor: ws.borderSoft }, '&:hover fieldset': { borderColor: ws.accentBorder }, '&.Mui-focused fieldset': { borderColor: ws.accent } }, '& input::placeholder': { color: ws.textFaint, opacity: 1 }, '& .MuiInputLabel-root': { color: ws.textDim } };
 
@@ -159,6 +176,10 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
   const music = category === 'music';
   const vendor = category === 'vendor';
   const cats = CATS_BY_CATEGORY[category] || CATS_VISUAL;
+  // Samme kamerakatalog som prosjekt-wizarden bruker. Fanen hadde bare
+  // fritekstfelt, så registrert gear og katalogen var to adskilte verdener —
+  // og fritekst gir dårligere katalog-oppslag enn et valgt merke/modell-par.
+  const cameraCatalog = useCameraCatalog();
   const [items, setItems] = useState<any[]>([]);
   const [firmware, setFirmware] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -204,9 +225,27 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
     if (!q) return;
     setValBusy(true); setVal(null);
     try {
-      // 1) katalog-søk (foto/video-tungt) — bruk pris hvis treff
-      const c: any = await apiRequest(`/api/equipment/search?q=${encodeURIComponent(q)}&limit=1`).catch(() => null);
-      const hit = c?.data?.[0];
+      // 1) kuratert katalog først — den har ekte MSRP. Det brede katalog-søket
+      //    under gir bare en bøttepris per prisklasse (44 990 for «professional»),
+      //    så et treff her er alltid mer nøyaktig.
+      const cur: any = await apiRequest(`/api/photographer/equipment/catalog?q=${encodeURIComponent(q)}`).catch(() => null);
+      const curHit = (cur?.data || cur?.items || [])[0];
+      if (curHit?.msrpNok) { setVal({ nok: curHit.msrpNok, source: 'katalog', note: `${curHit.brand || ''} ${curHit.model || ''}`.trim() }); return; }
+
+      // 2) bredt katalog-søk. Kategorien brukeren valgte MÅ sendes med — uten
+      //    den er søket ren substrengmatch, og «canon r5» traff SmallRig-buret
+      //    «Full Cage for Canon EOS R5 Mark II» til 1 790 kr.
+      const qs = new URLSearchParams({ q, limit: '10' });
+      if (form.brand) qs.set('brand', form.brand);
+      const cat = CAT_TO_CATALOG[form.category];
+      if (cat) qs.set('category', cat);
+      const c: any = await apiRequest(`/api/equipment/search?${qs.toString()}`).catch(() => null);
+      const hits: any[] = c?.data || [];
+      const norm = (s: string) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      // Eksakt modell foran delvis: ellers vinner «EOS R5 Mark II» over «EOS R5».
+      const hit = hits.find((h) => norm(`${h.brand} ${h.model}`) === norm(q))
+        || (form.model ? hits.find((h) => norm(h.model) === norm(form.model)) : null)
+        || hits[0];
       if (hit?.priceNOK) { setVal({ nok: hit.priceNOK, source: 'katalog', note: `${hit.brand || ''} ${hit.model || ''}`.trim(), supplier: hit.norwegianSupplier }); return; }
       // 2) AI-estimat (musikk/studio-gear som mangler i katalogen)
       const a: any = await apiRequest(`/api/equipment/estimate-value`, { method: 'POST', body: { name: form.name, brand: form.brand, model: form.model, category: form.category } });
@@ -485,7 +524,25 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
             {(() => { const sw = SOFTWARE_CATS.has(form.category); return (
             <Stack direction="row" spacing={1.5}>
               <TextField size="small" label={sw ? t('vendor') : t('brand')} placeholder={sw ? (music ? 'FabFilter' : 'Adobe') : (music ? 'Neumann' : 'Canon')} value={form.brand} onChange={(e) => { setForm({ ...form, brand: e.target.value }); setVal(null); }} fullWidth sx={ti} />
-              <TextField size="small" label={sw ? t('nameVersion') : t('model')} placeholder={sw ? (music ? 'Pro-Q 3' : 'Lightroom') : (music ? 'U 87 Ai' : 'R5')} value={form.model} onChange={(e) => { setForm({ ...form, model: e.target.value }); setVal(null); }} fullWidth sx={ti} />
+              {form.category === 'Kamera' && cameraCatalog.length > 0 ? (
+                <Autocomplete
+                  freeSolo   // manuell inntasting skal fortsatt gå
+                  size="small"
+                  fullWidth
+                  options={cameraCatalog.filter((c: any) => !form.brand || String(c.brand).toLowerCase() === String(form.brand).toLowerCase())}
+                  getOptionLabel={(o: any) => (typeof o === 'string' ? o : `${o.brand} ${o.model}`)}
+                  inputValue={form.model}
+                  onInputChange={(_e, v, reason) => { if (reason === 'input') { setForm({ ...form, model: v }); setVal(null); } }}
+                  onChange={(_e, v: any) => {
+                    if (!v || typeof v === 'string') return;
+                    setForm({ ...form, brand: v.brand, model: v.model });
+                    setVal(null);
+                  }}
+                  renderInput={(params) => <TextField {...params} label={t('model')} placeholder="R5" sx={ti} />}
+                />
+              ) : (
+                <TextField size="small" label={sw ? t('nameVersion') : t('model')} placeholder={sw ? (music ? 'Pro-Q 3' : 'Lightroom') : (music ? 'U 87 Ai' : 'R5')} value={form.model} onChange={(e) => { setForm({ ...form, model: e.target.value }); setVal(null); }} fullWidth sx={ti} />
+              )}
             </Stack>
             ); })()}
 
