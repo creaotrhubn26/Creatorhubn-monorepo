@@ -139,8 +139,15 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
       const m = /^data:([^;,]+)(;base64)?,([\s\S]*)$/.exec(raw);
       if (!m) return res.status(404).json({ error: "no_avatar" });
       const buf = m[2] ? Buffer.from(m[3], "base64") : Buffer.from(decodeURIComponent(m[3]), "utf8");
+      // ETag + 1t cache: avataren refereres fra mange flater (shell, chat,
+      // board, team) og kan være flere MB. Uten dette ble hele bildet sendt
+      // på nytt hvert 5. minutt per flate — unødig båndbredde gjennom
+      // Netlify-proxyen. Endret bilde gir ny ETag, så det oppdateres straks.
+      const etag = `W/"${crypto.createHash("sha1").update(raw).digest("hex").slice(0, 27)}"`;
+      res.setHeader("ETag", etag);
+      res.setHeader("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
+      if (req.headers["if-none-match"] === etag) return res.status(304).end();
       res.setHeader("Content-Type", m[1] || "image/jpeg");
-      res.setHeader("Cache-Control", "public, max-age=300");
       res.send(buf);
     } catch { res.status(500).json({ error: "failed" }); }
   });
