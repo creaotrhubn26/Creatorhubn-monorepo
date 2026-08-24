@@ -84,6 +84,7 @@ import ContractPreviewModal from '@/components/ContractPreviewModal';
 import ClientReviewForm from '@/components/showcase/ClientReviewForm';
 import TermsAcceptanceDialog from '@/components/TermsAcceptanceDialog';
 import PrintStoreSection from '@/components/client-gallery/PrintStoreSection';
+import ClientSharedChat from '@/components/client-gallery/ClientSharedChat';
 import GallerySelectionSubmitDialog from '@/components/gallery/GallerySelectionSubmitDialog';
 import GallerySlideshow from '@/components/gallery/GallerySlideshow';
 import PrintOrderDialog from '@/components/gallery/PrintOrderDialog';
@@ -2799,6 +2800,15 @@ export default function ClientGallery({}: ClientGalleryProps) {
           {selectedImages.size === 0 ? 'Velg bilder først' : 'Send valg'}
         </Button>
       </Paper>
+      {/* Delt chat med teamet — flytende boble; kun visibility='shared'-meldinger */}
+      {accessToken && (
+        <ClientSharedChat
+          accessToken={accessToken}
+          clientName={gallery?.clientName || null}
+          primaryColor={config.primaryColor}
+          passwordHeaders={galleryPassword ? { 'x-gallery-password': galleryPassword } : undefined}
+        />
+      )}
     </Box>
   );
 }
