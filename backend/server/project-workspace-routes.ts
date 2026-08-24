@@ -72,10 +72,15 @@ const videoUpload = multer({
 export interface ProjectWorkspaceRoutesDeps {
   app: express.Application;
   pool: any;
+  // index.ts sender inn en async variant, så returtypen må dekke Promise —
+  // samme signatur som de øvrige rutefilene bruker.
   requireUserSession: (
     req: any,
     res: any,
-  ) => { userId: string; email: string; name: string; role: string } | null;
+  ) =>
+    | { userId: string; email: string; name: string; role: string }
+    | null
+    | Promise<{ userId: string; email: string; name: string; role: string } | null>;
 }
 
 let schemaReady: Promise<void> | null = null;
@@ -451,7 +456,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // Felles gate: innlogget + canAccessProject. Returnerer userId, eller null
   // (og har allerede sendt respons).
   const guard = async (req: any, res: any): Promise<string | null> => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return null;
     const projectId = String(req.params.projectId || "").trim();
     if (!projectId) { res.status(400).json({ error: "missing_project_id" }); return null; }
@@ -1331,7 +1336,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // scopet (leads er pre-prosjekt) — egen session-gate i stedet for guard().
   const INBOUND_DONE = new Set(["booked", "converted", "archived", "spam", "declined", "lost"]);
   app.get("/api/foresporsler/inbound", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const exists = await pool.query(`SELECT to_regclass('public.client_submissions') AS t`).catch(() => ({ rows: [{ t: null }] }));
@@ -1376,7 +1381,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // Prosjekt-opprettelse setter normalt selv status='booked' når den får
   // submission-id-en, men dette er en idempotent backstop fra fanen.
   app.post("/api/foresporsler/inbound/:id/convert", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await requireUserSession(req, res);
     if (!session) return;
     try {
       const projectId = String(req.body?.projectId || "").trim() || null;
@@ -1464,8 +1469,11 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       if (!tpl) return res.status(400).json({ error: "unknown_template" });
       for (let i = 0; i < tpl.folders.length; i++) {
         await pool.query(
+          // Bare $n i SELECT-lista utleder `text`, mens samme $n i WHERE
+          // utleder varchar → 42P08 «inconsistent types deduced for parameter».
+          // Rammet hvert eneste prosjekt, ikke bare legacy-prosjekter.
           `INSERT INTO project_media_folders (project_id, name, order_index)
-           SELECT $1, $2, $3 WHERE NOT EXISTS (SELECT 1 FROM project_media_folders WHERE project_id = $1 AND name = $2)`,
+           SELECT $1::varchar, $2::varchar, $3::int WHERE NOT EXISTS (SELECT 1 FROM project_media_folders WHERE project_id = $1 AND name = $2)`,
           [req.params.projectId, tpl.folders[i], i],
         );
       }
@@ -1907,7 +1915,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || "40"), 10) || 40));
       const rows = await pool.query(
         `SELECT e.id, e.session_id, e.asset_id, e.actor_id, e.event_type, e.metadata, e.created_at,
-                a.original_filename, u.name AS actor_name
+                a.original_filename, COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.email) AS actor_name
            FROM capture_events e
            LEFT JOIN capture_assets a ON a.id = e.asset_id
            LEFT JOIN users u ON u.id = e.actor_id
@@ -3097,7 +3105,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   // super_admin-gatet (auth uten prosjekt). Lar admin skru av/på, bytte billing-
   // modus (gratis-whitelist ↔ metered), sette dagstak/whitelist/kvote — uten env.
   const adminGuard = async (req: any, res: any): Promise<string | null> => {
-    const session = requireUserSession(req, res); if (!session) return null;
+    const session = await requireUserSession(req, res); if (!session) return null;
     const { role } = await userIdentity(session.userId);
     if (role !== "super_admin") { res.status(403).json({ error: "admin_only" }); return null; }
     return session.userId;

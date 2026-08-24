@@ -69,7 +69,7 @@ async function ensureSchema(pool: Pool): Promise<void> {
 export function registerLeadgridCpvRoutes(deps: {
   app: Express;
   pool: Pool;
-  requireUserSession: (req: Request, res: Response) => { userId: string } | null;
+  requireUserSession: (req: Request, res: Response) => { userId: string } | null | Promise<{ userId: string } | null>;
 }): void {
   const { app, pool, requireUserSession } = deps;
 
