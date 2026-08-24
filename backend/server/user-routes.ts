@@ -136,7 +136,7 @@ export function setupUserRoutes(deps: UserRoutesDeps): void {
       const raw = r.rows[0]?.profile_image_url as string | undefined;
       if (!raw) return res.status(404).json({ error: "no_avatar" });
       if (/^https?:\/\//i.test(raw)) return res.redirect(302, raw);
-      const m = /^data:([^;,]+)(;base64)?,(.*)$/s.exec(raw);
+      const m = /^data:([^;,]+)(;base64)?,([\s\S]*)$/.exec(raw);
       if (!m) return res.status(404).json({ error: "no_avatar" });
       const buf = m[2] ? Buffer.from(m[3], "base64") : Buffer.from(decodeURIComponent(m[3]), "utf8");
       res.setHeader("Content-Type", m[1] || "image/jpeg");
