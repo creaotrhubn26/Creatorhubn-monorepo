@@ -16,7 +16,8 @@
  * — frontend-servicen kaller den direkte, så den dupliseres ikke her.
  *
  * Auth: compatResolveUserId; alle skriv krever at innloggeren eier prosjektet
- * (legacy.projects.user_id) — ellers kunne man tagge/opprette tidslinjer på
+ * (legacy.projects.user_id) ELLER er aktivt team-medlem (canAccessProject fra
+ * project-team-routes) — fremmede kan ikke tagge/opprette tidslinjer på
  * andres prosjekter.
  *
  * Wire opp i backend/server/index.ts:
@@ -28,6 +29,8 @@
 import type express from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
+
+import { canAccessProject } from "./project-team-routes";
 
 export interface WorkflowOrchestrationRoutesDeps {
   app: express.Express;
@@ -47,20 +50,24 @@ export function setupWorkflowOrchestrationRoutes(
 ): void {
   const { app, pool, compatResolveUserId } = deps;
 
-  // Eierskapssjekk mot legacy.projects; returnerer raden eller null.
-  async function ownedProject(
+  // Tilgangssjekk: eier (legacy.projects.user_id) eller aktivt team-medlem
+  // (project_team_members via canAccessProject). Returnerer raden eller null.
+  async function accessibleProject(
     projectId: string,
     userId: string,
   ): Promise<Record<string, any> | null> {
     const result = await pool.query(
-      `SELECT id, name, title, category, profession, client_email, client_phone,
-              event_date, date, location
+      `SELECT id, user_id, name, title, category, profession, client_email,
+              client_phone, event_date, date, location
          FROM legacy.projects
-        WHERE id = $1 AND user_id = $2
+        WHERE id = $1
         LIMIT 1`,
-      [projectId, userId],
+      [projectId],
     );
-    return result.rows[0] ?? null;
+    const project = result.rows[0];
+    if (!project) return null;
+    if (project.user_id === userId) return project;
+    return (await canAccessProject(pool, userId, projectId)) ? project : null;
   }
 
   async function mergeProjectMetadata(
@@ -89,7 +96,7 @@ export function setupWorkflowOrchestrationRoutes(
       if (!projectId) {
         return res.status(400).json({ error: "projectId er påkrevd" });
       }
-      const project = await ownedProject(projectId, userId);
+      const project = await accessibleProject(projectId, userId);
       if (!project) {
         return res.status(404).json({ error: "Prosjekt ikke funnet" });
       }
@@ -126,7 +133,7 @@ export function setupWorkflowOrchestrationRoutes(
           .status(400)
           .json({ error: "projectId og memoryCards er påkrevd" });
       }
-      if (!(await ownedProject(projectId, userId))) {
+      if (!(await accessibleProject(projectId, userId))) {
         return res.status(404).json({ error: "Prosjekt ikke funnet" });
       }
 
@@ -155,7 +162,7 @@ export function setupWorkflowOrchestrationRoutes(
       if (!projectId) {
         return res.status(400).json({ error: "projectId er påkrevd" });
       }
-      const project = await ownedProject(projectId, userId);
+      const project = await accessibleProject(projectId, userId);
       if (!project) {
         return res.status(404).json({ error: "Prosjekt ikke funnet" });
       }
