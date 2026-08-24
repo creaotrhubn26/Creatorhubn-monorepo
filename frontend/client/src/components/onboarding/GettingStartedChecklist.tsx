@@ -78,7 +78,10 @@ const GettingStartedChecklist: React.FC<Props> = ({ userId, profession, projectI
         teamInvited = ((team?.members || []).length > 0);
       }
       const google = await apiRequest('/api/creatorhub/google/status').catch(() => null);
-      const toolsConnected = !!(google?.connected || google?.linked || google?.isConnected || google?.status === 'connected');
+      // API-et returnerer { state: 'connected' | 'needs_reauth' | 'disconnected' }
+      // — de gamle feltnavnene fantes aldri, så steget ble aldri grønt.
+      const toolsConnected = google?.state === 'connected'
+        || !!(google?.connected || google?.linked || google?.isConnected || google?.status === 'connected');
       // Team er en Enterprise-funksjon. «Inviter team»-steget vises kun for
       // Enterprise-brukere (org-medlemskap eller enterprise-profesjonen) — ikke
       // for individuelle skapere, som ikke kan ha team.

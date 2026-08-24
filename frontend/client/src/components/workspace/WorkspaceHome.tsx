@@ -26,6 +26,7 @@ import { ws, workspaceDarkTheme, workspaceCategoryFor } from './workspaceTheme';
 import { getProfessionDisplayName } from '@shared/profession-types';
 import ProjectCreationWithMemoryCards from '../project/ProjectCreationWithMemoryCards';
 import GettingStartedChecklist from '../onboarding/GettingStartedChecklist';
+import GoogleReauthBanner from './GoogleReauthBanner';
 
 const CATEGORY_LABEL = { visual: 'Foto & video', music: 'Musikk', service: 'Tjeneste', vendor: 'Leverandør' };
 
@@ -130,6 +131,7 @@ const WorkspaceHome: React.FC = () => {
     <ThemeProvider theme={workspaceDarkTheme}>
       <Box sx={{ minHeight: '100vh', bgcolor: ws.bg, color: ws.text, py: 4 }}>
         <Container maxWidth="lg">
+          <GoogleReauthBanner />
           {/* Header */}
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
             <Box>
