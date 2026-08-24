@@ -17,7 +17,7 @@ import OpenInNew from '@mui/icons-material/OpenInNew';
 import { apiRequest } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
-import { WsCard, WsSectionTitle, WsTag, WsBar, wsAlert, wsPrompt } from '../ui';
+import { WsCard, WsSectionTitle, WsTag, WsBar, WsPageTitle, wsAlert, wsPrompt } from '../ui';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab).
@@ -117,14 +117,13 @@ const AvtalerTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
   return (
     <Box sx={{ maxWidth: 1000 }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="flex-end" sx={{ mb: 2 }}>
-        <Box>
-          <Typography sx={{ fontSize: 20, fontWeight: 800 }}>{t('title')}</Typography>
-          <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>{t('subtitle')}</Typography>
-        </Box>
-        <Button variant="contained" startIcon={<Add sx={{ fontSize: 16 }} />} onClick={() => setNewOpen(true)} disabled={!isReal}
-          sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{t('newMeeting')}</Button>
-      </Stack>
+      <WsPageTitle
+        icon={<Event sx={{ fontSize: 21, color: '#fff' }} />}
+        title={t('title')}
+        sub={t('subtitle')}
+        actions={<Button variant="contained" startIcon={<Add sx={{ fontSize: 16 }} />} onClick={() => setNewOpen(true)} disabled={!isReal}
+          sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{t('newMeeting')}</Button>}
+      />
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2 }}>
         {/* Kontrakt */}

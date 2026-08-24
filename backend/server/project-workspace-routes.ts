@@ -16,17 +16,19 @@
  *   GET/POST  deliverables     PATCH/DELETE deliverables/:id
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 
 import type express from "express";
 import { broadcastUserEvent } from "./realtime-user-events";
 import crypto from "crypto";
+import fs from "node:fs";
+import path from "node:path";
 import multer from "multer";
 import { canAccessProject } from "./project-team-routes";
 import { requireTeamAccess } from "./team-access";
 import { resolveCrewRoles } from "../../frontend/shared/crew-roles.ts";
 import { CANONICAL_PROFESSIONS, normalizeProfession as normalizeCanonProfession, isWorkspaceCategory as isWsCategory } from "../../frontend/shared/profession-types.ts";
-import { signAssetReadUrl } from "./capture-upload-service";
+import { signAssetReadUrl, deleteCaptureObjects } from "./capture-upload-service";
 import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
 import { Vibrant } from "node-vibrant/node";
 import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, aiAllowed, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll, falOutputUrl, beebleConfigured, beebleSubmit, beeblePoll, higgsfieldConfigured, higgsfieldSubmit, higgsfieldPoll, DEFAULT_CREDIT_PACKS } from "./generative-media";
@@ -112,6 +114,50 @@ async function ensureSchema(pool: any): Promise<void> {
           created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )`,
         `CREATE INDEX IF NOT EXISTS idx_pci_project ON project_checklist_items (project_id, order_index)`,
+        `ALTER TABLE project_checklist_items ADD COLUMN IF NOT EXISTS critical BOOLEAN NOT NULL DEFAULT FALSE`,
+        `ALTER TABLE project_checklist_items ADD COLUMN IF NOT EXISTS assigned_to VARCHAR(80)`,
+        `ALTER TABLE project_checklist_items ADD COLUMN IF NOT EXISTS color VARCHAR(7)`,
+        `CREATE TABLE IF NOT EXISTS checklist_cat_learn (
+          project_id VARCHAR(64),              -- NULL = global (tvers av prosjekter)
+          word       TEXT NOT NULL,
+          category   VARCHAR(40) NOT NULL,
+          n          INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (project_id, word, category)
+        )`,
+        `ALTER TABLE capture_assets ADD COLUMN IF NOT EXISTS folder_id UUID`,
+        `CREATE TABLE IF NOT EXISTS asset_refs (
+          id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          project_id  VARCHAR(64) NOT NULL,
+          master_id   UUID NOT NULL,           -- capture_assets.id (ett master)
+          master_kind VARCHAR(20) NOT NULL DEFAULT 'capture',
+          collection  VARCHAR(80) NOT NULL,    -- galleri/samling (mange referanser)
+          label       VARCHAR(120),
+          created_by  VARCHAR(64),
+          created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_ar_project_collection ON asset_refs (project_id, collection)`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_ar_dedupe ON asset_refs (project_id, master_id, collection)`,
+        `CREATE TABLE IF NOT EXISTS folder_learn (
+          project_id VARCHAR(64) NOT NULL,
+          word       TEXT NOT NULL,
+          folder_id  UUID NOT NULL,
+          n          INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (project_id, word, folder_id)
+        )`,
+        `CREATE TABLE IF NOT EXISTS note_cat_learn (
+          project_id VARCHAR(64),
+          word       TEXT NOT NULL,
+          category   VARCHAR(40) NOT NULL,
+          n          INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (project_id, word, category)
+        )`,
+        `CREATE TABLE IF NOT EXISTS moodboard_presence (
+          project_id   VARCHAR(64) NOT NULL,
+          user_id      VARCHAR(64) NOT NULL,
+          display_name VARCHAR(60),
+          last_seen    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (project_id, user_id)
+        )`,
         `CREATE TABLE IF NOT EXISTS project_workspace_deliverables (
           id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           project_id  VARCHAR(64) NOT NULL,
@@ -124,6 +170,22 @@ async function ensureSchema(pool: any): Promise<void> {
           updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )`,
         `CREATE INDEX IF NOT EXISTS idx_pwd_project ON project_workspace_deliverables (project_id, order_index)`,
+        `ALTER TABLE project_workspace_deliverables ADD COLUMN IF NOT EXISTS checklist JSONB NOT NULL DEFAULT '[]'`,
+        `ALTER TABLE project_workspace_deliverables ADD COLUMN IF NOT EXISTS files JSONB NOT NULL DEFAULT '[]'`,
+        `CREATE TABLE IF NOT EXISTS deliverable_type_learn (
+          project_id VARCHAR(64) NOT NULL,
+          word       TEXT NOT NULL,
+          type       VARCHAR(60) NOT NULL,
+          n          INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (project_id, word, type)
+        )`,
+        `CREATE TABLE IF NOT EXISTS deliverable_check_learn (
+          project_id VARCHAR(64) NOT NULL,
+          type       VARCHAR(60) NOT NULL,
+          label      TEXT NOT NULL,
+          n          INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (project_id, type, label)
+        )`,
         `CREATE TABLE IF NOT EXISTS project_images (
           id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           project_id   VARCHAR(64) NOT NULL,
@@ -136,6 +198,10 @@ async function ensureSchema(pool: any): Promise<void> {
           created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )`,
         `ALTER TABLE project_images ADD COLUMN IF NOT EXISTS category VARCHAR(40)`,
+        `ALTER TABLE project_images ADD COLUMN IF NOT EXISTS flag BOOLEAN NOT NULL DEFAULT FALSE`,
+        `ALTER TABLE project_images ADD COLUMN IF NOT EXISTS fit INTEGER`,
+        `ALTER TABLE project_images ADD COLUMN IF NOT EXISTS comments JSONB NOT NULL DEFAULT '[]'`,
+        `ALTER TABLE project_images ADD COLUMN IF NOT EXISTS dominant_colors JSONB`,
         `CREATE INDEX IF NOT EXISTS idx_pi_project ON project_images (project_id, panel, created_at DESC)`,
         `CREATE TABLE IF NOT EXISTS project_split_shares (
           id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -157,8 +223,230 @@ async function ensureSchema(pool: any): Promise<void> {
   return schemaReady;
 }
 
+/* ---- «Må huskes»-kategoriserer: bayesiansk ordlæring (project + global) ---- */
+
+const CHK_CATS = ["utstyr", "backup", "vær", "transport"] as const;
+const CHK_STOPWORDS = new Set([
+  "og", "i", "til", "med", "for", "på", "av", "en", "et", "den", "det", "som", "fra", "er", "har", "må", "ikke", "min", "mitt", "vår", "alle", "bli", "blir", "skal", "kanskje", "evt", "medbrakt", "medbringe", "ta", "tar"],
+);
+
+function tokenizeChkLabel(label: string): string[] {
+  return (label || "")
+    .toLowerCase()
+    .replace(/[^a-zæøå0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 1 && !CHK_STOPWORDS.has(w));
+}
+
+/// Rule-prior (cold start): stikkords-settet til frontend-guesset før læring finnes.
+function ruleChkCat(label: string): "vær" | "backup" | "transport" | null {
+  const t = label.toLowerCase();
+  if (/(regn|cover|paraply|vær|vind|frost|tåke|uv|solkrem|regnbu)/.test(t)) return "vær";
+  if (/(backup|minnekort|ssd|lagring|format|kopier|ekstra kort)/.test(t)) return "backup";
+  if (/(parkering|bil|transport|kjøre|kjøretøy|hente|avreise|frakt|levering|drosje|taxi|samlested)/.test(t)) return "transport";
+  return null;
+}
+
+/// UPSERT læringsvekt (prosjekt-rad ×2 + global-rad ×1). Vekt kan være negativ
+/// (brukeren endret kategori → trekker fra gamle valg).
+async function learnChkWords(pool: any, projectId: string, label: string, category: string, weight = 1): Promise<void> {
+  const tokens = tokenizeChkLabel(label);
+  if (!tokens.length || !category) return; // egendefinerte kategorier læres også
+  for (const word of tokens) {
+    for (const scope of [projectId, null] as const) {
+      await pool
+        .query(
+          `INSERT INTO checklist_cat_learn (project_id, word, category, n) VALUES ($1, $2, $3, GREATEST($4, 0))
+           ON CONFLICT (project_id, word, category)
+           DO UPDATE SET n = GREATEST(checklist_cat_learn.n + EXCLUDED.n, 0)`,
+          [scope, word, category, weight],
+        )
+        .catch((e: any) => console.error("[checklist learn]", e?.message || e));
+    }
+  }
+}
+
+/// Prediker kategori: score(cat) = Σ_word (2·projCount + globalCount), med
+/// regel-prior som tie-break/kaldstart. Returnerer kategori + konfidens (0-100).
+async function guessChkCategory(pool: any, projectId: string, label: string): Promise<{ category: string; confidence: number; critical: boolean }> {
+  const tokens = tokenizeChkLabel(label);
+  const scores: Record<string, number> = { utstyr: 0, backup: 0, vær: 0, transport: 0 };
+  if (tokens.length) {
+    let rows: any[] = [];
+    try {
+      rows = (
+        await pool.query(`SELECT word, category, n FROM checklist_cat_learn WHERE word = ANY($1) AND (project_id = $2 OR project_id IS NULL)`, [tokens, projectId])
+      ).rows;
+    } catch (e: any) {
+      console.error("[checklist guess]", e?.message || e);
+    }
+    for (const r of rows) {
+      const projBoost = r.project_id === projectId ? 2 : 1;
+      if (scores[r.category] != null) scores[r.category] += (Number(r.n) || 0) * projBoost;
+    }
+  }
+  const rule = ruleChkCat(label);
+  if (rule) scores[rule] += 3; // priory-tyngde ved kaldstart / usikre data
+
+  const ranked = (CHK_CATS as readonly string[]).map((c) => [c, scores[c]] as const).sort((a, b) => b[1] - a[1]);
+  const [best, second] = ranked;
+  const known = best[1] + second[1];
+  let confidence = known > 0 ? Math.round((best[1] / known) * 100) : rule ? 85 : 40;
+  // Løft konfidens når det finnes lærte data for beste kategori
+  if (best[1] >= 4) confidence = Math.max(confidence, 88);
+  const critical = /(kritisk|viktig|påkrevd|husk|nødvendig|før )/.test(label.toLowerCase());
+  return { category: best[0], confidence: Math.min(99, confidence), critical };
+}
+
+/* ---- Leveranse-ML: type-gjett + sjekkliste-standarder (bayesiansk, per prosjekt) ---- */
+
+const DL_TYPE_RULES: Array<[string, string[]]> = [
+  ["Video", ["teaser", "trailer", "film", "reel", "klipp", "video", "highlight", "dokumentar", "konsertfilm"]],
+  ["Foto", ["galleri", "album", "foto", "bilder", "photos", "portrett", "magasin"]],
+  ["Lyd", ["lyd", "audio", "miks", "podcast", "master"]],
+  ["Dokument", ["dokument", "pdf", "kontrakt", "rapport", "brev"]],
+  ["Digital", ["download", "sosiale", "reels", "story", "leveranse"]],
+  ["Fysisk", ["usb", "minne", "print", "kort", "albumkopi"]],
+];
+
+/// Sanitize deliverables.files: kun kjente felt, kun objekter med kind, max 100 rader.
+/// Hindrer pølsevev i JSONB og blåser opp radstørrelsen (payload-sikkerhet).
+function sanitizeDeliverableFiles(raw: any): any[] {
+  if (!Array.isArray(raw)) return [];
+  const out: any[] = [];
+  for (const f of raw.slice(0, 100)) {
+    if (!f || typeof f !== "object" || Array.isArray(f)) continue;
+    const kind = typeof f.kind === "string" ? f.kind.slice(0, 40) : null;
+    if (!kind) continue;
+    const row: Record<string, string | null> = { kind };
+    for (const k of ["refId", "name", "url", "at"] as const) {
+      row[k] = typeof f[k] === "string" ? f[k].slice(0, 500) : null;
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+async function learnDeliverableType(pool: any, pid: string, title: string, type: string | null): Promise<void> {
+  if (!type) return;
+  for (const word of tokenizeChkLabel(title || "")) {
+    await pool.query(
+      `INSERT INTO deliverable_type_learn (project_id, word, type, n) VALUES ($1,$2,$3,1)
+       ON CONFLICT (project_id, word, type) DO UPDATE SET n = deliverable_type_learn.n + 1`,
+      [pid, word, type],
+    ).catch(() => undefined);
+  }
+}
+
+async function learnDeliverableCheck(pool: any, pid: string, type: string | null, labels: string[]): Promise<void> {
+  const t = type || "Uten type";
+  for (const label of labels.slice(0, 20)) {
+    await pool.query(
+      `INSERT INTO deliverable_check_learn (project_id, type, label, n) VALUES ($1,$2,$3,1)
+       ON CONFLICT (project_id, type, label) DO UPDATE SET n = deliverable_check_learn.n + 1`,
+      [pid, t, label],
+    ).catch(() => undefined);
+  }
+}
+
+async function guessDeliverableType(pool: any, pid: string, title: string): Promise<{ type: string | null; confidence: number }> {
+  const tokens = tokenizeChkLabel(title || "");
+  const scores = new Map<string, number>();
+  const rows = tokens.length ? await pool.query(`SELECT word, type, n FROM deliverable_type_learn WHERE project_id = $1 AND word = ANY($2::text[])`, [pid, tokens]).catch(() => ({ rows: [] })) : { rows: [] };
+  for (const r of rows.rows) scores.set(String(r.type), (scores.get(String(r.type)) || 0) + Number(r.n));
+  const lower = (title || "").toLowerCase();
+  for (const [ruleType, words] of DL_TYPE_RULES) {
+    if (words.some((w) => lower.includes(w))) scores.set(ruleType, (scores.get(ruleType) || 0) + 3);
+  }
+  if (!scores.size) return { type: null, confidence: 0 };
+  const ranked = [...scores.entries()].sort((a, b) => b[1] - a[1]);
+  const [type, n0] = ranked[0];
+  const second = ranked[1]?.[1] || 0;
+  return { type, confidence: Math.min(99, Math.round((n0 / (n0 + second + 1)) * 100)) };
+}
+
+async function suggestDeliverableCheck(pool: any, pid: string, type: string | null, take: number): Promise<string[]> {
+  const r = await pool.query(
+    `SELECT label, SUM(n)::int n FROM deliverable_check_learn WHERE project_id = $1 AND type = $2 GROUP BY label ORDER BY n DESC LIMIT $3`,
+    [pid, type || "Uten type", Math.min(5, Math.max(1, take || 5))],
+  ).catch(() => ({ rows: [] }));
+  return r.rows.map((x: any) => x.label);
+}
+
+/* ---- Stilnotat-kategorisering: bayesiansk ordlæring (samme mønster som checklist) ---- */
+
+const NOTE_CATS_BE = ["lys", "komposisjon", "farge", "teknikk", "interaksjon"] as const;
+
+function noteRuleCatBE(label: string): string | null {
+  const t = label.toLowerCase();
+  if (/(lys|motlys|sollys|golden|backlight|skygge|hardt|vinduslys|belysning)/.test(t)) return "lys";
+  if (/(komposisjon|brennvidde|85mm|50mm|vinkel|ramme|utsnitt|close)/.test(t)) return "komposisjon";
+  if (/(farge|tone|gradering|post|svart|hvit|hudtone|mettet|uned)/.test(t)) return "farge";
+  if (/(teknikk|kamera|iso|blender|lukker|gimbal|stativ|skarphet|4k|fps)/.test(t)) return "teknikk";
+  if (/(interaksjon|bevegelse|følelser|nærhet|gjester|naturlig|autentisk)/.test(t)) return "interaksjon";
+  return null;
+}
+
+async function learnNoteWords(pool: any, projectId: string, label: string, category: string, weight = 1): Promise<void> {
+  const tokens = tokenizeChkLabel(label);
+  if (!tokens.length || !category) return;
+  for (const word of tokens) {
+    for (const scope of [projectId, null] as const) {
+      await pool
+        .query(
+          `INSERT INTO note_cat_learn (project_id, word, category, n) VALUES ($1, $2, $3, GREATEST($4, 0))
+           ON CONFLICT (project_id, word, category) DO UPDATE SET n = GREATEST(note_cat_learn.n + EXCLUDED.n, 0)`,
+          [scope, word, category, weight],
+        )
+        .catch(() => undefined);
+    }
+  }
+}
+
+async function guessNoteCategoryBE(pool: any, projectId: string, label: string): Promise<{ category: string; confidence: number }> {
+  const tokens = tokenizeChkLabel(label);
+  const scores: Record<string, number> = { lys: 0, komposisjon: 0, farge: 0, teknikk: 0, interaksjon: 0 };
+  if (tokens.length) {
+    const rows = await pool.query(`SELECT word, category, n FROM note_cat_learn WHERE word = ANY($1) AND (project_id = $2 OR project_id IS NULL)`, [tokens, projectId]).catch(() => ({ rows: [] }));
+    for (const r of (rows as any).rows) {
+      const projBoost = r.project_id === projectId ? 2 : 1;
+      if (scores[r.category] != null) scores[r.category] += (Number(r.n) || 0) * projBoost;
+    }
+  }
+  const rule = noteRuleCatBE(label);
+  if (rule) scores[rule] += 3;
+  const ranked = (NOTE_CATS_BE as readonly string[]).map((c) => [c, scores[c]] as const).sort((a, b) => b[1] - a[1]);
+  const [best, second] = ranked;
+  const known = best[1] + second[1];
+  const confidence = known > 0 ? Math.round((best[1] / known) * 100) : rule ? 85 : 30;
+  return { category: best[0], confidence: Math.min(99, confidence) };
+}
+
 export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): void {
   const { app, pool, requireUserSession } = deps;
+
+  // Lokal lagrings-fallback (for dev / testing uten B2-credentials)
+  app.get("/api/local-storage/:key(*)", (req, res) => {
+    try {
+      const rawKey = req.params.key;
+      const rootDir = path.resolve(process.cwd(), "uploads", "b2_fallback");
+      const fullPath = path.resolve(rootDir, rawKey);
+      if (!fullPath.startsWith(rootDir)) {
+        return res.status(403).json({ error: "forbidden" });
+      }
+      if (!fs.existsSync(fullPath)) {
+        return res.status(404).json({ error: "not_found" });
+      }
+      const downloadName = typeof req.query.download === "string" ? req.query.download : undefined;
+      if (downloadName) {
+        res.download(fullPath, downloadName);
+      } else {
+        res.sendFile(fullPath);
+      }
+    } catch (e) {
+      res.status(500).json({ error: "failed" });
+    }
+  });
 
   // Felles gate: innlogget + canAccessProject. Returnerer userId, eller null
   // (og har allerede sendt respons).
@@ -480,26 +768,102 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("POST client-activity seen", e); res.json({ ok: false }); }
   });
 
+  // Kontekstuell stilnotat-kategorisering: ML-gjett + læring (overstyringer trener).
+  app.post("/api/projects/:projectId/moodboard-meta/notes/guess", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const label = typeof req.body?.label === "string" ? req.body.label : "";
+      res.json(await guessNoteCategoryBE(pool, req.params.projectId, label));
+    } catch (e) { console.error("POST notes/guess", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.post("/api/projects/:projectId/moodboard-meta/notes/learn", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const label = typeof req.body?.label === "string" ? req.body.label : "";
+      const category = typeof req.body?.category === "string" ? req.body.category : "";
+      await learnNoteWords(pool, req.params.projectId, label, category, 1);
+      res.json({ success: true });
+    } catch (e) { console.error("POST notes/learn", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ─────────── Moodboard-studio: live tilstedeværelse ───────────
+  // Hver åpen moodboard-fane melder seg inn (POST, heartbeat ~20s), og
+  // serveren fyrer `moodboard.presence` til de ANDRE som ser på akkurat
+  // nå (via brukernes egen user-events-WS). Stale rader ryddes ved hvert
+  // hjerteslag, med left-broadcast slik at avatarer forsvinner live.
+  const PRESENCE_TTL_MS = 45000;
+  async function upsertMoodboardPresence(uid: string, projectId: string, name: string | null): Promise<{ others: Array<{ userId: string; name: string | null }>; stale: string[] }> {
+    await ensureSchema(pool);
+    const now = new Date();
+    const staleBefore = new Date(Date.now() - PRESENCE_TTL_MS).toISOString();
+    const stale: string[] = [];
+    const otherRows = await pool.query(`SELECT user_id, display_name FROM moodboard_presence WHERE project_id = $1 AND user_id <> $2`, [projectId, uid]).catch(() => ({ rows: [] }));
+    const others: Array<{ userId: string; name: string | null }> = otherRows.rows.map((r: any) => ({ userId: r.user_id, name: r.display_name }));
+    for (const r of otherRows.rows) {
+      if ((r.last_seen || now) > staleBefore) continue;
+      stale.push(r.user_id);
+      await pool.query(`DELETE FROM moodboard_presence WHERE project_id = $1 AND user_id = $2`, [projectId, r.user_id]).catch(() => undefined);
+    }
+    await pool.query(
+      `INSERT INTO moodboard_presence (project_id, user_id, display_name, last_seen) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (project_id, user_id) DO UPDATE SET display_name = EXCLUDED.display_name, last_seen = NOW()`,
+      [projectId, uid, name || null, now.toISOString()],
+    ).catch(() => undefined);
+    return { others, stale };
+  }
+  app.post("/api/projects/:projectId/moodboard/presence", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const name = typeof req.body?.name === "string" ? req.body.name.slice(0, 60) || null : null;
+      const { others, stale } = await upsertMoodboardPresence(uid, req.params.projectId, name);
+      const ts = new Date().toISOString();
+      for (const o of others) broadcastUserEvent(o.userId, { kind: "moodboard.presence", projectId: req.params.projectId, actorUserId: uid, actorName: name, joined: true, timestamp: ts });
+      for (const s of stale) broadcastUserEvent(s, { kind: "moodboard.presence", projectId: req.params.projectId, actorUserId: s, actorName: null, joined: false, timestamp: ts });
+      res.json({ success: true, viewers: others.filter((o) => !stale.includes(o.userId)).map((o) => ({ userId: o.userId, name: o.name })) });
+    } catch (e) { console.error("POST moodboard presence", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.delete("/api/projects/:projectId/moodboard/presence", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await pool.query(`DELETE FROM moodboard_presence WHERE project_id = $1 AND user_id = $2`, [req.params.projectId, uid]).catch(() => undefined);
+      const ts = new Date().toISOString();
+      const otherRows = await pool.query(`SELECT user_id FROM moodboard_presence WHERE project_id = $1`, [req.params.projectId]).catch(() => ({ rows: [] }));
+      for (const r of otherRows.rows) broadcastUserEvent(r.user_id, { kind: "moodboard.presence", projectId: req.params.projectId, actorUserId: uid, actorName: null, joined: false, timestamp: ts });
+      res.json({ success: true });
+    } catch (e) { console.error("DELETE moodboard presence", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.get("/api/projects/:projectId/moodboard/presence", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const r = await pool.query(`SELECT user_id, display_name FROM moodboard_presence WHERE project_id = $1 AND user_id <> $2`, [req.params.projectId, uid]).catch(() => ({ rows: [] }));
+      res.json({ viewers: r.rows.map((x: any) => ({ userId: x.user_id, name: x.display_name })) });
+    } catch (e) { console.error("GET moodboard presence", e); res.json({ viewers: [] }); }
+  });
+
   // ─────────── Moodboard-meta (stil/palett/notater) ───────────
   app.get("/api/projects/:projectId/moodboard-meta", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
-      await pool.query(`CREATE TABLE IF NOT EXISTS project_moodboard_meta (project_id VARCHAR(64) PRIMARY KEY, style TEXT, palette JSONB, notes JSONB, must_capture JSONB, client_approved VARCHAR(20), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`).catch(() => undefined);
-      const r = await pool.query(`SELECT style, palette, notes, must_capture, client_approved FROM project_moodboard_meta WHERE project_id = $1`, [req.params.projectId]).catch(() => ({ rows: [] }));
+      await pool.query(`CREATE TABLE IF NOT EXISTS project_moodboard_meta (project_id VARCHAR(64) PRIMARY KEY, style TEXT, palette JSONB, notes JSONB, must_capture JSONB, client_approved VARCHAR(20), note_cats JSONB, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`).catch(() => undefined);
+      await pool.query(`ALTER TABLE project_moodboard_meta ADD COLUMN IF NOT EXISTS note_cats JSONB`).catch(() => undefined);
+      const r = await pool.query(`SELECT style, palette, notes, must_capture, client_approved, note_cats FROM project_moodboard_meta WHERE project_id = $1`, [req.params.projectId]).catch(() => ({ rows: [] }));
       const m = r.rows[0];
-      res.json({ meta: m ? { style: m.style, palette: m.palette || [], notes: m.notes || [], mustCapture: m.must_capture || [], clientApproved: m.client_approved } : null });
+      res.json({ meta: m ? { style: m.style, palette: m.palette || [], notes: m.notes || [], mustCapture: m.must_capture || [], clientApproved: m.client_approved, noteCats: m.note_cats || {} } : null });
     } catch (e) { console.error("GET moodboard-meta", e); res.json({ meta: null }); }
   });
   app.put("/api/projects/:projectId/moodboard-meta", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
-      await pool.query(`CREATE TABLE IF NOT EXISTS project_moodboard_meta (project_id VARCHAR(64) PRIMARY KEY, style TEXT, palette JSONB, notes JSONB, must_capture JSONB, client_approved VARCHAR(20), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`).catch(() => undefined);
+      await pool.query(`CREATE TABLE IF NOT EXISTS project_moodboard_meta (project_id VARCHAR(64) PRIMARY KEY, style TEXT, palette JSONB, notes JSONB, must_capture JSONB, client_approved VARCHAR(20), note_cats JSONB, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`).catch(() => undefined);
+      await pool.query(`ALTER TABLE project_moodboard_meta ADD COLUMN IF NOT EXISTS note_cats JSONB`).catch(() => undefined);
       const b = req.body ?? {};
       await pool.query(
-        `INSERT INTO project_moodboard_meta (project_id, style, palette, notes, must_capture, client_approved, updated_at)
-         VALUES ($1,$2,$3::jsonb,$4::jsonb,$5::jsonb,$6,NOW())
-         ON CONFLICT (project_id) DO UPDATE SET style=EXCLUDED.style, palette=EXCLUDED.palette, notes=EXCLUDED.notes, must_capture=EXCLUDED.must_capture, client_approved=EXCLUDED.client_approved, updated_at=NOW()`,
-        [req.params.projectId, b.style || null, JSON.stringify(b.palette || []), JSON.stringify(b.notes || []), JSON.stringify(b.mustCapture || []), b.clientApproved || null],
+        `INSERT INTO project_moodboard_meta (project_id, style, palette, notes, must_capture, client_approved, note_cats, updated_at)
+         VALUES ($1,$2,$3::jsonb,$4::jsonb,$5::jsonb,$6,$7::jsonb,NOW())
+         ON CONFLICT (project_id) DO UPDATE SET style=EXCLUDED.style, palette=EXCLUDED.palette, notes=EXCLUDED.notes, must_capture=EXCLUDED.must_capture, client_approved=EXCLUDED.client_approved, note_cats=EXCLUDED.note_cats, updated_at=NOW()`,
+        [req.params.projectId, b.style || null, JSON.stringify(b.palette || []), JSON.stringify(b.notes || []), JSON.stringify(b.mustCapture || []), b.clientApproved || null, JSON.stringify(b.noteCats || {})],
       );
       res.json({ success: true });
     } catch (e) { console.error("PUT moodboard-meta", e); res.status(500).json({ error: "failed" }); }
@@ -560,32 +924,50 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         [pid],
       ).catch(() => ({ rows: [] }));
       if (imgs.rows.length === 0) return res.status(400).json({ error: "no_references", message: "Last opp referansebilder først." });
-      const collected: Array<{ hex: string; pop: number }> = [];
+      const collected: Array<{ hex: string; pop: number; src: string }> = [];
+      const perImage: Array<{ key: string; hexes: string[] }> = [];
       for (const im of imgs.rows) {
         const obj = await getFromRoleRoomB2(im.b2_key).catch(() => null);
         if (!obj?.body) continue;
         try {
           const palette: any = await Vibrant.from(obj.body).getPalette();
+          const hexes: string[] = [];
           for (const key of ["Vibrant", "Muted", "DarkVibrant", "DarkMuted", "LightVibrant", "LightMuted"]) {
-            const sw = palette[key]; if (sw?.hex) collected.push({ hex: sw.hex, pop: sw.population || 1 });
+            const sw = palette[key]; if (sw?.hex) { hexes.push(sw.hex); collected.push({ hex: sw.hex, pop: sw.population || 1, src: im.b2_key }); }
           }
+          if (hexes.length) perImage.push({ key: im.b2_key, hexes });
         } catch { /* ikke-dekodbar */ }
       }
       if (collected.length === 0) return res.status(422).json({ error: "extract_failed", message: "Klarte ikke lese farger fra referansene." });
       // Dedupe like farger (RGB-avstand < ~48), behold høyest populasjon.
       collected.sort((a, b) => b.pop - a.pop);
-      const merged: Array<{ hex: string; pop: number }> = [];
+      const merged: Array<{ hex: string; pop: number; srcs: Set<string> }> = [];
       for (const c of collected) {
         const [r, g, b] = hexToRgb(c.hex);
         const dup = merged.find((m) => { const [mr, mg, mb] = hexToRgb(m.hex); return ((r - mr) ** 2 + (g - mg) ** 2 + (b - mb) ** 2) < 48 * 48; });
-        if (!dup) merged.push(c);
+        if (dup) { dup.srcs.add(c.src); continue; }
+        merged.push({ hex: c.hex, pop: c.pop, srcs: new Set([c.src]) });
         if (merged.length >= 6) break;
       }
       const usedNames = new Set<string>();
       const palette = merged.map((c) => {
         let name = nearestName(c.hex); if (usedNames.has(name)) name = `${name} ${[...usedNames].filter((n) => n.startsWith(name)).length + 1}`;
-        usedNames.add(name); return { name, hex: c.hex.toUpperCase() };
+        usedNames.add(name); return { name, hex: c.hex.toUpperCase(), from: [...c.srcs] };
       });
+      // Farge-fit per bilde: % av bildets dominerende farger som matcher paletten,
+      // pluss dominant_colors cachet på raden. Bare kildebildene (vi har allerede bytes).
+      const fits: Record<string, number> = {};
+      for (const pi of perImage) {
+        let hit = 0;
+        for (const h of pi.hexes) {
+          const [r, g, b] = hexToRgb(h);
+          const close = merged.some((m) => { const [mr, mg, mb] = hexToRgb(m.hex); return ((r - mr) ** 2 + (g - mg) ** 2 + (b - mb) ** 2) < 48 * 48; });
+          if (close) hit += 1;
+        }
+        const pct = Math.round((hit / pi.hexes.length) * 100);
+        fits[pi.key] = pct;
+        await pool.query(`UPDATE project_images SET fit = $1, dominant_colors = $2 WHERE b2_key = $3 AND project_id = $4`, [pct, JSON.stringify(pi.hexes), pi.key, pid]).catch(() => undefined);
+      }
       // Lagre på meta (behold style/notes/mustCapture).
       await pool.query(`CREATE TABLE IF NOT EXISTS project_moodboard_meta (project_id VARCHAR(64) PRIMARY KEY, style TEXT, palette JSONB, notes JSONB, must_capture JSONB, client_approved VARCHAR(20), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`).catch(() => undefined);
       await pool.query(
@@ -593,7 +975,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
          ON CONFLICT (project_id) DO UPDATE SET palette=EXCLUDED.palette, updated_at=NOW()`,
         [pid, JSON.stringify(palette)],
       );
-      res.json({ palette, fromImages: imgs.rows.length });
+      res.json({ palette, fromImages: imgs.rows.length, fits });
     } catch (e) { console.error("POST extract-palette", e); res.status(500).json({ error: "failed" }); }
   });
 
@@ -1061,7 +1443,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     try {
       await ensureFoldersTable();
       const r = await pool.query(`SELECT id, name, order_index FROM project_media_folders WHERE project_id = $1 ORDER BY order_index, name`, [req.params.projectId]);
-      res.json({ folders: r.rows.map((f: any) => ({ id: f.id, name: f.name })), templates: Object.entries(FOLDER_TEMPLATES).map(([key, t]) => ({ key, label: t.label, count: t.folders.length })) });
+      res.json({ folders: r.rows.map((f: any) => ({ id: f.id, name: f.name })), templates: Object.entries(FOLDER_TEMPLATES).map(([key, t]) => ({ key, label: t.label, count: t.folders.length, names: t.folders })) });
     } catch (e) { console.error("GET media-folders", e); res.json({ folders: [], templates: [] }); }
   });
   app.post("/api/projects/:projectId/media-folders", async (req, res) => {
@@ -1091,35 +1473,327 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       res.json({ folders: r.rows.map((f: any) => ({ id: f.id, name: f.name })) });
     } catch (e) { console.error("apply-template", e); res.status(500).json({ error: "failed" }); }
   });
+  app.patch("/api/projects/:projectId/media-folders/:id", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureFoldersTable();
+      const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+      if (!name) return res.status(400).json({ error: "name_required" });
+      const r = await pool.query(`UPDATE project_media_folders SET name = $1 WHERE id = $2 AND project_id = $3 RETURNING id, name`, [name, req.params.id, req.params.projectId]);
+      if (!r.rowCount) return res.status(404).json({ error: "not_found" });
+      res.json({ id: r.rows[0].id, name: r.rows[0].name });
+    } catch (e) { console.error("PATCH media-folders", e); res.status(500).json({ error: "failed" }); }
+  });
   app.delete("/api/projects/:projectId/media-folders/:id", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try { await ensureFoldersTable(); await pool.query(`DELETE FROM project_media_folders WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]); res.json({ success: true }); }
     catch (e) { console.error("DELETE media-folders", e); res.status(500).json({ error: "failed" }); }
   });
+  // EXIF for en asset (capture_assets.exif, prosjekt-scoped).
+  app.get("/api/projects/:projectId/media/assets/:id/exif", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const r = await pool.query(
+        `SELECT a.exif FROM capture_assets a JOIN capture_sessions s ON s.id = a.session_id WHERE a.id = $1 AND s.project_id = $2`,
+        [req.params.id, req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      res.json({ exif: r.rows[0]?.exif || null });
+    } catch (e) { console.error("GET media exif", e); res.json({ exif: null }); }
+  });
 
   // ─────────── Media — capture_assets fra B2 (presigned thumbnails) ───────────
   // Leser prosjektets capture-session(er) → assets → presigned preview_key-URL.
   // Dette er det EKTE mediabiblioteket (RAW/originaler skutt på iPad, lagret i B2).
+  // Lærer «asset → mappe»-mønstre: tokeniserer filnavn + EXIF-ord og oppdaterer
+  // folder_learn (per prosjekt). Vekt -1 brukes ved flytting vekk fra en mappe.
+  async function learnFolderMapping(pid: string, filename: string, exif: any, folderId: string | null, weight: number, folderOk: boolean): Promise<void> {
+    if (!folderOk) return;
+    const tokens = new Set<string>(tokenizeChkLabel(filename || ""));
+    for (const k of ["LensModel", "Lens", "lensModel", "Make", "Model", "cameraMake", "cameraModel"]) {
+      const v = exif?.[k]; if (typeof v === "string") for (const w of tokenizeChkLabel(v)) tokens.add(w);
+    }
+    if (!folderId) return;
+    for (const word of tokens) {
+      await pool.query(
+        `INSERT INTO folder_learn (project_id, word, folder_id, n) VALUES ($1,$2,$3,GREATEST($4,0))
+         ON CONFLICT (project_id, word, folder_id) DO UPDATE SET n = GREATEST(folder_learn.n + EXCLUDED.n, 0)`,
+        [pid, word, folderId, weight],
+      ).catch(() => undefined);
+    }
+  }
+
+  // ML-gjett: hvilken mappe hører asset-en best i? (filnavn + EXIF-ord mot folder_learn)
+  app.post("/api/projects/:projectId/media/folders/guess", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const assetId = typeof req.body?.assetId === "string" ? req.body.assetId : "";
+      const asset = await pool.query(
+        `SELECT a.original_filename, a.exif FROM capture_assets a JOIN capture_sessions s ON s.id = a.session_id WHERE a.id = $1 AND s.project_id = $2`,
+        [assetId, req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      if (!asset.rows.length) return res.json({ folderId: null, folderName: null, confidence: 0 });
+      const tokens = new Set<string>(tokenizeChkLabel(asset.rows[0].original_filename || ""));
+      for (const k of ["LensModel", "Lens", "lensModel", "Make", "Model", "cameraMake", "cameraModel"]) {
+        const v = asset.rows[0].exif?.[k]; if (typeof v === "string") for (const w of tokenizeChkLabel(v)) tokens.add(w);
+      }
+      const rows = await pool.query(`SELECT word, folder_id, n FROM folder_learn WHERE project_id = $1 AND word = ANY($2::text[])`, [req.params.projectId, [...tokens]]).catch(() => ({ rows: [] }));
+      const scores = new Map<string, number>();
+      for (const r of rows.rows) scores.set(String(r.folder_id), (scores.get(String(r.folder_id)) || 0) + Number(r.n));
+      if (!scores.size) return res.json({ folderId: null, folderName: null, confidence: 0 });
+      const ranked = [...scores.entries()].sort((a, b) => b[1] - a[1]);
+      const [fid, n0] = ranked[0];
+      const second = ranked[1]?.[1] || 0;
+      const fname = await pool.query(`SELECT name FROM project_media_folders WHERE id = $1 AND project_id = $2`, [fid, req.params.projectId]).catch(() => ({ rows: [] }));
+      res.json({ folderId: fid, folderName: fname.rows[0]?.name || null, confidence: Math.min(99, Math.round((n0 / (n0 + second + 1)) * 100)) });
+    } catch (e) { console.error("POST folders/guess", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // Flytt asset til mappe (og lær mønsteret).
+  app.patch("/api/projects/:projectId/media/assets/:id/folder", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const folderId = typeof req.body?.folderId === "string" && req.body.folderId ? req.body.folderId : null;
+      const asset = await pool.query(
+        `SELECT a.id, a.original_filename, a.exif, a.folder_id FROM capture_assets a JOIN capture_sessions s ON s.id = a.session_id WHERE a.id = $1 AND s.project_id = $2`,
+        [req.params.id, req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      if (!asset.rows.length) return res.status(404).json({ error: "not_found" });
+      if (folderId) {
+        const f = await pool.query(`SELECT 1 FROM project_media_folders WHERE id = $1 AND project_id = $2`, [folderId, req.params.projectId]).catch(() => ({ rows: [] }));
+        if (!f.rows.length) return res.status(400).json({ error: "folder_not_found" });
+      }
+      const row = asset.rows[0];
+      await pool.query(`UPDATE capture_assets SET folder_id = $1, updated_at = NOW() WHERE id = $2`, [folderId, req.params.id]).catch(() => undefined);
+      void learnFolderMapping(req.params.projectId, row.original_filename, row.exif, row.folder_id, -1, !!row.folder_id);
+      void learnFolderMapping(req.params.projectId, row.original_filename, row.exif, folderId, 1, !!folderId);
+      res.json({ ok: true, folderId });
+    } catch (e) { console.error("PATCH asset folder", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // AI-nøkkelord: server leser asset-bytes fra B2 → Claude-vision gir keywording →
+  // lagres i capture_assets.tags (union). Heuristisk fallback uten API-nøkkel.
+  app.post("/api/projects/:projectId/media/assets/:id/keywords", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const r = await pool.query(
+        `SELECT a.preview_key, a.original_filename, a.mime, a.exif, a.tags FROM capture_assets a JOIN capture_sessions s ON s.id = a.session_id WHERE a.id = $1 AND s.project_id = $2`,
+        [req.params.id, req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      if (!r.rows.length) return res.status(404).json({ error: "not_found" });
+      const row = r.rows[0];
+      const existing: string[] = Array.isArray(row.tags) ? row.tags : [];
+      if (!row.preview_key) return res.status(400).json({ error: "no_preview" });
+
+      // 1) Prøv AI (Claude vision) på bilde-bytes.
+      let keywords: string[] = [];
+      let usedAI = false;
+      if (process.env.ANTHROPIC_API_KEY && /^image\//i.test(row.mime || "")) {
+        try {
+          const obj = await getFromRoleRoomB2(row.preview_key).catch(() => null);
+          if (obj?.body) {
+            const mod: any = await import("@anthropic-ai/sdk");
+            const AnthropicCtor = mod.default ?? mod.Anthropic;
+            const client = new AnthropicCtor({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 1, timeout: 15000 });
+            const resp = await client.messages.create({
+              model: process.env.CAPTURE_ANALYZE_MODEL || "claude-opus-4-7",
+              max_tokens: 400,
+              system: "You extract searchable metadata keywords for a photo library. Return JSON { \"keywords\": [\"...\"] } with 8-14 precise lowercase keywords covering scene, subjects, lighting, mood and event type. No prose.",
+              messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: row.mime, data: obj.body.toString("base64") } }, { type: "text", text: "Extract keywords." }] }],
+            });
+            const text = (resp.content || []).filter((b: any) => b.type === "text").map((b: any) => b.text).join(" ");
+            const m = text.match(/\{[\s\S]*\}/);
+            if (m) { const parsed = JSON.parse(m); if (Array.isArray(parsed.keywords)) keywords = parsed.keywords.map((k: any) => String(k).toLowerCase().slice(0, 40)); }
+            usedAI = true;
+          }
+        } catch { /* fallback til heuristikk */ }
+      }
+      // 2) Heuristisk fallback: filnavn-ord + EXIF-kamera/objektiv + mime.
+      if (!keywords.length) {
+        keywords = tokenizeChkLabel(row.original_filename || "");
+        const exif = row.exif || {};
+        for (const k of ["Make", "Model", "LensModel", "cameraMake", "cameraModel", "lensModel"]) {
+          if (typeof exif[k] === "string") keywords.push(...tokenizeChkLabel(exif[k]));
+        }
+        if (/^video\//i.test(row.mime || "")) keywords.push("video");
+        if (/^audio\//i.test(row.mime || "")) keywords.push("audio");
+      }
+      const merged = [...new Set([...existing, ...keywords.filter(Boolean).map((k) => k.replace(/\s+/g, " ").trim())])].slice(0, 40);
+      await pool.query(`UPDATE capture_assets SET tags = $1, updated_at = NOW() WHERE id = $2`, [merged, req.params.id]).catch(() => undefined);
+      res.json({ tags: merged, ai: usedAI, added: merged.filter((t) => !existing.includes(t)) });
+    } catch (e) { console.error("POST media keywords", e); res.status(500).json({ error: "failed" }); }
+  });
+  // Manuelle korrigeringer: erstatt hele tag-lista (full kontroll).
+  app.patch("/api/projects/:projectId/media/assets/:id/tags", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const tags = (Array.isArray(req.body?.tags) ? req.body.tags : []).map((t: any) => String(t).toLowerCase().replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 40);
+      const r = await pool.query(
+        `UPDATE capture_assets SET tags = $1, updated_at = NOW() FROM capture_sessions s WHERE capture_assets.id = $2 AND capture_assets.session_id = s.id AND s.project_id = $3 RETURNING capture_assets.tags`,
+        [tags, req.params.id, req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      if (!r.rows.length) return res.status(404).json({ error: "not_found" });
+      res.json({ tags: r.rows[0].tags });
+    } catch (e) { console.error("PATCH media tags", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ── Ett master-asset, mange referanser (samlinger) ──
+  // Løser Pic-Time-problemet: duplisering av galleri = kopiering av REFERANSER,
+  // aldri bytes. asset_refs peker på capture_assets (master).
+  app.get("/api/projects/:projectId/media/refs", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const r = await pool.query(
+        `SELECT r.id, r.master_id, r.collection, r.label, r.created_at,
+                a.original_filename, a.preview_key
+           FROM asset_refs r JOIN capture_assets a ON a.id = r.master_id
+          WHERE r.project_id = $1 AND r.master_kind = 'capture'
+          ORDER BY r.created_at DESC LIMIT 500`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      const refs = await Promise.all(r.rows.map(async (x: any) => ({
+        id: x.id,
+        masterId: x.master_id,
+        collection: x.collection,
+        label: x.label || x.original_filename,
+        createdAt: x.created_at,
+        thumbUrl: x.preview_key ? await signAssetReadUrl(x.preview_key) : null,
+      })));
+      res.json({ refs });
+    } catch (e) { console.error("GET media refs", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.post("/api/projects/:projectId/media/refs", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const masterId = typeof req.body?.masterId === "string" ? req.body.masterId : "";
+      const collection = typeof req.body?.collection === "string" ? req.body.collection.trim().slice(0, 80) : "";
+      if (!masterId || !collection) return res.status(400).json({ error: "master_id_and_collection_required" });
+      const owned = await pool.query(
+        `SELECT a.id, a.original_filename FROM capture_assets a JOIN capture_sessions s ON s.id = a.session_id WHERE a.id = $1 AND s.project_id = $2`,
+        [masterId, req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      if (!owned.rows.length) return res.status(404).json({ error: "not_found" });
+      const ins = await pool.query(
+        `INSERT INTO asset_refs (project_id, master_id, master_kind, collection, label, created_by)
+         VALUES ($1,$2,'capture',$3,$4,$5)
+         ON CONFLICT (project_id, master_id, collection) DO NOTHING RETURNING id`,
+        [req.params.projectId, masterId, collection, owned.rows[0].original_filename, uid],
+      );
+      res.status(201).json({ id: ins.rows[0]?.id || null, added: !!ins.rows[0] });
+    } catch (e) { console.error("POST media refs", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.delete("/api/projects/:projectId/media/refs/:id", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try { await pool.query(`DELETE FROM asset_refs WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]); res.json({ success: true }); }
+    catch (e) { console.error("DELETE media refs", e); res.status(500).json({ error: "failed" }); }
+  });
+  // Fysisk sletting av en capture-asset (medier, referanser og vedlegg).
+  // R2/B2-objekt-sletting er best-effort — DB-raden er autoritativ.
+  app.delete("/api/projects/:projectId/media/assets/:id", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const assetId = req.params.id;
+      // Scope asset til dette prosjektet (via sesjonens project_id).
+      const row = await pool.query(
+        `SELECT a.preview_key, a.full_key, a.raw_key, a.auto_cleaned_key, a.original_filename FROM capture_assets a
+           JOIN capture_sessions s ON s.id = a.session_id
+          WHERE a.id = $1 AND s.project_id = $2`,
+        [assetId, req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      if (!row.rows.length) return res.status(404).json({ error: "not_found" });
+      const a = row.rows[0];
+
+      // Samle R2/B2-nøkler FØR radene slettes (reviews-voice er under egen kolonne).
+      const keys: string[] = [];
+      for (const k of [a.preview_key, a.full_key, a.raw_key, a.auto_cleaned_key]) {
+        if (typeof k === "string" && k) keys.push(k);
+      }
+      const revRows = await pool.query(`SELECT audio_key FROM capture_reviews WHERE asset_id = $1`, [assetId]).catch(() => ({ rows: [] }));
+      for (const r of revRows.rows ?? []) {
+        if (typeof r.audio_key === "string" && r.audio_key) keys.push(r.audio_key);
+      }
+
+      // Fysisk sletting (best-effort, per-nøkkel-feiltoleranse).
+      void deleteCaptureObjects(keys).catch(() => undefined);
+
+      // DB: rader som peker på asset. capture_reviews/capture_events kaskaderer via FK.
+      // Alle oppryddinger er best-effort: én ukjent/fraværende tabell skal ALDRI
+      // blokkere selve asset-slettingen (prod-DB kan mangle migrerte skjemaer).
+      await pool.query(`DELETE FROM asset_refs WHERE master_id = $1`, [assetId]).catch(() => undefined);
+      await pool.query(`UPDATE capture_revision_requests SET asset_id = NULL WHERE asset_id = $1`, [assetId]).catch(() => undefined);
+      await pool.query(`DELETE FROM project_photo_review WHERE asset_id = $1`, [assetId]).catch(() => undefined);
+      await pool.query(`DELETE FROM project_photo_comments WHERE asset_id = $1`, [assetId]).catch(() => undefined);
+      await pool.query(`UPDATE generative_ai_jobs SET source_asset_id = NULL WHERE source_asset_id = $1`, [assetId]).catch(() => undefined);
+      // Prune vedlegg i leveranser (samme mønster som rejected-prune i capture-routes).
+      await pool.query(
+        `UPDATE project_workspace_deliverables
+            SET files = COALESCE((SELECT jsonb_agg(f) FROM jsonb_array_elements(files) f WHERE f->>'refId' IS NULL OR f->>'refId' <> $1), '[]'::jsonb),
+                updated_at = NOW()
+          WHERE project_id = $2`,
+        [assetId, req.params.projectId],
+      ).catch(() => undefined);
+      // Best-effort: null ut tilkoblete shots (derivert UI-state, 404-thumbnails unngås).
+      await pool.query(
+        `UPDATE shot_lists SET shots = (
+           SELECT jsonb_agg(
+             CASE WHEN x->>'capturedAssetBackendId' = $1 THEN x - 'capturedAssetBackendId' - 'capturedAssetId' ELSE x END
+           ) FROM jsonb_array_elements(shots) x)
+          WHERE project_id = $2`,
+        [assetId, req.params.projectId],
+      ).catch(() => undefined);
+
+      const del = await pool.query(`DELETE FROM capture_assets WHERE id = $1`, [assetId]).catch(() => ({ rowCount: 0 }));
+      res.json({ success: true, removed: del.rowCount ?? 0, storageKeys: keys.length });
+    } catch (e) { console.error("DELETE media asset", e); res.status(500).json({ error: "failed" }); }
+  });
+  // Dupliser samling: kopierer alle referanser fra → til uten å røre bytes.
+  app.post("/api/projects/:projectId/media/refs/clone", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const from = typeof req.body?.from === "string" ? req.body.from.slice(0, 80) : "";
+      const to = typeof req.body?.to === "string" ? req.body.to.trim().slice(0, 80) : "";
+      if (!from || !to) return res.status(400).json({ error: "from_and_to_required" });
+      const r = await pool.query(
+        `INSERT INTO asset_refs (project_id, master_id, master_kind, collection, label, created_by)
+         SELECT project_id, master_id, master_kind, $3, label, $4 FROM asset_refs
+          WHERE project_id = $1 AND collection = $2
+         ON CONFLICT (project_id, master_id, collection) DO NOTHING`,
+        [req.params.projectId, from, to, uid],
+      ).catch(() => ({ rowCount: 0 }));
+      res.json({ copied: r.rowCount || 0 });
+    } catch (e) { console.error("POST refs clone", e); res.status(500).json({ error: "failed" }); }
+  });
+
   app.get("/api/projects/:projectId/media", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
       const sessions = await pool.query(
-        `SELECT id FROM capture_sessions WHERE project_id = $1`,
+        `SELECT id, name, owner_user_id FROM capture_sessions WHERE project_id = $1 ORDER BY created_at DESC`,
         [req.params.projectId],
       ).catch(() => ({ rows: [] }));
       const sessionIds = sessions.rows.map((s: any) => s.id);
       if (sessionIds.length === 0) return res.json({ assets: [], hasSession: false });
+      // »Hvem lastet opp«: navn på sesjonseiere (fotografen bak iPad-økten).
+      const ownerIds = [...new Set(sessions.rows.map((s: any) => s.owner_user_id).filter(Boolean))];
+      const owners = ownerIds.length ? await pool.query(`SELECT id, first_name, last_name, username FROM users WHERE id = ANY($1::uuid[])`, [ownerIds]).catch(() => ({ rows: [] })) : { rows: [] };
+      const ownerName = new Map<string, string>();
+      for (const u of owners.rows) ownerName.set(String(u.id), [u.first_name, u.last_name].filter(Boolean).join(' ') || u.username || 'Fotograf');
+      const ownerOfSession = new Map<string, { id: string; name: string }>();
+      for (const s of sessions.rows) if (s.owner_user_id && ownerName.has(String(s.owner_user_id))) ownerOfSession.set(String(s.id), { id: String(s.owner_user_id), name: ownerName.get(String(s.owner_user_id)) as string });
       const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit || "120"), 10) || 120));
+      const folderQ = typeof req.query.folder === "string" && req.query.folder ? req.query.folder : null;
       const a = await pool.query(
         `SELECT id, session_id, original_filename, mime, size_bytes, state, rating,
-                color_label, flagged_for_client, preview_key, created_at
+                color_label, flagged_for_client, preview_key, created_at, folder_id, tags
            FROM capture_assets
           WHERE session_id = ANY($1::uuid[]) AND rejected IS NOT TRUE
+            ${folderQ ? "AND folder_id = $3::uuid" : ""}
           ORDER BY created_at DESC LIMIT $2`,
-        [sessionIds, limit],
+        folderQ ? [...sessionIds, limit, folderQ] : [...sessionIds, limit],
       );
       const assets = await Promise.all(a.rows.map(async (r: any) => ({
         id: r.id,
+        sessionId: r.session_id,
+        folderId: r.folder_id || null,
         filename: r.original_filename,
         mime: r.mime,
         sizeBytes: r.size_bytes ? Number(r.size_bytes) : null,
@@ -1129,7 +1803,26 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         flaggedForClient: r.flagged_for_client,
         previewUrl: r.preview_key ? await signAssetReadUrl(r.preview_key) : null,
         createdAt: r.created_at,
+        tags: Array.isArray(r.tags) ? r.tags : [],
+        refs: refsByAsset.get(String(r.id)) || [],
+        uploadedBy: ownerOfSession.get(String(r.session_id)) || null,
       })));
+      const fcounts = await pool.query(
+        `SELECT folder_id, count(*)::int n FROM capture_assets WHERE session_id = ANY($1::uuid[]) AND rejected IS NOT TRUE AND folder_id IS NOT NULL GROUP BY folder_id`,
+        [sessionIds],
+      ).catch(() => ({ rows: [] }));
+      // Referanser: hvilke samlinger peker på hvert master-asset (ett master, mange refs).
+      const refRows = await pool.query(
+        `SELECT master_id, collection FROM asset_refs WHERE project_id = $1 AND master_kind = 'capture'`,
+        [req.params.projectId],
+      ).catch(() => ({ rows: [] }));
+      const refsByAsset = new Map<string, string[]>();
+      for (const rr of refRows.rows) {
+        const k = String(rr.master_id);
+        const arr = refsByAsset.get(k) || [];
+        if (!arr.includes(rr.collection)) arr.push(rr.collection);
+        refsByAsset.set(k, arr);
+      }
       // Cull-stats (det fotografen culler på iPad → reflektert i web).
       const cs = await pool.query(
         `SELECT count(*)::int AS total,
@@ -1144,6 +1837,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const c = cs.rows[0] || {};
       res.json({
         assets, hasSession: true,
+        sessions: sessions.rows.map((s: any) => ({ id: s.id, name: s.name || 'Sesjon' })),
+        folderCounts: fcounts.rows.map((f: any) => ({ folderId: f.folder_id, n: f.n })),
         cullStats: {
           total: c.total || 0, rejected: c.rejected || 0, unrated: c.unrated || 0,
           favorites: c.favorites || 0, highlights: c.highlights || 0, rated: c.rated || 0,
@@ -1169,9 +1864,11 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const rows = await pool.query(
         `SELECT r.id, r.asset_id, r.reviewer_id, r.comment, r.rating, r.heart,
                 r.audio_key, r.audio_duration_seconds, r.created_at,
-                a.original_filename, a.preview_key
+                a.original_filename, a.preview_key,
+                u.first_name AS u_first, u.last_name AS u_last, u.username AS u_user
            FROM capture_reviews r
            JOIN capture_assets a ON a.id = r.asset_id
+           LEFT JOIN users u ON u.id::text = r.reviewer_id::text
           WHERE a.session_id = ANY($1::uuid[]) AND r.audio_key IS NOT NULL
           ORDER BY r.created_at DESC LIMIT $2`,
         [sessionIds, limit],
@@ -1180,6 +1877,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         id: r.id,
         assetId: r.asset_id,
         filename: r.original_filename,
+        reviewBy: [r.u_first, r.u_last].filter(Boolean).join(' ') || r.u_user || null,
+        reviewById: r.reviewer_id,
         comment: r.comment || null,
         rating: r.rating || null,
         heart: r.heart || false,
@@ -2629,6 +3328,26 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch (e) { console.error("GET video-room", e); res.json({ hasVersions: false, versions: [], comments: [], chapters: [] }); }
   });
 
+  // Video Room: varsle prosjektets ANDRE team-medlemmer (eier + aktive
+  // project_team_members, minus aktøren) om at noe endret seg, slik at åpne
+  // VideoRoomTab-faner refetcher instant fremfor å vente på neste last.
+  async function notifyVideoRoomUpdated(projectId: string, actorUserId: string, reason: "version" | "comment" | "approval" | "chapters"): Promise<void> {
+    try {
+      const owner = await pool.query(`SELECT user_id FROM projects WHERE id = $1`, [projectId]).catch(() => ({ rows: [] }));
+      const members = await pool.query(
+        `SELECT user_id FROM project_team_members WHERE project_id = $1 AND status = 'active' AND deactivated_at IS NULL AND user_id IS NOT NULL`,
+        [projectId],
+      ).catch(() => ({ rows: [] }));
+      const recipients = new Set<string>([
+        ...(owner.rows[0]?.user_id ? [String(owner.rows[0].user_id)] : []),
+        ...members.rows.map((r: any) => String(r.user_id)),
+      ]);
+      recipients.delete(actorUserId);
+      const timestamp = new Date().toISOString();
+      for (const recipientId of recipients) broadcastUserEvent(recipientId, { kind: "video-room.updated", projectId, reason, timestamp });
+    } catch { /* best-effort — aldri la varsling velte skriveoperasjonen */ }
+  }
+
   // Ny versjon (V1/V2/…) — file_url eller stream_uid + valgfrie chapters.
   app.post("/api/projects/:projectId/video-versions", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
@@ -2649,6 +3368,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
          b.thumbnailUrl || null, b.duration != null ? Number(b.duration) : null,
          b.chapters ? JSON.stringify(b.chapters) : null, uid],
       );
+      notifyVideoRoomUpdated(pid, uid, "version");
       res.status(201).json({ id, versionNumber: vn });
     } catch (e) { console.error("POST video-versions", e); res.status(500).json({ error: "failed" }); }
   });
@@ -2677,6 +3397,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
          VALUES ($1,$2,$3,$4,$5,'under_review',$6)`,
         [id, pid, label, vn, key, uid],
       );
+      notifyVideoRoomUpdated(pid, uid, "version");
       res.status(201).json({ id, versionNumber: vn });
     } catch (e) { console.error("POST video upload", e); res.status(500).json({ error: "failed" }); }
   });
@@ -2698,6 +3419,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
          !!b.isDecision, b.parentId || null],
       );
       const row = await pool.query(`SELECT * FROM project_video_comments WHERE id = $1`, [id]);
+      notifyVideoRoomUpdated(pid, uid, "comment");
       res.status(201).json(mapVideoComment(row.rows[0]));
     } catch (e) { console.error("POST video-comments", e); res.status(500).json({ error: "failed" }); }
   });
@@ -2713,6 +3435,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         [status, req.params.commentId, req.params.projectId],
       ).catch(() => ({ rows: [] }));
       if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
+      notifyVideoRoomUpdated(req.params.projectId, uid, "comment");
       res.json({ ok: true });
     } catch (e) { console.error("PATCH video-comments", e); res.status(500).json({ error: "failed" }); }
   });
@@ -2724,6 +3447,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const pid = req.params.projectId;
       const upd = await pool.query(`UPDATE project_video_versions SET status='approved' WHERE id=$1 AND project_id=$2 RETURNING id`, [req.params.vid, pid]).catch(() => ({ rows: [] }));
       if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
+      notifyVideoRoomUpdated(pid, uid, "approval");
       res.json({ ok: true });
     } catch (e) { console.error("POST video approve", e); res.status(500).json({ error: "failed" }); }
   });
@@ -2736,6 +3460,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const upd = await pool.query(`UPDATE project_video_versions SET chapters=$1 WHERE id=$2 AND project_id=$3 RETURNING id`,
         [JSON.stringify(chapters), req.params.vid, req.params.projectId]).catch(() => ({ rows: [] }));
       if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
+      notifyVideoRoomUpdated(req.params.projectId, uid, "chapters");
       res.json({ ok: true });
     } catch (e) { console.error("PATCH video chapters", e); res.status(500).json({ error: "failed" }); }
   });
@@ -2757,8 +3482,38 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const checkPct = c.total > 0 ? c.done / c.total : null;
       const parts = [boardPct, checkPct].filter((x) => x != null);
       const pct = parts.length ? Math.round((parts.reduce((s: number, x: number) => s + x, 0) / parts.length) * 100) : 0;
+      // Per-medlem crew-liste: navn, rolle, status og online (presence siste 90 sek).
+      const memberRows = await pool.query(
+        `SELECT m.name, m.email, m.crew_role, m.status, m.user_id,
+                pr.last_seen_at,
+                (pr.last_seen_at > NOW() - INTERVAL '90 seconds') AS online
+           FROM project_team_members m
+           LEFT JOIN LATERAL (
+             SELECT last_seen_at FROM user_presence p
+             WHERE m.user_id IS NOT NULL AND p.user_id = m.user_id::uuid
+             ORDER BY p.last_seen_at DESC LIMIT 1
+           ) pr ON true
+          WHERE m.project_id = $1 AND m.status = 'active' AND m.deactivated_at IS NULL
+          ORDER BY m.invited_at ASC`,
+        [pid],
+      ).catch(() => ({ rows: [] }));
+      const ownerRow = await pool.query(
+        `SELECT u.email, u.first_name, u.last_name
+           FROM projects p LEFT JOIN users u ON u.id = p.user_id
+          WHERE p.id = $1 LIMIT 1`,
+        [pid],
+      ).catch(() => ({ rows: [] }));
+      const o = ownerRow.rows[0];
       res.json({
         pct, online: pres.rows[0]?.online || 0, teamSize: (members.rows[0]?.n || 0) + 1,
+        owner: o ? { name: [o.first_name, o.last_name].filter(Boolean).join(" ") || o.email, email: o.email } : null,
+        members: memberRows.rows.map((m: any) => ({
+          name: m.name || m.email,
+          email: m.email,
+          crewRole: m.crew_role || "assistent",
+          online: !!m.online,
+          lastSeen: m.last_seen_at ? new Date(m.last_seen_at).toISOString() : null,
+        })),
         readiness: [
           { label: "Oppgaver fullført", done: b.total > 0 && b.done === b.total, value: `${b.done}/${b.total}` },
           { label: "Sjekkliste klar", done: c.total > 0 && c.done === c.total, value: `${c.done}/${c.total}` },
@@ -2877,15 +3632,23 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       await ensureSchema(pool);
       const panel = typeof req.query.panel === "string" ? req.query.panel : null;
       const r = await pool.query(
-        `SELECT id, panel, b2_key, label, category, content_type, created_at FROM project_images
-          WHERE project_id = $1 ${panel ? "AND panel = $2" : ""}
-          ORDER BY created_at DESC`,
+        `SELECT pi.id, pi.panel, pi.b2_key, pi.label, pi.category, pi.content_type, pi.created_at, pi.uploaded_by,
+                u.first_name AS u_first, u.last_name AS u_last, u.username AS u_user
+           FROM project_images pi LEFT JOIN users u ON u.id::text = pi.uploaded_by
+          WHERE pi.project_id = $1 ${panel ? "AND pi.panel = $2" : ""}
+          ORDER BY pi.created_at DESC`,
         panel ? [req.params.projectId, panel] : [req.params.projectId],
       );
       const images = await Promise.all(r.rows.map(async (im: any) => ({
         id: im.id, panel: im.panel, label: im.label, category: im.category || null,
+        b2Key: im.b2_key,
+        contentType: im.content_type || null,
+        flag: !!im.flag,
+        fit: im.fit != null ? Math.min(100, Math.max(0, Number(im.fit))) : null,
+        comments: Array.isArray(im.comments) ? im.comments : [],
         url: await presignRoleRoomB2Download(im.b2_key, undefined, 3600),
         createdAt: im.created_at,
+        uploadedBy: im.uploaded_by ? { id: im.uploaded_by, name: [im.u_first, im.u_last].filter(Boolean).join(' ') || im.u_user || 'Bruker' } : null,
       })));
       res.json({ images });
     } catch (e) { console.error("GET images", e); res.status(500).json({ error: "failed" }); }
@@ -2911,6 +3674,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       );
       res.status(201).json({
         id: ins.rows[0].id, panel, label, category,
+        contentType: file.mimetype || null,
         url: await presignRoleRoomB2Download(key, undefined, 3600),
         createdAt: ins.rows[0].created_at,
       });
@@ -2922,8 +3686,15 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const uid = await guard(req, res); if (!uid) return;
     try {
       await ensureSchema(pool);
-      const category = typeof req.body?.category === "string" ? req.body.category.slice(0, 40) || null : null;
-      const upd = await pool.query(`UPDATE project_images SET category = $1 WHERE id = $2 AND project_id = $3 RETURNING id`, [category, req.params.id, req.params.projectId]).catch(() => ({ rows: [] }));
+      const hasCat = typeof req.body?.category !== "undefined" && req.body?.category !== null;
+      const category = typeof req.body?.category === "string" ? req.body.category.slice(0, 40) || null : (typeof req.body?.category === "undefined" ? undefined : null);
+      const flag = typeof req.body?.flag === "boolean" ? req.body.flag : undefined;
+      const comments = Array.isArray(req.body?.comments) ? req.body.comments.slice(0, 200) : undefined;
+      const panel = typeof req.body?.panel === "string" && ["references", "moodboard", "moodboard-shared"].includes(req.body.panel) ? req.body.panel : undefined;
+      const upd = await pool.query(
+        `UPDATE project_images SET category = CASE WHEN $1 IS NOT NULL THEN $1 WHEN $6 THEN NULL ELSE category END, flag = COALESCE($2, flag), comments = COALESCE($3, comments), panel = COALESCE($7, panel) WHERE id = $4 AND project_id = $5 RETURNING id`,
+        [category ?? null, flag ?? null, comments ?? null, req.params.id, req.params.projectId, hasCat, panel ?? null],
+      ).catch(() => ({ rows: [] }));
       if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
       res.json({ ok: true });
     } catch (e) { console.error("PATCH images", e); res.status(500).json({ error: "failed" }); }
@@ -2965,12 +3736,22 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   });
 
   // ─────────── Sjekkliste ───────────
+  // ML-gjett: kategoriserer label med lærte ord-tellinger + regel-prior.
+  app.post("/api/projects/:projectId/checklist/guess", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const label = typeof req.body?.label === "string" ? req.body.label : "";
+      res.json(await guessChkCategory(pool, req.params.projectId, label));
+    } catch (e) { console.error("POST checklist/guess", e); res.status(500).json({ error: "failed" }); }
+  });
+
   app.get("/api/projects/:projectId/checklist", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
       await ensureSchema(pool);
       const r = await pool.query(`SELECT * FROM project_checklist_items WHERE project_id = $1 ORDER BY order_index, created_at`, [req.params.projectId]);
-      res.json({ items: r.rows.map((i: any) => ({ id: i.id, label: i.label, checked: i.checked, category: i.category })) });
+      res.json({ items: r.rows.map((i: any) => ({ id: i.id, label: i.label, checked: i.checked, category: i.category, critical: !!i.critical, assignedTo: i.assigned_to ?? null, color: i.color ?? null })) });
     } catch (e) { console.error("GET checklist", e); res.status(500).json({ error: "failed" }); }
   });
   app.post("/api/projects/:projectId/checklist", async (req, res) => {
@@ -2981,13 +3762,14 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const label = typeof b.label === "string" ? b.label.trim() : "";
       if (!label) return res.status(400).json({ error: "label_required" });
       const r = await pool.query(
-        `INSERT INTO project_checklist_items (project_id, label, checked, category, order_index)
-         VALUES ($1, $2, COALESCE($3, FALSE), $4, COALESCE($5, 0)) RETURNING *`,
-        [req.params.projectId, label, b.checked ?? false, b.category || null, b.orderIndex ?? null],
+        `INSERT INTO project_checklist_items (project_id, label, checked, category, order_index, critical, assigned_to, color)
+         VALUES ($1, $2, COALESCE($3, FALSE), $4, COALESCE($5, 0), COALESCE($6, FALSE), $7, COALESCE($8, NULL)) RETURNING *`,
+        [req.params.projectId, label, b.checked ?? false, b.category || null, b.orderIndex ?? null, b.critical ?? false, (b.assignedTo as string | undefined) || null, (b.color as string | undefined) || null],
       );
       const i = r.rows[0];
+      void learnChkWords(pool, req.params.projectId, i.label, i.category || "utstyr", 1);
       void notifyBoardUpdated(req.params.projectId, uid);
-      res.status(201).json({ id: i.id, label: i.label, checked: i.checked, category: i.category });
+      res.status(201).json({ id: i.id, label: i.label, checked: i.checked, category: i.category, critical: !!i.critical, assignedTo: i.assigned_to ?? null, color: i.color ?? null });
     } catch (e) { console.error("POST checklist", e); res.status(500).json({ error: "failed" }); }
   });
   app.patch("/api/projects/:projectId/checklist/:id", async (req, res) => {
@@ -2995,14 +3777,20 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     try {
       await ensureSchema(pool);
       const b = req.body ?? {};
+      const old = await pool.query(`SELECT label, category FROM project_checklist_items WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]).then((x: any) => x.rows[0]).catch(() => null);
       const r = await pool.query(
-        `UPDATE project_checklist_items SET checked = COALESCE($1, checked), label = COALESCE($2, label) WHERE id = $3 AND project_id = $4 RETURNING *`,
-        [typeof b.checked === "boolean" ? b.checked : null, b.label ?? null, req.params.id, req.params.projectId],
+        `UPDATE project_checklist_items SET checked = COALESCE($1, checked), label = COALESCE($2, label), category = COALESCE($7, category), critical = COALESCE($5, critical), assigned_to = COALESCE($6, assigned_to), color = COALESCE($8, color) WHERE id = $3 AND project_id = $4 RETURNING *`,
+        [typeof b.checked === "boolean" ? b.checked : null, b.label ?? null, req.params.id, req.params.projectId, typeof b.critical === "boolean" ? b.critical : null, b.assignedTo ?? null, typeof b.category === "string" ? b.category : null, typeof b.color === "string" ? b.color : null],
       );
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
       const i = r.rows[0];
+      // Kategoriendring = læringsdata: trekker fra gammel, legger til ny.
+      if (typeof b.category === "string" && old && old.category !== b.category) {
+        if (old.category) void learnChkWords(pool, req.params.projectId, i.label, old.category, -1);
+        void learnChkWords(pool, req.params.projectId, i.label, b.category, 1);
+      }
       void notifyBoardUpdated(req.params.projectId, uid);
-      res.json({ id: i.id, label: i.label, checked: i.checked, category: i.category });
+      res.json({ id: i.id, label: i.label, checked: i.checked, category: i.category, critical: !!i.critical, assignedTo: i.assigned_to ?? null });
     } catch (e) { console.error("PATCH checklist", e); res.status(500).json({ error: "failed" }); }
   });
   app.delete("/api/projects/:projectId/checklist/:id", async (req, res) => {
@@ -3012,12 +3800,28 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   });
 
   // ─────────── Leveranser ───────────
+  // ML: type-forslag for tittel (lærer av teamets egne valg) + sjekkliste-standarder pr. type.
+  app.post("/api/projects/:projectId/deliverables/guess-type", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const title = typeof req.body?.title === "string" ? req.body.title : "";
+      res.json(await guessDeliverableType(pool, req.params.projectId, title));
+    } catch (e) { console.error("POST deliverables guess-type", e); res.status(500).json({ error: "failed" }); }
+  });
+  app.post("/api/projects/:projectId/deliverables/suggest-checklist", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const type = typeof req.body?.type === "string" ? req.body.type : null;
+      res.json({ labels: await suggestDeliverableCheck(pool, req.params.projectId, type, 5) });
+    } catch (e) { console.error("POST deliverables suggest-checklist", e); res.status(500).json({ error: "failed" }); }
+  });
+
   app.get("/api/projects/:projectId/deliverables", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
       await ensureSchema(pool);
       const r = await pool.query(`SELECT * FROM project_workspace_deliverables WHERE project_id = $1 ORDER BY order_index, due_date NULLS LAST, created_at`, [req.params.projectId]);
-      res.json({ deliverables: r.rows.map((d: any) => ({ id: d.id, title: d.title, type: d.type, status: d.status, dueDate: d.due_date })) });
+      res.json({ deliverables: r.rows.map((d: any) => ({ id: d.id, title: d.title, type: d.type, status: d.status, dueDate: d.due_date, checklist: Array.isArray(d.checklist) ? d.checklist : [], files: Array.isArray(d.files) ? d.files : [] })) });
     } catch (e) { console.error("GET deliverables", e); res.status(500).json({ error: "failed" }); }
   });
   app.post("/api/projects/:projectId/deliverables", async (req, res) => {
@@ -3033,7 +3837,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         [req.params.projectId, title, b.type || null, b.status || "not_started", b.dueDate || null, b.orderIndex ?? null],
       );
       const d = r.rows[0];
-      res.status(201).json({ id: d.id, title: d.title, type: d.type, status: d.status, dueDate: d.due_date });
+      void learnDeliverableType(pool, req.params.projectId, d.title, d.type);
+      res.status(201).json({ id: d.id, title: d.title, type: d.type, status: d.status, dueDate: d.due_date, files: Array.isArray(d.files) ? d.files : [] });
     } catch (e) { console.error("POST deliverables", e); res.status(500).json({ error: "failed" }); }
   });
   app.patch("/api/projects/:projectId/deliverables/:id", async (req, res) => {
@@ -3041,16 +3846,52 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     try {
       await ensureSchema(pool);
       const b = req.body ?? {};
+      const oldRow = await pool.query(`SELECT title, type, checklist FROM project_workspace_deliverables WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]).catch(() => ({ rows: [] }));
+      const old = oldRow.rows[0];
+      // pg kan ikke binde JS-array til jsonb — må JSON.stringify + ::jsonb-cast,
+      // ellers feiler PATCH når checklist/files har innhold.
+      const checklistParam = Array.isArray(b.checklist) ? JSON.stringify(b.checklist.slice(0, 50)) : null;
+      const filesParam = b.files !== undefined && b.files !== null ? JSON.stringify(sanitizeDeliverableFiles(b.files)) : null;
       const r = await pool.query(
         `UPDATE project_workspace_deliverables SET title = COALESCE($1, title), type = COALESCE($2, type),
-            status = COALESCE($3, status), due_date = COALESCE($4, due_date), updated_at = NOW()
+            status = COALESCE($3, status), due_date = COALESCE($4, due_date), checklist = COALESCE($7::jsonb, checklist), files = COALESCE($8::jsonb, files), updated_at = NOW()
           WHERE id = $5 AND project_id = $6 RETURNING *`,
-        [b.title ?? null, b.type ?? null, b.status ?? null, b.dueDate ?? null, req.params.id, req.params.projectId],
+        [b.title ?? null, b.type ?? null, b.status ?? null, b.dueDate ?? null, req.params.id, req.params.projectId, checklistParam, filesParam],
       );
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
       const d = r.rows[0];
-      res.json({ id: d.id, title: d.title, type: d.type, status: d.status, dueDate: d.due_date });
+      // ML-hooks: lær type-valg og nye sjekkliste-standarder.
+      if (b.type && old && d.type !== old.type) void learnDeliverableType(pool, req.params.projectId, b.title || old.title, d.type);
+      if (Array.isArray(b.checklist)) {
+        const oldLabels = new Set((Array.isArray(old?.checklist) ? old.checklist : []).map((c: any) => c.label || c));
+        const added = (b.checklist as any[]).map((c: any) => c.label || c).filter((l: string) => l && !oldLabels.has(l));
+        void learnDeliverableCheck(pool, req.params.projectId, d.type, added);
+      }
+      res.json({ id: d.id, title: d.title, type: d.type, status: d.status, dueDate: d.due_date, checklist: Array.isArray(d.checklist) ? d.checklist : [], files: Array.isArray(d.files) ? d.files : [] });
     } catch (e) { console.error("PATCH deliverables", e); res.status(500).json({ error: "failed" }); }
+  });
+  // Last opp en fil direkte til en leveranse (versjon/master). Samme B2-mønster
+  // som /images og /video-versions/upload — men "Last opp versjon"-knappen i
+  // frontend (WsImageGrid) hadde ingen onUpload i det hele tatt: filen forsvant
+  // som en lokal blob-URL ved refresh, og accept="image/*" (default) blokkerte
+  // valg av video-/lydfiler — nettopp det en leveranse oftest ER.
+  app.post("/api/projects/:projectId/deliverables/:id/upload", guardMw, mediaUpload.single("file"), async (req, res) => {
+    const uid = (req as any)._guardUid; if (!uid) return;
+    try {
+      await ensureSchema(pool);
+      const file = (req as any).file;
+      if (!file || !file.buffer) return res.status(400).json({ error: "file_required" });
+      const existing = await pool.query(`SELECT files FROM project_workspace_deliverables WHERE id = $1 AND project_id = $2`, [req.params.id, req.params.projectId]).catch(() => ({ rows: [] }));
+      if (!existing.rows.length) return res.status(404).json({ error: "not_found" });
+      const key = `workspace/${req.params.projectId}/deliverables/${crypto.randomUUID()}-${slugifyForKey(file.originalname || "fil")}`;
+      const stored = await archiveToRoleRoomB2(key, file.buffer, file.mimetype || "application/octet-stream");
+      if (!stored) return res.status(502).json({ error: "b2_upload_failed" });
+      const url = await presignRoleRoomB2Download(key, undefined, 3600 * 24 * 7);
+      const entry = { kind: "upload", refId: crypto.randomUUID(), name: file.originalname || "Fil", url, at: new Date().toISOString() };
+      const nextFiles = sanitizeDeliverableFiles([...(Array.isArray(existing.rows[0].files) ? existing.rows[0].files : []), entry]);
+      await pool.query(`UPDATE project_workspace_deliverables SET files = $1::jsonb, updated_at = NOW() WHERE id = $2 AND project_id = $3`, [JSON.stringify(nextFiles), req.params.id, req.params.projectId]);
+      res.status(201).json({ file: entry, files: nextFiles });
+    } catch (e) { console.error("POST deliverables upload", e); res.status(500).json({ error: "failed" }); }
   });
   app.delete("/api/projects/:projectId/deliverables/:id", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
@@ -3108,8 +3949,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       await ensureNotesTable();
       const ctx = req.query?.context ? String(req.query.context).slice(0, 40) : null;
       const r = ctx
-        ? await pool.query(`SELECT id, context, body, author_name, created_at FROM project_workspace_notes WHERE project_id=$1 AND context=$2 ORDER BY created_at DESC LIMIT 100`, [req.params.projectId, ctx])
-        : await pool.query(`SELECT id, context, body, author_name, created_at FROM project_workspace_notes WHERE project_id=$1 ORDER BY created_at DESC LIMIT 100`, [req.params.projectId]);
+        ? await pool.query(`SELECT id, context, body, author_id, author_name, created_at FROM project_workspace_notes WHERE project_id=$1 AND context=$2 ORDER BY created_at DESC LIMIT 100`, [req.params.projectId, ctx])
+        : await pool.query(`SELECT id, context, body, author_id, author_name, created_at FROM project_workspace_notes WHERE project_id=$1 ORDER BY created_at DESC LIMIT 100`, [req.params.projectId]);
       res.json({ notes: r.rows });
     } catch (e) { console.error("GET notes", e); res.status(500).json({ error: "failed" }); }
   });
@@ -3136,5 +3977,65 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const uid = await guard(req, res); if (!uid) return;
     try { await ensureNotesTable(); await pool.query(`DELETE FROM project_workspace_notes WHERE id=$1 AND project_id=$2 AND author_id=$3`, [req.params.id, req.params.projectId, uid]); res.json({ success: true }); }
     catch (e) { console.error("DELETE notes", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ─────────── Live koordinering — aktivitets-feed (Produksjonskart høyre-panel) ───────────
+  // Puls for produksjonsdagen: hendelser, statusendringer, check-ins, notater og
+  // posisjonsdeling postes her av klienten og polles av alle åpne produksjonskart
+  // (15 s intervall). Prunes til de 500 nyeste per prosjekt.
+  const ensureActivityTable = () => pool.query(`CREATE TABLE IF NOT EXISTS project_coordination_activity (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id VARCHAR(64) NOT NULL,
+    type VARCHAR(24) NOT NULL,
+    message VARCHAR(500) NOT NULL,
+    actor_id VARCHAR(64),
+    actor_name VARCHAR(255),
+    meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`).catch(() => {});
+
+  const activityActorName = async (uid: string) => {
+    const nm = await pool.query(`SELECT COALESCE(NULLIF(TRIM(CONCAT(first_name,' ',last_name)),''), email) AS name FROM users WHERE id::text=$1 LIMIT 1`, [uid]).catch(() => ({ rows: [] }));
+    return nm.rows[0]?.name || null;
+  };
+
+  app.get("/api/projects/:projectId/coordination-activity", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureActivityTable();
+      const limit = Math.min(parseInt(String(req.query?.limit), 10) || 50, 200);
+      const r = await pool.query(
+        `SELECT id, type, message, actor_name, meta, created_at
+           FROM project_coordination_activity
+          WHERE project_id = $1
+          ORDER BY created_at DESC LIMIT $2`,
+        [req.params.projectId, limit],
+      );
+      res.json({ activities: r.rows.map((row: any) => ({
+        id: row.id, type: row.type, message: row.message, actorName: row.actor_name,
+        meta: row.meta || {}, createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+      })) });
+    } catch (e) { console.error("GET coordination-activity", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  app.post("/api/projects/:projectId/coordination-activity", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureActivityTable();
+      const type = String(req.body?.type || "note").slice(0, 24);
+      const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+      if (!message) return res.status(400).json({ error: "message_required" });
+      const meta = (req.body?.meta && typeof req.body.meta === "object") ? req.body.meta : {};
+      const name = await activityActorName(uid);
+      const r = await pool.query(
+        `INSERT INTO project_coordination_activity (project_id, type, message, actor_id, actor_name, meta)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+        [req.params.projectId, type, message.slice(0, 500), uid, name, JSON.stringify(meta)],
+      );
+      pool.query(`DELETE FROM project_coordination_activity WHERE id NOT IN (
+        SELECT id FROM project_coordination_activity WHERE project_id = $1 ORDER BY created_at DESC LIMIT 500
+      ) AND project_id = $1`, [req.params.projectId]).catch(() => {});
+      res.status(201).json({ id: r.rows[0]?.id });
+    } catch (e) { console.error("POST coordination-activity", e); res.status(500).json({ error: "failed" }); }
   });
 }
