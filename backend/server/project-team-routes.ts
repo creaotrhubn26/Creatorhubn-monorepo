@@ -78,8 +78,12 @@ export async function canAccessProject(
 ): Promise<boolean> {
   if (!userId || !projectId) return false;
   try {
+    // Eierskap ligger i public.projects ELLER legacy.projects (workspace-
+    // prosjekter opprettes i legacy) — sjekk begge, ellers 403-er alle
+    // eier-scopede workspace-ruter for helt vanlige prosjekter.
     const owner = await pool.query(
-      `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
+      `SELECT 1 WHERE EXISTS(SELECT 1 FROM projects WHERE id::text = $1 AND user_id::text = $2)
+                  OR EXISTS(SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2)`,
       [projectId, userId],
     );
     if ((owner.rowCount ?? 0) > 0) return true;
@@ -97,7 +101,11 @@ export async function canAccessProject(
 }
 
 async function isProjectOwner(pool: any, userId: string, projectId: string): Promise<boolean> {
-  const r = await pool.query(`SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`, [projectId, userId]);
+  const r = await pool.query(
+    `SELECT 1 WHERE EXISTS(SELECT 1 FROM projects WHERE id::text = $1 AND user_id::text = $2)
+                OR EXISTS(SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2)`,
+    [projectId, userId],
+  );
   return (r.rowCount ?? 0) > 0;
 }
 
