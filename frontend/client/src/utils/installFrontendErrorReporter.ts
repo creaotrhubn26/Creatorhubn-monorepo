@@ -133,6 +133,11 @@ export function installFrontendErrorReporter(): void {
   window.addEventListener("unhandledrejection", (event) => {
     const reason = event.reason;
     const err = reason instanceof Error ? reason : null;
+    // AbortError er normal kansellering (navigasjon, avbrutt søk, utvidelser
+    // som kloner fetch) — benign, skal ikke fylle konsoll/rapporter.
+    if (err?.name === "AbortError" || /abort/i.test(err?.message ?? String(reason ?? ""))) {
+      return;
+    }
     void reportError({
       message: err?.message ?? String(reason) ?? "Unhandled promise rejection",
       stack: err?.stack,

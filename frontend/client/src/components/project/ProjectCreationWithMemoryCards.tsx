@@ -1913,22 +1913,22 @@ useEffect(() => {
   const [addProjectTypeDialogOpen, setAddProjectTypeDialogOpen] = useState(false);
 
   useEffect(() => {
-    const controller = new AbortController();
-    const run = async () => {
+    // Debounce + stale-drop i stedet for abort: abort per tastetrykk ga
+    // AbortError-spam via nettleserutvidelser som kloner fetch-promiset
+    // uten catch. Utdaterte svar droppes bare.
+    if (!contactQuery || contactQuery.length < 2) return undefined;
+    let stale = false;
+    const timer = window.setTimeout(async () => {
       try {
-        if (!contactQuery || contactQuery.length < 2) return;
-        const res = await fetch(`/api/google/people/search-contacts?q=${encodeURIComponent(contactQuery)}`, { signal: controller.signal });
-        if (res.ok) {
-          const data = await res.json();
-          setContactOptions(data || []);
-        }
+        const res = await fetch(`/api/google/people/search-contacts?q=${encodeURIComponent(contactQuery)}`);
+        if (stale || !res.ok) return;
+        const data = await res.json();
+        if (!stale) setContactOptions(Array.isArray(data) ? data : []);
       } catch (searchErr) {
-        // Contact search can fail when aborted or offline
         console.debug('Contact search skipped:', searchErr);
       }
-    };
-    run();
-    return () => controller.abort();
+    }, 300);
+    return () => { stale = true; window.clearTimeout(timer); };
   }, [contactQuery]);
 
   useEffect(() => {
@@ -3423,11 +3423,16 @@ useEffect(() => {
                         companyName: ', '
                       })
                     });
-                    if (!createRes.ok) throw new Error('Create contact failed');
+                    if (!createRes.ok) {
+                      const body = await createRes.json().catch(() => null);
+                      throw new Error(body?.error || 'Kunne ikke legge til kontakt');
+                    }
                     showSuccessToast('Kontakt lagt til i Google Kontakter');
                   } catch (contactErr) {
                     console.error('Failed to add contact:', contactErr);
-                    showErrorToast('Kunne ikke legge til kontakt');
+                    // Vis backend-forklaringen (f.eks. «mangler Google Kontakter-
+                    // tilgang — koble på nytt») i stedet for generisk melding.
+                    showErrorToast(contactErr instanceof Error ? contactErr.message : 'Kunne ikke legge til kontakt', 6000);
                   }
                 }}
               >
