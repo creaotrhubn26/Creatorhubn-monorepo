@@ -1,0 +1,80 @@
+{
+  "$schema": "internal://creatorhub-engineering/deploy-targets",
+  "$doc": "Hvilken gren som deployer hvilket nettsted. Leses av CreatorHub Engineering (SessionStart-hook + deploy-routing-skill) slik at endringer havner på riktig merke. Oppdater denne når et merke får ny gren, nytt domene eller nye eierstier.",
+  "repo": "Creatorhubn-monorepo",
+  "backend": {
+    "$doc": "Felles for ALLE merker — deployes automatisk fra main via Render. Et frosset frontend-merke kan derfor likevel påvirkes av backend-endringer.",
+    "host": "Render",
+    "branch": "main",
+    "url": "https://creatorhub-backend-rtbl.onrender.com",
+    "paths": ["backend/"]
+  },
+  "targets": [
+    {
+      "brand": "CreatorHub",
+      "branch": "main",
+      "netlifySite": "creatorhub-frontend-mig",
+      "domains": ["creatorhubn.com", "www.creatorhubn.com"],
+      "autoDeploy": true,
+      "note": "Hovedproduktet. Merge til main går rett i produksjon.",
+      "paths": [
+        "frontend/client/src/components/workspace/",
+        "frontend/client/src/components/admin/",
+        "frontend/client/src/components/project/",
+        "frontend/client/src/pages/MinProfil.tsx",
+        "frontend/client/src/pages/AdminWorkspace.tsx"
+      ]
+    },
+    {
+      "brand": "Leadgrid",
+      "branch": "live/leadgrid",
+      "netlifySite": "leadgrid-no",
+      "domains": ["leadgrid.no"],
+      "autoDeploy": false,
+      "note": "Deployes KUN når du promoterer. Bruk workflowen «Promoter merke».",
+      "paths": [
+        "frontend/client/src/components/leadgrid/",
+        "frontend/client/src/pages/leadgrid-*",
+        "backend/server/leadgrid-*",
+        "backend/server/lead-*",
+        "ipad/LeadMapApp/"
+      ]
+    },
+    {
+      "brand": "Role Room",
+      "branch": "live/roleroom",
+      "netlifySite": "theroleroom",
+      "domains": ["theroleroom.com"],
+      "autoDeploy": false,
+      "note": "Deployes KUN når du promoterer. Bruk workflowen «Promoter merke».",
+      "paths": [
+        "frontend/client/src/components/role-room/",
+        "frontend/client/src/pages/theroleroom-landing.tsx",
+        "backend/server/role-room-*"
+      ]
+    }
+  ],
+  "shared": {
+    "$doc": "Endres disse, treffer det ALLE merker — vurder å promotere alle etter verifisering.",
+    "paths": [
+      "frontend/client/src/App.tsx",
+      "frontend/client/src/main.tsx",
+      "frontend/client/src/lib/",
+      "frontend/client/src/hooks/",
+      "frontend/client/src/contexts/",
+      "frontend/client/index.html",
+      "frontend/vite.config.ts",
+      "netlify.toml",
+      "netlify/edge-functions/",
+      "package.json",
+      "package-lock.json"
+    ]
+  },
+  "promote": {
+    "workflow": ".github/workflows/promote-brand.yml",
+    "displayName": "Promoter merke",
+    "how": "GitHub → Actions → «Promoter merke» → Run workflow → velg leadgrid.no / theroleroom.com / begge (valgfri commit, default main-HEAD).",
+    "cli": "gh workflow run promote-brand.yml -f brand=leadgrid.no"
+  },
+  "why": "Alle tre nettstedene bygde tidligere samme bundle fra main, så hver push deployet alle tre. 2026-08-24 sprengte det Netlify-kredittkvoten (555 produksjonsdeployer = 8325 kreditter mot 5000/mnd) og hele teamet ble sperret med usage_exceeded — alle domener nede samtidig. Gren-isolasjonen kutter forbruket og hindrer at en regresjon på main når de andre merkene."
+}
