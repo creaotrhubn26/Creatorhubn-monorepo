@@ -329,7 +329,7 @@ export default function ProjectHealthCheck({
 };
 
   const professionIcons = {
-    photographer: CameraAt,
+    photographer: CameraAlt,
     videographer: VideoCall,
     music_producer: MusicNote,
     vendor: Store

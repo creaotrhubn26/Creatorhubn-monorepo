@@ -139,6 +139,17 @@ export function setupGooglePeopleRoutes(
     };
   }
 
+
+  // Kjente tilkoblingsfeil (ingen/utløpt Google-kobling) er 409, ikke 500 —
+  // frontenden viser hint i stedet for å audit-flagge serverfeil.
+  function respondPeopleError(res: express.Response, error: unknown): express.Response {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/koblet|kobling|connection|invalid_grant|No refresh token|Fant ingen/i.test(message)) {
+      return res.status(409).json({ error: message });
+    }
+    return res.status(500).json({ error: message || "Google People-kall feilet" });
+  }
+
   async function buildGooglePeopleClient(
     req: express.Request,
     payload?: Record<string, unknown>,
@@ -363,12 +374,7 @@ export function setupGooglePeopleRoutes(
       return res.json(contacts);
     } catch (error) {
       console.error("Google contact search error:", error);
-      return res.status(500).json({
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to search contacts",
-      });
+      return respondPeopleError(res, error);
     }
   });
 
@@ -462,12 +468,7 @@ export function setupGooglePeopleRoutes(
       });
     } catch (error) {
       console.error("Create Google contact error:", error);
-      return res.status(500).json({
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to create contact",
-      });
+      return respondPeopleError(res, error);
     }
   });
 
@@ -580,12 +581,7 @@ export function setupGooglePeopleRoutes(
         });
       } catch (error) {
         console.error("Update Google contact error:", error);
-        return res.status(500).json({
-          error:
-            error instanceof Error
-              ? error.message
-              : "Failed to update contact",
-        });
+        return respondPeopleError(res, error);
       }
     },
   );
@@ -640,12 +636,7 @@ export function setupGooglePeopleRoutes(
         return res.json({ success: true, contactId, photoUrl });
       } catch (error) {
         console.error("Set Google contact photo error:", error);
-        return res.status(500).json({
-          error:
-            error instanceof Error
-              ? error.message
-              : "Failed to set contact photo",
-        });
+        return respondPeopleError(res, error);
       }
     },
   );
@@ -758,12 +749,7 @@ export function setupGooglePeopleRoutes(
         });
       } catch (error) {
         console.error("Showcase Google contacts sync error:", error);
-        return res.status(500).json({
-          error:
-            error instanceof Error
-              ? error.message
-              : "Failed to sync showcase contacts",
-        });
+        return respondPeopleError(res, error);
       }
     },
   );
