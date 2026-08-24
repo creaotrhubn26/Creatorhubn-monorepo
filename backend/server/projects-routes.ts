@@ -664,8 +664,8 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     if (!isUuid(_callerId)) return res.status(401).json({ error: "unauthorized" });
     try {
       const result = await pool.query(
-        "DELETE FROM legacy.projects WHERE id = $1 AND created_by = $2 RETURNING id",
-        [req.params.id],
+        "DELETE FROM legacy.projects WHERE id = $1 AND user_id = $2 RETURNING id",
+        [req.params.id, _callerId],
       );
       if (result.rowCount === 0) {
         return res.status(404).json({ error: "Prosjekt ikke funnet" });
