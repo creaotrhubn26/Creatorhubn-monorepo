@@ -582,7 +582,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
     return (
       <Chip key={key} size="small" icon={meta.icon} label={t(meta.dictKey)} onClick={() => setTag(active ? null : key)}
         variant={active ? 'filled' : 'outlined'} aria-pressed={active}
-        sx={{ cursor: 'pointer', color: active ? meta.color : ws.textDim, bgcolor: active ? meta.soft : 'transparent', borderColor: active ? meta.border : ws.border, '& .MuiChip-icon': { color: active ? meta.color : ws.textDim } }} />
+        sx={{ cursor: 'pointer', flexShrink: 0, color: active ? meta.color : ws.textDim, bgcolor: active ? meta.soft : 'transparent', borderColor: active ? meta.border : ws.border, '& .MuiChip-icon': { color: active ? meta.color : ws.textDim } }} />
     );
   };
 
@@ -1012,13 +1012,15 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
           </IconButton>
         </Stack>
         <Stack direction="row" spacing={1} sx={{ mt: 1 }} justifyContent="space-between">
-          <Stack direction="row" spacing={0.5}>
+          <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
             <input ref={fileRef} type="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,audio/*,video/*" hidden onChange={(e) => { void uploadImage(e.target.files?.[0]); e.target.value = ''; }} />
             <Tooltip title={t('attach')}><span><IconButton size="small" aria-label={t('attach')} disabled={uploading} onClick={() => fileRef.current?.click()} sx={{ color: ws.textDim }}>{uploading ? <CircularProgress size={16} /> : <AttachFile sx={{ fontSize: 17 }} />}</IconButton></span></Tooltip>
             <Tooltip title={t('mention')}><IconButton size="small" aria-label={t('mention')} onClick={(e) => { setMentionMode(true); setMembersAnchor(e.currentTarget); }} sx={{ color: ws.textDim }}><AlternateEmail sx={{ fontSize: 17 }} /></IconButton></Tooltip>
             <Tooltip title={t('emoji')}><IconButton size="small" aria-label={t('emoji')} onClick={(e) => setEmojiAnchor(e.currentTarget)} sx={{ color: ws.textDim }}><EmojiEmotions sx={{ fontSize: 17 }} /></IconButton></Tooltip>
           </Stack>
-          <Stack direction="row" spacing={0.5}>
+          {/* Merkelappene må alltid kunne nås — i smale paneler klippes raden,
+              så den er horisontalt skrollbar med tynn scrollbar. */}
+          <Stack direction="row" spacing={0.5} sx={{ minWidth: 0, overflowX: 'auto', pb: 0.25, '&::-webkit-scrollbar': { height: 4 }, '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(255,255,255,0.18)', borderRadius: 2 }, scrollbarWidth: 'thin' }}>
             {['update', 'question', 'important'].map(tagBtn)}
           </Stack>
         </Stack>
