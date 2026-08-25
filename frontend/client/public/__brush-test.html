@@ -1,0 +1,118 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Penselmotor-test</title>
+<style>
+  body{background:#1a1c20;color:#ddd;font:13px/1.5 -apple-system,sans-serif;margin:20px}
+  canvas{background:#f5f2ea;border-radius:6px;margin:6px}
+  #status{white-space:pre-line;font-family:monospace;color:#9f9}
+</style>
+<h3>Ekte stampEngine + AdvancedBrushEngine — commit-rendering</h3>
+<div id="status">laster moduler…</div>
+<div id="row"></div>
+<script type="module">
+import { renderStrokeStamped, getStampConfigForBrush, createSeededRng, hashStringToSeed }
+  from '/src/components/role-room/components/stampEngine.ts';
+import { AdvancedBrushEngine }
+  from '/src/components/role-room/components/drawing/AdvancedBrushEngine.tsx';
+
+const W = 640, H = 400, DPR = 2;
+const status = document.getElementById('status');
+const log = (s) => { status.textContent += '\n' + s; };
+status.textContent = 'moduler lastet ✓';
+
+const mkCanvas = (label) => {
+  const wrap = document.createElement('div');
+  wrap.style.display = 'inline-block';
+  const c = document.createElement('canvas');
+  c.width = W * DPR; c.height = H * DPR;
+  c.style.width = W + 'px'; c.style.height = H + 'px';
+  const t = document.createElement('div'); t.textContent = label;
+  wrap.append(c, t);
+  document.getElementById('row').append(wrap);
+  const ctx = c.getContext('2d');
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.fillStyle = '#f5f2ea'; ctx.fillRect(0, 0, W, H);
+  return { c, ctx };
+};
+
+const mkStroke = (id, pts, type, size, color, opacity, grain) => ({
+  id,
+  points: pts.map(([x, y, p], i) => ({ x, y, pressure: p ?? 0.7, tiltX: 30, tiltY: 10, timestamp: i })),
+  color, width: size, opacity,
+  brush: { type, size, color, opacity, hardness: 0.4, flow: 0.9, wetness: 0, grain, tiltSensitivity: 0.6, pressureSensitivity: 0.9 },
+});
+
+// Krysskravering: n strøk i to retninger
+const hatchStrokes = (n, type, grain) => {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const d = (i % 2 === 0);
+    const o = (i * 7919) % 560;
+    const pts = [];
+    for (let s = 0; s <= 8; s++) {
+      const t = s / 8;
+      pts.push(d
+        ? [40 + o + t * 90, 40 + t * 320, 0.35 + 0.6 * Math.sin(t * Math.PI)]
+        : [40 + o + 90 - t * 90, 40 + t * 320, 0.35 + 0.6 * Math.sin(t * Math.PI)]);
+    }
+    out.push(mkStroke('h' + i, pts, type, 3.5, '#2b2d33', 0.85, grain));
+  }
+  return out;
+};
+
+const renderAll = (ctx, strokes, engine) => {
+  for (const s of strokes) {
+    const cfg = getStampConfigForBrush(s.brush.type);
+    if (cfg) renderStrokeStamped(ctx, s.points, s.brush, cfg, s.id);
+    else engine.renderStroke(ctx, s.points, s.brush, s.id);
+  }
+};
+
+// 1) Determinisme: render samme 300 charcoal-strøk to ganger → identisk hash?
+const a = mkCanvas('pass 1 — charcoal ×300');
+const b = mkCanvas('pass 2 — skal være identisk');
+const engineA = new AdvancedBrushEngine(a.ctx.canvas.getContext('2d'));
+const strokes = hatchStrokes(300, 'charcoal', 0.85);
+const t0 = performance.now();
+renderAll(a.ctx, strokes, engineA);
+const t1 = performance.now();
+renderAll(b.ctx, strokes, engineA);
+const t2 = performance.now();
+const hash = (c) => { let h = 0; const d = c.getContext('2d').getImageData(0, 0, 200, 200).data; for (let i = 0; i < d.length; i += 97) h = (h * 31 + d[i]) | 0; return h; };
+const same = hash(a.c) === hash(b.c);
+log(`300 charcoal-strøk: pass1 ${(t1 - t0).toFixed(0)}ms, pass2 ${(t2 - t1).toFixed(0)}ms`);
+log(`determinisme (samme seed → samme piksler): ${same ? 'BESTÅTT ✓' : 'FEILET ✗'}`);
+
+// 2) Grain-semantikk: lav vs høy grain på graphite — høy skal være grovere, ikke blekere
+const g = mkCanvas('graphite grain 0.1 (øverst) vs 0.9 (nederst)');
+const engineG = new AdvancedBrushEngine(g.ctx.canvas.getContext('2d'));
+for (let i = 0; i < 6; i++) {
+  const y1 = 50 + i * 25, y2 = 240 + i * 25;
+  const p = (y) => Array.from({ length: 9 }, (_, s) => [60 + s * 65, y + Math.sin(s) * 6, 0.75]);
+  renderAll(g.ctx, [mkStroke('lo' + i, p(y1), 'graphite', 9, '#2b2d33', 0.9, 0.1)], engineG);
+  renderAll(g.ctx, [mkStroke('hi' + i, p(y2), 'graphite', 9, '#2b2d33', 0.9, 0.9)], engineG);
+}
+const meanDark = (c, y0) => { const d = c.getContext('2d').getImageData(0, y0 * DPR, W * DPR, 150 * DPR).data; let sum = 0, n = 0; for (let i = 0; i < d.length; i += 4) { if (d[i + 3] > 0) { sum += 255 - d[i]; n++; } } return n ? (sum / n).toFixed(1) : '0'; };
+log(`graphite mørkhet: grain 0.1 → ${meanDark(g.c, 40)}, grain 0.9 → ${meanDark(g.c, 230)} (skal være i samme størrelsesorden, ikke kollapse)`);
+
+// 3) Ytelse ved kryss-skravering: 3000 pencil-strøk
+const perf = mkCanvas('pencil ×3000 krysskravering');
+const engineP = new AdvancedBrushEngine(perf.ctx.canvas.getContext('2d'));
+const big = hatchStrokes(3000, 'pencil', 0.6);
+const t3 = performance.now();
+renderAll(perf.ctx, big, engineP);
+const t4 = performance.now();
+log(`3000 pencil-strøk full render: ${(t4 - t3).toFixed(0)}ms (inkrementell append i appen tegner bare NYE strøk)`);
+
+// 4) Alle tørrpensler side ved side
+const pal = mkCanvas('pencil/graphite/charcoal/conte/ink/marker/watercolor');
+const engineX = new AdvancedBrushEngine(pal.ctx.canvas.getContext('2d'));
+const typer = ['pencil', 'graphite', 'charcoal', 'conte', 'ink', 'marker', 'watercolor'];
+typer.forEach((type, i) => {
+  const y = 45 + i * 50;
+  const pts = Array.from({ length: 14 }, (_, s) => [50 + s * 40, y + Math.sin(s * 0.8) * 14, 0.25 + 0.7 * Math.sin((s / 13) * Math.PI)]);
+  renderAll(pal.ctx, [mkStroke('t' + i, pts, type, 11, '#26282e', 0.95, 0.7)], engineX);
+});
+log('palett rendret — visuell sjekk under');
+log('FERDIG');
+</script>

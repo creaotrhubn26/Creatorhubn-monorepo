@@ -1,0 +1,66 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>TROLL storyboards v2 — avanserte pensler</title>
+<style>
+  body{background:#191b1f;color:#ddd;font:14px/1.5 -apple-system,sans-serif;margin:24px}
+  h1{font-size:18px;font-weight:600}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:22px;max-width:1500px}
+  figure{margin:0}
+  canvas{width:100%;background:#f5f2ea;border-radius:6px;box-shadow:0 2px 10px #0006}
+  figcaption{margin-top:6px;color:#9aa;font-size:13px}
+</style>
+<h1>TROLL — 16 storyboards, avansert penselmotor (pencil/graphite/charcoal/conté/ink/marker/watercolor)</h1>
+<div class="grid" id="grid"></div>
+<script>
+const ORDER = ['1A','1B','2A','3A','4A','4B','4C','5A','6A','7A','8A','8B','9A','9B','10A','10B'];
+const TITLER = {
+ '1A':'WIDE: Tunneldybden','1B':'CLOSE-UP: Boret treffer hulrom','2A':'DUTCH: Ras i tunnelen',
+ '3A':'MEDIUM: Nora ved fossil-skanning','4A':'WIDE: Møterommet','4B':'OTS: Nora forklarer',
+ '4C':'CLOSE-UP: Generalens blikk','5A':'TRACKING: Jeep mot fjellet','6A':'MEDIUM: Bonden i fjøset',
+ '7A':'WIDE: Situasjonsrommet','8A':'EXTREME WIDE: Trollet over åskam','8B':'LOW ANGLE: Trollets fot',
+ '9A':'AERIAL: Drone over skog','9B':'TRACKING: Sprint gjennom skogen',
+ '10A':'WIDE: Hytten, peisens lys','10B':'CLOSE-UP: Tobias forteller'};
+
+// Approksimerer appens penselmotor (AdvancedBrushEngine + drawStrokeToCanvas):
+// pressure styrer bredde+opacity; grain = flere lette pass med jitter;
+// watercolor = brede våte lag; marker = bred halvtransparent; ink = skarp.
+function tegnStroke(ctx, s){
+  const b = s.brush || {type:'pencil'};
+  const pts = s.points; if(!pts || pts.length < 2) return;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const passes = {pencil:2, graphite:2, charcoal:3, conte:2, ink:1, marker:1, watercolor:3}[b.type] ?? 1;
+  const spread = {pencil:1.2, graphite:1.8, charcoal:2.6, conte:1.6, ink:0, marker:0, watercolor:3.5}[b.type] ?? 0;
+  for(let p=0; p<passes; p++){
+    const ox = (Math.random()-0.5)*spread*2, oy = (Math.random()-0.5)*spread*2;
+    for(let i=1; i<pts.length; i++){
+      const a = pts[i-1], c = pts[i];
+      const pr = (a.pressure + c.pressure)/2;
+      let w = s.width * (0.55 + 0.75*pr);
+      let alpha = (s.opacity ?? 1) * (0.6 + 0.4*pr) / Math.sqrt(passes);
+      if(b.type==='marker'){ w *= 1.9; alpha = (s.opacity ?? 1)*0.85; }
+      if(b.type==='watercolor'){ w *= 2.4; alpha = (s.opacity ?? 1)*0.5/passes; }
+      if(b.type==='charcoal'){ w *= 1.35; }
+      if(b.type==='ink'){ w = s.width*(0.6+0.55*pr); alpha = (s.opacity ?? 1); }
+      ctx.strokeStyle = s.color; ctx.globalAlpha = Math.min(1, alpha);
+      ctx.lineWidth = Math.max(0.5, w);
+      ctx.beginPath(); ctx.moveTo(a.x+ox, a.y+oy); ctx.lineTo(c.x+ox, c.y+oy); ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+fetch('/__troll-tegninger-v2.json').then(r=>r.json()).then(F=>{
+  const grid = document.getElementById('grid');
+  for(const shot of ORDER){
+    const fig = document.createElement('figure');
+    const cv = document.createElement('canvas'); cv.width = 1920; cv.height = 1080;
+    const cap = document.createElement('figcaption');
+    const antall = (F[shot]||[]).length;
+    cap.textContent = shot + ' — ' + (TITLER[shot]||'') + '  (' + antall + ' strokes)';
+    fig.append(cv, cap); grid.append(fig);
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#f5f2ea'; ctx.fillRect(0,0,1920,1080);
+    for(const s of (F[shot]||[])) tegnStroke(ctx, s);
+  }
+});
+</script>
