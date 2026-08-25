@@ -381,6 +381,7 @@ function StickyHeader() {
               { label: 'Løsninger', href: '#løsninger' },
               { label: 'Connectors', href: '/leadgrid/connectors' },
               { label: 'Importér', href: '/leadgrid/import' },
+              { label: 'Blogg', href: 'https://leadgrid.no/blog' },
               { label: 'Priser', href: '#priser' },
               { label: 'Demo', href: '#demo' },
             ]).map((item) => (
@@ -1872,6 +1873,7 @@ function Footer() {
             {
               title: 'Ressurser',
               links: [
+                { label: 'Blogg', href: 'https://leadgrid.no/blog' },
                 { label: 'Leadgrid Akademi', href: '/leadgrid/akademi' },
                 { label: 'Slik skaffer du leads', href: '/leadgrid/skaffe-leads-guide' },
               ],

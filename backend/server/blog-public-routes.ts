@@ -7,6 +7,8 @@
  * Endepunkter:
  *   GET  /api/public/blog                — list publiserte artikler
  *   GET  /api/public/blog/:slug          — hent enkel artikkel
+ *   GET  /api/public/leadgrid/blog       — list publiserte Leadgrid-artikler
+ *   GET  /api/public/leadgrid/blog/:slug — hent enkel Leadgrid-artikkel
  *
  * Brukes av:
  *   - /blog index-side
@@ -23,8 +25,125 @@ export interface BlogPublicRoutesDeps {
   pool: Pool;
 }
 
+function estimateReadingMinutes(markdown: unknown): number {
+  const wordCount = String(markdown ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+  return Math.max(1, Math.ceil(wordCount / 200));
+}
+
 export function setupBlogPublicRoutes(deps: BlogPublicRoutesDeps): void {
   const { app, pool } = deps;
+
+  // Leadgrid har en egen, eldre blog_posts-tabell. Hold den eksplisitt
+  // separert fra Role Rooms cms_pages slik at hostene aldri lekker innhold
+  // eller branding til hverandre.
+  app.get("/api/public/leadgrid/blog", async (req, res) => {
+    const category =
+      typeof req.query.category === "string"
+        ? req.query.category
+        : typeof req.query.pillar === "string"
+          ? req.query.pillar
+          : null;
+    const parsedLimit = Number(req.query.limit ?? 50);
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.max(1, Math.min(Math.trunc(parsedLimit), 200))
+      : 50;
+
+    try {
+      const params: unknown[] = [];
+      let categoryFilter = "";
+      if (category) {
+        params.push(category);
+        categoryFilter = ` AND category = $${params.length}`;
+      }
+      params.push(limit);
+
+      const result = await pool.query(
+        `SELECT slug, title, excerpt, content, cover_image,
+                category, tags, author, published_at, updated_at
+           FROM blog_posts
+          WHERE published = TRUE
+            AND (published_at IS NULL OR published_at <= NOW())
+            ${categoryFilter}
+          ORDER BY featured DESC, published_at DESC NULLS LAST, updated_at DESC
+          LIMIT $${params.length}`,
+        params,
+      );
+
+      return res.json({
+        articles: result.rows.map(({ content, category: rowCategory, ...row }) => ({
+          ...row,
+          public_slug: String(row.slug),
+          pillar: rowCategory,
+          reading_minutes: estimateReadingMinutes(content),
+        })),
+      });
+    } catch (err) {
+      console.error("[leadgrid-blog] list failed", err);
+      return res.status(500).json({ error: "Kunne ikke hente Leadgrid-artikler" });
+    }
+  });
+
+  app.get("/api/public/leadgrid/blog/:slug", async (req, res) => {
+    const requestedSlug = req.params.slug;
+
+    try {
+      const result = await pool.query(
+        `SELECT slug, title, excerpt, content, cover_image,
+                category, tags, author, published_at, updated_at
+           FROM blog_posts
+          WHERE published = TRUE
+            AND (published_at IS NULL OR published_at <= NOW())
+            AND slug = $1
+          LIMIT 1`,
+        [requestedSlug],
+      );
+      if (!result.rowCount) {
+        return res.status(404).json({ error: "Artikkel ikke funnet" });
+      }
+
+      const row = result.rows[0];
+      const related = await pool.query(
+        `SELECT slug, title, excerpt, published_at
+           FROM blog_posts
+          WHERE published = TRUE
+            AND (published_at IS NULL OR published_at <= NOW())
+            AND slug != $1
+            AND category IS NOT DISTINCT FROM $2
+          ORDER BY featured DESC, published_at DESC NULLS LAST, updated_at DESC
+          LIMIT 3`,
+        [row.slug, row.category],
+      );
+
+      return res.json({
+        article: {
+          slug: row.slug,
+          public_slug: String(row.slug),
+          title: row.title,
+          subtitle: null,
+          excerpt: row.excerpt,
+          pillar: row.category,
+          author: row.author,
+          author_role: null,
+          published_at: row.published_at,
+          updated_at: row.updated_at,
+          reading_minutes: estimateReadingMinutes(row.content),
+          cover_image: row.cover_image,
+          tags: row.tags ?? [],
+          body_markdown: row.content ?? "",
+        },
+        related: related.rows.map((relatedRow) => ({
+          ...relatedRow,
+          public_slug: String(relatedRow.slug),
+        })),
+      });
+    } catch (err) {
+      console.error("[leadgrid-blog] get failed", err);
+      return res.status(500).json({ error: "Kunne ikke hente Leadgrid-artikkel" });
+    }
+  });
 
   // ── GET /api/public/blog ────────────────────────────────────────
   // Returnerer alle publiserte blog-artikler sortert nyeste først.

@@ -16,6 +16,8 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useEffect, useState } from 'react';
 import { useRoute } from 'wouter';
 import { trackPageView, trackEvent } from '@/utils/ga4-client-tracking';
+import { isLeadgridDedicatedHost } from '@/components/role-room/utils/runtime';
+import type { BlogSurface } from './blog-index';
 
 const palette = {
   bgRoot: '#0a0118',
@@ -39,6 +41,7 @@ const PILLAR_LABELS: Record<string, string> = {
   ai: 'AI i casting',
   survey: 'Bransje-innsikt',
   cases: 'Case studies',
+  product: 'Produktnytt',
 };
 
 const PILLAR_COLORS: Record<string, string> = {
@@ -48,6 +51,7 @@ const PILLAR_COLORS: Record<string, string> = {
   ai: '#c084fc',
   survey: '#f87171',
   cases: '#e879f9',
+  product: '#a78bfa',
 };
 
 interface Article {
@@ -75,9 +79,23 @@ interface Related {
   published_at: string | null;
 }
 
-export default function BlogPostPage() {
+interface BlogPostPageProps {
+  surface?: BlogSurface;
+  slug?: string;
+}
+
+export default function BlogPostPage({
+  surface = 'role-room',
+  slug: suppliedSlug,
+}: BlogPostPageProps) {
   const [, params] = useRoute<{ slug: string }>('/blog/:slug');
-  const slug = params?.slug ?? '';
+  const slug = suppliedSlug ?? params?.slug ?? '';
+  const isLeadgrid = surface === 'leadgrid';
+  const blogBasePath = isLeadgrid
+    && typeof window !== 'undefined'
+    && !isLeadgridDedicatedHost(window.location.hostname)
+    ? '/leadgrid/blog'
+    : '/blog';
   const [article, setArticle] = useState<Article | null>(null);
   const [related, setRelated] = useState<Related[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,7 +105,8 @@ export default function BlogPostPage() {
     if (!slug) return;
     let cancelled = false;
     setLoading(true);
-    fetch(`/api/public/blog/${encodeURIComponent(slug)}`)
+    const endpoint = isLeadgrid ? '/api/public/leadgrid/blog' : '/api/public/blog';
+    fetch(`${endpoint}/${encodeURIComponent(slug)}`)
       .then(async (r) => {
         if (r.status === 404) throw new Error('not_found');
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -105,19 +124,19 @@ export default function BlogPostPage() {
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [slug]);
+  }, [isLeadgrid, slug]);
 
   // GA4 page-view + article-view-event.
   useEffect(() => {
     if (!article) return;
-    trackPageView(`/blog/${article.public_slug}`, article.title);
+    trackPageView(`${blogBasePath}/${article.public_slug}`, article.title);
     trackEvent('blog_article_view', {
       slug: article.public_slug,
       pillar: article.pillar ?? 'unknown',
       reading_minutes: article.reading_minutes,
-      surface: 'blog_post',
+      surface: isLeadgrid ? 'leadgrid_blog_post' : 'blog_post',
     });
-  }, [article]);
+  }, [article, blogBasePath, isLeadgrid]);
 
   // GA4 scroll-depth — fire ved 25/50/75/100%.
   useEffect(() => {
@@ -131,7 +150,7 @@ export default function BlogPostPage() {
         if (pct >= threshold && !fired.has(threshold)) {
           fired.add(threshold);
           trackEvent('scroll_depth', {
-            surface: 'blog_post',
+            surface: isLeadgrid ? 'leadgrid_blog_post' : 'blog_post',
             slug: article.public_slug,
             depth_pct: threshold,
           });
@@ -140,13 +159,15 @@ export default function BlogPostPage() {
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  }, [article]);
+  }, [article, isLeadgrid]);
 
   // SEO + Open Graph + JSON-LD BlogPosting
   useEffect(() => {
     if (!article) return;
     const previousTitle = document.title;
-    document.title = `${article.title} — The Role Room`;
+    const publisherName = isLeadgrid ? 'Leadgrid' : 'The Role Room';
+    const publisherUrl = isLeadgrid ? 'https://leadgrid.no' : 'https://theroleroom.com';
+    document.title = `${article.title} — ${publisherName}`;
 
     const upsertMeta = (name: string, content: string, isProp = false) => {
       const attr = isProp ? 'property' : 'name';
@@ -161,7 +182,7 @@ export default function BlogPostPage() {
     };
 
     const description = article.excerpt ?? article.subtitle ?? '';
-    const articleUrl = `https://theroleroom.com/blog/${article.public_slug}`;
+    const articleUrl = `${publisherUrl}/blog/${article.public_slug}`;
     const tags = [
       upsertMeta('description', description),
       upsertMeta('og:title', article.title, true),
@@ -174,7 +195,7 @@ export default function BlogPostPage() {
       upsertMeta('twitter:title', article.title),
       upsertMeta('twitter:description', description),
       upsertMeta('article:published_time', article.published_at ?? '', true),
-      upsertMeta('article:author', article.author ?? 'The Role Room', true),
+      upsertMeta('article:author', article.author ?? publisherName, true),
     ];
 
     // JSON-LD BlogPosting
@@ -187,13 +208,13 @@ export default function BlogPostPage() {
       dateModified: article.updated_at,
       author: {
         '@type': 'Person',
-        name: article.author ?? 'The Role Room',
+        name: article.author ?? publisherName,
         ...(article.author_role ? { jobTitle: article.author_role } : {}),
       },
       publisher: {
         '@type': 'Organization',
-        name: 'The Role Room',
-        url: 'https://theroleroom.com',
+        name: publisherName,
+        url: publisherUrl,
       },
       mainEntityOfPage: {
         '@type': 'WebPage',
@@ -213,7 +234,7 @@ export default function BlogPostPage() {
       tags.forEach((t) => t.remove?.());
       document.getElementById('blog-jsonld')?.remove();
     };
-  }, [article]);
+  }, [article, isLeadgrid]);
 
   if (loading) {
     return (
@@ -235,7 +256,7 @@ export default function BlogPostPage() {
           </Typography>
           <Box
             component="a"
-            href="/blog"
+            href={blogBasePath}
             sx={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -247,7 +268,7 @@ export default function BlogPostPage() {
             }}
           >
             <ArrowBackIcon fontSize="small" />
-            Tilbake til Blog
+            Tilbake til {isLeadgrid ? 'Leadgrid-bloggen' : 'Blog'}
           </Box>
         </Container>
       </Box>
@@ -284,7 +305,7 @@ export default function BlogPostPage() {
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ py: 2 }}>
             <Box
               component="a"
-              href="/blog"
+              href={blogBasePath}
               sx={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -301,7 +322,7 @@ export default function BlogPostPage() {
             </Box>
             <Box
               component="a"
-              href="/for-byraer"
+              href={isLeadgrid ? '/' : '/for-byraer'}
               sx={{
                 color: palette.textMuted,
                 fontSize: '0.86rem',
@@ -310,7 +331,7 @@ export default function BlogPostPage() {
                 '&:hover': { color: palette.accentBright },
               }}
             >
-              The Role Room →
+              {isLeadgrid ? 'Leadgrid →' : 'The Role Room →'}
             </Box>
           </Stack>
         </Container>
@@ -349,7 +370,7 @@ export default function BlogPostPage() {
         <Stack direction="row" alignItems="center" spacing={2} sx={{ flexWrap: 'wrap', gap: 1 }}>
           <Box>
             <Typography sx={{ color: palette.textPrimary, fontWeight: 700, fontSize: '0.94rem' }}>
-              {article.author ?? 'The Role Room'}
+              {article.author ?? (isLeadgrid ? 'Leadgrid' : 'The Role Room')}
             </Typography>
             {article.author_role ? (
               <Typography sx={{ color: palette.textMuted, fontSize: '0.82rem' }}>
@@ -384,14 +405,18 @@ export default function BlogPostPage() {
           }}
         >
           <Typography sx={{ fontWeight: 800, fontSize: '1.3rem', mb: 1 }}>
-            Klar for å se hvordan vi løser dette i praksis?
+            {isLeadgrid
+              ? 'Klar for å gjøre kartet om til kunder?'
+              : 'Klar for å se hvordan vi løser dette i praksis?'}
           </Typography>
           <Typography sx={{ color: palette.textSecondary, fontSize: '0.96rem', mb: 2 }}>
-            30-min demo med din egen casting-dag på vår plattform.
+            {isLeadgrid
+              ? 'Se hvordan Leadgrid samler kart, lead-data, oppfølging og pipeline.'
+              : '30-min demo med din egen casting-dag på vår plattform.'}
           </Typography>
           <Box
             component="a"
-            href="/for-byraer#book-demo"
+            href={isLeadgrid ? '/#demo' : '/for-byraer#book-demo'}
             sx={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -423,7 +448,7 @@ export default function BlogPostPage() {
               <Box
                 key={r.slug}
                 component="a"
-                href={`/blog/${r.public_slug}`}
+                href={`${blogBasePath}/${r.public_slug}`}
                 sx={{
                   display: 'block',
                   p: 2.4,

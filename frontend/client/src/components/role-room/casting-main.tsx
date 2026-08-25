@@ -111,6 +111,14 @@ const castingQueryClient = new QueryClient({
 const ROLE_ROOM_DOCUMENT_TITLE = 'The Role Room - CreatorHub';
 const ROLE_ROOM_FAVICON_URL = '/TheRoleRoom_App_Logo.png';
 
+function safeDecodePathSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function upsertHeadLink(rel: string, href: string) {
   if (typeof document === 'undefined') {
     return;
@@ -328,6 +336,20 @@ function CastingStandaloneAppContent() {
   if (leadgridPath === '/leadgrid/akademi/velge-crm-feltsalg'
       || leadgridPath === '/leadgrid/akademi/velge-crm-feltsalg/') {
     return <LeadgridAkademiVelgeCrmPage />;
+  }
+  // Leadgrid-blogg: egne data fra blog_posts og egen branding. På den
+  // dedikerte hosten aliaser leadgridPath /blog til /leadgrid/blog.
+  if (leadgridPath === '/leadgrid/blog' || leadgridPath === '/leadgrid/blog/') {
+    return <BlogIndexPage surface="leadgrid" />;
+  }
+  const leadgridBlogMatch = leadgridPath.match(/^\/leadgrid\/blog\/([^/]+)\/?$/);
+  if (leadgridBlogMatch) {
+    return (
+      <BlogPostPage
+        surface="leadgrid"
+        slug={safeDecodePathSegment(leadgridBlogMatch[1])}
+      />
+    );
   }
 
   if (leadgridPath === '/leadgrid' || leadgridPath === '/leadgrid/') {
