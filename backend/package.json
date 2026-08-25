@@ -89,6 +89,7 @@
     "db:pre-deployment": "tsx server/scripts/pre-deployment-checklist.ts",
     "db:post-deployment": "tsx server/scripts/post-deployment-verification.ts",
     "db:monitor": "tsx server/scripts/continuous-monitoring.ts",
+    "db:migrate-leadgrid-neon": "tsx scripts/migrate-leadgrid-neon.ts",
     "db:forensic-performance": "tsx server/scripts/forensic-performance-analysis.ts",
     "db:fix-orphaned-records": "tsx server/scripts/fix-orphaned-records.ts",
     "db:add-missing-indexes": "tsx server/scripts/add-missing-indexes.ts",

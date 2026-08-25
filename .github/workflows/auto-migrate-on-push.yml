@@ -108,5 +108,5 @@ jobs:
             fi
             sleep 15
           done
-          echo "::warning::Tidsavbrudd på status-polling. Sjekk Admin Room → Database-migrasjoner → Vis logg."
-          # Ikke feil jobben på timeout alene — migrate kan fortsatt være i gang.
+          echo "::error::Tidsavbrudd på status-polling. Migrasjoner er ikke bekreftet ferdige."
+          exit 1
