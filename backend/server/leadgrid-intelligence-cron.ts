@@ -157,9 +157,8 @@ export function registerLeadgridIntelligenceCron(deps: Deps): void {
 
       const startedAt = Date.now();
       try {
-        // FIX (2026-06-22): crm_customers har ikke organization_id.
-        // Vi krever bare at lead har en eier (owner_user_id). Org-relasjon
-        // hentes nedstrøms i computeIntelligenceForLead via fetchLead.
+        // Intelligence krever en eier. Org-relasjonen valideres nedstrøms
+        // via organization_members før resultatet persisteres.
         const rows = await pool.query<{ id: string }>(
           `SELECT id::text
              FROM crm_customers
@@ -173,17 +172,19 @@ export function registerLeadgridIntelligenceCron(deps: Deps): void {
 
         let ok = 0;
         let failed = 0;
+        let skippedNoOrganization = 0;
         const chunkSize = adaptiveChunkSize(rows.rows.length);
         for (let i = 0; i < rows.rows.length; i += chunkSize) {
           const chunk = rows.rows.slice(i, i + chunkSize);
           await Promise.all(
             chunk.map(async (r) => {
               try {
-                await computeIntelligenceForLead(pool, r.id, {
+                const result = await computeIntelligenceForLead(pool, r.id, {
                   trigger: "cron",
                   persist: true,
                 });
-                ok += 1;
+                if (result) ok += 1;
+                else skippedNoOrganization += 1;
               } catch (err) {
                 failed += 1;
                 console.warn("[intelligence-cron] lead failed", r.id, err);
@@ -195,10 +196,12 @@ export function registerLeadgridIntelligenceCron(deps: Deps): void {
         const followUp = await emitFollowUpEvents(pool);
         const expired = await expireOldRecommendations(pool);
 
-        res.json({
-          ok: true,
+        const allProcessed = failed === 0 && skippedNoOrganization === 0;
+        res.status(allProcessed ? 200 : 500).json({
+          ok: allProcessed,
           processed: ok,
           failed,
+          skipped_no_organization: skippedNoOrganization,
           total_candidates: rows.rowCount,
           chunk_size: chunkSize,
           followup_due: followUp.due,

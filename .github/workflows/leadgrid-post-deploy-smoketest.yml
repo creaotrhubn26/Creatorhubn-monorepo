@@ -52,13 +52,21 @@ jobs:
           done
           if [ "$FAILED" -gt 0 ]; then exit 1; fi
 
-      - name: Trigge cron + verifiser ok:true
+      - name: Trigge cron + verifiser at alle kandidater ble behandlet
         run: |
-          RESP=$(curl -s -X POST "${{ secrets.BACKEND_URL }}/api/leadgrid/intelligence/cron/daily-rescore" \
+          RESP=$(curl -sS -X POST "${{ secrets.BACKEND_URL }}/api/leadgrid/intelligence/cron/daily-rescore" \
             -H "x-cron-trigger-token: ${{ secrets.LEADGRID_INTELLIGENCE_CRON_TOKEN }}")
           echo "$RESP" | jq
           OK=$(echo "$RESP" | jq -r .ok)
-          [ "$OK" = "true" ] || { echo "::error::cron failed: $RESP"; exit 1; }
+          PROCESSED=$(echo "$RESP" | jq -r '.processed // -1')
+          FAILED=$(echo "$RESP" | jq -r '.failed // -1')
+          SKIPPED=$(echo "$RESP" | jq -r '.skipped_no_organization // -1')
+          TOTAL=$(echo "$RESP" | jq -r '.total_candidates // -1')
+          [ "$OK" = "true" ] &&
+            [ "$FAILED" = "0" ] &&
+            [ "$SKIPPED" = "0" ] &&
+            [ "$PROCESSED" = "$TOTAL" ] ||
+            { echo "::error::cron incomplete: $RESP"; exit 1; }
 
       - name: Slack-varsel ved feil
         if: failure()

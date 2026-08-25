@@ -13,6 +13,7 @@ import {
   computeResponseRate,
   computeRouteEfficiency,
   determineNextBestAction,
+  fetchLeadIntelContext,
   scoreToTemperature,
   type IntelligenceFacets,
 } from "../leadgrid-intelligence-engine";
@@ -35,6 +36,24 @@ const ZERO_FACETS: IntelligenceFacets = {
   timing: 0,
   locationFit: 0,
 };
+
+describe("fetchLeadIntelContext", () => {
+  it("caster delt lead-id til riktig kolonnetype i den samlede CTE-en", async () => {
+    let sql = "";
+    const pool = {
+      query: async (text: string) => {
+        sql = text;
+        return { rows: [] };
+      },
+    };
+
+    await fetchLeadIntelContext(pool as never, "00000000-0000-0000-0000-000000000000");
+
+    expect(sql).toContain("crm_lead_activities");
+    expect(sql.match(/customer_id = \$1::uuid/g)).toHaveLength(1);
+    expect(sql.match(/customer_id = \$1::text/g)).toHaveLength(2);
+  });
+});
 
 describe("computeFollowUpDecay", () => {
   it("returnerer 1.0 for samme dag", () => {

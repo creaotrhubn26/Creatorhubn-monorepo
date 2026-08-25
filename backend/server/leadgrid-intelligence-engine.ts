@@ -733,7 +733,7 @@ export async function fetchLeadIntelContext(
        SELECT json_agg(row_to_json(n)) AS data FROM (
          SELECT need_type, status, priority
            FROM crm_customer_needs
-          WHERE customer_id = $1
+          WHERE customer_id = $1::text
             AND status IN ('detected','accepted')
        ) n
      ),
@@ -741,7 +741,7 @@ export async function fetchLeadIntelContext(
        SELECT json_agg(row_to_json(s)) AS data FROM (
          SELECT signal_type
            FROM crm_customer_signals
-          WHERE customer_id = $1
+          WHERE customer_id = $1::text
        ) s
      ),
      weights AS (
