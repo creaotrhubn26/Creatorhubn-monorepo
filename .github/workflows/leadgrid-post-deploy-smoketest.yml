@@ -11,19 +11,25 @@ on:
 jobs:
   smoketest:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Vent på Render auto-deploy
-        run: sleep 240  # 4 min for build+deploy
-
-      - name: Verifiser /api/health-commit (best effort)
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          EXPECTED_COMMIT: ${{ github.sha }}
         run: |
-          COMMIT=$(curl -sf "${{ secrets.BACKEND_URL }}/api/health" | jq -r .commit 2>/dev/null | head -c 8 || echo "")
-          EXPECTED=$(echo "${{ github.sha }}" | head -c 8)
-          echo "backend-commit: $COMMIT | expected: $EXPECTED"
-          if [ -n "$COMMIT" ] && [ "$COMMIT" != "$EXPECTED" ]; then
-            echo "::warning::Backend commit ($COMMIT) ≠ pushed commit ($EXPECTED) — kanskje deploy henger"
-          fi
+          for attempt in $(seq 1 48); do
+            VERSION_JSON=$(curl -sS -m 10 "${BACKEND_URL%/}/api/version" || echo '{}')
+            DEPLOYED=$(echo "$VERSION_JSON" | jq -r '.commit // ""')
+            echo "attempt=${attempt} backend=${DEPLOYED:0:8} expected=${EXPECTED_COMMIT:0:8}"
+            if [ "$DEPLOYED" = "$EXPECTED_COMMIT" ]; then
+              echo "Render kjører forventet commit."
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::Render deploy timeout: backend=${DEPLOYED:0:8} expected=${EXPECTED_COMMIT:0:8}"
+          exit 1
 
       - name: Probe alle Leadgrid-endepunkter (401/200 OK)
         run: |
