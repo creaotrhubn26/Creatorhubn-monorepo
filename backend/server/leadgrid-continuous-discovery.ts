@@ -24,6 +24,7 @@ import crypto from "crypto";
 import { searchPlaces } from "./lead-map-service.js";
 import { processUrlResearchBatch } from "./leadgrid-url-batch-processor.js";
 import { autoAssignIndustryFromDiscoveryQuery } from "./leadgrid-industry-classify.js";
+import { fetchExistingDiscoveryPlaceIds } from "./leadgrid-discovery-dedup.js";
 
 // =====================================================================
 // Types
@@ -134,15 +135,15 @@ export async function runDiscoveryForProject(
     return { ok: false, reason: `places_search_failed:${places.reason}` };
   }
 
-  // 3. Filtrer ut allerede importerte
-  const existing = await pool.query<{ google_place_id: string }>(
-    `SELECT google_place_id FROM crm_customers
-      WHERE owner_user_id = $1 AND google_place_id IS NOT NULL`,
-    [opts.ownerUserId],
-  );
-  const existingPlaceIds = new Set(existing.rows.map((r) => r.google_place_id));
+  // 3. Filtrer ut allerede importerte i samme organisasjon+prosjekt.
+  // Organisasjonsscope overlever remapping av owner_user_id ved migrering.
+  const existingPlaceIds = await fetchExistingDiscoveryPlaceIds(pool, {
+    ownerUserId: opts.ownerUserId,
+    organizationId: opts.organizationId,
+    projectId: opts.projectId,
+  });
   const candidates = places.results
-    .filter((p) => !p.alreadyImported && !existingPlaceIds.has(p.placeId))
+    .filter((p) => !existingPlaceIds.has(p.placeId))
     .slice(0, Math.max(1, Math.min(count, 50)));
 
   if (candidates.length === 0) {

@@ -50,8 +50,8 @@
  *     (mig 0351) — vi setter bare batch.category = 'lead_discovery'.
  *
  * Dedupe-strategi
- *   - Vi sjekker crm_customers.google_place_id mot brukerens
- *     eksisterende leads FØR vi oppretter drafts.
+ *   - Vi sjekker crm_customers.google_place_id mot prosjektet og den
+ *     stabile organisasjonen FØR vi oppretter drafts.
  *   - Dette unngår at samme bedrift dukker opp i 5 forskjellige
  *     discovery-batches.
  */
@@ -68,6 +68,7 @@ import {
   readBatchProgress,
 } from "./leadgrid-url-batch-processor.js";
 import { autoAssignIndustryFromDiscoveryQuery } from "./leadgrid-industry-classify.js";
+import { fetchExistingDiscoveryPlaceIds } from "./leadgrid-discovery-dedup.js";
 import { lookupCompanyForNewLead } from "./lead-brreg-service.js";
 import { cpvForTekst } from "./leadgrid-cpv-routes.js";
 import Anthropic from "@anthropic-ai/sdk";
@@ -583,23 +584,6 @@ async function buildDiscoveryQuery(
 }
 
 // =====================================================================
-// Dedup — finn place-IDer brukeren allerede har som lead
-// =====================================================================
-
-async function fetchExistingPlaceIds(
-  pool: Pool,
-  userId: string,
-): Promise<Set<string>> {
-  const r = await pool.query<{ google_place_id: string }>(
-    `SELECT google_place_id FROM crm_customers
-      WHERE owner_user_id = $1
-        AND google_place_id IS NOT NULL`,
-    [userId],
-  );
-  return new Set(r.rows.map((row) => row.google_place_id));
-}
-
-// =====================================================================
 // Hovedflyt
 // =====================================================================
 
@@ -715,11 +699,18 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
           });
         }
 
-        // 4. Filtrer bort allerede-importerte (sikkerhetsnett — searchPlaces
-        //    flagger dette, men ekstra dedupe mot owner_user_id på vår side).
-        const existingPlaceIds = await fetchExistingPlaceIds(pool, session.userId);
+        // 4. Filtrer bort allerede-importerte i samme organisasjon+prosjekt.
+        //    Organisasjonen er stabil selv om owner_user_id ble remappet ved
+        //    migrering. SearchPlaces sitt owner-flagg kan være feil på tvers
+        //    av prosjekter, så denne scope-kontrollen er autoritativ.
+        const orgId = await resolveOrgId(pool, session.userId);
+        const existingPlaceIds = await fetchExistingDiscoveryPlaceIds(pool, {
+          ownerUserId: session.userId,
+          organizationId: orgId,
+          projectId,
+        });
         const candidates = places.results
-          .filter((p) => !p.alreadyImported && !existingPlaceIds.has(p.placeId))
+          .filter((p) => !existingPlaceIds.has(p.placeId))
           // Topp N (count). Places returnerer max 20; trim ved behov.
           .slice(0, requestedCount);
 
@@ -739,7 +730,6 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
 
         // 5. Opprett batch + drafts. Vi bruker samme tabeller som bulk-URL
         //    slik at processor + poll-endpoints kan gjenbrukes uendret.
-        const orgId = await resolveOrgId(pool, session.userId);
         const batchId = crypto.randomUUID();
 
         // Fix 4 (live-test 2026-06-27): auto-assign industry_id basert på
@@ -1094,6 +1084,6 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
 
 export const __test = {
   buildDiscoveryQuery,
-  fetchExistingPlaceIds,
+  fetchExistingPlaceIds: fetchExistingDiscoveryPlaceIds,
   loadProjectContext,
 };
