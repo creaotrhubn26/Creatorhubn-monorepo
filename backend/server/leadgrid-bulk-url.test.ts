@@ -17,6 +17,7 @@ import {
   normalizeAndValidateUrls,
   processUrlResearchBatch,
   readBatchProgress,
+  resumeStuckUrlResearchBatches,
   BULK_URL_CONCURRENCY,
   __test,
 } from "./leadgrid-url-batch-processor.js";
@@ -1004,5 +1005,32 @@ describe("Fix 1 — atomic counter-recompute", () => {
     expect(progress?.completed).toBe(3);
     expect(progress?.failed).toBe(1);
     expect(progress?.pinned).toBe(3);
+  });
+});
+
+describe("resumeStuckUrlResearchBatches", () => {
+  it("tar med failed-batcher som har pending items", async () => {
+    const query = vi.fn(async (sql: string) => {
+      const text = sql.replace(/\s+/g, " ").trim();
+      if (text.startsWith("UPDATE leadgrid_url_research_items SET status = 'pending'")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.startsWith("SELECT id::text, error_message FROM leadgrid_url_research_items")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.startsWith("SELECT b.id::text FROM leadgrid_url_research_batches")) {
+        expect(text).toContain("'failed'");
+        return { rows: [], rowCount: 0 };
+      }
+      throw new Error(`unexpected SQL: ${text}`);
+    });
+
+    const result = await resumeStuckUrlResearchBatches({ query } as unknown as Pool);
+
+    expect(result).toEqual({
+      resetRunning: 0,
+      resetFailed: 0,
+      resumedBatches: 0,
+    });
   });
 });

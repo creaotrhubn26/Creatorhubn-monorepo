@@ -507,8 +507,11 @@ export async function processUrlResearchBatch(
   // Marker batch running
   await pool.query(
     `UPDATE leadgrid_url_research_batches
-        SET status = 'running', started_at = COALESCE(started_at, NOW())
-      WHERE id = $1::uuid AND status = 'pending'`,
+        SET status = 'running',
+            started_at = COALESCE(started_at, NOW()),
+            finished_at = NULL
+      WHERE id = $1::uuid
+        AND status IN ('pending', 'failed', 'partial')`,
     [batchId],
   );
 
@@ -1091,14 +1094,13 @@ export async function resumeStuckUrlResearchBatches(
     );
   }
 
-  // 3. Kjør batcher med pending-items på nytt. 'partial'-batcher er
-  //    finalisert men kan ha fått items tilbake i 'pending' i steg 2 —
-  //    processUrlResearchBatch håndterer dem (status-UPDATE-en er no-op,
-  //    resten kjører og finalizeBatch setter riktig slutt-status).
+  // 3. Kjør batcher med pending-items på nytt. Både 'partial' og 'failed'
+  //    kan ha fått transiente items tilbake i 'pending' i steg 2. Tidligere
+  //    ble failed-batcher utelatt, slik at disse itemene ble zombie-pending.
   const batches = await pool.query<{ id: string }>(
     `SELECT b.id::text
        FROM leadgrid_url_research_batches b
-      WHERE b.status IN ('pending', 'running', 'partial')
+      WHERE b.status IN ('pending', 'running', 'partial', 'failed')
         AND b.created_at > NOW() - INTERVAL '14 days'
         AND EXISTS (
               SELECT 1 FROM leadgrid_url_research_items i
