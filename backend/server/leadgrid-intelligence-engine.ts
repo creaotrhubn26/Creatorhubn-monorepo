@@ -571,12 +571,15 @@ interface LeadRow {
 }
 
 export async function fetchLead(pool: Pool, leadId: string): Promise<LeadRow | null> {
-  // FIX (2026-06-22): crm_customers har INGEN organization_id-kolonne.
-  // Vi henter primary org via JOIN organization_members.
+  // Prefer the lead's explicit organization. Legacy rows without that field
+  // fall back to the owner's primary organization membership.
   const r = await pool.query<LeadRow>(
     `SELECT c.id::text,
-            (SELECT om.organization_id::text FROM organization_members om
-              WHERE om.user_id = c.owner_user_id ORDER BY om.joined_at ASC LIMIT 1)
+            COALESCE(
+              c.organization_id::text,
+              (SELECT om.organization_id::text FROM organization_members om
+                WHERE om.user_id = c.owner_user_id ORDER BY om.joined_at ASC LIMIT 1)
+            )
             AS organization_id,
             c.owner_user_id::text,
             c.assigned_user_id::text,
@@ -697,9 +700,12 @@ export async function fetchLeadIntelContext(
   }>(
     `WITH lead AS (
        SELECT c.id::text AS id,
-              (SELECT om.organization_id::text FROM organization_members om
-                 WHERE om.user_id = c.owner_user_id
-                 ORDER BY om.joined_at ASC LIMIT 1) AS organization_id,
+              COALESCE(
+                c.organization_id::text,
+                (SELECT om.organization_id::text FROM organization_members om
+                   WHERE om.user_id = c.owner_user_id
+                   ORDER BY om.joined_at ASC LIMIT 1)
+              ) AS organization_id,
               c.owner_user_id::text AS owner_user_id,
               c.assigned_user_id::text AS assigned_user_id,
               c.lead_status,

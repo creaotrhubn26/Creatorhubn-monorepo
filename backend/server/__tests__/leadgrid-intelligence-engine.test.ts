@@ -50,6 +50,7 @@ describe("fetchLeadIntelContext", () => {
     await fetchLeadIntelContext(pool as never, "00000000-0000-0000-0000-000000000000");
 
     expect(sql).toContain("crm_lead_activities");
+    expect(sql).toContain("COALESCE(\n                c.organization_id::text");
     expect(sql.match(/customer_id = \$1::uuid/g)).toHaveLength(1);
     expect(sql.match(/customer_id = \$1::text/g)).toHaveLength(2);
   });
