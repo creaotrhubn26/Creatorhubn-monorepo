@@ -15,6 +15,8 @@ import { z } from 'zod';
 import { loadPersistedAuthSession } from './auth-session-store.js';
 import { canAccessRoleRoomProject } from './role-room-projects-routes.js';
 import { viewerMeetsTabLevel } from './role-room-tab-access.js';
+import { storyboardShotContextSchema } from './storyboard-ai-context.js';
+import { compileStoryboardPrompt } from './storyboard-prompt-engine/index.js';
 import * as svc from './storyboard-service.js';
 
 interface SessionData {
@@ -89,6 +91,13 @@ const upsertBody = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
+const promptCompileBody = z.object({
+  kind: z.enum(['storyboard-image', 'storyboard-video']),
+  model: z.string().trim().min(1).max(80),
+  userAction: z.string().trim().max(1_200).optional(),
+  context: storyboardShotContextSchema,
+});
+
 export interface CreateStoryboardRouterDeps {
   activeSessions?: Map<string, SessionData>;
 }
@@ -146,6 +155,11 @@ export function createStoryboardRouter(
       res.status(400).json({ error: 'invalid_request', details: parsed.error.format() });
       return;
     }
+    const current = await svc.getStoryboard(pool, String(req.params.id));
+    if (!current || current.projectId !== String(req.params.projectId)) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
     const sb = await svc.updateStoryboard(pool, String(req.params.id), parsed.data);
     if (!sb) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true, data: sb });
@@ -153,9 +167,47 @@ export function createStoryboardRouter(
 
   // Delete
   router.delete('/projects/:projectId/storyboards/:id', auth, canManage, async (req, res) => {
+    const current = await svc.getStoryboard(pool, String(req.params.id));
+    if (!current || current.projectId !== String(req.params.projectId)) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
     const ok = await svc.deleteStoryboard(pool, String(req.params.id));
     if (!ok) { res.status(404).json({ error: 'not_found' }); return; }
     res.json({ success: true });
+  });
+
+  // Provider-free compilation for AI → Prompt Inspector. No screenplay or
+  // production reference leaves The Role Room through this endpoint.
+  router.post('/projects/:projectId/storyboards/:id/compile-ai-prompt', auth, canView, async (req, res) => {
+    const parsed = promptCompileBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_request', details: parsed.error.format() });
+      return;
+    }
+    const projectId = String(req.params.projectId);
+    const storyboard = await svc.getStoryboard(pool, String(req.params.id));
+    if (!storyboard || storyboard.projectId !== projectId || !storyboard.frameId) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+    if (parsed.data.context.scene.id && storyboard.sceneId
+        && parsed.data.context.scene.id !== storyboard.sceneId) {
+      res.status(400).json({ error: 'context_mismatch', detail: 'Manuskonteksten tilhører en annen scene.' });
+      return;
+    }
+    if (parsed.data.context.shot.id
+        && parsed.data.context.shot.id !== storyboard.frameId) {
+      res.status(400).json({ error: 'context_mismatch', detail: 'Manuskonteksten tilhører et annet shot.' });
+      return;
+    }
+    const compilation = compileStoryboardPrompt({
+      kind: parsed.data.kind,
+      modelId: parsed.data.model,
+      userAction: parsed.data.userAction,
+      context: parsed.data.context,
+    });
+    res.json({ success: true, data: compilation });
   });
 
   // ── AI image generation (DALL-E 3) ─────────────────────────────────
