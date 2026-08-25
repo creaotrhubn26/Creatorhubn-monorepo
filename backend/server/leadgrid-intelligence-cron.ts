@@ -58,10 +58,8 @@ async function expireOldRecommendations(pool: Pool): Promise<number> {
 async function emitFollowUpEvents(pool: Pool): Promise<{ due: number; overdue: number }> {
   let due = 0;
   let overdue = 0;
-  // FIX (2026-06-22): crm_customers har INGEN organization_id-kolonne.
-  // Org-relasjon hentes via owner_user_id → organization_members (PR
-  // #837/#848-mønster). Vi henter "primary org" for hver lead-eier som
-  // første org de tilhører.
+  // Prefer the lead's explicit organization. Legacy rows without that field
+  // fall back to the owner's primary organization membership.
   try {
     const overdueRows = await pool.query<{
       id: string;
@@ -71,8 +69,11 @@ async function emitFollowUpEvents(pool: Pool): Promise<{ due: number; overdue: n
       next_follow_up_at: string;
     }>(
       `SELECT c.id::text,
-              (SELECT om.organization_id::text FROM organization_members om
-                WHERE om.user_id = c.owner_user_id ORDER BY om.joined_at ASC LIMIT 1)
+              COALESCE(
+                c.organization_id::text,
+                (SELECT om.organization_id::text FROM organization_members om
+                  WHERE om.user_id = c.owner_user_id ORDER BY om.joined_at ASC LIMIT 1)
+              )
               AS organization_id,
               c.assigned_user_id::text,
               c.name,
@@ -102,8 +103,11 @@ async function emitFollowUpEvents(pool: Pool): Promise<{ due: number; overdue: n
       next_follow_up_at: string;
     }>(
       `SELECT c.id::text,
-              (SELECT om.organization_id::text FROM organization_members om
-                WHERE om.user_id = c.owner_user_id ORDER BY om.joined_at ASC LIMIT 1)
+              COALESCE(
+                c.organization_id::text,
+                (SELECT om.organization_id::text FROM organization_members om
+                  WHERE om.user_id = c.owner_user_id ORDER BY om.joined_at ASC LIMIT 1)
+              )
               AS organization_id,
               c.assigned_user_id::text,
               c.name,
