@@ -40,6 +40,493 @@ struct ReviewComment: Identifiable, Sendable {
     let targetY: Double?
 }
 
+/// En AI-generert bildeversjon som hører til ett storyboard-shot. Versjonene
+/// lagres sammen med framen slik at Retry ikke overskriver tidligere valg.
+struct AIImageVersion: Identifiable, Sendable, Equatable {
+    let id: String
+    let imageURL: String
+    let prompt: String
+    let styleID: String
+    let generatedAt: String
+    let revisedPrompt: String?
+
+    init?(dictionary: [String: Any]) {
+        guard let id = dictionary["id"] as? String,
+              let imageURL = (dictionary["imageURL"] as? String)
+                ?? (dictionary["imageUrl"] as? String) else { return nil }
+        self.id = id
+        self.imageURL = imageURL
+        self.prompt = (dictionary["prompt"] as? String) ?? ""
+        self.styleID = (dictionary["styleID"] as? String)
+            ?? (dictionary["styleId"] as? String) ?? "story-pencil"
+        self.generatedAt = (dictionary["generatedAt"] as? String) ?? ""
+        self.revisedPrompt = dictionary["revisedPrompt"] as? String
+    }
+
+    init(id: String, imageURL: String, prompt: String, styleID: String,
+         generatedAt: String, revisedPrompt: String?) {
+        self.id = id
+        self.imageURL = imageURL
+        self.prompt = prompt
+        self.styleID = styleID
+        self.generatedAt = generatedAt
+        self.revisedPrompt = revisedPrompt
+    }
+
+    var dictionary: [String: String] {
+        var value = [
+            "id": id, "imageURL": imageURL, "prompt": prompt,
+            "styleID": styleID, "generatedAt": generatedAt,
+        ]
+        if let revisedPrompt { value["revisedPrompt"] = revisedPrompt }
+        return value
+    }
+}
+
+/// Permanent referanse til en ferdig AI-video. Selve avspillings-URL-en
+/// persisteres ikke fordi B2-signaturen utløper; jobId gir en fersk URL.
+struct AIVideoVersion: Identifiable, Sendable, Equatable {
+    let id: String
+    let modelID: String
+    let provider: String
+    let label: String
+    let prompt: String
+    let duration: Int
+    let generatedAt: String
+
+    init?(dictionary: [String: Any]) {
+        guard let id = dictionary["id"] as? String,
+              let modelID = (dictionary["modelID"] as? String)
+                ?? (dictionary["modelId"] as? String) else { return nil }
+        self.id = id
+        self.modelID = modelID
+        self.provider = (dictionary["provider"] as? String) ?? "AI"
+        self.label = (dictionary["label"] as? String) ?? provider
+        self.prompt = (dictionary["prompt"] as? String) ?? ""
+        self.duration = (dictionary["duration"] as? Int)
+            ?? (dictionary["duration"] as? NSNumber)?.intValue
+            ?? Int(dictionary["duration"] as? String ?? "") ?? 4
+        self.generatedAt = (dictionary["generatedAt"] as? String) ?? ""
+    }
+
+    init(id: String, modelID: String, provider: String, label: String,
+         prompt: String, duration: Int, generatedAt: String) {
+        self.id = id
+        self.modelID = modelID
+        self.provider = provider
+        self.label = label
+        self.prompt = prompt
+        self.duration = duration
+        self.generatedAt = generatedAt
+    }
+
+    var dictionary: [String: String] {
+        [
+            "id": id, "modelID": modelID, "provider": provider,
+            "label": label, "prompt": prompt, "duration": String(duration),
+            "generatedAt": generatedAt,
+        ]
+    }
+}
+
+struct StoryboardVideoModelOption: Identifiable, Sendable, Equatable {
+    let id: String
+    let label: String
+    let provider: String
+    let gateway: String
+    let costPerSecondUSD: Double
+    let configured: Bool
+}
+
+struct StoryboardVideoConfig: Sendable, Equatable {
+    let enabled: Bool
+    let allowed: Bool
+    let imageConfigured: Bool
+    let billingMode: String
+    let billingMultiplier: Double
+    let imageStandardChargeUSD: Double
+    let imageHDChargeUSD: Double
+    let consented: Bool
+    let defaultModel: String?
+    let models: [StoryboardVideoModelOption]
+}
+
+struct StoryboardVideoJob: Sendable, Equatable {
+    let jobId: String
+    let status: String
+    let model: String
+    let provider: String
+    let duration: Int
+    let estimatedCostUSD: Double
+    let prompt: String
+    let videoURL: URL?
+    let error: String?
+}
+
+enum StoryboardRecordLookup {
+    static func existingID(in payload: [String: Any], frameId: String) -> String? {
+        guard let records = payload["data"] as? [[String: Any]] else { return nil }
+        return records.first(where: { record in
+            let recordFrameID = (record["frameId"] as? String)
+                ?? (record["frame_id"] as? String)
+            return recordFrameID == frameId
+        })?["id"] as? String
+    }
+}
+
+enum StorageDownloadPath {
+    /// Godtar kun appens eksakte Role Room-format, ikke tilfeldige URL-er.
+    static func fileID(from path: String?) -> String? {
+        guard let path else { return nil }
+        let cleanPath: String
+        if let url = URL(string: path), url.scheme != nil {
+            cleanPath = url.path
+        } else {
+            cleanPath = path.split(separator: "?", maxSplits: 1).first.map(String.init) ?? path
+        }
+        let components = cleanPath.split(separator: "/").map(String.init)
+        guard components.count == 6,
+              components[0] == "api",
+              components[1] == "role-room",
+              components[2] == "storage",
+              components[3] == "files",
+              components[5] == "download",
+              UUID(uuidString: components[4]) != nil else { return nil }
+        return components[4]
+    }
+}
+
+struct GeneratedStoryboardImage: Sendable {
+    let imageDataURL: String
+    let composedPrompt: String
+    let revisedPrompt: String?
+    let contextFingerprint: String?
+    let animationPrompt: String?
+    let promptEngine: StoryboardPromptEngineResult?
+}
+
+struct StoryboardPromptConstraint: Identifiable, Sendable, Equatable {
+    let id: String
+    let text: String
+    let source: String
+    let locked: Bool
+}
+
+struct StoryboardPromptModule: Identifiable, Sendable, Equatable {
+    let id: String
+    let label: String
+    let constraints: [StoryboardPromptConstraint]
+}
+
+struct StoryboardPromptValidationIssue: Identifiable, Sendable, Equatable {
+    let id: String
+    let severity: String
+    let message: String
+    let module: String?
+}
+
+struct StoryboardPromptEngineResult: Sendable, Equatable {
+    let version: String
+    let contextFingerprint: String
+    let intentKind: String
+    let compiledPrompt: String
+    let modules: [StoryboardPromptModule]
+    let validationValid: Bool
+    let validationIssues: [StoryboardPromptValidationIssue]
+    let inheritedConstraintCount: Int
+    let characterCount: Int
+    let characterReferenceCount: Int
+    let locationReferenceCount: Int
+    let styleProfileLabel: String
+    let lockedProperties: [String]
+    let modelID: String
+    let modelLabel: String
+    let modelProvider: String
+    let userIntent: String
+
+    init(dictionary: [String: Any]) throws {
+        guard let version = dictionary["version"] as? String,
+              let fingerprint = dictionary["contextFingerprint"] as? String,
+              let intentKind = dictionary["intentKind"] as? String,
+              let compiledPrompt = dictionary["compiledPrompt"] as? String,
+              let inspector = dictionary["inspector"] as? [String: Any],
+              let validation = dictionary["validation"] as? [String: Any],
+              let model = inspector["model"] as? [String: Any] else {
+            throw SyncError.malformed("prompt-engine")
+        }
+        self.version = version
+        self.contextFingerprint = fingerprint
+        self.intentKind = intentKind
+        self.compiledPrompt = compiledPrompt
+        self.validationValid = (validation["valid"] as? Bool) ?? false
+        self.inheritedConstraintCount = (inspector["inheritedConstraintCount"] as? NSNumber)?.intValue ?? 0
+        self.characterCount = (inspector["characterCount"] as? NSNumber)?.intValue ?? 0
+        self.characterReferenceCount = (inspector["characterReferenceCount"] as? NSNumber)?.intValue ?? 0
+        self.locationReferenceCount = (inspector["locationReferenceCount"] as? NSNumber)?.intValue ?? 0
+        self.styleProfileLabel = (inspector["styleProfileLabel"] as? String) ?? "Storyboard"
+        self.lockedProperties = (inspector["lockedProperties"] as? [String]) ?? []
+        let decodedModelID = (model["id"] as? String) ?? "AI"
+        self.modelID = decodedModelID
+        self.modelLabel = (model["label"] as? String) ?? decodedModelID
+        self.modelProvider = (model["provider"] as? String) ?? "AI"
+        self.userIntent = (inspector["intent"] as? String) ?? ""
+        self.modules = ((dictionary["modules"] as? [[String: Any]]) ?? []).compactMap { item -> StoryboardPromptModule? in
+            guard let id = item["id"] as? String,
+                  let label = item["label"] as? String else { return nil }
+            let constraints = ((item["constraints"] as? [[String: Any]]) ?? []).compactMap { value -> StoryboardPromptConstraint? in
+                guard let constraintID = value["id"] as? String,
+                      let text = value["text"] as? String else { return nil }
+                return StoryboardPromptConstraint(
+                    id: constraintID,
+                    text: text,
+                    source: (value["source"] as? String) ?? "context",
+                    locked: (value["locked"] as? Bool) ?? false)
+            }
+            return StoryboardPromptModule(id: id, label: label, constraints: constraints)
+        }
+        self.validationIssues = ((validation["issues"] as? [[String: Any]]) ?? []).compactMap { issue -> StoryboardPromptValidationIssue? in
+            guard let code = issue["code"] as? String,
+                  let message = issue["message"] as? String else { return nil }
+            return StoryboardPromptValidationIssue(
+                id: code,
+                severity: (issue["severity"] as? String) ?? "warning",
+                message: message,
+                module: issue["module"] as? String)
+        }
+    }
+}
+
+struct StoryboardAIShotNeighbour: Equatable, Sendable {
+    let shotNumber: String
+    let description: String
+
+    var dictionary: [String: Any] {
+        ["shotNumber": shotNumber, "description": description]
+    }
+}
+
+enum StoryboardCharacterName {
+    /// Role Room kan lagre scene-cast som stabile role-ID-er. AI og UI skal ha
+    /// menneskenavnet, ikke f.eks. `troll-1780071501773-role-nora`.
+    static func display(_ rawValue: String) -> String {
+        let raw = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lowered = raw.lowercased()
+        let token = "-role-"
+        guard let range = lowered.range(of: token, options: .backwards) else {
+            return raw
+        }
+        let slug = String(raw[range.upperBound...])
+            .replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return slug.isEmpty ? raw : slug.capitalized
+    }
+}
+
+/// Provider-uavhengig manus-snapshot for ett shot. Samme objekt sendes til
+/// både bilde- og video-ruten, slik at animasjonen arver dramaturgi, kamera og
+/// kontinuitet i stedet for å tolke bare et stillbilde og en løs prompt.
+struct StoryboardAIShotContext: Equatable, Sendable {
+    static let currentVersion = "storyboard-shot-v1"
+
+    let manuscriptTitle: String
+    let sceneId: String
+    let sceneNumber: Int?
+    let sceneHeading: String
+    let intExt: String
+    let location: String
+    let sceneTimeOfDay: String
+    let sceneAction: String
+    let characters: [String]
+    let shotId: String
+    let shotNumber: String
+    let shotDescription: String
+    let shotNotes: String
+    let shotType: String
+    let lensMm: Int?
+    let movement: String
+    let durationSec: Double
+    let transition: String
+    let focusDepth: String
+    let shotTimeOfDay: String
+    let weather: String
+    let beat: String
+    let tags: [String]
+    let previous: StoryboardAIShotNeighbour?
+    let next: StoryboardAIShotNeighbour?
+    let directorNote: String
+    let visualStyle: String
+    var styleProfileId: String = "story-pencil"
+    var cameraAngle: String = ""
+    var lighting: String = ""
+
+    static func build(
+        manuscriptTitle: String,
+        scene: SceneSummary,
+        frame: FrameSummary,
+        directorNote: String,
+        styleProfileId: String = "story-pencil",
+        visualStyle: String
+    ) -> StoryboardAIShotContext {
+        let index = scene.frames.firstIndex { $0.id == frame.id }
+        let previousFrame = index.flatMap { $0 > 0 ? scene.frames[$0 - 1] : nil }
+        let nextFrame = index.flatMap { $0 + 1 < scene.frames.count ? scene.frames[$0 + 1] : nil }
+        return StoryboardAIShotContext(
+            manuscriptTitle: clean(manuscriptTitle, limit: 300),
+            sceneId: clean(scene.id, limit: 200),
+            sceneNumber: scene.sceneNumber,
+            sceneHeading: clean(scene.heading, limit: 500),
+            intExt: clean(scene.intExt, limit: 40),
+            location: clean(frame.setLocation ?? scene.location, limit: 500),
+            sceneTimeOfDay: clean(scene.timeOfDay, limit: 100),
+            sceneAction: clean(scene.descriptionText, limit: 4_000),
+            characters: Array(scene.characters
+                .map(StoryboardCharacterName.display)
+                .map { clean($0, limit: 200) }
+                .filter { !$0.isEmpty }.prefix(40)),
+            shotId: clean(frame.id, limit: 200),
+            shotNumber: clean(frame.shotNumber, limit: 40),
+            shotDescription: clean(frame.description, limit: 2_000),
+            shotNotes: clean(frame.notes, limit: 1_200),
+            shotType: clean(frame.shotType, limit: 120),
+            lensMm: frame.lensMm,
+            movement: clean(frame.movement, limit: 160),
+            durationSec: frame.durationSec,
+            transition: clean(frame.transition, limit: 160),
+            focusDepth: clean(frame.focusDepth, limit: 160),
+            shotTimeOfDay: clean(frame.timeOfDay ?? scene.timeOfDay, limit: 100),
+            weather: clean(frame.weather, limit: 160),
+            beat: clean(frame.beatTag, limit: 240),
+            tags: Array(frame.tags.map { clean($0, limit: 100) }
+                .filter { !$0.isEmpty }.prefix(30)),
+            previous: previousFrame.map {
+                StoryboardAIShotNeighbour(
+                    shotNumber: clean($0.shotNumber, limit: 40),
+                    description: clean($0.description, limit: 1_200))
+            },
+            next: nextFrame.map {
+                StoryboardAIShotNeighbour(
+                    shotNumber: clean($0.shotNumber, limit: 40),
+                    description: clean($0.description, limit: 1_200))
+            },
+            directorNote: clean(directorNote, limit: 1_200),
+            visualStyle: clean(visualStyle, limit: 1_000),
+            styleProfileId: clean(styleProfileId, limit: 100),
+            cameraAngle: clean(frame.cameraAngle, limit: 80),
+            lighting: clean(frame.lighting, limit: 500))
+    }
+
+    var dictionary: [String: Any] {
+        [
+            "version": Self.currentVersion,
+            "manuscriptTitle": manuscriptTitle,
+            "project": [
+                "styleProfileId": styleProfileId,
+                "creativeDirection": visualStyle,
+            ],
+            "production": [
+                "characters": characters.map {
+                    ["name": $0, "referenceImageIds": [], "locked": true] as [String: Any]
+                },
+                "wardrobe": [],
+                "locations": [],
+                "props": [],
+            ],
+            "scene": [
+                "id": sceneId,
+                "number": sceneNumber as Any? ?? NSNull(),
+                "heading": sceneHeading,
+                "intExt": intExt,
+                "location": location,
+                "timeOfDay": sceneTimeOfDay,
+                "action": sceneAction,
+                "characters": characters,
+            ],
+            "shot": [
+                "id": shotId,
+                "number": shotNumber,
+                "description": shotDescription,
+                "notes": shotNotes,
+                "shotType": shotType,
+                "angle": cameraAngle,
+                "lensMm": lensMm as Any? ?? NSNull(),
+                "movement": movement,
+                "lighting": lighting,
+                "durationSec": durationSec,
+                "transition": transition,
+                "focusDepth": focusDepth,
+                "timeOfDay": shotTimeOfDay,
+                "weather": weather,
+                "beat": beat,
+                "tags": tags,
+            ],
+            "continuity": [
+                "previous": previous?.dictionary as Any? ?? NSNull(),
+                "next": next?.dictionary as Any? ?? NSNull(),
+            ],
+            "directorNote": directorNote,
+            "visualStyle": visualStyle,
+        ]
+    }
+
+    var summary: String {
+        let sceneLabel = [sceneNumber.map { "Scene \($0)" }, sceneHeading]
+            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        let camera = [shotType, cameraAngle, lensMm.map { "\($0) mm" } ?? "", movement]
+            .filter { !$0.isEmpty }.joined(separator: " · ")
+        return [sceneLabel, "Shot \(shotNumber)", camera, characters.joined(separator: ", ")]
+            .filter { !$0.isEmpty }.joined(separator: " | ")
+    }
+
+    /// Fallback for dagens produksjons-backend, som ennå bare leser ett
+    /// sceneDescription-felt. Viktigste shot-data står først før 2000-grensen.
+    var legacySceneDescription: String {
+        let camera = [shotType, cameraAngle, lensMm.map { "\($0) mm" } ?? "", movement]
+            .filter { !$0.isEmpty }.joined(separator: ", ")
+        let parts = [
+            "CURRENT SHOT \(shotNumber): \(shotDescription)",
+            camera.isEmpty ? "" : "CAMERA: \(camera)",
+            characters.isEmpty ? "" : "CHARACTERS: \(characters.joined(separator: ", "))",
+            [intExt, location, shotTimeOfDay].filter { !$0.isEmpty }.joined(separator: " · "),
+            sceneAction.isEmpty ? "" : "FULL SCENE ACTION: \(sceneAction)",
+            previous.map { "PREVIOUS SHOT \($0.shotNumber): \($0.description)" } ?? "",
+            next.map { "NEXT SHOT \($0.shotNumber): \($0.description)" } ?? "",
+            beat.isEmpty ? "" : "DRAMATIC BEAT: \(beat)",
+        ].filter { !$0.isEmpty }.joined(separator: "\n")
+        return String(parts.prefix(2_000))
+    }
+
+    var serializedJSON: String? {
+        guard JSONSerialization.isValidJSONObject(dictionary),
+              let data = try? JSONSerialization.data(
+                withJSONObject: dictionary, options: [.sortedKeys]) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private static func clean(_ value: String?, limit: Int) -> String {
+        let compact = (value ?? "")
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return String(compact.prefix(limit))
+    }
+}
+
+enum StorageUploadFilename {
+    static func sanitized(_ value: String) -> String {
+        let punctuation = CharacterSet(charactersIn: "._- ")
+        let characters = value.unicodeScalars.map { scalar -> Character in
+            if CharacterSet.alphanumerics.contains(scalar) || punctuation.contains(scalar) {
+                return Character(String(scalar))
+            }
+            return "-"
+        }
+        let clipped = String(String(characters).prefix(180))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return clipped.isEmpty ? "storyboard-frame.jpg" : clipped
+    }
+}
+
 struct FrameSummary: Identifiable, Sendable {
     let id: String
     let shotNumber: String
@@ -92,6 +579,11 @@ struct FrameSummary: Identifiable, Sendable {
     var setLocation: String? = nil
     var stageUnit: String? = nil
     var reviewFollowers: [String]? = nil
+    var imageSource: String? = nil
+    var aiImageVersions: [AIImageVersion] = []
+    var aiVideoVersions: [AIVideoVersion] = []
+    var cameraAngle: String? = nil
+    var lighting: String? = nil
 }
 
 struct SceneSummary: Identifiable, Sendable {
@@ -127,6 +619,7 @@ enum SyncError: LocalizedError {
     case http(Int)
     case unauthenticated
     case malformed(String)
+    case remote(String)
 
     var errorDescription: String? {
         switch self {
@@ -134,6 +627,7 @@ enum SyncError: LocalizedError {
         case .http(let code): return "Serverfeil (\(code))."
         case .unauthenticated: return "Token er ugyldig eller utløpt."
         case .malformed(let what): return "Uventet svar: \(what)."
+        case .remote(let message): return message
         }
     }
 }
@@ -313,6 +807,234 @@ actor RoleRoomAPIClient {
             }
         }
         return (rawScenes[manuscriptId] ?? []).compactMap(Self.summarize(scene:))
+    }
+
+    /// Opprett/finn serverens storyboard-record for et native frame.
+    private func ensureStoryboardRecord(
+        projectId: String,
+        sceneId: String,
+        frameId: String,
+        title: String
+    ) async throws -> String {
+        // Prompt Inspector krever bare lesetilgang. Gjenbruk derfor en
+        // eksisterende record før vi eventuelt forsøker manage-beskyttet
+        // upsert; ellers fikk view-only-artister 403 selv når shotet fantes.
+        let existingPayload = try await getJSON(
+            path: "/api/role-room/projects/\(projectId)/storyboards",
+            query: ["sceneId": sceneId])
+        if let storyboardId = StoryboardRecordLookup.existingID(
+            in: existingPayload,
+            frameId: frameId) {
+            return storyboardId
+        }
+
+        let storyboardPayload = try await sendJSONResponse(
+            path: "/api/role-room/projects/\(projectId)/storyboards",
+            method: "POST",
+            body: [
+                "sceneId": sceneId,
+                "frameId": frameId,
+                "title": title,
+                "width": 1792,
+                "height": 1024,
+                "workflowLevel": "idea",
+                "metadata": ["source": "storyboard-room-ipad"],
+            ])
+        guard let storyboardData = storyboardPayload["data"] as? [String: Any],
+              let storyboardId = storyboardData["id"] as? String else {
+            throw SyncError.malformed("storyboard-id")
+        }
+        return storyboardId
+    }
+
+    /// Kompilerer og inspiserer prompten uten å kontakte en AI-leverandør.
+    func compileStoryboardPrompt(
+        projectId: String,
+        sceneId: String,
+        frameId: String,
+        title: String,
+        kind: String,
+        model: String,
+        userAction: String,
+        context: StoryboardAIShotContext
+    ) async throws -> StoryboardPromptEngineResult {
+        let storyboardId = try await ensureStoryboardRecord(
+            projectId: projectId,
+            sceneId: sceneId,
+            frameId: frameId,
+            title: title)
+        let payload = try await sendJSONResponse(
+            path: "/api/role-room/projects/\(projectId)/storyboards/\(storyboardId)/compile-ai-prompt",
+            method: "POST",
+            body: [
+                "kind": kind,
+                "model": model,
+                "userAction": userAction,
+                "context": context.dictionary,
+            ])
+        guard let data = payload["data"] as? [String: Any] else {
+            throw SyncError.malformed("prompt-engine")
+        }
+        return try StoryboardPromptEngineResult(dictionary: data)
+    }
+
+    /// Generer et bilde via den samme prosjektbeskyttede ruten som Storyboard
+    /// Room på web.
+    func generateStoryboardImage(
+        projectId: String,
+        sceneId: String,
+        frameId: String,
+        title: String,
+        prompt: String,
+        sceneDescription: String,
+        intExt: String?,
+        timeOfDay: String?,
+        locationName: String?,
+        shotType: String?,
+        styleNote: String,
+        quality: String,
+        context: StoryboardAIShotContext? = nil
+    ) async throws -> GeneratedStoryboardImage {
+        let storyboardId = try await ensureStoryboardRecord(
+            projectId: projectId,
+            sceneId: sceneId,
+            frameId: frameId,
+            title: title)
+
+        var generationBody: [String: Any] = [
+            "prompt": prompt,
+            "sceneDescription": sceneDescription,
+            "cinematicFormat": "cinematic storyboard frame, 16:9",
+            "styleNote": styleNote,
+            "quality": quality,
+            "aspectRatio": "1792x1024",
+        ]
+        generationBody["intExt"] = intExt ?? ""
+        generationBody["timeOfDay"] = timeOfDay ?? ""
+        generationBody["locationName"] = locationName ?? ""
+        generationBody["shotType"] = shotType ?? ""
+        if let context {
+            generationBody["context"] = context.dictionary
+        }
+
+        let generated = try await sendJSONResponse(
+            path: "/api/role-room/projects/\(projectId)/storyboards/\(storyboardId)/generate-ai-image",
+            method: "POST",
+            body: generationBody)
+        guard let data = generated["data"] as? [String: Any],
+              let imageData = data["imageData"] as? String,
+              imageData.hasPrefix("data:image") else {
+            throw SyncError.malformed("generert bilde")
+        }
+        return GeneratedStoryboardImage(
+            imageDataURL: imageData,
+            composedPrompt: (generated["composedPrompt"] as? String) ?? prompt,
+            revisedPrompt: generated["revisedPrompt"] as? String,
+            contextFingerprint: generated["contextFingerprint"] as? String,
+            animationPrompt: generated["animationPrompt"] as? String,
+            promptEngine: (generated["promptEngine"] as? [String: Any])
+                .flatMap { try? StoryboardPromptEngineResult(dictionary: $0) })
+    }
+
+    func fetchStoryboardVideoConfig(projectId: String) async throws -> StoryboardVideoConfig {
+        let payload = try await getJSON(
+            path: "/api/role-room/projects/\(projectId)/storyboards/ai/video-config",
+            query: [:])
+        guard let data = payload["data"] as? [String: Any] else {
+            throw SyncError.malformed("video-config")
+        }
+        let models = ((data["models"] as? [[String: Any]]) ?? []).compactMap { model -> StoryboardVideoModelOption? in
+            guard let key = model["key"] as? String,
+                  let label = model["label"] as? String else { return nil }
+            return StoryboardVideoModelOption(
+                id: key,
+                label: label,
+                provider: (model["provider"] as? String) ?? "AI",
+                gateway: (model["gateway"] as? String) ?? "fal",
+                costPerSecondUSD: (model["costPerSecondUsd"] as? NSNumber)?.doubleValue ?? 0,
+                configured: (model["configured"] as? Bool) ?? false)
+        }
+        let consent = data["consent"] as? [String: Any]
+        let imageCharge = data["imageEstimatedChargeUsd"] as? [String: Any]
+        return StoryboardVideoConfig(
+            enabled: (data["enabled"] as? Bool) ?? false,
+            allowed: (data["allowed"] as? Bool) ?? false,
+            imageConfigured: (data["imageConfigured"] as? Bool) ?? false,
+            billingMode: (data["billingMode"] as? String) ?? "unknown",
+            billingMultiplier: (data["billingMultiplier"] as? NSNumber)?.doubleValue ?? 1,
+            imageStandardChargeUSD: (imageCharge?["standard"] as? NSNumber)?.doubleValue ?? 0.06,
+            imageHDChargeUSD: (imageCharge?["hd"] as? NSNumber)?.doubleValue ?? 0.22,
+            consented: (consent?["consented"] as? Bool) ?? false,
+            defaultModel: data["defaultModel"] as? String,
+            models: models)
+    }
+
+    func setStoryboardAIConsent(projectId: String, consented: Bool) async throws {
+        _ = try await sendJSONResponse(
+            path: "/api/role-room/projects/\(projectId)/storyboards/ai/consent",
+            method: "PUT",
+            body: ["consented": consented])
+    }
+
+    func generateStoryboardVideo(
+        projectId: String,
+        sceneId: String,
+        frameId: String,
+        title: String,
+        sourceImagePath: String,
+        prompt: String,
+        model: String,
+        duration: Int,
+        context: StoryboardAIShotContext? = nil
+    ) async throws -> StoryboardVideoJob {
+        guard let sourceFileId = StorageDownloadPath.fileID(from: sourceImagePath) else {
+            throw SyncError.remote("Kildebildet må være lagret i prosjektet før det kan animeres.")
+        }
+        let storyboardId = try await ensureStoryboardRecord(
+            projectId: projectId,
+            sceneId: sceneId,
+            frameId: frameId,
+            title: title)
+        var generationBody: [String: Any] = [
+            "sourceFileId": sourceFileId,
+            "prompt": prompt,
+            "model": model,
+            "duration": duration,
+        ]
+        if let context {
+            generationBody["context"] = context.dictionary
+        }
+        let payload = try await sendJSONResponse(
+            path: "/api/role-room/projects/\(projectId)/storyboards/\(storyboardId)/generate-ai-video",
+            method: "POST",
+            body: generationBody)
+        return try Self.decodeStoryboardVideoJob(payload)
+    }
+
+    func pollStoryboardVideoJob(projectId: String, jobId: String) async throws -> StoryboardVideoJob {
+        let payload = try await getJSON(
+            path: "/api/role-room/projects/\(projectId)/storyboards/ai/video-jobs/\(jobId)",
+            query: [:])
+        return try Self.decodeStoryboardVideoJob(payload)
+    }
+
+    private static func decodeStoryboardVideoJob(_ payload: [String: Any]) throws -> StoryboardVideoJob {
+        guard let data = payload["data"] as? [String: Any],
+              let jobId = data["jobId"] as? String,
+              let status = data["status"] as? String else {
+            throw SyncError.malformed("video-job")
+        }
+        let rawVideoURL = data["videoUrl"] as? String
+        return StoryboardVideoJob(
+            jobId: jobId,
+            status: status,
+            model: (data["model"] as? String) ?? "AI",
+            provider: (data["provider"] as? String) ?? "AI",
+            duration: (data["duration"] as? NSNumber)?.intValue ?? 4,
+            estimatedCostUSD: (data["estCostUsd"] as? NSNumber)?.doubleValue ?? 0,
+            prompt: (data["prompt"] as? String) ?? "",
+            videoURL: rawVideoURL.flatMap(URL.init(string:)),
+            error: data["error"] as? String)
     }
 
     /// Live-polling fra boardet: har serveren en nyere sceneliste?
@@ -806,7 +1528,8 @@ actor RoleRoomAPIClient {
         if let attachedToEntityType { field("attachedToEntityType", attachedToEntityType) }
         if let attachedToEntityId { field("attachedToEntityId", attachedToEntityId) }
         if let attachmentNote { field("attachmentNote", attachmentNote) }
-        body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(name)\"\r\nContent-Type: image/jpeg\r\n\r\n".utf8))
+        let safeName = StorageUploadFilename.sanitized(name)
+        body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(safeName)\"\r\nContent-Type: image/jpeg\r\n\r\n".utf8))
         body.append(jpegData)
         body.append(Data("\r\n--\(boundary)--\r\n".utf8))
         request.httpBody = body
@@ -1057,6 +1780,29 @@ actor RoleRoomAPIClient {
         }
     }
 
+    private func sendJSONResponse(
+        path: String, method: String, body: [String: Any]
+    ) async throws -> [String: Any] {
+        var request = try request(path: path, query: [:])
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200...299).contains(status) else {
+            if status == 401 { throw SyncError.unauthenticated }
+            if let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let message = (payload["detail"] as? String) ?? (payload["error"] as? String) {
+                throw SyncError.remote(message)
+            }
+            throw SyncError.http(status)
+        }
+        guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw SyncError.malformed(path)
+        }
+        return payload
+    }
+
     // MARK: Mapping
 
     private static func summarize(scene: [String: Any]) -> SceneSummary? {
@@ -1074,7 +1820,7 @@ actor RoleRoomAPIClient {
             let strokes = drawingData?["strokes"] as? String
             let duration = (frame["duration"] as? Double) ?? Double(frame["duration"] as? Int ?? 2)
             let lens = (frame["lensMm"] as? Int) ?? (frame["lensMm"] as? Double).map(Int.init)
-            return FrameSummary(
+            var summary = FrameSummary(
                 id: frameId,
                 shotNumber: shot,
                 detail: [shotType ?? "", description].filter { !$0.isEmpty }.joined(separator: " · "),
@@ -1132,6 +1878,14 @@ actor RoleRoomAPIClient {
                 stageUnit: frame["stageUnit"] as? String,
                 reviewFollowers: frame["reviewFollowers"] as? [String]
             )
+            summary.imageSource = frame["imageSource"] as? String
+            summary.aiImageVersions = ((frame["aiImageVersions"] as? [[String: Any]]) ?? [])
+                .compactMap(AIImageVersion.init(dictionary:))
+            summary.aiVideoVersions = ((frame["aiVideoVersions"] as? [[String: Any]]) ?? [])
+                .compactMap(AIVideoVersion.init(dictionary:))
+            summary.cameraAngle = frame["cameraAngle"] as? String
+            summary.lighting = frame["lighting"] as? String
+            return summary
         }
         return SceneSummary(
             id: id, heading: heading, frames: frames,
@@ -1152,8 +1906,8 @@ actor RoleRoomAPIClient {
             location: (scene["locationName"] as? String) ?? (scene["location"] as? String),
             timeOfDay: (scene["timeOfDay"] as? String) ?? (scene["time_of_day"] as? String),
             descriptionText: scene["description"] as? String,
-            characters: (scene["characters"] as? [String])
+            characters: ((scene["characters"] as? [String])
                 ?? ((scene["characters"] as? [[String: Any]])?.compactMap { $0["name"] as? String })
-                ?? [])
+                ?? []).map(StoryboardCharacterName.display))
     }
 }

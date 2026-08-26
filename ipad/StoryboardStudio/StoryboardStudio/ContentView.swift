@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // Delt penselrad — brukes av både frikanvas og produksjons-tegneskjermen.
 struct BrushToolbar: View {
@@ -121,6 +122,18 @@ struct ContentView: View {
     @State private var showFreeCanvas = false
 
     var body: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["SB_AI_VIDEO_DEMO"] == "1" {
+            AIStoryboardVideoDemoView()
+        } else {
+            authenticatedRoot
+        }
+        #else
+        authenticatedRoot
+        #endif
+    }
+
+    private var authenticatedRoot: some View {
         ZStack {
             BoardBrand.chrome.ignoresSafeArea()
             if sync.isLoggedIn {
@@ -177,6 +190,144 @@ struct ContentView: View {
         }
     }
 }
+
+#if DEBUG
+/// Simulator-only inngang for visuell kontroll av AI-video uten ekte token,
+/// prosjektdata eller provider-kall. Release-builden kompilerer ikke denne inn.
+@MainActor
+private struct AIStoryboardVideoDemoView: View {
+    @StateObject private var board: BoardState
+
+    private let projectId = "00000000-0000-4000-8000-000000000001"
+    private let sceneId = "demo-scene"
+    private let frameId = "demo-frame"
+
+    init() {
+        let manuscript = ManuscriptSummary(id: "demo-manuscript", title: "TROLL — Manuskript v1")
+        let state = BoardState(
+            manuscript: manuscript,
+            projectId: "00000000-0000-4000-8000-000000000001")
+        var frame = FrameSummary(
+            id: "demo-frame", shotNumber: "3B", detail: "MCU · Low Angle · Push In",
+            strokesJSON: nil,
+            description: "Et mørkt troll-omriss speiles i vinduet bak Nora.",
+            notes: "Avslør speilingen sent. Behold Nora som tydelig silhuett.",
+            shotType: "MCU", lensMm: 50, movement: "Push In",
+            durationSec: 4, transition: "Cut", focusDepth: "Dyp",
+            timeOfDay: "NATT", weather: "Snøstorm", beatTag: "Varsel",
+            tags: ["troll", "mystery"], thumbnailDataURL: nil,
+            drawingWidth: 1920, drawingHeight: 1080,
+            frameStatus: "planned", comments: [], updatedAt: nil,
+            underlayDataURL: nil, underlayOpacity: nil,
+            perspectiveMode: nil, vanishingPoints: nil, voiceoverDataURL: nil,
+            imageUrl: Self.demoImageDataURL(),
+            reviewPriority: nil, reviewDueAt: nil,
+            reviewApprovedBy: nil, reviewApprovedAt: nil, reviewStarred: nil,
+            reviewAssignee: nil, reviewColorLabel: nil, reviewSnoozedUntil: nil)
+        frame.imageSource = "ai-generated"
+        frame.cameraAngle = "Low Angle"
+        frame.lighting = "Varm skjermglød mot kald vindusrefleksjon"
+        frame.aiImageVersions = [
+            AIImageVersion(
+                id: "demo-image-v1", imageURL: frame.imageUrl ?? "",
+                prompt: "Production storyboard of Nora and a hidden troll reflection",
+                styleID: "story-pencil", generatedAt: "2026-08-25T17:38:00Z",
+                revisedPrompt: nil),
+        ]
+        state.scenes = [
+            SceneSummary(
+                id: "demo-scene", heading: "SCENE 3 · INT. TOG — NATT",
+                frames: [frame], presentationConcept: nil,
+                presentationFooter: nil, hubTasks: nil, hubNotes: nil,
+                hubQuote: nil, hubMoodboard: nil, hubMapPositions: nil,
+                hubMapNotes: nil, hubTeam: nil, hubInfo: nil,
+                hubAssetFolders: nil, hubAssetColors: nil,
+                sceneNumber: 3, intExt: "INT", location: "Tog gjennom Dovrefjell",
+                timeOfDay: "NATT",
+                descriptionText: "Nora følger en pulserende rute gjennom Dovrefjell mens tunnelen blir mørk.",
+                characters: ["Nora"]),
+        ]
+        _board = StateObject(wrappedValue: state)
+    }
+
+    var body: some View {
+        AIStoryboardStudioView(
+            board: board,
+            projectId: projectId,
+            sceneId: sceneId,
+            frameId: frameId,
+            initialPrompt: "Hold Nora i varm skjermglød; la trollspeilingen bli synlig helt mot slutten av shotet.")
+    }
+
+    private static func demoImageDataURL() -> String? {
+        let size = CGSize(width: 1280, height: 720)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { context in
+            let cg = context.cgContext
+            let colors = [
+                UIColor(red: 0.02, green: 0.05, blue: 0.12, alpha: 1).cgColor,
+                UIColor(red: 0.06, green: 0.17, blue: 0.25, alpha: 1).cgColor,
+            ] as CFArray
+            let gradient = CGGradient(
+                colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                colors: colors,
+                locations: [0, 1])!
+            cg.drawLinearGradient(
+                gradient, start: CGPoint(x: 0, y: 0),
+                end: CGPoint(x: 0, y: size.height), options: [])
+
+            UIColor(red: 0.18, green: 0.88, blue: 0.67, alpha: 0.52).setStroke()
+            for offset in stride(from: -80.0, through: 240.0, by: 64.0) {
+                let ribbon = UIBezierPath()
+                ribbon.move(to: CGPoint(x: -40, y: 145 + offset * 0.12))
+                ribbon.addCurve(
+                    to: CGPoint(x: 1320, y: 105 + offset * 0.18),
+                    controlPoint1: CGPoint(x: 320, y: 20 + offset),
+                    controlPoint2: CGPoint(x: 810, y: 280 - offset * 0.35))
+                ribbon.lineWidth = 22
+                ribbon.stroke()
+            }
+
+            UIColor(red: 0.015, green: 0.04, blue: 0.065, alpha: 0.9).setFill()
+            let mountains = UIBezierPath()
+            mountains.move(to: CGPoint(x: 0, y: 430))
+            mountains.addLine(to: CGPoint(x: 250, y: 250))
+            mountains.addLine(to: CGPoint(x: 475, y: 420))
+            mountains.addLine(to: CGPoint(x: 720, y: 285))
+            mountains.addLine(to: CGPoint(x: 980, y: 430))
+            mountains.addLine(to: CGPoint(x: 1280, y: 320))
+            mountains.addLine(to: CGPoint(x: 1280, y: 720))
+            mountains.addLine(to: CGPoint(x: 0, y: 720))
+            mountains.close()
+            mountains.fill()
+
+            UIColor(red: 0.04, green: 0.15, blue: 0.21, alpha: 1).setFill()
+            UIBezierPath(rect: CGRect(x: 0, y: 470, width: 1280, height: 250)).fill()
+            UIColor(red: 0.15, green: 0.65, blue: 0.57, alpha: 0.23).setStroke()
+            for y in stride(from: 500.0, through: 680.0, by: 34.0) {
+                let water = UIBezierPath()
+                water.move(to: CGPoint(x: 30, y: y))
+                water.addLine(to: CGPoint(x: 1250, y: y - 18))
+                water.lineWidth = 4
+                water.stroke()
+            }
+
+            UIColor(red: 0.03, green: 0.025, blue: 0.05, alpha: 1).setFill()
+            UIBezierPath(rect: CGRect(x: 690, y: 610, width: 590, height: 110)).fill()
+            UIBezierPath(ovalIn: CGRect(x: 846, y: 390, width: 66, height: 66)).fill()
+            let person = UIBezierPath(roundedRect: CGRect(x: 824, y: 446, width: 108, height: 218),
+                                      cornerRadius: 38)
+            person.fill()
+            UIColor.white.withAlphaComponent(0.17).setStroke()
+            let framing = UIBezierPath(rect: CGRect(x: 42, y: 42, width: 1196, height: 636))
+            framing.lineWidth = 3
+            framing.stroke()
+        }
+        guard let data = image.jpegData(compressionQuality: 0.88) else { return nil }
+        return "data:image/jpeg;base64,\(data.base64EncodedString())"
+    }
+}
+#endif
 
 // Laster prosjekter og åpner huben direkte — husker siste valg.
 struct HubBootView: View {

@@ -251,15 +251,19 @@ final class BoardState: ObservableObject {
         patchFrame(frameId: frame.id, fields: fields)
     }
 
-    func patchFrame(frameId: String, fields: [String: any Sendable]) {
-        guard let scene else { return }
+    func patchFrameNow(frameId: String, fields: [String: any Sendable]) async throws {
+        guard let scene else { throw SyncError.malformed("aktiv scene") }
         syncStatus = "…"
+        try await RoleRoomAPIClient.shared.saveFramePatch(
+            manuscriptId: manuscript.id, sceneId: scene.id, frameId: frameId, fields: fields)
+        await reload()
+        syncStatus = "Synket ✓"
+    }
+
+    func patchFrame(frameId: String, fields: [String: any Sendable]) {
         Task {
             do {
-                try await RoleRoomAPIClient.shared.saveFramePatch(
-                    manuscriptId: manuscript.id, sceneId: scene.id, frameId: frameId, fields: fields)
-                await reload()
-                syncStatus = "Synket ✓"
+                try await patchFrameNow(frameId: frameId, fields: fields)
             } catch {
                 syncStatus = error.localizedDescription
             }
@@ -314,6 +318,7 @@ struct NativeBoardView: View {
     @State private var showShotList = false
     @State private var showScript = false
     @State private var showReview = false
+    @State private var showAIStudio = false
     @State private var exportPDFURL: URL?
     @State private var boardTool: BoardTool = .draw
     @State private var textPromptShown = false
@@ -374,10 +379,23 @@ struct NativeBoardView: View {
                                    underlay: composedUnderlay())
             }
         }
+        .sheet(isPresented: $showAIStudio) {
+            if let projectId = board.projectId,
+               let scene = board.scene,
+               let frame = board.frame {
+                AIStoryboardStudioView(
+                    board: board,
+                    projectId: projectId,
+                    sceneId: scene.id,
+                    frameId: frame.id,
+                    initialPrompt: frame.description)
+            }
+        }
         .task { await board.reload() }
         .onChange(of: board.activeFrameIndex) { loadActiveFrameIntoCanvas() }
         .onChange(of: board.selectedSceneIndex) { board.activeFrameIndex = 0; loadActiveFrameIntoCanvas() }
         .onChange(of: board.scenes.count) { loadActiveFrameIntoCanvas() }
+        .onChange(of: board.frame?.imageUrl) { loadActiveFrameIntoCanvas() }
         .onChange(of: canvasState.revision) { scheduleAutosync() }
         .onChange(of: onionMode) { applyUnderlay(to: renderer) }
         .onChange(of: perspectiveMode) { persistPerspective(); updateSnapState() }
@@ -771,6 +789,20 @@ struct NativeBoardView: View {
                 topTab("Animatic", icon: "play.rectangle", active: false) { showAnimatic = true }
             }
             Spacer()
+            Button { showAIStudio = true } label: {
+                Label("AI Studio", systemImage: "sparkles")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(
+                        LinearGradient(colors: [BoardBrand.accent, .indigo],
+                                       startPoint: .leading, endPoint: .trailing),
+                        in: RoundedRectangle(cornerRadius: 9))
+            }
+            .buttonStyle(.plain)
+            .disabled(board.frame == nil || board.projectId == nil)
+            .opacity(board.frame == nil || board.projectId == nil ? 0.45 : 1)
+            .accessibilityLabel("Åpne AI Studio for aktivt shot")
             if !pendingFrameIds.isEmpty {
                 Button { flushAllPending() } label: {
                     Label("\(pendingFrameIds.count) usynket — synk nå",
@@ -1985,8 +2017,12 @@ struct NativeBoardView: View {
                                     options: ["EWS", "WS", "MS", "MCU", "CU", "OTS", "POV", "INSERT"]) {
                         board.patchActiveFrame(["shotType": $0])
                     }
+                    inspectorPicker("Angle", value: frame.cameraAngle,
+                                    options: ["Eye Level", "Low Angle", "High Angle", "Dutch Angle", "Bird's-eye", "Worm's-eye"]) {
+                        board.patchActiveFrame(["cameraAngle": $0])
+                    }
                     inspectorPicker("Lens", value: frame.lensMm.map { "\($0)mm" },
-                                    options: ["14mm", "18mm", "24mm", "28mm", "35mm", "50mm", "85mm", "135mm"]) {
+                                    options: ["18mm", "24mm", "35mm", "50mm", "85mm", "135mm"]) {
                         board.patchActiveFrame(["lensMm": Int($0.replacingOccurrences(of: "mm", with: "")) ?? 35])
                     }
 
@@ -2001,6 +2037,10 @@ struct NativeBoardView: View {
                     }
 
                     // MOVEMENT-glyfrad (mockup).
+                    inspectorPicker("Movement", value: frame.movement,
+                                    options: ["Static", "Dolly", "Push", "Pull", "Pan", "Tilt", "Truck", "Crane", "Handheld", "Steadicam", "Orbit"]) {
+                        board.patchActiveFrame(["movement": $0])
+                    }
                     panelLabel("Movement")
                     HStack(spacing: 6) {
                         glyphButton("minus", value: "Static", current: frame.movement) { board.patchActiveFrame(["movement": "Static"]) }
@@ -2042,6 +2082,10 @@ struct NativeBoardView: View {
                     inspectorPicker("Weather", value: frame.weather,
                                     options: ["Clear", "Rain", "Snow", "Overcast", "Fog"]) {
                         board.patchActiveFrame(["weather": $0])
+                    }
+                    inspectorPicker("Lighting", value: frame.lighting,
+                                    options: ["Available Light", "Soft Motivated", "High Key", "Low Key", "Hard Backlight", "Silhouette"]) {
+                        board.patchActiveFrame(["lighting": $0])
                     }
 
                     // ACTION / DIALOG (frame.description)
