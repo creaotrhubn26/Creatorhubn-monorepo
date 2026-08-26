@@ -57,14 +57,24 @@ if [ -d "migrations" ]; then
     if [ -z "$migration_files" ]; then
       echo "  ℹ️  No SQL migration files found"
     else
+      # Load the tracking table once. The previous implementation opened a
+      # separate Neon connection for every migration file (currently 692), so
+      # an idempotent no-op run could take more than 20 minutes.
+      if applied_filenames=$(psql "$DATABASE_URL" -Atc "SELECT filename FROM _migrations_applied" 2>/dev/null); then
+        # Newline boundaries make the membership test exact (no substring
+        # collisions) while remaining compatible with Bash 3.2+.
+        applied_filenames=$'\n'"$applied_filenames"$'\n'
+      else
+        echo "  ❌ Could not read _migrations_applied; aborting safely"
+        exit 1
+      fi
+
       for migration_file in $migration_files; do
         if [ -f "$migration_file" ]; then
           base_name=$(basename "$migration_file")
-          
-          # Check if migration already applied
-          already_applied=$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM _migrations_applied WHERE filename='$base_name'" 2>/dev/null || echo "0")
-          
-          if [ "$already_applied" -gt 0 ]; then
+          migration_key=$'\n'"$base_name"$'\n'
+
+          if [[ "$applied_filenames" == *"$migration_key"* ]]; then
             echo "  ⏭️  Skipping $base_name (already applied)"
             continue
           fi
@@ -95,6 +105,7 @@ if [ -d "migrations" ]; then
           if PGOPTIONS='-c lock_timeout=30000 -c statement_timeout=600000' psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration_file"; then
             # Record successful migration
             psql "$DATABASE_URL" -c "INSERT INTO _migrations_applied (filename) VALUES ('$base_name') ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
+            applied_filenames+="$base_name"$'\n'
             echo "  ✅ $base_name applied successfully"
           else
             echo "  ❌ Error applying $base_name (psql exit non-zero; SQL feilet)"

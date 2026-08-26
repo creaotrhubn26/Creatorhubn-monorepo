@@ -175,6 +175,14 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
       if (match) return match[1].trim();
     }
 
+    // This is the established GitHub Actions -> Render transport used by the
+    // repository's production cron jobs. It is kept separate from ordinary
+    // Admin Room Bearer sessions.
+    const cronHeader = req.headers["x-cron-trigger-token"];
+    if (typeof cronHeader === "string" && cronHeader.trim()) {
+      return cronHeader.trim();
+    }
+
     const legacyHeader = req.headers["x-migrate-trigger-token"];
     return (typeof legacyHeader === "string" ? legacyHeader : "").trim();
   }
@@ -197,6 +205,16 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
       Buffer.from(expectedToken),
     );
   }
+
+  // Database-free transport probe for CI. This distinguishes token delivery
+  // problems from migration or database work without exposing secret data.
+  app.get("/api/admin-room/migrations/auth-check", (req, res) => {
+    if (!hasValidMigrateToken(req)) {
+      res.status(401).json({ ok: false, error: "ugyldig_token" });
+      return;
+    }
+    res.json({ ok: true, auth: "ci-migrate" });
+  });
 
   app.get("/api/admin-room/migrations/status", async (req, res) => {
     // Token-path (CI) ELLER admin-sesjon (Admin Room-UI).

@@ -85,12 +85,30 @@ describe.sequential("admin room migrations routes", () => {
     expect(query).not.toHaveBeenCalled();
   });
 
+  it("validates the established cron-token transport without touching the database", async () => {
+    const { app, query, requireAdminRoomAccess } = createRouteHarness();
+
+    const accepted = await request(app)
+      .get("/api/admin-room/migrations/auth-check")
+      .set("X-Cron-Trigger-Token", TOKEN);
+    const rejected = await request(app).get(
+      "/api/admin-room/migrations/auth-check",
+    );
+
+    expect(accepted.status).toBe(200);
+    expect(accepted.body).toEqual({ ok: true, auth: "ci-migrate" });
+    expect(rejected.status).toBe(401);
+    expect(rejected.body).toEqual({ ok: false, error: "ugyldig_token" });
+    expect(requireAdminRoomAccess).not.toHaveBeenCalled();
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it("returns the authoritative pending-file contract for a valid CI token", async () => {
     const { app, query, requireAdminRoomAccess } = createRouteHarness();
 
     const response = await request(app)
       .get("/api/admin-room/migrations/status")
-      .set("Authorization", `Migrate ${TOKEN}`);
+      .set("X-Cron-Trigger-Token", TOKEN);
 
     expect(response.status).toBe(200);
     expect(response.body.status).toBe("idle");
@@ -167,7 +185,7 @@ describe.sequential("admin room migrations routes", () => {
 
     const started = await request(app)
       .post("/api/admin-room/migrations/run")
-      .set("Authorization", `Migrate ${TOKEN}`)
+      .set("X-Cron-Trigger-Token", TOKEN)
       .send({});
 
     expect(started.status).toBe(202);
@@ -176,13 +194,13 @@ describe.sequential("admin room migrations routes", () => {
 
     const duplicate = await request(app)
       .post("/api/admin-room/migrations/run")
-      .set("Authorization", `Migrate ${TOKEN}`)
+      .set("X-Cron-Trigger-Token", TOKEN)
       .send({});
     expect(duplicate.status).toBe(409);
 
     const running = await request(app)
       .get("/api/admin-room/migrations/status")
-      .set("Authorization", `Migrate ${TOKEN}`);
+      .set("X-Cron-Trigger-Token", TOKEN);
     expect(running.status).toBe(200);
     expect(running.body).toMatchObject({
       status: "running",

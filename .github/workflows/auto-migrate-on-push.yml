@@ -51,6 +51,20 @@ jobs:
           done
           echo "::warning::Tidsavbrudd — så ikke $GITHUB_SHA på /api/version. Fortsetter likevel (migrate er idempotent)."
 
+      - name: Bekreft migrasjons-auth (uten databasearbeid)
+        env:
+          MIGRATE_TRIGGER_TOKEN: ${{ secrets.MIGRATE_TRIGGER_TOKEN }}
+        run: |
+          MIGRATE_TOKEN=$(printf '%s' "$MIGRATE_TRIGGER_TOKEN" | tr -d '\r\n')
+          HTTP_CODE=$(curl -sS -o /tmp/auth_body.txt --connect-timeout 3 -m 8 -w "%{http_code}" \
+            -H "x-cron-trigger-token: $MIGRATE_TOKEN" \
+            "$BACKEND_URL/api/admin-room/migrations/auth-check")
+          echo "Auth-check HTTP=$HTTP_CODE body=$(cat /tmp/auth_body.txt 2>/dev/null)"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Migrasjons-auth feilet før databasearbeid (HTTP $HTTP_CODE)."
+            exit 1
+          fi
+
       - name: Trigger migrate.sh
         env:
           MIGRATE_TRIGGER_TOKEN: ${{ secrets.MIGRATE_TRIGGER_TOKEN }}
@@ -72,7 +86,7 @@ jobs:
           HTTP_CODE=$(curl -s -o /tmp/run_body.txt --connect-timeout 3 -m 15 -w "%{http_code}" \
             -X POST \
             -H "Content-Type: application/json" \
-            -H "Authorization: Migrate $MIGRATE_TOKEN" \
+            -H "x-cron-trigger-token: $MIGRATE_TOKEN" \
             -H "X-Migrate-Trigger-Source: github-actions/$GITHUB_SHA" \
             -d '{}' \
             "$BACKEND_URL/api/admin-room/migrations/run")
@@ -102,7 +116,7 @@ jobs:
           while [ "$SECONDS" -lt "$DEADLINE" ]; do
             i=$((i + 1))
             set +e
-            STATUS_JSON=$(curl -s --connect-timeout 3 -m 8 -H "Authorization: Migrate $MIGRATE_TOKEN" "$BACKEND_URL/api/admin-room/migrations/status")
+            STATUS_JSON=$(curl -s --connect-timeout 3 -m 8 -H "x-cron-trigger-token: $MIGRATE_TOKEN" "$BACKEND_URL/api/admin-room/migrations/status")
             CURL_EXIT=$?
             set -e
             if [ "$CURL_EXIT" != "0" ]; then STATUS_JSON='{}'; fi
