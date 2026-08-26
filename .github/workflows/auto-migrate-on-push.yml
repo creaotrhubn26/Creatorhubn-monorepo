@@ -15,7 +15,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'backend/migrations/**'
+      - "backend/migrations/**"
   workflow_dispatch:
     # Manuell nødluke (kjør migrate mot gjeldende main uten en migrations-endring).
 
@@ -59,15 +59,20 @@ jobs:
             echo "::error::MIGRATE_TRIGGER_TOKEN secret er ikke satt"
             exit 1
           fi
-          # Fire-and-confirm: /run spawner migrate.sh detached og svarer 202
-          # raskt. MEN hvis instansen hikker mens migrate kjører kan 202-svaret
-          # gå tapt — DERFOR kort -m 30 + IKKE-fatal på timeout (uten -m hang
-          # jobben i 30 min). Status-pollingen under er autoritativ.
+          # CR/LF må fjernes før secret-en bygges inn i en HTTP-header.
+          MIGRATE_TOKEN=$(printf '%s' "$MIGRATE_TRIGGER_TOKEN" | tr -d '\r\n')
+          if [ -z "$MIGRATE_TOKEN" ]; then
+            echo "::error::MIGRATE_TRIGGER_TOKEN er tom etter normalisering"
+            exit 1
+          fi
+          # Fire-and-confirm: /run svarer før migrate.sh startes. En kort,
+          # ikke-fatal timeout beskytter likevel mot nettverksfeil; status-
+          # pollingen under er autoritativ.
           set +e
-          HTTP_CODE=$(curl -s -o /tmp/run_body.txt -m 30 -w "%{http_code}" \
+          HTTP_CODE=$(curl -s -o /tmp/run_body.txt --connect-timeout 3 -m 15 -w "%{http_code}" \
             -X POST \
             -H "Content-Type: application/json" \
-            -H "X-Migrate-Trigger-Token: $MIGRATE_TRIGGER_TOKEN" \
+            -H "X-Migrate-Trigger-Token: $MIGRATE_TOKEN" \
             -H "X-Migrate-Trigger-Source: github-actions/$GITHUB_SHA" \
             -d '{}' \
             "$BACKEND_URL/api/admin-room/migrations/run")
@@ -91,11 +96,20 @@ jobs:
           # pendingCount er autoritativt (DB: migrations/*.sql minus
           # _migrations_applied) og overlever en evt. instans-restart som
           # nullstiller in-memory status. Suksess = ingen pending igjen.
-          for i in $(seq 1 40); do   # opptil 40 × 15s = 10 min
-            STATUS_JSON=$(curl -s -m 10 -H "X-Migrate-Trigger-Token: $MIGRATE_TRIGGER_TOKEN" "$BACKEND_URL/api/admin-room/migrations/status" || echo '{}')
+          MIGRATE_TOKEN=$(printf '%s' "$MIGRATE_TRIGGER_TOKEN" | tr -d '\r\n')
+          DEADLINE=$((SECONDS + 600))
+          i=0
+          while [ "$SECONDS" -lt "$DEADLINE" ]; do
+            i=$((i + 1))
+            set +e
+            STATUS_JSON=$(curl -s --connect-timeout 3 -m 8 -H "X-Migrate-Trigger-Token: $MIGRATE_TOKEN" "$BACKEND_URL/api/admin-room/migrations/status")
+            CURL_EXIT=$?
+            set -e
+            if [ "$CURL_EXIT" != "0" ]; then STATUS_JSON='{}'; fi
             STATUS=$(echo "$STATUS_JSON" | python3 -c "import sys,json;print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
             PENDING=$(echo "$STATUS_JSON" | python3 -c "import sys,json;print(json.load(sys.stdin).get('pendingCount',''))" 2>/dev/null || echo "")
-            echo "  [$i] status=$STATUS pending=$PENDING"
+            PENDING_CHECK=$(echo "$STATUS_JSON" | python3 -c "import sys,json;print(json.load(sys.stdin).get('pendingCheck',''))" 2>/dev/null || echo "")
+            echo "  [$i] status=$STATUS pending=$PENDING pendingCheck=$PENDING_CHECK curlExit=$CURL_EXIT"
             if [ "$STATUS" = "failed" ]; then
               echo "Detaljer: $STATUS_JSON"
               echo "::error::Migrate-run FEILET. Se Admin Room → Database-migrasjoner → Vis logg."

@@ -38,6 +38,24 @@ interface MigrationState {
 }
 
 const MAX_LOG_LINES = 200;
+const PENDING_QUERY_TIMEOUT_MS = 4_000;
+const MIGRATION_START_DELAY_MS = 250;
+
+interface PendingMigrationsResult {
+  pendingFiles: string[];
+  pendingCheck: "ok" | "timeout" | "error";
+  pendingError?:
+    | "query_timeout"
+    | "query_failed"
+    | "migrations_directory_unavailable";
+}
+
+class PendingMigrationsTimeoutError extends Error {
+  constructor() {
+    super("Pending migrations query timed out");
+    this.name = "PendingMigrationsTimeoutError";
+  }
+}
 
 let currentState: MigrationState = {
   status: "idle",
@@ -58,14 +76,53 @@ function pushLogLine(line: string): void {
   if (currentState.lastLogLines.length > MAX_LOG_LINES) {
     currentState.lastLogLines.shift();
   }
-  if (/✅\s+.+applied successfully/i.test(line)) currentState.appliedThisRun += 1;
+  if (/✅\s+.+applied successfully/i.test(line))
+    currentState.appliedThisRun += 1;
   if (/⏭️\s+Skipping/i.test(line)) currentState.skippedThisRun += 1;
 }
 
 export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
   const { app, pool, requireAdminRoomAccess, logAdminActivity } = deps;
+  let appliedFilenamesQuery: Promise<Set<string>> | null = null;
+  let lastKnownPendingFiles: string[] | null = null;
 
-  async function detectPendingMigrations(): Promise<string[]> {
+  function readAppliedFilenames(): Promise<Set<string>> {
+    // Reuse one in-flight query. A temporary tracking-table lock must not let
+    // repeated CI polls enqueue dozens of additional pool queries.
+    if (!appliedFilenamesQuery) {
+      appliedFilenamesQuery = pool
+        .query("SELECT filename FROM _migrations_applied")
+        .then(
+          (result) =>
+            new Set(
+              result.rows.map((row: { filename: string }) => row.filename),
+            ),
+        )
+        .finally(() => {
+          appliedFilenamesQuery = null;
+        });
+    }
+    return appliedFilenamesQuery!;
+  }
+
+  async function withPendingQueryTimeout<T>(promise: Promise<T>): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new PendingMigrationsTimeoutError()),
+            PENDING_QUERY_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  async function detectPendingMigrations(): Promise<PendingMigrationsResult> {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     const migrationsDir = path.resolve(__dirname, "..", "migrations");
@@ -74,28 +131,56 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
       const entries = await fs.readdir(migrationsDir);
       allFiles = entries.filter((f) => f.endsWith(".sql"));
     } catch {
-      return [];
+      return {
+        pendingFiles: [],
+        pendingCheck: "error",
+        pendingError: "migrations_directory_unavailable",
+      };
     }
 
-    let appliedSet = new Set<string>();
     try {
-      const result = await pool.query("SELECT filename FROM _migrations_applied");
-      appliedSet = new Set(result.rows.map((r: { filename: string }) => r.filename));
-    } catch {
-      // _migrations_applied finnes ikke ennå — alle filer er pending
+      const appliedSet = await withPendingQueryTimeout(readAppliedFilenames());
+      const pendingFiles = allFiles.filter((f) => !appliedSet.has(f)).sort();
+      lastKnownPendingFiles = pendingFiles;
+      return {
+        pendingFiles,
+        pendingCheck: "ok",
+      };
+    } catch (error) {
+      const timedOut = error instanceof PendingMigrationsTimeoutError;
+      console.warn(
+        timedOut
+          ? "[migrations/status] pending query timed out"
+          : "[migrations/status] pending query failed",
+      );
+      // Fail closed. An unavailable tracking query is never equivalent to
+      // zero pending migrations.
+      return {
+        pendingFiles: allFiles.sort(),
+        pendingCheck: timedOut ? "timeout" : "error",
+        pendingError: timedOut ? "query_timeout" : "query_failed",
+      };
     }
-
-    return allFiles.filter((f) => !appliedSet.has(f)).sort();
   }
 
   // Gyldig MIGRATE_TRIGGER_TOKEN i header? Lar CI (GitHub Actions) polle status
   // uten produkteier-sesjon — samme token-semantikk som /run.
-  function hasValidMigrateToken(req: Parameters<typeof requireAdminRoomAccess>[0]): boolean {
+  function hasValidMigrateToken(
+    req: Parameters<typeof requireAdminRoomAccess>[0],
+  ): boolean {
     const header = req.headers["x-migrate-trigger-token"];
     const triggerToken = (typeof header === "string" ? header : "").trim();
     const expectedToken = (process.env.MIGRATE_TRIGGER_TOKEN ?? "").trim();
-    if (!triggerToken || !expectedToken || triggerToken.length !== expectedToken.length) return false;
-    return require("crypto").timingSafeEqual(Buffer.from(triggerToken), Buffer.from(expectedToken));
+    if (
+      !triggerToken ||
+      !expectedToken ||
+      triggerToken.length !== expectedToken.length
+    )
+      return false;
+    return require("crypto").timingSafeEqual(
+      Buffer.from(triggerToken),
+      Buffer.from(expectedToken),
+    );
   }
 
   app.get("/api/admin-room/migrations/status", async (req, res) => {
@@ -105,12 +190,40 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
       if (!session) return;
     }
     try {
-      const pendingFiles = await detectPendingMigrations();
-      res.json({ ...currentState, lockHeld: runLock, pendingFiles, pendingCount: pendingFiles.length });
+      // While migrate.sh is active, its child-process state is authoritative.
+      // Do not contend with it on the tracking table merely to report running.
+      if (currentState.status === "running") {
+        const pendingFiles = lastKnownPendingFiles ?? [];
+        res.json({
+          ...currentState,
+          lockHeld: runLock,
+          pendingFiles,
+          pendingCount: lastKnownPendingFiles
+            ? lastKnownPendingFiles.length
+            : 1,
+          pendingCheck: "running",
+        });
+        return;
+      }
+      const pending = await detectPendingMigrations();
+      res.json({
+        ...currentState,
+        lockHeld: runLock,
+        ...pending,
+        pendingCount: pending.pendingFiles.length,
+      });
     } catch (err) {
-      // Graceful: returnér in-memory state uten pending-listing.
+      // Graceful + fail-closed: keep status available without claiming that
+      // no migrations are pending.
       console.warn("[migrations/status] failed:", (err as Error).message);
-      res.json({ ...currentState, lockHeld: runLock, pendingFiles: [], pendingCount: 0 });
+      res.json({
+        ...currentState,
+        lockHeld: runLock,
+        pendingFiles: [],
+        pendingCount: 1,
+        pendingCheck: "error",
+        pendingError: "query_failed",
+      });
     }
   });
 
@@ -122,7 +235,9 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
     // Trim both sides: a stray trailing newline in the GitHub secret or the
     // Render env var would otherwise fail an exact string compare and surface
     // as a misleading "Innlogging kreves".
-    const triggerToken = (typeof triggerHeader === "string" ? triggerHeader : "").trim();
+    const triggerToken = (
+      typeof triggerHeader === "string" ? triggerHeader : ""
+    ).trim();
     const expectedToken = (process.env.MIGRATE_TRIGGER_TOKEN ?? "").trim();
 
     let actorEmail = "system";
@@ -138,16 +253,23 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
         });
         return;
       }
-      if (triggerToken.length !== expectedToken.length || !require("crypto").timingSafeEqual(Buffer.from(triggerToken), Buffer.from(expectedToken))) {
+      if (
+        triggerToken.length !== expectedToken.length ||
+        !require("crypto").timingSafeEqual(
+          Buffer.from(triggerToken),
+          Buffer.from(expectedToken),
+        )
+      ) {
         res.status(401).json({
           error:
             "Ugyldig migrate-trigger-token: GitHub-secret MIGRATE_TRIGGER_TOKEN matcher ikke backend-env-variabelen.",
         });
         return;
       }
-      actorEmail = (typeof req.headers["x-migrate-trigger-source"] === "string"
-        ? req.headers["x-migrate-trigger-source"] as string
-        : "github-actions");
+      actorEmail =
+        typeof req.headers["x-migrate-trigger-source"] === "string"
+          ? (req.headers["x-migrate-trigger-source"] as string)
+          : "github-actions";
       actorUserId = "ci-migrate";
     } else {
       const session = requireAdminRoomAccess(req, res);
@@ -177,68 +299,86 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
       skippedThisRun: 0,
     };
 
-    // Lokaliser migrate.sh fra denne fila — backend/server/ → backend/migrate.sh
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-    const migrateScript = path.resolve(__dirname, "..", "migrate.sh");
-
-    // Spawn migrate.sh som detached child process.
-    // Vi sender RUN_RENDER_BOOT_SEEDING=0 og RUN_RENDER_BOOT_INTEGRITY=0
-    // for å skippe seeding/integrity-sjekker — migrate-only.
-    const child = spawn("bash", [migrateScript], {
-      env: {
-        ...process.env,
-        RUN_RENDER_BOOT_SEEDING: "0",
-        RUN_RENDER_BOOT_INTEGRITY: "0",
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    child.stdout?.on("data", (chunk: Buffer) => {
-      for (const line of chunk.toString("utf-8").split(/\r?\n/)) {
-        if (line.trim().length > 0) pushLogLine(line);
-      }
-    });
-
-    child.stderr?.on("data", (chunk: Buffer) => {
-      for (const line of chunk.toString("utf-8").split(/\r?\n/)) {
-        if (line.trim().length > 0) pushLogLine(`[stderr] ${line}`);
-      }
-    });
-
-    child.on("close", async (code) => {
-      currentState.exitCode = code ?? null;
-      currentState.finishedAt = new Date().toISOString();
-      currentState.status = code === 0 ? "completed" : "failed";
-      if (code !== 0) {
-        currentState.errorMessage = `migrate.sh exited with code ${code}`;
-      }
-      runLock = false;
-      try {
-        await logAdminActivity({
-          userId: actorUserId,
-          entityType: "migrations_run",
-          action: code === 0 ? "completed" : "failed",
-          summary: `${currentState.appliedThisRun} applied, ${currentState.skippedThisRun} skipped (exit ${code}, by ${actorEmail})`,
-          details: { exitCode: code, appliedCount: currentState.appliedThisRun, skippedCount: currentState.skippedThisRun, actor: actorEmail },
-        });
-      } catch {
-        // logging-feil skal ikke krasje migrate-flowen
-      }
-    });
-
-    child.on("error", (err) => {
-      currentState.errorMessage = err.message;
-      currentState.status = "failed";
-      currentState.finishedAt = new Date().toISOString();
-      runLock = false;
-    });
-
-    // Returner umiddelbart — frontend poller status.
+    // Flush 202 before process creation. Spawning from the large Render
+    // process can be slow enough for CI to lose the trigger response.
     res.status(202).json({
       ok: true,
       state: currentState,
-      message: "Migrate-run startet. Poll /api/admin-room/migrations/status for progress.",
+      message:
+        "Migrate-run startet. Poll /api/admin-room/migrations/status for progress.",
     });
+
+    const startTimer = setTimeout(() => {
+      try {
+        // Lokaliser migrate.sh fra denne fila — backend/server/ → backend/migrate.sh
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = path.dirname(__filename);
+        const migrateScript = path.resolve(__dirname, "..", "migrate.sh");
+
+        // Spawn migrate.sh som asynkron child process.
+        // Vi sender RUN_RENDER_BOOT_SEEDING=0 og RUN_RENDER_BOOT_INTEGRITY=0
+        // for å skippe seeding/integrity-sjekker — migrate-only.
+        const child = spawn("bash", [migrateScript], {
+          env: {
+            ...process.env,
+            RUN_RENDER_BOOT_SEEDING: "0",
+            RUN_RENDER_BOOT_INTEGRITY: "0",
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+
+        child.stdout?.on("data", (chunk: Buffer) => {
+          for (const line of chunk.toString("utf-8").split(/\r?\n/)) {
+            if (line.trim().length > 0) pushLogLine(line);
+          }
+        });
+
+        child.stderr?.on("data", (chunk: Buffer) => {
+          for (const line of chunk.toString("utf-8").split(/\r?\n/)) {
+            if (line.trim().length > 0) pushLogLine(`[stderr] ${line}`);
+          }
+        });
+
+        child.on("close", async (code) => {
+          currentState.exitCode = code ?? null;
+          currentState.finishedAt = new Date().toISOString();
+          currentState.status = code === 0 ? "completed" : "failed";
+          if (code !== 0) {
+            currentState.errorMessage = `migrate.sh exited with code ${code}`;
+          }
+          runLock = false;
+          try {
+            await logAdminActivity({
+              userId: actorUserId,
+              entityType: "migrations_run",
+              action: code === 0 ? "completed" : "failed",
+              summary: `${currentState.appliedThisRun} applied, ${currentState.skippedThisRun} skipped (exit ${code}, by ${actorEmail})`,
+              details: {
+                exitCode: code,
+                appliedCount: currentState.appliedThisRun,
+                skippedCount: currentState.skippedThisRun,
+                actor: actorEmail,
+              },
+            });
+          } catch {
+            // logging-feil skal ikke krasje migrate-flowen
+          }
+        });
+
+        child.on("error", (err) => {
+          currentState.errorMessage = err.message;
+          currentState.status = "failed";
+          currentState.finishedAt = new Date().toISOString();
+          runLock = false;
+        });
+      } catch (error) {
+        currentState.errorMessage =
+          error instanceof Error ? error.message : "spawn_failed";
+        currentState.status = "failed";
+        currentState.finishedAt = new Date().toISOString();
+        runLock = false;
+      }
+    }, MIGRATION_START_DELAY_MS);
+    startTimer.unref();
   });
 }
