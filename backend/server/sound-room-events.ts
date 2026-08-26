@@ -1,8 +1,5 @@
-import type { Pool } from "pg";
-import { findProjectRowById } from "./project-repository";
+import { findProjectRowById, type QueryablePool } from "./project-repository";
 import { broadcastUserEvent } from "./realtime-user-events";
-
-type QueryablePool = Pick<Pool, "query">;
 
 export type SoundRoomUpdateReason = "version" | "comment" | "approval";
 

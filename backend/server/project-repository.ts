@@ -1,7 +1,11 @@
-import type { Pool } from "pg";
 import { ensureProjectTeamSchema } from "./project-team-routes";
 
-type QueryablePool = Pick<Pool, "query">;
+export interface QueryablePool {
+  query: (
+    text: string,
+    params?: unknown[],
+  ) => Promise<{ rows: any[]; rowCount?: number | null }>;
+}
 
 export interface ProjectListFilters {
   userId: string | null;
