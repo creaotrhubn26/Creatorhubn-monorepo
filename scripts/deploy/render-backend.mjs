@@ -135,6 +135,15 @@ async function renderRequest(
   throw lastError || new Error('Render API request failed');
 }
 
+export function isAutoDeployDisabled(service) {
+  const disabled =
+    service?.autoDeploy === false || service?.autoDeploy === 'no';
+  const triggerOff =
+    service?.autoDeployTrigger == null ||
+    service?.autoDeployTrigger === 'off';
+  return disabled && triggerOff;
+}
+
 export async function disableAutoDeploy({
   fetchImpl = fetch,
   apiKey,
@@ -149,7 +158,7 @@ export async function disableAutoDeploy({
     apiKey,
     '/services/' + serviceId,
   );
-  if (service?.autoDeploy !== false) {
+  if (!isAutoDeployDisabled(service)) {
     throw new Error('Render auto-deploy is still enabled after the update');
   }
   console.log('Render auto-deploy is disabled; GitHub owns production deploys.');
@@ -331,6 +340,12 @@ function runSelfTest() {
     id: 'dep-test',
   });
   assert.equal(unwrapDeploy({ cursor: 'next' }), null);
+  assert.equal(
+    isAutoDeployDisabled({ autoDeploy: 'no', autoDeployTrigger: 'off' }),
+    true,
+  );
+  assert.equal(isAutoDeployDisabled({ autoDeploy: false }), true);
+  assert.equal(isAutoDeployDisabled({ autoDeploy: 'yes' }), false);
   assert.throws(() => validateCommit('main'), /40-character/);
   assert.throws(() => validateBackendUrl('http://example.test'), /HTTPS/);
   console.log('Render backend deploy self-test passed.');
