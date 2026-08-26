@@ -37,6 +37,7 @@ import { WsCard, WsSectionTitle, WsStat, WsPills, WsTag, WsImageGrid, WsModal, W
 import AiBuyCreditsModal from '../AiBuyCreditsModal';
 import { useProjectImages } from '../useProjectImages';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
+import { useWorkspaceUpdate } from '../WorkspaceContext';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab).
 const T: WsDict = {
@@ -187,10 +188,6 @@ const CAT_I18N = CAT_I18N_VISUAL;
 const CATS = [{ key: 'alle', label: 'Alle 86' }, { key: 'forb', label: 'Forberedelser 12' }, { key: 'vielse', label: 'Vielse 14' }, { key: 'portrett', label: 'Portretter 16' }, { key: 'golden', label: 'Golden hour 10' }, { key: 'detaljer', label: 'Detaljer 12' }, { key: 'fest', label: 'Fest 14' }];
 const PALETTE = [['Elfenben', '#F6F2EB'], ['Champagne', '#EAD9C1'], ['Salvie', '#A6B49A'], ['Sand', '#DCC9B1'], ['Mørk grønn', '#2E4A3B'], ['Gull', '#D4A017']];
 const STYLE_NOTES = ['Mykt naturlig lys', 'Varme hudtoner', 'Romantisk og tidløst', 'Dokumentarisk + editorial miks', 'Fokus på følelser og nærhet'];
-// Bruker-events-WS (presence-fanout, samme kanal som iPad/web ellers).
-const PRESENCE_WS_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_WS_BASE)
-  ? import.meta.env.VITE_WS_BASE
-  : 'wss://creatorhub-backend-rtbl.onrender.com';
 const ini = (n: string) => (n || '?').slice(0, 1).toUpperCase();
 /** Shoot-elementer en farge kan tilknyttes (label hentes fra i18n t('useLabels')). */
 const PAL_USES_VISUAL = ['bakgrunn', 'lys', 'brudekjole', 'dress', 'brudepiker', 'blomster', 'detaljer', 'post'];
@@ -312,36 +309,16 @@ const MoodboardTab: React.FC<{ projectId: string; profession?: string }> = ({ pr
   // Live tilstedeværelse: hvem ser på moodboardet akkurat nå.
   const myPresName = user?.name || 'Meg';
   const [viewers, setViewers] = useState<{ userId: string; name: string | null }[]>([]);
-  // WS-lytter: moodboard.presence for dette prosjektet → oppdater avatarraden live.
-  useEffect(() => {
-    if (!isReal || !projectId) return;
-    const token = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token') || localStorage.getItem('role_room_auth_token');
-    if (!token) return;
-    let alive = true;
-    let ws: WebSocket | null = null;
-    let retry: any = null;
-    const connect = () => {
-      if (!alive) return;
-      clearTimeout(retry);
-      try { ws = new WebSocket(`${PRESENCE_WS_BASE}/api/ipad/ws/events?token=${encodeURIComponent(token)}`); }
-      catch { retry = setTimeout(connect, 8000); return; }
-      ws.onclose = () => { if (alive) retry = setTimeout(connect, 8000); };
-      ws.onerror = () => { try { ws && ws.close(); } catch { /* */ } };
-      ws.onmessage = (ev) => {
-        let p: any = null;
-        try { p = JSON.parse(ev.data); } catch { /* */ }
-        const e = p?.event;
-        if (!e || e.kind !== 'moodboard.presence' || e.projectId !== projectId) return;
-        if (e.joined && e.actorName) {
-          setViewers((prev) => (prev.some((v) => v.userId === e.actorUserId) ? prev : [...prev, { userId: e.actorUserId, name: e.actorName }]));
-        } else {
-          setViewers((prev) => prev.filter((v) => v.userId !== e.actorUserId));
-        }
-      };
-    };
-    connect();
-    return () => { alive = false; clearTimeout(retry); try { ws && ws.close(); } catch { /* */ } };
-  }, [projectId, isReal]);
+  useWorkspaceUpdate(projectId, 'moodboard.presence', (event: any) => {
+    if (!event || event.projectId !== projectId) return;
+    if (event.joined && event.actorName) {
+      setViewers((prev) => (prev.some((v) => v.userId === event.actorUserId)
+        ? prev
+        : [...prev, { userId: event.actorUserId, name: event.actorName }]));
+    } else {
+      setViewers((prev) => prev.filter((v) => v.userId !== event.actorUserId));
+    }
+  });
   // Join + hjertebank (20 s) + avmelding ved avmontering.
   useEffect(() => {
     if (!isReal || !projectId) return;

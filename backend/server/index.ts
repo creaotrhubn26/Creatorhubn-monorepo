@@ -244,6 +244,7 @@ import { attachCaptureWebSocket } from "./capture-websocket.js";
 import {
   attachUserEventsWebSocket,
   broadcastUserEvent,
+  setupUserEventsTicketRoute,
 } from "./realtime-user-events.js";
 import { leadgridRealtime } from "./leadgrid-realtime.js";
 import {
@@ -840,6 +841,7 @@ import { setupWeddingMileageRoutes } from "./wedding-mileage-routes";
 import { setupPhotoVenuesRoutes } from "./photo-venues-routes";
 import { setupWeddingWalkthroughRoutes } from "./wedding-walkthrough-routes";
 import { setupWeddingLocationAlternativesRoutes } from "./wedding-location-alternatives-routes";
+import { setupWeddingProductionMapRoutes } from "./wedding-production-map-routes";
 import { setupWeddingExpensesRoutes } from "./wedding-expenses-routes";
 import { setupWeddingInvoiceRoutes } from "./wedding-invoice-routes";
 import { setupWeddingGalleryDeliveryRoutes } from "./wedding-gallery-delivery-routes";
@@ -947,6 +949,7 @@ import {
 } from "./photographer-projects-routes";
 import { setupPhotographerMiscRoutes } from "./photographer-misc-routes";
 import { setupProjectTeamRoutes, canAccessProject } from "./project-team-routes";
+import { requireProjectAccess } from "./project-access";
 import { setupProjectWorkspaceRoutes } from "./project-workspace-routes";
 import { setupProToolsCompanionRoutes } from "./protools-companion-routes";
 import { setupGoogleDriveSyncRoutes } from "./google-drive-sync-routes";
@@ -47145,7 +47148,7 @@ function mapProjectRow(r: any) {
     clientPhone: r.client_phone || "",
     eventDate: r.event_date || r.date || "",
     location: r.location || "",
-    projectType: r.category || r.profession || "",
+    projectType: r.category || r.project_type || r.profession || "",
     profession: r.profession || "",
     status: r.status || "draft",
     priority: r.priority || "medium",
@@ -47312,6 +47315,13 @@ app.get("/api/photo-enhancement/contracts", async (_req, res) => {
 app.post(
   "/api/wedding/timeline/project/:projectId/events",
   async (req, res) => {
+    const access = await requireProjectAccess(
+      { pool, requireUserSession },
+      req,
+      res,
+      { level: "edit" },
+    );
+    if (!access) return;
     try {
       const { projectId } = req.params;
       const eventData = req.body;
@@ -47376,6 +47386,13 @@ app.post(
 app.put(
   "/api/wedding/timeline/project/:projectId/events/:eventId",
   async (req, res) => {
+    const access = await requireProjectAccess(
+      { pool, requireUserSession },
+      req,
+      res,
+      { level: "edit" },
+    );
+    if (!access) return;
     try {
       const { projectId, eventId } = req.params;
       const data = req.body;
@@ -47434,9 +47451,9 @@ app.put(
         params.push(data.canClientEdit);
       }
 
-      params.push(eventId);
+      params.push(eventId, tlResult.rows[0].id);
       const result = await pool.query(
-        `UPDATE wedding_timeline_events SET ${updates.join(", ")} WHERE id = $${idx} RETURNING *`,
+        `UPDATE wedding_timeline_events SET ${updates.join(", ")} WHERE id = $${idx} AND timeline_id = $${idx + 1} RETURNING *`,
         params,
       );
 
@@ -47456,11 +47473,21 @@ app.put(
 app.delete(
   "/api/wedding/timeline/project/:projectId/events/:eventId",
   async (req, res) => {
+    const access = await requireProjectAccess(
+      { pool, requireUserSession },
+      req,
+      res,
+      { level: "edit" },
+    );
+    if (!access) return;
     try {
-      const { eventId } = req.params;
+      const { projectId, eventId } = req.params;
       const result = await pool.query(
-        "DELETE FROM wedding_timeline_events WHERE id = $1 RETURNING id",
-        [eventId],
+        `DELETE FROM wedding_timeline_events
+          WHERE id = $1
+            AND timeline_id IN (SELECT id FROM wedding_timelines WHERE project_id = $2)
+          RETURNING id`,
+        [eventId, projectId],
       );
       if (result.rowCount === 0) {
         return res.status(404).json({ error: "Hendelse ikke funnet" });
@@ -47477,6 +47504,13 @@ app.delete(
 app.get(
   "/api/projects/:projectId/wedding-timeline/client-access",
   async (req, res) => {
+    const access = await requireProjectAccess(
+      { pool, requireUserSession },
+      req,
+      res,
+      { level: "owner" },
+    );
+    if (!access) return;
     try {
       const { projectId } = req.params;
       const regenerate = req.query.regenerate === "true";
@@ -66714,6 +66748,7 @@ setupWeddingWalkthroughRoutes({ app, pool, requireUserSession, getPricingUserId 
 
 // Slice 9X.37 — Plan-B-lokasjoner ved dårlig vær.
 setupWeddingLocationAlternativesRoutes({ app, pool, requireUserSession, getPricingUserId });
+setupWeddingProductionMapRoutes({ app, pool, requireUserSession });
 
 // Slice 9X.40 — Bryllupsdag-utlegg (parkering, lunsj, gaver).
 setupWeddingExpensesRoutes({ app, pool, requireUserSession, getPricingUserId });
@@ -67559,6 +67594,9 @@ setupProjectTeamRoutes({ app, pool, requireUserSession, escapeHtml });
 // Team Workspace egne panel-data (board-tasks/checklist/deliverables/shot-list GET)
 // — project_id-scopet, UAVHENGIG av Role Room.
 setupProjectWorkspaceRoutes({ app, pool, requireUserSession });
+// Webklienter veksler vanlig Authorization-header mot en 30 sekunders,
+// engangs WebSocket-billett. Session-tokenet skal aldri inn i WS-URL-en.
+setupUserEventsTicketRoute({ app, requireUserSession });
 // Pro Tools Companion (native desktop-agent) + EaseVerse/Sound Room-kobling.
 setupProToolsCompanionRoutes({ app, pool, requireUserSession });
 setupPhotographerMiscRoutes({
@@ -67774,16 +67812,17 @@ setupWeddingRoutes({
 setupWeddingTimelineRoutes({
   app,
   pool,
-  compatResolveUserId,
+  requireUserSession,
   resolveMeetingNotesProjectContext,
 });
-setupWorkflowOrchestrationRoutes({ app, pool, compatResolveUserId });
+setupWorkflowOrchestrationRoutes({ app, pool, requireUserSession });
 
 setupProjectsRoutes({
   app,
   pool,
   mapProjectRow,
   compatResolveUserId,
+  requireUserSession,
   compatStoreSet,
   buildGalleryShareUrl,
   bootstrapCaptureSessionForProject,

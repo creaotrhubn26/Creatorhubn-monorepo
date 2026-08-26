@@ -29,6 +29,7 @@ import { useProjectImages } from '../useProjectImages';
 import { useCaptureRealtime } from '../useCaptureRealtime';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
 import { CATEGORY_DEFAULT_CREW, crewRoleDef } from '@shared/crew-roles';
+import { useWorkspace, useWorkspaceUpdate } from '../WorkspaceContext';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab). Demo-konstantene
 // (PHASES/BOARD/SYNC_ITEMS/CHECKLIST) er sample-data og forblir norske.
@@ -215,6 +216,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
   const [events, setEvents] = useState<any[] | null>(null);
   const [tasks, setTasks] = useState<any[] | null>(null);
   const [checks, setChecks] = useState<any[] | null>(null);
+  const { realtimeConnected } = useWorkspace();
 
   const isReal = projectId && projectId !== 'sample';
 
@@ -230,48 +232,18 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
       .then((r: any) => { setChecks(Array.isArray(r?.items) ? r.items : []); })
       .catch(() => {});
   };
-
-  // Live: bruker-events-WS (samme kanal/mønster som VideoRoomTab) → boardet og
-  // sjekklisten refetches instant når ANDRE team-medlemmer endrer noe
-  // (board.updated broadcastes fra project-workspace-routes.ts).
-  useEffect(() => {
+  const loadProgress = () => {
     if (!isReal) return;
-    const token = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token') || localStorage.getItem('role_room_auth_token');
-    if (!token) return;
-    const wsBase = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_WS_BASE)
-      ? (import.meta as any).env.VITE_WS_BASE
-      : 'wss://creatorhub-backend-rtbl.onrender.com';
-    let alive = true;
-    let sock: WebSocket | null = null;
-    let retry: any = null;
-    let deb: any = null;
-    const connect = () => {
-      if (!alive) return;
-      clearTimeout(retry);
-      try { sock = new WebSocket(`${wsBase}/api/ipad/ws/events?token=${encodeURIComponent(token)}`); }
-      catch { retry = setTimeout(connect, 8000); return; }
-      sock.onopen = () => { if (alive) setBoardLive(true); };
-      sock.onclose = () => { if (alive) { setBoardLive(false); retry = setTimeout(connect, 8000); } };
-      sock.onerror = () => { try { sock && sock.close(); } catch { /* */ } };
-      sock.onmessage = (ev) => {
-        let payload: any = null;
-        try { payload = JSON.parse(ev.data); } catch { /* */ }
-        const e = payload?.event;
-        if (e?.kind !== 'board.updated' || e?.projectId !== projectId) return;
-        clearTimeout(deb);
-        deb = setTimeout(() => { loadTasks(); loadChecks(); }, 250);
-      };
-    };
-    connect();
-    return () => { alive = false; clearTimeout(retry); clearTimeout(deb); try { sock && sock.close(); } catch { /* */ } };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, isReal]);
-
-  useEffect(() => {
-    if (!isReal) return;
-    apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}/milestones`)
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/milestones`)
       .then((r: any) => { if (r) setProgress({ pct: Math.round(r.totalProgress || 0), done: r.completedCount || 0, total: (r.milestones || []).length }); })
       .catch(() => {});
+  };
+  useWorkspaceUpdate(projectId, 'board.updated', () => { loadTasks(); loadChecks(); });
+  useWorkspaceUpdate(projectId, 'milestones.updated', loadProgress);
+
+  useEffect(() => {
+    if (!isReal) return;
+    loadProgress();
     if (profession === 'photographer' || profession === 'videographer' || !profession) {
       apiRequest(`/api/wedding/timeline/project/${encodeURIComponent(projectId)}`)
         .then((r: any) => { const evs = Array.isArray(r?.events) ? r.events : []; if (evs.length) setEvents(evs); })
@@ -311,7 +283,6 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
   }, [projectId, isReal]);
   const [taskDlg, setTaskDlg] = useState<{ crew: string; title: string; time: string; assignee: number } | null>(null);
   const [assignMenu, setAssignMenu] = useState<{ anchor: HTMLElement; taskId: string } | null>(null);
-  const [boardLive, setBoardLive] = useState(false);
   const addCheck = () => { if (isReal) setPromptMode({ kind: 'check' }); };
   const submitCheck = async (label: string) => {
     await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/checklist`, { method: 'POST', body: { label } });
@@ -696,7 +667,7 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
           <WsSectionTitle
             icon={<ViewKanban sx={{ fontSize: 18, color: ws.textDim }} />}
             title={t('syncBoard')}
-            action={boardLive ? (
+            action={realtimeConnected ? (
               <Stack direction="row" spacing={0.5} alignItems="center">
                 <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ws.green }} />
                 <Typography sx={{ fontSize: 10, color: ws.green, fontWeight: 700 }}>LIVE</Typography>

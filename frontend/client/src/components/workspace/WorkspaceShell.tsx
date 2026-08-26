@@ -52,7 +52,6 @@ import Add from '@mui/icons-material/Add';
 import WorkOutline from '@mui/icons-material/WorkOutline';
 import EventAvailable from '@mui/icons-material/EventAvailable';
 import { ws, workspaceDarkTheme, WS_NAV, type WsNavItem } from './workspaceTheme';
-import { useElementEdits } from './elementEdits';
 import { useWsLocale, makeT } from './wsLocale';
 
 // Shell-chrome no/en (utenlandske partner-vendors får engelsk via WsLocaleProvider).
@@ -66,6 +65,7 @@ const SHELL_T = {
   security: { no: 'Sikkerhet', en: 'Security' },
   logout: { no: 'Logg ut', en: 'Log out' },
   online: { no: 'online', en: 'online' },
+  readOnly: { no: 'Kun lesetilgang', en: 'Read-only access' },
   clientView: { no: 'Kundevisning', en: 'Client view' },
   inviteMember: { no: 'Inviter medlem', en: 'Invite member' },
   teamMembers: { no: 'Team & medlemmer', en: 'Team & members' },
@@ -118,6 +118,8 @@ interface ShellProps {
   onInvite?: () => void;
   navItems?: WsNavItem[]; // profesjons-filtrert nav (default WS_NAV)
   badges?: Record<string, number>; // dynamiske nav-badges (key → antall), overstyrer item.badge
+  onlineNow?: Record<string, boolean>; // Smart Room-key → minst én aktiv bruker i rommet
+  readOnly?: boolean;
   children: React.ReactNode;
 }
 
@@ -208,11 +210,10 @@ function useWorkspaceDesign(): { copy: Record<string, string> } {
   return { copy };
 }
 
-const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onNewProject, onLogout, headerActions, onClientView, onInvite, navItems = WS_NAV, badges, children }) => {
+const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onlineNow, onNewProject, onLogout, headerActions, onClientView, onInvite, navItems = WS_NAV, badges, readOnly = false, children }) => {
   const groups: Array<'hoved' | 'rom' | 'klient'> = ['hoved', 'rom', 'klient'];
   const baseT = makeT(SHELL_T, useWsLocale());
   const { copy: copyOv } = useWorkspaceDesign(); // CreatorHub Design: accent (:root) + copy
-  useElementEdits('creatorhub'); // CreatorHub Design (per-element-lag): anvend lagrede stil-edits
   // t() med copy-overstyring (Nivå 2b): tokens.copy[key] vinner, ellers locale-dict.
   const t = (k: string) => { const o = copyOv[k]; return typeof o === 'string' && o ? o : baseT(k); };
   const [userMenu, setUserMenu] = React.useState<null | HTMLElement>(null);
@@ -273,7 +274,13 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
                   </Typography>
                   {items.map((item) => {
                     const dyn = badges?.[item.key];
-                    const merged = dyn != null ? { ...item, badge: dyn || undefined } : item;
+                    const merged = {
+                      ...item,
+                      ...(dyn != null ? { badge: dyn || undefined } : {}),
+                      // Statisk WS_NAV.online beskriver bare at elementet HAR
+                      // indikator; sannhetsverdien kommer fra presence.
+                      ...(item.group === 'rom' ? { online: !!onlineNow?.[item.key] } : {}),
+                    };
                     return <NavItem key={item.key} item={merged} active={activeTab === item.key} onClick={() => { onTab(item.key); setMobileNav(false); }} />;
                   })}
                 </Box>
@@ -335,6 +342,14 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
                   sx={{ bgcolor: ws.accentSoft, color: ws.accent, border: `1px solid ${ws.accentBorder}`, fontWeight: 700 }}
                 />
               )}
+              {readOnly && (
+                <Chip
+                  size="small"
+                  icon={<Lock sx={{ fontSize: '14px !important' }} />}
+                  label={t('readOnly')}
+                  sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: ws.textDim, border: `1px solid ${ws.border}` }}
+                />
+              )}
             </Stack>
 
             <Stack direction="row" alignItems="center" spacing={2} sx={{ color: ws.textDim }}>
@@ -371,10 +386,12 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
                     sx={{ color: ws.text, borderColor: ws.border, textTransform: 'none' }} variant="outlined">
                     {t('clientView')}
                   </Button>
-                  <Button size="small" startIcon={<PersonAdd sx={{ fontSize: 16 }} />} onClick={onInvite}
-                    sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }} variant="contained">
-                    {t('inviteMember')}
-                  </Button>
+                  {onInvite && (
+                    <Button size="small" startIcon={<PersonAdd sx={{ fontSize: 16 }} />} onClick={onInvite}
+                      sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }} variant="contained">
+                      {t('inviteMember')}
+                    </Button>
+                  )}
                   <IconButton size="small" onClick={(e) => setProjMenu(e.currentTarget)} sx={{ color: ws.textDim }}><MoreVert fontSize="small" /></IconButton>
                   <Menu anchorEl={projMenu} open={!!projMenu} onClose={() => setProjMenu(null)}
                     PaperProps={{ sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}` } }}>

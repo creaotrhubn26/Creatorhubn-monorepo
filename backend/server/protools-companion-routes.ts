@@ -38,6 +38,7 @@ import type express from "express";
 import crypto from "crypto";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { broadcastSoundRoomUpdated } from "./sound-room-events";
 
 export interface ProToolsCompanionDeps {
   app: express.Application;
@@ -482,6 +483,7 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
       if (versionId) {
         await pool.query(`UPDATE audio_review_projects SET status='under_review', updated_at=NOW() WHERE id=$1::uuid`, [reviewId]).catch(() => {});
         sectionsSynced = await syncMarkersToVersion(sess.id, versionId);
+        void broadcastSoundRoomUpdated(pool, reviewId, "version");
       }
     }
     const b = await pool.query(

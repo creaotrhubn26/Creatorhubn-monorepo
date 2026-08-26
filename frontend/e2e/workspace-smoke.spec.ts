@@ -13,7 +13,7 @@ import { expect, test, type ConsoleMessage } from '@playwright/test';
  * picker; ett prosjekt = auto-redirect inn i TeamWorkspacePage).
  */
 
-const ORIGIN = 'http://localhost:5001';
+const ORIGIN = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5001';
 const AUTH_TOKEN = 'e2e-token';
 const AUTH_USER = {
   id: 'e2e-user',
@@ -65,6 +65,7 @@ async function collectRuntimeErrors(page: import('@playwright/test').Page) {
 async function primeAuthAndApi(
   page: import('@playwright/test').Page,
   projects: ReturnType<typeof sampleProject>[],
+  workspaceSocketUrls: string[] = [],
 ) {
   await page.addInitScript(
     ([token, user]) => {
@@ -83,6 +84,21 @@ async function primeAuthAndApi(
       body: JSON.stringify({ authenticated: true, user: AUTH_USER }),
     }),
   );
+  await page.route('**/api/realtime/user-events-ticket', (route) =>
+    route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ticket: 'e2e-user-events-ticket',
+        expiresAt: new Date(Date.now() + 30_000).toISOString(),
+        websocketPath: '/api/ipad/ws/events',
+      }),
+    }),
+  );
+  await page.routeWebSocket('**/api/ipad/ws/events*', (socket) => {
+    workspaceSocketUrls.push(socket.url());
+    socket.send(JSON.stringify({ type: 'connection_established', serverTime: new Date().toISOString() }));
+  });
 
   // Oversikt-fanens egne endepunkter (default-fane etter auto-redirect).
   await page.route('**/api/projects/*/board-tasks', (route) =>
@@ -97,7 +113,21 @@ async function primeAuthAndApi(
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ projects }) }),
   );
 
-  // Enkelt-prosjekt-oppslag (header) + team-medlemmer.
+  // Én autoritativ workspace-bootstrap (prosjekt + kategori + tilgang + team).
+  await page.route('**/api/projects/*/workspace-bootstrap', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        project: sampleProject('p1'),
+        workspaceCategory: 'visual',
+        access: { canRead: true, canEdit: true, isOwner: true },
+        owner: { userId: AUTH_USER.id, name: AUTH_USER.name, email: AUTH_USER.email },
+        members: [],
+      }),
+    }),
+  );
+  // Kompatibilitets-oppslag som enkelte eldre faner fortsatt kan gjøre.
   await page.route(/\/api\/projects\/[^/?]+$/, (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ project: sampleProject('p1') }) }),
   );
@@ -126,7 +156,7 @@ test('multi-project /workspace renders the picker without runtime errors', async
 
   await page.goto(`${ORIGIN}/workspace`, { waitUntil: 'domcontentloaded' });
   // Gi appen tid til å boote, kjøre auth-sjekk og rendre picker-treet.
-  await page.waitForTimeout(4000);
+  await page.waitForFunction(() => document.body.innerText.trim().length > 0, undefined, { timeout: 30000 });
 
   expect(errors, `Runtime errors on /workspace (picker):\n${errors.join('\n')}`).toEqual([]);
   // Ikke stått igjen på /login (auth holdt) og ikke en blank/krasjet side.
@@ -137,15 +167,35 @@ test('multi-project /workspace renders the picker without runtime errors', async
 
 test('single-project /workspace auto-redirects into the workspace without React #426', async ({ page }) => {
   const errors = await collectRuntimeErrors(page);
-  await primeAuthAndApi(page, [sampleProject('p1')]);
+  const realtimeRequests: string[] = [];
+  const realtimeStatuses: number[] = [];
+  const workspaceSockets: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/api/realtime/')) realtimeRequests.push(request.url());
+  });
+  page.on('response', (response) => {
+    if (response.url().includes('/api/realtime/')) realtimeStatuses.push(response.status());
+  });
+  await primeAuthAndApi(page, [sampleProject('p1')], workspaceSockets);
 
   await page.goto(`${ORIGIN}/workspace`, { waitUntil: 'domcontentloaded' });
   // Auto-redirect: WorkspaceHome → /workspace/p1 (monterer lazy TeamWorkspacePage).
-  await page.waitForURL('**/workspace/p1', { timeout: 15000 });
-  await page.waitForTimeout(4000);
+  await page.waitForURL('**/workspace/p1', { timeout: 30000 });
+  await page.waitForFunction(() => document.body.innerText.trim().length > 0, undefined, { timeout: 30000 });
 
   expect(errors, `Runtime errors on picker→project transition:\n${errors.join('\n')}`).toEqual([]);
   expect(page.url()).toContain('/workspace/p1');
   const bodyText = await page.locator('body').innerText();
   expect(bodyText.trim().length).toBeGreaterThan(0);
+  expect(bodyText).toContain('Smoke Project p1');
+  expect(bodyText).toContain('Shotlist');
+  expect(realtimeRequests, 'Workspace må hente en kortlivet realtime-billett').toContainEqual(
+    expect.stringContaining('/api/realtime/user-events-ticket'),
+  );
+  await expect.poll(() => realtimeStatuses.includes(201)).toBe(true);
+  await expect.poll(() => workspaceSockets.length).toBeGreaterThan(0);
+  const userEventsUrl = new URL(workspaceSockets[0]);
+  expect(userEventsUrl.searchParams.get('ticket')).toBe('e2e-user-events-ticket');
+  expect(userEventsUrl.searchParams.has('token')).toBe(false);
+  expect(userEventsUrl.toString()).not.toContain(AUTH_TOKEN);
 });

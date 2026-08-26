@@ -24,6 +24,7 @@ import { useTeamAccess } from '@/hooks/useTeamAccess';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
 import { WsCard, WsTag, wsAlert, wsConfirm } from '../ui';
+import { useWorkspaceUpdate } from '../WorkspaceContext';
 
 const fmtTime = (s: number) => { const n = Math.max(0, Math.floor(Number(s) || 0)); const m = Math.floor(n / 60); const sec = n % 60; return `${m}:${String(sec).padStart(2, '0')}`; };
 const detectOS = (): 'Windows' | 'macOS' => { const p = ((navigator as any).userAgent + ' ' + (navigator as any).platform).toLowerCase(); if (p.includes('win')) return 'Windows'; return 'macOS'; };
@@ -164,6 +165,15 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       if (isReal) apiRequest(`/api/projects/${encodeURIComponent(projectId)}/audio-room/seen`, { method: 'POST', body: {} }).catch(() => {});
     }
   }, [roomId]);
+  useWorkspaceUpdate(projectId, 'sound-room.updated', () => {
+    loadEv();
+    loadMembers();
+    if (roomId) {
+      apiRequest(`/api/audio-showcases/${encodeURIComponent(roomId)}`)
+        .then((response: any) => setSummary(response || null))
+        .catch(() => {});
+    }
+  });
 
   const openRoom = () => { if (roomId) navigate(`/audio-review/${roomId}?ws=${encodeURIComponent(projectId)}`); };
   const linkTrack = async (trackId: string) => {

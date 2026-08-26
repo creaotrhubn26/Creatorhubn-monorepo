@@ -24,7 +24,7 @@ import crypto from "crypto";
 import fs from "node:fs";
 import path from "node:path";
 import multer from "multer";
-import { canAccessProject } from "./project-team-routes";
+import { canAccessProject, canEditProject } from "./project-team-routes";
 import { requireTeamAccess } from "./team-access";
 import { resolveCrewRoles } from "../../frontend/shared/crew-roles.ts";
 import { CANONICAL_PROFESSIONS, normalizeProfession as normalizeCanonProfession, isWorkspaceCategory as isWsCategory } from "../../frontend/shared/profession-types.ts";
@@ -453,15 +453,20 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     }
   });
 
-  // Felles gate: innlogget + canAccessProject. Returnerer userId, eller null
-  // (og har allerede sendt respons).
+  // Felles gate: GET/HEAD krever lesetilgang, alle innholdsmutasjoner krever
+  // permissions.canEdit. Dermed kan en viewer bruke hele workspacet uten at
+  // hver nye POST/PATCH/DELETE-rute må huske sin egen rettighetssjekk.
   const guard = async (req: any, res: any): Promise<string | null> => {
     const session = await requireUserSession(req, res);
     if (!session) return null;
     const projectId = String(req.params.projectId || "").trim();
     if (!projectId) { res.status(400).json({ error: "missing_project_id" }); return null; }
-    if (!(await canAccessProject(pool, session.userId, projectId))) {
-      res.status(403).json({ error: "no_access" });
+    const isRead = req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS";
+    const allowed = isRead
+      ? await canAccessProject(pool, session.userId, projectId)
+      : await canEditProject(pool, session.userId, projectId);
+    if (!allowed) {
+      res.status(403).json({ error: isRead ? "no_access" : "read_only_access" });
       return null;
     }
     return session.userId;
@@ -885,12 +890,10 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       res.json({ shotListAutoCheck: s.shotListAutoCheck !== false, updatedBy: (s as any).shotListAutoCheckBy ?? null });
     } catch (e) { console.error("GET capture-settings", e); res.json({ shotListAutoCheck: true }); }
   });
-  // PUT er eier-gated (kun prosjekteier/lead-fotograf kan endre for teamet).
+  // PUT følger felles canEdit-gate (eier eller aktiv editor).
   app.put("/api/projects/:projectId/capture-settings", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
-      const owns = await pool.query(`SELECT 1 FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`, [req.params.projectId, uid]);
-      if (!owns.rows.length) return res.status(403).json({ error: "not_owner" });
       const enabled = req.body?.shotListAutoCheck !== false;
       const by = typeof req.body?.updatedBy === 'string' ? req.body.updatedBy : null;
       await pool.query(

@@ -1,5 +1,7 @@
 import type { IncomingMessage, Server as HttpServer } from "http";
 import type { Duplex } from "stream";
+import { createHash, randomBytes } from "crypto";
+import type express from "express";
 import { WebSocket, WebSocketServer } from "ws";
 import type { Pool } from "pg";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
@@ -47,6 +49,11 @@ interface SessionData {
 /// the client can switch on it without `instanceof` checks. Adding a
 /// new kind is additive — old clients ignore unknown kinds.
 export type UserEvent =
+  | {
+      kind: "milestones.updated";
+      projectId: string;
+      timestamp: string;
+    }
   /// Samkjøringsboardet eller sjekklisten i Team Workspace endret seg —
   /// åpne Oversikt-faner hos andre team-medlemmer refetcher.
   | {
@@ -237,6 +244,103 @@ export type UserEvent =
     };
 
 export const USER_EVENTS_WS_PATH = "/api/ipad/ws/events";
+export const USER_EVENTS_TICKET_PATH = "/api/realtime/user-events-ticket";
+export const USER_EVENTS_TICKET_TTL_MS = 30_000;
+
+interface PendingUserEventsTicket {
+  userId: string;
+  issuedAt: number;
+  expiresAt: number;
+}
+
+interface UserEventsTicketDeps {
+  app: express.Application;
+  requireUserSession: (
+    req: express.Request,
+    res: express.Response,
+  ) => { userId: string } | null;
+}
+
+const pendingUserEventsTickets = new Map<string, PendingUserEventsTicket>();
+const MAX_PENDING_TICKETS_PER_USER = 4;
+
+function hashUserEventsTicket(ticket: string): string {
+  return createHash("sha256").update(ticket).digest("base64url");
+}
+
+function pruneUserEventsTickets(now: number): void {
+  for (const [ticketHash, record] of pendingUserEventsTickets) {
+    if (record.expiresAt <= now) pendingUserEventsTickets.delete(ticketHash);
+  }
+}
+
+/**
+ * Issues a short-lived, single-use credential for the browser WebSocket
+ * handshake. Only a hash is retained server-side; the bearer/session token
+ * therefore never needs to appear in a WebSocket URL.
+ */
+export function issueUserEventsTicket(
+  userId: string,
+  now = Date.now(),
+): { ticket: string; expiresAt: string } {
+  const normalizedUserId = userId.trim();
+  if (!normalizedUserId) throw new Error("userId is required");
+  pruneUserEventsTickets(now);
+
+  const existingForUser = [...pendingUserEventsTickets.entries()]
+    .filter(([, record]) => record.userId === normalizedUserId)
+    .sort((a, b) => a[1].issuedAt - b[1].issuedAt);
+  while (existingForUser.length >= MAX_PENDING_TICKETS_PER_USER) {
+    const oldest = existingForUser.shift();
+    if (oldest) pendingUserEventsTickets.delete(oldest[0]);
+  }
+
+  const ticket = randomBytes(32).toString("base64url");
+  const expiresAt = now + USER_EVENTS_TICKET_TTL_MS;
+  pendingUserEventsTickets.set(hashUserEventsTicket(ticket), {
+    userId: normalizedUserId,
+    issuedAt: now,
+    expiresAt,
+  });
+  return { ticket, expiresAt: new Date(expiresAt).toISOString() };
+}
+
+/** Consume-before-upgrade makes the ticket replay-resistant. */
+export function consumeUserEventsTicket(
+  ticket: string,
+  now = Date.now(),
+): { userId: string } | null {
+  const normalizedTicket = ticket.trim();
+  if (!normalizedTicket) return null;
+  const ticketHash = hashUserEventsTicket(normalizedTicket);
+  const record = pendingUserEventsTickets.get(ticketHash) ?? null;
+  // Delete even expired tickets before returning so every credential is
+  // single-use regardless of handshake outcome.
+  pendingUserEventsTickets.delete(ticketHash);
+  if (!record || record.expiresAt <= now) return null;
+  return { userId: record.userId };
+}
+
+export function resetUserEventsTicketsForTests(): void {
+  pendingUserEventsTickets.clear();
+}
+
+export function setupUserEventsTicketRoute({
+  app,
+  requireUserSession,
+}: UserEventsTicketDeps): void {
+  app.post(USER_EVENTS_TICKET_PATH, (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const issued = issueUserEventsTicket(session.userId);
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.status(201).json({
+      ...issued,
+      websocketPath: USER_EVENTS_WS_PATH,
+    });
+  });
+}
 
 /// Client registry: userId → set of open WebSocket instances. A
 /// single photographer might have two tabs + one iPad, and we want
@@ -320,38 +424,28 @@ export function attachUserEventsWebSocket(
 ): void {
   const wss = new WebSocketServer({ noServer: true });
 
-  // RT-3: 30s heartbeat sweep. Samme mønster som capture-websocket.
-  // Halv-åpen TCP rapporterer fortsatt OPEN — uten denne ville zombie-
-  // sockets akkumulere i userClients-Map'et per-bruker over tid.
-  const heartbeatInterval = setInterval(() => {
-    for (const set of userClients.values()) {
-      for (const ws of set) {
-        const tagged = ws as WebSocket & { isAlive?: boolean };
-        if (tagged.isAlive === false) {
-          try { ws.terminate(); } catch { /* noop */ }
-          continue;
-        }
-        tagged.isAlive = false;
-        try { ws.ping(); } catch { /* noop */ }
-      }
-    }
-  }, 30_000);
-  wss.on("close", () => clearInterval(heartbeatInterval));
-
   server.on("upgrade", (req: IncomingMessage, socket: Duplex, head) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
     if (url.pathname !== USER_EVENTS_WS_PATH) return;
 
+    const ticket = (url.searchParams.get("ticket") ?? "").trim();
     const token = (url.searchParams.get("token") ?? "").trim();
 
     void (async () => {
-      const session = await resolveBearerSession(pool, activeSessions, token);
-      if (!session?.userId) {
+      // Browser clients use a short-lived, single-use ticket. The token query
+      // remains as a compatibility bridge for native/older clients and must
+      // not be used by new web code.
+      const ticketSession = ticket ? consumeUserEventsTicket(ticket) : null;
+      const bearerSession = ticket
+        ? null
+        : await resolveBearerSession(pool, activeSessions, token);
+      const userId = ticketSession?.userId ?? bearerSession?.userId ?? null;
+      if (!userId) {
         socket.destroy();
         return;
       }
       wss.handleUpgrade(req, socket, head, (ws) => {
-        registerClient(session.userId, ws);
+        registerClient(userId, ws);
       });
     })().catch(() => {
       socket.destroy();
@@ -377,6 +471,10 @@ export function attachUserEventsWebSocket(
   }, 30000);
   heartbeat.unref?.();
   wss.on("close", () => clearInterval(heartbeat));
+  server.on("close", () => {
+    clearInterval(heartbeat);
+    wss.close();
+  });
 }
 
 type LiveWebSocket = WebSocket & { isAlive?: boolean };
@@ -389,9 +487,6 @@ function registerClient(userId: string, ws: WebSocket): () => void {
   ws.on("pong", () => {
     (ws as LiveWebSocket).isAlive = true;
   });
-
-  // RT-3: marker alive ved connect + pong
-  (ws as WebSocket & { isAlive?: boolean }).isAlive = true;
 
   try {
     ws.send(
@@ -409,9 +504,6 @@ function registerClient(userId: string, ws: WebSocket): () => void {
     }
   };
 
-  ws.on("pong", () => {
-    (ws as WebSocket & { isAlive?: boolean }).isAlive = true;
-  });
   ws.on("close", cleanup);
   ws.on("error", () => {
     // RT-3: kall cleanup() eksplisitt før terminate slik at Map-entry

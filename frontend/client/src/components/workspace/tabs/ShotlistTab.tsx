@@ -30,6 +30,7 @@ import { wsIcon } from '../crewIcons';
 import { WsCard, WsSectionTitle, WsStat, WsPills, WsTag, WsTable, WsImageGrid, WsRing, WsPageTitle, wsAlert } from '../ui';
 import { useCaptureRealtime } from '../useCaptureRealtime';
 import { useAuth } from '@/hooks/useAuth';
+import { useWorkspaceUpdate } from '../WorkspaceContext';
 
 interface SampleShot {
   prio: string;
@@ -84,11 +85,6 @@ const SAMTALE = [
 const PRIO_TONE: Record<string, string> = { kritisk: 'red', critical: 'red', høy: 'amber', high: 'amber', normal: 'neutral', lav: 'neutral', low: 'neutral' };
 const STATUS_TONE: Record<string, string> = { ferdig: 'green', done: 'green', completed: 'green', pågår: 'amber', in_progress: 'amber', klar: 'accent', ready: 'accent', planlagt: 'blue', planned: 'blue' };
 const ini = (name: string) => (name || '?').slice(0, 1).toUpperCase();
-
-// Bruker-events-WS (samme backend som iPad: /api/ipad/ws/events).
-const EVENTS_WS_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_WS_BASE)
-  ? import.meta.env.VITE_WS_BASE
-  : 'wss://creatorhub-backend-rtbl.onrender.com';
 
 /** Kommentartid: «HH:MM» i dag, ellers «dd.mm HH:MM» (fallback til gammelt HH:MM-felt). */
 const fmtCommentTime = (ts?: string, fallbackT?: string) => {
@@ -290,34 +286,6 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       c.id === editingId ? { ...c, msg: body, t: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`, ts: now.toISOString() } : c));
   };
 
-  // Live: bruker-events-WS → refetch når shot-lista endres på andre enheter.
-  React.useEffect(() => {
-    if (!projectId || projectId === 'sample') return;
-    const token = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token') || localStorage.getItem('role_room_auth_token');
-    if (!token) return;
-    let alive = true;
-    let ws: WebSocket | null = null;
-    let retry: any = null;
-    let deb: any = null;
-    const connect = () => {
-      if (!alive) return;
-      clearTimeout(retry);
-      try { ws = new WebSocket(`${EVENTS_WS_BASE}/api/ipad/ws/events?token=${encodeURIComponent(token)}`); }
-      catch { retry = setTimeout(connect, 8000); return; }
-      ws.onclose = () => { if (alive) { retry = setTimeout(connect, 8000); } };
-      ws.onerror = () => { try { ws && ws.close(); } catch { /* */ } };
-      ws.onmessage = (ev) => {
-        let payload: any = null;
-        try { payload = JSON.parse(ev.data); } catch { /* */ }
-        const kind = payload?.event?.kind;
-        if (typeof kind !== 'string' || !kind.startsWith('shot.')) return;
-        clearTimeout(deb);
-        deb = setTimeout(loadShotList, 250); // debounce egen echo + stimer
-      };
-    };
-    connect();
-    return () => { alive = false; clearTimeout(retry); clearTimeout(deb); try { ws && ws.close(); } catch { /* */ } };
-  }, [projectId]);
   const { user } = useAuth();
 
   // Hent shot-lista på nytt (mount + live-event + polling-fallback).
@@ -327,6 +295,11 @@ const ShotlistTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       .then((r: any) => { const shots = Array.isArray(r?.shots) ? r.shots : []; if (shots.length) setReal({ shots, meta: r.shotList || {} }); })
       .catch(() => {});
   }, [projectId]);
+  useWorkspaceUpdate(projectId, [
+    'shot.list-updated',
+    'shot.captured',
+    'shot.completion-toggled',
+  ], loadShotList);
 
   const { live } = useCaptureRealtime(projectId, loadShotList);
   useEffect(() => {

@@ -9,8 +9,10 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
+import type { PresenceMember } from './workspacePresence';
+export { roomOnlineState } from './workspacePresence';
+export type { PresenceMember } from './workspacePresence';
 
-export interface PresenceMember { userId: string; email: string; name: string; crewRole: string | null; online: boolean }
 
 export function usePresence(projectId: string, route?: string) {
   const [online, setOnline] = useState<number | null>(null);
@@ -23,7 +25,14 @@ export function usePresence(projectId: string, route?: string) {
 
     const beat = () => {
       if (document.hidden) return;
-      apiRequest('/api/presence/heartbeat', { method: 'POST', body: { currentRoute: route || `/workspace/${projectId}` } }).catch(() => {});
+      const activeRoute = route || `/workspace/${projectId}`;
+      const segments = activeRoute.split(/[?#]/, 1)[0].split('/').filter(Boolean);
+      const workspaceIndex = segments.indexOf('workspace');
+      const tab = workspaceIndex >= 0 ? segments[workspaceIndex + 2] : undefined;
+      apiRequest('/api/presence/heartbeat', {
+        method: 'POST',
+        body: { route: activeRoute, projectId, tab },
+      }).catch(() => {});
     };
     const poll = () => {
       if (document.hidden) return;
