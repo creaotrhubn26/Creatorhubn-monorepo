@@ -205,6 +205,41 @@ struct GeneratedStoryboardImage: Sendable {
     let promptEngine: StoryboardPromptEngineResult?
 }
 
+struct StoryboardReferenceAsset: Identifiable, Sendable, Equatable {
+    let id: String
+    let packID: String
+    let packVersion: String
+    let entityType: String
+    let entityID: String
+    let sceneIDs: [String]
+    let name: String
+    let description: String
+    let approvalStatus: String
+    let locked: Bool
+    let imageURL: String
+    let updatedAt: String
+
+    init(dictionary: [String: Any]) throws {
+        guard let id = dictionary["id"] as? String,
+              let name = dictionary["name"] as? String,
+              let imageURL = dictionary["imageUrl"] as? String else {
+            throw SyncError.malformed("storyboard-reference")
+        }
+        self.id = id
+        self.packID = (dictionary["packId"] as? String) ?? "project"
+        self.packVersion = (dictionary["packVersion"] as? String) ?? "v1"
+        self.entityType = (dictionary["entityType"] as? String) ?? "storyboard"
+        self.entityID = (dictionary["entityId"] as? String) ?? ""
+        self.sceneIDs = (dictionary["sceneIds"] as? [String]) ?? []
+        self.name = name
+        self.description = (dictionary["description"] as? String) ?? ""
+        self.approvalStatus = (dictionary["approvalStatus"] as? String) ?? "draft"
+        self.locked = (dictionary["locked"] as? Bool) ?? false
+        self.imageURL = imageURL
+        self.updatedAt = (dictionary["updatedAt"] as? String) ?? ""
+    }
+}
+
 struct StoryboardPromptConstraint: Identifiable, Sendable, Equatable {
     let id: String
     let text: String
@@ -934,6 +969,34 @@ actor RoleRoomAPIClient {
             animationPrompt: generated["animationPrompt"] as? String,
             promptEngine: (generated["promptEngine"] as? [String: Any])
                 .flatMap { try? StoryboardPromptEngineResult(dictionary: $0) })
+    }
+
+    func fetchStoryboardReferences(projectId: String) async throws -> [StoryboardReferenceAsset] {
+        let payload = try await getJSON(
+            path: "/api/role-room/projects/\(projectId)/storyboard-references",
+            query: [:])
+        guard let rows = payload["data"] as? [[String: Any]] else {
+            throw SyncError.malformed("storyboard-references")
+        }
+        return rows.compactMap { try? StoryboardReferenceAsset(dictionary: $0) }
+    }
+
+    func reviewStoryboardReference(
+        projectId: String,
+        assetID: String,
+        approvalStatus: String
+    ) async throws -> StoryboardReferenceAsset {
+        let payload = try await sendJSONResponse(
+            path: "/api/role-room/projects/\(projectId)/storyboard-references/\(assetID)",
+            method: "PATCH",
+            body: [
+                "approvalStatus": approvalStatus,
+                "locked": approvalStatus == "approved",
+            ])
+        guard let row = payload["data"] as? [String: Any] else {
+            throw SyncError.malformed("storyboard-reference-review")
+        }
+        return try StoryboardReferenceAsset(dictionary: row)
     }
 
     func fetchStoryboardVideoConfig(projectId: String) async throws -> StoryboardVideoConfig {

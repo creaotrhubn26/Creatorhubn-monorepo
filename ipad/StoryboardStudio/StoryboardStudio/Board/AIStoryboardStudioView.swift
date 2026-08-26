@@ -90,6 +90,7 @@ struct AIStoryboardStudioView: View {
     @State private var useManuscriptContext = true
     @State private var showContextDetails = true
     @State private var showPromptInspector = false
+    @State private var showReferenceLibrary = false
     @Environment(\.dismiss) private var dismiss
 
     init(board: BoardState, projectId: String, sceneId: String, frameId: String,
@@ -201,10 +202,18 @@ struct AIStoryboardStudioView: View {
                         ?? "longcat-video-i2v")
             }
         }
+        .sheet(isPresented: $showReferenceLibrary) {
+            StoryboardReferenceLibraryView(
+                projectId: projectId,
+                activeSceneID: sceneId)
+        }
         #if DEBUG
         .onAppear {
             if ProcessInfo.processInfo.environment["SB_PROMPT_INSPECTOR_DEMO"] == "1" {
                 showPromptInspector = true
+            }
+            if ProcessInfo.processInfo.environment["SB_REFERENCE_LIBRARY_DEMO"] == "1" {
+                showReferenceLibrary = true
             }
         }
         #endif
@@ -257,6 +266,13 @@ struct AIStoryboardStudioView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("storyboard.ai.prompt-inspector")
+                    Button {
+                        showReferenceLibrary = true
+                    } label: {
+                        Label("Referanser", systemImage: "square.grid.2x2")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("storyboard.ai.reference-library")
                     Button {
                         withAnimation(.easeInOut(duration: 0.18)) {
                             showContextDetails.toggle()
@@ -1390,6 +1406,311 @@ private struct StoryboardPromptInspectorView: View {
         ]
     }
     #endif
+}
+
+private struct StoryboardReferenceLibraryView: View {
+    let projectId: String
+    let activeSceneID: String
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var assets: [StoryboardReferenceAsset] = []
+    @State private var isLoading = true
+    @State private var reviewingAssetID: String?
+    @State private var errorMessage: String?
+
+    private let columns = [GridItem(.adaptive(minimum: 320), spacing: 16)]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    header
+                    if isLoading {
+                        ProgressView("Henter produksjonsreferanser …")
+                            .tint(BoardBrand.accent)
+                            .frame(maxWidth: .infinity, minHeight: 240)
+                    } else if assets.isEmpty {
+                        ContentUnavailableView(
+                            "Ingen referansepakke",
+                            systemImage: "photo.stack",
+                            description: Text("TROLL-pakken installeres av prosjektets backend-migrasjon."))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, minHeight: 300)
+                    } else {
+                        LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
+                            ForEach(assets) { asset in
+                                referenceCard(asset)
+                            }
+                        }
+                    }
+                    if let errorMessage {
+                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+                .padding(22)
+            }
+            .background(BoardBrand.chrome)
+            .navigationTitle("Produksjonsreferanser")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(BoardBrand.panel, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { Task { await load() } } label: {
+                        Label("Oppdater", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(isLoading || reviewingAssetID != nil)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Ferdig") { dismiss() }
+                }
+            }
+        }
+        .task { await load() }
+        .accessibilityIdentifier("storyboard.reference-library")
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("TROLL · PRODUCTION BIBLE V1", systemImage: "lock.shield.fill")
+                    .font(.caption.bold()).kerning(0.7)
+                    .foregroundStyle(BoardBrand.accent)
+                Spacer()
+                Text("\(approvedCount)/\(assets.count) låst")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(BoardBrand.dim)
+            }
+            Text("Velg hva AI-en faktisk får arve")
+                .font(.title3.bold()).foregroundStyle(.white)
+            Text("Kun Godkjent + låst brukes i Prompt Engine og sendes som bildeinngang til modellen. Utkast kan forhåndsvises uten å påvirke nye storyboard-ruter.")
+                .font(.subheadline).foregroundStyle(BoardBrand.dim)
+        }
+        .padding(16)
+        .background(BoardBrand.panel, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(BoardBrand.border))
+    }
+
+    private var approvedCount: Int {
+        assets.filter { $0.approvalStatus == "approved" && $0.locked }.count
+    }
+
+    private func referenceCard(_ asset: StoryboardReferenceAsset) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            StoryboardReferenceImage(path: asset.imageURL)
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(alignment: .topLeading) {
+                    statusPill(asset)
+                        .padding(10)
+                }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(asset.name)
+                        .font(.headline).foregroundStyle(.white)
+                    Spacer()
+                    if asset.sceneIDs.contains(activeSceneID) {
+                        Text("AKTIV SCENE")
+                            .font(.caption2.bold())
+                            .foregroundStyle(BoardBrand.accent)
+                    }
+                }
+                Text(asset.description)
+                    .font(.caption).foregroundStyle(BoardBrand.dim)
+                    .lineLimit(3)
+                Text("\(entityLabel(asset.entityType)) · \(asset.packVersion.uppercased())")
+                    .font(.caption2.bold()).kerning(0.5)
+                    .foregroundStyle(BoardBrand.label)
+            }
+            HStack(spacing: 10) {
+                Button {
+                    Task { await review(asset, status: "approved") }
+                } label: {
+                    Label(asset.approvalStatus == "approved" ? "Godkjent" : "Godkjenn",
+                          systemImage: asset.approvalStatus == "approved" ? "lock.fill" : "checkmark.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
+                .disabled(reviewingAssetID != nil || asset.approvalStatus == "approved")
+                .accessibilityIdentifier("storyboard.reference.approve.\(asset.id)")
+
+                Button {
+                    Task { await review(asset, status: "rejected") }
+                } label: {
+                    Label("Avvis", systemImage: "xmark.circle")
+                }
+                .buttonStyle(.bordered)
+                .tint(.orange)
+                .disabled(reviewingAssetID != nil || asset.approvalStatus == "rejected")
+                .accessibilityIdentifier("storyboard.reference.reject.\(asset.id)")
+            }
+            if reviewingAssetID == asset.id {
+                ProgressView().tint(BoardBrand.accent)
+            }
+        }
+        .padding(14)
+        .background(BoardBrand.panel, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(
+            asset.sceneIDs.contains(activeSceneID) ? BoardBrand.accent.opacity(0.55) : BoardBrand.border))
+        .accessibilityIdentifier("storyboard.reference.card.\(asset.id)")
+    }
+
+    private func statusPill(_ asset: StoryboardReferenceAsset) -> some View {
+        let approved = asset.approvalStatus == "approved" && asset.locked
+        let rejected = asset.approvalStatus == "rejected"
+        return Label(
+            approved ? "GODKJENT + LÅST" : (rejected ? "AVVIST" : "UTKAST"),
+            systemImage: approved ? "lock.fill" : (rejected ? "xmark" : "pencil"))
+            .font(.caption2.bold()).kerning(0.4)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            .background(approved ? Color.green.opacity(0.9) : (rejected ? Color.orange.opacity(0.9) : Color.black.opacity(0.72)), in: Capsule())
+    }
+
+    private func entityLabel(_ type: String) -> String {
+        switch type {
+        case "character": return "KARAKTER"
+        case "wardrobe": return "GARDEROBE"
+        case "location": return "LOCATION"
+        case "prop": return "REKVISITT"
+        default: return "STORYBOARD"
+        }
+    }
+
+    @MainActor
+    private func load() async {
+        isLoading = true
+        errorMessage = nil
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["SB_REFERENCE_LIBRARY_DEMO"] == "1" {
+            assets = Self.demoAssets()
+            isLoading = false
+            return
+        }
+        #endif
+        do {
+            assets = try await RoleRoomAPIClient.shared.fetchStoryboardReferences(projectId: projectId)
+        } catch {
+            assets = []
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+
+    @MainActor
+    private func review(_ asset: StoryboardReferenceAsset, status: String) async {
+        reviewingAssetID = asset.id
+        errorMessage = nil
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["SB_REFERENCE_LIBRARY_DEMO"] == "1" {
+            if let index = assets.firstIndex(where: { $0.id == asset.id }) {
+                let row: [String: Any] = [
+                    "id": asset.id, "packId": asset.packID,
+                    "packVersion": asset.packVersion, "entityType": asset.entityType,
+                    "entityId": asset.entityID, "sceneIds": asset.sceneIDs,
+                    "name": asset.name, "description": asset.description,
+                    "approvalStatus": status, "locked": status == "approved",
+                    "imageUrl": asset.imageURL, "updatedAt": asset.updatedAt,
+                ]
+                assets[index] = (try? StoryboardReferenceAsset(dictionary: row)) ?? asset
+            }
+            reviewingAssetID = nil
+            return
+        }
+        #endif
+        do {
+            let updated = try await RoleRoomAPIClient.shared.reviewStoryboardReference(
+                projectId: projectId,
+                assetID: asset.id,
+                approvalStatus: status)
+            if let index = assets.firstIndex(where: { $0.id == updated.id }) {
+                assets[index] = updated
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        reviewingAssetID = nil
+    }
+
+    #if DEBUG
+    private static func demoAssets() -> [StoryboardReferenceAsset] {
+        let rows: [[String: Any]] = [
+            [
+                "id": "ref-troll-nora-v1", "packId": "troll-production-bible",
+                "packVersion": "v1", "entityType": "character", "entityId": "role-nora",
+                "sceneIds": ["demo-scene", "scene-3", "scene-5", "scene-9"],
+                "name": "Nora Tidemann — karakter og garderobe",
+                "description": "Originalt fiktivt karakterdesign med fast identitet, feltjakke, notatbok og feltutstyr. Ingen skuespillerlikhet.",
+                "approvalStatus": "approved", "locked": true,
+                "imageUrl": "demo://nora-character-wardrobe-draft-v1.png", "updatedAt": "demo",
+            ],
+            [
+                "id": "ref-troll-creature-v1", "packId": "troll-production-bible",
+                "packVersion": "v1", "entityType": "character", "entityId": "trollet",
+                "sceneIds": ["demo-scene", "scene-8"],
+                "name": "Trollet — skapning og skala",
+                "description": "Et 40 meter høyt, sørgmodig fjelltroll med stabil granitt-, rot-, lav- og frostanatomi.",
+                "approvalStatus": "draft", "locked": false,
+                "imageUrl": "demo://troll-creature-scale-draft-v1.png", "updatedAt": "demo",
+            ],
+            [
+                "id": "ref-troll-dovrefjell-v1", "packId": "troll-production-bible",
+                "packVersion": "v1", "entityType": "location", "entityId": "loc-dovre",
+                "sceneIds": ["demo-scene", "scene-5", "scene-8", "scene-9"],
+                "name": "Dovrefjell — location og lyskontinuitet",
+                "description": "Samme åskam, vei, steinur og snøgeografi ved skumring, natt og daggry i Story Pencil + Story Hatch.",
+                "approvalStatus": "approved", "locked": true,
+                "imageUrl": "demo://dovrefjell-location-draft-v1.png", "updatedAt": "demo",
+            ],
+            [
+                "id": "ref-troll-scene-8-sequence-v1", "packId": "troll-production-bible",
+                "packVersion": "v1", "entityType": "storyboard", "entityId": "scene-8",
+                "sceneIds": ["demo-scene", "scene-8"],
+                "name": "Scene 8 — trollet på vandring",
+                "description": "Tre sammenhengende ruter: 24 mm extreme wide, 18 mm low angle og 85 mm emosjonelt nærbilde.",
+                "approvalStatus": "draft", "locked": false,
+                "imageUrl": "demo://scene-8-storyboard-sequence-draft-v1.png", "updatedAt": "demo",
+            ],
+        ]
+        return rows.reversed().compactMap { try? StoryboardReferenceAsset(dictionary: $0) }
+    }
+    #endif
+}
+
+private struct StoryboardReferenceImage: View {
+    let path: String
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(Color.white.opacity(0.035))
+            if let image {
+                Image(uiImage: image).resizable().scaledToFit()
+            } else {
+                ProgressView().tint(BoardBrand.accent)
+            }
+        }
+        .task(id: path) {
+            #if DEBUG
+            if path.hasPrefix("demo://") {
+                let filename = String(path.dropFirst("demo://".count))
+                if let url = Bundle.main.url(forResource: filename, withExtension: nil),
+                   let data = try? Data(contentsOf: url) {
+                    image = UIImage(data: data)
+                }
+                return
+            }
+            #endif
+            guard let data = await RoleRoomAPIClient.shared.fetchRemoteImageData(path: path) else { return }
+            image = UIImage(data: data)
+        }
+    }
 }
 
 private struct AIStoredImageView: View {
