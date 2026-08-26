@@ -5,11 +5,14 @@
  */
 
 import pg from 'pg';
+import { requireDistinctDatabaseUrls } from './scripts/required-database-url.js';
 
 const { Pool } = pg;
 
-const OLD_DB_URL = 'postgresql://neondb_owner:npg_RIFOSAo81mLc@ep-divine-rice-a6k2cock.us-west-2.aws.neon.tech/neondb?sslmode=require';
-const NEW_DB_URL = process.env.DATABASE_URL;
+const { source: OLD_DB_URL, target: NEW_DB_URL } = requireDistinctDatabaseUrls(
+  'OLD_DATABASE_URL',
+  'DATABASE_URL',
+);
 
 // Column mappings for tables with schema differences
 const COLUMN_MAPPINGS = {
@@ -201,4 +204,3 @@ async function main() {
 }
 
 main().catch(console.error);
-
