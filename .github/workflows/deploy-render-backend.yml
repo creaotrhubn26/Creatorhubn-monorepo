@@ -2,11 +2,6 @@ name: Deploy shared Render backend
 
 on:
   workflow_dispatch:
-    inputs:
-      commit_sha:
-        description: "Main-commit to deploy (defaults to selected ref HEAD)"
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -25,25 +20,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Resolve and validate main commit
+      - name: Resolve and validate current main HEAD
         id: target
         env:
-          REQUESTED_SHA: ${{ inputs.commit_sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git fetch origin main --no-tags
-          candidate="${REQUESTED_SHA:-$GITHUB_SHA}"
-          if [[ ! "$candidate" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
-            echo "::error::commit_sha must be a 7-40 character hexadecimal Git SHA"
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::This production workflow must be dispatched from main"
             exit 1
           fi
-          target_sha=$(git rev-parse "$candidate^{commit}")
-          if ! git merge-base --is-ancestor "$target_sha" origin/main; then
-            echo "::error::$target_sha is not an ancestor of origin/main"
+          main_json=$(curl -fsS --connect-timeout 3 -m 15 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/ref/heads/main")
+          target_sha=$(printf '%s' "$main_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["object"]["sha"])')
+          if [ "$GITHUB_SHA" != "$target_sha" ]; then
+            echo "::error::Selected workflow ref is stale: selected=$GITHUB_SHA currentMain=$target_sha"
             exit 1
           fi
           echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"
