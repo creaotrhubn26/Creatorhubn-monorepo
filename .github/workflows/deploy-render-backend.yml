@@ -69,7 +69,7 @@ jobs:
             python3 -c 'import json; print(json.load(open("/tmp/render-deploy-response.json")).get("message", "Render deploy request failed"))' 2>/dev/null || true
             exit 1
           fi
-          deploy_id=$(python3 -c 'import json; print(json.load(open("/tmp/render-deploy-response.json")).get("id", ""))')
+          deploy_id=$(python3 -c 'import json; print(json.load(open("/tmp/render-deploy-response.json")).get("id", ""))' 2>/dev/null || true)
           echo "Render accepted deploy ${deploy_id:-<unknown>} for $TARGET_SHA"
 
       - name: Wait for exact commit and verify health
