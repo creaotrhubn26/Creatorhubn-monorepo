@@ -59,4 +59,24 @@ final class RealtimeBackoffTests: XCTestCase {
                 "backoff[\(i)] = \(seq[i]) must not be less than backoff[\(i - 1)] = \(seq[i - 1])")
         }
     }
+
+    func testTicketedURLRemovesLongLivedToken() throws {
+        let base = try XCTUnwrap(URL(string: "wss://example.test/api/ipad/ws/events?token=durable-secret"))
+        let url = RealtimeWebSocketURL.ticketed(base, ticket: "single-use")
+        let items = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+
+        XCTAssertEqual(url.scheme, "wss")
+        XCTAssertNil(items.first(where: { $0.name == "token" }))
+        XCTAssertEqual(
+            items.first(where: { $0.name == "ticket" })?.value,
+            "single-use"
+        )
+    }
+
+    func testTicketedURLPromotesHTTPSBackendToSecureWebSocket() throws {
+        let base = try XCTUnwrap(URL(string: "https://example.test/api/ipad/ws/events"))
+        let url = RealtimeWebSocketURL.ticketed(base, ticket: "single-use")
+
+        XCTAssertEqual(url.scheme, "wss")
+    }
 }

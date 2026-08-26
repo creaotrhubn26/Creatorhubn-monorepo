@@ -6451,11 +6451,14 @@ final class LiveCaptureModel {
             // still on-set. Skipped when not signed in (offline mode
             // keeps the rest of the app functional; reviews simply
             // never arrive until next sign-in).
-            if let session = SignInService.shared.session {
+            if let session = SignInService.shared.session,
+               let realtimeBackend = self.backendClient {
                 let realtime = RealtimeEventService()
                 self.realtimeService = realtime
                 let wsURL = session.backendBaseURL.appendingPathComponent("/api/ipad/ws/events")
-                await realtime.start(url: wsURL, bearerToken: session.bearer)
+                await realtime.start(url: wsURL) {
+                    try await realtimeBackend.createRealtimeTicket()
+                }
                 let observerId = await realtime.addObserver { [weak self] event in
                     Task { @MainActor in
                         self?.recordClientReview(event)

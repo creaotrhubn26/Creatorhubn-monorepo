@@ -244,8 +244,15 @@ import { attachCaptureWebSocket } from "./capture-websocket.js";
 import {
   attachUserEventsWebSocket,
   broadcastUserEvent,
+  deliverUserEventLocally,
+  isLegacyUserEventsTokenAllowed,
   setupUserEventsTicketRoute,
 } from "./realtime-user-events.js";
+import {
+  closeRealtimeUserEventFanout,
+  getRealtimeUserEventFanoutHealth,
+  initializeRealtimeUserEventFanout,
+} from "./realtime-user-event-fanout.js";
 import { leadgridRealtime } from "./leadgrid-realtime.js";
 import {
   ensureProjectChangeLogSchema,
@@ -22779,9 +22786,13 @@ function peekFfmpegHealth(): { available: boolean | null; version: string | null
 }
 
 app.get("/api/health", (_req, res) => {
+  const realtimeFanout = getRealtimeUserEventFanoutHealth();
+  const realtimeFanoutDegraded = realtimeFanout.required && !realtimeFanout.ready;
   res.json({
-    status: compatStoreDegraded ? "degraded" : "ok",
+    status: compatStoreDegraded || realtimeFanoutDegraded ? "degraded" : "ok",
     compatStoreDegraded,
+    realtimeLegacyTokenAllowed: isLegacyUserEventsTokenAllowed(),
+    realtimeFanout,
   });
 });
 
@@ -67586,7 +67597,7 @@ setupProjectTeamRoutes({ app, pool, requireUserSession, escapeHtml });
 setupProjectWorkspaceRoutes({ app, pool, requireUserSession });
 // Webklienter veksler vanlig Authorization-header mot en 30 sekunders,
 // engangs WebSocket-billett. Session-tokenet skal aldri inn i WS-URL-en.
-setupUserEventsTicketRoute({ app, requireUserSession });
+setupUserEventsTicketRoute({ app, pool, requireUserSession });
 // Pro Tools Companion (native desktop-agent) + EaseVerse/Sound Room-kobling.
 setupProToolsCompanionRoutes({ app, pool, requireUserSession });
 setupPhotographerMiscRoutes({
@@ -75887,6 +75898,15 @@ const driveBatchWorker = startDriveBatchWorker(
 // here. Exposed on the module scope for tests that need to reach in.
 void driveBatchWorker;
 
+// Initialize distributed fanout before accepting traffic. When scaling is
+// explicitly enabled in Render, startup fails closed if Redis is absent or
+// unreachable instead of silently losing events between instances.
+async function startHttpServer(): Promise<void> {
+  await initializeRealtimeUserEventFanout(deliverUserEventLocally);
+httpServer.on("close", () => {
+  void closeRealtimeUserEventFanout();
+});
+
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend server running on port ${PORT} (HTTP + WebSocket)`);
   // iPad-bearer hydrering — last alle ikke-revokerte ipad_tokens inn i
@@ -76016,4 +76036,13 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   if (isStoryArcV2Enabled() && STORY_ARC_V2_STARTUP_WARMUP_ENABLED) {
     void runStoryArcV2StartupWarmup();
   }
+});
+}
+
+void startHttpServer().catch((error) => {
+  console.error(
+    "[boot] Realtime fanout initialization failed:",
+    error instanceof Error ? error.message : "unknown error",
+  );
+  process.exit(1);
 });

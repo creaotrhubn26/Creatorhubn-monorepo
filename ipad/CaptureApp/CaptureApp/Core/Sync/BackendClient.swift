@@ -29,6 +29,16 @@ actor BackendClient {
         self.authHeaders = headers
     }
 
+    /// Exchange the durable bearer over HTTPS for a 30-second, single-use
+    /// WebSocket credential. The bearer never enters a WebSocket URL.
+    func createRealtimeTicket() async throws -> BackendRealtimeTicket {
+        struct EmptyBody: Encodable {}
+        return try await postJSON(
+            path: "/api/realtime/user-events-ticket",
+            body: EmptyBody(),
+        )
+    }
+
     // MARK: - Sessions
 
     func createSession(_ body: BackendCreateSessionRequest) async throws -> BackendSession {

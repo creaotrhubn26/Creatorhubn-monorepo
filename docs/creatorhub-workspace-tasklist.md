@@ -1,7 +1,7 @@
 # CreatorHub Workspace – tasklist
 
-Grunnlag: `origin/main`
-Arbeidsgren: `fix/creatorhub-workspace-workflow`
+Grunnlag: `acc78aec3` på `main`
+Arbeidsgren: `p1/realtime-scaling`
 
 ## Ferdig i denne endringen
 
@@ -23,6 +23,14 @@ Arbeidsgren: `fix/creatorhub-workspace-workflow`
 - [x] Verifisere backend-bundle, frontend-produksjonsbuild og `/workspace` i Chromium.
 - [x] Samle Workspace på én prosjektfiltrert bruker-eventkanal med kortlivet engangsbillett; ingen langlivet session-token i bruker-event-WS-URL.
 - [x] Koble board, milestones, shotlist, moodboard-presence, chat og Video/Sound Room til den delte prosjektkanalen, inkludert Audio Showcase-, delt bandreview- og Pro Tools-produsenter, med polling som fallback der det allerede finnes.
+- [x] Flytte engangsbillettene til PostgreSQL, lagre bare SHA-256-hash og konsumere med atomisk `DELETE ... RETURNING` på tvers av backendinstanser.
+- [x] Multiplekse alle `useUserEventStream`-abonnenter over én socket per nettleserfane.
+- [x] Kjøre full Workspace-/galleri-/Capture-refetch etter vellykket reconnect.
+- [x] Flytte browser-Capture til den delte brukerstrømmen og iPad Capture til en ny engangsbillett ved hver connect/reconnect; ingen langlivet bearer i URL.
+- [x] Versjonere wire-formatet som protokoll v1 og dele en diskriminert TypeScript-kontrakt mellom backend og frontend.
+- [x] Koble bruker-eventkanalen til Render Key Value med Redis pub/sub, lokallevering, origin-filter og meldingsdeduplisering.
+- [x] Kreve Redis ved distribuert drift, eksponere ufølsom fanout-status i health og verifisere event fra prosess B til socket i prosess A.
+- [x] Legge gammel `?token=`-støtte bak `REALTIME_ALLOW_LEGACY_TOKEN`; bryteren står på til ticket-builden er håndhevet minimum.
 
 ## Oppfølging etter utrulling
 
@@ -30,5 +38,6 @@ Arbeidsgren: `fix/creatorhub-workspace-workflow`
 - [ ] Når migrasjon `0451` er bekreftet i alle miljøer, fjern midlertidige runtime `CREATE/ALTER`-guards.
 - [ ] Migrer gjenværende data fra `legacy.projects` og kompatibilitets-metadata til kanoniske tabeller, med backfill og avstemmingsrapport.
 - [ ] Kjør en rollebasert staging-matrise med eier, editor, viewer og utenforstående på et faktisk prosjekt.
-- [ ] Flytt engangsbillettene til et delt lager eller aktiver sticky routing før backend skaleres til flere instanser; dagens 30-sekunders ticket-store er prosesslokal.
-- [ ] Migrer den separate browser-klienten for Capture-session-WebSocket til samme scoped ticket-mønster; den bruker fortsatt eldre token-query mot en annen, sesjonsavgrenset kanal.
+- [ ] Kjør migrasjon `0452_realtime_user_event_tickets.sql` før den nye backenden aktiveres; ticket-endepunktet feiler kontrollert med 503 til tabellen finnes.
+- [x] Koble produksjonsbackenden til eksisterende administrert Render Key Value i samme miljø/region; verifisert uten å logge eller commite tilkoblingsstrengen.
+- [ ] Fjern serverens midlertidige `?token=`-kompatibilitet for bruker-event-WebSocket etter at minimum støttet Capture-appversjon bruker ticket-handshake.

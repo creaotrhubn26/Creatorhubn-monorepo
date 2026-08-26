@@ -16,6 +16,19 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
+      # Internal URL for the existing Render Key Value instance named "redis"
+      # in the same Production environment and Oregon region. Configure the
+      # value in Render; never commit its connection credentials.
+      - key: REALTIME_REDIS_URL
+        sync: false
+      # Scaling is fail-closed: the backend must not accept traffic without
+      # cross-instance fanout once this guard is enabled.
+      - key: REALTIME_DISTRIBUTED_FANOUT_REQUIRED
+        value: "true"
+      # Set false only after the ticket-capable Capture build is the enforced
+      # minimum supported version.
+      - key: REALTIME_ALLOW_LEGACY_TOKEN
+        value: "true"
       - key: OPENAI_API_KEY
         sync: false
       # Anthropic Claude for The Role Room Agent (generation tasks).
@@ -360,9 +373,10 @@ services:
   - type: cron
     name: creatorhub-nextrole-cron
     runtime: docker
+    repo: https://github.com/creaotrhubn26/Creatorhubn-monorepo
     dockerfilePath: ./Dockerfile.cron
     dockerContext: .
-    plan: free
+    plan: starter
     schedule: "0 9 * * *"
     branch: main
     envVars:

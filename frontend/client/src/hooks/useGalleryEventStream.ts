@@ -35,6 +35,9 @@ export function useGalleryEventStream({ enabled = true, onEvent }: Options = {})
   const queryClient = useQueryClient();
   useUserEventStream({
     enabled,
+    onReconnect: () => {
+      void queryClient.invalidateQueries({ queryKey: ['/api/photographer/galleries'] });
+    },
     onEvent: (payload) => {
       if (payload.kind === 'video.comment-added') {
         const galleryId = String(payload.galleryId || '');

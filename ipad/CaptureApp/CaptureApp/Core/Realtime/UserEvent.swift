@@ -118,6 +118,9 @@ enum UserEvent: Equatable {
     /// out here — it's useful for logging but not a user event.
     static func decode(frame: Any) -> UserEvent? {
         guard let dict = frame as? [String: Any] else { return nil }
+        if let version = dict["version"] as? Int, version != 1 {
+            return nil
+        }
         guard (dict["type"] as? String) == "user_event" else { return nil }
         guard let event = dict["event"] as? [String: Any] else { return nil }
         guard let kind = event["kind"] as? String, !kind.isEmpty else { return nil }

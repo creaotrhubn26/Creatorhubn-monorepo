@@ -1,5 +1,12 @@
 import Foundation
 
+struct BackendRealtimeTicket: Decodable, Sendable {
+    let ticket: String
+    let expiresAt: String
+    let websocketPath: String
+    let protocolVersion: Int
+}
+
 // MARK: - Session
 
 struct BackendCreateSessionRequest: Encodable, Sendable {

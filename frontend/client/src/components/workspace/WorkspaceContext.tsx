@@ -45,6 +45,7 @@ const READ_ONLY_ACCESS: WorkspaceAccess = { canRead: true, canEdit: false, isOwn
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 export const WORKSPACE_UPDATED_EVENT = 'creatorhub:workspace-updated';
+export const WORKSPACE_FULL_REFRESH_SCOPE = 'realtime.full-refresh';
 
 export function notifyWorkspaceUpdated(
   projectId: string,
@@ -102,14 +103,19 @@ export const WorkspaceProvider: React.FC<{
   children: React.ReactNode;
 }> = ({ projectId, bootstrap, loading, error, refresh, children }) => {
   const onRealtimeEvent = useCallback((event: RealtimeUserEvent) => {
-    const belongsToProject = event.projectId === projectId
-      || event.channelId === `project-${projectId}`;
+    const belongsToProject = ('projectId' in event && event.projectId === projectId)
+      || ('channelId' in event && event.channelId === `project-${projectId}`);
     if (!belongsToProject) return;
     notifyWorkspaceUpdated(projectId, event.kind, event);
   }, [projectId]);
+  const onRealtimeReconnect = useCallback(() => {
+    void refresh();
+    notifyWorkspaceUpdated(projectId, WORKSPACE_FULL_REFRESH_SCOPE);
+  }, [projectId, refresh]);
   const realtimeStatus = useUserEventStream({
     enabled: projectId !== 'sample' && bootstrap?.access.canRead === true,
     onEvent: onRealtimeEvent,
+    onReconnect: onRealtimeReconnect,
   });
 
   const value = useMemo<WorkspaceContextValue>(() => ({
@@ -145,7 +151,10 @@ export function useWorkspaceUpdate(
     const accepted = new Set(scopeKey.split('|'));
     const onUpdated = (event: Event) => {
       const detail = (event as CustomEvent)?.detail;
-      if (detail?.projectId === projectId && accepted.has(detail?.scope)) callbackRef.current(detail?.event);
+      if (detail?.projectId !== projectId) return;
+      if (detail?.scope === WORKSPACE_FULL_REFRESH_SCOPE || accepted.has(detail?.scope)) {
+        callbackRef.current(detail?.event);
+      }
     };
     window.addEventListener(WORKSPACE_UPDATED_EVENT, onUpdated);
     return () => window.removeEventListener(WORKSPACE_UPDATED_EVENT, onUpdated);

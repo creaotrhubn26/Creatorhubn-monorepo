@@ -22,7 +22,7 @@ import {
   CaptureAuthzError,
 } from './capture-assets-service.js';
 import { appendEvents, listEvents } from './capture-events-service.js';
-import { broadcastUserEvent } from './realtime-user-events.js';
+import { broadcastUserEvent, type UserEvent } from './realtime-user-events.js';
 import { addReview, listReviews } from './capture-reviews-service.js';
 import {
   abortMultipartUpload,
@@ -91,6 +91,33 @@ interface SessionData {
 }
 
 type AuthedRequest = Request & { userId: string };
+
+async function broadcastCaptureWorkspaceEvent(
+  pool: Pool,
+  sessionId: string,
+  createEvents: (target: { projectId: string | null }) => UserEvent | UserEvent[],
+): Promise<void> {
+  try {
+    const result = await pool.query<{
+      owner_user_id: string;
+      project_id: string | null;
+    }>(
+      `SELECT owner_user_id, project_id
+         FROM capture_sessions
+        WHERE id = $1
+        LIMIT 1`,
+      [sessionId],
+    );
+    const target = result.rows[0];
+    if (!target?.owner_user_id) return;
+    const events = createEvents({ projectId: target.project_id ?? null });
+    for (const event of Array.isArray(events) ? events : [events]) {
+      broadcastUserEvent(target.owner_user_id, event);
+    }
+  } catch (error) {
+    console.warn('Could not broadcast Capture event to the user stream:', error);
+  }
+}
 
 const createSessionBody = z.object({
   name: z.string().min(1).max(255),
@@ -821,6 +848,14 @@ export function createCaptureRouter(
       rejected: row.rejected ?? null,
       timestamp: new Date().toISOString(),
     });
+    void broadcastCaptureWorkspaceEvent(pool, row.sessionId, ({ projectId }) => ({
+      kind: 'capture.asset-updated',
+      projectId,
+      sessionId: row.sessionId,
+      assetId: row.id,
+      reason: 'labels',
+      timestamp: new Date().toISOString(),
+    }));
     res.json(row);
   });
 
@@ -1050,6 +1085,21 @@ export function createCaptureRouter(
     for (const row of rows) {
       broadcastCaptureEvent(req.params.sessionId, row);
     }
+    void broadcastCaptureWorkspaceEvent(pool, req.params.sessionId, ({ projectId }) =>
+      rows.map((row) => ({
+        kind: 'capture.activity-recorded' as const,
+        projectId,
+        sessionId: req.params.sessionId,
+        activity: {
+          id: row.id,
+          assetId: row.assetId ?? null,
+          eventType: row.eventType,
+          metadata: row.metadata as Record<string, unknown>,
+          createdAt: row.createdAt.toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      })),
+    );
     res.status(201).json({ events: rows });
   });
 
@@ -1308,6 +1358,15 @@ export function createCaptureRouter(
       submittedCount: result.submittedCount,
       requestedCount: result.requestedCount,
     });
+    void broadcastCaptureWorkspaceEvent(pool, req.params.sessionId, ({ projectId }) => ({
+      kind: 'capture.handoff-triggered',
+      projectId,
+      sessionId: req.params.sessionId,
+      handoffId: result.handoffId,
+      submittedCount: result.submittedCount,
+      requestedCount: result.requestedCount,
+      timestamp: new Date().toISOString(),
+    }));
     res.status(202).json(result);
   });
 
@@ -1585,6 +1644,13 @@ export function createCaptureRouter(
       type: 'client_review',
       review: row,
     });
+    void broadcastCaptureWorkspaceEvent(pool, auth.sessionId, ({ projectId }) => ({
+      kind: 'capture.client-review',
+      projectId,
+      sessionId: auth.sessionId,
+      review: row as unknown as Record<string, unknown>,
+      timestamp: new Date().toISOString(),
+    }));
     res.status(201).json(row);
   });
 

@@ -11,13 +11,53 @@ import {
   consumeUserEventsTicket,
   connectedUserClientCount,
   issueUserEventsTicket,
+  isLegacyUserEventsTokenAllowed,
   registerUserClientForTests,
   resetUserClientsForTests,
-  resetUserEventsTicketsForTests,
   setupUserEventsTicketRoute,
   USER_EVENTS_TICKET_TTL_MS,
   USER_EVENTS_WS_PATH,
 } from "./realtime-user-events";
+
+class MemoryTicketDatabase {
+  private readonly tickets = new Map<string, {
+    userId: string;
+    issuedAt: number;
+    expiresAt: number;
+  }>();
+
+  async query<T = unknown>(sql: string, parameters: unknown[] = []): Promise<{ rows: T[] }> {
+    if (sql.includes("INSERT INTO realtime_user_event_tickets")) {
+      const [userId, ticketHash, issuedAt, keepExisting, expiresAt] = parameters as [
+        string, string, Date, number, Date,
+      ];
+      for (const [hash, record] of this.tickets) {
+        if (record.expiresAt <= issuedAt.getTime()) this.tickets.delete(hash);
+      }
+      const existing = [...this.tickets.entries()]
+        .filter(([, record]) => record.userId === userId)
+        .sort((a, b) => b[1].issuedAt - a[1].issuedAt || b[0].localeCompare(a[0]));
+      for (const [hash] of existing.slice(keepExisting)) this.tickets.delete(hash);
+      this.tickets.set(ticketHash, {
+        userId,
+        issuedAt: issuedAt.getTime(),
+        expiresAt: expiresAt.getTime(),
+      });
+      return { rows: [] };
+    }
+    if (sql.includes("DELETE FROM realtime_user_event_tickets")) {
+      const [ticketHash, now] = parameters as [string, Date];
+      const record = this.tickets.get(ticketHash);
+      this.tickets.delete(ticketHash);
+      return {
+        rows: record && record.expiresAt > now.getTime()
+          ? [{ user_id: record.userId } as T]
+          : [],
+      };
+    }
+    throw new Error(`Unexpected SQL in MemoryTicketDatabase: ${sql}`);
+  }
+}
 
 /**
  * Unit-tests the broadcast routing layer without standing up a real
@@ -36,8 +76,8 @@ import {
  *     triggered the broadcast).
  *   - Cleanup on ``close`` removes the socket from the registry so
  *     a future broadcast doesn't fan out to a zombie.
- *   - Frame shape carries ``type: user_event`` + the serialized
- *     event so the iPad can decode without version negotiation.
+ *   - Frame shape carries protocol v1 + ``type: user_event`` + the
+ *     serialized event so browser and iPad reject incompatible versions.
  */
 describe("realtime-user-events broadcast routing", () => {
   // Mirror of ws.WebSocket.OPEN (1). We don't import the real ws
@@ -95,6 +135,7 @@ describe("realtime-user-events broadcast routing", () => {
     expect(a.sent.length).toBe(2);
     expect(b.sent.length).toBe(1);
     const payload = JSON.parse(a.sent[1]);
+    expect(payload.version).toBe(1);
     expect(payload.type).toBe("user_event");
     expect(payload.event.kind).toBe("asset.hearted");
     expect(payload.event.assetId).toBe("img-1");
@@ -186,43 +227,58 @@ describe("realtime-user-events broadcast routing", () => {
     const ws = register("user-a");
     expect(ws.sent.length).toBe(1);
     const frame = JSON.parse(ws.sent[0]);
+    expect(frame.version).toBe(1);
     expect(frame.type).toBe("connection_established");
     expect(typeof frame.serverTime).toBe("string");
   });
 });
 
 describe("realtime user-event handshake tickets", () => {
-  afterEach(() => {
-    resetUserEventsTicketsForTests();
-  });
-
-  it("binds a ticket to the authenticated user and permits exactly one consume", () => {
-    const { ticket } = issueUserEventsTicket("user-a", 1_000);
+  it("binds a ticket to the authenticated user and permits exactly one atomic consume", async () => {
+    const database = new MemoryTicketDatabase();
+    const { ticket } = await issueUserEventsTicket(database as unknown as Pool, "user-a", 1_000);
     expect(ticket).not.toContain("user-a");
-    expect(consumeUserEventsTicket(ticket, 1_001)).toEqual({ userId: "user-a" });
-    expect(consumeUserEventsTicket(ticket, 1_002)).toBeNull();
+    const [first, replay] = await Promise.all([
+      consumeUserEventsTicket(database as unknown as Pool, ticket, 1_001),
+      consumeUserEventsTicket(database as unknown as Pool, ticket, 1_002),
+    ]);
+    expect([first, replay].filter(Boolean)).toEqual([{ userId: "user-a" }]);
   });
 
-  it("rejects expired tickets", () => {
-    const { ticket } = issueUserEventsTicket("user-a", 5_000);
+  it("rejects and consumes expired tickets", async () => {
+    const database = new MemoryTicketDatabase();
+    const { ticket } = await issueUserEventsTicket(database as unknown as Pool, "user-a", 5_000);
     expect(
-      consumeUserEventsTicket(ticket, 5_000 + USER_EVENTS_TICKET_TTL_MS),
+      await consumeUserEventsTicket(
+        database as unknown as Pool,
+        ticket,
+        5_000 + USER_EVENTS_TICKET_TTL_MS,
+      ),
     ).toBeNull();
+    expect(await consumeUserEventsTicket(database as unknown as Pool, ticket, 5_001)).toBeNull();
   });
 
-  it("bounds outstanding tickets per user and revokes the oldest", () => {
-    const tickets = Array.from({ length: 5 }, (_, index) =>
-      issueUserEventsTicket("user-a", 10_000 + index).ticket,
-    );
-    expect(consumeUserEventsTicket(tickets[0], 10_010)).toBeNull();
-    expect(consumeUserEventsTicket(tickets[4], 10_010)).toEqual({ userId: "user-a" });
+  it("bounds outstanding tickets per user and revokes the oldest", async () => {
+    const database = new MemoryTicketDatabase();
+    const tickets: string[] = [];
+    for (let index = 0; index < 5; index += 1) {
+      tickets.push((await issueUserEventsTicket(
+        database as unknown as Pool,
+        "user-a",
+        10_000 + index,
+      )).ticket);
+    }
+    expect(await consumeUserEventsTicket(database as unknown as Pool, tickets[0], 10_010)).toBeNull();
+    expect(await consumeUserEventsTicket(database as unknown as Pool, tickets[4], 10_010)).toEqual({ userId: "user-a" });
   });
 
   it("issues tickets only through an authenticated, non-cacheable POST", async () => {
     const app = express();
+    const database = new MemoryTicketDatabase();
     app.use(express.json());
     setupUserEventsTicketRoute({
       app,
+      pool: database as unknown as Pool,
       requireUserSession: (req, res) => {
         const userId = req.header("x-test-user");
         if (userId) return { userId };
@@ -241,12 +297,15 @@ describe("realtime user-event handshake tickets", () => {
       .expect(201);
     expect(response.headers["cache-control"]).toContain("no-store");
     expect(response.body.websocketPath).toBe("/api/ipad/ws/events");
-    expect(consumeUserEventsTicket(response.body.ticket)).toEqual({ userId: "user-route" });
+    expect(response.body.protocolVersion).toBe(1);
+    expect(await consumeUserEventsTicket(database as unknown as Pool, response.body.ticket))
+      .toEqual({ userId: "user-route" });
   });
 
   it("accepts a valid ticket through the real WebSocket upgrade path", async () => {
     const server = createServer(express());
-    attachUserEventsWebSocket(server, {} as Pool);
+    const database = new MemoryTicketDatabase();
+    attachUserEventsWebSocket(server, database as unknown as Pool);
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
       server.listen(0, "127.0.0.1", resolve);
@@ -255,7 +314,9 @@ describe("realtime user-event handshake tickets", () => {
     let socket: WebSocket | null = null;
     try {
       const { port } = server.address() as AddressInfo;
-      const { ticket } = issueUserEventsTicket("user-upgrade");
+      const { ticket } = await issueUserEventsTicket(
+        database as unknown as Pool, "user-upgrade",
+      );
       socket = new WebSocket(
         `ws://127.0.0.1:${port}${USER_EVENTS_WS_PATH}?ticket=${encodeURIComponent(ticket)}`,
       );
@@ -263,7 +324,9 @@ describe("realtime user-event handshake tickets", () => {
         socket?.once("message", (data) => resolve(data.toString()));
         socket?.once("error", reject);
       });
-      expect(JSON.parse(frame).type).toBe("connection_established");
+      expect(JSON.parse(frame)).toMatchObject({
+        version: 1, type: "connection_established",
+      });
       expect(connectedUserClientCount("user-upgrade")).toBe(1);
     } finally {
       if (socket) {
@@ -274,6 +337,26 @@ describe("realtime user-event handshake tickets", () => {
         });
       }
       await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("keeps legacy token auth behind an explicit sunset switch", () => {
+    const original = process.env.REALTIME_ALLOW_LEGACY_TOKEN;
+    try {
+      delete process.env.REALTIME_ALLOW_LEGACY_TOKEN;
+      expect(isLegacyUserEventsTokenAllowed()).toBe(true);
+      process.env.REALTIME_ALLOW_LEGACY_TOKEN = "false";
+      expect(isLegacyUserEventsTokenAllowed()).toBe(false);
+      process.env.REALTIME_ALLOW_LEGACY_TOKEN = "0";
+      expect(isLegacyUserEventsTokenAllowed()).toBe(false);
+      process.env.REALTIME_ALLOW_LEGACY_TOKEN = "true";
+      expect(isLegacyUserEventsTokenAllowed()).toBe(true);
+    } finally {
+      if (original === undefined) {
+        delete process.env.REALTIME_ALLOW_LEGACY_TOKEN;
+      } else {
+        process.env.REALTIME_ALLOW_LEGACY_TOKEN = original;
+      }
     }
   });
 });
