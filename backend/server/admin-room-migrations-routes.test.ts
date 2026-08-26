@@ -186,20 +186,24 @@ describe.sequential("admin room migrations routes", () => {
     const started = await request(app)
       .post("/api/admin-room/migrations/run")
       .set("X-Cron-Trigger-Token", TOKEN)
-      .send({});
+      .send({ migrationFile: "334_storyboard_reference_assets.sql" });
 
     expect(started.status).toBe(202);
     expect(started.body.state.status).toBe("running");
+    expect(started.body.state.requestedFile).toBe(
+      "334_storyboard_reference_assets.sql",
+    );
     expect(spawnMock).not.toHaveBeenCalled();
 
     const duplicate = await request(app)
       .post("/api/admin-room/migrations/run")
       .set("X-Cron-Trigger-Token", TOKEN)
-      .send({});
+      .send({ migrationFile: "334_storyboard_reference_assets.sql" });
     expect(duplicate.status).toBe(409);
 
     const running = await request(app)
       .get("/api/admin-room/migrations/status")
+      .query({ migrationFile: "334_storyboard_reference_assets.sql" })
       .set("X-Cron-Trigger-Token", TOKEN);
     expect(running.status).toBe(200);
     expect(running.body).toMatchObject({
@@ -213,8 +217,39 @@ describe.sequential("admin room migrations routes", () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(spawnMock).toHaveBeenCalledOnce();
     expect(spawnMock.mock.calls[0]?.[0]).toBe("bash");
+    expect(spawnMock.mock.calls[0]?.[2]?.env).toMatchObject({
+      MIGRATION_ONLY_FILE: "334_storyboard_reference_assets.sql",
+    });
 
     child.emit("close", 0);
     await new Promise((resolve) => setImmediate(resolve));
+  });
+
+  it("rejects unsafe scoped migration filenames before spawning", async () => {
+    const { app } = createRouteHarness();
+
+    const response = await request(app)
+      .post("/api/admin-room/migrations/run")
+      .set("X-Cron-Trigger-Token", TOKEN)
+      .send({ migrationFile: "../danger.sql" });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: "Ugyldig migreringsfil." });
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects unscoped CI migration runs", async () => {
+    const { app } = createRouteHarness();
+
+    const response = await request(app)
+      .post("/api/admin-room/migrations/run")
+      .set("X-Cron-Trigger-Token", TOKEN)
+      .send({});
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      error: "CI-migrering krever en eksplisitt migreringsfil.",
+    });
+    expect(spawnMock).not.toHaveBeenCalled();
   });
 });

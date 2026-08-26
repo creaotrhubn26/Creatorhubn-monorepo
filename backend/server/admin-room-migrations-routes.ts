@@ -36,11 +36,13 @@ interface MigrationState {
   errorMessage: string | null;
   appliedThisRun: number;
   skippedThisRun: number;
+  requestedFile: string | null;
 }
 
 const MAX_LOG_LINES = 200;
 const PENDING_QUERY_TIMEOUT_MS = 4_000;
 const MIGRATION_START_DELAY_MS = 250;
+const MIGRATION_FILENAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*\.sql$/;
 
 interface PendingMigrationsResult {
   pendingFiles: string[];
@@ -48,7 +50,8 @@ interface PendingMigrationsResult {
   pendingError?:
     | "query_timeout"
     | "query_failed"
-    | "migrations_directory_unavailable";
+    | "migrations_directory_unavailable"
+    | "requested_migration_unavailable";
 }
 
 class PendingMigrationsTimeoutError extends Error {
@@ -68,6 +71,7 @@ let currentState: MigrationState = {
   errorMessage: null,
   appliedThisRun: 0,
   skippedThisRun: 0,
+  requestedFile: null,
 };
 
 let runLock = false;
@@ -123,14 +127,24 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
     }
   }
 
-  async function detectPendingMigrations(): Promise<PendingMigrationsResult> {
+  async function detectPendingMigrations(
+    requestedFile: string | null = null,
+  ): Promise<PendingMigrationsResult> {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     const migrationsDir = path.resolve(__dirname, "..", "migrations");
     let allFiles: string[] = [];
     try {
       const entries = await fs.readdir(migrationsDir);
-      allFiles = entries.filter((f) => f.endsWith(".sql"));
+      const migrationFiles = entries.filter((f) => f.endsWith(".sql"));
+      if (requestedFile && !migrationFiles.includes(requestedFile)) {
+        return {
+          pendingFiles: [requestedFile],
+          pendingCheck: "error",
+          pendingError: "requested_migration_unavailable",
+        };
+      }
+      allFiles = requestedFile ? [requestedFile] : migrationFiles;
     } catch {
       return {
         pendingFiles: [],
@@ -223,6 +237,16 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
       const session = requireAdminRoomAccess(req, res);
       if (!session) return;
     }
+    const requestedFileRaw = req.query.migrationFile;
+    const requestedFile =
+      typeof requestedFileRaw === "string" ? requestedFileRaw.trim() : null;
+    if (
+      requestedFileRaw !== undefined &&
+      (!requestedFile || !MIGRATION_FILENAME_PATTERN.test(requestedFile))
+    ) {
+      res.status(400).json({ error: "Ugyldig migreringsfil." });
+      return;
+    }
     try {
       // While migrate.sh is active, its child-process state is authoritative.
       // Do not contend with it on the tracking table merely to report running.
@@ -239,7 +263,7 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
         });
         return;
       }
-      const pending = await detectPendingMigrations();
+      const pending = await detectPendingMigrations(requestedFile);
       res.json({
         ...currentState,
         lockHeld: runLock,
@@ -307,6 +331,39 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
       actorUserId = session.userId;
     }
 
+    const requestedFileRaw = req.body?.migrationFile;
+    const requestedFile =
+      typeof requestedFileRaw === "string" ? requestedFileRaw.trim() : null;
+    if (
+      requestedFileRaw !== undefined &&
+      (!requestedFile || !MIGRATION_FILENAME_PATTERN.test(requestedFile))
+    ) {
+      res.status(400).json({ error: "Ugyldig migreringsfil." });
+      return;
+    }
+    if (triggerToken && !requestedFile) {
+      res.status(400).json({
+        error: "CI-migrering krever en eksplisitt migreringsfil.",
+      });
+      return;
+    }
+    if (requestedFile) {
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = path.dirname(__filename);
+      const requestedPath = path.resolve(
+        __dirname,
+        "..",
+        "migrations",
+        requestedFile,
+      );
+      try {
+        await fs.access(requestedPath);
+      } catch {
+        res.status(400).json({ error: "Migreringsfilen finnes ikke." });
+        return;
+      }
+    }
+
     if (runLock || currentState.status === "running") {
       res.status(409).json({
         error: "En migrate-run pågår allerede.",
@@ -316,6 +373,7 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
     }
 
     runLock = true;
+    lastKnownPendingFiles = requestedFile ? [requestedFile] : null;
     currentState = {
       status: "running",
       startedAt: new Date().toISOString(),
@@ -326,6 +384,7 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
       errorMessage: null,
       appliedThisRun: 0,
       skippedThisRun: 0,
+      requestedFile,
     };
 
     // Flush 202 before process creation. Spawning from the large Render
@@ -352,6 +411,7 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
             ...process.env,
             RUN_RENDER_BOOT_SEEDING: "0",
             RUN_RENDER_BOOT_INTEGRITY: "0",
+            MIGRATION_ONLY_FILE: requestedFile ?? "",
           },
           stdio: ["ignore", "pipe", "pipe"],
         });

@@ -27,6 +27,17 @@ fi
 
 echo "✅ DATABASE_URL is configured"
 
+# Neon sin pooler avviser lock_timeout/statement_timeout når de sendes som
+# startup-parametre via PGOPTIONS. Migreringer bruker derfor den direkte Neon-
+# hosten; apptrafikken fortsetter å bruke den opprinnelige pooler-URL-en.
+MIGRATION_DATABASE_URL="$DATABASE_URL"
+if [[ "$DATABASE_URL" == *@*-pooler.* ]]; then
+  DATABASE_URL_PREFIX="${DATABASE_URL%@*}"
+  DATABASE_URL_HOST_PART="${DATABASE_URL##*@}"
+  MIGRATION_DATABASE_URL="${DATABASE_URL_PREFIX}@${DATABASE_URL_HOST_PART/-pooler./.}"
+  echo "✅ Using direct database connection for migrations"
+fi
+
 # Drizzle loads the shared schema from ../frontend/shared. In production Docker the
 # installed packages live in /app/backend/node_modules, so expose that path to
 # Node's resolver before drizzle-kit imports files outside the backend folder.
@@ -38,7 +49,7 @@ export NODE_PATH="${NODE_PATH:+$NODE_PATH:}$BACKEND_NODE_MODULES:$APP_BACKEND_NO
 # Create migrations tracking table
 if command -v psql &> /dev/null; then
   echo "📊 Setting up migration tracking..."
-  psql "$DATABASE_URL" -c "CREATE TABLE IF NOT EXISTS _migrations_applied (
+  psql "$MIGRATION_DATABASE_URL" -c "CREATE TABLE IF NOT EXISTS _migrations_applied (
     id SERIAL PRIMARY KEY,
     filename VARCHAR(255) UNIQUE NOT NULL,
     applied_at TIMESTAMP DEFAULT NOW()
@@ -52,7 +63,16 @@ if [ -d "migrations" ]; then
     
     # Get list of migration files and sort them properly
     # This ensures numeric ordering: 001, 002, etc. before 0001
-    migration_files=$(ls migrations/*.sql 2>/dev/null | sort -V)
+    if [ -n "${MIGRATION_ONLY_FILE:-}" ]; then
+      if [[ ! "$MIGRATION_ONLY_FILE" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*\.sql$ ]] || [ ! -f "migrations/$MIGRATION_ONLY_FILE" ]; then
+        echo "❌ Invalid or missing MIGRATION_ONLY_FILE"
+        exit 1
+      fi
+      migration_files="migrations/$MIGRATION_ONLY_FILE"
+      echo "🎯 Scoped migration: $MIGRATION_ONLY_FILE"
+    else
+      migration_files=$(ls migrations/*.sql 2>/dev/null | sort -V)
+    fi
     
     if [ -z "$migration_files" ]; then
       echo "  ℹ️  No SQL migration files found"
@@ -60,7 +80,7 @@ if [ -d "migrations" ]; then
       # Load the tracking table once. The previous implementation opened a
       # separate Neon connection for every migration file (currently 692), so
       # an idempotent no-op run could take more than 20 minutes.
-      if applied_filenames=$(psql "$DATABASE_URL" -Atc "SELECT filename FROM _migrations_applied" 2>/dev/null); then
+      if applied_filenames=$(psql "$MIGRATION_DATABASE_URL" -Atc "SELECT filename FROM _migrations_applied" 2>/dev/null); then
         # Newline boundaries make the membership test exact (no substring
         # collisions) while remaining compatible with Bash 3.2+.
         applied_filenames=$'\n'"$applied_filenames"$'\n'
@@ -102,9 +122,9 @@ if [ -d "migrations" ]; then
           # En migrasjon som treffer disse feiler → logges + hoppes over + IKKE
           # sporet → kan kjøres på nytt. Overstyres av en migrasjon som selv
           # SET-er timeouts. PGOPTIONS gjelder kun denne tilkoblingen.
-          if PGOPTIONS='-c lock_timeout=30000 -c statement_timeout=600000' psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration_file"; then
+          if PGOPTIONS='-c lock_timeout=30000 -c statement_timeout=600000' psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration_file"; then
             # Record successful migration
-            psql "$DATABASE_URL" -c "INSERT INTO _migrations_applied (filename) VALUES ('$base_name') ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
+            psql "$MIGRATION_DATABASE_URL" -c "INSERT INTO _migrations_applied (filename) VALUES ('$base_name') ON CONFLICT (filename) DO NOTHING;" 2>/dev/null
             applied_filenames+="$base_name"$'\n'
             echo "  ✅ $base_name applied successfully"
           else
