@@ -21,6 +21,7 @@
  *   • casting_props — 8 TROLL-tema rekvisitter
  *   • split_sheets + split_sheet_contributors — 1 sheet med 8 bidragsytere
  *   • casting_storyboards — 4 storyboard-skall for nøkkelscener
+ *   • storyboard_reference_assets — 4 visuelle kontinuitetsutkast
  *   • casting_candidate_videos — 4 audition self-tapes (status='ready')
  *   • role_room_calendar_events — 6 produksjonsteam-events
  *   • role_room_budget_items — 10 budsjettlinjer (3 faser)
@@ -29,9 +30,9 @@
  * Returnerer rapport om hva som ble seedet for frontend-feedback.
  */
 
-import type { Pool } from 'pg';
+import type { Pool } from "pg";
 
-const TROLL_CANONICAL_ID = 'troll-project-2026';
+const TROLL_CANONICAL_ID = "troll-project-2026";
 
 interface SeedReport {
   project: { id: string; name: string };
@@ -54,7 +55,7 @@ export async function seedTrollDemo(
 ): Promise<SeedReport> {
   const TROLL_PROJECT_ID = options.projectId ?? TROLL_CANONICAL_ID;
   const isCanonical = TROLL_PROJECT_ID === TROLL_CANONICAL_ID;
-  const projectName = options.projectName ?? 'TROLL';
+  const projectName = options.projectName ?? "TROLL";
   // Scope entity-IDer per prosjekt så seed kan kjøres for flere TROLL-kopier
   // uten PK-kollisjon. Kanonisk prosjekt beholder rå slugs for bakover-
   // kompat med eksisterende referanser/tester.
@@ -63,38 +64,43 @@ export async function seedTrollDemo(
 
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    await client.query("BEGIN");
 
     // ── 1. Slett alle sub-data for å gjøre seed idempotent ───────────
     // Rekkefølge: barn-tabeller før parent (FK-cascading sikrer at
     // sletting av casting_projects ville fjerne alt, men vi vil beholde
     // selve prosjekt-raden for å unngå å bryte FKs i andre vertikaler).
     const subTables = [
-      'casting_consents',
-      'casting_shot_lists',
-      'casting_production_days',
-      'casting_schedules',
-      'casting_storyboards',
-      'casting_candidate_videos',
-      'casting_revisions',
-      'casting_dialogue',
-      'casting_scenes',
-      'casting_acts',
-      'casting_manuscripts',
-      'casting_props',
-      'casting_locations',
-      'casting_crew',
-      'casting_candidates',
-      'casting_roles',
+      "casting_consents",
+      "casting_shot_lists",
+      "casting_production_days",
+      "casting_schedules",
+      "casting_storyboards",
+      "casting_candidate_videos",
+      "casting_revisions",
+      "casting_dialogue",
+      "casting_scenes",
+      "casting_acts",
+      "casting_manuscripts",
+      "casting_props",
+      "casting_locations",
+      "casting_crew",
+      "casting_candidates",
+      "casting_roles",
     ];
     for (const table of subTables) {
-      await client.query(`DELETE FROM ${table} WHERE project_id = $1`, [TROLL_PROJECT_ID]);
+      await client.query(`DELETE FROM ${table} WHERE project_id = $1`, [
+        TROLL_PROJECT_ID,
+      ]);
     }
     // Rydd equipment hvis tabellen finnes (migration 097)
-    await client.query(
-      `DELETE FROM casting_equipment WHERE project_id = $1`,
-      [TROLL_PROJECT_ID],
-    ).catch(() => { /* tabell finnes ikke i alle miljøer */ });
+    await client
+      .query(`DELETE FROM casting_equipment WHERE project_id = $1`, [
+        TROLL_PROJECT_ID,
+      ])
+      .catch(() => {
+        /* tabell finnes ikke i alle miljøer */
+      });
 
     // ── 2. UPSERT casting_projects ───────────────────────────────────
     await client.query(
@@ -119,16 +125,16 @@ export async function seedTrollDemo(
       [
         TROLL_PROJECT_ID,
         projectName,
-        options.projectDescription
-          ?? 'Norsk eventyrfilm regissert av Roar Uthaug. Når en eksplosjon i de norske fjellene avslører et urgammelt troll, må paleontologen Nora samarbeide med myndighetene for å stoppe skapningen før den når hovedstaden. En spektakulær action-eventyrfilm med VFX og storslåtte locations.',
+        options.projectDescription ??
+          "Norsk eventyrfilm regissert av Roar Uthaug. Når en eksplosjon i de norske fjellene avslører et urgammelt troll, må paleontologen Nora samarbeide med myndighetene for å stoppe skapningen før den når hovedstaden. En spektakulær action-eventyrfilm med VFX og storslåtte locations.",
         ownerUserId,
-        '2026-01-20',
-        '2026-02-15',
+        "2026-01-20",
+        "2026-02-15",
         JSON.stringify({
           isDemo: true,
-          source: 'troll_seed_v1',
-          clientName: 'Netflix / Nordisk Film',
-          clientEmail: 'produksjon@troll-film.no',
+          source: "troll_seed_v1",
+          clientName: "Netflix / Nordisk Film",
+          clientEmail: "produksjon@troll-film.no",
         }),
       ],
     );
@@ -145,53 +151,110 @@ export async function seedTrollDemo(
         `urole-${TROLL_PROJECT_ID}-${ownerUserId}`,
         TROLL_PROJECT_ID,
         ownerUserId,
-        JSON.stringify({ canEditAll: true, canManageCrew: true, canManageCast: true }),
+        JSON.stringify({
+          canEditAll: true,
+          canManageCrew: true,
+          canManageCast: true,
+        }),
       ],
     );
 
     // ── 4. casting_roles ──────────────────────────────────────────────
     const roles = [
       {
-        id: 'role-nora', name: 'Nora Tidemann', description: 'Paleontolog, tidlig 30-årene. Hovedpersonen.',
-        age_range: '28-38', gender: 'female', role_type: 'lead',
-        scene_ids: ['scene-3', 'scene-4', 'scene-5', 'scene-7', 'scene-9', 'scene-10'],
-        status: 'filled', candidate_id: 'cand-ine',
+        id: "role-nora",
+        name: "Nora Tidemann",
+        description: "Paleontolog, tidlig 30-årene. Hovedpersonen.",
+        age_range: "28-38",
+        gender: "female",
+        role_type: "lead",
+        scene_ids: [
+          "scene-3",
+          "scene-4",
+          "scene-5",
+          "scene-7",
+          "scene-9",
+          "scene-10",
+        ],
+        status: "filled",
+        candidate_id: "cand-ine",
       },
       {
-        id: 'role-andreas', name: 'Andreas Isaksen', description: 'Rådgiver for Statsministerens kontor, 30-40 år.',
-        age_range: '32-42', gender: 'male', role_type: 'lead',
-        scene_ids: ['scene-4', 'scene-5', 'scene-9', 'scene-10'],
-        status: 'filled', candidate_id: 'cand-kim',
+        id: "role-andreas",
+        name: "Andreas Isaksen",
+        description: "Rådgiver for Statsministerens kontor, 30-40 år.",
+        age_range: "32-42",
+        gender: "male",
+        role_type: "lead",
+        scene_ids: ["scene-4", "scene-5", "scene-9", "scene-10"],
+        status: "filled",
+        candidate_id: "cand-kim",
       },
       {
-        id: 'role-tobias', name: 'Tobias Tidemann', description: 'Noras far, 60-70 år. Tidligere forsker.',
-        age_range: '60-72', gender: 'male', role_type: 'supporting',
-        scene_ids: ['scene-10'], status: 'filled', candidate_id: 'cand-gard',
+        id: "role-tobias",
+        name: "Tobias Tidemann",
+        description: "Noras far, 60-70 år. Tidligere forsker.",
+        age_range: "60-72",
+        gender: "male",
+        role_type: "supporting",
+        scene_ids: ["scene-10"],
+        status: "filled",
+        candidate_id: "cand-gard",
       },
       {
-        id: 'role-general', name: 'General Lund', description: 'Militær leder, 50-60 år.',
-        age_range: '50-62', gender: 'male', role_type: 'supporting',
-        scene_ids: ['scene-4', 'scene-7'], status: 'filled', candidate_id: 'cand-fridtjov',
+        id: "role-general",
+        name: "General Lund",
+        description: "Militær leder, 50-60 år.",
+        age_range: "50-62",
+        gender: "male",
+        role_type: "supporting",
+        scene_ids: ["scene-4", "scene-7"],
+        status: "filled",
+        candidate_id: "cand-fridtjov",
       },
       {
-        id: 'role-statsminister', name: 'Statsminister Berit Moberg', description: 'Norges statsminister, 50-55 år.',
-        age_range: '48-58', gender: 'female', role_type: 'supporting',
-        scene_ids: ['scene-7'], status: 'filled', candidate_id: 'cand-anneke',
+        id: "role-statsminister",
+        name: "Statsminister Berit Moberg",
+        description: "Norges statsminister, 50-55 år.",
+        age_range: "48-58",
+        gender: "female",
+        role_type: "supporting",
+        scene_ids: ["scene-7"],
+        status: "filled",
+        candidate_id: "cand-anneke",
       },
       {
-        id: 'role-arbeider1', name: 'Tunnelarbeider 1', description: 'Erfaren tunnelarbeider.',
-        age_range: '35-50', gender: 'male', role_type: 'minor',
-        scene_ids: ['scene-1', 'scene-2'], status: 'filled', candidate_id: 'cand-mads',
+        id: "role-arbeider1",
+        name: "Tunnelarbeider 1",
+        description: "Erfaren tunnelarbeider.",
+        age_range: "35-50",
+        gender: "male",
+        role_type: "minor",
+        scene_ids: ["scene-1", "scene-2"],
+        status: "filled",
+        candidate_id: "cand-mads",
       },
       {
-        id: 'role-arbeider2', name: 'Tunnelarbeider 2', description: 'Yngre tunnelarbeider.',
-        age_range: '25-35', gender: 'male', role_type: 'minor',
-        scene_ids: ['scene-1', 'scene-2'], status: 'filled', candidate_id: 'cand-eric',
+        id: "role-arbeider2",
+        name: "Tunnelarbeider 2",
+        description: "Yngre tunnelarbeider.",
+        age_range: "25-35",
+        gender: "male",
+        role_type: "minor",
+        scene_ids: ["scene-1", "scene-2"],
+        status: "filled",
+        candidate_id: "cand-eric",
       },
       {
-        id: 'role-bonde', name: 'Bonden i Østerdalen', description: 'Lokal bonde, 50-65 år.',
-        age_range: '50-65', gender: 'male', role_type: 'minor',
-        scene_ids: ['scene-6'], status: 'casting', candidate_id: null,
+        id: "role-bonde",
+        name: "Bonden i Østerdalen",
+        description: "Lokal bonde, 50-65 år.",
+        age_range: "50-65",
+        gender: "male",
+        role_type: "minor",
+        scene_ids: ["scene-6"],
+        status: "casting",
+        candidate_id: null,
       },
     ];
     for (const r of roles) {
@@ -200,58 +263,226 @@ export async function seedTrollDemo(
            (id, project_id, name, description, age_range, gender, role_type,
             scene_ids, status, assigned_candidate_id, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, NOW(), NOW())`,
-        [eid(r.id), TROLL_PROJECT_ID, r.name, r.description, r.age_range, r.gender,
-         r.role_type, JSON.stringify(r.scene_ids.map(eid)), r.status,
-         r.candidate_id ? eid(r.candidate_id) : null],
+        [
+          eid(r.id),
+          TROLL_PROJECT_ID,
+          r.name,
+          r.description,
+          r.age_range,
+          r.gender,
+          r.role_type,
+          JSON.stringify(r.scene_ids.map(eid)),
+          r.status,
+          r.candidate_id ? eid(r.candidate_id) : null,
+        ],
       );
     }
 
     // ── 5. casting_candidates ─────────────────────────────────────────
     const candidates = [
-      { id: 'cand-ine', name: 'Ine Marie Wilmann', email: 'agent@inemarie.no', phone: '+47 912 34 567', notes: 'Perfekt for Nora. Sterk skuespiller fra Wisting, Exit.', status: 'confirmed', roles: ['role-nora'] },
-      { id: 'cand-kim', name: 'Kim Falck', email: 'kim.falck@agent.no', phone: '+47 923 45 678', notes: 'Overbevisende som Andreas.', status: 'confirmed', roles: ['role-andreas'] },
-      { id: 'cand-gard', name: 'Gard B. Eidsvold', email: 'gard@teater.no', phone: '+47 934 56 789', notes: 'Veteran skuespiller, varme og dybde.', status: 'confirmed', roles: ['role-tobias'] },
-      { id: 'cand-fridtjov', name: 'Fridtjov Såheim', email: 'fridtjov@agent.no', phone: '+47 945 67 890', notes: 'Sterk tilstedeværelse, militær autoritet.', status: 'confirmed', roles: ['role-general'] },
-      { id: 'cand-anneke', name: 'Anneke von der Lippe', email: 'anneke@teater.no', phone: '+47 956 78 901', notes: 'Prisbelønt, troverdig statsminister.', status: 'confirmed', roles: ['role-statsminister'] },
-      { id: 'cand-mads', name: 'Mads Ousdal', email: 'mads.ousdal@email.no', phone: '+47 967 89 012', notes: 'Erfaren karakterskuespiller.', status: 'selected', roles: ['role-arbeider1'] },
-      { id: 'cand-eric', name: 'Eric Vorenholt', email: 'eric.v@actors.no', phone: '+47 978 90 123', notes: 'Ung og fysisk, action-scener.', status: 'selected', roles: ['role-arbeider2'] },
-      { id: 'cand-stein', name: 'Stein Winge', email: 'stein@teateragent.no', phone: '+47 989 01 234', notes: 'Erfaren teaterskuespiller — vurderes for Bonden.', status: 'pending', roles: [] },
+      {
+        id: "cand-ine",
+        name: "Ine Marie Wilmann",
+        email: "agent@inemarie.no",
+        phone: "+47 912 34 567",
+        notes: "Perfekt for Nora. Sterk skuespiller fra Wisting, Exit.",
+        status: "confirmed",
+        roles: ["role-nora"],
+      },
+      {
+        id: "cand-kim",
+        name: "Kim Falck",
+        email: "kim.falck@agent.no",
+        phone: "+47 923 45 678",
+        notes: "Overbevisende som Andreas.",
+        status: "confirmed",
+        roles: ["role-andreas"],
+      },
+      {
+        id: "cand-gard",
+        name: "Gard B. Eidsvold",
+        email: "gard@teater.no",
+        phone: "+47 934 56 789",
+        notes: "Veteran skuespiller, varme og dybde.",
+        status: "confirmed",
+        roles: ["role-tobias"],
+      },
+      {
+        id: "cand-fridtjov",
+        name: "Fridtjov Såheim",
+        email: "fridtjov@agent.no",
+        phone: "+47 945 67 890",
+        notes: "Sterk tilstedeværelse, militær autoritet.",
+        status: "confirmed",
+        roles: ["role-general"],
+      },
+      {
+        id: "cand-anneke",
+        name: "Anneke von der Lippe",
+        email: "anneke@teater.no",
+        phone: "+47 956 78 901",
+        notes: "Prisbelønt, troverdig statsminister.",
+        status: "confirmed",
+        roles: ["role-statsminister"],
+      },
+      {
+        id: "cand-mads",
+        name: "Mads Ousdal",
+        email: "mads.ousdal@email.no",
+        phone: "+47 967 89 012",
+        notes: "Erfaren karakterskuespiller.",
+        status: "selected",
+        roles: ["role-arbeider1"],
+      },
+      {
+        id: "cand-eric",
+        name: "Eric Vorenholt",
+        email: "eric.v@actors.no",
+        phone: "+47 978 90 123",
+        notes: "Ung og fysisk, action-scener.",
+        status: "selected",
+        roles: ["role-arbeider2"],
+      },
+      {
+        id: "cand-stein",
+        name: "Stein Winge",
+        email: "stein@teateragent.no",
+        phone: "+47 989 01 234",
+        notes: "Erfaren teaterskuespiller — vurderes for Bonden.",
+        status: "pending",
+        roles: [],
+      },
     ];
     for (const c of candidates) {
       await client.query(
         `INSERT INTO casting_candidates
            (id, project_id, name, email, phone, notes, status, assigned_roles, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, NOW(), NOW())`,
-        [eid(c.id), TROLL_PROJECT_ID, c.name, c.email, c.phone, c.notes, c.status,
-         JSON.stringify(c.roles.map(eid))],
+        [
+          eid(c.id),
+          TROLL_PROJECT_ID,
+          c.name,
+          c.email,
+          c.phone,
+          c.notes,
+          c.status,
+          JSON.stringify(c.roles.map(eid)),
+        ],
       );
     }
 
     // ── 6. casting_crew ───────────────────────────────────────────────
     const crew = [
-      { id: 'crew-roar', name: 'Roar Uthaug', role: 'director', email: 'roar@uthaug.no', phone: '+47 911 22 333', department: 'production', rate: 80000 },
-      { id: 'crew-jallo', name: 'Jallo Faber', role: 'dp', email: 'jallo@cinematographers.no', phone: '+47 912 33 444', department: 'camera', rate: 35000 },
-      { id: 'crew-espen', name: 'Espen Horn', role: 'producer', email: 'espen@motlysfilm.no', phone: '+47 913 44 555', department: 'production', rate: 50000 },
-      { id: 'crew-hanne', name: 'Hanne Berkaak', role: 'production_designer', email: 'hanne@design.no', phone: '+47 914 55 666', department: 'art', rate: 28000 },
-      { id: 'crew-stian', name: 'Stian Aadland', role: 'sound_designer', email: 'stian@sound.no', phone: '+47 915 66 777', department: 'sound', rate: 25000 },
-      { id: 'crew-eva', name: 'Eva Haukeland', role: 'costume_designer', email: 'eva@costume.no', phone: '+47 916 77 888', department: 'costume', rate: 22000 },
+      {
+        id: "crew-roar",
+        name: "Roar Uthaug",
+        role: "director",
+        email: "roar@uthaug.no",
+        phone: "+47 911 22 333",
+        department: "production",
+        rate: 80000,
+      },
+      {
+        id: "crew-jallo",
+        name: "Jallo Faber",
+        role: "dp",
+        email: "jallo@cinematographers.no",
+        phone: "+47 912 33 444",
+        department: "camera",
+        rate: 35000,
+      },
+      {
+        id: "crew-espen",
+        name: "Espen Horn",
+        role: "producer",
+        email: "espen@motlysfilm.no",
+        phone: "+47 913 44 555",
+        department: "production",
+        rate: 50000,
+      },
+      {
+        id: "crew-hanne",
+        name: "Hanne Berkaak",
+        role: "production_designer",
+        email: "hanne@design.no",
+        phone: "+47 914 55 666",
+        department: "art",
+        rate: 28000,
+      },
+      {
+        id: "crew-stian",
+        name: "Stian Aadland",
+        role: "sound_designer",
+        email: "stian@sound.no",
+        phone: "+47 915 66 777",
+        department: "sound",
+        rate: 25000,
+      },
+      {
+        id: "crew-eva",
+        name: "Eva Haukeland",
+        role: "costume_designer",
+        email: "eva@costume.no",
+        phone: "+47 916 77 888",
+        department: "costume",
+        rate: 22000,
+      },
     ];
     for (const m of crew) {
       await client.query(
         `INSERT INTO casting_crew
            (id, project_id, name, role, email, phone, department, rate, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
-        [eid(m.id), TROLL_PROJECT_ID, m.name, m.role, m.email, m.phone, m.department, m.rate],
+        [
+          eid(m.id),
+          TROLL_PROJECT_ID,
+          m.name,
+          m.role,
+          m.email,
+          m.phone,
+          m.department,
+          m.rate,
+        ],
       );
     }
 
     // ── 7. casting_locations ──────────────────────────────────────────
     const locations = [
-      { id: 'loc-dovre', name: 'Dovrefjell', address: 'Dovre, Innlandet', type: 'exterior', notes: 'Hovedlokasjon for fjellscener og troll-emergence.' },
-      { id: 'loc-tunnel', name: 'Lærdalstunnelen', address: 'Lærdal, Vestland', type: 'interior', notes: 'Åpningsscener — tunnelarbeider-eksplosjon.' },
-      { id: 'loc-oslo-stat', name: 'Statsministerens kontor (Oslo)', address: 'Akershus festning, Oslo', type: 'interior', notes: 'Krise-møter mellom statsminister, Andreas og general.' },
-      { id: 'loc-osterdalen', name: 'Østerdalen gård', address: 'Tynset, Innlandet', type: 'exterior', notes: 'Bondens scene + skog-sekvens.' },
-      { id: 'loc-tobias-hytte', name: 'Tobias hytte', address: 'Synnfjell, Oppland', type: 'interior', notes: 'Tobias avslører hemmelighet om trollene.' },
+      {
+        id: "loc-dovre",
+        name: "Dovrefjell",
+        address: "Dovre, Innlandet",
+        type: "exterior",
+        notes: "Hovedlokasjon for fjellscener og troll-emergence.",
+      },
+      {
+        id: "loc-tunnel",
+        name: "Lærdalstunnelen",
+        address: "Lærdal, Vestland",
+        type: "interior",
+        notes: "Åpningsscener — tunnelarbeider-eksplosjon.",
+      },
+      {
+        id: "loc-oslo-stat",
+        name: "Statsministerens kontor (Oslo)",
+        address: "Akershus festning, Oslo",
+        type: "interior",
+        notes: "Krise-møter mellom statsminister, Andreas og general.",
+      },
+      {
+        id: "loc-osterdalen",
+        name: "Østerdalen gård",
+        address: "Tynset, Innlandet",
+        type: "exterior",
+        notes: "Bondens scene + skog-sekvens.",
+      },
+      {
+        id: "loc-tobias-hytte",
+        name: "Tobias hytte",
+        address: "Synnfjell, Oppland",
+        type: "interior",
+        notes: "Tobias avslører hemmelighet om trollene.",
+      },
     ];
     for (const l of locations) {
       await client.query(
@@ -266,7 +497,7 @@ export async function seedTrollDemo(
     // Mer utfyllende screenplay-content: tre-akts-struktur + scene-headings +
     // utdrag av faktisk dialog så Story Writer/Story Logic/Scener viser
     // realistisk arbeidsmateriale, ikke bare en placeholder-tittel.
-    const manuscriptId = eid('manuscript-troll-v1');
+    const manuscriptId = eid("manuscript-troll-v1");
     const manuscriptContent = `# ${projectName}
 
 Norsk eventyrfilm. Skrevet av Espen Aukan og Roar Uthaug.
@@ -440,12 +671,13 @@ THE END.
         `${projectName} — Manuskript v1`,
         manuscriptContent,
         JSON.stringify({
-          author: 'Espen Aukan & Roar Uthaug',
+          author: "Espen Aukan & Roar Uthaug",
           draftNumber: 7,
           actCount: 3,
           totalScenes: 10,
-          genre: 'eventyr/thriller',
-          logline: 'En paleontolog oppdager at de norske trolleventyrene var sanne — og må stoppe staten fra å drepe en utdøende art.',
+          genre: "eventyr/thriller",
+          logline:
+            "En paleontolog oppdager at de norske trolleventyrene var sanne — og må stoppe staten fra å drepe en utdøende art.",
         }),
       ],
     );
@@ -455,44 +687,134 @@ THE END.
     // skjer i scenen — viktig for Story Writer / Story Logic der breakdown-
     // og continuity-arbeidet skjer.
     const scenes = [
-      { id: 'scene-1', num: 1, title: 'Tunnelen — Eksplosjonen', setting: 'Lærdalstunnelen', tod: 'NIGHT', int_ext: 'INT',
-        description: 'Arbeider 1 og Arbeider 2 borer i tunnelen. Boret treffer noe annet enn fjell. Det de avdekker er ikke en geologisk anomali — det er et øye.',
-        characters: ['role-arbeider1', 'role-arbeider2'] },
-      { id: 'scene-2', num: 2, title: 'Tunnel-kollapsen', setting: 'Lærdalstunnelen', tod: 'NIGHT', int_ext: 'INT',
-        description: 'Etter trolleten våkner og tunnelen kollapser. Arbeider 1 unnslipper så vidt. Vi får et glimt av kreaturet før alt blir mørkt.',
-        characters: ['role-arbeider1', 'role-arbeider2'] },
-      { id: 'scene-3', num: 3, title: 'Nora introduseres', setting: 'Naturhistorisk museum', tod: 'DAY', int_ext: 'INT',
-        description: 'Nora Tidemann studerer en fossil-skanning. Hun blir kontaktet av regjeringen — Statsråden trenger henne på saken.',
-        characters: ['role-nora'] },
-      { id: 'scene-4', num: 4, title: 'Krise-møtet', setting: 'Statsministerens kontor', tod: 'DAY', int_ext: 'INT',
-        description: 'Nora gjenforenes med eksen Andreas. Sammen med general Elvenes ser de tunnel-opptakene. Nora konkluderer det utenkelige: det er et troll. Tre-akts-struktur sceneskift: setting up the world.',
-        characters: ['role-nora', 'role-andreas', 'role-general'] },
-      { id: 'scene-5', num: 5, title: 'Til Dovrefjell', setting: 'Dovre — vei', tod: 'DUSK', int_ext: 'EXT',
-        description: 'Nora og Andreas kjører mot fjellet. Personlig fortid blandes med oppdraget. Snøen begynner å falle.',
-        characters: ['role-nora', 'role-andreas'] },
-      { id: 'scene-6', num: 6, title: 'Bondens fortelling', setting: 'Østerdalen gård', tod: 'DAY', int_ext: 'EXT',
-        description: 'Den gamle bonden viser dem et 1929-bilde av en trollformet skygge. Han forteller at folk har holdt det skjult i generasjoner — det skader ingen så lenge man holder seg fra dets stier.',
-        characters: ['role-bonde'] },
-      { id: 'scene-7', num: 7, title: 'Militær respons', setting: 'Statsministerens kontor', tod: 'NIGHT', int_ext: 'INT',
-        description: 'Statsministeren gir grønt lys for militær aksjon. Nora ber dem vente. Generalen er imot. Spenningen topper seg.',
-        characters: ['role-statsminister', 'role-general', 'role-nora'] },
-      { id: 'scene-8', num: 8, title: 'Trollet på vandring', setting: 'Dovrefjell — natt', tod: 'NIGHT', int_ext: 'EXT',
-        description: 'Vi ser trollet selv — 40 meter høyt, sørgmodig, vandrer over en åskam. Ingen dialog. Score-driven scene.',
-        characters: [] },
-      { id: 'scene-9', num: 9, title: 'Nora og Andreas — forfølgelse', setting: 'Skog ved Dovre', tod: 'DAWN', int_ext: 'EXT',
-        description: 'Nora og Andreas løper for å komme før militæret. Drone-skudd over skog, granater i bakgrunnen. Andreas vet hvor trollet vil — opp mot Tobias gamle hytte.',
-        characters: ['role-nora', 'role-andreas'] },
-      { id: 'scene-10', num: 10, title: 'Fars hemmelighet', setting: 'Tobias hytte', tod: 'DAY', int_ext: 'INT',
-        description: 'Nora gjenforenes med faren Tobias som forsvant for 20 år siden. Han forteller at han forlot dem for å beskytte henne — og at det er hennes tur nå.',
-        characters: ['role-nora', 'role-andreas', 'role-tobias'] },
+      {
+        id: "scene-1",
+        num: 1,
+        title: "Tunnelen — Eksplosjonen",
+        setting: "Lærdalstunnelen",
+        tod: "NIGHT",
+        int_ext: "INT",
+        description:
+          "Arbeider 1 og Arbeider 2 borer i tunnelen. Boret treffer noe annet enn fjell. Det de avdekker er ikke en geologisk anomali — det er et øye.",
+        characters: ["role-arbeider1", "role-arbeider2"],
+      },
+      {
+        id: "scene-2",
+        num: 2,
+        title: "Tunnel-kollapsen",
+        setting: "Lærdalstunnelen",
+        tod: "NIGHT",
+        int_ext: "INT",
+        description:
+          "Etter trolleten våkner og tunnelen kollapser. Arbeider 1 unnslipper så vidt. Vi får et glimt av kreaturet før alt blir mørkt.",
+        characters: ["role-arbeider1", "role-arbeider2"],
+      },
+      {
+        id: "scene-3",
+        num: 3,
+        title: "Nora introduseres",
+        setting: "Naturhistorisk museum",
+        tod: "DAY",
+        int_ext: "INT",
+        description:
+          "Nora Tidemann studerer en fossil-skanning. Hun blir kontaktet av regjeringen — Statsråden trenger henne på saken.",
+        characters: ["role-nora"],
+      },
+      {
+        id: "scene-4",
+        num: 4,
+        title: "Krise-møtet",
+        setting: "Statsministerens kontor",
+        tod: "DAY",
+        int_ext: "INT",
+        description:
+          "Nora gjenforenes med eksen Andreas. Sammen med general Elvenes ser de tunnel-opptakene. Nora konkluderer det utenkelige: det er et troll. Tre-akts-struktur sceneskift: setting up the world.",
+        characters: ["role-nora", "role-andreas", "role-general"],
+      },
+      {
+        id: "scene-5",
+        num: 5,
+        title: "Til Dovrefjell",
+        setting: "Dovre — vei",
+        tod: "DUSK",
+        int_ext: "EXT",
+        description:
+          "Nora og Andreas kjører mot fjellet. Personlig fortid blandes med oppdraget. Snøen begynner å falle.",
+        characters: ["role-nora", "role-andreas"],
+      },
+      {
+        id: "scene-6",
+        num: 6,
+        title: "Bondens fortelling",
+        setting: "Østerdalen gård",
+        tod: "DAY",
+        int_ext: "EXT",
+        description:
+          "Den gamle bonden viser dem et 1929-bilde av en trollformet skygge. Han forteller at folk har holdt det skjult i generasjoner — det skader ingen så lenge man holder seg fra dets stier.",
+        characters: ["role-bonde"],
+      },
+      {
+        id: "scene-7",
+        num: 7,
+        title: "Militær respons",
+        setting: "Statsministerens kontor",
+        tod: "NIGHT",
+        int_ext: "INT",
+        description:
+          "Statsministeren gir grønt lys for militær aksjon. Nora ber dem vente. Generalen er imot. Spenningen topper seg.",
+        characters: ["role-statsminister", "role-general", "role-nora"],
+      },
+      {
+        id: "scene-8",
+        num: 8,
+        title: "Trollet på vandring",
+        setting: "Dovrefjell — natt",
+        tod: "NIGHT",
+        int_ext: "EXT",
+        description:
+          "Vi ser trollet selv — 40 meter høyt, sørgmodig, vandrer over en åskam. Ingen dialog. Score-driven scene.",
+        characters: [],
+      },
+      {
+        id: "scene-9",
+        num: 9,
+        title: "Nora og Andreas — forfølgelse",
+        setting: "Skog ved Dovre",
+        tod: "DAWN",
+        int_ext: "EXT",
+        description:
+          "Nora og Andreas løper for å komme før militæret. Drone-skudd over skog, granater i bakgrunnen. Andreas vet hvor trollet vil — opp mot Tobias gamle hytte.",
+        characters: ["role-nora", "role-andreas"],
+      },
+      {
+        id: "scene-10",
+        num: 10,
+        title: "Fars hemmelighet",
+        setting: "Tobias hytte",
+        tod: "DAY",
+        int_ext: "INT",
+        description:
+          "Nora gjenforenes med faren Tobias som forsvant for 20 år siden. Han forteller at han forlot dem for å beskytte henne — og at det er hennes tur nå.",
+        characters: ["role-nora", "role-andreas", "role-tobias"],
+      },
     ];
     for (const s of scenes) {
       await client.query(
         `INSERT INTO casting_scenes
            (id, project_id, manuscript_id, scene_number, title, description, setting, time_of_day, int_ext, characters, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, NOW(), NOW())`,
-        [eid(s.id), TROLL_PROJECT_ID, manuscriptId, s.num, s.title, s.description, s.setting, s.tod, s.int_ext,
-         JSON.stringify(s.characters.map(eid))],
+        [
+          eid(s.id),
+          TROLL_PROJECT_ID,
+          manuscriptId,
+          s.num,
+          s.title,
+          s.description,
+          s.setting,
+          s.tod,
+          s.int_ext,
+          JSON.stringify(s.characters.map(eid)),
+        ],
       );
     }
 
@@ -501,22 +823,49 @@ THE END.
     // 3-akts-struktur så Story Logic / Story Writer kan vise akt-
     // organisering for scenene over.
     const acts = [
-      { id: 'act-1', num: 1, title: 'Akt I — Oppdagelsen',
-        description: 'Setup. Verden etableres. Trollet avdekkes i Lærdalstunnelen og Nora trekkes inn i mysteriet.',
-        startScene: 1, endScene: 4 },
-      { id: 'act-2', num: 2, title: 'Akt II — Konfrontasjonen',
-        description: 'Konflikt eskalerer. Nora og Andreas reiser til Dovrefjell. Statens militære respons truer en utdøende skapning.',
-        startScene: 5, endScene: 8 },
-      { id: 'act-3', num: 3, title: 'Akt III — Oppløsningen',
-        description: 'Klimaks og emosjonell oppløsning. Nora gjenforenes med faren Tobias og forstår sin egen rolle i historien.',
-        startScene: 9, endScene: 10 },
+      {
+        id: "act-1",
+        num: 1,
+        title: "Akt I — Oppdagelsen",
+        description:
+          "Setup. Verden etableres. Trollet avdekkes i Lærdalstunnelen og Nora trekkes inn i mysteriet.",
+        startScene: 1,
+        endScene: 4,
+      },
+      {
+        id: "act-2",
+        num: 2,
+        title: "Akt II — Konfrontasjonen",
+        description:
+          "Konflikt eskalerer. Nora og Andreas reiser til Dovrefjell. Statens militære respons truer en utdøende skapning.",
+        startScene: 5,
+        endScene: 8,
+      },
+      {
+        id: "act-3",
+        num: 3,
+        title: "Akt III — Oppløsningen",
+        description:
+          "Klimaks og emosjonell oppløsning. Nora gjenforenes med faren Tobias og forstår sin egen rolle i historien.",
+        startScene: 9,
+        endScene: 10,
+      },
     ];
     for (const a of acts) {
       await client.query(
         `INSERT INTO casting_acts
            (id, project_id, manuscript_id, act_number, title, description, start_scene_number, end_scene_number, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
-        [eid(a.id), TROLL_PROJECT_ID, manuscriptId, a.num, a.title, a.description, a.startScene, a.endScene],
+        [
+          eid(a.id),
+          TROLL_PROJECT_ID,
+          manuscriptId,
+          a.num,
+          a.title,
+          a.description,
+          a.startScene,
+          a.endScene,
+        ],
       );
     }
 
@@ -526,56 +875,258 @@ THE END.
     // dialog) + Dialog-fanen viser realistisk arbeidsmateriale.
     const dialogue = [
       // Scene 1 — Tunnelen
-      { id: 'dl-1', sceneId: 'scene-1', line: 1, character: 'ARBEIDER 1', text: 'Hvor langt inn er vi?', type: 'dialogue' },
-      { id: 'dl-2', sceneId: 'scene-1', line: 2, character: 'ARBEIDER 2', text: 'Tre meter til. Hold ut.', type: 'dialogue' },
-      { id: 'dl-3', sceneId: 'scene-1', line: 3, character: 'ARBEIDER 1', text: 'Hva i…', type: 'dialogue' },
+      {
+        id: "dl-1",
+        sceneId: "scene-1",
+        line: 1,
+        character: "ARBEIDER 1",
+        text: "Hvor langt inn er vi?",
+        type: "dialogue",
+      },
+      {
+        id: "dl-2",
+        sceneId: "scene-1",
+        line: 2,
+        character: "ARBEIDER 2",
+        text: "Tre meter til. Hold ut.",
+        type: "dialogue",
+      },
+      {
+        id: "dl-3",
+        sceneId: "scene-1",
+        line: 3,
+        character: "ARBEIDER 1",
+        text: "Hva i…",
+        type: "dialogue",
+      },
 
       // Scene 2 — Tunnel-kollapsen
-      { id: 'dl-4', sceneId: 'scene-2', line: 4, character: 'ARBEIDER 2', text: 'LØP! LØP!!', type: 'dialogue', parenthetical: 'skrikende' },
+      {
+        id: "dl-4",
+        sceneId: "scene-2",
+        line: 4,
+        character: "ARBEIDER 2",
+        text: "LØP! LØP!!",
+        type: "dialogue",
+        parenthetical: "skrikende",
+      },
 
       // Scene 3 — Nora introduseres
-      { id: 'dl-5', sceneId: 'scene-3', line: 5, character: 'NORA', text: 'Tidemann.', type: 'dialogue' },
-      { id: 'dl-6', sceneId: 'scene-3', line: 6, character: 'STATSRÅDEN', text: 'Vi trenger deg. Nå.', type: 'voiceover' },
+      {
+        id: "dl-5",
+        sceneId: "scene-3",
+        line: 5,
+        character: "NORA",
+        text: "Tidemann.",
+        type: "dialogue",
+      },
+      {
+        id: "dl-6",
+        sceneId: "scene-3",
+        line: 6,
+        character: "STATSRÅDEN",
+        text: "Vi trenger deg. Nå.",
+        type: "voiceover",
+      },
 
       // Scene 4 — Krise-møtet
-      { id: 'dl-7', sceneId: 'scene-4', line: 7, character: 'NORA', text: 'Det er ikke et jordskjelv. Se på rystelsesmønsteret — det er FOTSTEG.', type: 'dialogue' },
-      { id: 'dl-8', sceneId: 'scene-4', line: 8, character: 'GENERAL ELVENES', text: 'Det er absurd.', type: 'dialogue' },
-      { id: 'dl-9', sceneId: 'scene-4', line: 9, character: 'ANDREAS', text: 'Nora. Si det.', type: 'dialogue' },
-      { id: 'dl-10', sceneId: 'scene-4', line: 10, character: 'NORA', text: 'Det er et troll.', type: 'dialogue', parenthetical: 'med tyngde' },
+      {
+        id: "dl-7",
+        sceneId: "scene-4",
+        line: 7,
+        character: "NORA",
+        text: "Det er ikke et jordskjelv. Se på rystelsesmønsteret — det er FOTSTEG.",
+        type: "dialogue",
+      },
+      {
+        id: "dl-8",
+        sceneId: "scene-4",
+        line: 8,
+        character: "GENERAL ELVENES",
+        text: "Det er absurd.",
+        type: "dialogue",
+      },
+      {
+        id: "dl-9",
+        sceneId: "scene-4",
+        line: 9,
+        character: "ANDREAS",
+        text: "Nora. Si det.",
+        type: "dialogue",
+      },
+      {
+        id: "dl-10",
+        sceneId: "scene-4",
+        line: 10,
+        character: "NORA",
+        text: "Det er et troll.",
+        type: "dialogue",
+        parenthetical: "med tyngde",
+      },
 
       // Scene 5 — Til Dovrefjell
-      { id: 'dl-11', sceneId: 'scene-5', line: 11, character: 'ANDREAS', text: 'Det er rart å være tilbake i bil sammen.', type: 'dialogue' },
-      { id: 'dl-12', sceneId: 'scene-5', line: 12, character: 'NORA', text: 'La oss ikke gjøre dette nå.', type: 'dialogue' },
-      { id: 'dl-13', sceneId: 'scene-5', line: 13, character: 'ANDREAS', text: 'Aldri en gang så vi solnedgangen.', type: 'dialogue' },
-      { id: 'dl-14', sceneId: 'scene-5', line: 14, character: 'NORA', text: 'Du husker det.', type: 'dialogue', parenthetical: 'smiler så vidt' },
+      {
+        id: "dl-11",
+        sceneId: "scene-5",
+        line: 11,
+        character: "ANDREAS",
+        text: "Det er rart å være tilbake i bil sammen.",
+        type: "dialogue",
+      },
+      {
+        id: "dl-12",
+        sceneId: "scene-5",
+        line: 12,
+        character: "NORA",
+        text: "La oss ikke gjøre dette nå.",
+        type: "dialogue",
+      },
+      {
+        id: "dl-13",
+        sceneId: "scene-5",
+        line: 13,
+        character: "ANDREAS",
+        text: "Aldri en gang så vi solnedgangen.",
+        type: "dialogue",
+      },
+      {
+        id: "dl-14",
+        sceneId: "scene-5",
+        line: 14,
+        character: "NORA",
+        text: "Du husker det.",
+        type: "dialogue",
+        parenthetical: "smiler så vidt",
+      },
 
       // Scene 6 — Bondens fortelling
-      { id: 'dl-15', sceneId: 'scene-6', line: 15, character: 'BONDEN', text: 'Bestefar tegnet dette i 1929. Han så det da han var sju.', type: 'dialogue' },
-      { id: 'dl-16', sceneId: 'scene-6', line: 16, character: 'BONDEN', text: 'Vi sa ingenting. Det skader ingen så lenge man holdt seg fra dets stier.', type: 'dialogue' },
+      {
+        id: "dl-15",
+        sceneId: "scene-6",
+        line: 15,
+        character: "BONDEN",
+        text: "Bestefar tegnet dette i 1929. Han så det da han var sju.",
+        type: "dialogue",
+      },
+      {
+        id: "dl-16",
+        sceneId: "scene-6",
+        line: 16,
+        character: "BONDEN",
+        text: "Vi sa ingenting. Det skader ingen så lenge man holdt seg fra dets stier.",
+        type: "dialogue",
+      },
 
       // Scene 7 — Militær respons
-      { id: 'dl-17', sceneId: 'scene-7', line: 17, character: 'STATSMINISTEREN', text: 'Vi må handle.', type: 'dialogue' },
-      { id: 'dl-18', sceneId: 'scene-7', line: 18, character: 'NORA', text: 'Skyt det ikke. Ikke ennå. Hvis det er ekte — det betyr noe i vår historie.', type: 'dialogue' },
-      { id: 'dl-19', sceneId: 'scene-7', line: 19, character: 'GENERAL ELVENES', text: 'Hvis det er ekte er det ALLEREDE for sent.', type: 'dialogue' },
+      {
+        id: "dl-17",
+        sceneId: "scene-7",
+        line: 17,
+        character: "STATSMINISTEREN",
+        text: "Vi må handle.",
+        type: "dialogue",
+      },
+      {
+        id: "dl-18",
+        sceneId: "scene-7",
+        line: 18,
+        character: "NORA",
+        text: "Skyt det ikke. Ikke ennå. Hvis det er ekte — det betyr noe i vår historie.",
+        type: "dialogue",
+      },
+      {
+        id: "dl-19",
+        sceneId: "scene-7",
+        line: 19,
+        character: "GENERAL ELVENES",
+        text: "Hvis det er ekte er det ALLEREDE for sent.",
+        type: "dialogue",
+      },
 
       // Scene 9 — Forfølgelse
-      { id: 'dl-20', sceneId: 'scene-9', line: 20, character: 'NORA', text: 'Vi må stoppe dem!', type: 'dialogue' },
-      { id: 'dl-21', sceneId: 'scene-9', line: 21, character: 'ANDREAS', text: 'Jeg vet hvor han vil!', type: 'dialogue' },
+      {
+        id: "dl-20",
+        sceneId: "scene-9",
+        line: 20,
+        character: "NORA",
+        text: "Vi må stoppe dem!",
+        type: "dialogue",
+      },
+      {
+        id: "dl-21",
+        sceneId: "scene-9",
+        line: 21,
+        character: "ANDREAS",
+        text: "Jeg vet hvor han vil!",
+        type: "dialogue",
+      },
 
       // Scene 10 — Fars hemmelighet
-      { id: 'dl-22', sceneId: 'scene-10', line: 22, character: 'NORA', text: 'Pappa…', type: 'dialogue' },
-      { id: 'dl-23', sceneId: 'scene-10', line: 23, character: 'TOBIAS', text: 'Du fant meg.', type: 'dialogue' },
-      { id: 'dl-24', sceneId: 'scene-10', line: 24, character: 'NORA', text: 'Hvorfor forlot du oss?', type: 'dialogue' },
-      { id: 'dl-25', sceneId: 'scene-10', line: 25, character: 'TOBIAS', text: 'Fordi du måtte tro at det ikke eksisterte. Slik kunne du leve som et normalt menneske.', type: 'dialogue' },
-      { id: 'dl-26', sceneId: 'scene-10', line: 26, character: 'NORA', text: 'Det går ikke. Ikke nå.', type: 'dialogue' },
-      { id: 'dl-27', sceneId: 'scene-10', line: 27, character: 'TOBIAS', text: 'Da er det din tur, min datter.', type: 'dialogue' },
+      {
+        id: "dl-22",
+        sceneId: "scene-10",
+        line: 22,
+        character: "NORA",
+        text: "Pappa…",
+        type: "dialogue",
+      },
+      {
+        id: "dl-23",
+        sceneId: "scene-10",
+        line: 23,
+        character: "TOBIAS",
+        text: "Du fant meg.",
+        type: "dialogue",
+      },
+      {
+        id: "dl-24",
+        sceneId: "scene-10",
+        line: 24,
+        character: "NORA",
+        text: "Hvorfor forlot du oss?",
+        type: "dialogue",
+      },
+      {
+        id: "dl-25",
+        sceneId: "scene-10",
+        line: 25,
+        character: "TOBIAS",
+        text: "Fordi du måtte tro at det ikke eksisterte. Slik kunne du leve som et normalt menneske.",
+        type: "dialogue",
+      },
+      {
+        id: "dl-26",
+        sceneId: "scene-10",
+        line: 26,
+        character: "NORA",
+        text: "Det går ikke. Ikke nå.",
+        type: "dialogue",
+      },
+      {
+        id: "dl-27",
+        sceneId: "scene-10",
+        line: 27,
+        character: "TOBIAS",
+        text: "Da er det din tur, min datter.",
+        type: "dialogue",
+      },
     ];
     for (const d of dialogue) {
       await client.query(
         `INSERT INTO casting_dialogue
            (id, project_id, manuscript_id, scene_id, character_name, dialogue_text, dialogue_type, parenthetical, line_number, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())`,
-        [eid(d.id), TROLL_PROJECT_ID, manuscriptId, eid(d.sceneId), d.character, d.text, d.type, (d as any).parenthetical ?? null, d.line],
+        [
+          eid(d.id),
+          TROLL_PROJECT_ID,
+          manuscriptId,
+          eid(d.sceneId),
+          d.character,
+          d.text,
+          d.type,
+          (d as any).parenthetical ?? null,
+          d.line,
+        ],
       );
     }
 
@@ -583,56 +1134,141 @@ THE END.
     // Migrasjon 185 opprettet casting_revisions. Seed tre revisjoner med
     // change-summaries så Script Revisjoner & Diff Viewer kan demonstreres.
     const revisions = [
-      { id: 'rev-v1', version: 'v1', summary: 'Første full draft. Etablert tre-akts-struktur.',
-        notes: 'Fokus: introdusere Nora, etablere trollet som troverdig fysisk skapning, slå an emosjonell kjerne (far-datter).' },
-      { id: 'rev-v2', version: 'v2', summary: 'Punch-up: dialog i Akt I + skarpere generalsfigur i Akt II.',
-        notes: 'Generalen var for endimensjonal i v1. Lagt til tre replikker som etablerer hans dilemma. Pre-tunnel-replikk av Arbeider 1/2 strammet inn.' },
-      { id: 'rev-v3', version: 'v3', summary: 'Final draft for produksjon. Sluttscenen mellom Nora og Tobias rebalansert.',
-        notes: 'Tobias monolog kortet med 40%. Vi stoler nå på subteksten. Bonden i Akt II har fått et ekstra øyeblikk så hans gravity matcher Tobias.' },
+      {
+        id: "rev-v1",
+        version: "v1",
+        summary: "Første full draft. Etablert tre-akts-struktur.",
+        notes:
+          "Fokus: introdusere Nora, etablere trollet som troverdig fysisk skapning, slå an emosjonell kjerne (far-datter).",
+      },
+      {
+        id: "rev-v2",
+        version: "v2",
+        summary: "Punch-up: dialog i Akt I + skarpere generalsfigur i Akt II.",
+        notes:
+          "Generalen var for endimensjonal i v1. Lagt til tre replikker som etablerer hans dilemma. Pre-tunnel-replikk av Arbeider 1/2 strammet inn.",
+      },
+      {
+        id: "rev-v3",
+        version: "v3",
+        summary:
+          "Final draft for produksjon. Sluttscenen mellom Nora og Tobias rebalansert.",
+        notes:
+          "Tobias monolog kortet med 40%. Vi stoler nå på subteksten. Bonden i Akt II har fått et ekstra øyeblikk så hans gravity matcher Tobias.",
+      },
     ];
     for (const r of revisions) {
       await client.query(
         `INSERT INTO casting_revisions
            (id, project_id, manuscript_id, version, change_summary, revision_notes, content, created_by, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
-        [eid(r.id), TROLL_PROJECT_ID, manuscriptId, r.version, r.summary, r.notes, manuscriptContent, 'Roar Uthaug'],
+        [
+          eid(r.id),
+          TROLL_PROJECT_ID,
+          manuscriptId,
+          r.version,
+          r.summary,
+          r.notes,
+          manuscriptContent,
+          "Roar Uthaug",
+        ],
       );
     }
 
     // ── 10. casting_shot_lists ────────────────────────────────────────
     const shotLists = [
       {
-        id: 'shotlist-scene-1',
-        scene_id: 'scene-1',
+        id: "shotlist-scene-1",
+        scene_id: "scene-1",
         shots: [
-          { id: 'shot-1-1', shot_number: '1A', type: 'WIDE', description: 'Tunneldybden, arbeidere borer', duration: 8 },
-          { id: 'shot-1-2', shot_number: '1B', type: 'CLOSE-UP', description: 'Borets spiss treffer hulrom', duration: 4 },
-          { id: 'shot-1-3', shot_number: '1C', type: 'MEDIUM', description: 'Arbeider 1 reaksjon', duration: 5 },
+          {
+            id: "shot-1-1",
+            shot_number: "1A",
+            type: "WIDE",
+            description: "Tunneldybden, arbeidere borer",
+            duration: 8,
+          },
+          {
+            id: "shot-1-2",
+            shot_number: "1B",
+            type: "CLOSE-UP",
+            description: "Borets spiss treffer hulrom",
+            duration: 4,
+          },
+          {
+            id: "shot-1-3",
+            shot_number: "1C",
+            type: "MEDIUM",
+            description: "Arbeider 1 reaksjon",
+            duration: 5,
+          },
         ],
       },
       {
-        id: 'shotlist-scene-4',
-        scene_id: 'scene-4',
+        id: "shotlist-scene-4",
+        scene_id: "scene-4",
         shots: [
-          { id: 'shot-4-1', shot_number: '4A', type: 'WIDE', description: 'Møterom oversikt', duration: 6 },
-          { id: 'shot-4-2', shot_number: '4B', type: 'OTS', description: 'Nora forklarer over skuldra til Andreas', duration: 12 },
-          { id: 'shot-4-3', shot_number: '4C', type: 'CLOSE-UP', description: 'Generalens skeptiske blikk', duration: 3 },
+          {
+            id: "shot-4-1",
+            shot_number: "4A",
+            type: "WIDE",
+            description: "Møterom oversikt",
+            duration: 6,
+          },
+          {
+            id: "shot-4-2",
+            shot_number: "4B",
+            type: "OTS",
+            description: "Nora forklarer over skuldra til Andreas",
+            duration: 12,
+          },
+          {
+            id: "shot-4-3",
+            shot_number: "4C",
+            type: "CLOSE-UP",
+            description: "Generalens skeptiske blikk",
+            duration: 3,
+          },
         ],
       },
       {
-        id: 'shotlist-scene-9',
-        scene_id: 'scene-9',
+        id: "shotlist-scene-9",
+        scene_id: "scene-9",
         shots: [
-          { id: 'shot-9-1', shot_number: '9A', type: 'AERIAL', description: 'Dronefor over skog', duration: 10 },
-          { id: 'shot-9-2', shot_number: '9B', type: 'TRACKING', description: 'Følger Nora og Andreas løpe', duration: 15 },
+          {
+            id: "shot-9-1",
+            shot_number: "9A",
+            type: "AERIAL",
+            description: "Dronefor over skog",
+            duration: 10,
+          },
+          {
+            id: "shot-9-2",
+            shot_number: "9B",
+            type: "TRACKING",
+            description: "Følger Nora og Andreas løpe",
+            duration: 15,
+          },
         ],
       },
       {
-        id: 'shotlist-scene-10',
-        scene_id: 'scene-10',
+        id: "shotlist-scene-10",
+        scene_id: "scene-10",
         shots: [
-          { id: 'shot-10-1', shot_number: '10A', type: 'WIDE', description: 'Hytten med Tobias ved peisen', duration: 8 },
-          { id: 'shot-10-2', shot_number: '10B', type: 'CLOSE-UP', description: 'Tobias forteller — emosjonelt øyeblikk', duration: 20 },
+          {
+            id: "shot-10-1",
+            shot_number: "10A",
+            type: "WIDE",
+            description: "Hytten med Tobias ved peisen",
+            duration: 8,
+          },
+          {
+            id: "shot-10-2",
+            shot_number: "10B",
+            type: "CLOSE-UP",
+            description: "Tobias forteller — emosjonelt øyeblikk",
+            duration: 20,
+          },
         ],
       },
     ];
@@ -642,23 +1278,73 @@ THE END.
            (id, project_id, scene_id, shots, camera_settings, created_at, updated_at)
          VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, NOW(), NOW())`,
         [
-          eid(sl.id), TROLL_PROJECT_ID, eid(sl.scene_id),
+          eid(sl.id),
+          TROLL_PROJECT_ID,
+          eid(sl.scene_id),
           JSON.stringify(sl.shots),
-          JSON.stringify({ aspect: '2.39:1', resolution: '6K', fps: 24 }),
+          JSON.stringify({ aspect: "2.39:1", resolution: "6K", fps: 24 }),
         ],
       );
     }
 
     // ── 11. casting_equipment (best-effort, tabell finnes kanskje ikke) ─
     const equipment = [
-      { name: 'ARRI Alexa Mini LF', brand: 'ARRI', model: 'Alexa Mini LF', category: 'camera', condition: 'excellent' },
-      { name: 'Cooke S7/i Full Frame Plus 32mm', brand: 'Cooke', model: 'S7/i 32mm', category: 'lens', condition: 'excellent' },
-      { name: 'Cooke S7/i Full Frame Plus 50mm', brand: 'Cooke', model: 'S7/i 50mm', category: 'lens', condition: 'excellent' },
-      { name: 'DJI Inspire 3', brand: 'DJI', model: 'Inspire 3', category: 'drone', condition: 'good' },
-      { name: 'Sound Devices MixPre-10 II', brand: 'Sound Devices', model: 'MixPre-10 II', category: 'audio', condition: 'good' },
-      { name: 'ARRI SkyPanel S60-C', brand: 'ARRI', model: 'SkyPanel S60-C', category: 'lighting', condition: 'good' },
-      { name: 'Easyrig Vario 5', brand: 'Easyrig', model: 'Vario 5', category: 'support', condition: 'good' },
-      { name: 'Ronin 4D 8K', brand: 'DJI', model: 'Ronin 4D 8K', category: 'gimbal', condition: 'excellent' },
+      {
+        name: "ARRI Alexa Mini LF",
+        brand: "ARRI",
+        model: "Alexa Mini LF",
+        category: "camera",
+        condition: "excellent",
+      },
+      {
+        name: "Cooke S7/i Full Frame Plus 32mm",
+        brand: "Cooke",
+        model: "S7/i 32mm",
+        category: "lens",
+        condition: "excellent",
+      },
+      {
+        name: "Cooke S7/i Full Frame Plus 50mm",
+        brand: "Cooke",
+        model: "S7/i 50mm",
+        category: "lens",
+        condition: "excellent",
+      },
+      {
+        name: "DJI Inspire 3",
+        brand: "DJI",
+        model: "Inspire 3",
+        category: "drone",
+        condition: "good",
+      },
+      {
+        name: "Sound Devices MixPre-10 II",
+        brand: "Sound Devices",
+        model: "MixPre-10 II",
+        category: "audio",
+        condition: "good",
+      },
+      {
+        name: "ARRI SkyPanel S60-C",
+        brand: "ARRI",
+        model: "SkyPanel S60-C",
+        category: "lighting",
+        condition: "good",
+      },
+      {
+        name: "Easyrig Vario 5",
+        brand: "Easyrig",
+        model: "Vario 5",
+        category: "support",
+        condition: "good",
+      },
+      {
+        name: "Ronin 4D 8K",
+        brand: "DJI",
+        model: "Ronin 4D 8K",
+        category: "gimbal",
+        condition: "excellent",
+      },
     ];
     let equipmentInserted = 0;
     try {
@@ -667,33 +1353,84 @@ THE END.
           `INSERT INTO casting_equipment
              (project_id, name, brand, model, category, status, condition, quantity, created_by, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, 'available', $6, 1, $7, NOW(), NOW())`,
-          [TROLL_PROJECT_ID, e.name, e.brand, e.model, e.category, e.condition, ownerUserId],
+          [
+            TROLL_PROJECT_ID,
+            e.name,
+            e.brand,
+            e.model,
+            e.category,
+            e.condition,
+            ownerUserId,
+          ],
         );
         equipmentInserted++;
       }
     } catch (err) {
       // casting_equipment-tabell finnes ikke i alle miljøer (migration 097)
-      console.warn('Equipment seed skipped:', String(err instanceof Error ? err.message : err).slice(0, 120));
+      console.warn(
+        "Equipment seed skipped:",
+        String(err instanceof Error ? err.message : err).slice(0, 120),
+      );
     }
 
     // ── 12. casting_production_days ───────────────────────────────────
     const productionDays = [
-      { id: 'prodday-1', date: '2026-01-20', location: 'loc-tunnel', scenes: ['scene-1', 'scene-2'], crew: ['crew-roar', 'crew-jallo', 'crew-stian'] },
-      { id: 'prodday-2', date: '2026-01-21', location: 'loc-oslo-stat', scenes: ['scene-3'], crew: ['crew-roar', 'crew-jallo'] },
-      { id: 'prodday-3', date: '2026-01-22', location: 'loc-oslo-stat', scenes: ['scene-4', 'scene-7'], crew: ['crew-roar', 'crew-jallo', 'crew-eva'] },
-      { id: 'prodday-4', date: '2026-01-25', location: 'loc-dovre', scenes: ['scene-5', 'scene-8'], crew: ['crew-roar', 'crew-jallo', 'crew-stian'] },
-      { id: 'prodday-5', date: '2026-01-26', location: 'loc-osterdalen', scenes: ['scene-6'], crew: ['crew-roar', 'crew-jallo'] },
-      { id: 'prodday-6', date: '2026-01-27', location: 'loc-tobias-hytte', scenes: ['scene-9', 'scene-10'], crew: ['crew-roar', 'crew-jallo', 'crew-stian', 'crew-eva'] },
+      {
+        id: "prodday-1",
+        date: "2026-01-20",
+        location: "loc-tunnel",
+        scenes: ["scene-1", "scene-2"],
+        crew: ["crew-roar", "crew-jallo", "crew-stian"],
+      },
+      {
+        id: "prodday-2",
+        date: "2026-01-21",
+        location: "loc-oslo-stat",
+        scenes: ["scene-3"],
+        crew: ["crew-roar", "crew-jallo"],
+      },
+      {
+        id: "prodday-3",
+        date: "2026-01-22",
+        location: "loc-oslo-stat",
+        scenes: ["scene-4", "scene-7"],
+        crew: ["crew-roar", "crew-jallo", "crew-eva"],
+      },
+      {
+        id: "prodday-4",
+        date: "2026-01-25",
+        location: "loc-dovre",
+        scenes: ["scene-5", "scene-8"],
+        crew: ["crew-roar", "crew-jallo", "crew-stian"],
+      },
+      {
+        id: "prodday-5",
+        date: "2026-01-26",
+        location: "loc-osterdalen",
+        scenes: ["scene-6"],
+        crew: ["crew-roar", "crew-jallo"],
+      },
+      {
+        id: "prodday-6",
+        date: "2026-01-27",
+        location: "loc-tobias-hytte",
+        scenes: ["scene-9", "scene-10"],
+        crew: ["crew-roar", "crew-jallo", "crew-stian", "crew-eva"],
+      },
     ];
     for (const d of productionDays) {
       await client.query(
         `INSERT INTO casting_production_days
            (id, project_id, date, scene_ids, crew_ids, location_id, status, created_at, updated_at)
          VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, 'planned', NOW(), NOW())`,
-        [eid(d.id), TROLL_PROJECT_ID, d.date,
-         JSON.stringify(d.scenes.map(eid)),
-         JSON.stringify(d.crew.map(eid)),
-         eid(d.location)],
+        [
+          eid(d.id),
+          TROLL_PROJECT_ID,
+          d.date,
+          JSON.stringify(d.scenes.map(eid)),
+          JSON.stringify(d.crew.map(eid)),
+          eid(d.location),
+        ],
       );
     }
 
@@ -703,40 +1440,77 @@ THE END.
     // miks som dekker både pre-prod og produksjon.
     const schedules = [
       {
-        id: 'sched-bonden-audition', candidate: 'cand-stein', role: 'role-bonde',
-        location: 'loc-osterdalen', date: '2025-12-15', start: '14:00', end: '15:00',
-        type: 'audition', status: 'completed',
-        notes: 'Stein leste sidene 12-14. Sterk presence, vurderes til callback.',
+        id: "sched-bonden-audition",
+        candidate: "cand-stein",
+        role: "role-bonde",
+        location: "loc-osterdalen",
+        date: "2025-12-15",
+        start: "14:00",
+        end: "15:00",
+        type: "audition",
+        status: "completed",
+        notes:
+          "Stein leste sidene 12-14. Sterk presence, vurderes til callback.",
       },
       {
-        id: 'sched-bonden-callback', candidate: 'cand-stein', role: 'role-bonde',
-        location: 'loc-osterdalen', date: '2025-12-22', start: '13:00', end: '14:00',
-        type: 'callback', status: 'completed',
-        notes: 'Callback med Roar — chemistry-test mot Nora-skuespilleren.',
+        id: "sched-bonden-callback",
+        candidate: "cand-stein",
+        role: "role-bonde",
+        location: "loc-osterdalen",
+        date: "2025-12-22",
+        start: "13:00",
+        end: "14:00",
+        type: "callback",
+        status: "completed",
+        notes: "Callback med Roar — chemistry-test mot Nora-skuespilleren.",
       },
       {
-        id: 'sched-nora-fitting', candidate: 'cand-ine', role: 'role-nora',
-        location: null, date: '2026-01-10', start: '10:00', end: '12:00',
-        type: 'fitting', status: 'scheduled',
-        notes: 'Kostyme-prøve, paleontolog-feltjakke. Eva Haukeland leder.',
+        id: "sched-nora-fitting",
+        candidate: "cand-ine",
+        role: "role-nora",
+        location: null,
+        date: "2026-01-10",
+        start: "10:00",
+        end: "12:00",
+        type: "fitting",
+        status: "scheduled",
+        notes: "Kostyme-prøve, paleontolog-feltjakke. Eva Haukeland leder.",
       },
       {
-        id: 'sched-readthrough', candidate: null, role: null,
-        location: null, date: '2026-01-12', start: '09:00', end: '13:00',
-        type: 'rehearsal', status: 'scheduled',
-        notes: 'Read-through med Ine, Kim, Gard, Fridtjov, Anneke.',
+        id: "sched-readthrough",
+        candidate: null,
+        role: null,
+        location: null,
+        date: "2026-01-12",
+        start: "09:00",
+        end: "13:00",
+        type: "rehearsal",
+        status: "scheduled",
+        notes: "Read-through med Ine, Kim, Gard, Fridtjov, Anneke.",
       },
       {
-        id: 'sched-stunt-tunnel', candidate: null, role: 'role-arbeider1',
-        location: 'loc-tunnel', date: '2026-01-18', start: '14:00', end: '17:00',
-        type: 'rehearsal', status: 'scheduled',
-        notes: 'Stunt-rehearsal scene 1+2 — koreografi for tunnel-kollapsen.',
+        id: "sched-stunt-tunnel",
+        candidate: null,
+        role: "role-arbeider1",
+        location: "loc-tunnel",
+        date: "2026-01-18",
+        start: "14:00",
+        end: "17:00",
+        type: "rehearsal",
+        status: "scheduled",
+        notes: "Stunt-rehearsal scene 1+2 — koreografi for tunnel-kollapsen.",
       },
       {
-        id: 'sched-preprod', candidate: null, role: null,
-        location: 'loc-oslo-stat', date: '2026-01-19', start: '09:00', end: '12:00',
-        type: 'meeting', status: 'scheduled',
-        notes: 'Pre-produksjonsmøte: gjennomgang av opptaksdager 1-6.',
+        id: "sched-preprod",
+        candidate: null,
+        role: null,
+        location: "loc-oslo-stat",
+        date: "2026-01-19",
+        start: "09:00",
+        end: "12:00",
+        type: "meeting",
+        status: "scheduled",
+        notes: "Pre-produksjonsmøte: gjennomgang av opptaksdager 1-6.",
       },
     ];
     for (const s of schedules) {
@@ -746,11 +1520,19 @@ THE END.
             start_time, end_time, type, status, notes, reminders_sent,
             created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, '[]'::jsonb, NOW(), NOW())`,
-        [eid(s.id), TROLL_PROJECT_ID,
-         s.candidate ? eid(s.candidate) : null,
-         s.role ? eid(s.role) : null,
-         s.location ? eid(s.location) : null,
-         s.date, s.start, s.end, s.type, s.status, s.notes],
+        [
+          eid(s.id),
+          TROLL_PROJECT_ID,
+          s.candidate ? eid(s.candidate) : null,
+          s.role ? eid(s.role) : null,
+          s.location ? eid(s.location) : null,
+          s.date,
+          s.start,
+          s.end,
+          s.type,
+          s.status,
+          s.notes,
+        ],
       );
     }
 
@@ -758,30 +1540,73 @@ THE END.
     // Rekvisitter knyttet til TROLL-univers (gruvedrift, statsministerens
     // kontor, paleontologisk feltarbeid, norske fjellsymboler).
     const props = [
-      { id: 'prop-borrekrone', name: 'Knust borrekrone', category: 'set_dressing',
-        description: 'Ødelagt bor-spiss fra eksplosjonen i Lærdalstunnelen. Hero prop scene 1.',
-        availability: 'in_storage', quantity: 1 },
-      { id: 'prop-hjelm', name: 'Tunnelarbeider-hjelm', category: 'costume',
-        description: 'Vernehjelm med pannelampe, brand: Petzl. Scene 1+2.',
-        availability: 'rented', quantity: 8 },
-      { id: 'prop-kart-dovre', name: 'Topografisk kart — Dovrefjell',
-        category: 'paper_props', description: 'A2 print, sammenbrettet. Brukes i scene 4 + 7.',
-        availability: 'in_storage', quantity: 2 },
-      { id: 'prop-mappe', name: 'Statsministerens dokumentmappe',
-        category: 'set_dressing', description: 'Skinninnbundet, embossert med riksvåpen.',
-        availability: 'in_storage', quantity: 1 },
-      { id: 'prop-geiger', name: 'Vintage Geiger-teller', category: 'hand_prop',
-        description: 'Sovjetisk DP-5B, fungerende. Tobias bruker den i scene 10.',
-        availability: 'rented', quantity: 1 },
-      { id: 'prop-feltkoffert', name: 'Paleontolog-feltkoffert', category: 'hand_prop',
-        description: 'Noras feltverktøy — pinsetter, lupe, prøveglass, notatbok.',
-        availability: 'in_storage', quantity: 1 },
-      { id: 'prop-flagg', name: 'Norsk flagg — Akershus festning',
-        category: 'set_dressing', description: 'Flaggstang-størrelse, bomullsbasert.',
-        availability: 'in_storage', quantity: 3 },
-      { id: 'prop-runestein', name: 'Runesteen-kopi', category: 'set_dressing',
-        description: 'Polyuretan-replika, Tobias hytte. Scene 10 reveal.',
-        availability: 'in_production', quantity: 2 },
+      {
+        id: "prop-borrekrone",
+        name: "Knust borrekrone",
+        category: "set_dressing",
+        description:
+          "Ødelagt bor-spiss fra eksplosjonen i Lærdalstunnelen. Hero prop scene 1.",
+        availability: "in_storage",
+        quantity: 1,
+      },
+      {
+        id: "prop-hjelm",
+        name: "Tunnelarbeider-hjelm",
+        category: "costume",
+        description: "Vernehjelm med pannelampe, brand: Petzl. Scene 1+2.",
+        availability: "rented",
+        quantity: 8,
+      },
+      {
+        id: "prop-kart-dovre",
+        name: "Topografisk kart — Dovrefjell",
+        category: "paper_props",
+        description: "A2 print, sammenbrettet. Brukes i scene 4 + 7.",
+        availability: "in_storage",
+        quantity: 2,
+      },
+      {
+        id: "prop-mappe",
+        name: "Statsministerens dokumentmappe",
+        category: "set_dressing",
+        description: "Skinninnbundet, embossert med riksvåpen.",
+        availability: "in_storage",
+        quantity: 1,
+      },
+      {
+        id: "prop-geiger",
+        name: "Vintage Geiger-teller",
+        category: "hand_prop",
+        description:
+          "Sovjetisk DP-5B, fungerende. Tobias bruker den i scene 10.",
+        availability: "rented",
+        quantity: 1,
+      },
+      {
+        id: "prop-feltkoffert",
+        name: "Paleontolog-feltkoffert",
+        category: "hand_prop",
+        description:
+          "Noras feltverktøy — pinsetter, lupe, prøveglass, notatbok.",
+        availability: "in_storage",
+        quantity: 1,
+      },
+      {
+        id: "prop-flagg",
+        name: "Norsk flagg — Akershus festning",
+        category: "set_dressing",
+        description: "Flaggstang-størrelse, bomullsbasert.",
+        availability: "in_storage",
+        quantity: 3,
+      },
+      {
+        id: "prop-runestein",
+        name: "Runesteen-kopi",
+        category: "set_dressing",
+        description: "Polyuretan-replika, Tobias hytte. Scene 10 reveal.",
+        availability: "in_production",
+        quantity: 2,
+      },
     ];
     for (const p of props) {
       await client.query(
@@ -789,7 +1614,15 @@ THE END.
            (id, project_id, name, category, description, availability, quantity,
             created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
-        [eid(p.id), TROLL_PROJECT_ID, p.name, p.category, p.description, p.availability, p.quantity],
+        [
+          eid(p.id),
+          TROLL_PROJECT_ID,
+          p.name,
+          p.category,
+          p.description,
+          p.availability,
+          p.quantity,
+        ],
       );
     }
 
@@ -800,7 +1633,9 @@ THE END.
          WHERE split_sheet_id IN (SELECT id FROM split_sheets WHERE project_id = $1)`,
       [TROLL_PROJECT_ID],
     );
-    await client.query(`DELETE FROM split_sheets WHERE project_id = $1`, [TROLL_PROJECT_ID]);
+    await client.query(`DELETE FROM split_sheets WHERE project_id = $1`, [
+      TROLL_PROJECT_ID,
+    ]);
 
     const splitSheetRow = await client.query<{ id: string }>(
       `INSERT INTO split_sheets
@@ -811,9 +1646,9 @@ THE END.
       [
         ownerUserId,
         TROLL_PROJECT_ID,
-        'TROLL — Filmproduksjon Split Sheet',
-        'Fordeling av inntekter for TROLL (2026). Bygget på Norsk Filminstitutts standard-kontrakt.',
-        JSON.stringify({ source: 'troll_seed_v1', isDemo: true }),
+        "TROLL — Filmproduksjon Split Sheet",
+        "Fordeling av inntekter for TROLL (2026). Bygget på Norsk Filminstitutts standard-kontrakt.",
+        JSON.stringify({ source: "troll_seed_v1", isDemo: true }),
       ],
     );
     const splitSheetId = splitSheetRow.rows[0].id;
@@ -822,14 +1657,70 @@ THE END.
     // (producer/artist/songwriter/...). Vi mapper film-roller til 'other'
     // og lagrer faktisk tittel i notes så den vises i UI.
     const contributors = [
-      { name: 'Roar Uthaug', email: 'roar@uthaug.no', role: 'producer', notes: 'Regissør', percentage: 25, order: 0 },
-      { name: 'Espen Horn', email: 'espen@motlysfilm.no', role: 'producer', notes: 'Produsent', percentage: 20, order: 1 },
-      { name: 'Espen Aukan', email: 'espen.aukan@writer.no', role: 'songwriter', notes: 'Manusforfatter', percentage: 15, order: 2 },
-      { name: 'Ine Marie Wilmann', email: 'agent@inemarie.no', role: 'artist', notes: 'Hovedrolle — Nora', percentage: 10, order: 3 },
-      { name: 'Kim Falck', email: 'kim.falck@agent.no', role: 'artist', notes: 'Hovedrolle — Andreas', percentage: 10, order: 4 },
-      { name: 'Jallo Faber', email: 'jallo@cinematographers.no', role: 'collaborator', notes: 'Cinematographer / DP', percentage: 10, order: 5 },
-      { name: 'Hanne Berkaak', email: 'hanne@design.no', role: 'collaborator', notes: 'Production designer', percentage: 5, order: 6 },
-      { name: 'Stian Aadland', email: 'stian@sound.no', role: 'mix_engineer', notes: 'Sound designer', percentage: 5, order: 7 },
+      {
+        name: "Roar Uthaug",
+        email: "roar@uthaug.no",
+        role: "producer",
+        notes: "Regissør",
+        percentage: 25,
+        order: 0,
+      },
+      {
+        name: "Espen Horn",
+        email: "espen@motlysfilm.no",
+        role: "producer",
+        notes: "Produsent",
+        percentage: 20,
+        order: 1,
+      },
+      {
+        name: "Espen Aukan",
+        email: "espen.aukan@writer.no",
+        role: "songwriter",
+        notes: "Manusforfatter",
+        percentage: 15,
+        order: 2,
+      },
+      {
+        name: "Ine Marie Wilmann",
+        email: "agent@inemarie.no",
+        role: "artist",
+        notes: "Hovedrolle — Nora",
+        percentage: 10,
+        order: 3,
+      },
+      {
+        name: "Kim Falck",
+        email: "kim.falck@agent.no",
+        role: "artist",
+        notes: "Hovedrolle — Andreas",
+        percentage: 10,
+        order: 4,
+      },
+      {
+        name: "Jallo Faber",
+        email: "jallo@cinematographers.no",
+        role: "collaborator",
+        notes: "Cinematographer / DP",
+        percentage: 10,
+        order: 5,
+      },
+      {
+        name: "Hanne Berkaak",
+        email: "hanne@design.no",
+        role: "collaborator",
+        notes: "Production designer",
+        percentage: 5,
+        order: 6,
+      },
+      {
+        name: "Stian Aadland",
+        email: "stian@sound.no",
+        role: "mix_engineer",
+        notes: "Sound designer",
+        percentage: 5,
+        order: 7,
+      },
     ];
     for (const c of contributors) {
       await client.query(
@@ -843,16 +1734,36 @@ THE END.
 
     // ── 13. casting_consents ──────────────────────────────────────────
     const consents = [
-      { id: 'consent-ine', candidate: 'cand-ine', type: 'image_likeness', status: 'signed' },
-      { id: 'consent-kim', candidate: 'cand-kim', type: 'image_likeness', status: 'signed' },
-      { id: 'consent-gard', candidate: 'cand-gard', type: 'image_likeness', status: 'signed' },
-      { id: 'consent-mads', candidate: 'cand-mads', type: 'image_likeness', status: 'pending' },
+      {
+        id: "consent-ine",
+        candidate: "cand-ine",
+        type: "image_likeness",
+        status: "signed",
+      },
+      {
+        id: "consent-kim",
+        candidate: "cand-kim",
+        type: "image_likeness",
+        status: "signed",
+      },
+      {
+        id: "consent-gard",
+        candidate: "cand-gard",
+        type: "image_likeness",
+        status: "signed",
+      },
+      {
+        id: "consent-mads",
+        candidate: "cand-mads",
+        type: "image_likeness",
+        status: "pending",
+      },
     ];
     for (const c of consents) {
       await client.query(
         `INSERT INTO casting_consents
            (id, project_id, candidate_id, type, status, signed_at, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, ${c.status === 'signed' ? 'NOW()' : 'NULL'}, NOW(), NOW())`,
+         VALUES ($1, $2, $3, $4, $5, ${c.status === "signed" ? "NOW()" : "NULL"}, NOW(), NOW())`,
         [eid(c.id), TROLL_PROJECT_ID, eid(c.candidate), c.type, c.status],
       );
     }
@@ -864,7 +1775,14 @@ THE END.
     // linjer + stick-figurer som markerer komposisjon/blocking.
     //
     // Helper-bygger: lager linje fra (x1,y1) til (x2,y2).
-    const line = (x1: number, y1: number, x2: number, y2: number, color = '#cccccc', width = 3) => ({
+    const line = (
+      x1: number,
+      y1: number,
+      x2: number,
+      y2: number,
+      color = "#cccccc",
+      width = 3,
+    ) => ({
       id: `s-${Math.random().toString(36).slice(2, 8)}`,
       points: [
         { x: x1, y: y1, pressure: 1 },
@@ -874,7 +1792,7 @@ THE END.
       width,
     });
     // Stick-figur sentrert på (cx, cy) med skala s (1 = full).
-    const stick = (cx: number, cy: number, s = 1, color = '#aaaaaa') => [
+    const stick = (cx: number, cy: number, s = 1, color = "#aaaaaa") => [
       // Hode
       ...Array.from({ length: 24 }, (_, i) => {
         const t = (i / 24) * Math.PI * 2;
@@ -884,7 +1802,8 @@ THE END.
           cy - 100 * s + Math.sin(t) * 30 * s,
           cx + Math.cos(next) * 30 * s,
           cy - 100 * s + Math.sin(next) * 30 * s,
-          color, 2,
+          color,
+          2,
         );
       }),
       // Kropp (vertikal)
@@ -895,202 +1814,311 @@ THE END.
       line(cx, cy + 60 * s, cx - 35 * s, cy + 140 * s, color, 3),
       line(cx, cy + 60 * s, cx + 35 * s, cy + 140 * s, color, 3),
     ];
-    const horizon = (y: number) => line(0, y, 1920, y, '#888888', 2);
+    const horizon = (y: number) => line(0, y, 1920, y, "#888888", 2);
 
     const storyboards: Array<{
       scene: string;
       title: string;
-      workflow: 'rough' | 'blocking' | 'final';
+      workflow: "rough" | "blocking" | "final";
       strokes: any[];
     }> = [
       // Scene 1 — Tunnelen
-      { scene: 'scene-1', title: '1A — WIDE: Tunneldybden, arbeidere borer', workflow: 'rough',
+      {
+        scene: "scene-1",
+        title: "1A — WIDE: Tunneldybden, arbeidere borer",
+        workflow: "rough",
         strokes: [
-          line(0, 540, 1920, 540, '#444', 3), // Tunnelbunn
-          line(400, 200, 400, 540, '#666', 2),  // Vegg venstre
-          line(1520, 200, 1520, 540, '#666', 2), // Vegg høyre
-          ...stick(800, 540, 0.7), ...stick(1100, 540, 0.7),
-        ]
+          line(0, 540, 1920, 540, "#444", 3), // Tunnelbunn
+          line(400, 200, 400, 540, "#666", 2), // Vegg venstre
+          line(1520, 200, 1520, 540, "#666", 2), // Vegg høyre
+          ...stick(800, 540, 0.7),
+          ...stick(1100, 540, 0.7),
+        ],
       },
-      { scene: 'scene-1', title: '1B — CLOSE-UP: Borets spiss treffer hulrom', workflow: 'rough',
+      {
+        scene: "scene-1",
+        title: "1B — CLOSE-UP: Borets spiss treffer hulrom",
+        workflow: "rough",
         strokes: [
-          line(700, 400, 1200, 540, '#aaa', 5), // Bor-arm
-          line(1200, 540, 1300, 480, '#fff', 4), // Spiss
-          ...Array.from({ length: 16 }, (_, i) => line(1300 + i * 10, 460 + i * 8, 1320 + i * 10, 500 + i * 8, '#ffcc44', 2)),
-        ]
+          line(700, 400, 1200, 540, "#aaa", 5), // Bor-arm
+          line(1200, 540, 1300, 480, "#fff", 4), // Spiss
+          ...Array.from({ length: 16 }, (_, i) =>
+            line(
+              1300 + i * 10,
+              460 + i * 8,
+              1320 + i * 10,
+              500 + i * 8,
+              "#ffcc44",
+              2,
+            ),
+          ),
+        ],
       },
       // Scene 2 — Tunnel-kollapsen
-      { scene: 'scene-2', title: '2A — DUTCH ANGLE: Stein og støv ramler', workflow: 'rough',
+      {
+        scene: "scene-2",
+        title: "2A — DUTCH ANGLE: Stein og støv ramler",
+        workflow: "rough",
         strokes: [
-          line(0, 200, 1920, 700, '#666', 3), // Skrå tunnel-tak (kollaps)
+          line(0, 200, 1920, 700, "#666", 3), // Skrå tunnel-tak (kollaps)
           ...stick(600, 800, 0.6), // Arbeider 1 på flukt
-        ]
+        ],
       },
       // Scene 3 — Nora introduseres
-      { scene: 'scene-3', title: '3A — MEDIUM: Nora ved fossil-skanning', workflow: 'rough',
+      {
+        scene: "scene-3",
+        title: "3A — MEDIUM: Nora ved fossil-skanning",
+        workflow: "rough",
         strokes: [
           horizon(700),
-          ...stick(960, 540, 1.1, '#777'), // Nora
-          line(700, 700, 1220, 700, '#888', 3), // Bord
-        ]
+          ...stick(960, 540, 1.1, "#777"), // Nora
+          line(700, 700, 1220, 700, "#888", 3), // Bord
+        ],
       },
       // Scene 4 — Krise-møtet
-      { scene: 'scene-4', title: '4A — WIDE: Møterom oversikt', workflow: 'blocking',
+      {
+        scene: "scene-4",
+        title: "4A — WIDE: Møterom oversikt",
+        workflow: "blocking",
         strokes: [
           horizon(720),
-          line(400, 720, 1520, 720, '#666', 4), // Møtebord
+          line(400, 720, 1520, 720, "#666", 4), // Møtebord
           ...stick(600, 660, 0.7), // Nora
           ...stick(960, 660, 0.7), // Andreas
           ...stick(1320, 660, 0.7), // Generalen
-        ]
+        ],
       },
-      { scene: 'scene-4', title: '4B — OTS: Nora forklarer over skuldra', workflow: 'blocking',
+      {
+        scene: "scene-4",
+        title: "4B — OTS: Nora forklarer over skuldra",
+        workflow: "blocking",
         strokes: [
-          ...stick(700, 600, 1.4, '#555'), // Stor over-skulder
-          ...stick(1200, 600, 0.9, '#888'), // Nora (mindre, foran)
-        ]
+          ...stick(700, 600, 1.4, "#555"), // Stor over-skulder
+          ...stick(1200, 600, 0.9, "#888"), // Nora (mindre, foran)
+        ],
       },
-      { scene: 'scene-4', title: '4C — CLOSE-UP: Generalens skeptiske blikk', workflow: 'rough',
+      {
+        scene: "scene-4",
+        title: "4C — CLOSE-UP: Generalens skeptiske blikk",
+        workflow: "rough",
         strokes: [
           // Ansiktssirkel (zoom)
           ...Array.from({ length: 36 }, (_, i) => {
             const t = (i / 36) * Math.PI * 2;
             const next = ((i + 1) / 36) * Math.PI * 2;
-            return line(960 + Math.cos(t) * 350, 540 + Math.sin(t) * 350, 960 + Math.cos(next) * 350, 540 + Math.sin(next) * 350, '#666', 4);
+            return line(
+              960 + Math.cos(t) * 350,
+              540 + Math.sin(t) * 350,
+              960 + Math.cos(next) * 350,
+              540 + Math.sin(next) * 350,
+              "#666",
+              4,
+            );
           }),
-        ]
+        ],
       },
       // Scene 5 — Til Dovrefjell
-      { scene: 'scene-5', title: '5A — TRACKING: Jeep langs vei', workflow: 'rough',
+      {
+        scene: "scene-5",
+        title: "5A — TRACKING: Jeep langs vei",
+        workflow: "rough",
         strokes: [
           horizon(720),
-          line(600, 720, 800, 600, '#888', 4),
-          line(800, 600, 1120, 600, '#888', 4),
-          line(1120, 600, 1320, 720, '#888', 4),
+          line(600, 720, 800, 600, "#888", 4),
+          line(800, 600, 1120, 600, "#888", 4),
+          line(1120, 600, 1320, 720, "#888", 4),
           // Hjul
           ...Array.from({ length: 16 }, (_, i) => {
             const t = (i / 16) * Math.PI * 2;
             const next = ((i + 1) / 16) * Math.PI * 2;
-            return line(800 + Math.cos(t) * 40, 700 + Math.sin(t) * 40, 800 + Math.cos(next) * 40, 700 + Math.sin(next) * 40, '#444', 3);
+            return line(
+              800 + Math.cos(t) * 40,
+              700 + Math.sin(t) * 40,
+              800 + Math.cos(next) * 40,
+              700 + Math.sin(next) * 40,
+              "#444",
+              3,
+            );
           }),
-        ]
+        ],
       },
       // Scene 6 — Bondens fortelling
-      { scene: 'scene-6', title: '6A — MEDIUM: Bonde med gammelt bilde', workflow: 'rough',
+      {
+        scene: "scene-6",
+        title: "6A — MEDIUM: Bonde med gammelt bilde",
+        workflow: "rough",
         strokes: [
           horizon(720),
-          ...stick(960, 540, 1.2, '#777'),
+          ...stick(960, 540, 1.2, "#777"),
           // Bilde-ramme i hånd
-          line(900, 540, 1020, 540, '#444', 3),
-          line(900, 540, 900, 600, '#444', 3),
-          line(1020, 540, 1020, 600, '#444', 3),
-          line(900, 600, 1020, 600, '#444', 3),
-        ]
+          line(900, 540, 1020, 540, "#444", 3),
+          line(900, 540, 900, 600, "#444", 3),
+          line(1020, 540, 1020, 600, "#444", 3),
+          line(900, 600, 1020, 600, "#444", 3),
+        ],
       },
       // Scene 7 — Militær respons
-      { scene: 'scene-7', title: '7A — WIDE: Statsministerens situasjonsrom (skjermer)', workflow: 'rough',
+      {
+        scene: "scene-7",
+        title: "7A — WIDE: Statsministerens situasjonsrom (skjermer)",
+        workflow: "rough",
         strokes: [
           horizon(720),
           // Skjermer i bakgrunnen
-          line(200, 200, 600, 200, '#888', 3),
-          line(200, 400, 600, 400, '#888', 3),
-          line(200, 200, 200, 400, '#888', 3),
-          line(600, 200, 600, 400, '#888', 3),
-          line(1320, 200, 1720, 200, '#888', 3),
-          line(1320, 400, 1720, 400, '#888', 3),
-          line(1320, 200, 1320, 400, '#888', 3),
-          line(1720, 200, 1720, 400, '#888', 3),
+          line(200, 200, 600, 200, "#888", 3),
+          line(200, 400, 600, 400, "#888", 3),
+          line(200, 200, 200, 400, "#888", 3),
+          line(600, 200, 600, 400, "#888", 3),
+          line(1320, 200, 1720, 200, "#888", 3),
+          line(1320, 400, 1720, 400, "#888", 3),
+          line(1320, 200, 1320, 400, "#888", 3),
+          line(1720, 200, 1720, 400, "#888", 3),
           // Figurer
           ...stick(700, 600, 0.7),
           ...stick(1100, 600, 0.7),
-        ]
+        ],
       },
       // Scene 8 — Trollet på vandring
-      { scene: 'scene-8', title: '8A — EXTREME WIDE: Trollet over åskam', workflow: 'final',
+      {
+        scene: "scene-8",
+        title: "8A — EXTREME WIDE: Trollet over åskam",
+        workflow: "final",
         strokes: [
           horizon(800),
           // Åskam (trekant)
-          line(0, 800, 600, 500, '#555', 5),
-          line(600, 500, 1100, 700, '#555', 5),
-          line(1100, 700, 1920, 600, '#555', 5),
+          line(0, 800, 600, 500, "#555", 5),
+          line(600, 500, 1100, 700, "#555", 5),
+          line(1100, 700, 1920, 600, "#555", 5),
           // Troll-silhuett (stor stick)
-          ...stick(960, 500, 3.5, '#222'),
+          ...stick(960, 500, 3.5, "#222"),
           // Måne
           ...Array.from({ length: 24 }, (_, i) => {
             const t = (i / 24) * Math.PI * 2;
             const next = ((i + 1) / 24) * Math.PI * 2;
-            return line(1500 + Math.cos(t) * 60, 180 + Math.sin(t) * 60, 1500 + Math.cos(next) * 60, 180 + Math.sin(next) * 60, '#ccc', 3);
+            return line(
+              1500 + Math.cos(t) * 60,
+              180 + Math.sin(t) * 60,
+              1500 + Math.cos(next) * 60,
+              180 + Math.sin(next) * 60,
+              "#ccc",
+              3,
+            );
           }),
-        ]
+        ],
       },
-      { scene: 'scene-8', title: '8B — LOW ANGLE: Trollets fot tråkker forbi', workflow: 'rough',
+      {
+        scene: "scene-8",
+        title: "8B — LOW ANGLE: Trollets fot tråkker forbi",
+        workflow: "rough",
         strokes: [
           // Stor fot (sirkel + sko-form)
           ...Array.from({ length: 24 }, (_, i) => {
             const t = (i / 24) * Math.PI;
             const next = ((i + 1) / 24) * Math.PI;
-            return line(960 + Math.cos(t) * 600, 700 + Math.sin(t) * 200, 960 + Math.cos(next) * 600, 700 + Math.sin(next) * 200, '#333', 6);
+            return line(
+              960 + Math.cos(t) * 600,
+              700 + Math.sin(t) * 200,
+              960 + Math.cos(next) * 600,
+              700 + Math.sin(next) * 200,
+              "#333",
+              6,
+            );
           }),
-          line(360, 700, 1560, 700, '#222', 8),
-        ]
+          line(360, 700, 1560, 700, "#222", 8),
+        ],
       },
       // Scene 9 — Forfølgelse
-      { scene: 'scene-9', title: '9A — AERIAL: Drone over skog', workflow: 'rough',
+      {
+        scene: "scene-9",
+        title: "9A — AERIAL: Drone over skog",
+        workflow: "rough",
         strokes: [
           // Trær (mange korte vertikaler)
-          ...Array.from({ length: 40 }, (_, i) => line(50 + i * 47, 540, 50 + i * 47, 640, '#5a7', 2)),
+          ...Array.from({ length: 40 }, (_, i) =>
+            line(50 + i * 47, 540, 50 + i * 47, 640, "#5a7", 2),
+          ),
           // To små stick-figurer
-          ...stick(900, 700, 0.4, '#444'),
-          ...stick(1020, 700, 0.4, '#444'),
-        ]
+          ...stick(900, 700, 0.4, "#444"),
+          ...stick(1020, 700, 0.4, "#444"),
+        ],
       },
-      { scene: 'scene-9', title: '9B — TRACKING: Følger Nora og Andreas i full sprint', workflow: 'blocking',
+      {
+        scene: "scene-9",
+        title: "9B — TRACKING: Følger Nora og Andreas i full sprint",
+        workflow: "blocking",
         strokes: [
           horizon(800),
-          ...stick(700, 550, 1.2, '#555'),
-          ...stick(1100, 550, 1.2, '#555'),
+          ...stick(700, 550, 1.2, "#555"),
+          ...stick(1100, 550, 1.2, "#555"),
           // Bevegelsesstreker
-          line(450, 500, 600, 540, '#888', 3),
-          line(450, 600, 600, 620, '#888', 3),
-        ]
+          line(450, 500, 600, 540, "#888", 3),
+          line(450, 600, 600, 620, "#888", 3),
+        ],
       },
       // Scene 10 — Fars hemmelighet
-      { scene: 'scene-10', title: '10A — WIDE: Hytten med peisens lys', workflow: 'rough',
+      {
+        scene: "scene-10",
+        title: "10A — WIDE: Hytten med peisens lys",
+        workflow: "rough",
         strokes: [
           horizon(780),
           // Hytte-rektangel
-          line(600, 400, 1320, 400, '#666', 4),
-          line(600, 780, 1320, 780, '#666', 4),
-          line(600, 400, 600, 780, '#666', 4),
-          line(1320, 400, 1320, 780, '#666', 4),
+          line(600, 400, 1320, 400, "#666", 4),
+          line(600, 780, 1320, 780, "#666", 4),
+          line(600, 400, 600, 780, "#666", 4),
+          line(1320, 400, 1320, 780, "#666", 4),
           // Peis (firkant innenfor)
-          line(900, 600, 1020, 600, '#a44', 4),
-          line(900, 780, 1020, 780, '#a44', 4),
-          line(900, 600, 900, 780, '#a44', 4),
-          line(1020, 600, 1020, 780, '#a44', 4),
-          ...stick(800, 720, 0.6, '#777'),
-        ]
+          line(900, 600, 1020, 600, "#a44", 4),
+          line(900, 780, 1020, 780, "#a44", 4),
+          line(900, 600, 900, 780, "#a44", 4),
+          line(1020, 600, 1020, 780, "#a44", 4),
+          ...stick(800, 720, 0.6, "#777"),
+        ],
       },
-      { scene: 'scene-10', title: '10B — CLOSE-UP: Tobias forteller — emosjonelt øyeblikk', workflow: 'final',
+      {
+        scene: "scene-10",
+        title: "10B — CLOSE-UP: Tobias forteller — emosjonelt øyeblikk",
+        workflow: "final",
         strokes: [
           // Stort ansiktsovalt
           ...Array.from({ length: 36 }, (_, i) => {
             const t = (i / 36) * Math.PI * 2;
             const next = ((i + 1) / 36) * Math.PI * 2;
-            return line(960 + Math.cos(t) * 400, 540 + Math.sin(t) * 480, 960 + Math.cos(next) * 400, 540 + Math.sin(next) * 480, '#777', 4);
+            return line(
+              960 + Math.cos(t) * 400,
+              540 + Math.sin(t) * 480,
+              960 + Math.cos(next) * 400,
+              540 + Math.sin(next) * 480,
+              "#777",
+              4,
+            );
           }),
           // Øyne
           ...Array.from({ length: 16 }, (_, i) => {
             const t = (i / 16) * Math.PI * 2;
             const next = ((i + 1) / 16) * Math.PI * 2;
-            return line(850 + Math.cos(t) * 35, 460 + Math.sin(t) * 20, 850 + Math.cos(next) * 35, 460 + Math.sin(next) * 20, '#222', 3);
+            return line(
+              850 + Math.cos(t) * 35,
+              460 + Math.sin(t) * 20,
+              850 + Math.cos(next) * 35,
+              460 + Math.sin(next) * 20,
+              "#222",
+              3,
+            );
           }),
           ...Array.from({ length: 16 }, (_, i) => {
             const t = (i / 16) * Math.PI * 2;
             const next = ((i + 1) / 16) * Math.PI * 2;
-            return line(1070 + Math.cos(t) * 35, 460 + Math.sin(t) * 20, 1070 + Math.cos(next) * 35, 460 + Math.sin(next) * 20, '#222', 3);
+            return line(
+              1070 + Math.cos(t) * 35,
+              460 + Math.sin(t) * 20,
+              1070 + Math.cos(next) * 35,
+              460 + Math.sin(next) * 20,
+              "#222",
+              3,
+            );
           }),
-        ]
+        ],
       },
     ];
     for (const sb of storyboards) {
@@ -1106,7 +2134,107 @@ THE END.
           sb.title,
           JSON.stringify(sb.strokes),
           sb.workflow,
-          JSON.stringify({ source: 'troll_seed_v2', isDemo: true, sceneRef: sb.scene }),
+          JSON.stringify({
+            source: "troll_seed_v2",
+            isDemo: true,
+            sceneRef: sb.scene,
+          }),
+          ownerUserId,
+        ],
+      );
+    }
+
+    // ── 14b. storyboard_reference_assets ─────────────────────────────
+    // Originale (ikke skuespiller-liknende) designutkast for Prompt Engine.
+    // Seed skal ALDRI auto-godkjenne produksjonsreferanser. Ved re-seed
+    // bevares derfor approval_status/locked/approved_by fra eksisterende rad.
+    const referenceAssets = [
+      {
+        id: "ref-troll-nora-v1",
+        entityType: "character",
+        entityId: "role-nora",
+        sceneIds: [
+          "scene-3",
+          "scene-4",
+          "scene-5",
+          "scene-7",
+          "scene-9",
+          "scene-10",
+        ],
+        name: "Nora Tidemann — karakter og garderobe",
+        description:
+          "Originalt fiktivt karakterdesign. Samme identitet, feltjakke, støvler, hansker, notatbok og paleontologisk feltkoffert i alle vinkler. Ingen skuespillerlikhet.",
+        referenceImageId: "builtin://troll/v1/nora-character-wardrobe",
+        kind: "character_wardrobe_sheet",
+      },
+      {
+        id: "ref-troll-creature-v1",
+        entityType: "character",
+        entityId: "trollet",
+        sceneIds: ["scene-8"],
+        name: "Trollet — skapning og skala",
+        description:
+          "40 meter høyt, sørgmodig og intelligent fjelltroll. Stabil granitt-, rot-, bjørk-, lav- og frostanatomi med menneske, bil og trær som skala.",
+        referenceImageId: "builtin://troll/v1/troll-creature-scale",
+        kind: "creature_scale_sheet",
+      },
+      {
+        id: "ref-troll-dovrefjell-v1",
+        entityType: "location",
+        entityId: "loc-dovre",
+        sceneIds: ["scene-5", "scene-8", "scene-9"],
+        name: "Dovrefjell — location og lyskontinuitet",
+        description:
+          "Samme åskam, sadelskår, vei, steinur, trelinje og snøgeografi ved skumring, natt og daggry i Story Pencil + Story Hatch.",
+        referenceImageId: "builtin://troll/v1/dovrefjell-location",
+        kind: "location_continuity_sheet",
+      },
+      {
+        id: "ref-troll-scene-8-sequence-v1",
+        entityType: "storyboard",
+        entityId: "scene-8",
+        sceneIds: ["scene-8"],
+        name: "Scene 8 — trollet på vandring",
+        description:
+          "Tre sammenhengende storyboardruter: extreme wide 24 mm, low angle 18 mm og emosjonelt 85 mm nærbilde. Samme troll, location og skjermretning.",
+        referenceImageId: "builtin://troll/v1/scene-8-storyboard-sequence",
+        kind: "storyboard_sequence",
+      },
+    ] as const;
+    for (const asset of referenceAssets) {
+      await client.query(
+        `INSERT INTO storyboard_reference_assets
+           (id, project_id, pack_id, pack_version, entity_type, entity_id,
+            scene_ids, name, description, reference_image_id, approval_status,
+            locked, metadata, created_by, created_at, updated_at)
+         VALUES ($1, $2, 'troll-production-bible', 'v1', $3, $4, $5::jsonb,
+                 $6, $7, $8, 'draft', FALSE, $9::jsonb, $10, NOW(), NOW())
+         ON CONFLICT (project_id, reference_image_id) DO UPDATE SET
+           pack_id = EXCLUDED.pack_id,
+           pack_version = EXCLUDED.pack_version,
+           entity_type = EXCLUDED.entity_type,
+           entity_id = EXCLUDED.entity_id,
+           scene_ids = EXCLUDED.scene_ids,
+           name = EXCLUDED.name,
+           description = EXCLUDED.description,
+           metadata = storyboard_reference_assets.metadata || EXCLUDED.metadata,
+           updated_at = NOW()`,
+        [
+          eid(asset.id),
+          TROLL_PROJECT_ID,
+          asset.entityType,
+          eid(asset.entityId),
+          JSON.stringify(asset.sceneIds.map(eid)),
+          asset.name,
+          asset.description,
+          asset.referenceImageId,
+          JSON.stringify({
+            source: "troll_reference_pack_v1",
+            isDemo: true,
+            originalFictionalDesign: true,
+            generatedAssetKind: asset.kind,
+            requiresHumanApproval: true,
+          }),
           ownerUserId,
         ],
       );
@@ -1117,28 +2245,44 @@ THE END.
     // generisk demo-stream — i prod ville dette vært R2-uploaded clips.
     const auditionVideos = [
       {
-        candidate: 'cand-ine', title: 'Self-tape — Nora monolog',
-        url: 'https://demo.creatorhubn.com/troll/auditions/ine-nora.mp4',
-        thumb: 'https://demo.creatorhubn.com/troll/auditions/thumbs/ine-nora.jpg',
-        duration: 92, rating: 5, notes: 'Strålende. Nora cast.',
+        candidate: "cand-ine",
+        title: "Self-tape — Nora monolog",
+        url: "https://demo.creatorhubn.com/troll/auditions/ine-nora.mp4",
+        thumb:
+          "https://demo.creatorhubn.com/troll/auditions/thumbs/ine-nora.jpg",
+        duration: 92,
+        rating: 5,
+        notes: "Strålende. Nora cast.",
       },
       {
-        candidate: 'cand-kim', title: 'Self-tape — Andreas oppvarming',
-        url: 'https://demo.creatorhubn.com/troll/auditions/kim-andreas.mp4',
-        thumb: 'https://demo.creatorhubn.com/troll/auditions/thumbs/kim-andreas.jpg',
-        duration: 78, rating: 4, notes: 'Sterk timing. Cast.',
+        candidate: "cand-kim",
+        title: "Self-tape — Andreas oppvarming",
+        url: "https://demo.creatorhubn.com/troll/auditions/kim-andreas.mp4",
+        thumb:
+          "https://demo.creatorhubn.com/troll/auditions/thumbs/kim-andreas.jpg",
+        duration: 78,
+        rating: 4,
+        notes: "Sterk timing. Cast.",
       },
       {
-        candidate: 'cand-stein', title: 'Self-tape — Bonden-monolog',
-        url: 'https://demo.creatorhubn.com/troll/auditions/stein-bonde.mp4',
-        thumb: 'https://demo.creatorhubn.com/troll/auditions/thumbs/stein-bonde.jpg',
-        duration: 105, rating: 3, notes: 'Solid. Vurderer mot 2 andre.',
+        candidate: "cand-stein",
+        title: "Self-tape — Bonden-monolog",
+        url: "https://demo.creatorhubn.com/troll/auditions/stein-bonde.mp4",
+        thumb:
+          "https://demo.creatorhubn.com/troll/auditions/thumbs/stein-bonde.jpg",
+        duration: 105,
+        rating: 3,
+        notes: "Solid. Vurderer mot 2 andre.",
       },
       {
-        candidate: 'cand-mads', title: 'Self-tape — Tunnelarbeider 1',
-        url: 'https://demo.creatorhubn.com/troll/auditions/mads-arb1.mp4',
-        thumb: 'https://demo.creatorhubn.com/troll/auditions/thumbs/mads-arb1.jpg',
-        duration: 64, rating: 4, notes: 'Cast. God action-sense.',
+        candidate: "cand-mads",
+        title: "Self-tape — Tunnelarbeider 1",
+        url: "https://demo.creatorhubn.com/troll/auditions/mads-arb1.mp4",
+        thumb:
+          "https://demo.creatorhubn.com/troll/auditions/thumbs/mads-arb1.jpg",
+        duration: 64,
+        rating: 4,
+        notes: "Cast. God action-sense.",
       },
     ];
     for (const v of auditionVideos) {
@@ -1150,9 +2294,16 @@ THE END.
          VALUES ($1, $2, $3, $4, $5, $6, 'video/mp4', $7, 'ready', $8, $9,
                  $10::jsonb, NOW(), NOW())`,
         [
-          eid(v.candidate), TROLL_PROJECT_ID, v.title, v.url, v.thumb,
-          v.duration, v.rating, ownerUserId, v.notes,
-          JSON.stringify({ source: 'troll_seed_v1', isDemo: true }),
+          eid(v.candidate),
+          TROLL_PROJECT_ID,
+          v.title,
+          v.url,
+          v.thumb,
+          v.duration,
+          v.rating,
+          ownerUserId,
+          v.notes,
+          JSON.stringify({ source: "troll_seed_v1", isDemo: true }),
         ],
       );
     }
@@ -1166,34 +2317,58 @@ THE END.
     );
     const calendarEvents = [
       {
-        id: 'evt-readthrough', title: 'Read-through med hovedcast',
-        type: 'meeting', start: '2026-01-12T09:00:00Z', end: '2026-01-12T13:00:00Z',
-        location: null, notes: 'Ine, Kim, Gard, Fridtjov, Anneke.',
+        id: "evt-readthrough",
+        title: "Read-through med hovedcast",
+        type: "meeting",
+        start: "2026-01-12T09:00:00Z",
+        end: "2026-01-12T13:00:00Z",
+        location: null,
+        notes: "Ine, Kim, Gard, Fridtjov, Anneke.",
       },
       {
-        id: 'evt-recce-dovre', title: 'Tech recce — Dovrefjell',
-        type: 'recce', start: '2026-01-15T08:00:00Z', end: '2026-01-15T17:00:00Z',
-        location: 'loc-dovre', notes: 'Roar, Jallo, Stian. Lokasjons-evaluering.',
+        id: "evt-recce-dovre",
+        title: "Tech recce — Dovrefjell",
+        type: "recce",
+        start: "2026-01-15T08:00:00Z",
+        end: "2026-01-15T17:00:00Z",
+        location: "loc-dovre",
+        notes: "Roar, Jallo, Stian. Lokasjons-evaluering.",
       },
       {
-        id: 'evt-stunt-rehearsal', title: 'Stunt rehearsal — tunnel-kollaps',
-        type: 'rehearsal', start: '2026-01-18T14:00:00Z', end: '2026-01-18T17:00:00Z',
-        location: 'loc-tunnel', notes: 'Koreografi for scene 1+2.',
+        id: "evt-stunt-rehearsal",
+        title: "Stunt rehearsal — tunnel-kollaps",
+        type: "rehearsal",
+        start: "2026-01-18T14:00:00Z",
+        end: "2026-01-18T17:00:00Z",
+        location: "loc-tunnel",
+        notes: "Koreografi for scene 1+2.",
       },
       {
-        id: 'evt-shoot-day-1', title: 'Opptaksdag 1 — Lærdalstunnelen',
-        type: 'shoot', start: '2026-01-20T06:00:00Z', end: '2026-01-20T22:00:00Z',
-        location: 'loc-tunnel', notes: 'Scene 1+2. Call time 06:00.',
+        id: "evt-shoot-day-1",
+        title: "Opptaksdag 1 — Lærdalstunnelen",
+        type: "shoot",
+        start: "2026-01-20T06:00:00Z",
+        end: "2026-01-20T22:00:00Z",
+        location: "loc-tunnel",
+        notes: "Scene 1+2. Call time 06:00.",
       },
       {
-        id: 'evt-shoot-day-2', title: 'Opptaksdag 2 — Statsministerens kontor',
-        type: 'shoot', start: '2026-01-21T07:00:00Z', end: '2026-01-21T20:00:00Z',
-        location: 'loc-oslo-stat', notes: 'Scene 3. Call time 07:00.',
+        id: "evt-shoot-day-2",
+        title: "Opptaksdag 2 — Statsministerens kontor",
+        type: "shoot",
+        start: "2026-01-21T07:00:00Z",
+        end: "2026-01-21T20:00:00Z",
+        location: "loc-oslo-stat",
+        notes: "Scene 3. Call time 07:00.",
       },
       {
-        id: 'evt-wrap', title: 'Wrap party — TROLL',
-        type: 'general', start: '2026-02-15T19:00:00Z', end: '2026-02-15T23:30:00Z',
-        location: null, notes: 'Cast + crew. Lokasjon avklares.',
+        id: "evt-wrap",
+        title: "Wrap party — TROLL",
+        type: "general",
+        start: "2026-02-15T19:00:00Z",
+        end: "2026-02-15T23:30:00Z",
+        location: null,
+        notes: "Cast + crew. Lokasjon avklares.",
       },
     ];
     for (const e of calendarEvents) {
@@ -1202,8 +2377,17 @@ THE END.
            (id, project_id, title, event_type, start_time, end_time,
             location_id, notes, status, created_by, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'scheduled', $9, NOW(), NOW())`,
-        [eid(e.id), TROLL_PROJECT_ID, e.title, e.type, e.start, e.end,
-         e.location ? eid(e.location) : null, e.notes, ownerUserId],
+        [
+          eid(e.id),
+          TROLL_PROJECT_ID,
+          e.title,
+          e.type,
+          e.start,
+          e.end,
+          e.location ? eid(e.location) : null,
+          e.notes,
+          ownerUserId,
+        ],
       );
     }
 
@@ -1214,20 +2398,100 @@ THE END.
     );
     const budgetItems = [
       // Pre-produksjon
-      { phase: 'preproduction', category: 'Pre-produksjon', name: 'Manuskript-finalisering', estimate: 350000, approved: 350000, actual: 320000, status: 'approved' },
-      { phase: 'preproduction', category: 'Pre-produksjon', name: 'Casting-prosess', estimate: 250000, approved: 250000, actual: 215000, status: 'approved' },
+      {
+        phase: "preproduction",
+        category: "Pre-produksjon",
+        name: "Manuskript-finalisering",
+        estimate: 350000,
+        approved: 350000,
+        actual: 320000,
+        status: "approved",
+      },
+      {
+        phase: "preproduction",
+        category: "Pre-produksjon",
+        name: "Casting-prosess",
+        estimate: 250000,
+        approved: 250000,
+        actual: 215000,
+        status: "approved",
+      },
       // Produksjon — crew
-      { phase: 'production', category: 'Crew', name: 'Roar Uthaug — regissør', estimate: 800000, approved: 800000, actual: 0, status: 'approved' },
-      { phase: 'production', category: 'Crew', name: 'Espen Horn — produsent', estimate: 500000, approved: 500000, actual: 0, status: 'approved' },
-      { phase: 'production', category: 'Crew', name: 'Jallo Faber — DP', estimate: 350000, approved: 350000, actual: 0, status: 'approved' },
+      {
+        phase: "production",
+        category: "Crew",
+        name: "Roar Uthaug — regissør",
+        estimate: 800000,
+        approved: 800000,
+        actual: 0,
+        status: "approved",
+      },
+      {
+        phase: "production",
+        category: "Crew",
+        name: "Espen Horn — produsent",
+        estimate: 500000,
+        approved: 500000,
+        actual: 0,
+        status: "approved",
+      },
+      {
+        phase: "production",
+        category: "Crew",
+        name: "Jallo Faber — DP",
+        estimate: 350000,
+        approved: 350000,
+        actual: 0,
+        status: "approved",
+      },
       // Produksjon — locations
-      { phase: 'production', category: 'Locations', name: 'Dovrefjell tilatelse + ranger', estimate: 75000, approved: 75000, actual: 0, status: 'approved' },
-      { phase: 'production', category: 'Locations', name: 'Lærdalstunnelen — leie', estimate: 120000, approved: 120000, actual: 0, status: 'pending_approval' },
+      {
+        phase: "production",
+        category: "Locations",
+        name: "Dovrefjell tilatelse + ranger",
+        estimate: 75000,
+        approved: 75000,
+        actual: 0,
+        status: "approved",
+      },
+      {
+        phase: "production",
+        category: "Locations",
+        name: "Lærdalstunnelen — leie",
+        estimate: 120000,
+        approved: 120000,
+        actual: 0,
+        status: "pending_approval",
+      },
       // Produksjon — cast
-      { phase: 'production', category: 'Cast', name: 'Ine Marie Wilmann — Nora', estimate: 250000, approved: 250000, actual: 0, status: 'approved' },
+      {
+        phase: "production",
+        category: "Cast",
+        name: "Ine Marie Wilmann — Nora",
+        estimate: 250000,
+        approved: 250000,
+        actual: 0,
+        status: "approved",
+      },
       // Post — VFX (hovedlinje)
-      { phase: 'postproduction', category: 'VFX', name: 'Trollet — CGI hovedmodel', estimate: 8000000, approved: 7500000, actual: 0, status: 'approved' },
-      { phase: 'postproduction', category: 'Lyd / Color', name: 'Stian Aadland + DI grading', estimate: 600000, approved: 600000, actual: 0, status: 'draft' },
+      {
+        phase: "postproduction",
+        category: "VFX",
+        name: "Trollet — CGI hovedmodel",
+        estimate: 8000000,
+        approved: 7500000,
+        actual: 0,
+        status: "approved",
+      },
+      {
+        phase: "postproduction",
+        category: "Lyd / Color",
+        name: "Stian Aadland + DI grading",
+        estimate: 600000,
+        approved: 600000,
+        actual: 0,
+        status: "draft",
+      },
     ];
     for (let i = 0; i < budgetItems.length; i++) {
       const b = budgetItems[i];
@@ -1236,21 +2500,66 @@ THE END.
            (id, project_id, phase, category, item_name, estimate, approved, actual,
             currency, status, sort_order, created_by, created_at, updated_at)
          VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'NOK', $8, $9, $10, NOW(), NOW())`,
-        [TROLL_PROJECT_ID, b.phase, b.category, b.name, b.estimate, b.approved, b.actual, b.status, i, ownerUserId],
+        [
+          TROLL_PROJECT_ID,
+          b.phase,
+          b.category,
+          b.name,
+          b.estimate,
+          b.approved,
+          b.actual,
+          b.status,
+          i,
+          ownerUserId,
+        ],
       );
     }
 
     // ── 18. role_room_expenses ─────────────────────────────────────────
-    await client.query(
-      `DELETE FROM role_room_expenses WHERE project_id = $1`,
-      [TROLL_PROJECT_ID],
-    );
+    await client.query(`DELETE FROM role_room_expenses WHERE project_id = $1`, [
+      TROLL_PROJECT_ID,
+    ]);
     const expenses = [
-      { title: 'Catering opptaksdag 1', merchant: 'Dovre Servering AS', date: '2026-01-20', amount: 12500, vat: 3125, category: 'Catering' },
-      { title: 'Drivstoff varebil — Oslo–Lærdal', merchant: 'Circle K', date: '2026-01-19', amount: 1850, vat: 463, category: 'Transport' },
-      { title: 'Hotell Dovrefjell — 6 netter', merchant: 'Dovrefjell Hotel', date: '2026-01-25', amount: 18900, vat: 2025, category: 'Hotell' },
-      { title: 'Frakt utstyr — ARRI rigg', merchant: 'Bring Express', date: '2026-01-18', amount: 3200, vat: 800, category: 'Transport' },
-      { title: 'Sikkerhetsgjerde Lærdal', merchant: 'Cramo Norge', date: '2026-01-17', amount: 4100, vat: 1025, category: 'Sikkerhet' },
+      {
+        title: "Catering opptaksdag 1",
+        merchant: "Dovre Servering AS",
+        date: "2026-01-20",
+        amount: 12500,
+        vat: 3125,
+        category: "Catering",
+      },
+      {
+        title: "Drivstoff varebil — Oslo–Lærdal",
+        merchant: "Circle K",
+        date: "2026-01-19",
+        amount: 1850,
+        vat: 463,
+        category: "Transport",
+      },
+      {
+        title: "Hotell Dovrefjell — 6 netter",
+        merchant: "Dovrefjell Hotel",
+        date: "2026-01-25",
+        amount: 18900,
+        vat: 2025,
+        category: "Hotell",
+      },
+      {
+        title: "Frakt utstyr — ARRI rigg",
+        merchant: "Bring Express",
+        date: "2026-01-18",
+        amount: 3200,
+        vat: 800,
+        category: "Transport",
+      },
+      {
+        title: "Sikkerhetsgjerde Lærdal",
+        merchant: "Cramo Norge",
+        date: "2026-01-17",
+        amount: 4100,
+        vat: 1025,
+        category: "Sikkerhet",
+      },
     ];
     for (const x of expenses) {
       await client.query(
@@ -1262,14 +2571,23 @@ THE END.
          VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 'NOK', $7, 'production', 'not_requested',
                  'pending', 'completed', false, 'verified', 'verified', $8,
                  NOW(), NOW())`,
-        [TROLL_PROJECT_ID, x.title, x.merchant, x.date, x.amount, x.vat, x.category, ownerUserId],
+        [
+          TROLL_PROJECT_ID,
+          x.title,
+          x.merchant,
+          x.date,
+          x.amount,
+          x.vat,
+          x.category,
+          ownerUserId,
+        ],
       );
     }
 
-    await client.query('COMMIT');
+    await client.query("COMMIT");
 
     return {
-      project: { id: TROLL_PROJECT_ID, name: 'TROLL' },
+      project: { id: TROLL_PROJECT_ID, name: "TROLL" },
       counts: {
         roles: roles.length,
         candidates: candidates.length,
@@ -1289,6 +2607,7 @@ THE END.
         splitSheets: 1,
         splitSheetContributors: contributors.length,
         storyboards: storyboards.length,
+        referenceAssets: referenceAssets.length,
         candidateVideos: auditionVideos.length,
         calendarEvents: calendarEvents.length,
         budgetItems: budgetItems.length,
@@ -1296,7 +2615,7 @@ THE END.
       },
     };
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
+    await client.query("ROLLBACK").catch(() => {});
     throw err;
   } finally {
     client.release();
