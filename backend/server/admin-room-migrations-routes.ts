@@ -21,6 +21,7 @@
 
 import path from "node:path";
 import fs from "node:fs/promises";
+import { timingSafeEqual } from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { AdminRoomRoutesDeps } from "./_shared";
@@ -200,7 +201,7 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
       triggerToken.length !== expectedToken.length
     )
       return false;
-    return require("crypto").timingSafeEqual(
+    return timingSafeEqual(
       Buffer.from(triggerToken),
       Buffer.from(expectedToken),
     );
@@ -286,10 +287,7 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
       }
       if (
         triggerToken.length !== expectedToken.length ||
-        !require("crypto").timingSafeEqual(
-          Buffer.from(triggerToken),
-          Buffer.from(expectedToken),
-        )
+        !timingSafeEqual(Buffer.from(triggerToken), Buffer.from(expectedToken))
       ) {
         res.status(401).json({
           error:
