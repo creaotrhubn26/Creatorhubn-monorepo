@@ -41,6 +41,9 @@ Create `.env` file:
 # Database
 DATABASE_URL=postgresql://user:password@host:5432/database
 
+# Required only by the legacy source-to-target migration utilities.
+OLD_DATABASE_URL=postgresql://user:password@legacy-host:5432/database
+
 # Server
 PORT=5050
 NODE_ENV=development
@@ -68,6 +71,9 @@ GOOGLE_CLOUD_QUOTA_PROJECT=creatorhubn-com
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_REDIRECT_URI=
+
+# Never place real connection URLs in tracked files. The Virtual Studio shell
+# test reads PGHOST, PGUSER, PGDATABASE and PGPASSWORD from the environment.
 
 # The Role Room Agent (OpenAI)
 OPENAI_API_KEY=your-openai-api-key

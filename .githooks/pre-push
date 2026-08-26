@@ -18,6 +18,14 @@ red()   { printf '\033[0;31m%s\033[0m\n' "$*"; }
 green() { printf '\033[0;32m%s\033[0m\n' "$*"; }
 yellow(){ printf '\033[0;33m%s\033[0m\n' "$*"; }
 
+# ── Check 0: hardcoded secrets ────────────────────────────────────────────
+yellow "[pre-push] Scanning tracked and untracked source files for secrets…"
+node scripts/security/scan-secrets.mjs
+if git rev-parse --verify origin/main >/dev/null 2>&1; then
+  node scripts/security/scan-secrets.mjs --git-range origin/main...HEAD
+fi
+green "[pre-push] Secret scan clean."
+
 # ── Check 1: backend lock-file drift ──────────────────────────────────────
 yellow "[pre-push] Checking backend/package-lock.json sync…"
 TMP=$(mktemp)
