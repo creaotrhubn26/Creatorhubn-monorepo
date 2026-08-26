@@ -1,187 +1,122 @@
-name: Auto-migrate Neon-DB ved migrations-endring
+name: Production migrations and backend deploy
 
-# Appliserer SQL-migrasjoner mot prod-Neon via /api/admin-room/migrations/run
-# (token-gated m/ MIGRATE_TRIGGER_TOKEN). migrate.sh er idempotent (sporet i
-# `_migrations_applied`), fortsetter-på-feil per fil, og hopper over drizzle-push
-# på Render (SQL er autoritativt).
-#
-# 🔑 DEPLOY-RACE LØST: den gamle push-triggeren fyrte SAMTIDIG som Render-
-# autoDeployen → curl-en traff backenden midt i rolloveren → 502 + løsrevet
-# migrate.sh drept av SIGTERM. NÅ venter workflowen først til /api/version
-# rapporterer at NØYAKTIG denne commit-en er utplassert og stabil, FØR den
-# trigger migrate. Da kjører migrate.sh mot en stabil instans.
+# This workflow is the only owner of CreatorHub backend production deploys.
+# Transition commits must include [skip render] until this workflow has disabled
+# Render auto-deploy for the service.
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/auto-migrate-on-push.yml"
+      - "backend/migrate.sh"
+      - "backend/migrations/**"
+      - "backend/scripts/run-production-migrations.mjs"
+      - "scripts/deploy/render-backend.mjs"
+      - "render.yaml"
+      - "backend/render.yaml"
   push:
     branches: [main]
-    paths:
-      - "backend/migrations/**"
   workflow_dispatch:
-    # Manuell nødluke for én eksplisitt migreringsfil mot gjeldende main.
     inputs:
-      migration_file:
-        description: "Eksakt .sql-fil (kjøres alene)"
-        required: true
+      commit:
+        description: "Full main commit SHA to deploy; blank uses the workflow SHA"
+        required: false
         type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: auto-migrate-prod
+  group: creatorhub-production-database-and-backend
   cancel-in-progress: false
 
 env:
   BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
-  MIGRATION_FILE: ${{ inputs.migration_file || '' }}
+  RENDER_SERVICE_ID: srv-d76ob60ule4c73dv2p60
+  TARGET_SHA: ${{ inputs.commit || github.sha }}
 
 jobs:
-  trigger-migrate:
-    name: Applisér migrasjoner mot Render-backend
+  validate:
+    name: Validate production deploy gate
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 10
     steps:
-      - name: Vent til commit er deployet + stabil (unngår 502 i deploy-rollover)
-        run: |
-          echo "Venter til $GITHUB_SHA er live på $BACKEND_URL …"
-          for i in $(seq 1 60); do   # opptil 60 × 15s = 15 min
-            DEPLOYED=$(curl -s -m 10 "$BACKEND_URL/api/version" | python3 -c "import sys,json;print(json.load(sys.stdin).get('commit') or '')" 2>/dev/null || echo "")
-            echo "  [$i] deployet commit: ${DEPLOYED:-<ukjent>}"
-            if [ -n "$DEPLOYED" ] && { [ "$DEPLOYED" = "$GITHUB_SHA" ] || [ "${GITHUB_SHA#$DEPLOYED}" != "$GITHUB_SHA" ] || [ "${DEPLOYED#$GITHUB_SHA}" != "$DEPLOYED" ]; }; then
-              echo "✅ Riktig commit er deployet."
-              # Ekstra buffer så deploy-rolloveren er helt ferdig.
-              sleep 15
-              exit 0
-            fi
-            sleep 15
-          done
-          echo "::error::Tidsavbrudd — så ikke $GITHUB_SHA på /api/version. Migrering startes ikke."
-          exit 1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Avgrens til én eksplisitt migreringsfil
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          if [ -z "$MIGRATION_FILE" ] && [ "$GITHUB_EVENT_NAME" = "push" ]; then
-            MIGRATION_FILE=$(curl -fsS \
-              -H "Authorization: Bearer $GITHUB_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA" | \
-              python3 -c 'import json,sys; files=[f["filename"].split("/")[-1] for f in json.load(sys.stdin).get("files",[]) if f.get("status") != "removed" and f.get("filename","").startswith("backend/migrations/") and f.get("filename","").endswith(".sql")]; print("\n".join(files))')
-          fi
-          FILE_COUNT=$(printf '%s\n' "$MIGRATION_FILE" | sed '/^$/d' | wc -l | tr -d ' ')
-          if [ "$FILE_COUNT" != "1" ] || [[ ! "$MIGRATION_FILE" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*\.sql$ ]]; then
-            echo "::error::Workflowen krever nøyaktig én trygg .sql-fil; fant $FILE_COUNT. Kjør manuelt én fil om gangen."
-            exit 1
-          fi
-          echo "MIGRATION_FILE=$MIGRATION_FILE" >> "$GITHUB_ENV"
-          echo "🎯 Migreringsscope: $MIGRATION_FILE"
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
 
-      - name: Bekreft migrasjons-auth (uten databasearbeid)
-        env:
-          MIGRATE_TRIGGER_TOKEN: ${{ secrets.MIGRATE_TRIGGER_TOKEN }}
-        run: |
-          MIGRATE_TOKEN=$(printf '%s' "$MIGRATE_TRIGGER_TOKEN" | tr -d '\r\n')
-          HTTP_CODE=$(curl -sS -o /tmp/auth_body.txt --connect-timeout 3 -m 8 -w "%{http_code}" \
-            -H "x-cron-trigger-token: $MIGRATE_TOKEN" \
-            "$BACKEND_URL/api/admin-room/migrations/auth-check")
-          echo "Auth-check HTTP=$HTTP_CODE body=$(cat /tmp/auth_body.txt 2>/dev/null)"
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "::error::Migrasjons-auth feilet før databasearbeid (HTTP $HTTP_CODE)."
-            exit 1
-          fi
+      - name: Verify migration fail-fast contract
+        run: node backend/scripts/run-production-migrations.mjs --self-test
 
-      - name: Trigger migrate.sh
-        env:
-          MIGRATE_TRIGGER_TOKEN: ${{ secrets.MIGRATE_TRIGGER_TOKEN }}
-        run: |
-          if [ -z "$MIGRATE_TRIGGER_TOKEN" ]; then
-            echo "::error::MIGRATE_TRIGGER_TOKEN secret er ikke satt"
-            exit 1
-          fi
-          # CR/LF må fjernes før secret-en bygges inn i en HTTP-header.
-          MIGRATE_TOKEN=$(printf '%s' "$MIGRATE_TRIGGER_TOKEN" | tr -d '\r\n')
-          if [ -z "$MIGRATE_TOKEN" ]; then
-            echo "::error::MIGRATE_TRIGGER_TOKEN er tom etter normalisering"
-            exit 1
-          fi
-          # Fire-and-confirm: /run svarer før migrate.sh startes. En kort,
-          # ikke-fatal timeout beskytter likevel mot nettverksfeil; status-
-          # pollingen under er autoritativ.
-          set +e
-          REQUEST_BODY='{}'
-          if [ -n "$MIGRATION_FILE" ]; then
-            if [[ ! "$MIGRATION_FILE" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*\.sql$ ]]; then
-              echo "::error::Ugyldig migration_file-input."
-              exit 1
-            fi
-            REQUEST_BODY=$(python3 -c 'import json,os; print(json.dumps({"migrationFile": os.environ["MIGRATION_FILE"]}))')
-          fi
-          HTTP_CODE=$(curl -s -o /tmp/run_body.txt --connect-timeout 3 -m 15 -w "%{http_code}" \
-            -X POST \
-            -H "Content-Type: application/json" \
-            -H "x-cron-trigger-token: $MIGRATE_TOKEN" \
-            -H "X-Migrate-Trigger-Source: github-actions/$GITHUB_SHA" \
-            -d "$REQUEST_BODY" \
-            "$BACKEND_URL/api/admin-room/migrations/run")
-          CURL_EXIT=$?
-          set -e
-          echo "curl-exit=$CURL_EXIT HTTP=${HTTP_CODE:-<ingen>}"
-          echo "Body: $(cat /tmp/run_body.txt 2>/dev/null)"
-          if [ "$CURL_EXIT" = "28" ] || [ -z "$HTTP_CODE" ] || [ "$HTTP_CODE" = "000" ]; then
-            echo "::warning::Trigger-respons uteble (timeout/tapt). migrate.sh er sannsynligvis startet — går til status-polling."
-          elif [ "$HTTP_CODE" = "202" ] || [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "409" ]; then
-            echo "Migrate trigget (eller pågår alt). Poller status."
-          else
-            echo "::error::Migrate-trigger avvist (HTTP $HTTP_CODE) — sjekk at MIGRATE_TRIGGER_TOKEN-secret matcher backend-env."
-            exit 1
-          fi
+      - name: Verify Render deploy contract
+        run: node scripts/deploy/render-backend.mjs --self-test
 
-      - name: Poll status til ferdig (token-auth, maks 20 min)
+      - name: Verify shell entrypoint
+        run: bash -n backend/migrate.sh
+
+  migrate-deploy:
+    name: Migrate, deploy Render, and smoke test
+    if: github.event_name != 'pull_request'
+    needs: validate
+    environment: Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact deploy commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Validate Render credential
         env:
-          MIGRATE_TRIGGER_TOKEN: ${{ secrets.MIGRATE_TRIGGER_TOKEN }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
         run: |
-          # pendingCount er autoritativt (DB: migrations/*.sql minus
-          # _migrations_applied) og overlever en evt. instans-restart som
-          # nullstiller in-memory status. Suksess = ingen pending igjen.
-          MIGRATE_TOKEN=$(printf '%s' "$MIGRATE_TRIGGER_TOKEN" | tr -d '\r\n')
-          STATUS_URL="$BACKEND_URL/api/admin-room/migrations/status"
-          if [ -n "$MIGRATION_FILE" ]; then
-            STATUS_URL="$STATUS_URL?migrationFile=$MIGRATION_FILE"
+          if [ -z "$RENDER_API_KEY" ]; then
+            echo "::error::RENDER_API_KEY is not configured"
+            exit 1
           fi
-          DEADLINE=$((SECONDS + 1200))
-          i=0
-          while [ "$SECONDS" -lt "$DEADLINE" ]; do
-            i=$((i + 1))
-            set +e
-            STATUS_JSON=$(curl -s --connect-timeout 3 -m 8 -H "x-cron-trigger-token: $MIGRATE_TOKEN" "$STATUS_URL")
-            CURL_EXIT=$?
-            set -e
-            if [ "$CURL_EXIT" != "0" ]; then STATUS_JSON='{}'; fi
-            STATUS=$(echo "$STATUS_JSON" | python3 -c "import sys,json;print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
-            PENDING=$(echo "$STATUS_JSON" | python3 -c "import sys,json;print(json.load(sys.stdin).get('pendingCount',''))" 2>/dev/null || echo "")
-            PENDING_CHECK=$(echo "$STATUS_JSON" | python3 -c "import sys,json;print(json.load(sys.stdin).get('pendingCheck',''))" 2>/dev/null || echo "")
-            echo "  [$i] status=$STATUS pending=$PENDING pendingCheck=$PENDING_CHECK curlExit=$CURL_EXIT"
-            if [ "$STATUS" = "failed" ]; then
-              echo "Detaljer: $STATUS_JSON"
-              echo "::error::Migrate-run FEILET. Se Admin Room → Database-migrasjoner → Vis logg."
-              exit 1
-            fi
-            # Ferdig når ingen migrasjoner er pending (autoritativt fra DB).
-            if [ "$PENDING" = "0" ] && [ "$STATUS" != "running" ]; then
-              echo "✅ Migrate ferdig — ingen pending migrasjoner igjen (status=$STATUS)."
-              exit 0
-            fi
-            # migrate.sh fortsetter per design etter en SQL-feil. Når child-
-            # prosessen er avsluttet, men DB fortsatt rapporterer pending, vil
-            # videre polling aldri endre resultatet. Feil raskt og ta med hele
-            # statusobjektet (pendingFiles + siste migreringslogg) i Actions.
-            if [ "$STATUS" != "running" ] && [ -n "$PENDING" ] && [ "$PENDING" != "0" ]; then
-              echo "Detaljer: $STATUS_JSON"
-              echo "::error::Migrate-run avsluttet med $PENDING uanvendte migrasjoner."
-              exit 1
-            fi
-            sleep 15
-          done
-          echo "::error::Tidsavbrudd på status-polling. Migrasjoner er ikke bekreftet ferdige."
-          exit 1
+          echo "::add-mask::$RENDER_API_KEY"
+
+      - name: Disable Render auto-deploy
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: node scripts/deploy/render-backend.mjs disable-auto-deploy
+
+      - name: Validate dedicated migration credential
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::PRODUCTION_MIGRATION_DATABASE_URL is not configured in the Production environment"
+            exit 1
+          fi
+          echo "::add-mask::$DATABASE_URL"
+          node -e "const u=new URL(process.env.DATABASE_URL);if(![\"postgres:\",\"postgresql:\"].includes(u.protocol)||!u.hostname||!u.username)process.exit(1)"
+
+      - name: Install pinned migration runtime
+        run: npm ci --prefix backend --workspaces=false --omit=dev --omit=optional --ignore-scripts
+
+      - name: Acquire database lock and apply migrations
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: backend/migrate.sh
+
+      - name: Deploy exact commit and verify production
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: node scripts/deploy/render-backend.mjs deploy-and-verify "$TARGET_SHA"

@@ -8,16 +8,11 @@ services:
     # correction OOM-kill the 512 MB free/starter instance. Do not downgrade.
     plan: standard
     branch: main
-    autoDeploy: true
+    autoDeployTrigger: off
     healthCheckPath: /api/health
-    # Migrate-on-deploy lever i `backend/package.json`'s ``start``-script
-    # (``./migrate.sh && node server.js``), ikke som preDeployCommand —
-    # preDeployCommand krever Standard-plan ($25/md), denne servicen
-    # er på Starter. Hvis vi oppgraderer til Standard, flytt
-    # migreringen tilbake hit som ``preDeployCommand: cd /app/backend
-    # && ./migrate.sh`` og fjern prefix fra start-scriptet, slik at
-    # migrasjonen aborterer deployen før live-trafikken swappes
-    # istedenfor å feile på første container-restart.
+    # GitHub Actions owns the production sequence: advisory-locked migration,
+    # exact-commit Render deploy, then public version, health and route smoke.
+    # Keep Render auto-deploy off so a failed migration cannot ship code.
     envVars:
       - key: DATABASE_URL
         sync: false

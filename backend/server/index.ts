@@ -501,7 +501,6 @@ import { setupAdminLeadsGrowthRoutes } from "./admin-leads-growth-routes";
 import { setupAdminSocialConnectionsStatusRoutes } from "./admin-social-connections-status-routes";
 import { setupAdminCompetitorReportRoutes } from "./admin-competitor-report-routes";
 import { setupAdminResendStatusRoutes } from "./admin-resend-status-routes";
-import { setupAdminMigrationsRoutes } from "./admin-room-migrations-routes";
 import { setupJobQueueRoutes, startBackgroundJobs } from "./job-handlers.js";
 import { setupPresenceHeartbeatRoutes } from "./presence-heartbeat-routes";
 import { setupAdminPartnersRoutes } from "./admin-room-partners-routes";
@@ -17303,15 +17302,6 @@ setupJobQueueRoutes({
   pool,
   activeSessions,
   isAdminEmail: (email) => String(email || "").trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL,
-});
-
-// ── Migrations — admin-trigger av migrate.sh fra Admin Room
-setupAdminMigrationsRoutes({
-  app,
-  pool,
-  getActiveSessionFromRequest,
-  requireAdminRoomAccess,
-  logAdminActivity,
 });
 
 // ── Presence heartbeat — auth-gated POST /api/presence/heartbeat (30s ping)

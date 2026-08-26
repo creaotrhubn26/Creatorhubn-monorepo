@@ -6,7 +6,7 @@ services:
     dockerContext: ..
     plan: free
     branch: main
-    autoDeploy: true
+    autoDeployTrigger: off
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
