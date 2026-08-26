@@ -90,7 +90,7 @@ describe.sequential("admin room migrations routes", () => {
 
     const response = await request(app)
       .get("/api/admin-room/migrations/status")
-      .set("X-Migrate-Trigger-Token", TOKEN);
+      .set("Authorization", `Migrate ${TOKEN}`);
 
     expect(response.status).toBe(200);
     expect(response.body.status).toBe("idle");
@@ -119,6 +119,31 @@ describe.sequential("admin room migrations routes", () => {
     expect(response.body.pendingCount).toBeGreaterThan(0);
   });
 
+  it("keeps the legacy custom header compatible during rollout", async () => {
+    const { app, requireAdminRoomAccess } = createRouteHarness();
+
+    const response = await request(app)
+      .get("/api/admin-room/migrations/status")
+      .set("X-Migrate-Trigger-Token", TOKEN);
+
+    expect(response.status).toBe(200);
+    expect(response.body.pendingCheck).toBe("ok");
+    expect(requireAdminRoomAccess).not.toHaveBeenCalled();
+  });
+
+  it("does not interpret an Admin Room Bearer session as a migrate token", async () => {
+    const { app, query, requireAdminRoomAccess } = createRouteHarness();
+
+    const response = await request(app)
+      .get("/api/admin-room/migrations/status")
+      .set("Authorization", `Bearer ${TOKEN}`);
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ error: "Innlogging kreves" });
+    expect(requireAdminRoomAccess).toHaveBeenCalledOnce();
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it("times out a tracking-table query instead of hanging the status route", async () => {
     const query = vi.fn().mockReturnValue(new Promise(() => undefined));
     const { app } = createRouteHarness(query);
@@ -126,7 +151,7 @@ describe.sequential("admin room migrations routes", () => {
 
     const response = await request(app)
       .get("/api/admin-room/migrations/status")
-      .set("X-Migrate-Trigger-Token", TOKEN);
+      .set("Authorization", `Migrate ${TOKEN}`);
 
     expect(response.status).toBe(200);
     expect(Date.now() - startedAt).toBeLessThan(5_000);
@@ -142,7 +167,7 @@ describe.sequential("admin room migrations routes", () => {
 
     const started = await request(app)
       .post("/api/admin-room/migrations/run")
-      .set("X-Migrate-Trigger-Token", TOKEN)
+      .set("Authorization", `Migrate ${TOKEN}`)
       .send({});
 
     expect(started.status).toBe(202);
@@ -151,13 +176,13 @@ describe.sequential("admin room migrations routes", () => {
 
     const duplicate = await request(app)
       .post("/api/admin-room/migrations/run")
-      .set("X-Migrate-Trigger-Token", TOKEN)
+      .set("Authorization", `Migrate ${TOKEN}`)
       .send({});
     expect(duplicate.status).toBe(409);
 
     const running = await request(app)
       .get("/api/admin-room/migrations/status")
-      .set("X-Migrate-Trigger-Token", TOKEN);
+      .set("Authorization", `Migrate ${TOKEN}`);
     expect(running.status).toBe(200);
     expect(running.body).toMatchObject({
       status: "running",

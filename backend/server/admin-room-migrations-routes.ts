@@ -163,13 +163,28 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
     }
   }
 
-  // Gyldig MIGRATE_TRIGGER_TOKEN i header? Lar CI (GitHub Actions) polle status
-  // uten produkteier-sesjon — samme token-semantikk som /run.
+  function readPresentedMigrateToken(
+    req: Parameters<typeof requireAdminRoomAccess>[0],
+  ): string {
+    // Use a dedicated HTTP auth scheme so CI traffic is not confused with
+    // Admin Room's ordinary `Authorization: Bearer ...` sessions. Keep the
+    // legacy custom header during rollout for backwards compatibility.
+    const authorization = req.headers.authorization;
+    if (typeof authorization === "string") {
+      const match = authorization.match(/^Migrate\s+(.+)$/i);
+      if (match) return match[1].trim();
+    }
+
+    const legacyHeader = req.headers["x-migrate-trigger-token"];
+    return (typeof legacyHeader === "string" ? legacyHeader : "").trim();
+  }
+
+  // Gyldig MIGRATE_TRIGGER_TOKEN presentert via Authorization: Migrate eller
+  // legacy-header? Lar CI polle status uten produkteier-sesjon.
   function hasValidMigrateToken(
     req: Parameters<typeof requireAdminRoomAccess>[0],
   ): boolean {
-    const header = req.headers["x-migrate-trigger-token"];
-    const triggerToken = (typeof header === "string" ? header : "").trim();
+    const triggerToken = readPresentedMigrateToken(req);
     const expectedToken = (process.env.MIGRATE_TRIGGER_TOKEN ?? "").trim();
     if (
       !triggerToken ||
@@ -228,16 +243,14 @@ export function setupAdminMigrationsRoutes(deps: AdminRoomRoutesDeps): void {
   });
 
   app.post("/api/admin-room/migrations/run", async (req, res) => {
-    // To-veis auth: enten admin-session ELLER MIGRATE_TRIGGER_TOKEN i header.
+    // To-veis auth: enten admin-session ELLER MIGRATE_TRIGGER_TOKEN presentert
+    // via Authorization: Migrate (legacy custom header støttes under rollout).
     // Token-pathen lar GitHub Actions trigge migrate automatisk ved push
     // uten å være logget inn som produkteier.
-    const triggerHeader = req.headers["x-migrate-trigger-token"];
     // Trim both sides: a stray trailing newline in the GitHub secret or the
     // Render env var would otherwise fail an exact string compare and surface
     // as a misleading "Innlogging kreves".
-    const triggerToken = (
-      typeof triggerHeader === "string" ? triggerHeader : ""
-    ).trim();
+    const triggerToken = readPresentedMigrateToken(req);
     const expectedToken = (process.env.MIGRATE_TRIGGER_TOKEN ?? "").trim();
 
     let actorEmail = "system";

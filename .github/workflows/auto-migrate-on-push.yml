@@ -33,7 +33,7 @@ jobs:
   trigger-migrate:
     name: Applisér migrasjoner mot Render-backend
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Vent til commit er deployet + stabil (unngår 502 i deploy-rollover)
         run: |
@@ -72,7 +72,7 @@ jobs:
           HTTP_CODE=$(curl -s -o /tmp/run_body.txt --connect-timeout 3 -m 15 -w "%{http_code}" \
             -X POST \
             -H "Content-Type: application/json" \
-            -H "X-Migrate-Trigger-Token: $MIGRATE_TOKEN" \
+            -H "Authorization: Migrate $MIGRATE_TOKEN" \
             -H "X-Migrate-Trigger-Source: github-actions/$GITHUB_SHA" \
             -d '{}' \
             "$BACKEND_URL/api/admin-room/migrations/run")
@@ -89,7 +89,7 @@ jobs:
             exit 1
           fi
 
-      - name: Poll status til ferdig (token-auth, maks 10 min)
+      - name: Poll status til ferdig (token-auth, maks 20 min)
         env:
           MIGRATE_TRIGGER_TOKEN: ${{ secrets.MIGRATE_TRIGGER_TOKEN }}
         run: |
@@ -97,12 +97,12 @@ jobs:
           # _migrations_applied) og overlever en evt. instans-restart som
           # nullstiller in-memory status. Suksess = ingen pending igjen.
           MIGRATE_TOKEN=$(printf '%s' "$MIGRATE_TRIGGER_TOKEN" | tr -d '\r\n')
-          DEADLINE=$((SECONDS + 600))
+          DEADLINE=$((SECONDS + 1200))
           i=0
           while [ "$SECONDS" -lt "$DEADLINE" ]; do
             i=$((i + 1))
             set +e
-            STATUS_JSON=$(curl -s --connect-timeout 3 -m 8 -H "X-Migrate-Trigger-Token: $MIGRATE_TOKEN" "$BACKEND_URL/api/admin-room/migrations/status")
+            STATUS_JSON=$(curl -s --connect-timeout 3 -m 8 -H "Authorization: Migrate $MIGRATE_TOKEN" "$BACKEND_URL/api/admin-room/migrations/status")
             CURL_EXIT=$?
             set -e
             if [ "$CURL_EXIT" != "0" ]; then STATUS_JSON='{}'; fi
