@@ -904,6 +904,7 @@ import { registerLeadgridParkeringRoutes } from "./leadgrid-parkering-routes";
 import { registerLeadgridMotebriefRoutes } from "./leadgrid-motebrief-routes";
 import { registerLeadgridLeadbookExamplesRoutes } from "./leadgrid-leadbook-examples-routes";
 import { registerLeadgridEquipmentRoutes } from "./leadgrid-equipment-routes";
+import { registerStageOneSceneRoutes } from "./stageone-scene-routes";
 import { registerLeadgridCrashRoutes } from "./leadgrid-crash-routes";
 import { registerLeadgridSignupInterestRoutes } from "./leadgrid-signup-interest-routes";
 import { registerLeadgridDemoRequestRoutes } from "./leadgrid-demo-request-routes";
@@ -67201,6 +67202,9 @@ registerLeadgridLeadbookExamplesRoutes({ app, pool, requireUserSession });
 // Utstyrsregister — org-eid utstyr (nettbrett/telefon/laptop/klær/ID-kort)
 // m/ tildeling, varsling og hendelseslogg (mig 0385).
 registerLeadgridEquipmentRoutes({ app, pool, requireUserSession });
+
+// StageOne Virtual Studio — sky-lagring av scener for iPad-appen (lat tabell).
+registerStageOneSceneRoutes({ app, pool, requireUserSession });
 
 // Krasjrapportering — MetricKit-diagnostikk fra iPad-appen (mig 0387).
 registerLeadgridCrashRoutes({ app, pool, requireUserSession });
