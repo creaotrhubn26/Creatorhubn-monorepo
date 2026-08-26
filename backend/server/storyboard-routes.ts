@@ -17,6 +17,7 @@ import { canAccessRoleRoomProject } from './role-room-projects-routes.js';
 import { viewerMeetsTabLevel } from './role-room-tab-access.js';
 import { storyboardShotContextSchema } from './storyboard-ai-context.js';
 import { compileStoryboardPrompt } from './storyboard-prompt-engine/index.js';
+import { hydrateStoryboardProductionContext } from './storyboard-production-context.js';
 import * as svc from './storyboard-service.js';
 
 interface SessionData {
@@ -201,11 +202,16 @@ export function createStoryboardRouter(
       res.status(400).json({ error: 'context_mismatch', detail: 'Manuskonteksten tilhører et annet shot.' });
       return;
     }
+    const context = await hydrateStoryboardProductionContext(pool, {
+      projectId,
+      sceneId: storyboard.sceneId || parsed.data.context.scene.id,
+      context: parsed.data.context,
+    });
     const compilation = compileStoryboardPrompt({
       kind: parsed.data.kind,
       modelId: parsed.data.model,
       userAction: parsed.data.userAction,
-      context: parsed.data.context,
+      context,
     });
     res.json({ success: true, data: compilation });
   });

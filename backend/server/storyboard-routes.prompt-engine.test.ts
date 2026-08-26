@@ -16,6 +16,10 @@ vi.mock('./storyboard-service.js', () => ({
   deleteStoryboard: vi.fn(),
 }));
 
+vi.mock('./storyboard-production-context.js', () => ({
+  hydrateStoryboardProductionContext: vi.fn(async (_pool, input) => input.context),
+}));
+
 import * as storyboardService from './storyboard-service.js';
 import { createStoryboardRouter } from './storyboard-routes.js';
 
