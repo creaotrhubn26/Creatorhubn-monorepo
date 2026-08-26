@@ -57,6 +57,7 @@ import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
 import { ws } from './workspaceTheme';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from './wsLocale';
+import { useWorkspaceUpdate } from './WorkspaceContext';
 
 // Lokal no/en-ordbok for panelet (samme mønster som OppdragTab).
 const T: WsDict = {
@@ -325,6 +326,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
   // «X skriver …» + live-refetch via bruker-events-WS (chat.message/chat.typing).
   const [typingName, setTypingName] = useState<string | null>(null);
   const typingTimer = useRef<any>(null);
+  const realtimeDebounce = useRef<any>(null);
   const lastTypingSent = useRef(0);
   const sendTyping = () => {
     const now = Date.now();
@@ -332,36 +334,21 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
     lastTypingSent.current = now;
     apiRequest('/api/chat/typing', { method: 'POST', body: { conversationId: channelId } }).catch(() => {});
   };
-  useEffect(() => {
-    const token = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token') || localStorage.getItem('role_room_auth_token');
-    if (!token) return;
-    const wsBase = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_WS_BASE)
-      ? (import.meta as any).env.VITE_WS_BASE
-      : 'wss://creatorhub-backend-rtbl.onrender.com';
-    let alive = true; let sock: WebSocket | null = null; let retry: any = null; let deb: any = null;
-    const connect = () => {
-      if (!alive) return;
-      clearTimeout(retry);
-      try { sock = new WebSocket(`${wsBase}/api/ipad/ws/events?token=${encodeURIComponent(token)}`); }
-      catch { retry = setTimeout(connect, 8000); return; }
-      sock.onclose = () => { if (alive) retry = setTimeout(connect, 8000); };
-      sock.onerror = () => { try { sock && sock.close(); } catch { /* */ } };
-      sock.onmessage = (ev) => {
-        let payload: any = null;
-        try { payload = JSON.parse(ev.data); } catch { /* */ }
-        const e = payload?.event;
-        if (!e || e.channelId !== channelId) return;
-        if (e.kind === 'chat.message') { clearTimeout(deb); deb = setTimeout(() => load(false), 200); }
-        if (e.kind === 'chat.typing') {
-          setTypingName(e.name || null);
-          clearTimeout(typingTimer.current);
-          typingTimer.current = setTimeout(() => setTypingName(null), 3500);
-        }
-      };
-    };
-    connect();
-    return () => { alive = false; clearTimeout(retry); clearTimeout(deb); clearTimeout(typingTimer.current); try { sock && sock.close(); } catch { /* */ } };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  useWorkspaceUpdate(projectId, ['chat.message', 'chat.typing'], (event: any) => {
+    if (!event || event.channelId !== channelId) return;
+    if (event.kind === 'chat.message') {
+      clearTimeout(realtimeDebounce.current);
+      realtimeDebounce.current = setTimeout(() => load(false), 200);
+    }
+    if (event.kind === 'chat.typing') {
+      setTypingName(event.name || null);
+      clearTimeout(typingTimer.current);
+      typingTimer.current = setTimeout(() => setTypingName(null), 3500);
+    }
+  });
+  useEffect(() => () => {
+    clearTimeout(realtimeDebounce.current);
+    clearTimeout(typingTimer.current);
   }, [channelId]);
 
   const reactToMsg = (id: string, emoji: string) => {

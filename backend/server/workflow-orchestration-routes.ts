@@ -15,27 +15,25 @@
  * (POST /api/wedding/timeline/project/:projectId i wedding-timeline-routes.ts)
  * — frontend-servicen kaller den direkte, så den dupliseres ikke her.
  *
- * Auth: compatResolveUserId; alle skriv krever at innloggeren eier prosjektet
- * (legacy.projects.user_id) ELLER er aktivt team-medlem (canAccessProject fra
- * project-team-routes) — fremmede kan ikke tagge/opprette tidslinjer på
- * andres prosjekter.
+ * Auth: verifisert sesjon; alle skriv krever eier eller aktivt team-medlem
+ * med eksplisitt redigeringstilgang.
  *
  * Wire opp i backend/server/index.ts:
  *
  *   import { setupWorkflowOrchestrationRoutes } from "./workflow-orchestration-routes";
- *   setupWorkflowOrchestrationRoutes({ app, pool, compatResolveUserId });
+ *   setupWorkflowOrchestrationRoutes({ app, pool, requireUserSession });
  */
 
 import type express from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
 
-import { canAccessProject } from "./project-team-routes";
+import { canEditProject } from "./project-team-routes";
 
 export interface WorkflowOrchestrationRoutesDeps {
   app: express.Express;
   pool: Pool;
-  compatResolveUserId: (req: any) => string;
+  requireUserSession: (req: any, res: any) => { userId: string } | null;
 }
 
 const UUID_RE =
@@ -48,7 +46,7 @@ function readString(value: unknown): string {
 export function setupWorkflowOrchestrationRoutes(
   deps: WorkflowOrchestrationRoutesDeps,
 ): void {
-  const { app, pool, compatResolveUserId } = deps;
+  const { app, pool, requireUserSession } = deps;
 
   // Tilgangssjekk: eier (legacy.projects.user_id) eller aktivt team-medlem
   // (project_team_members via canAccessProject). Returnerer raden eller null.
@@ -67,8 +65,13 @@ export function setupWorkflowOrchestrationRoutes(
     const project = result.rows[0];
     if (!project) return null;
     if (project.user_id === userId) return project;
-    return (await canAccessProject(pool, userId, projectId)) ? project : null;
+    return (await canEditProject(pool, userId, projectId)) ? project : null;
   }
+
+  const authenticatedUserId = (req: any, res: any): string | null => {
+    const session = requireUserSession(req, res);
+    return session && UUID_RE.test(session.userId) ? session.userId : null;
+  };
 
   async function mergeProjectMetadata(
     projectId: string,
@@ -88,10 +91,8 @@ export function setupWorkflowOrchestrationRoutes(
   // koblingen slik at showcase-flatene kan finne prosjektkonteksten.
   app.post("/api/showcase/auto-create", async (req, res) => {
     try {
-      const userId = compatResolveUserId(req);
-      if (!UUID_RE.test(userId)) {
-        return res.status(401).json({ error: "krever_innlogging" });
-      }
+      const userId = authenticatedUserId(req, res);
+      if (!userId) return;
       const projectId = readString(req.body?.projectId);
       if (!projectId) {
         return res.status(400).json({ error: "projectId er påkrevd" });
@@ -122,10 +123,8 @@ export function setupWorkflowOrchestrationRoutes(
   // fra opprettelsesmodalen på prosjektet.
   app.post("/api/showcase/link-memory-cards", async (req, res) => {
     try {
-      const userId = compatResolveUserId(req);
-      if (!UUID_RE.test(userId)) {
-        return res.status(401).json({ error: "krever_innlogging" });
-      }
+      const userId = authenticatedUserId(req, res);
+      if (!userId) return;
       const projectId = readString(req.body?.projectId);
       const memoryCards = req.body?.memoryCards;
       if (!projectId || typeof memoryCards !== "object" || !memoryCards) {
@@ -153,10 +152,8 @@ export function setupWorkflowOrchestrationRoutes(
   // returneres den i stedet for å opprette en dublett.
   app.post("/api/event-timeline/auto-create", async (req, res) => {
     try {
-      const userId = compatResolveUserId(req);
-      if (!UUID_RE.test(userId)) {
-        return res.status(401).json({ error: "krever_innlogging" });
-      }
+      const userId = authenticatedUserId(req, res);
+      if (!userId) return;
       const body = req.body ?? {};
       const projectId = readString(body.projectId);
       if (!projectId) {

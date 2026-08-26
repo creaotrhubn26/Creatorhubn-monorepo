@@ -1,7 +1,7 @@
 import express from "express";
 import type { Pool } from "pg";
 import { readString } from "./_shared";
-import { canAccessProject } from "./project-team-routes";
+import { canAccessProject, canEditProject } from "./project-team-routes";
 
 const isUuid = (s: string | null | undefined): s is string =>
   !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
@@ -9,7 +9,7 @@ const isUuid = (s: string | null | undefined): s is string =>
 export interface WeddingTimelineRoutesDeps {
   app: express.Application;
   pool: Pool;
-  compatResolveUserId: (req: any) => string;
+  requireUserSession: (req: any, res: any) => { userId: string } | null;
   resolveMeetingNotesProjectContext: (...args: any[]) => Promise<any>;
 }
 
@@ -19,7 +19,7 @@ export function setupWeddingTimelineRoutes(
   const {
     app,
     pool,
-    compatResolveUserId,
+    requireUserSession,
     resolveMeetingNotesProjectContext,
   } = deps;
 
@@ -28,11 +28,10 @@ export function setupWeddingTimelineRoutes(
   // vilkårlig couples bryllupstidslinje (navn, dato, sted, hendelser) ved
   // å gjette prosjekt-/wedding-id, skrive møtenotater inn i andres tidslinje,
   // og opprette tidslinjer (+ auto-innsatte public.projects-rader) for
-  // prosjekter de ikke eier. compatResolveUserId er session-first (hardnet
-  // i round 31), så vi har ekte identitet tilgjengelig — den var bare ubrukt.
-  const authUserId = (req: express.Request): string | null => {
-    const uid = compatResolveUserId(req);
-    return isUuid(uid) ? uid : null;
+  // prosjekter de ikke eier. Alle kall bruker nå den validerte session-identiteten.
+  const authUserId = (req: express.Request, res: express.Response): string | null => {
+    const session = requireUserSession(req, res);
+    return session && isUuid(session.userId) ? session.userId : null;
   };
   // Eier ELLER aktivt team-medlem. Den lokale kopien her sjekket bare
   // user_id, så et team-medlem som ser prosjektet overalt ellers i
@@ -46,6 +45,11 @@ export function setupWeddingTimelineRoutes(
   async function callerOwnsTimeline(row: any, userId: string): Promise<boolean> {
     if (row?.user_id && row.user_id === userId) return true;
     return callerOwnsProject(String(row?.project_id ?? ""), userId);
+  }
+  async function callerCanEditTimeline(row: any, userId: string): Promise<boolean> {
+    if (row?.user_id && row.user_id === userId) return true;
+    const projectId = String(row?.project_id ?? "");
+    return isUuid(projectId) && canEditProject(pool, userId, projectId);
   }
 
   function mapTimelineRow(r: any) {
@@ -309,8 +313,8 @@ export function setupWeddingTimelineRoutes(
   app.get("/api/wedding/timeline/project/:projectId", async (req, res) => {
     try {
       const { projectId } = req.params;
-      const uid = authUserId(req);
-      if (!uid) return res.status(401).json({ error: "krever_innlogging" });
+      const uid = authUserId(req, res);
+      if (!uid) return;
 
       // Find timeline by project_id
       const tlResult = await pool.query(
@@ -355,8 +359,8 @@ export function setupWeddingTimelineRoutes(
 
   app.post("/api/wedding-timeline/sync-meeting-notes", async (req, res) => {
     try {
-      const uid = authUserId(req);
-      if (!uid) return res.status(401).json({ error: "krever_innlogging" });
+      const uid = authUserId(req, res);
+      if (!uid) return;
       const body =
         req.body && typeof req.body === "object" && !Array.isArray(req.body)
           ? (req.body as Record<string, unknown>)
@@ -399,7 +403,7 @@ export function setupWeddingTimelineRoutes(
       if (!timelineRow) {
         return res.status(404).json({ error: "Ingen Evendi-tidslinje funnet for prosjektet" });
       }
-      if (!(await callerOwnsTimeline(timelineRow, uid))) {
+      if (!(await callerCanEditTimeline(timelineRow, uid))) {
         return res.status(403).json({ error: "ingen_tilgang" });
       }
 
@@ -707,24 +711,10 @@ export function setupWeddingTimelineRoutes(
   app.post("/api/wedding/timeline/project/:projectId", async (req, res) => {
     try {
       const { projectId } = req.params;
-      const resolvedUserId = compatResolveUserId(req);
-      const userId = isUuid(resolvedUserId) ? resolvedUserId : null;
-      if (!userId) return res.status(401).json({ error: "krever_innlogging" });
-      // Hvis prosjektet allerede finnes må innloggeren eie det (hindrer at man
-      // oppretter tidslinjer + auto-innsatte projects-rader på andres prosjekt).
-      // Helt nye bryllup (prosjekt finnes ikke enda) opprettes under egen bruker.
-      if (isUuid(projectId)) {
-        const ownRes = await pool.query(
-          `SELECT
-             (EXISTS(SELECT 1 FROM projects WHERE id = $1) OR
-              EXISTS(SELECT 1 FROM legacy.projects WHERE id = $1)) AS exists,
-             (EXISTS(SELECT 1 FROM projects WHERE id = $1 AND user_id = $2) OR
-              EXISTS(SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2)) AS owns`,
-          [projectId, userId],
-        );
-        if (ownRes.rows[0]?.exists && !ownRes.rows[0]?.owns) {
-          return res.status(403).json({ error: "ingen_tilgang_til_prosjekt" });
-        }
+      const userId = authUserId(req, res);
+      if (!userId) return;
+      if (!isUuid(projectId) || !(await canEditProject(pool, userId, projectId))) {
+        return res.status(404).json({ error: "prosjekt_ikke_funnet" });
       }
       const { weddingDate, venue, coupleName, events, culturalType } = req.body;
 
@@ -852,8 +842,8 @@ export function setupWeddingTimelineRoutes(
   app.get("/api/wedding-timeline/timelines/:weddingId", async (req, res) => {
     try {
       const { weddingId } = req.params;
-      const uid = authUserId(req);
-      if (!uid) return res.status(401).json({ error: "krever_innlogging" });
+      const uid = authUserId(req, res);
+      if (!uid) return;
 
       // Try by wedding_id first, then by project_id, then by id
       let result = await pool.query(

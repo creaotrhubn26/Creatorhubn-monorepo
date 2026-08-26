@@ -45,7 +45,8 @@ import {
 } from '@dnd-kit/core';
 import { apiRequest } from '@/lib/queryClient';
 import { CREW_ROLE_CATALOG, resolveCrewRoles } from '@shared/crew-roles';
-import { ws, workspaceCategoryFor } from '../workspaceTheme';
+import { ws } from '../workspaceTheme';
+import { useWorkspace, useWorkspaceUpdate } from '../WorkspaceContext';
 import { WsCard, WsSectionTitle, WsBar, WsPills, WsTag, WsTable, wsAlert, wsConfirm, wsPrompt } from '../ui';
 import { crewIcon } from '../crewIcons';
 import { useWsLocale, makeT, wsDateLocale, type WsDict, type WsLocale } from '../wsLocale';
@@ -392,7 +393,7 @@ const SAMPLE_TASK_META: Record<string, { progress: number; assignee: string; dep
 
 // ===== MAIN TAB =====
 const ProsjektplanTab: React.FC<{ projectId: string; profession?: string }> = ({ projectId, profession }) => {
-  const workspaceCategory = workspaceCategoryFor(profession);
+  const { workspaceCategory, bootstrap } = useWorkspace();
   const isVendor = workspaceCategory === 'vendor';
   // Kategori-filtrert rolleliste (+ eventuelle allerede-i-bruk roller på boardet,
   // så et blandet team aldri mister kolonner) — dumpet tidligere ALLE 17 roller
@@ -496,11 +497,12 @@ const ProsjektplanTab: React.FC<{ projectId: string; profession?: string }> = ({
   const loadMs = useCallback(() => {
     if (!isReal) return;
     setLoading(true);
-    apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}/milestones`)
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/milestones`)
       .then((r: MilestonesResponse) => setMsAll(Array.isArray(r?.milestones) ? r.milestones : []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [isReal, projectId]);
+  useWorkspaceUpdate(projectId, 'milestones.updated', loadMs);
 
   const addMilestone = async () => {
     if (!isReal) return;
@@ -543,17 +545,22 @@ const ProsjektplanTab: React.FC<{ projectId: string; profession?: string }> = ({
 
   useEffect(() => {
     if (!isReal) return;
-    apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}`)
-      .then((r: { project?: ProjectDetail }) => setDetail(r?.project || null))
-      .catch(() => {});
+    setDetail((bootstrap?.project as ProjectDetail) || null);
     loadMs();
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team/members`)
       .then((r: { members?: TeamMember[] }) => setMembers(Array.isArray(r?.members) ? r.members : []))
       .catch(() => {});
     const onReload = () => loadMs();
+    const interval = window.setInterval(() => { if (!document.hidden) loadMs(); }, 30000);
+    const onVisibility = () => { if (!document.hidden) loadMs(); };
     window.addEventListener('ws-milestones-reload', onReload);
-    return () => window.removeEventListener('ws-milestones-reload', onReload);
-  }, [projectId, isReal, loadMs]);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('ws-milestones-reload', onReload);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [projectId, isReal, loadMs, bootstrap?.project]);
 
   // Build phases from milestones (real) or use static (sample)
   const dates = useMemo(

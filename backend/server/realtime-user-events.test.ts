@@ -1,10 +1,22 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { WebSocket } from "ws";
+import express from "express";
+import request from "supertest";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { WebSocket } from "ws";
+import type { Pool } from "pg";
 import {
+  attachUserEventsWebSocket,
   broadcastUserEvent,
+  consumeUserEventsTicket,
   connectedUserClientCount,
+  issueUserEventsTicket,
   registerUserClientForTests,
   resetUserClientsForTests,
+  resetUserEventsTicketsForTests,
+  setupUserEventsTicketRoute,
+  USER_EVENTS_TICKET_TTL_MS,
+  USER_EVENTS_WS_PATH,
 } from "./realtime-user-events";
 
 /**
@@ -176,5 +188,92 @@ describe("realtime-user-events broadcast routing", () => {
     const frame = JSON.parse(ws.sent[0]);
     expect(frame.type).toBe("connection_established");
     expect(typeof frame.serverTime).toBe("string");
+  });
+});
+
+describe("realtime user-event handshake tickets", () => {
+  afterEach(() => {
+    resetUserEventsTicketsForTests();
+  });
+
+  it("binds a ticket to the authenticated user and permits exactly one consume", () => {
+    const { ticket } = issueUserEventsTicket("user-a", 1_000);
+    expect(ticket).not.toContain("user-a");
+    expect(consumeUserEventsTicket(ticket, 1_001)).toEqual({ userId: "user-a" });
+    expect(consumeUserEventsTicket(ticket, 1_002)).toBeNull();
+  });
+
+  it("rejects expired tickets", () => {
+    const { ticket } = issueUserEventsTicket("user-a", 5_000);
+    expect(
+      consumeUserEventsTicket(ticket, 5_000 + USER_EVENTS_TICKET_TTL_MS),
+    ).toBeNull();
+  });
+
+  it("bounds outstanding tickets per user and revokes the oldest", () => {
+    const tickets = Array.from({ length: 5 }, (_, index) =>
+      issueUserEventsTicket("user-a", 10_000 + index).ticket,
+    );
+    expect(consumeUserEventsTicket(tickets[0], 10_010)).toBeNull();
+    expect(consumeUserEventsTicket(tickets[4], 10_010)).toEqual({ userId: "user-a" });
+  });
+
+  it("issues tickets only through an authenticated, non-cacheable POST", async () => {
+    const app = express();
+    app.use(express.json());
+    setupUserEventsTicketRoute({
+      app,
+      requireUserSession: (req, res) => {
+        const userId = req.header("x-test-user");
+        if (userId) return { userId };
+        res.status(401).json({ error: "auth_required" });
+        return null;
+      },
+    });
+
+    await request(app)
+      .post("/api/realtime/user-events-ticket")
+      .expect(401);
+
+    const response = await request(app)
+      .post("/api/realtime/user-events-ticket")
+      .set("x-test-user", "user-route")
+      .expect(201);
+    expect(response.headers["cache-control"]).toContain("no-store");
+    expect(response.body.websocketPath).toBe("/api/ipad/ws/events");
+    expect(consumeUserEventsTicket(response.body.ticket)).toEqual({ userId: "user-route" });
+  });
+
+  it("accepts a valid ticket through the real WebSocket upgrade path", async () => {
+    const server = createServer(express());
+    attachUserEventsWebSocket(server, {} as Pool);
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+
+    let socket: WebSocket | null = null;
+    try {
+      const { port } = server.address() as AddressInfo;
+      const { ticket } = issueUserEventsTicket("user-upgrade");
+      socket = new WebSocket(
+        `ws://127.0.0.1:${port}${USER_EVENTS_WS_PATH}?ticket=${encodeURIComponent(ticket)}`,
+      );
+      const frame = await new Promise<string>((resolve, reject) => {
+        socket?.once("message", (data) => resolve(data.toString()));
+        socket?.once("error", reject);
+      });
+      expect(JSON.parse(frame).type).toBe("connection_established");
+      expect(connectedUserClientCount("user-upgrade")).toBe(1);
+    } finally {
+      if (socket) {
+        await new Promise<void>((resolve) => {
+          if (socket?.readyState === WebSocket.CLOSED) return resolve();
+          socket?.once("close", () => resolve());
+          socket?.close();
+        });
+      }
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 });

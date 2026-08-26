@@ -3,6 +3,8 @@ import type { Pool } from "pg";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { and, desc, eq } from "drizzle-orm";
 import * as schema from "../migrations/schema.js";
+import { canAccessProject, canEditProject } from "./project-team-routes";
+import { broadcastUserEvent } from "./realtime-user-events";
 
 export interface ProjectsOutliersRoutesDeps {
   app: express.Application;
@@ -15,6 +17,65 @@ export function setupProjectsOutliersRoutes(
   deps: ProjectsOutliersRoutesDeps,
 ): void {
   const { app, requireUserSession, pool, db } = deps;
+
+  const authorizeProject = async (req: any, res: any, write = false): Promise<any | null> => {
+    const session = await requireUserSession(req, res);
+    if (!session) return null;
+    const projectId = String(req.params.projectId || "").trim();
+    if (!projectId) {
+      res.status(400).json({ error: "missing_project_id" });
+      return null;
+    }
+    const allowed = write
+      ? await canEditProject(pool, session.userId, projectId)
+      : await canAccessProject(pool, session.userId, projectId);
+    if (!allowed) {
+      // Skjul om prosjekt-ID-en finnes for brukere uten lesetilgang.
+      res.status(404).json({ error: "not_found" });
+      return null;
+    }
+    return session;
+  };
+
+  const mapMilestone = (row: any) => ({
+    id: row.id,
+    projectId: row.project_id,
+    title: row.title,
+    description: row.description ?? null,
+    category: row.category,
+    type: row.type,
+    dueDate: row.due_date ?? null,
+    scheduledDate: row.scheduled_date ?? null,
+    status: row.status,
+    progress: Number(row.progress ?? 0),
+    priority: row.priority,
+    location: row.location ?? null,
+    notes: row.internal_notes ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
+
+  const notifyMilestonesUpdated = async (projectId: string, actorUserId: string) => {
+    try {
+      const [owners, members] = await Promise.all([
+        pool.query(
+          `SELECT user_id::text AS user_id FROM projects WHERE id::text = $1
+           UNION SELECT user_id FROM legacy.projects WHERE id = $1`,
+          [projectId],
+        ).catch(() => ({ rows: [] as any[] })),
+        pool.query(
+          `SELECT user_id FROM project_team_members
+            WHERE project_id = $1 AND status = 'active'
+              AND deactivated_at IS NULL AND user_id IS NOT NULL`,
+          [projectId],
+        ).catch(() => ({ rows: [] as any[] })),
+      ]);
+      const recipients = new Set([...owners.rows, ...members.rows].map((row: any) => String(row.user_id)));
+      recipients.delete(actorUserId);
+      const timestamp = new Date().toISOString();
+      for (const userId of recipients) broadcastUserEvent(userId, { kind: "milestones.updated", projectId, timestamp });
+    } catch { /* realtime is best-effort; the write already succeeded */ }
+  };
 
   // Live story-logic ligger i role-room-routes.ts; disse stubs blokkerer
   // gammel non-authenticated URL for alle metoder (GET/POST/PUT/DELETE/PATCH).
@@ -30,18 +91,9 @@ export function setupProjectsOutliersRoutes(
   });
 
   app.get("/api/projects/:projectId/timeline", async (req, res) => {
-    const session = requireUserSession(req, res);
-    if (!session) return;
+    if (!(await authorizeProject(req, res))) return;
     try {
       const { projectId } = req.params;
-      const owned = await pool.query(
-        `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2
-         UNION ALL
-         SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
-         LIMIT 1`,
-        [projectId, session.userId],
-      );
-      if (!owned.rows.length) return res.status(404).json({ error: "not_found" });
       const result = await pool.query(
         `SELECT * FROM project_milestones WHERE project_id = $1 ORDER BY COALESCE(due_date, scheduled_date, created_at) ASC`,
         [projectId],
@@ -53,20 +105,35 @@ export function setupProjectsOutliersRoutes(
     }
   });
 
+
+  // Kanonisk CRUD-kontrakt for ProsjektplanTab.
+  app.get("/api/projects/:projectId/milestones", async (req, res) => {
+    if (!(await authorizeProject(req, res))) return;
+    try {
+      const result = await pool.query(
+        `SELECT * FROM project_milestones
+          WHERE project_id = $1
+          ORDER BY due_date ASC NULLS LAST, created_at ASC`,
+        [req.params.projectId],
+      );
+      const milestones = result.rows.map(mapMilestone);
+      const completedCount = milestones.filter((m: any) => m.status === "completed").length;
+      res.json({
+        milestones,
+        completedCount,
+        totalProgress: milestones.length ? Math.round((completedCount / milestones.length) * 100) : 0,
+      });
+    } catch (error) {
+      console.error("Error fetching milestones:", error);
+      res.status(500).json({ error: "Failed to fetch milestones" });
+    }
+  });
   // POST /api/projects/:projectId/milestones — Create a milestone/timeline event
   app.post("/api/projects/:projectId/milestones", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await authorizeProject(req, res, true);
     if (!session) return;
     try {
       const { projectId } = req.params;
-      const owned = await pool.query(
-        `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2
-         UNION ALL
-         SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
-         LIMIT 1`,
-        [projectId, session.userId],
-      );
-      if (!owned.rows.length) return res.status(404).json({ error: "not_found" });
       const userId = session.userId;
       const {
         title,
@@ -81,6 +148,10 @@ export function setupProjectsOutliersRoutes(
         notes,
       } = req.body;
 
+
+      if (typeof title !== "string" || !title.trim()) {
+        return res.status(400).json({ error: "title_required" });
+      }
       const id = crypto.randomUUID();
       await pool.query(
         `INSERT INTO project_milestones (id, project_id, user_id, title, description, category, type, due_date, status, priority, location, internal_notes, client_visible)
@@ -89,7 +160,7 @@ export function setupProjectsOutliersRoutes(
           id,
           projectId,
           userId,
-          title,
+          title.trim(),
           description || null,
           category || type,
           type,
@@ -105,27 +176,94 @@ export function setupProjectsOutliersRoutes(
         "SELECT * FROM project_milestones WHERE id = $1",
         [id],
       );
-      res.json(result.rows[0]);
+      void notifyMilestonesUpdated(projectId, userId);
+      res.status(201).json(mapMilestone(result.rows[0]));
     } catch (error) {
       console.error("Error creating milestone:", error);
       res.status(500).json({ error: "Failed to create milestone" });
     }
   });
 
-  // PUT /api/projects/:projectId/timeline/:eventId — Update timeline event
-  app.put("/api/projects/:projectId/timeline/:eventId", async (req, res) => {
-    const session = requireUserSession(req, res);
+  app.patch("/api/projects/:projectId/milestones/:milestoneId", async (req, res) => {
+    const session = await authorizeProject(req, res, true);
+    if (!session) return;
+    const { projectId, milestoneId } = req.params;
+    const body = req.body ?? {};
+    const updates: string[] = [];
+    const params: unknown[] = [];
+    const add = (column: string, value: unknown) => {
+      params.push(value);
+      updates.push(`${column} = $${params.length}`);
+    };
+
+    if (body.title !== undefined) {
+      if (typeof body.title !== "string" || !body.title.trim()) {
+        return res.status(400).json({ error: "title_required" });
+      }
+      add("title", body.title.trim());
+    }
+    if (body.description !== undefined) add("description", body.description || null);
+    if (body.category !== undefined) add("category", body.category || "milestone");
+    if (body.type !== undefined) add("type", body.type || "milestone");
+    if (body.dueDate !== undefined) add("due_date", body.dueDate || null);
+    if (body.scheduledDate !== undefined) add("scheduled_date", body.scheduledDate || null);
+    if (body.status !== undefined) {
+      add("status", body.status);
+      updates.push(body.status === "completed" ? "completed_at = NOW()" : "completed_at = NULL");
+    }
+    if (body.progress !== undefined) {
+      const progress = Number(body.progress);
+      if (!Number.isFinite(progress)) return res.status(400).json({ error: "invalid_progress" });
+      add("progress", Math.max(0, Math.min(100, Math.round(progress))));
+    }
+    if (body.priority !== undefined) add("priority", body.priority);
+    if (body.location !== undefined) add("location", body.location || null);
+    if (body.notes !== undefined) add("internal_notes", body.notes || null);
+    if (!updates.length) return res.status(400).json({ error: "no_supported_fields" });
+    updates.push("updated_at = NOW()");
+    params.push(milestoneId, projectId);
+
+    try {
+      const result = await pool.query(
+        `UPDATE project_milestones
+            SET ${updates.join(", ")}
+          WHERE id = $${params.length - 1} AND project_id = $${params.length}
+          RETURNING *`,
+        params,
+      );
+      if (!result.rows.length) return res.status(404).json({ error: "milestone_not_found" });
+      void notifyMilestonesUpdated(projectId, session.userId);
+      res.json(mapMilestone(result.rows[0]));
+    } catch (error) {
+      console.error("Error updating milestone:", error);
+      res.status(500).json({ error: "Failed to update milestone" });
+    }
+  });
+
+  app.delete("/api/projects/:projectId/milestones/:milestoneId", async (req, res) => {
+    const session = await authorizeProject(req, res, true);
     if (!session) return;
     try {
-      const { projectId, eventId } = req.params;
-      const owned = await pool.query(
-        `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2
-         UNION ALL
-         SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
-         LIMIT 1`,
-        [projectId, session.userId],
+      const result = await pool.query(
+        `DELETE FROM project_milestones
+          WHERE id = $1 AND project_id = $2
+          RETURNING id`,
+        [req.params.milestoneId, req.params.projectId],
       );
-      if (!owned.rows.length) return res.status(404).json({ error: "not_found" });
+      if (!result.rows.length) return res.status(404).json({ error: "milestone_not_found" });
+      void notifyMilestonesUpdated(req.params.projectId, session.userId);
+      res.json({ success: true, id: result.rows[0].id });
+    } catch (error) {
+      console.error("Error deleting milestone:", error);
+      res.status(500).json({ error: "Failed to delete milestone" });
+    }
+  });
+
+  // PUT /api/projects/:projectId/timeline/:eventId — Update timeline event
+  app.put("/api/projects/:projectId/timeline/:eventId", async (req, res) => {
+    if (!(await authorizeProject(req, res, true))) return;
+    try {
+      const { projectId, eventId } = req.params;
       const {
         title,
         description,
@@ -200,18 +338,9 @@ export function setupProjectsOutliersRoutes(
 
   // DELETE /api/projects/:projectId/timeline/:eventId — Delete timeline event
   app.delete("/api/projects/:projectId/timeline/:eventId", async (req, res) => {
-    const session = requireUserSession(req, res);
-    if (!session) return;
+    if (!(await authorizeProject(req, res, true))) return;
     try {
       const { projectId, eventId } = req.params;
-      const owned = await pool.query(
-        `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2
-         UNION ALL
-         SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
-         LIMIT 1`,
-        [projectId, session.userId],
-      );
-      if (!owned.rows.length) return res.status(404).json({ error: "not_found" });
       await pool.query(
         "DELETE FROM project_milestones WHERE id = $1 AND project_id = $2",
         [eventId, projectId],
@@ -225,6 +354,7 @@ export function setupProjectsOutliersRoutes(
 
   // GET /api/projects/:projectId/worklog — List worklog entries
   app.get("/api/projects/:projectId/worklog", async (req, res) => {
+    if (!(await authorizeProject(req, res))) return;
     try {
       const { projectId } = req.params;
 
@@ -292,7 +422,6 @@ export function setupProjectsOutliersRoutes(
 
         return res.json({ data: mapped });
       }
-
       return res.json({ data: [] });
     } catch (error) {
       console.error("Error fetching worklog:", error);
@@ -302,6 +431,7 @@ export function setupProjectsOutliersRoutes(
 
   // GET /api/projects/:projectId/worklog/stats — Worklog stats
   app.get("/api/projects/:projectId/worklog/stats", async (req, res) => {
+    if (!(await authorizeProject(req, res))) return;
     try {
       const { projectId } = req.params;
       const entriesRes = await pool.query(
@@ -350,18 +480,10 @@ export function setupProjectsOutliersRoutes(
 
   // POST /api/projects/:projectId/worklog — Create worklog entry
   app.post("/api/projects/:projectId/worklog", async (req, res) => {
-    const session = requireUserSession(req, res);
+    const session = await authorizeProject(req, res, true);
     if (!session) return;
     try {
       const { projectId } = req.params;
-      const owned = await pool.query(
-        `SELECT 1 FROM projects WHERE id = $1 AND user_id = $2
-         UNION ALL
-         SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2
-         LIMIT 1`,
-        [projectId, session.userId],
-      );
-      if (!owned.rows.length) return res.status(404).json({ error: "not_found" });
       const userId = session.userId;
       const {
         title,
@@ -404,6 +526,7 @@ export function setupProjectsOutliersRoutes(
   });
 
   app.get("/api/projects/:projectId/email-activity", async (req, res) => {
+    if (!(await authorizeProject(req, res))) return;
     try {
       const { projectId } = req.params;
 

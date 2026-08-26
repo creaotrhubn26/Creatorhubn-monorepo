@@ -11,6 +11,7 @@ import type express from "express";
 import type { Pool } from "pg";
 import type { AdminSession } from "./_shared";
 import { asString } from "./_shared";
+import { canAccessProject } from "./project-team-routes";
 
 interface PresenceDeps {
   app: express.Application;
@@ -28,7 +29,9 @@ export function setupPresenceHeartbeatRoutes(deps: PresenceDeps): void {
       return;
     }
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const currentRoute = asString(body.route)?.slice(0, 200) ?? null;
+    const projectId = asString(body.projectId)?.trim() || null;
+    const requestedRoute = (asString(body.route) ?? asString(body.currentRoute))?.slice(0, 200) ?? null;
+    const requestedTab = asString(body.tab)?.trim().replace(/[^a-z0-9-]/gi, '').slice(0, 60) || null;
     const isIdle = body.idle === true;
     const userAgent = (req.headers["user-agent"] ?? "").toString();
     // Komprimert user-agent: bare browser + OS, ingen versjon-noise
@@ -45,6 +48,14 @@ export function setupPresenceHeartbeatRoutes(deps: PresenceDeps): void {
       : "Other";
 
     try {
+      let currentRoute = requestedRoute;
+      if (projectId) {
+        if (!(await canAccessProject(pool, session.userId, projectId))) {
+          return res.status(403).json({ error: "Ingen tilgang til prosjektet" });
+        }
+        // Presence-ruten bygges av validerte felt, ikke av en vilkårlig klientstreng.
+        currentRoute = `/workspace/${projectId}${requestedTab ? `/${requestedTab}` : ''}`;
+      }
       await pool.query(
         `INSERT INTO user_presence (user_id, last_seen_at, current_route, is_idle, user_agent_short, session_started_at, total_session_count)
          VALUES ($1, NOW(), $2, $3, $4, NOW(), 1)

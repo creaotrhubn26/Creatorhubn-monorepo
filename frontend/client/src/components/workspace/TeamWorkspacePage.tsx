@@ -6,7 +6,7 @@
  * Rendrer WorkspaceShell + aktivt tab. Andre tabs enn Oversikt får et
  * pent «kommer»-skall inntil de wires (bygges ett om gangen).
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { Box, Typography, Stack, Snackbar, Alert, Dialog, DialogContent, IconButton } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
@@ -42,12 +42,12 @@ import { AcademyProvider } from '@/contexts/AcademyContext';
 import CommunityHub from '../community/CommunityHub';
 import WorkspaceChatPanel from './WorkspaceChatPanel';
 import UniversalPrototypeFeedback from '../prototype-testing/UniversalPrototypeFeedback';
-import { usePresence } from './usePresence';
-import { ws, WS_NAV, navForProfession, localizeNav, workspaceCategoryFor, isMusicProfession, type WsNavItem } from './workspaceTheme';
+import { roomOnlineState, usePresence } from './usePresence';
+import { ws, WS_NAV, navForCategory, localizeNav, workspaceCategoryFor, type WsNavItem } from './workspaceTheme';
 import { getProfessionDisplayName } from '@shared/profession-types';
-import { useWorkspaceCategoryMap } from './useWorkspaceCategory';
 import { WsLocaleProvider, type WsLocale } from './wsLocale';
 import { localeForVendor } from '../universal/editing-marketplace/editingMarketplaceStrings';
+import { WorkspaceProvider, useWorkspaceBootstrap, useWorkspaceUpdate } from './WorkspaceContext';
 
 // Prøveprosjekt (Sara & Amir) — byttes med ekte prosjekt-fetch i wire-fasen.
 const SAMPLE_PROJECT = {
@@ -101,6 +101,12 @@ const TeamWorkspacePage: React.FC = () => {
   const projectId = paramsTab?.projectId || params?.projectId || 'sample';
   const [, navigate] = useLocation();
   const { user, logout, isPrototypeTester, isAdmin } = useAuth();
+  const {
+    bootstrap,
+    loading: workspaceLoading,
+    error: workspaceError,
+    refresh: refreshWorkspace,
+  } = useWorkspaceBootstrap(projectId);
 
   const [tab, setTab] = useState<string>(paramsTab?.tab || 'oversikt');
   // URL er sannhetskilden for aktiv fane — så navigate('/workspace/:id/:tab')
@@ -119,7 +125,8 @@ const TeamWorkspacePage: React.FC = () => {
   }, [user?.id, user?.profession]);
   const [accepted, setAccepted] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const { online } = usePresence(projectId, `/workspace/${projectId}/${tab}`);
+  const { online, members: presenceMembers } = usePresence(projectId, `/workspace/${projectId}/${tab}`);
+  const roomOnlineNow = useMemo(() => roomOnlineState(presenceMembers, projectId), [presenceMembers, projectId]);
 
   // Aksepter team-invitasjon når man åpner lenken (?invite=<token>).
   useEffect(() => {
@@ -128,50 +135,36 @@ const TeamWorkspacePage: React.FC = () => {
     if (!token) return;
     apiRequest(`/api/projects/team/accept/${encodeURIComponent(token)}`, { method: 'POST' })
       .then((r: any) => {
-        if (r?.success) setAccepted('Du er nå med i prosjektteamet 🎉');
+        if (r?.success) {
+          setAccepted('Du er nå med i prosjektteamet 🎉');
+          void refreshWorkspace();
+        }
         // fjern token fra URL
         const clean = window.location.pathname;
         window.history.replaceState({}, '', clean);
       })
       .catch(() => { /* ugyldig/utløpt — stille */ });
-  }, []);
+  }, [refreshWorkspace]);
 
-  // Last ekte prosjekt-data i headeren (fallback til sample for /workspace/sample).
-  const [realProject, setRealProject] = useState<any | null>(null);
-  useEffect(() => {
-    if (!projectId || projectId === 'sample') { setRealProject(null); return; }
-    // Profesjons-AGNOSTISK henting (/api/projects/:id) — den forrige brukte kun
-    // /api/photographer/… og falt til sample-prosjektet for musikk/vendor/service.
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}`)
-      .then((r: any) => {
-        const p = r?.project || r; // generisk endepunkt returnerer feltene direkte
-        if (!p || !p.id) return;
-        const rawDate = p.eventDate || p.event_date || p.date;
-        const date = rawDate ? new Date(rawDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric' }) : undefined;
-        setRealProject({
-          id: p.id, name: p.title || p.name || 'Uten tittel',
-          type: p.projectType || p.project_type || undefined,
-          status: p.status === 'active' ? 'Pågående' : (p.status || undefined),
-          date, location: p.location || undefined, coverUrl: p.coverUrl || p.cover_url || null, members: [],
-          updatedAt: p.updatedAt || p.updated_at || null,
-        });
-      })
-      .catch(() => setRealProject(null));
-  }, [projectId]);
-
-  // Ekte team-medlemmer til header-avatarene (eier + aktive medlemmer).
-  const [members, setMembers] = useState<{ id: string; name?: string; avatarUrl?: string | null }[]>([]);
-  useEffect(() => {
-    if (!projectId || projectId === 'sample') { setMembers([]); return; }
-    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team/members`)
-      .then((r: any) => {
-        const list: any[] = [];
-        if (r?.owner) list.push({ id: r.owner.userId || 'owner', name: r.owner.name || r.owner.email, avatarUrl: r.owner.avatarUrl || null });
-        for (const m of (r?.members || [])) list.push({ id: m.id, name: m.name || m.email, avatarUrl: m.avatarUrl || m.avatar_url || null });
-        setMembers(list);
-      })
-      .catch(() => setMembers([]));
-  }, [projectId]);
+  // Én bootstrap-respons er sannhetskilden for prosjekt, kategori, tilgang og
+  // team. Dermed kan ikke header/nav/handlinger ende på ulike snapshots.
+  const realProject = bootstrap?.project || null;
+  const members = useMemo(() => {
+    const list: { id: string; name?: string; avatarUrl?: string | null }[] = [];
+    if (bootstrap?.owner) list.push({
+      id: bootstrap.owner.userId || 'owner',
+      name: bootstrap.owner.name || bootstrap.owner.email || undefined,
+      avatarUrl: bootstrap.owner.avatarUrl || null,
+    });
+    for (const member of bootstrap?.members || []) {
+      if (member.status === 'active') list.push({
+        id: member.id,
+        name: member.name || member.email || undefined,
+        avatarUrl: member.avatarUrl || null,
+      });
+    }
+    return list;
+  }, [bootstrap]);
 
   const goTab = (key: string) => {
     setTab(key);
@@ -183,7 +176,29 @@ const TeamWorkspacePage: React.FC = () => {
   // Amir – Wedding» (sample-lekkasje inn i ikke-fotograf-prosjekter).
   const project = projectId === 'sample'
     ? { ...SAMPLE_PROJECT, id: projectId, members }
-    : { ...(realProject || { id: projectId, name: '', type: undefined, status: undefined, date: undefined, location: undefined, coverUrl: null }), members };
+    : (() => {
+        const p = realProject || {};
+        const rawDate = p.eventDate || p.event_date || p.date;
+        const date = rawDate ? new Date(rawDate).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric' }) : undefined;
+        return {
+          id: p.id || projectId,
+          name: p.title || p.name || '',
+          type: p.projectType || p.project_type || undefined,
+          status: p.status === 'active' ? 'Pågående' : (p.status || undefined),
+          date,
+          location: p.location || undefined,
+          coverUrl: p.coverUrl || p.cover_url || null,
+          updatedAt: p.updatedAt || p.updated_at || null,
+          members,
+        };
+      })();
+  const workspaceCategory = projectId === 'sample'
+    ? workspaceCategoryFor(user?.profession)
+    : (bootstrap?.workspaceCategory || 'service');
+  const workspaceAccess = bootstrap?.access || (projectId === 'sample'
+    ? { canRead: true, canEdit: true, isOwner: true }
+    : { canRead: true, canEdit: false, isOwner: false });
+  const projectProfession = realProject?.profession || user?.profession;
   const wsUser = {
     name: user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : (user?.name || user?.email || 'Bruker'),
     // Rolle-etiketten hentes fra profesjons-registeret (dekker alle ~20
@@ -199,22 +214,23 @@ const TeamWorkspacePage: React.FC = () => {
   // Uleste chat-meldinger → badge på Chat-punktet i sidebaren. «Sist lest»
   // skrives av WorkspaceChatPanel (localStorage chat-lastread-<kanal>).
   const [chatUnread, setChatUnread] = useState(0);
-  useEffect(() => {
+  const refreshChatUnread = useCallback(async () => {
     if (!projectId) return;
     const channel = `project-${projectId}`;
-    const check = async () => {
-      try {
-        const r: any = await apiRequest(`/api/communication/messages/${encodeURIComponent(channel)}?limit=30`);
-        const msgs = Array.isArray(r?.messages) ? r.messages : [];
-        const lastRead = new Date(localStorage.getItem('chat-lastread-' + channel) || 0).getTime();
-        const myEmail = (() => { try { return String(JSON.parse(localStorage.getItem('creatorhub_auth_user') || 'null')?.email || '').toLowerCase(); } catch { return ''; } })();
-        setChatUnread(msgs.filter((m: any) => new Date(m.timestamp).getTime() > lastRead && String(m.senderId || '').toLowerCase() !== myEmail && !String(m.senderId || '').startsWith('system:')).length);
-      } catch { /* stille */ }
-    };
-    check();
-    const iv = setInterval(check, 30000);
-    return () => clearInterval(iv);
+    try {
+      const r: any = await apiRequest(`/api/communication/messages/${encodeURIComponent(channel)}?limit=30`);
+      const msgs = Array.isArray(r?.messages) ? r.messages : [];
+      const lastRead = new Date(localStorage.getItem('chat-lastread-' + channel) || 0).getTime();
+      const myEmail = (() => { try { return String(JSON.parse(localStorage.getItem('creatorhub_auth_user') || 'null')?.email || '').toLowerCase(); } catch { return ''; } })();
+      setChatUnread(msgs.filter((m: any) => new Date(m.timestamp).getTime() > lastRead && String(m.senderId || '').toLowerCase() !== myEmail && !String(m.senderId || '').startsWith('system:')).length);
+    } catch { /* stille */ }
   }, [projectId]);
+  useEffect(() => {
+    void refreshChatUnread();
+    const iv = setInterval(refreshChatUnread, 30000);
+    return () => clearInterval(iv);
+  }, [refreshChatUnread]);
+  useWorkspaceUpdate(projectId, 'chat.message', refreshChatUnread);
   useEffect(() => {
     if (!user?.id) { setInboundCount(0); return; }
     apiRequest('/api/foresporsler/inbound')
@@ -242,15 +258,11 @@ const TeamWorkspacePage: React.FC = () => {
       .catch(() => setBandUnseen(0));
   }, [projectId, tab]);
 
-  // Profesjons-filtrert nav — kategorien er admin-styrt (profession_types.
-  // workspace_category via useWorkspaceCategoryMap), med kode-map som fallback.
-  const categoryOverrides = useWorkspaceCategoryMap();
-
   // Workspace-språk: utenlandske partner-vendors (is_foreign fra vendor/me,
   // samme deteksjon som partner-portalen) får engelsk i nav, shell og faner.
   // Kun vendor-kategorien sjekkes — alle andre er alltid norske.
   const [wsLocale, setWsLocale] = useState<WsLocale>('no');
-  const isVendorCategory = workspaceCategoryFor(user?.profession, categoryOverrides) === 'vendor';
+  const isVendorCategory = workspaceCategory === 'vendor';
   useEffect(() => {
     if (!isVendorCategory) { setWsLocale('no'); return; }
     apiRequest('/api/editing/vendor/me')
@@ -275,8 +287,8 @@ const TeamWorkspacePage: React.FC = () => {
   }, []);
 
   const nav = useMemo(
-    () => applyNavOverrides(localizeNav(navForProfession(user?.profession, { isMentor, categoryOverrides }), wsLocale), navOv),
-    [user?.profession, isMentor, categoryOverrides, wsLocale, navOv],
+    () => applyNavOverrides(localizeNav(navForCategory(workspaceCategory, { isMentor }), wsLocale), navOv),
+    [workspaceCategory, isMentor, wsLocale, navOv],
   );
   // Hvis aktiv fane ikke finnes i profesjonens nav (f.eks. delt lenke til
   // 'shotlist' for en musikkprodusent), fall tilbake til Oversikt.
@@ -294,7 +306,7 @@ const TeamWorkspacePage: React.FC = () => {
 
   const content = useMemo(() => {
     switch (tab) {
-      case 'oversikt':        return <OversiktTab projectId={projectId} profession={user?.profession} />;
+      case 'oversikt':        return <OversiktTab projectId={projectId} profession={projectProfession} />;
       case 'prosjektplan':    return <ProsjektplanTab projectId={projectId} />;
       case 'produksjonskart': return <ProduksjonskartTab projectId={projectId} />;
       case 'shotlist':        return <ShotlistTab projectId={projectId} />;
@@ -306,25 +318,33 @@ const TeamWorkspacePage: React.FC = () => {
       case 'community':       return <CommunityHub userId={user?.id} userEmail={user?.email} profession={user?.profession || undefined} />;
       case 'moodboard':       return <MoodboardTab projectId={projectId} />;
       case 'media':           return <MediaTab projectId={projectId} />;
-      case 'utstyr':          return <UtstyrTab projectId={projectId} profession={user?.profession} userId={user?.id} />;
+      case 'utstyr':          return <UtstyrTab projectId={projectId} profession={projectProfession} userId={user?.id} />;
       case 'leveranser':      return <LeveranserTab projectId={projectId} />;
       case 'oppgaver':        return <OppgaverTab projectId={projectId} />;
       case 'avtaler':         return <AvtalerTab projectId={projectId} />;
-      case 'foresporsler':    return <ForesporslerTab projectId={projectId} profession={user?.profession} userId={user?.id} userName={user?.firstName || (user as any)?.name || user?.email} />;
+      case 'foresporsler':    return <ForesporslerTab projectId={projectId} profession={projectProfession} userId={user?.id} userName={user?.firstName || (user as any)?.name || user?.email} />;
       case 'kundevisning':    return <KundevisningTab projectId={projectId} />;
-      case 'team':            return <TeamTab projectId={projectId} profession={user?.profession} userId={user?.id} projectName={(project as any)?.title || (project as any)?.name} lastUpdated={(realProject as any)?.updatedAt || null} />;
+      case 'team':            return <TeamTab projectId={projectId} profession={projectProfession} userId={user?.id} projectName={(project as any)?.title || (project as any)?.name} lastUpdated={(realProject as any)?.updatedAt || null} />;
       case 'sound-room':      return <SoundRoomTab projectId={projectId} />;
       case 'video-room':      return <VideoRoomTab projectId={projectId} />;
       case 'photo-room':      return <PhotoRoomTab projectId={projectId} />;
-      case 'chat':            return <Box sx={{ height: 'calc(100dvh - 160px)', maxWidth: 760, mx: 'auto' }}><WorkspaceChatPanel projectId={projectId} category={workspaceCategoryFor(user?.profession, categoryOverrides)} /></Box>;
+      case 'chat':            return <Box sx={{ height: 'calc(100dvh - 160px)', maxWidth: 760, mx: 'auto' }}><WorkspaceChatPanel projectId={projectId} category={workspaceCategory} /></Box>;
       default:                return <ComingTab label={navItem?.label || tab} />;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, projectId, user?.id, user?.email, user?.profession, user?.firstName, (project as any)?.title, (project as any)?.name, (realProject as any)?.updatedAt, navItem?.label, categoryOverrides]);
+  }, [tab, projectId, user?.id, user?.email, user?.profession, user?.firstName, projectProfession, workspaceCategory, (project as any)?.title, (project as any)?.name, (realProject as any)?.updatedAt, navItem?.label]);
 
   return (
+    <WorkspaceProvider
+      projectId={projectId}
+      bootstrap={bootstrap}
+      loading={workspaceLoading}
+      error={workspaceError}
+      refresh={refreshWorkspace}
+    >
     <WsLocaleProvider value={wsLocale}>
     <WorkspaceShell
+      onlineNow={roomOnlineNow}
       project={project}
       user={wsUser}
       online={online}
@@ -333,10 +353,14 @@ const TeamWorkspacePage: React.FC = () => {
       activeTab={tab}
       onTab={goTab}
       navItems={nav}
+      readOnly={!workspaceAccess.canEdit}
       badges={{ foresporsler: inboundCount, kundevisning: clientActivityUnseen, 'sound-room': bandUnseen, chat: chatUnread }}
       onClientView={() => goTab('kundevisning')}
-      onInvite={() => goTab('team')}
+      onInvite={workspaceAccess.isOwner ? () => goTab('team') : undefined}
     >
+      {workspaceError && (
+        <Alert severity="error" sx={{ mb: 2 }}>{workspaceError}</Alert>
+      )}
       {/* Modul-boundary per fane (keyed på tab → nullstilles ved bytte). Fane-
           komponentene er statisk importert (ikke lazy), så #426 er ikke risikoen
           her — men uten boundary bobler en render-krasj i ÉN fane opp til den
@@ -423,6 +447,7 @@ const TeamWorkspacePage: React.FC = () => {
       </Dialog>
     </WorkspaceShell>
     </WsLocaleProvider>
+    </WorkspaceProvider>
   );
 };
 

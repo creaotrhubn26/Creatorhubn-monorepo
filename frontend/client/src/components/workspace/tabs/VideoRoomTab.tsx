@@ -20,6 +20,7 @@ import { wsIcon } from '../crewIcons';
 import { WsCard, WsTag, WsModal, wsAlert, wsConfirm } from '../ui';
 import AiBuyCreditsModal from '../AiBuyCreditsModal';
 import CinematicVideoPlayer from '@/components/gallery/CinematicVideoPlayer';
+import { useWorkspaceUpdate } from '../WorkspaceContext';
 
 const PHASES = ['Brief', 'V1', 'Klient-review', 'Revisjoner', 'Levert'];
 
@@ -76,6 +77,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       .then((r: any) => setData(r || null)).catch(() => {}).finally(() => setLoading(false));
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId]);
+  useWorkspaceUpdate(projectId, 'video-room.updated', load);
 
   const versions = data?.versions || [];
   const current = versions.find((v: any) => v.id === data?.currentVersionId) || versions[versions.length - 1] || null;

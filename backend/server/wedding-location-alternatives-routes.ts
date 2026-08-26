@@ -21,7 +21,7 @@ import type express from "express";
 import { notifyPlanBActivation, notifyPlanBDeactivation } from "./wedding-notifications-helper";
 import { broadcastEventToRoom } from "./websocket-chat";
 import { sendPushToUser } from "./web-push-routes";
-import { canAccessProject } from "./project-team-routes";
+import { canAccessProject, canEditProject } from "./project-team-routes";
 
 /**
  * Authorize the session user against a wedding before mutating its locations /
@@ -40,7 +40,7 @@ import { canAccessProject } from "./project-team-routes";
  * (/api/wedding/client/:token/…) and never held a session, so it never reached
  * these endpoints; this guard adds no regression.
  */
-async function callerOwnsWedding(pool: any, weddingId: string, userId: string): Promise<boolean> {
+async function callerOwnsWedding(pool: any, weddingId: string, userId: string, edit = false): Promise<boolean> {
   if (!userId || !weddingId) return false;
   try {
     const r = await pool.query(
@@ -51,7 +51,9 @@ async function callerOwnsWedding(pool: any, weddingId: string, userId: string): 
     if (!row) return false;
     if (row.user_id && String(row.user_id) === userId) return true;
     if (row.photographer_id && String(row.photographer_id) === userId) return true;
-    if (row.project_id && (await canAccessProject(pool, userId, String(row.project_id)))) return true;
+    if (row.project_id && (edit
+      ? await canEditProject(pool, userId, String(row.project_id))
+      : await canAccessProject(pool, userId, String(row.project_id)))) return true;
     return false;
   } catch (e) {
     console.error("[plan-b] callerOwnsWedding error:", e);
@@ -108,6 +110,8 @@ function rowToLocation(r: any): any {
     activationStatus: r.activation_status || "standby",
     activatedAt: r.activated_at,
     activatedBy: r.activated_by,
+    lat: r.latitude == null ? null : Number(r.latitude),
+    lng: r.longitude == null ? null : Number(r.longitude),
   };
 }
 
@@ -126,15 +130,30 @@ export function setupWeddingLocationAlternativesRoutes(
       if (!(await callerOwnsWedding(pool, req.params.weddingId, getPricingUserId(req)))) {
         return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
       }
-      const r = await pool.query(
-        `SELECT * FROM wedding_locations WHERE wedding_id = $1 ORDER BY sort_order, created_at`,
-        [req.params.weddingId],
-      );
+      const [r, checkins] = await Promise.all([
+        pool.query(`SELECT * FROM wedding_locations WHERE wedding_id = $1 ORDER BY sort_order, created_at`, [req.params.weddingId]),
+        pool.query(`SELECT location_id, member_name, member_role, checked_in_at
+                      FROM wedding_location_checkins WHERE wedding_id = $1`, [req.params.weddingId])
+          .catch(() => ({ rows: [] as any[] })),
+      ]);
       const all = r.rows.map(rowToLocation);
       const primaries = all.filter((l: any) => !l.alternativeForLocationId);
+      const withPresence = (location: any) => {
+        const present = checkins.rows.filter((entry: any) => String(entry.location_id) === String(location.id));
+        return {
+          ...location,
+          checkedIn: present.length > 0,
+          checkedInAt: present[0]?.checked_in_at || null,
+          crew: present.map((entry: any) => ({
+            id: `${entry.location_id}:${entry.member_name}`,
+            name: entry.member_name,
+            crewRole: entry.member_role || 'medlem',
+          })),
+        };
+      };
       const result = primaries.map((p: any) => ({
-        ...p,
-        alternatives: all.filter((a: any) => a.alternativeForLocationId === p.id),
+        ...withPresence(p),
+        alternatives: all.filter((a: any) => a.alternativeForLocationId === p.id).map(withPresence),
       }));
       res.json({ locations: result });
     } catch (err) {
@@ -150,7 +169,7 @@ export function setupWeddingLocationAlternativesRoutes(
       await ensureSchema(pool);
       const { primaryId, weddingId } = req.params;
       // Authorize the caller against THIS wedding before inserting a location.
-      if (!(await callerOwnsWedding(pool, weddingId, getPricingUserId(req)))) {
+      if (!(await callerOwnsWedding(pool, weddingId, getPricingUserId(req), true))) {
         return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
       }
       const { label, address, postalCode, city, notes, isIndoor } = req.body || {};
@@ -196,7 +215,7 @@ export function setupWeddingLocationAlternativesRoutes(
     try {
       await ensureSchema(pool);
       // Authorize the caller against THIS wedding before updating a location.
-      if (!(await callerOwnsWedding(pool, req.params.weddingId, getPricingUserId(req)))) {
+      if (!(await callerOwnsWedding(pool, req.params.weddingId, getPricingUserId(req), true))) {
         return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
       }
       const { isIndoor, weatherDependent } = req.body || {};
@@ -230,7 +249,7 @@ export function setupWeddingLocationAlternativesRoutes(
       const uid = getPricingUserId(req);
       const { weddingId, altId } = req.params;
       // Authorize the caller against THIS wedding before any mutation/broadcast.
-      if (!(await callerOwnsWedding(pool, weddingId, uid))) {
+      if (!(await callerOwnsWedding(pool, weddingId, uid, true))) {
         return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
       }
       const triggeredBy = (req.body?.triggeredBy as string) || (uid ? "photographer" : "couple");
@@ -362,7 +381,7 @@ export function setupWeddingLocationAlternativesRoutes(
       await ensureSchema(pool);
       const { weddingId, altId } = req.params;
       // Authorize the caller against THIS wedding before any mutation/broadcast.
-      if (!(await callerOwnsWedding(pool, weddingId, getPricingUserId(req)))) {
+      if (!(await callerOwnsWedding(pool, weddingId, getPricingUserId(req), true))) {
         return res.status(403).json({ error: "Ingen tilgang til dette bryllupet" });
       }
       const alt = await pool.query(

@@ -20,6 +20,7 @@ import WorkspaceSplitSheet from '../WorkspaceSplitSheet';
 import { useWsLocale, makeT, wsDateLocale, type WsDict } from '../wsLocale';
 import { CREW_ROLE_CATALOG, crewRoleDef } from '@shared/crew-roles';
 import { crewIcon } from '../crewIcons';
+import { useWorkspace, useWorkspaceUpdate } from '../WorkspaceContext';
 
 // Lokal no/en-ordbok for fanen (samme mønster som OppdragTab). Dynamiske
 // strenger (roller/status lagret i state) er selv-nøklet på norsk, slik at
@@ -125,11 +126,11 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
   // Utenlandske partner-vendors får engelsk — locale fra WsLocaleProvider.
   const locale = useWsLocale();
   const t = makeT(T, locale);
+  const { access, refresh: refreshWorkspace } = useWorkspace();
   const [, navigate] = useLocation();
   const totalRoles = ROLES.reduce((s, r) => s + r[1], 0);
   const [real, setReal] = useState<any[] | null>(null);
   const [loadErr, setLoadErr] = useState(false); // primær medlems-lasting feilet
-  const [isOwner, setIsOwner] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [boardTasks, setBoardTasks] = useState<any[] | null>(null);
   const [milestones, setMilestones] = useState<any[] | null>(null);
@@ -142,7 +143,7 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
   useEffect(() => {
     if (!isRealP) return;
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks`).then((r: any) => setBoardTasks(Array.isArray(r?.tasks) ? r.tasks : [])).catch(() => {});
-    apiRequest(`/api/photographer/projects/${encodeURIComponent(projectId)}/milestones`).then((r: any) => setMilestones(Array.isArray(r?.milestones) ? r.milestones : [])).catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/milestones`).then((r: any) => setMilestones(Array.isArray(r?.milestones) ? r.milestones : [])).catch(() => {});
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team-sync`).then((r: any) => setTeamSync(r || null)).catch(() => {});
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/contract`).then((r: any) => setContract(r || null)).catch(() => {});
     apiRequest(`/api/projects/${encodeURIComponent(projectId)}/quotes`).then((r: any) => setQuotes(Array.isArray(r?.quotes) ? r.quotes : [])).catch(() => {});
@@ -153,7 +154,6 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
   const load = async () => {
     try {
       const r: any = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team/members`);
-      setIsOwner(!!r?.isOwner);
       const list = Array.isArray(r?.members) ? r.members : [];
       // Inkluder eier øverst hvis vi har den
       const owner = r?.owner ? [{ name: r.owner.name, role: 'Eier', tone: 'accent', online: true, ansvar: ['Prosjekteier'], aktiv: 'Nå', star: true }] : [];
@@ -168,6 +168,19 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
     } catch { setReal(null); setLoadErr(true); }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId]);
+  useWorkspaceUpdate(projectId, 'milestones.updated', () => {
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/milestones`)
+      .then((r: any) => setMilestones(Array.isArray(r?.milestones) ? r.milestones : []))
+      .catch(() => {});
+  });
+  useWorkspaceUpdate(projectId, 'board.updated', () => {
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/board-tasks`)
+      .then((r: any) => setBoardTasks(Array.isArray(r?.tasks) ? r.tasks : []))
+      .catch(() => {});
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/team-sync`)
+      .then((r: any) => setTeamSync(r || null))
+      .catch(() => {});
+  });
 
   // Ekte prosjekt → ekte data (tomt = tom-tilstand). Mock kun på /workspace/sample.
   const displayMembers = isRealP ? (real || []) : MEMBERS;
@@ -295,11 +308,13 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
               </Stack>
             </WsCard>
           ))}
-          {/* Inviter-kort */}
-          <Box onClick={() => setInviteOpen(true)} sx={{ border: `1.5px dashed ${ws.border}`, borderRadius: `${ws.radius}px`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 180, cursor: 'pointer', color: ws.textDim, '&:hover': { borderColor: ws.accentBorder, color: ws.accent } }}>
-            <PersonAdd sx={{ fontSize: 28, mb: 1 }} />
-            <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{t('inviteMember')}</Typography>
-          </Box>
+          {/* Medlemsadministrasjon er eierstyrt i både UI og API. */}
+          {access.isOwner && (
+            <Box onClick={() => setInviteOpen(true)} sx={{ border: `1.5px dashed ${ws.border}`, borderRadius: `${ws.radius}px`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 180, cursor: 'pointer', color: ws.textDim, '&:hover': { borderColor: ws.accentBorder, color: ws.accent } }}>
+              <PersonAdd sx={{ fontSize: 28, mb: 1 }} />
+              <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{t('inviteMember')}</Typography>
+            </Box>
+          )}
         </Box>
         )}
 
@@ -378,7 +393,9 @@ const TeamTab: React.FC<{ projectId: string; profession?: string; userId?: strin
         </WsCard>
       </Box>
 
-      <InviteMemberDialog open={inviteOpen} onClose={() => setInviteOpen(false)} projectId={projectId} onInvited={() => { setInviteOpen(false); load(); }} />
+      {access.isOwner && (
+        <InviteMemberDialog open={inviteOpen} onClose={() => setInviteOpen(false)} projectId={projectId} onInvited={() => { setInviteOpen(false); load(); void refreshWorkspace(); }} />
+      )}
     </Stack>
   );
 };

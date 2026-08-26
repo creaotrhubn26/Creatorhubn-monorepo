@@ -9,8 +9,8 @@
  * i konsollen via reconnect-loopene.
  *
  * Logikken speiler useGalleryEventStream.buildWsUrl:
- *   - VITE_WS_URL hvis satt (forventes å allerede være ws(s)://…)
- *   - ellers VITE_API_PROXY_TARGET (http(s) → ws(s))
+ *   - VITE_WS_URL / eldre VITE_WS_BASE hvis satt
+ *   - ellers VITE_API_URL eller VITE_API_PROXY_TARGET (http(s) → ws(s))
  *   - ellers window.location.host i dev/localhost
  *   - prod uten eksplisitt WS-URL → null (ikke koble, ikke spam)
  *
@@ -24,6 +24,14 @@ export function buildEventsWsUrl(path = '/ws/events'): string | null {
     typeof import.meta.env.VITE_WS_URL === 'string'
       ? (import.meta.env.VITE_WS_URL as string).trim()
       : '';
+  const legacyConfigured =
+    typeof import.meta.env.VITE_WS_BASE === 'string'
+      ? (import.meta.env.VITE_WS_BASE as string).trim()
+      : '';
+  const apiUrl =
+    typeof import.meta.env.VITE_API_URL === 'string'
+      ? (import.meta.env.VITE_API_URL as string).trim()
+      : '';
   const apiTarget =
     typeof import.meta.env.VITE_API_PROXY_TARGET === 'string'
       ? (import.meta.env.VITE_API_PROXY_TARGET as string).trim()
@@ -33,10 +41,12 @@ export function buildEventsWsUrl(path = '/ws/events'): string | null {
     !['localhost', '127.0.0.1'].includes(window.location.hostname);
 
   // Prod uten eksplisitt WS-URL: ikke koble mot Vercel (som ikke proxy-er WS).
-  if (isProd && !configured) return null;
+  if (isProd && !configured && !legacyConfigured && !apiUrl) return null;
 
   const base = (
     configured ||
+    legacyConfigured ||
+    apiUrl ||
     apiTarget ||
     `${window.location.protocol === 'https:' ? 'https:' : 'http:'}//${window.location.host}`
   ).replace(/^http/i, 'ws');

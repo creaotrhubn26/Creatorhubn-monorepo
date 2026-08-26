@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import PDFDocument from "pdfkit";
 import { requireTeamAccess } from "./team-access";
 import { canAccessProject } from "./project-team-routes";
+import { broadcastSoundRoomUpdated, type SoundRoomUpdateReason } from "./sound-room-events";
 
 // Innebygd TrueType-font (DejaVu Sans, libre) — sikrer at avtale-PDF rendres
 // identisk i alle visere (pdfkit-standardfonter rendres ikke i alle renderere).
@@ -576,6 +577,28 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
     return await canAccessProject(pool, userId, pid);
   }
 
+  async function notifySoundRoomForVersion(versionId: string, reason: SoundRoomUpdateReason): Promise<void> {
+    const result = await pool.query(
+      `SELECT project_id::text AS project_id FROM audio_review_versions WHERE id = $1::uuid LIMIT 1`,
+      [versionId],
+    ).catch(() => ({ rows: [] as any[] }));
+    const audioProjectId = result.rows[0]?.project_id;
+    if (audioProjectId) await broadcastSoundRoomUpdated(pool, String(audioProjectId), reason);
+  }
+
+  async function notifySoundRoomForComment(commentId: string, reason: SoundRoomUpdateReason): Promise<void> {
+    const result = await pool.query(
+      `SELECT v.project_id::text AS project_id
+         FROM audio_review_comments c
+         JOIN audio_review_versions v ON v.id = c.version_id
+        WHERE c.id = $1::uuid
+        LIMIT 1`,
+      [commentId],
+    ).catch(() => ({ rows: [] as any[] }));
+    const audioProjectId = result.rows[0]?.project_id;
+    if (audioProjectId) await broadcastSoundRoomUpdated(pool, String(audioProjectId), reason);
+  }
+
   // ── Prosjekt ────────────────────────────────────────────────────────────
   app.post("/api/audio-showcases", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
@@ -679,6 +702,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       await pool.query(`UPDATE audio_review_projects SET status='under_review', updated_at=NOW() WHERE id=$1::uuid`, [projectId]);
       // Varsle bandet om at en ny versjon er klar å høre (best-effort).
       void notifyBandNewVersion(projectId, r.rows[0]).catch(() => {});
+      void broadcastSoundRoomUpdated(pool, projectId, "version");
       return res.status(201).json(r.rows[0]);
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
@@ -725,6 +749,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
          str(req.body?.authorRole, 80) || null, num(req.body?.timecodeSeconds) ?? num(req.body?.timecode) ?? 0, body,
          str(req.body?.category, 40) || "general", Boolean(req.body?.isDecision), str(req.body?.sectionRef, 120) || null],
       );
+      void notifySoundRoomForVersion(versionId, "comment");
       return res.status(201).json(r.rows[0]);
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
@@ -751,6 +776,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
       if (!(await ownsComment(id, s.userId))) return res.status(403).json({ error: "no_access" });
       const r = await pool.query(`UPDATE audio_review_comments SET ${sets.join(", ")} WHERE id = $1::uuid RETURNING *`, params);
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      void notifySoundRoomForComment(id, "comment");
       return res.json(r.rows[0]);
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
@@ -812,6 +838,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
           WHERE id = (SELECT easeverse_track_id FROM audio_review_projects
                       WHERE id = (SELECT project_id FROM audio_review_versions WHERE id = $1::uuid))::uuid`,
         [versionId, trackStatus]).catch(() => { /* ikke koblet / annen DB-state */ });
+      void notifySoundRoomForVersion(versionId, "approval");
       return res.status(201).json(a.rows[0]);
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
@@ -867,6 +894,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         `UPDATE audio_review_comments SET like_count = GREATEST(0, like_count + $2), updated_at = NOW()
           WHERE id = $1::uuid RETURNING *`, [id, dir]);
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      void notifySoundRoomForComment(id, "comment");
       return res.json(r.rows[0]);
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
@@ -1726,6 +1754,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         created++;
       }
       if (created > 0) await pool.query(`UPDATE audio_review_projects SET status='under_review', updated_at=NOW() WHERE id=$1::uuid`, [id]);
+      if (created > 0) void broadcastSoundRoomUpdated(pool, id, "version");
       return res.json({ applied: created > 0 ? "pulled" : "up_to_date", created, totalTakes: takes.length });
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
@@ -1808,6 +1837,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
          str(req.body?.category, 40) || "general", str(req.body?.sectionRef, 120) || null]);
       // Varsle produsenten om band-tilbakemeldingen (best-effort).
       void notifyOwnerBandComment(ctx, body, num(req.body?.timecodeSeconds) ?? 0).catch(() => {});
+      void broadcastSoundRoomUpdated(pool, String(ctx.project_id), "comment");
       return res.status(201).json(r.rows[0]);
     } catch (e) {
       if (isMissingTable(e)) return res.status(503).json({ error: "migration_pending" });
@@ -1825,6 +1855,7 @@ export function setupAudioShowcaseRoutes(deps: AudioShowcaseDeps): void {
         `UPDATE audio_review_comments SET like_count = like_count + 1, updated_at = NOW()
           WHERE id = $1::uuid AND version_id IN (SELECT id FROM audio_review_versions WHERE project_id = $2::uuid) RETURNING *`, [id, ctx.project_id]);
       if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
+      void broadcastSoundRoomUpdated(pool, String(ctx.project_id), "comment");
       return res.json(r.rows[0]);
     } catch (e) {
       return res.status(500).json({ error: "shared_like_failed" });

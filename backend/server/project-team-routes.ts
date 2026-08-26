@@ -37,7 +37,7 @@ const CREW_ROLES = new Set(["fotograf", "videograf", "begge", "editor", "lyd", "
 const MEMBER_ROLES = new Set(["editor", "viewer", "member"]);
 
 let schemaReady: Promise<void> | null = null;
-async function ensureProjectTeamSchema(pool: any): Promise<void> {
+export async function ensureProjectTeamSchema(pool: any): Promise<void> {
   if (!schemaReady) {
     schemaReady = (async () => {
       await pool.query(`
@@ -67,6 +67,57 @@ async function ensureProjectTeamSchema(pool: any): Promise<void> {
   return schemaReady;
 }
 
+export interface ProjectAccess {
+  canRead: boolean;
+  canEdit: boolean;
+  isOwner: boolean;
+}
+
+/**
+ * Én autoritativ tilgangsoppløsning for Team Workspace.
+ * Eier kan alltid lese/skrive. Aktive medlemmer får rettighetene som faktisk
+ * ligger i permissions-feltet; viewer-rollen kan aldri oppgraderes implisitt.
+ * Ved database-/skjemafeil feiler vi lukket.
+ */
+export async function getProjectAccess(
+  pool: any,
+  userId: string,
+  projectId: string,
+): Promise<ProjectAccess> {
+  const denied: ProjectAccess = { canRead: false, canEdit: false, isOwner: false };
+  if (!userId || !projectId) return denied;
+  try {
+    const owner = await pool.query(
+      `SELECT 1 WHERE EXISTS(SELECT 1 FROM projects WHERE id::text = $1 AND user_id::text = $2)
+                  OR EXISTS(SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2)`,
+      [projectId, userId],
+    );
+    if ((owner.rowCount ?? owner.rows?.length ?? 0) > 0) {
+      return { canRead: true, canEdit: true, isOwner: true };
+    }
+
+    await ensureProjectTeamSchema(pool);
+    const member = await pool.query(
+      `SELECT role, permissions
+         FROM project_team_members
+        WHERE project_id = $1 AND user_id = $2
+          AND status = 'active' AND deactivated_at IS NULL
+        LIMIT 1`,
+      [projectId, userId],
+    );
+    const row = member.rows?.[0];
+    if (!row) return denied;
+    const permissions = typeof row.permissions === "string"
+      ? (() => { try { return JSON.parse(row.permissions); } catch { return {}; } })()
+      : (row.permissions ?? {});
+    const canRead = permissions.canRead !== false;
+    const canEdit = canRead && row.role !== "viewer" && permissions.canEdit === true;
+    return { canRead, canEdit, isOwner: false };
+  } catch {
+    return denied;
+  }
+}
+
 /**
  * Sann hvis brukeren er EIER av prosjektet eller et AKTIVT team-medlem.
  * Eksporteres så andre eier-scopede ruter kan utvides til team-tilgang.
@@ -76,28 +127,16 @@ export async function canAccessProject(
   userId: string,
   projectId: string,
 ): Promise<boolean> {
-  if (!userId || !projectId) return false;
-  try {
-    // Eierskap ligger i public.projects ELLER legacy.projects (workspace-
-    // prosjekter opprettes i legacy) — sjekk begge, ellers 403-er alle
-    // eier-scopede workspace-ruter for helt vanlige prosjekter.
-    const owner = await pool.query(
-      `SELECT 1 WHERE EXISTS(SELECT 1 FROM projects WHERE id::text = $1 AND user_id::text = $2)
-                  OR EXISTS(SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2)`,
-      [projectId, userId],
-    );
-    if ((owner.rowCount ?? 0) > 0) return true;
-    await ensureProjectTeamSchema(pool);
-    const member = await pool.query(
-      `SELECT 1 FROM project_team_members
-        WHERE project_id = $1 AND user_id = $2 AND status = 'active' AND deactivated_at IS NULL
-        LIMIT 1`,
-      [projectId, userId],
-    );
-    return (member.rowCount ?? 0) > 0;
-  } catch {
-    return false;
-  }
+  return (await getProjectAccess(pool, userId, projectId)).canRead;
+}
+
+/** Sann for prosjekt-eier eller aktivt medlem med permissions.canEdit=true. */
+export async function canEditProject(
+  pool: any,
+  userId: string,
+  projectId: string,
+): Promise<boolean> {
+  return (await getProjectAccess(pool, userId, projectId)).canEdit;
 }
 
 async function isProjectOwner(pool: any, userId: string, projectId: string): Promise<boolean> {
@@ -143,7 +182,8 @@ export function setupProjectTeamRoutes(deps: ProjectTeamRoutesDeps): void {
     if (!session) return;
     try {
       const { projectId } = req.params;
-      if (!(await canAccessProject(pool, session.userId, projectId))) {
+      const access = await getProjectAccess(pool, session.userId, projectId);
+      if (!access.canRead) {
         return res.status(403).json({ error: "Ingen tilgang til prosjektet" });
       }
       await ensureProjectTeamSchema(pool);
@@ -175,7 +215,11 @@ export function setupProjectTeamRoutes(deps: ProjectTeamRoutesDeps): void {
           avatarUrl: ownerRow.user_id ? `/api/users/${ownerRow.user_id}/avatar` : null,
           isOwner: true,
         } : null,
-        isOwner: ownerRow?.user_id === session.userId,
+        isOwner: access.isOwner,
+        currentUserPermissions: {
+          canRead: access.canRead,
+          canEdit: access.canEdit,
+        },
         members: members.rows.map(mapMember),
       });
     } catch (err) {
@@ -331,20 +375,56 @@ export function setupProjectTeamRoutes(deps: ProjectTeamRoutesDeps): void {
         return res.status(403).json({ error: "Ingen tilgang" });
       }
       await ensureProjectTeamSchema(pool);
-      // Medlemmer + eier, joinet mot user_presence (online = sett siste 90s)
+      // Aktive medlemmer + eier fra begge prosjekt-tabellene. DISTINCT ON
+      // dedupliserer eier hvis vedkommende også har en historisk medlemsrad.
       const rows = await pool.query(
-        `SELECT m.user_id, m.email, m.name, m.crew_role,
-                (pr.last_seen_at IS NOT NULL AND pr.last_seen_at > NOW() - INTERVAL '90 seconds') AS online
-           FROM project_team_members m
-           LEFT JOIN user_presence pr ON pr.user_id = m.user_id
-          WHERE m.project_id = $1 AND m.status = 'active' AND m.deactivated_at IS NULL`,
+        `WITH participants AS (
+           SELECT p.user_id::text AS user_id, u.email,
+                  NULLIF(CONCAT_WS(' ', u.first_name, u.last_name), '') AS name,
+                  NULL::varchar AS crew_role, true AS is_owner
+             FROM projects p
+             LEFT JOIN users u ON u.id = p.user_id
+            WHERE p.id::text = $1
+           UNION ALL
+           SELECT lp.user_id::text AS user_id, u.email,
+                  NULLIF(CONCAT_WS(' ', u.first_name, u.last_name), '') AS name,
+                  NULL::varchar AS crew_role, true AS is_owner
+             FROM legacy.projects lp
+             LEFT JOIN users u ON u.id::text = lp.user_id
+            WHERE lp.id = $1
+           UNION ALL
+           SELECT m.user_id::text, m.email, m.name, m.crew_role, false AS is_owner
+             FROM project_team_members m
+            WHERE m.project_id = $1 AND m.status = 'active'
+              AND m.deactivated_at IS NULL AND m.user_id IS NOT NULL
+         ), deduped AS (
+           SELECT DISTINCT ON (user_id) user_id, email, name, crew_role
+             FROM participants
+            WHERE user_id IS NOT NULL
+            ORDER BY user_id, is_owner DESC
+         )
+         SELECT d.user_id, d.email, COALESCE(d.name, d.email) AS name, d.crew_role,
+                pr.current_route,
+                (pr.last_seen_at IS NOT NULL AND pr.last_seen_at > NOW() - INTERVAL '90 seconds') AS online_globally,
+                (pr.last_seen_at IS NOT NULL
+                  AND pr.last_seen_at > NOW() - INTERVAL '90 seconds'
+                  AND (pr.current_route = '/workspace/' || $1
+                    OR pr.current_route LIKE '/workspace/' || $1 || '/%')) AS online
+           FROM deduped d
+           LEFT JOIN user_presence pr ON pr.user_id::text = d.user_id`,
         [projectId],
       ).catch(() => ({ rows: [] }));
       const online = rows.rows.filter((r: any) => r.online).length;
       res.json({
         online,
         members: rows.rows.map((r: any) => ({
-          userId: r.user_id, email: r.email, name: r.name, crewRole: r.crew_role, online: !!r.online,
+          userId: r.user_id,
+          email: r.email,
+          name: r.name,
+          crewRole: r.crew_role,
+          online: !!r.online,
+          onlineGlobally: !!r.online_globally,
+          currentRoute: r.current_route || null,
         })),
       });
     } catch (err) {
