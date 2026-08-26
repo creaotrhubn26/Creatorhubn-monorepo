@@ -134,6 +134,15 @@ jobs:
               echo "✅ Migrate ferdig — ingen pending migrasjoner igjen (status=$STATUS)."
               exit 0
             fi
+            # migrate.sh fortsetter per design etter en SQL-feil. Når child-
+            # prosessen er avsluttet, men DB fortsatt rapporterer pending, vil
+            # videre polling aldri endre resultatet. Feil raskt og ta med hele
+            # statusobjektet (pendingFiles + siste migreringslogg) i Actions.
+            if [ "$STATUS" != "running" ] && [ -n "$PENDING" ] && [ "$PENDING" != "0" ]; then
+              echo "Detaljer: $STATUS_JSON"
+              echo "::error::Migrate-run avsluttet med $PENDING uanvendte migrasjoner."
+              exit 1
+            fi
             sleep 15
           done
           echo "::error::Tidsavbrudd på status-polling. Migrasjoner er ikke bekreftet ferdige."
