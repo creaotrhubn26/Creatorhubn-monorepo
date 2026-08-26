@@ -33,6 +33,7 @@ concurrency:
 
 env:
   BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+  RENDER_SERVICE_ID: srv-d76ob60ule4c73dv2p60
   MIGRATION_FILE: ${{ inputs.migration_file || '' }}
 
 jobs:
@@ -41,6 +42,30 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
+      - name: Deploy eksakt hotfix-commit til Render
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          if [ -z "$RENDER_API_KEY" ]; then
+            echo "::error::RENDER_API_KEY secret er ikke satt"
+            exit 1
+          fi
+          echo "::add-mask::$RENDER_API_KEY"
+          REQUEST_BODY=$(python3 -c 'import json,os; print(json.dumps({"commitId": os.environ["GITHUB_SHA"], "clearCache": "do_not_clear"}))')
+          HTTP_CODE=$(curl -sS -o /tmp/render_deploy.json --connect-timeout 5 -m 30 -w "%{http_code}" \
+            -X POST \
+            -H "Accept: application/json" \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$REQUEST_BODY" \
+            "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys")
+          echo "Render deploy-trigger HTTP=$HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
+            cat /tmp/render_deploy.json
+            echo "::error::Render avviste eksakt commit-deploy."
+            exit 1
+          fi
+
       - name: Vent til commit er deployet + stabil (unngår 502 i deploy-rollover)
         run: |
           echo "Venter til $GITHUB_SHA er live på $BACKEND_URL …"
