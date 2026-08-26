@@ -22,6 +22,7 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 import { loadPersistedAuthSession } from './auth-session-store.js';
 import {
+  confirmDancerAvailability,
   deleteDancerProfile,
   getDancerProfile,
   listDancerProfiles,
@@ -172,6 +173,26 @@ export function createDancerProfileRouter(
     const result = await upsertDancerProfile(pool, userId, idParsed.data, extras);
     res.json({ success: true, data: result });
   });
+
+  // Re-bekreft tilgjengelighet (ferskhets-nudge) uten å endre vinduene.
+  router.post(
+    '/:dancerId/availability/confirm',
+    auth,
+    async (req: Request, res: Response): Promise<void> => {
+      const idParsed = dancerIdSchema.safeParse(req.params.dancerId);
+      if (!idParsed.success) {
+        res.status(400).json({ error: 'invalid_dancer_id' });
+        return;
+      }
+      const { userId } = req as AuthedRequest;
+      const result = await confirmDancerAvailability(pool, userId, idParsed.data);
+      if (!result) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
+      res.json({ success: true, data: result });
+    },
+  );
 
   router.delete('/:dancerId', auth, async (req: Request, res: Response): Promise<void> => {
     const idParsed = dancerIdSchema.safeParse(req.params.dancerId);
