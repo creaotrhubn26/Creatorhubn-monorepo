@@ -341,6 +341,18 @@ final class HubState: ObservableObject {
     }
 }
 
+enum ProjectMenuDestination: Equatable {
+    case productionBrowser
+    case manuscript
+    case manuscriptPicker
+
+    static func resolve(manuscriptCount: Int) -> Self {
+        if manuscriptCount == 0 { return .productionBrowser }
+        if manuscriptCount == 1 { return .manuscript }
+        return .manuscriptPicker
+    }
+}
+
 struct ProjectHubView: View {
     @StateObject private var hub: HubState
     private let onBrowseProjects: (() -> Void)?
@@ -555,12 +567,23 @@ struct ProjectHubView: View {
                     }
                     ForEach(hub.allProjects) { project in
                         let manuscripts = hub.manuscriptsByProject[project.id] ?? []
-                        if manuscripts.count <= 1 {
+                        switch ProjectMenuDestination.resolve(manuscriptCount: manuscripts.count) {
+                        case .productionBrowser:
+                            Button {
+                                onBrowseProjects?()
+                            } label: {
+                                Label(project.name, systemImage: "doc.badge.plus")
+                            }
+                            .disabled(onBrowseProjects == nil)
+                            .accessibilityLabel(
+                                "\(project.name), velg eller opprett storyboard-manus"
+                            )
+                        case .manuscript:
+                            let manuscript = manuscripts[0]
                             Button(project.name) {
-                                guard let manuscript = manuscripts.first else { return }
                                 Task { await hub.switchTo(project: project, manuscript: manuscript) }
                             }
-                        } else {
+                        case .manuscriptPicker:
                             Menu(project.name) {
                                 ForEach(manuscripts) { manuscript in
                                     Button(manuscript.title) {
