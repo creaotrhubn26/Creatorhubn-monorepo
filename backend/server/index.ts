@@ -31903,6 +31903,7 @@ setupAISuggestionRoutes({
 //   for sub-cluster-rydding.
 setupCastingProjectsRoutes({
   app,
+  pool,
   requireUserSession,
   compatStoreGet,
   compatStoreSet,

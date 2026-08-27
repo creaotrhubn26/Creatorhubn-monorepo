@@ -84,6 +84,7 @@
 
 import crypto from "crypto";
 import type express from "express";
+import type { Pool } from "pg";
 
 import {
   findByIdInProjectMap,
@@ -106,6 +107,7 @@ import { newEntityId } from "./_shared-ids.js";
 
 export interface CastingProjectsRoutesDeps {
   app: express.Application;
+  pool: Pool;
   requireUserSession: (req: any, res: any) => any;
   compatStoreGet: <T>(storeKey: string) => Promise<T | null>;
   compatStoreSet: (storeKey: string, storeValue: unknown) => Promise<void>;
@@ -145,6 +147,7 @@ export function setupCastingProjectsRoutes(
 ): void {
   const {
     app,
+    pool,
     requireUserSession,
     compatStoreGet,
     compatStoreSet,
@@ -171,6 +174,128 @@ export function setupCastingProjectsRoutes(
   const legacyShotListsByProject = new Map<string, any[]>();
   const legacyCalendarEventsByProject = new Map<string, any[]>();
   const legacyTeamDashboardSnapshotsByProject = new Map<string, any[]>();
+
+  // Canonical Role Room projects live in casting_projects, while the older
+  // frontend persists rich project blobs in legacy_compat_store. The project
+  // switcher must merge both sources or canonical projects disappear.
+  const CANONICAL_PROJECT_SOURCE = "casting_projects";
+
+  function readJsonRecord(value: unknown): Record<string, unknown> {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+    return {};
+  }
+
+  function canonicalProjectToCompatShape(row: Record<string, unknown>): Record<string, unknown> {
+    const metadata = readJsonRecord(row.metadata);
+    const settings = readJsonRecord(row.settings);
+    const createdBy = typeof row.created_by === "string" ? row.created_by : undefined;
+    const metadataString = (key: string): string | undefined =>
+      typeof metadata[key] === "string" && String(metadata[key]).trim()
+        ? String(metadata[key]).trim()
+        : undefined;
+    return {
+      ...row,
+      id: String(row.id ?? ""),
+      name: typeof row.name === "string" ? row.name : "Uten navn",
+      projectType: metadataString("projectType")
+        ?? (typeof row.project_type === "string" ? row.project_type : undefined),
+      startDate: row.start_date ?? undefined,
+      endDate: row.end_date ?? undefined,
+      ownerId: createdBy,
+      owner_id: createdBy,
+      createdBy,
+      created_by: createdBy,
+      createdAt: row.created_at ?? undefined,
+      updatedAt: row.updated_at ?? undefined,
+      metadata,
+      settings,
+      clientName: metadataString("clientName"),
+      clientEmail: metadataString("clientEmail"),
+      clientCompanyName: metadataString("clientCompanyName"),
+      roles: [], candidates: [], crew: [], schedules: [], locations: [],
+      props: [], shotLists: [], userRoles: [],
+      projectStorageSource: CANONICAL_PROJECT_SOURCE,
+    };
+  }
+
+  function mergeCanonicalAndCompatProject(
+    canonical: Record<string, unknown>,
+    compat: Record<string, unknown> | null | undefined,
+  ): Record<string, unknown> {
+    if (!compat) return canonical;
+    const merged: Record<string, unknown> = {
+      ...canonical,
+      ...compat,
+      id: canonical.id,
+      ownerId: canonical.ownerId,
+      owner_id: canonical.owner_id,
+      createdBy: canonical.createdBy,
+      created_by: canonical.created_by,
+      projectStorageSource: CANONICAL_PROJECT_SOURCE,
+      metadata: { ...readJsonRecord(compat.metadata), ...readJsonRecord(canonical.metadata) },
+      settings: { ...readJsonRecord(compat.settings), ...readJsonRecord(canonical.settings) },
+    };
+    for (const key of [
+      "roles", "candidates", "crew", "schedules", "locations", "props",
+      "shotLists", "userRoles", "productionDays", "sceneBreakdowns",
+    ]) {
+      const compatValue = compat[key];
+      if (Array.isArray(compatValue) && compatValue.length > 0) merged[key] = compatValue;
+    }
+    return merged;
+  }
+
+  async function listCanonicalProjectsForUser(userId: string): Promise<Record<string, unknown>[]> {
+    try {
+      const result = await pool.query(
+        "SELECT DISTINCT cp.* FROM casting_projects cp " +
+        "LEFT JOIN casting_user_roles cur ON cur.project_id = cp.id " +
+        "AND cur.user_id = $1 AND cur.deactivated_at IS NULL " +
+        "WHERE cp.created_by = $1 OR cur.user_id IS NOT NULL " +
+        "ORDER BY cp.updated_at DESC NULLS LAST",
+        [userId],
+      );
+      return result.rows.map((row) => canonicalProjectToCompatShape(row));
+    } catch (error) {
+      console.warn("[RoleRoom] Could not list canonical casting projects:", error);
+      return [];
+    }
+  }
+
+  async function getCanonicalProjectForUser(
+    projectId: string,
+    userId: string,
+  ): Promise<Record<string, unknown> | null> {
+    try {
+      const result = await pool.query(
+        "SELECT cp.* FROM casting_projects cp WHERE cp.id = $1 AND (" +
+        "cp.created_by = $2 OR EXISTS (SELECT 1 FROM casting_user_roles cur " +
+        "WHERE cur.project_id = cp.id AND cur.user_id = $2 " +
+        "AND cur.deactivated_at IS NULL)) LIMIT 1",
+        [projectId, userId],
+      );
+      const row = result.rows[0] as Record<string, unknown> | undefined;
+      return row ? canonicalProjectToCompatShape(row) : null;
+    } catch (error) {
+      console.warn("[RoleRoom] Could not read canonical casting project:", error);
+      return null;
+    }
+  }
+
+  async function getCanonicalProjectOwner(projectId: string): Promise<string | null> {
+    try {
+      const result = await pool.query(
+        "SELECT created_by FROM casting_projects WHERE id = $1 LIMIT 1",
+        [projectId],
+      );
+      const owner = result.rows[0]?.created_by;
+      return typeof owner === "string" && owner ? owner : null;
+    } catch {
+      return null;
+    }
+  }
 
   // ── Key generators ────────────────────────────────────────────────
 
@@ -212,6 +337,8 @@ export function setupCastingProjectsRoutes(
     userId: string,
   ): Promise<boolean> {
     if (!projectId || !userId) return false;
+    const canonicalOwner = await getCanonicalProjectOwner(projectId);
+    if (canonicalOwner) return canonicalOwner === userId;
     const project: any = await getLegacyCastingProject(projectId);
     const createdBy =
       typeof project?.created_by === "string" ? project.created_by : null;
@@ -394,43 +521,42 @@ export function setupCastingProjectsRoutes(
   // ── Projects: CRUD ────────────────────────────────────────────────
 
   app.get("/api/casting/projects", async (req, res) => {
-    // Krev auth + filtrer på created_by = innloggende user, slik at:
-    // (a) brukere kun ser sine egne prosjekter (var en gjennomgripende
-    //     user-isolation-bug — alle så alle prosjekter inkl. demo-rester),
-    // (b) TROLL-demo-prosjekter (seedet med 'demo-user' før fix 7f656d58)
-    //     vises ikke til ekte brukere,
-    // (c) andre moduser (innholdsprodusent, dansestudio, utdanning)
-    //     får ikke produksjons-team-prosjekter slengt i fanget.
     const session = requireUserSession(req, res);
     if (!session) return;
-    const ownerId = session.userId;
+    const ownerId = String(session.userId ?? "");
     try {
-      const dbRows = await compatStoreListByPrefix<any>("casting:project:");
-      if (dbRows.length > 0) {
-        const projects = dbRows
-          .map((row) => row.value)
-          .filter((project) => project && typeof project === "object")
-          .filter((project) => {
-            const createdBy = typeof project.created_by === "string" ? project.created_by : null;
-            // Ekskluder demo-rester (created_by null eller hardkodet 'demo-user')
-            if (!createdBy || createdBy === "demo-user") return false;
-            return createdBy === ownerId;
-          });
-        legacyCastingProjects.clear();
-        for (const project of projects) {
-          const id = typeof project.id === "string" ? project.id : "";
-          if (!id) continue;
-          legacyCastingProjects.set(id, project);
-        }
-        res.json({ projects });
-        return;
+      const [dbRows, canonicalProjects] = await Promise.all([
+        compatStoreListByPrefix<any>("casting:project:"),
+        listCanonicalProjectsForUser(ownerId),
+      ]);
+      const compatProjects = (dbRows.length > 0
+        ? dbRows.map((row) => row.value)
+        : Array.from(legacyCastingProjects.values()))
+        .filter((project) => project && typeof project === "object")
+        .filter((project: any) => {
+          const createdBy = typeof project.created_by === "string" ? project.created_by : null;
+          return Boolean(createdBy) && createdBy !== "demo-user" && createdBy === ownerId;
+        }) as Record<string, unknown>[];
+
+      const projectsById = new Map<string, Record<string, unknown>>();
+      for (const project of canonicalProjects) {
+        const id = typeof project.id === "string" ? project.id : "";
+        if (id) projectsById.set(id, project);
       }
-      const inMemoryFiltered = Array.from(legacyCastingProjects.values()).filter((project: any) => {
-        const createdBy = typeof project?.created_by === "string" ? project.created_by : null;
-        if (!createdBy || createdBy === "demo-user") return false;
-        return createdBy === ownerId;
-      });
-      res.json({ projects: inMemoryFiltered });
+      for (const project of compatProjects) {
+        const id = typeof project.id === "string" ? project.id : "";
+        if (!id) continue;
+        const canonical = projectsById.get(id);
+        projectsById.set(id, canonical ? mergeCanonicalAndCompatProject(canonical, project) : project);
+      }
+
+      const projects = Array.from(projectsById.values());
+      legacyCastingProjects.clear();
+      for (const project of projects) {
+        const id = typeof project.id === "string" ? project.id : "";
+        if (id) legacyCastingProjects.set(id, project);
+      }
+      res.json({ projects });
     } catch (error) {
       console.error("Error listing casting projects:", error);
       res.status(500).json({ error: "Could not list projects" });
@@ -465,6 +591,7 @@ export function setupCastingProjectsRoutes(
     // 8 kandidater / 6 crew Daniel hadde seedet.
     const existing = (await getLegacyCastingProject(id)) || {};
     const existingRecord = existing as Record<string, unknown>;
+    const canonicalOwnerPost = await getCanonicalProjectOwner(id);
     // Ownership gate: POST er en upsert som MERGER inn i `existing` og
     // returnerer resultatet (`res.json(project)`). Uten denne sjekken kunne
     // enhver innlogget bruker POSTe et annet tenant sitt projectId og (a) lese
@@ -474,9 +601,12 @@ export function setupCastingProjectsRoutes(
     const existingOwnerPost =
       typeof existingRecord.created_by === "string" ? existingRecord.created_by : null;
     if (
-      existingOwnerPost &&
-      existingOwnerPost !== "demo-user" &&
-      existingOwnerPost !== session.userId
+      (canonicalOwnerPost && canonicalOwnerPost !== session.userId)
+      || (
+        existingOwnerPost
+        && existingOwnerPost !== "demo-user"
+        && existingOwnerPost !== session.userId
+      )
     ) {
       res.status(404).json({ error: "Project not found" });
       return;
@@ -608,25 +738,21 @@ export function setupCastingProjectsRoutes(
   });
 
   app.get("/api/casting/projects/:projectId", async (req, res) => {
-    // Auth + owner-sjekk for å hindre kryss-bruker-leak. Demo-prosjekter
-    // (created_by = 'demo-user') blokkeres også — de finnes som rester fra
-    // før fix 7f656d58, og bør ikke serveres til noen ekte bruker.
     const session = requireUserSession(req, res);
     if (!session) return;
     try {
-      const projectId = rejectInvalidProjectId(
-        res,
-        req.params.projectId,
-        "getProject",
-      );
+      const projectId = rejectInvalidProjectId(res, req.params.projectId, "getProject");
       if (!projectId) return;
-      const project: any = await getLegacyCastingProject(projectId);
-      if (!project) {
-        res.json(null);
+      const [project, canonicalProject] = await Promise.all([
+        getLegacyCastingProject(projectId),
+        getCanonicalProjectForUser(projectId, String(session.userId ?? "")),
+      ]);
+      if (canonicalProject) {
+        res.json(mergeCanonicalAndCompatProject(canonicalProject, project));
         return;
       }
-      const createdBy = typeof project.created_by === "string" ? project.created_by : null;
-      if (!createdBy || createdBy === "demo-user" || createdBy !== session.userId) {
+      const createdBy = typeof project?.created_by === "string" ? project.created_by : null;
+      if (!project || !createdBy || createdBy === "demo-user" || createdBy !== session.userId) {
         res.json(null);
         return;
       }
@@ -657,15 +783,19 @@ export function setupCastingProjectsRoutes(
     }
     const existing = (await getLegacyCastingProject(id)) || {};
     const existingRecord = existing as Record<string, unknown>;
+    const canonicalOwnerPut = await getCanonicalProjectOwner(id);
     // Ownership gate (samme rasjonal som POST): PUT merger inn i `existing` og
     // returnerer resultatet. Uten sjekken kunne enhver innlogget bruker
     // overskrive/stjele et annet tenant sitt prosjekt via `:projectId`.
     const existingOwnerPut =
       typeof existingRecord.created_by === "string" ? existingRecord.created_by : null;
     if (
-      existingOwnerPut &&
-      existingOwnerPut !== "demo-user" &&
-      existingOwnerPut !== session.userId
+      (canonicalOwnerPut && canonicalOwnerPut !== session.userId)
+      || (
+        existingOwnerPut
+        && existingOwnerPut !== "demo-user"
+        && existingOwnerPut !== session.userId
+      )
     ) {
       res.status(404).json({ error: "Project not found" });
       return;
