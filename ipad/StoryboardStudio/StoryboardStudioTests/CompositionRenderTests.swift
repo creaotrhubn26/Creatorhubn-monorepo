@@ -743,6 +743,7 @@ final class CompositionRenderTests: XCTestCase {
 
     private func makeFrame(strokes: [PencilStroke], id: String = "test-frame",
                            durationSec: Double = 2, imageUrl: String? = nil,
+                           thumbnailDataURL: String? = nil,
                            description: String = "") -> FrameSummary {
         FrameSummary(
             id: id, shotNumber: "1A", detail: "",
@@ -750,7 +751,7 @@ final class CompositionRenderTests: XCTestCase {
             description: description, notes: nil, shotType: nil, lensMm: nil,
             movement: nil, durationSec: durationSec, transition: nil,
             focusDepth: nil, timeOfDay: nil, weather: nil, beatTag: nil,
-            tags: [], thumbnailDataURL: nil,
+            tags: [], thumbnailDataURL: thumbnailDataURL,
             drawingWidth: 1920, drawingHeight: 1080,
             frameStatus: nil, comments: [], updatedAt: nil,
             underlayDataURL: nil, underlayOpacity: nil,
@@ -759,6 +760,37 @@ final class CompositionRenderTests: XCTestCase {
             reviewPriority: nil, reviewDueAt: nil,
             reviewApprovedBy: nil, reviewApprovedAt: nil, reviewStarred: nil,
             reviewAssignee: nil, reviewColorLabel: nil, reviewSnoozedUntil: nil)
+    }
+
+    func testScenePreviewPrefersOriginalImageBeforeStoredThumbnail() {
+        let frame = makeFrame(
+            strokes: [], imageUrl: "/api/storage/original.png",
+            thumbnailDataURL: "data:image/jpeg;base64,stale-white-preview")
+
+        XCTAssertEqual(
+            StoryboardPreviewPolicy.sourceURLs(for: frame),
+            ["/api/storage/original.png", "data:image/jpeg;base64,stale-white-preview"])
+    }
+
+    func testScenePreviewSkipsEmptyFrameWhenLaterFrameHasArtwork() {
+        let empty = makeFrame(strokes: [], id: "empty")
+        let artwork = makeFrame(
+            strokes: [], id: "artwork", imageUrl: "/api/storage/artwork.png")
+
+        XCTAssertEqual(
+            StoryboardPreviewPolicy.representativeFrame(in: [empty, artwork])?.id,
+            "artwork")
+    }
+
+    func testScenePreviewUsesDrawnOnlyFrame() {
+        let empty = makeFrame(strokes: [], id: "empty")
+        let drawn = makeFrame(
+            strokes: [stroke(.pencil, size: 5, opacity: 0.9,
+                             line(100, 100, 500, 400))], id: "drawn")
+
+        XCTAssertEqual(
+            StoryboardPreviewPolicy.representativeFrame(in: [empty, drawn])?.id,
+            "drawn")
     }
 
     /// Tekst-annotasjoner skal med i eksport-render (CoreText-pass) —

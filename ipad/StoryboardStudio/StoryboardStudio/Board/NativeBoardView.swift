@@ -334,6 +334,9 @@ struct NativeBoardView: View {
     @State private var pendingDeleteFrameId: String?
     @State private var newSceneTitle = ""
     @State private var showNewScenePrompt = false
+    @State private var sceneThumbnailImages: [String: UIImage] = [:]
+    @State private var retainedEditableBaseImages: [String: UIImage] = [:]
+    @State private var activeImageLoadTask: Task<Void, Never>?
     @Environment(\.dismiss) private var dismiss
 
     enum InitialSheet { case script, shotList, animatic, review }
@@ -381,6 +384,7 @@ struct NativeBoardView: View {
             }
         }
         .task { await board.reload() }
+        .task(id: scenePreviewTaskKey) { await rebuildSceneThumbnails() }
         .onChange(of: board.activeFrameIndex) { loadActiveFrameIntoCanvas() }
         .onChange(of: board.selectedSceneIndex) { board.activeFrameIndex = 0; loadActiveFrameIntoCanvas() }
         .onChange(of: board.scenes.count) { loadActiveFrameIntoCanvas() }
@@ -435,6 +439,7 @@ struct NativeBoardView: View {
     private func loadActiveFrameIntoCanvas() {
         flushPendingStrokes()
         autosyncTask?.cancel()
+        activeImageLoadTask?.cancel()
         canvasState.contentSize = board.frame.map {
             CGSize(width: $0.drawingWidth, height: $0.drawingHeight)
         }
@@ -459,11 +464,25 @@ struct NativeBoardView: View {
             board.frame.map { (scene.id, $0.id) }
         }
         loadedFrameUpdatedAt = board.frame?.updatedAt
-        // Remote panel-bilde: hent async og re-render når det lander.
+        // Behold siste dekodede raster for samme frame mens en ny URL
+        // lastes. Da blinker ikke aktivt shot (typisk 1A) til blankt når
+        // live-polling eller en ny bildeversjon trigger canvas-rebuild.
+        if let frame = board.frame,
+           let image = FrameImageCache.image(for: frame.imageUrl) {
+            retainedEditableBaseImages[frame.id] = image
+        }
+        // Remote panel-bilde: hent async og re-render kun dersom samme
+        // frame/URL fortsatt er aktiv når forespørselen fullføres.
         if let imageUrl = board.frame?.imageUrl, !imageUrl.hasPrefix("data:"),
            FrameImageCache.images[imageUrl] == nil, let frame = board.frame {
-            Task {
+            let frameId = frame.id
+            activeImageLoadTask = Task {
                 await FrameImageCache.prefetch(frames: [frame])
+                guard !Task.isCancelled,
+                      let image = FrameImageCache.images[imageUrl] else { return }
+                retainedEditableBaseImages[frameId] = image
+                guard board.frame?.id == frameId,
+                      board.frame?.imageUrl == imageUrl else { return }
                 applyUnderlay(to: renderer)
             }
         }
@@ -619,7 +638,11 @@ struct NativeBoardView: View {
         // Bilde-frame: statisk innhold tegnes underst med full opacity
         // (i motsetning til referanse-underlaget følger det med i eksport
         // via FrameRenderService).
-        let frameImage = FrameImageCache.image(for: board.frame?.imageUrl)
+        let frameImage = board.frame.flatMap { frame in
+            FrameImageCache.image(for: frame.imageUrl)
+                ?? retainedEditableBaseImages[frame.id]
+                ?? frame.thumbnailDataURL.flatMap(decodeDataURL)
+        }
         let underlayImage = board.frame?.underlayDataURL.flatMap(decodeDataURL)
         // Onion-kilder med alpha: forrige tydeligst, nabo nummer to svakere.
         var onionLayers: [(image: UIImage, alpha: CGFloat)] = []
@@ -921,6 +944,59 @@ struct NativeBoardView: View {
         .buttonStyle(.plain)
     }
 
+    /// Fingerprinten gjør at SwiftUI avbryter gammel preview-lasting når
+    /// scene-/frame-data byttes av live-synk.
+    private var scenePreviewTaskKey: String {
+        board.scenes.map { scene in
+            guard let frame = StoryboardPreviewPolicy.representativeFrame(in: scene.frames) else {
+                return scene.id
+            }
+            let thumbnailKey = frame.thumbnailDataURL.map {
+                "\($0.count):\($0.prefix(24))"
+            } ?? ""
+            return [scene.id, frame.id, frame.updatedAt ?? "",
+                    frame.imageUrl ?? "", thumbnailKey].joined(separator: "|")
+        }.joined(separator: ";")
+    }
+
+    /// Scene-listen viser et faktisk kompositt (original + strøk) når det
+    /// finnes. Gamle/blanke thumbnailUrl-data brukes bare som siste fallback.
+    private func rebuildSceneThumbnails() async {
+        let scenes = board.scenes
+        let representatives = scenes.compactMap {
+            StoryboardPreviewPolicy.representativeFrame(in: $0.frames)
+        }
+        await FrameImageCache.prefetchPreviewSources(frames: representatives)
+        guard !Task.isCancelled else { return }
+
+        var rendered: [String: UIImage] = [:]
+        for scene in scenes {
+            guard let frame = StoryboardPreviewPolicy.representativeFrame(in: scene.frames) else {
+                continue
+            }
+            if let image = FrameRenderService.image(for: frame, maxWidth: 248)
+                ?? StoryboardPreviewPolicy.sourceURLs(for: frame).lazy.compactMap({
+                    FrameImageCache.image(for: $0)
+                }).first {
+                rendered[scene.id] = image
+            }
+        }
+        guard !Task.isCancelled else { return }
+        let activeSceneIds = Set(scenes.map(\.id))
+        var next = sceneThumbnailImages.filter { activeSceneIds.contains($0.key) }
+        for (sceneId, image) in rendered { next[sceneId] = image }
+        sceneThumbnailImages = next
+    }
+
+    private func scenePreviewFallbackImage(for scene: SceneSummary) -> UIImage? {
+        guard let frame = StoryboardPreviewPolicy.representativeFrame(in: scene.frames) else {
+            return nil
+        }
+        return StoryboardPreviewPolicy.sourceURLs(for: frame).lazy.compactMap {
+            FrameImageCache.image(for: $0)
+        }.first
+    }
+
     // MARK: SCENES
 
     private var scenesColumn: some View {
@@ -942,14 +1018,22 @@ struct NativeBoardView: View {
                         Button { board.selectedSceneIndex = index } label: {
                             HStack(spacing: 10) {
                                 Group {
-                                    if let image = decodeDataURL(scene.frames.compactMap(\.thumbnailDataURL).first) {
+                                    if let image = sceneThumbnailImages[scene.id]
+                                        ?? scenePreviewFallbackImage(for: scene) {
                                         Image(uiImage: image).resizable().scaledToFill()
                                     } else {
-                                        Color.white.opacity(0.06)
+                                        ZStack {
+                                            Color.white.opacity(0.06)
+                                            ProgressView().controlSize(.mini).tint(BoardBrand.dim)
+                                        }
                                     }
                                 }
                                 .frame(width: 62, height: 40)
                                 .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityIdentifier("scene-thumbnail-\(scene.id)")
+                                .accessibilityLabel("Scene-thumbnail \(index + 1)")
+                                .accessibilityValue(sceneThumbnailImages[scene.id] == nil ? "loading" : "loaded")
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(String(format: "%02d", index + 1))
                                         .font(.system(size: 10, weight: .bold)).foregroundStyle(BoardBrand.label)
@@ -3796,6 +3880,29 @@ enum PresentationFooter {
     }
 }
 
+/// Felles preview-policy for scene-listen. Bildekilden kommer før en lagret
+/// thumbnail fordi eldre iPad-versjoner kunne lagre en hvit thumbnail før
+/// det eksterne originalbildet var ferdig lastet.
+enum StoryboardPreviewPolicy {
+    static func sourceURLs(for frame: FrameSummary) -> [String] {
+        var seen = Set<String>()
+        return [frame.imageUrl, frame.thumbnailDataURL]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+
+    static func representativeFrame(in frames: [FrameSummary]) -> FrameSummary? {
+        frames.first(where: hasVisualContent) ?? frames.first
+    }
+
+    private static func hasVisualContent(_ frame: FrameSummary) -> Bool {
+        if !sourceURLs(for: frame).isEmpty { return true }
+        guard let strokes = frame.strokesJSON?.trimmingCharacters(in: .whitespacesAndNewlines)
+        else { return false }
+        return !strokes.isEmpty && strokes != "[]"
+    }
+}
+
 // Minne-cache for remote panel-bilder (B2 download-stier) — de synkrone
 // render-veiene (canvas, celler, eksport) leser herfra; async prefetch
 // fyller den. dataURL-er dekodes direkte og trenger ikke cachen.
@@ -3811,9 +3918,21 @@ enum FrameImageCache {
 
     /// Hent remote-bilder som mangler i cachen (før render/eksport).
     static func prefetch(frames: [FrameSummary]) async {
-        for frame in frames {
-            guard let imageUrl = frame.imageUrl, !imageUrl.hasPrefix("data:"),
-                  images[imageUrl] == nil else { continue }
+        await prefetch(urls: frames.compactMap(\.imageUrl))
+    }
+
+    /// Scene-preview trenger også remote thumbnailUrl for eldre/drawn-only
+    /// frames. Kildene dedupliseres før sekvensiell nedlasting.
+    static func prefetchPreviewSources(frames: [FrameSummary]) async {
+        await prefetch(urls: frames.flatMap(StoryboardPreviewPolicy.sourceURLs(for:)))
+    }
+
+    private static func prefetch(urls: [String]) async {
+        var seen = Set<String>()
+        for imageUrl in urls where !imageUrl.hasPrefix("data:")
+            && seen.insert(imageUrl).inserted {
+            guard !Task.isCancelled else { return }
+            guard images[imageUrl] == nil else { continue }
             if let data = await RoleRoomAPIClient.shared.fetchRemoteImageData(path: imageUrl),
                let image = UIImage(data: data) {
                 images[imageUrl] = image
