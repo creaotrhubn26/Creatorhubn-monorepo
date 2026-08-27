@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { rasterizeMockup } from './mockupRaster';
 import {
   listProjects,
+  replaceProjectsFromCloud,
   duplicateProject,
   renameProject,
   setProjectStatus,
@@ -18,6 +19,7 @@ import {
   type MockupDoc,
   type MockupProjectStatus,
 } from './mockupStudioModel';
+import { syncCloudMockupProjects } from '../../services/cloudMockupProjectsService';
 
 const C = {
   bg: '#0b0d13',
@@ -41,7 +43,21 @@ export function ProjectsView({ onClose, onOpen, onNew, onGallery }: { onClose: (
   const [showArchive, setShowArchive] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState('');
+  const [syncing, setSyncing] = useState(false);
   const refresh = () => setProjects(listProjects());
+
+  useEffect(() => {
+    let active = true;
+    setSyncing(true);
+    void syncCloudMockupProjects(listProjects())
+      .then((merged) => {
+        if (!active) return;
+        replaceProjectsFromCloud(merged);
+        setProjects(listProjects());
+      })
+      .finally(() => { if (active) setSyncing(false); });
+    return () => { active = false; };
+  }, []);
 
   const visible = projects.filter((p) => (showArchive ? p.status === 'archived' : p.status !== 'archived') && p.name.toLowerCase().includes(query.toLowerCase()));
 
@@ -52,6 +68,7 @@ export function ProjectsView({ onClose, onOpen, onNew, onGallery }: { onClose: (
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
         <button onClick={onClose} style={ghost}>← Home</button>
         <span style={{ fontWeight: 700, fontSize: 16 }}>Mockup Studio</span>
+        {syncing && <span style={{ fontSize: 12, color: C.inkSoft }}>Synkroniserer prosjekter…</span>}
         <div style={{ flex: 1 }} />
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Søk i prosjekter…" style={{ ...input, width: 220 }} />
         {onGallery && <button onClick={onGallery} style={ghost}>✦ Design-galleri</button>}

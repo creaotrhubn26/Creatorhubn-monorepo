@@ -18,6 +18,7 @@
 import type { FrameVariant } from '../demo-studio/deviceFrames';
 import { MEDSIDE_COLORS, MEDSIDE_LOGO_DATA_URL } from './medsideBrand';
 import { isIconId, iconToSvg } from './mockupIcons';
+import { deleteCloudMockupProject, scheduleCloudMockupProject } from '../../services/cloudMockupProjectsService';
 
 /**
  * Device-varianter = demo-studio-rammene (iphone/ipad/ipad_landscape/macbook)
@@ -2191,6 +2192,12 @@ export function listProjects(): MockupDoc[] {
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
+/** Skriv resultatet av en vellykket toveis skyfletting tilbake lokalt. */
+export function replaceProjectsFromCloud(projects: MockupDoc[]): void {
+  const valid = projects.map(validDoc).filter((d): d is MockupDoc => d !== null);
+  writeProjects(valid.sort((a, b) => b.updatedAt - a.updatedAt));
+}
+
 /** Autolagre: upsert gjeldende dokument inn i prosjekt-registeret + peker. */
 export function saveDoc(d: MockupDoc): void {
   d.updatedAt = Date.now();
@@ -2199,6 +2206,7 @@ export function saveDoc(d: MockupDoc): void {
   if (i >= 0) list[i] = d; else list.unshift(d);
   writeProjects(list);
   try { localStorage.setItem(CURRENT_KEY, d.id); } catch { /* ignore */ }
+  scheduleCloudMockupProject(d);
 }
 
 /** Last gjeldende prosjekt (peker → nyeste ikke-arkiverte → null). */
@@ -2243,17 +2251,26 @@ export function duplicateProject(id: string): MockupDoc | null {
 export function renameProject(id: string, name: string): void {
   const list = readProjects();
   const i = list.findIndex((x) => x.id === id);
-  if (i >= 0) { list[i].name = name; writeProjects(list); }
+  if (i < 0) return;
+  list[i].name = name;
+  list[i].updatedAt = Date.now();
+  writeProjects(list);
+  scheduleCloudMockupProject(list[i]);
 }
 
 export function setProjectStatus(id: string, status: MockupProjectStatus): void {
   const list = readProjects();
   const i = list.findIndex((x) => x.id === id);
-  if (i >= 0) { list[i].status = status; writeProjects(list); }
+  if (i < 0) return;
+  list[i].status = status;
+  list[i].updatedAt = Date.now();
+  writeProjects(list);
+  scheduleCloudMockupProject(list[i]);
 }
 
 export function deleteProject(id: string): void {
   writeProjects(readProjects().filter((x) => x.id !== id));
+  void deleteCloudMockupProject(id);
 }
 
 // ── Brand kits (gjenbrukbar merkevare §1.3) ────────────────────────────────
