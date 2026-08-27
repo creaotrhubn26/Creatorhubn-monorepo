@@ -793,6 +793,16 @@ final class CompositionRenderTests: XCTestCase {
             "drawn")
     }
 
+    func testRemoteImageCacheKeyIsStableAcrossProcesses() {
+        let path = "/api/role-room/storage/files/ac743acd-8fd6-44f9-81bf-8721d7bce6ec/download"
+
+        XCTAssertEqual(
+            RoleRoomAPIClient.stableImageCacheKey(for: path),
+            "img-894a7dc12200c4c92334f705d11b0c5c236527feaf781f31f3057e9715e04286")
+        XCTAssertNotEqual(RoleRoomAPIClient.stableImageCacheKey(for: path),
+                          RoleRoomAPIClient.stableImageCacheKey(for: path + "-other"))
+    }
+
     /// Tekst-annotasjoner skal med i eksport-render (CoreText-pass) —
     /// bildet med annotasjon må skille seg fra bildet uten.
     func testExportIncludesTextAnnotations() throws {

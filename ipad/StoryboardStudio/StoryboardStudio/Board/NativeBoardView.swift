@@ -335,8 +335,8 @@ struct NativeBoardView: View {
     @State private var newSceneTitle = ""
     @State private var showNewScenePrompt = false
     @State private var sceneThumbnailImages: [String: UIImage] = [:]
+    @State private var shotPreviewImages: [String: UIImage] = [:]
     @State private var retainedEditableBaseImages: [String: UIImage] = [:]
-    @State private var activeImageLoadTask: Task<Void, Never>?
     @Environment(\.dismiss) private var dismiss
 
     enum InitialSheet { case script, shotList, animatic, review }
@@ -385,6 +385,8 @@ struct NativeBoardView: View {
         }
         .task { await board.reload() }
         .task(id: scenePreviewTaskKey) { await rebuildSceneThumbnails() }
+        .task(id: shotPreviewTaskKey) { await rebuildShotPreviews() }
+        .task(id: activeRasterTaskKey) { await loadActiveRaster() }
         .onChange(of: board.activeFrameIndex) { loadActiveFrameIntoCanvas() }
         .onChange(of: board.selectedSceneIndex) { board.activeFrameIndex = 0; loadActiveFrameIntoCanvas() }
         .onChange(of: board.scenes.count) { loadActiveFrameIntoCanvas() }
@@ -439,7 +441,6 @@ struct NativeBoardView: View {
     private func loadActiveFrameIntoCanvas() {
         flushPendingStrokes()
         autosyncTask?.cancel()
-        activeImageLoadTask?.cancel()
         canvasState.contentSize = board.frame.map {
             CGSize(width: $0.drawingWidth, height: $0.drawingHeight)
         }
@@ -471,21 +472,6 @@ struct NativeBoardView: View {
            let image = FrameImageCache.image(for: frame.imageUrl) {
             retainedEditableBaseImages[frame.id] = image
         }
-        // Remote panel-bilde: hent async og re-render kun dersom samme
-        // frame/URL fortsatt er aktiv når forespørselen fullføres.
-        if let imageUrl = board.frame?.imageUrl, !imageUrl.hasPrefix("data:"),
-           FrameImageCache.images[imageUrl] == nil, let frame = board.frame {
-            let frameId = frame.id
-            activeImageLoadTask = Task {
-                await FrameImageCache.prefetch(frames: [frame])
-                guard !Task.isCancelled,
-                      let image = FrameImageCache.images[imageUrl] else { return }
-                retainedEditableBaseImages[frameId] = image
-                guard board.frame?.id == frameId,
-                      board.frame?.imageUrl == imageUrl else { return }
-                applyUnderlay(to: renderer)
-            }
-        }
         perspectiveMode = board.frame?.perspectiveMode ?? 0
         vanishingPoints = (board.frame?.vanishingPoints ?? []).compactMap { pair in
             pair.count == 2 ? CGPoint(x: pair[0], y: pair[1]) : nil
@@ -501,6 +487,28 @@ struct NativeBoardView: View {
             loadedRevision = -1
             scheduleAutosync()
         }
+    }
+
+    /// Én SwiftUI-eid lastesyklus per aktiv rasterkilde. Den gamle ad-hoc
+    /// Task-en kunne bli kansellert etter at en parallell thumbnail-request
+    /// hadde fylt cachen, men før Metal fikk den nye basen. Resultatet var et
+    /// hvitt aktivt shot selv om previewen til venstre var synlig.
+    private var activeRasterTaskKey: String {
+        guard let scene = board.scene, let frame = board.frame else { return "none" }
+        return [scene.id, frame.id, frame.imageUrl ?? "none"].joined(separator: "|")
+    }
+
+    private func loadActiveRaster() async {
+        guard let frame = board.frame,
+              let imageUrl = frame.imageUrl else { return }
+        let frameId = frame.id
+        await FrameImageCache.prefetch(frames: [frame])
+        guard !Task.isCancelled,
+              board.frame?.id == frameId,
+              board.frame?.imageUrl == imageUrl,
+              let image = FrameImageCache.image(for: imageUrl) else { return }
+        retainedEditableBaseImages[frameId] = image
+        applyUnderlay(to: renderer)
     }
 
     /// Gjenopprett en historikk-versjon: vanlig strokes-lagring (dagens
@@ -617,6 +625,15 @@ struct NativeBoardView: View {
         target?.setEditableBase(cgImage: background.editableBase)
         target?.setUnderlay(cgImage: background.referenceUnderlay,
                             opacity: background.referenceOpacity)
+        // Shot-radene flytter den samme renderer-instansen mellom SwiftUI-
+        // celler. Dersom drawable-størrelsen er uendret, kalles ikke alltid
+        // layoutSubviews på nytt. Bygg derfor den nye rasterbasen direkte inn
+        // i eksisterende Metal-akkumulator i stedet for å vente på layout.
+        if let target, let texture = target.committedTexture {
+            let contentWidth = max(1, board.frame?.drawingWidth ?? 1920)
+            let scale = Double(texture.width) / contentWidth
+            target.rebuild(strokes: canvasState.visibleStrokes(), scale: scale)
+        }
         canvasState.backgroundRevision += 1
     }
 
@@ -658,6 +675,12 @@ struct NativeBoardView: View {
             if onionMode == 3, let older = render(current - 2) { onionLayers.append((older, 0.2)) }
         }
         let opacity = board.frame?.underlayOpacity ?? 0.4
+        // Ingen kompositt nødvendig: behold originalens faktiske piksler.
+        // Tidligere ble også rene panelbilder først rasterisert til 1120 px,
+        // som gjorde 1B og øvrige shots uklare i Retina/fullskjerm.
+        if let frameImage, underlayImage == nil, onionLayers.isEmpty {
+            return (frameImage.cgImage, 1)
+        }
         switch (underlayImage, onionLayers.isEmpty && frameImage == nil) {
         case (nil, true):
             return (nil, 0)
@@ -665,7 +688,9 @@ struct NativeBoardView: View {
             return (underlay.cgImage, opacity)
         default:
             // Komponer på papirfarget flate (samlet opacity 1 i shaderen).
-            let width = 1120.0
+            let logicalWidth = board.frame?.drawingWidth ?? 1920
+            let sourceWidth = Double(frameImage?.cgImage?.width ?? 0)
+            let width = min(4096, max(logicalWidth, max(sourceWidth, 1120)))
             let height = width * (board.frame.map { $0.drawingHeight / max(1, $0.drawingWidth) } ?? 9.0 / 16)
             let size = CGSize(width: width, height: height)
             let format = UIGraphicsImageRendererFormat()
@@ -995,6 +1020,72 @@ struct NativeBoardView: View {
         return StoryboardPreviewPolicy.sourceURLs(for: frame).lazy.compactMap {
             FrameImageCache.image(for: $0)
         }.first
+    }
+
+    /// Alle shot-rader i valgt scene får en fulloppløselig preview. Dette er
+    /// separat fra 280 px thumbnailDataURL, som kun er en rask placeholder.
+    private var shotPreviewTaskKey: String {
+        guard let scene = board.scene else { return "none" }
+        let frameKeys = scene.frames.map { frame in
+            [frame.id, frame.updatedAt ?? "", frame.imageUrl ?? "",
+             String(frame.strokesJSON?.count ?? 0)].joined(separator: "|")
+        }
+        return ([scene.id] + frameKeys).joined(separator: ";")
+    }
+
+    private func rebuildShotPreviews() async {
+        guard let scene = board.scene else {
+            shotPreviewImages = [:]
+            return
+        }
+        let sceneId = scene.id
+        let frames = scene.frames
+        await FrameImageCache.prefetch(frames: frames)
+        guard !Task.isCancelled, board.scene?.id == sceneId else { return }
+
+        var rendered: [String: UIImage] = [:]
+        for frame in frames {
+            let previewWidth = min(1920, max(1280, CGFloat(frame.drawingWidth)))
+            if let image = FrameRenderService.image(for: frame, maxWidth: previewWidth)
+                ?? FrameImageCache.image(for: frame.imageUrl) {
+                rendered[frame.id] = image
+            }
+        }
+        guard !Task.isCancelled, board.scene?.id == sceneId else { return }
+        shotPreviewImages = rendered
+
+        // Dersom shot-prefetchen vant løpet mot aktiv-frame-tasken, må Metal
+        // likevel få den fulloppløselige basen med én gang.
+        if let active = board.frame,
+           let image = FrameImageCache.image(for: active.imageUrl) {
+            retainedEditableBaseImages[active.id] = image
+            applyUnderlay(to: renderer)
+        }
+    }
+
+    private func fullResolutionRaster(for frame: FrameSummary) -> UIImage? {
+        FrameImageCache.image(for: frame.imageUrl)
+            ?? retainedEditableBaseImages[frame.id]
+    }
+
+    @ViewBuilder
+    private func inactiveShotPreview(frame: FrameSummary) -> some View {
+        if let image = shotPreviewImages[frame.id]
+            ?? fullResolutionRaster(for: frame) {
+            Image(uiImage: image).resizable().interpolation(.high).scaledToFill()
+        } else if let placeholder = decodeDataURL(frame.thumbnailDataURL) {
+            ZStack {
+                Image(uiImage: placeholder).resizable().interpolation(.high).scaledToFill()
+                if frame.imageUrl != nil {
+                    ProgressView().controlSize(.small).tint(BoardBrand.accent)
+                        .padding(7).background(.black.opacity(0.48), in: Capsule())
+                }
+            }
+        } else {
+            Color(white: 0.925)
+            Text(frame.imageUrl == nil ? "Trykk for å tegne" : "Laster original …")
+                .font(.system(size: 11)).foregroundStyle(Color(white: 0.6))
+        }
     }
 
     // MARK: SCENES
@@ -1638,13 +1729,8 @@ struct NativeBoardView: View {
             ZStack {
                 if isActive, renderer != nil {
                     activeCanvas(frame: frame)
-                } else if let image = decodeDataURL(frame.thumbnailDataURL)
-                    ?? FrameImageCache.image(for: frame.imageUrl) {
-                    Image(uiImage: image).resizable().scaledToFill()
                 } else {
-                    Color(white: 0.925)
-                    Text("Trykk for å tegne")
-                        .font(.system(size: 11)).foregroundStyle(Color(white: 0.6))
+                    inactiveShotPreview(frame: frame)
                 }
             }
             .aspectRatio(CGFloat(frame.drawingWidth / max(1, frame.drawingHeight)), contentMode: .fit)
@@ -1716,10 +1802,32 @@ struct NativeBoardView: View {
     private func activeCanvas(frame: FrameSummary) -> some View {
         GeometryReader { geo in
             let scale = geo.size.width / CGFloat(max(1, frame.drawingWidth))
+            let rasterPending = frame.imageUrl != nil
+                && fullResolutionRaster(for: frame) == nil
             ZStack(alignment: .topTrailing) {
                 PencilCanvasView(state: canvasState, renderer: renderer)
                     .background(Color(red: 0.992, green: 0.992, blue: 0.984))
-                    .allowsHitTesting(boardTool == .draw || boardTool == .eraser)
+                    .allowsHitTesting(!rasterPending
+                        && (boardTool == .draw || boardTool == .eraser))
+                // Den lille server-thumbnailen er kun en eksplisitt
+                // lasteplaceholder. Tegning/visking aktiveres først når den
+                // fulloppløselige, redigerbare rasterbasen er i Metal.
+                if rasterPending {
+                    ZStack {
+                        if let placeholder = decodeDataURL(frame.thumbnailDataURL) {
+                            Image(uiImage: placeholder)
+                                .resizable().interpolation(.high).scaledToFill()
+                        }
+                        ProgressView("Laster original …")
+                            .font(.system(size: 11, weight: .semibold))
+                            .tint(BoardBrand.accent)
+                            .padding(9)
+                            .background(.black.opacity(0.58), in: Capsule())
+                            .foregroundStyle(.white)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped().allowsHitTesting(false)
+                }
                 // Tekst-annotasjoner: Metal tegner ikke tekst — SwiftUI-overlay
                 // i samme håndskrift som web (Caveat ↔ Bradley Hand).
                 ForEach(canvasState.strokes.filter {

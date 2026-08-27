@@ -330,11 +330,16 @@ final class MetalCanvasUIView: UIView {
         let height = Int(bounds.height * scale)
         guard width > 0, height > 0 else { return }
         metalLayer.drawableSize = CGSize(width: width, height: height)
-        if let renderer, renderer.committedTexture?.width != width {
+        if let renderer,
+           renderer.committedTexture?.width != width
+            || renderer.committedTexture?.height != height {
             renderer.resizeCanvas(width: width, height: height)
             renderer.rebuild(strokes: state?.visibleStrokes() ?? [], scale: scale * contentScale)
-            redraw()
         }
+        // Canvasen flyttes mellom shot-radene. En ny CAMetalLayer kan ha
+        // samme størrelse som forrige og trenger likevel sin første present.
+        // Uten denne redraw-en var 1B/1C hvite til neste resize eller strøk.
+        redraw()
     }
 
     private func strokePoint(from touch: UITouch) -> StrokePoint {
