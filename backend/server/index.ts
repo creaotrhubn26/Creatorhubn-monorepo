@@ -70,6 +70,7 @@ import { startInProcessCleanupLoop as startRoleRoomStorageCleanupLoop } from "./
 import { registerRoleRoomPublishedGuidesRoutes } from "./role-room-published-guides-routes.js";
 import { registerRoleRoomDemoAssetsRoutes } from "./role-room-demo-assets-routes.js";
 import { registerRoleRoomMockupProjectsRoutes } from "./role-room-mockup-projects-routes.js";
+import { registerRoleRoomMockupStudioRoutes } from "./role-room-mockup-studio-routes.js";
 import { registerRoleRoomInfographicSignalsRoutes } from "./role-room-infographic-signals-routes.js";
 import { registerRoleRoomInfographicLibraryRoutes } from "./role-room-infographic-library-routes.js";
 import { registerRoleRoomThumbnailTemplatesRoutes } from "./role-room-thumbnail-templates-routes.js";
@@ -2500,6 +2501,9 @@ registerRoleRoomByoStorageRoutes(app, { pool, activeSessions });
 startRoleRoomStorageCleanupLoop(pool);
 registerRoleRoomPublishedGuidesRoutes(app, { activeSessions, pool });
 registerRoleRoomDemoAssetsRoutes(app, { pool, activeSessions });
+// Collaboration routes go first because they provide a backwards-compatible
+// superset of the owner-only project endpoints.
+registerRoleRoomMockupStudioRoutes(app, { pool, activeSessions });
 registerRoleRoomMockupProjectsRoutes(app, { pool, activeSessions });
 registerRoleRoomInfographicSignalsRoutes(app, { pool, activeSessions });
 registerRoleRoomInfographicLibraryRoutes(app, { pool, activeSessions });

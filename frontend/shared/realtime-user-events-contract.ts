@@ -117,6 +117,13 @@ export type UserEvent =
       timestamp: string;
     }
   | {
+      kind: "mockup.review-updated";
+      projectId: string;
+      versionId: string | null;
+      reason: "review" | "version" | "comment" | "resolution" | "decision" | "presence";
+      timestamp: string;
+    }
+  | {
       kind: "capture.activity-recorded";
       projectId: string | null;
       sessionId: string;

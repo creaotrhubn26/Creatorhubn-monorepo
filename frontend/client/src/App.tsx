@@ -253,6 +253,7 @@ const EditingVendorWorkspaceShell = React.lazy(() => import('@/components/univer
 import ImpersonationBanner from '@/components/admin/ImpersonationBanner';
 const AudioReviewInvitePage = React.lazy(() => import('@/pages/audio-review-invite'));
 const AudioReviewSharedPage = React.lazy(() => import('@/pages/audio-review-shared'));
+const MockupReviewPage = React.lazy(() => import('@/pages/mockup-review'));
 const WarmupGuidePage = React.lazy(() => import('@/pages/warmup-guide'));
 const ChatGuidePage = React.lazy(() => import('@/pages/chat-guide'));
 const ChatActionsGuidePage = React.lazy(() => import('@/pages/chat-actions-guide'));
@@ -942,6 +943,7 @@ function App() {
                   <Route path="/showcase/music_producer" component={MusicShowcaseRouteWrapper as React.ComponentType<any>} />
                   <Route path="/audio-review/invite/:token" component={AudioReviewInvitePage as React.ComponentType<any>} />
                   <Route path="/audio-review/shared/:token" component={AudioReviewSharedPage as React.ComponentType<any>} />
+                  <Route path="/mockup-review/:token" component={MockupReviewPage as React.ComponentType<any>} />
                   <Route path="/guide/oppvarming" component={WarmupGuidePage as React.ComponentType<any>} />
                   <Route path="/guide/chat" component={ChatGuidePage as React.ComponentType<any>} />
                   <Route path="/guide/actions" component={ChatActionsGuidePage as React.ComponentType<any>} />
