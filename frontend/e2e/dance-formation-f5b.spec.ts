@@ -30,6 +30,37 @@ test.describe('dance — F5-B implementations (no stubs)', () => {
     await expect(page.getByTestId('formation-canvas')).toBeVisible();
   });
 
+  test('3D-labeler gir verken React #426 eller duplikat Three.js', async ({ page }) => {
+    const pageErrors: string[] = [];
+    const consoleWarnings: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'warning' || message.type() === 'error') {
+        consoleWarnings.push(message.text());
+      }
+    });
+
+    await page.reload();
+    await expect(page.getByTestId('formation-toolbar')).toBeVisible({ timeout: 15_000 });
+    const formationSaved = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT'
+        && response.url().includes('/api/dance/formations'),
+    );
+    await page.getByTestId('roster-item-dnc-1').click();
+    await formationSaved;
+    await expect(page.getByText('Lagret', { exact: true }).first()).toBeVisible();
+    await page.getByTestId('formation-stage-mode-3d').click();
+    await expect(page.getByTestId('formation-stage-3d')).toBeVisible();
+    await page.getByTestId('formation-show-ids').click();
+    const dancerToggle = page.locator('[data-testid^="formation-dancer-toggle-"]').first();
+    await dancerToggle.click();
+    await dancerToggle.click();
+
+    expect(pageErrors.join('\n')).not.toMatch(/#426|suspended while responding/i);
+    expect(consoleWarnings.join('\n')).not.toMatch(/Multiple instances of Three\.js/i);
+  });
+
   test('F5-13B: curve-overlay rendres når 2+ dancers + 2+ formasjoner', async ({ page }) => {
     // Plasser to dancers på aktiv formasjon (formasjon 1)
     await page.getByTestId('roster-item-dnc-1').click();

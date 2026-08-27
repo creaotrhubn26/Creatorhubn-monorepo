@@ -7,6 +7,14 @@ import {
   persistAuthSession,
 } from './auth-session-store.js';
 import {
+  consumeOauthState,
+  consumeOauthTransfer,
+  deleteOauthTransfer,
+  loadOauthTransfer,
+  persistOauthState,
+  persistOauthTransfer,
+} from './role-room-oauth-store.js';
+import {
   getGoogleWorkspaceOauthConfig,
   resolveGoogleWorkspaceRequestOrigin,
   type GoogleWorkspaceOauthApp,
@@ -166,7 +174,9 @@ const CREATORHUB_YOUTUBE_SCOPES = [
 // Slice 9X.80 — bump fra 15 → 60 min så brukere som blir avbrutt
 // (telefon, tab-switch, nettverk-glitch) ikke får "utløpt"-feil.
 const CREATORHUB_GOOGLE_STATE_TTL_MS = 60 * 60 * 1000;
+const CREATORHUB_GOOGLE_TRANSFER_TTL_MS = 10 * 60 * 1000;
 const CREATORHUB_GOOGLE_OAUTH_APP: GoogleWorkspaceOauthApp = 'creatorhub';
+const CREATORHUB_ADMIN_ROLES = new Set(['admin', 'super_admin', 'academy_admin']);
 
 const creatorHubGoogleOauthStateStore = new Map<string, CreatorHubGoogleOauthState>();
 const creatorHubGoogleTransferStore = new Map<string, CreatorHubGoogleTransferPayload>();
@@ -307,18 +317,24 @@ function buildCreatorHubGoogleReturnUrl(
 }
 
 function pruneExpiredCreatorHubGoogleState(): void {
-  const expiresBefore = Date.now() - CREATORHUB_GOOGLE_STATE_TTL_MS;
+  const now = Date.now();
+  const stateExpiresBefore = now - CREATORHUB_GOOGLE_STATE_TTL_MS;
+  const transferExpiresBefore = now - CREATORHUB_GOOGLE_TRANSFER_TTL_MS;
   for (const [key, value] of creatorHubGoogleOauthStateStore.entries()) {
-    if (value.createdAt < expiresBefore) {
+    if (value.createdAt < stateExpiresBefore) {
       creatorHubGoogleOauthStateStore.delete(key);
     }
   }
 
   for (const [key, value] of creatorHubGoogleTransferStore.entries()) {
-    if (value.createdAt < expiresBefore) {
+    if (value.createdAt < transferExpiresBefore) {
       creatorHubGoogleTransferStore.delete(key);
     }
   }
+}
+
+function canManageAnotherGoogleConnection(role: string | null | undefined): boolean {
+  return CREATORHUB_ADMIN_ROLES.has(String(role ?? '').trim().toLowerCase());
 }
 
 async function resolveSessionFromBearer(
@@ -745,20 +761,36 @@ export function createCreatorHubGoogleRouter(
       // Workspace-bunten i samme request) — kun gyldig i link-modus.
       const wantsYoutube = mode === 'link' && req.body?.youtube === true;
       const requestUser = await resolveOptionalRequestUser(req, pool, activeSessions);
-      const targetConnectionUserId = readStringValue(req.body?.targetConnectionUserId)
-        ?? requestUser?.userId
-        ?? null;
-      const targetConnectionEmail = readStringValue(req.body?.targetConnectionEmail)
-        ?? requestUser?.email
-        ?? null;
-
-      if (mode === 'link' && !targetConnectionUserId) {
+      if (mode === 'link' && !requestUser) {
         res.status(401).json({ error: 'Du må være logget inn for å koble Google Workspace.' });
         return;
       }
 
+      const requestedTargetUserId = readStringValue(req.body?.targetConnectionUserId);
+      const canManageAnotherUser = canManageAnotherGoogleConnection(requestUser?.role);
+      if (
+        mode === 'link'
+        && requestedTargetUserId
+        && requestedTargetUserId !== requestUser?.userId
+        && !canManageAnotherUser
+      ) {
+        res.status(403).json({ error: 'Du kan bare koble Google Workspace til din egen bruker.' });
+        return;
+      }
+
+      const targetConnectionUserId = mode === 'link'
+        ? (canManageAnotherUser ? requestedTargetUserId : null) ?? requestUser!.userId
+        : null;
+      const targetConnectionEmail = mode === 'link'
+        ? (
+            canManageAnotherUser
+              ? readStringValue(req.body?.targetConnectionEmail) ?? requestUser!.email
+              : requestUser!.email
+          )
+        : null;
+
       const stateId = `chg_${crypto.randomUUID()}`;
-      creatorHubGoogleOauthStateStore.set(stateId, {
+      const oauthState: CreatorHubGoogleOauthState = {
         mode,
         returnPath: sanitizeReturnPath(req.body?.returnPath),
         browserOrigin: sanitizeBrowserOrigin(req.body?.browserOrigin) ?? resolveRequestOrigin(req),
@@ -768,7 +800,20 @@ export function createCreatorHubGoogleRouter(
         targetConnectionEmail,
         youtube: wantsYoutube,
         createdAt: Date.now(),
-      });
+      };
+      const statePersisted = await persistOauthState(
+        pool,
+        stateId,
+        oauthState,
+        new Date(oauthState.createdAt + CREATORHUB_GOOGLE_STATE_TTL_MS),
+      );
+      if (!statePersisted) {
+        res.status(503).json({
+          error: 'Google-innlogging er midlertidig utilgjengelig. Prøv igjen om litt.',
+        });
+        return;
+      }
+      creatorHubGoogleOauthStateStore.set(stateId, oauthState);
 
       const oauthClient = new google.auth.OAuth2(
         config.clientId!,
@@ -828,13 +873,16 @@ export function createCreatorHubGoogleRouter(
 
     const stateId = readStringValue(req.query.state);
     const code = readStringValue(req.query.code);
-    const oauthState = stateId ? creatorHubGoogleOauthStateStore.get(stateId) : null;
+    const oauthState = stateId
+      ? await consumeOauthState<CreatorHubGoogleOauthState>(pool, stateId)
+      : null;
+    if (stateId) {
+      creatorHubGoogleOauthStateStore.delete(stateId);
+    }
     if (!oauthState || !code) {
       redirectWithError(oauthState?.returnPath ?? fallbackReturnPath, 'Ugyldig CreatorHub Google-forespørsel', oauthState?.browserOrigin);
       return;
     }
-
-    creatorHubGoogleOauthStateStore.delete(stateId!);
 
     try {
       // Slice 9X.61 — Bygg redirect_uri fra oauthState.browserOrigin (lagret
@@ -911,7 +959,7 @@ export function createCreatorHubGoogleRouter(
         await persistAuthSession(pool, sessionToken, sessionData);
 
         const transferId = crypto.randomUUID();
-        creatorHubGoogleTransferStore.set(transferId, {
+        const transferPayload: CreatorHubGoogleTransferPayload = {
           mode: 'login',
           createdAt: Date.now(),
           createdByUserId: resolvedUser.userId,
@@ -929,7 +977,22 @@ export function createCreatorHubGoogleRouter(
           googleEmail,
           googleSubject,
           profile: googleProfile,
-        });
+        };
+        const transferPersisted = await persistOauthTransfer(
+          pool,
+          transferId,
+          transferPayload,
+          new Date(transferPayload.createdAt + CREATORHUB_GOOGLE_TRANSFER_TTL_MS),
+        );
+        if (!transferPersisted) {
+          redirectWithError(
+            oauthState.returnPath,
+            'Kunne ikke fullføre Google-innloggingen. Prøv igjen.',
+            oauthState.browserOrigin,
+          );
+          return;
+        }
+        creatorHubGoogleTransferStore.set(transferId, transferPayload);
 
         res.redirect(
           buildCreatorHubGoogleReturnUrl(
@@ -970,7 +1033,7 @@ export function createCreatorHubGoogleRouter(
       }
 
       const transferId = crypto.randomUUID();
-      creatorHubGoogleTransferStore.set(transferId, {
+      const transferPayload: CreatorHubGoogleTransferPayload = {
         mode: 'link',
         createdAt: Date.now(),
         createdByUserId: oauthState.createdByUserId ?? null,
@@ -982,7 +1045,22 @@ export function createCreatorHubGoogleRouter(
         youtube: oauthState.youtube === true,
         profile: googleProfile,
         tokenBundle,
-      });
+      };
+      const transferPersisted = await persistOauthTransfer(
+        pool,
+        transferId,
+        transferPayload,
+        new Date(transferPayload.createdAt + CREATORHUB_GOOGLE_TRANSFER_TTL_MS),
+      );
+      if (!transferPersisted) {
+        redirectWithError(
+          oauthState.returnPath,
+          'Kunne ikke fullføre Google-tilkoblingen. Prøv igjen.',
+          oauthState.browserOrigin,
+        );
+        return;
+      }
+      creatorHubGoogleTransferStore.set(transferId, transferPayload);
 
       res.redirect(
         buildCreatorHubGoogleReturnUrl(
@@ -1043,7 +1121,12 @@ export function createCreatorHubGoogleRouter(
         return;
       }
 
-      const payload = creatorHubGoogleTransferStore.get(transferId);
+      const cachedPayload = creatorHubGoogleTransferStore.get(transferId);
+      let payload = cachedPayload
+        ?? await loadOauthTransfer<CreatorHubGoogleTransferPayload>(pool, transferId);
+      if (payload?.mode === 'login') {
+        payload = await consumeOauthTransfer<CreatorHubGoogleTransferPayload>(pool, transferId);
+      }
       if (!payload) {
         res.status(404).json({ error: 'Google-overføringen er utløpt eller brukt' });
         return;
@@ -1051,6 +1134,19 @@ export function createCreatorHubGoogleRouter(
 
       if (payload.mode === 'login') {
         creatorHubGoogleTransferStore.delete(transferId);
+      } else {
+        const requestUser = await resolveOptionalRequestUser(req, pool, activeSessions);
+        if (!requestUser) {
+          res.status(401).json({ error: 'Du må være logget inn for å hente Google-koblingen.' });
+          return;
+        }
+        if (!payload.createdByUserId || payload.createdByUserId !== requestUser.userId) {
+          res.status(403).json({ error: 'Google-koblingen tilhører en annen innlogget bruker.' });
+          return;
+        }
+        if (!cachedPayload) {
+          creatorHubGoogleTransferStore.set(transferId, payload);
+        }
       }
 
       res.json({
@@ -1073,16 +1169,33 @@ export function createCreatorHubGoogleRouter(
 
   router.post('/link', async (req: Request, res: Response) => {
     try {
+      pruneExpiredCreatorHubGoogleState();
       const requestUser = await resolveOptionalRequestUser(req, pool, activeSessions);
+      if (!requestUser) {
+        res.status(401).json({ error: 'Du må være logget inn for å fullføre Google-koblingen.' });
+        return;
+      }
+
       const transferId = readStringValue(req.body?.transferId);
       if (!transferId) {
         res.status(400).json({ error: 'transferId er påkrevd' });
         return;
       }
 
-      const payload = creatorHubGoogleTransferStore.get(transferId);
+      let payload = creatorHubGoogleTransferStore.get(transferId);
+      if (!payload) {
+        payload = await loadOauthTransfer<CreatorHubGoogleTransferPayload>(pool, transferId) ?? undefined;
+        if (payload) {
+          creatorHubGoogleTransferStore.set(transferId, payload);
+        }
+      }
       if (!payload || payload.mode !== 'link' || !payload.tokenBundle) {
         res.status(404).json({ error: 'Fant ikke en gyldig CreatorHub Google-kobling å fullføre' });
+        return;
+      }
+
+      if (!payload.createdByUserId || payload.createdByUserId !== requestUser.userId) {
+        res.status(403).json({ error: 'Google-koblingen tilhører en annen innlogget bruker.' });
         return;
       }
 
@@ -1090,6 +1203,13 @@ export function createCreatorHubGoogleRouter(
       const roleRoomEmail = payload.targetConnectionEmail ?? requestUser?.email ?? null;
       if (!userId) {
         res.status(401).json({ error: 'Fant ikke brukeren som skal kobles til Google Workspace' });
+        return;
+      }
+      if (
+        userId !== requestUser.userId
+        && !canManageAnotherGoogleConnection(requestUser.role)
+      ) {
+        res.status(403).json({ error: 'Du kan bare koble Google Workspace til din egen bruker.' });
         return;
       }
 
@@ -1104,6 +1224,7 @@ export function createCreatorHubGoogleRouter(
       });
 
       creatorHubGoogleTransferStore.delete(transferId);
+      await deleteOauthTransfer(pool, transferId);
 
       res.json({
         success: true,

@@ -45,7 +45,7 @@ export async function persistOauthState(
   stateId: string,
   payload: unknown,
   expiresAt: Date,
-): Promise<void> {
+): Promise<boolean> {
   try {
     await ensureSchema(pool);
     await pool.query(
@@ -55,8 +55,31 @@ export async function persistOauthState(
          SET payload = EXCLUDED.payload, expires_at = EXCLUDED.expires_at`,
       [stateId, JSON.stringify(payload), expiresAt],
     );
+    return true;
   } catch (err) {
     console.error("[oauth-store] persistOauthState failed:", err);
+    return false;
+  }
+}
+
+/** Atomically reads and removes a one-time OAuth state. */
+export async function consumeOauthState<T>(
+  pool: Pool,
+  stateId: string,
+): Promise<T | null> {
+  try {
+    await ensureSchema(pool);
+    const r = await pool.query(
+      `DELETE FROM role_room_oauth_pending_state
+        WHERE state_id = $1 AND expires_at > NOW()
+        RETURNING payload`,
+      [stateId],
+    );
+    if (r.rows.length === 0) return null;
+    return r.rows[0].payload as T;
+  } catch (err) {
+    console.error("[oauth-store] consumeOauthState failed:", err);
+    return null;
   }
 }
 
@@ -96,7 +119,7 @@ export async function persistOauthTransfer(
   transferId: string,
   payload: unknown,
   expiresAt: Date,
-): Promise<void> {
+): Promise<boolean> {
   try {
     await ensureSchema(pool);
     await pool.query(
@@ -106,8 +129,31 @@ export async function persistOauthTransfer(
          SET payload = EXCLUDED.payload, expires_at = EXCLUDED.expires_at`,
       [transferId, JSON.stringify(payload), expiresAt],
     );
+    return true;
   } catch (err) {
     console.error("[oauth-store] persistOauthTransfer failed:", err);
+    return false;
+  }
+}
+
+/** Atomically reads and removes a one-time OAuth transfer. */
+export async function consumeOauthTransfer<T>(
+  pool: Pool,
+  transferId: string,
+): Promise<T | null> {
+  try {
+    await ensureSchema(pool);
+    const r = await pool.query(
+      `DELETE FROM role_room_oauth_pending_transfer
+        WHERE transfer_id = $1 AND expires_at > NOW()
+        RETURNING payload`,
+      [transferId],
+    );
+    if (r.rows.length === 0) return null;
+    return r.rows[0].payload as T;
+  } catch (err) {
+    console.error("[oauth-store] consumeOauthTransfer failed:", err);
+    return null;
   }
 }
 

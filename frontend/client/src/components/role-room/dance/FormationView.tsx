@@ -1336,8 +1336,7 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
             formations={formations}
             dancers={dancers}
             hiddenDancerIds={hiddenDancerIds}
-            // Å vise en skjult danser mounter en ny <Dancer3D> med drei-<Text>,
-            // som suspender på fonten. Samme #426-felle som stage-mode under.
+            // Hold tunge 3D-oppdateringer lavt prioritert.
             onToggleHidden={(id) => React.startTransition(() => setHiddenDancerIds((prev) => {
               const next = new Set(prev);
               if (next.has(id)) next.delete(id); else next.add(id);
@@ -1347,17 +1346,12 @@ export const FormationView = React.forwardRef<FormationViewHandle, FormationView
             // showPaths går ikke til StageMap3D — mounter ingen <Text>, trenger ingen transition.
             onToggleShowPaths={() => setShowPaths((v) => !v)}
             showIds={showIds}
-            // Slår på en ekstra <Text> per danser.
+            // Slår på en ekstra sprite-label per danser.
             onToggleShowIds={() => React.startTransition(() => setShowIds((v) => !v))}
             stageOpacity={stageOpacity}
             onStageOpacityChange={setStageOpacity}
             stageMode={stageMode}
-            // #426-fiks: 3D-stage (StageMap3D → drei-<Text>/font) suspender ved
-            // mount. Uten transition mountes Suspense-grensen i SAMME synkrone
-            // klikk-oppdatering → React tillater ikke fallback ved synkron input
-            // → «#426: suspended while responding to synchronous input» (fanges
-            // av ErrorBoundary, men blanker 3D-visningen). startTransition lar
-            // oppdateringen suspende og beholder 2D til fonten er lastet.
+            // Sprite-labelene suspenderer ikke; transition holder GPU-mounten responsiv.
             onStageModeChange={(m) => React.startTransition(() => setStageMode(m))}
             onChange={updateActiveFormation}
           />

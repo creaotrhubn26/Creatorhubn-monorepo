@@ -14,16 +14,67 @@
 
 import { danceFlowColors } from './danceFlowTheme';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
-import React, { Suspense } from 'react';
+import React from 'react';
 import { Box } from '@mui/material';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Grid, Text } from '@react-three/drei';
+import { OrbitControls, Grid } from '@react-three/drei';
+import { CanvasTexture, SRGBColorSpace } from 'three';
 import type { Dancer, Formation } from './formationTypes';
 
 const STAGE_WIDTH_M = 12;
 const STAGE_DEPTH_M = 8;
 const PUCK_HEIGHT_M = 1.7;     // Avatar-høyde (representativ)
 const PUCK_RADIUS_M = 0.35;
+
+interface CanvasLabelProps {
+  text: string;
+  position: [number, number, number];
+  fontSize: number;
+  color?: string;
+  outlineColor?: string;
+}
+
+/** Sprite-label som ikke suspenderer R3F-roten mens en font lastes. */
+const CanvasLabel: React.FC<CanvasLabelProps> = ({
+  text,
+  position,
+  fontSize,
+  color = '#ffffff',
+  outlineColor = 'rgba(0,0,0,0.9)',
+}) => {
+  const texture = React.useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 256;
+    const context = canvas.getContext('2d');
+    if (context) {
+      context.font = '700 128px system-ui, sans-serif';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.lineJoin = 'round';
+      context.lineWidth = 18;
+      context.strokeStyle = outlineColor;
+      context.strokeText(text, canvas.width / 2, canvas.height / 2);
+      context.fillStyle = color;
+      context.fillText(text, canvas.width / 2, canvas.height / 2);
+    }
+    const nextTexture = new CanvasTexture(canvas);
+    nextTexture.colorSpace = SRGBColorSpace;
+    return nextTexture;
+  }, [color, outlineColor, text]);
+
+  React.useEffect(() => () => texture.dispose(), [texture]);
+  const width = Math.max(
+    fontSize * 1.8,
+    Math.min(fontSize * text.length * 0.72, fontSize * 8),
+  );
+
+  return (
+    <sprite position={position} scale={[width, fontSize * 1.25, 1]}>
+      <spriteMaterial map={texture} transparent depthWrite={false} toneMapped={false} />
+    </sprite>
+  );
+};
 
 export interface StageMap3DProps {
   formation: Formation;
@@ -78,28 +129,21 @@ const Dancer3D: React.FC<DancerProps3D> = ({ dancer, x, y, facing = 0, isLead, s
         <meshBasicMaterial color="#ffffff" opacity={0.6} transparent />
       </mesh>
       {/* Initialer over hodet */}
-      <Text
+      <CanvasLabel
+        text={dancer.initials || dancer.name.slice(0, 2).toUpperCase()}
         position={[0, PUCK_HEIGHT_M / 2 + 0.6, 0]}
         fontSize={0.32}
         color="#ffffff"
-        anchorX="center"
-        anchorY="middle"
-        outlineWidth={0.02}
         outlineColor="#000000"
-      >
-        {dancer.initials || dancer.name.slice(0, 2).toUpperCase()}
-      </Text>
+      />
       {/* Dancer-id om Show IDs er på */}
       {showId ? (
-        <Text
+        <CanvasLabel
+          text={dancer.id}
           position={[0, PUCK_HEIGHT_M / 2 + 1.05, 0]}
           fontSize={0.18}
           color="rgba(255,255,255,0.65)"
-          anchorX="center"
-          anchorY="middle"
-        >
-          {dancer.id}
-        </Text>
+        />
       ) : null}
     </group>
   );
@@ -125,28 +169,30 @@ const StageFloor: React.FC = () => (
       infiniteGrid={false}
     />
     {/* Upstage / Downstage / Left / Right markører */}
-    <Text position={[0, 0.05, -STAGE_DEPTH_M / 2 - 0.4]} fontSize={0.32} color="#a78bfa" anchorX="center">
-      UPSTAGE
-    </Text>
-    <Text position={[0, 0.05, STAGE_DEPTH_M / 2 + 0.4]} fontSize={0.32} color="#a78bfa" anchorX="center">
-      DOWNSTAGE
-    </Text>
-    <Text
+    <CanvasLabel
+      text="UPSTAGE"
+      position={[0, 0.2, -STAGE_DEPTH_M / 2 - 0.4]}
+      fontSize={0.32}
+      color="#a78bfa"
+    />
+    <CanvasLabel
+      text="DOWNSTAGE"
+      position={[0, 0.2, STAGE_DEPTH_M / 2 + 0.4]}
+      fontSize={0.32}
+      color="#a78bfa"
+    />
+    <CanvasLabel
+      text="LEFT"
       position={[-STAGE_WIDTH_M / 2 - 0.6, 0.05, 0]}
       fontSize={0.28}
       color="#a78bfa"
-      rotation={[0, Math.PI / 2, 0]}
-    >
-      LEFT
-    </Text>
-    <Text
+    />
+    <CanvasLabel
+      text="RIGHT"
       position={[STAGE_WIDTH_M / 2 + 0.6, 0.05, 0]}
       fontSize={0.28}
       color="#a78bfa"
-      rotation={[0, -Math.PI / 2, 0]}
-    >
-      RIGHT
-    </Text>
+    />
   </>
 );
 
@@ -176,31 +222,30 @@ export function StageMap3D({
         overflow: 'hidden',
       }}
     >
-      {/* ErrorBoundary på DOM-nivå rundt <Canvas> — en DOM-fallback inne i
-          R3F-treet (rundt Suspense) ville krasje reconcileren. CH-ARCH-003. */}
+      {/* ErrorBoundary må ligge på DOM-nivå rundt <Canvas>; en DOM-fallback
+          inne i R3F-treet ville krasjet reconcileren. CH-ARCH-003. */}
       <ErrorBoundary componentName="dance-stage-map-3d">
-      <Canvas
-        shadows
-        camera={{ position: [8, 9, 12], fov: 35 }}
-        gl={{ antialias: true, alpha: false }}
-      >
-        <color attach="background" args={['#050608']} />
-        <ambientLight intensity={0.42} />
-        <directionalLight
-          position={[6, 10, 6]}
-          intensity={0.85}
-          castShadow
-          shadow-mapSize-width={1024}
-          shadow-mapSize-height={1024}
-          shadow-camera-near={0.5}
-          shadow-camera-far={40}
-          shadow-camera-left={-10}
-          shadow-camera-right={10}
-          shadow-camera-top={10}
-          shadow-camera-bottom={-10}
-        />
-        <pointLight position={[-4, 5, -4]} intensity={0.25} color="#8b5cf6" />
-        <Suspense fallback={null}>
+        <Canvas
+          shadows
+          camera={{ position: [8, 9, 12], fov: 35 }}
+          gl={{ antialias: true, alpha: false }}
+        >
+          <color attach="background" args={['#050608']} />
+          <ambientLight intensity={0.42} />
+          <directionalLight
+            position={[6, 10, 6]}
+            intensity={0.85}
+            castShadow
+            shadow-mapSize-width={1024}
+            shadow-mapSize-height={1024}
+            shadow-camera-near={0.5}
+            shadow-camera-far={40}
+            shadow-camera-left={-10}
+            shadow-camera-right={10}
+            shadow-camera-top={10}
+            shadow-camera-bottom={-10}
+          />
+          <pointLight position={[-4, 5, -4]} intensity={0.25} color="#8b5cf6" />
           <StageFloor />
           {visiblePositions.map((p) => {
             const dancer = dancersById.get(p.dancerId);
@@ -218,17 +263,16 @@ export function StageMap3D({
               />
             );
           })}
-        </Suspense>
-        <OrbitControls
-          enablePan
-          enableZoom
-          enableRotate
-          maxPolarAngle={Math.PI / 2.2}
-          minDistance={5}
-          maxDistance={28}
-          target={[0, 0.5, 0]}
-        />
-      </Canvas>
+          <OrbitControls
+            enablePan
+            enableZoom
+            enableRotate
+            maxPolarAngle={Math.PI / 2.2}
+            minDistance={5}
+            maxDistance={28}
+            target={[0, 0.5, 0]}
+          />
+        </Canvas>
       </ErrorBoundary>
     </Box>
   );
