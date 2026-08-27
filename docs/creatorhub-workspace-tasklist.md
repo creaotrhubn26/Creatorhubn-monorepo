@@ -1,7 +1,17 @@
 # CreatorHub Workspace – tasklist
 
-Grunnlag: `acc78aec3` på `main`
-Arbeidsgren: `p1/realtime-scaling`
+Grunnlag: P0/P1 på `main` fra `93208107f`, med fremover-integrerte Storyboard-hotfikser fra `e67e1bdb7`.
+
+## Utrullingsstatus 2026-08-27
+
+- [x] Dedikert migreringsjobb har kjørt `0452` under advisory DB-lock: 1 migrasjon brukt, 692 hoppet over.
+- [x] Backend og frontend ble verifisert på samme P0/P1-commit før en separat Storyboard-hotfiks deployet fra sidegren.
+- [x] Render Key Value er konfigurert, distribuert fanout er obligatorisk, og to-prosess Redis-testen er grønn.
+- [x] Capture build `1787807757` er signert og lastet opp til App Store Connect/TestFlight.
+- [ ] Deploy den fremover-integrerte `main`-commiten gjennom migrering → Render → health/smoke.
+- [ ] Skaler `creatorhub-backend` fra én til to instanser og bekreft begge instanser med Redis-fanout klar.
+- [ ] Kjør legitimt autentisert produksjonskall som bekrefter ticket HTTP 201; uautentisert produksjonskall gir forventet 401.
+- [ ] Håndhev ticket-kompatibel Capture-minimumsversjon før `REALTIME_ALLOW_LEGACY_TOKEN=false`.
 
 ## Ferdig i denne endringen
 
@@ -38,6 +48,6 @@ Arbeidsgren: `p1/realtime-scaling`
 - [ ] Når migrasjon `0451` er bekreftet i alle miljøer, fjern midlertidige runtime `CREATE/ALTER`-guards.
 - [ ] Migrer gjenværende data fra `legacy.projects` og kompatibilitets-metadata til kanoniske tabeller, med backfill og avstemmingsrapport.
 - [ ] Kjør en rollebasert staging-matrise med eier, editor, viewer og utenforstående på et faktisk prosjekt.
-- [ ] Kjør migrasjon `0452_realtime_user_event_tickets.sql` før den nye backenden aktiveres; ticket-endepunktet feiler kontrollert med 503 til tabellen finnes.
+- [x] Kjør migrasjon `0452_realtime_user_event_tickets.sql` før den nye backenden aktiveres. Fullført i workflow-run `33015690144`.
 - [x] Koble produksjonsbackenden til eksisterende administrert Render Key Value i samme miljø/region; verifisert uten å logge eller commite tilkoblingsstrengen.
 - [ ] Fjern serverens midlertidige `?token=`-kompatibilitet for bruker-event-WebSocket etter at minimum støttet Capture-appversjon bruker ticket-handshake.

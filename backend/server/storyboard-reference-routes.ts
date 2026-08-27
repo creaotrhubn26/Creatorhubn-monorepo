@@ -60,12 +60,10 @@ export function registerStoryboardReferenceRoutes(
             .json({ error: "reference_library_migration_required" });
           return;
         }
-        res
-          .status(500)
-          .json({
-            error: "reference_library_failed",
-            detail: "internal_error",
-          });
+        res.status(500).json({
+          error: "reference_library_failed",
+          detail: "internal_error",
+        });
       }
     },
   );
@@ -122,17 +120,39 @@ export function registerStoryboardReferenceRoutes(
       const reviewerId = (req as AuthedRequest).userId;
       const approved = parsed.data.approvalStatus === "approved";
       const locked = approved ? (parsed.data.locked ?? true) : false;
-      const result = await pool.query(
-        `UPDATE storyboard_reference_assets
-            SET approval_status = $1,
-                locked = $2,
-                approved_by = CASE WHEN $1 = 'approved' THEN $3 ELSE NULL END,
-                approved_at = CASE WHEN $1 = 'approved' THEN NOW() ELSE NULL END,
-                updated_at = NOW()
-          WHERE id = $4 AND project_id = $5
-          RETURNING *`,
-        [parsed.data.approvalStatus, locked, reviewerId, assetId, projectId],
-      );
+      let result;
+      try {
+        result = await pool.query(
+          `UPDATE storyboard_reference_assets
+              SET approval_status = $1::varchar,
+                  locked = $2::boolean,
+                  approved_by = CASE
+                    WHEN $1::varchar = 'approved' THEN $3::varchar
+                    ELSE NULL
+                  END,
+                  approved_at = CASE
+                    WHEN $1::varchar = 'approved' THEN NOW()
+                    ELSE NULL
+                  END,
+                  updated_at = NOW()
+            WHERE id = $4::varchar AND project_id = $5::varchar
+            RETURNING *`,
+          [parsed.data.approvalStatus, locked, reviewerId, assetId, projectId],
+        );
+      } catch (error) {
+        const code = (error as { code?: string } | null)?.code ?? "unknown";
+        console.error("[storyboard-reference] review update failed", {
+          code,
+          projectId,
+        });
+        if (!res.headersSent && !res.writableEnded) {
+          res.status(code === "57014" ? 503 : 500).json({
+            error: "reference_review_failed",
+            detail: code === "57014" ? "database_timeout" : "internal_error",
+          });
+        }
+        return;
+      }
       if (!result.rows[0]) {
         res.status(404).json({ error: "reference_not_found" });
         return;
