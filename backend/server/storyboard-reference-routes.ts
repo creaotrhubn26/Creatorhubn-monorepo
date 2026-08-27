@@ -184,13 +184,13 @@ export function registerStoryboardReferenceRoutes(
         const result = await pool.query(
           `INSERT INTO storyboard_reference_assets
              (id, project_id, pack_id, pack_version, entity_type, entity_id,
-              scene_ids, name, description, reference_image_id, storage_file_id,
+              scene_ids, name, description, reference_image_id,
               approval_status, locked, metadata, created_by, created_at, updated_at)
            VALUES
              ($1::varchar, $2::varchar, 'project-production-bible', 'v1',
               $3::varchar, NULLIF($4::varchar, ''), $5::jsonb, $6::varchar,
-              $7::text, $8::varchar, $9::uuid, 'draft', FALSE,
-              $10::jsonb, $11::varchar, NOW(), NOW())
+              $7::text, $8::varchar, 'draft', FALSE,
+              $9::jsonb, $10::varchar, NOW(), NOW())
            RETURNING *`,
           [
             assetId,
@@ -201,7 +201,6 @@ export function registerStoryboardReferenceRoutes(
             parsed.data.name,
             parsed.data.description,
             storageFileReferenceId(parsed.data.storageFileId),
-            parsed.data.storageFileId,
             JSON.stringify({
               source: "storyboard_room_upload",
               requiresHumanApproval: true,

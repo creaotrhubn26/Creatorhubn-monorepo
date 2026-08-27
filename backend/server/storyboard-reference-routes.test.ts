@@ -182,7 +182,8 @@ describe("storyboard reference create route", () => {
       "owner-1",
       "project-other",
     ]);
-    expect(query.mock.calls[1][0]).toContain("storage_file_id");
+    expect(query.mock.calls[1][0]).toContain("reference_image_id");
+    expect(query.mock.calls[1][0]).not.toContain("storage_file_id");
     expect(query.mock.calls[1][1][4]).toBe('["scene-2","scene-5"]');
   });
 
