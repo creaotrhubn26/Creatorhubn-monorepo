@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import AVKit
+import PhotosUI
 
 /// Artist-first AI-flate for aktivt shot. AI lager et nytt bildeunderlag;
 /// Pencil-strøkene ligger fortsatt urørt over bildet i den eksisterende
@@ -205,7 +206,8 @@ struct AIStoryboardStudioView: View {
         .sheet(isPresented: $showReferenceLibrary) {
             StoryboardReferenceLibraryView(
                 projectId: projectId,
-                activeSceneID: sceneId)
+                activeSceneID: sceneId,
+                scenes: board.scenes)
         }
         #if DEBUG
         .onAppear {
@@ -1411,12 +1413,15 @@ private struct StoryboardPromptInspectorView: View {
 private struct StoryboardReferenceLibraryView: View {
     let projectId: String
     let activeSceneID: String
+    let scenes: [SceneSummary]
 
     @Environment(\.dismiss) private var dismiss
+    @State private var projectName = "Produksjon"
     @State private var assets: [StoryboardReferenceAsset] = []
     @State private var isLoading = true
     @State private var reviewingAssetID: String?
     @State private var errorMessage: String?
+    @State private var showCreateReference = false
 
     private let columns = [GridItem(.adaptive(minimum: 320), spacing: 16)]
 
@@ -1430,12 +1435,21 @@ private struct StoryboardReferenceLibraryView: View {
                             .tint(BoardBrand.accent)
                             .frame(maxWidth: .infinity, minHeight: 240)
                     } else if assets.isEmpty {
-                        ContentUnavailableView(
-                            "Ingen referansepakke",
-                            systemImage: "photo.stack",
-                            description: Text("TROLL-pakken installeres av prosjektets backend-migrasjon."))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity, minHeight: 300)
+                        VStack(spacing: 14) {
+                            ContentUnavailableView(
+                                "Ingen produksjonsreferanser",
+                                systemImage: "photo.stack",
+                                description: Text("Legg inn karakterer, locations, garderobe og rekvisitter for dette prosjektet."))
+                            Button {
+                                showCreateReference = true
+                            } label: {
+                                Label("Legg til første referanse", systemImage: "plus")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(BoardBrand.accent)
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 300)
                     } else {
                         LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
                             ForEach(assets) { asset in
@@ -1467,18 +1481,37 @@ private struct StoryboardReferenceLibraryView: View {
                     .disabled(isLoading || reviewingAssetID != nil)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showCreateReference = true
+                    } label: {
+                        Label("Ny referanse", systemImage: "plus")
+                    }
+                    .disabled(isLoading || reviewingAssetID != nil)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button("Ferdig") { dismiss() }
                 }
             }
         }
         .task { await load() }
+        .sheet(isPresented: $showCreateReference) {
+            StoryboardReferenceCreateView(
+                projectId: projectId,
+                projectName: projectName,
+                scenes: scenes,
+                activeSceneID: activeSceneID
+            ) { created in
+                assets.insert(created, at: 0)
+            }
+        }
         .accessibilityIdentifier("storyboard.reference-library")
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label("TROLL · PRODUCTION BIBLE V1", systemImage: "lock.shield.fill")
+                Label("\(projectName.uppercased()) · PRODUCTION BIBLE V1",
+                      systemImage: "lock.shield.fill")
                     .font(.caption.bold()).kerning(0.7)
                     .foregroundStyle(BoardBrand.accent)
                 Spacer()
@@ -1589,13 +1622,21 @@ private struct StoryboardReferenceLibraryView: View {
         errorMessage = nil
         #if DEBUG
         if ProcessInfo.processInfo.environment["SB_REFERENCE_LIBRARY_DEMO"] == "1" {
+            projectName = ProcessInfo.processInfo.environment["SB_REFERENCE_PROJECT_NAME"]
+                ?? "TROLL"
             assets = Self.demoAssets()
             isLoading = false
+            if ProcessInfo.processInfo.environment["SB_REFERENCE_CREATE_DEMO"] == "1" {
+                showCreateReference = true
+            }
             return
         }
         #endif
         do {
-            assets = try await RoleRoomAPIClient.shared.fetchStoryboardReferences(projectId: projectId)
+            let snapshot = try await RoleRoomAPIClient.shared.fetchStoryboardReferences(
+                projectId: projectId)
+            projectName = snapshot.projectName
+            assets = snapshot.assets
         } catch {
             assets = []
             errorMessage = error.localizedDescription
@@ -1681,6 +1722,343 @@ private struct StoryboardReferenceLibraryView: View {
         return rows.reversed().compactMap { try? StoryboardReferenceAsset(dictionary: $0) }
     }
     #endif
+}
+
+private struct StoryboardReferenceCreateView: View {
+    let projectId: String
+    let projectName: String
+    let scenes: [SceneSummary]
+    let activeSceneID: String
+    let onCreated: (StoryboardReferenceAsset) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var previewImage: UIImage?
+    @State private var name = ""
+    @State private var referenceDescription = ""
+    @State private var entityType = "character"
+    @State private var entityID = ""
+    @State private var selectedSceneIDs: Set<String>
+    @State private var isLoadingPhoto = false
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    init(
+        projectId: String,
+        projectName: String,
+        scenes: [SceneSummary],
+        activeSceneID: String,
+        onCreated: @escaping (StoryboardReferenceAsset) -> Void
+    ) {
+        self.projectId = projectId
+        self.projectName = projectName
+        self.scenes = scenes
+        self.activeSceneID = activeSceneID
+        self.onCreated = onCreated
+        _selectedSceneIDs = State(
+            initialValue: activeSceneID.isEmpty ? [] : [activeSceneID])
+    }
+
+    private var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canSave: Bool {
+        previewImage != nil && !trimmedName.isEmpty && !isSaving && !isLoadingPhoto
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    projectBanner
+                    photoPicker
+                    metadataSection
+                    sceneSection
+                    if let errorMessage {
+                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.orange.opacity(0.1),
+                                        in: RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+                .padding(22)
+            }
+            .background(BoardBrand.chrome)
+            .navigationTitle("Ny produksjonsreferanse")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(BoardBrand.panel, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Avbryt") { dismiss() }
+                        .disabled(isSaving)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        Task { await save() }
+                    } label: {
+                        if isSaving {
+                            ProgressView().tint(.white)
+                        } else {
+                            Text("Lagre utkast")
+                        }
+                    }
+                    .disabled(!canSave)
+                    .accessibilityIdentifier("storyboard.reference.create.save")
+                }
+            }
+        }
+        .interactiveDismissDisabled(isSaving)
+        .onChange(of: pickerItem) { _, item in
+            Task { await loadPhoto(item) }
+        }
+        .accessibilityIdentifier("storyboard.reference.create")
+    }
+
+    private var projectBanner: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(projectName.uppercased(), systemImage: "folder.fill")
+                .font(.caption.bold()).kerning(0.7)
+                .foregroundStyle(BoardBrand.accent)
+            Text("Bygg prosjektets visuelle hukommelse")
+                .font(.title3.bold()).foregroundStyle(.white)
+            Text("Referansen lagres som utkast. Den påvirker ikke AI-generering før du godkjenner og låser den i biblioteket.")
+                .font(.subheadline).foregroundStyle(BoardBrand.dim)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(BoardBrand.panel, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(BoardBrand.border))
+    }
+
+    private var photoPicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("REFERANSEBILDE")
+                .font(.caption.bold()).kerning(0.7)
+                .foregroundStyle(BoardBrand.label)
+            ZStack {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(BoardBrand.panel)
+                if let previewImage {
+                    Image(uiImage: previewImage)
+                        .resizable()
+                        .scaledToFit()
+                        .padding(8)
+                } else if isLoadingPhoto {
+                    ProgressView("Leser bilde …").tint(BoardBrand.accent)
+                } else {
+                    VStack(spacing: 10) {
+                        Image(systemName: "photo.badge.plus")
+                            .font(.system(size: 34))
+                        Text("Velg fra Bilder")
+                            .font(.headline)
+                        Text("JPEG, PNG eller HEIC konverteres til en kompakt privat JPEG.")
+                            .font(.caption)
+                            .foregroundStyle(BoardBrand.dim)
+                    }
+                    .foregroundStyle(.white)
+                }
+                PhotosPicker(selection: $pickerItem, matching: .images) {
+                    Color.clear
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Velg fra Bilder")
+                .accessibilityIdentifier("storyboard.reference.create.photo")
+            }
+            .frame(maxWidth: .infinity, minHeight: 250, maxHeight: 360)
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(BoardBrand.border))
+        }
+    }
+
+    private var metadataSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("PRODUKSJONSKONTEKST")
+                .font(.caption.bold()).kerning(0.7)
+                .foregroundStyle(BoardBrand.label)
+            TextField("Navn, f.eks. Nora · feltgarderobe", text: $name)
+                .referenceInputStyle()
+                .accessibilityIdentifier("storyboard.reference.create.name")
+            TextField("Hva må holdes visuelt stabilt?", text: $referenceDescription,
+                      axis: .vertical)
+                .lineLimit(3...6)
+                .referenceInputStyle()
+            HStack(spacing: 12) {
+                Picker("Type", selection: $entityType) {
+                    Label("Karakter", systemImage: "person.fill").tag("character")
+                    Label("Garderobe", systemImage: "tshirt.fill").tag("wardrobe")
+                    Label("Location", systemImage: "mappin.and.ellipse").tag("location")
+                    Label("Rekvisitt", systemImage: "shippingbox.fill").tag("prop")
+                    Label("Storyboard", systemImage: "rectangle.stack.fill").tag("storyboard")
+                }
+                .pickerStyle(.menu)
+                .tint(BoardBrand.accent)
+                .padding(.horizontal, 12).frame(minHeight: 48)
+                .background(BoardBrand.panel, in: RoundedRectangle(cornerRadius: 11))
+                TextField("Intern ID (valgfritt)", text: $entityID)
+                    .referenceInputStyle()
+            }
+        }
+    }
+
+    private var sceneSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("SCENEMAPPING")
+                    .font(.caption.bold()).kerning(0.7)
+                    .foregroundStyle(BoardBrand.label)
+                Spacer()
+                Text("\(selectedSceneIDs.count) valgt")
+                    .font(.caption.monospacedDigit()).foregroundStyle(BoardBrand.dim)
+            }
+            Text("Velg scenene der referansen skal arves. Uten valg gjelder den på prosjektnivå.")
+                .font(.caption).foregroundStyle(BoardBrand.dim)
+            if scenes.isEmpty {
+                Label("Prosjektet har ingen synkede scener ennå.",
+                      systemImage: "film.stack")
+                    .font(.subheadline).foregroundStyle(BoardBrand.dim)
+                    .padding(14)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(scenes.enumerated()), id: \.element.id) { index, scene in
+                        Button {
+                            toggleScene(scene.id)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: selectedSceneIDs.contains(scene.id)
+                                      ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(selectedSceneIDs.contains(scene.id)
+                                                     ? BoardBrand.accent : BoardBrand.dim)
+                                Text(String(format: "%02d", scene.sceneNumber ?? index + 1))
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(BoardBrand.dim)
+                                Text(scene.heading)
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(2)
+                                Spacer()
+                                if scene.id == activeSceneID {
+                                    Text("AKTIV")
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(BoardBrand.accent)
+                                }
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 12)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        if index < scenes.count - 1 {
+                            Divider().overlay(BoardBrand.border)
+                        }
+                    }
+                }
+                .background(BoardBrand.panel, in: RoundedRectangle(cornerRadius: 13))
+                .overlay(RoundedRectangle(cornerRadius: 13).stroke(BoardBrand.border))
+            }
+        }
+    }
+
+    private func toggleScene(_ sceneID: String) {
+        if selectedSceneIDs.contains(sceneID) {
+            selectedSceneIDs.remove(sceneID)
+        } else {
+            selectedSceneIDs.insert(sceneID)
+        }
+    }
+
+    @MainActor
+    private func loadPhoto(_ item: PhotosPickerItem?) async {
+        guard let item else { return }
+        isLoadingPhoto = true
+        errorMessage = nil
+        defer { isLoadingPhoto = false }
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data) else {
+                throw SyncError.malformed("referansebilde")
+            }
+            previewImage = image
+        } catch {
+            previewImage = nil
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func save() async {
+        guard let previewImage,
+              let jpegData = Self.compactJPEG(previewImage),
+              canSave else { return }
+        isSaving = true
+        errorMessage = nil
+        let orderedSceneIDs = scenes.map(\.id).filter(selectedSceneIDs.contains)
+        let cleanEntityID = entityID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanDescription = referenceDescription
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        var uploadedFileID: String?
+        do {
+            let fileID = try await RoleRoomAPIClient.shared.uploadStoryboardReferenceImage(
+                jpegData: jpegData,
+                name: "\(trimmedName).jpg",
+                projectId: projectId,
+                sceneId: orderedSceneIDs.first,
+                entityType: entityType,
+                entityId: cleanEntityID,
+                note: cleanDescription.isEmpty
+                    ? "Storyboard production reference"
+                    : cleanDescription)
+            uploadedFileID = fileID
+            let created = try await RoleRoomAPIClient.shared.createStoryboardReference(
+                projectId: projectId,
+                storageFileID: fileID,
+                name: trimmedName,
+                description: cleanDescription,
+                entityType: entityType,
+                entityID: cleanEntityID,
+                sceneIDs: orderedSceneIDs)
+            onCreated(created)
+            dismiss()
+        } catch {
+            if let uploadedFileID {
+                _ = await RoleRoomAPIClient.shared.deleteStorageFile(fileId: uploadedFileID)
+            }
+            errorMessage = error.localizedDescription
+            isSaving = false
+        }
+    }
+
+    private static func compactJPEG(_ image: UIImage) -> Data? {
+        let maxSide = 2_400.0
+        let scale = min(1, maxSide / max(image.size.width, image.size.height))
+        let size = CGSize(width: image.size.width * scale,
+                          height: image.size.height * scale)
+        guard size.width > 0, size.height > 0 else { return nil }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let scaled = UIGraphicsImageRenderer(size: size, format: format).image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        return scaled.jpegData(compressionQuality: 0.82)
+    }
+}
+
+private extension View {
+    func referenceInputStyle() -> some View {
+        self
+            .textFieldStyle(.plain)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 13)
+            .frame(minHeight: 48)
+            .background(BoardBrand.panel, in: RoundedRectangle(cornerRadius: 11))
+            .overlay(RoundedRectangle(cornerRadius: 11).stroke(BoardBrand.border))
+    }
 }
 
 private struct StoryboardReferenceImage: View {

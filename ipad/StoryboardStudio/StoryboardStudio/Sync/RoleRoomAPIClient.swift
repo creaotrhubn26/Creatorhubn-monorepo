@@ -240,6 +240,11 @@ struct StoryboardReferenceAsset: Identifiable, Sendable, Equatable {
     }
 }
 
+struct StoryboardReferenceLibrarySnapshot: Sendable, Equatable {
+    let projectName: String
+    let assets: [StoryboardReferenceAsset]
+}
+
 struct StoryboardPromptConstraint: Identifiable, Sendable, Equatable {
     let id: String
     let text: String
@@ -971,14 +976,47 @@ actor RoleRoomAPIClient {
                 .flatMap { try? StoryboardPromptEngineResult(dictionary: $0) })
     }
 
-    func fetchStoryboardReferences(projectId: String) async throws -> [StoryboardReferenceAsset] {
+    func fetchStoryboardReferences(projectId: String) async throws -> StoryboardReferenceLibrarySnapshot {
         let payload = try await getJSON(
             path: "/api/role-room/projects/\(projectId)/storyboard-references",
             query: [:])
         guard let rows = payload["data"] as? [[String: Any]] else {
             throw SyncError.malformed("storyboard-references")
         }
-        return rows.compactMap { try? StoryboardReferenceAsset(dictionary: $0) }
+        let assets = rows.compactMap { try? StoryboardReferenceAsset(dictionary: $0) }
+        let project = payload["project"] as? [String: Any]
+        let legacyProjectName = assets.contains { $0.packID == "troll-production-bible" }
+            ? "TROLL"
+            : "Produksjon"
+        return StoryboardReferenceLibrarySnapshot(
+            projectName: (project?["name"] as? String) ?? legacyProjectName,
+            assets: assets)
+    }
+
+    func createStoryboardReference(
+        projectId: String,
+        storageFileID: String,
+        name: String,
+        description: String,
+        entityType: String,
+        entityID: String,
+        sceneIDs: [String]
+    ) async throws -> StoryboardReferenceAsset {
+        let payload = try await sendJSONResponse(
+            path: "/api/role-room/projects/\(projectId)/storyboard-references",
+            method: "POST",
+            body: [
+                "storageFileId": storageFileID,
+                "name": name,
+                "description": description,
+                "entityType": entityType,
+                "entityId": entityID,
+                "sceneIds": sceneIDs,
+            ])
+        guard let row = payload["data"] as? [String: Any] else {
+            throw SyncError.malformed("storyboard-reference-create")
+        }
+        return try StoryboardReferenceAsset(dictionary: row)
     }
 
     func reviewStoryboardReference(
@@ -1605,6 +1643,31 @@ actor RoleRoomAPIClient {
             throw status == 401 ? SyncError.unauthenticated : SyncError.http(status)
         }
         return "/api/role-room/storage/files/\(fileId)/download"
+    }
+
+    /// Laster opp en privat, prosjektbundet JPEG og returnerer den ugjennomsiktige
+    /// storage-ID-en som referansebiblioteket kan validere på serveren.
+    func uploadStoryboardReferenceImage(
+        jpegData: Data,
+        name: String,
+        projectId: String,
+        sceneId: String?,
+        entityType: String,
+        entityId: String,
+        note: String
+    ) async throws -> String {
+        let downloadPath = try await uploadStorageImage(
+            jpegData: jpegData,
+            name: name,
+            projectId: projectId,
+            sceneId: sceneId,
+            attachedToEntityType: entityType,
+            attachedToEntityId: entityId,
+            attachmentNote: note)
+        guard let fileID = StorageDownloadPath.fileID(from: downloadPath) else {
+            throw SyncError.malformed("storyboard-reference-upload")
+        }
+        return fileID
     }
 
     struct StorageFileSummary: Identifiable, Sendable {

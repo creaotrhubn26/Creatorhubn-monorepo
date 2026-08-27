@@ -201,6 +201,46 @@ final class FeatureVisualQATests: XCTestCase {
         // Bevisst ingen bilde- eller videogenerering i denne testen.
     }
 
+    // Generisk prosjekt: åpne den native opprettelsesflaten, rediger metadata
+    // og scenemapping. Debug-harnessen gjør ingen nettverks- eller modellkall.
+    @MainActor
+    func testGenericProjectReferenceCreationSheet() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchEnvironment["SB_AI_VIDEO_DEMO"] = "1"
+        app.launchEnvironment["SB_REFERENCE_LIBRARY_DEMO"] = "1"
+        app.launchEnvironment["SB_REFERENCE_CREATE_DEMO"] = "1"
+        app.launchEnvironment["SB_REFERENCE_PROJECT_NAME"] = "NORDLYS"
+        app.launch()
+
+        XCTAssertTrue(
+            app.navigationBars["Ny produksjonsreferanse"].waitForExistence(timeout: 12),
+            "Opprettelsesflaten åpnet ikke")
+        XCTAssertTrue(app.staticTexts["NORDLYS"].exists)
+        XCTAssertTrue(app.staticTexts["Bygg prosjektets visuelle hukommelse"].exists)
+        XCTAssertTrue(app.buttons["storyboard.reference.create.photo"].exists)
+        XCTAssertTrue(app.staticTexts["1 valgt"].exists)
+
+        let name = app.textFields["storyboard.reference.create.name"]
+        XCTAssertTrue(name.exists)
+        name.tap()
+        name.typeText("Mina · vinterfrakk")
+
+        let activeScene = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", "SCENE 3 · INT. TOG — NATT")
+        ).firstMatch
+        XCTAssertTrue(activeScene.exists)
+        activeScene.tap()
+        XCTAssertTrue(app.staticTexts["0 valgt"].waitForExistence(timeout: 3))
+
+        let save = app.buttons["storyboard.reference.create.save"]
+        XCTAssertTrue(save.exists)
+        XCTAssertFalse(save.isEnabled, "Utkast skal kreve et referansebilde")
+        attachShot(app, name: "NORDLYS — ny prosjektbundet referanse")
+
+        // Bevisst ingen opplasting eller AI-generering i denne UI-testen.
+    }
+
     // Assets-fanen: visuell verifisering mot prod.
     @MainActor
     func testAssetsScreenshot() throws {
