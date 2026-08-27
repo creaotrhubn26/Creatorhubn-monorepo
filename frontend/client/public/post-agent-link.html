@@ -80,14 +80,19 @@
     .helper { color: #8674a8; font-size: 11px; margin-top: 24px; margin-bottom: 0; }
     .login-link {
       display: inline-block;
+      width: auto;
       margin-top: 12px;
       color: #fff;
       text-decoration: none;
       padding: 10px 20px;
       background: #a030c0;
+      border: none;
       border-radius: 6px;
       font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
     }
+    .login-link:disabled { opacity: 0.5; cursor: wait; }
   </style>
 </head>
 <body>
@@ -110,7 +115,8 @@
 
     <div id="unauthorized" style="display:none">
       <div class="alert error">Du må være logget inn på Role Room for å pare en Post Agent.</div>
-      <a href="/login?redirect=/link" class="login-link">Logg inn</a>
+      <button id="login-btn" type="button" class="login-link">Logg inn med Google</button>
+      <div id="login-alert"></div>
     </div>
 
     <p class="helper">Pairing-koden utløper etter 10 minutter. Du kan generere en ny direkte fra Post Agent.</p>
@@ -124,6 +130,15 @@
       var codeInput = document.getElementById('code');
       var btn = document.getElementById('pair-btn');
       var alertBox = document.getElementById('alert');
+      var loginBtn = document.getElementById('login-btn');
+      var loginAlert = document.getElementById('login-alert');
+      var googleIntentKeys = [
+        'rrGoogleStatus',
+        'rrGoogleTransfer',
+        'rrGoogleMode',
+        'rrGoogleMessage',
+        'rrGoogleTempToken',
+      ];
 
       // Pre-fill code from ?code= URL param
       var params = new URLSearchParams(window.location.search);
@@ -140,11 +155,11 @@
       });
 
       function getBearer() {
-        // Frontend stores its session token under 'creatorhub_auth_token'.
-        // The other keys are legacy/test-harness fallbacks.
+        // Role Room-tokenet må prioriteres på denne Role Room-flaten.
         var keys = [
-          'creatorhub_auth_token',
           'role_room_auth_token',
+          'creatorhub_auth_token',
+          'auth_token',
           'authToken',
           'sessionToken',
           'rr_session',
@@ -157,10 +172,180 @@
         return null;
       }
 
+      function setAlert(target, message, kind) {
+        target.innerHTML = '';
+        if (!message) return;
+        var node = document.createElement('div');
+        node.className = 'alert ' + kind;
+        node.textContent = message;
+        target.appendChild(node);
+      }
+
+      function getCleanReturnPath() {
+        var url = new URL(window.location.href);
+        googleIntentKeys.forEach(function(key) {
+          url.searchParams.delete(key);
+        });
+        return url.pathname + url.search + url.hash;
+      }
+
+      function clearGoogleIntent() {
+        window.history.replaceState({}, document.title, getCleanReturnPath());
+      }
+
+      function persistRoleRoomSession(user, token) {
+        if (!user || user.id == null || !token) {
+          throw new Error('Google-innloggingen returnerte ikke en gyldig Role Room-sesjon.');
+        }
+
+        var previousSession = {};
+        try {
+          previousSession = JSON.parse(window.localStorage.getItem('role_room_auth_session') || '{}');
+        } catch (_) {
+          previousSession = {};
+        }
+
+        var normalizedUser = {
+          id: user.id,
+          email: user.email || '',
+          role: user.role || 'user',
+          display_name: user.display_name || user.name || user.email || '',
+          name: user.name || user.display_name || user.email || '',
+          loginAs: user.loginAs,
+          requestedRole: user.requestedRole || null,
+        };
+        var session = {
+          adminUser: normalizedUser,
+          currentUserId: String(user.id),
+          sessionToken: token,
+          selectedProfession: user.requestedRole || previousSession.selectedProfession || null,
+          lastUpdated: new Date().toISOString(),
+        };
+
+        window.localStorage.setItem('role_room_auth_token', token);
+        window.localStorage.setItem('role_room_auth_session', JSON.stringify(session));
+      }
+
+      async function readJsonResponse(response) {
+        var payload = await response.json().catch(function() { return null; });
+        if (!response.ok) {
+          throw new Error(
+            (payload && (payload.message || payload.error))
+              || ('HTTP ' + response.status)
+          );
+        }
+        return payload;
+      }
+
+      async function completeGoogleIntent() {
+        var status = params.get('rrGoogleStatus');
+        if (!status) return;
+
+        loginBtn.disabled = true;
+        loginBtn.textContent = 'Fullfører innlogging…';
+        try {
+          if (status === 'error') {
+            throw new Error(
+              params.get('rrGoogleMessage')
+                || 'Google-innloggingen kunne ikke fullføres.'
+            );
+          }
+
+          var payload;
+          if (status === 'needs_2fa') {
+            var tempToken = params.get('rrGoogleTempToken');
+            if (!tempToken) {
+              throw new Error('Google-innloggingen mangler 2FA-token. Prøv på nytt.');
+            }
+            var twoFactorCode = window.prompt(
+              '2FA er aktivert. Skriv inn 6-sifret kode fra Authenticator-appen.'
+            );
+            if (!twoFactorCode || !twoFactorCode.trim()) {
+              throw new Error('2FA ble ikke fullført. Prøv å logge inn på nytt.');
+            }
+            payload = await readJsonResponse(await fetch('/api/auth/login/complete-2fa', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ tempToken: tempToken, code: twoFactorCode.trim() }),
+            }));
+            if (!payload || !payload.success || !payload.token || !payload.user) {
+              throw new Error((payload && payload.message) || 'Feil 2FA-kode. Prøv på nytt.');
+            }
+            persistRoleRoomSession(payload.user, payload.token);
+          } else {
+            var mode = params.get('rrGoogleMode');
+            var transferId = params.get('rrGoogleTransfer');
+            if (status !== 'success' || mode !== 'login' || !transferId) {
+              throw new Error('Google-innloggingen returnerte et ugyldig svar. Prøv på nytt.');
+            }
+            payload = await readJsonResponse(await fetch(
+              '/api/role-room/google/oauth/session-result/' + encodeURIComponent(transferId),
+              { credentials: 'include' }
+            ));
+            if (!payload || payload.mode !== 'login' || !payload.sessionToken || !payload.user) {
+              throw new Error('Google-innloggingen returnerte ikke en gyldig Role Room-sesjon.');
+            }
+            persistRoleRoomSession(payload.user, payload.sessionToken);
+          }
+
+          unauthorized.style.display = 'none';
+          form.style.display = 'block';
+          setAlert(alertBox, 'Innlogging fullført. Du kan nå pare Post Agent.', 'success');
+        } catch (error) {
+          form.style.display = 'none';
+          unauthorized.style.display = 'block';
+          setAlert(
+            loginAlert,
+            error instanceof Error ? error.message : 'Kunne ikke fullføre Google-innloggingen.',
+            'error'
+          );
+        } finally {
+          clearGoogleIntent();
+          loginBtn.disabled = false;
+          loginBtn.textContent = 'Logg inn med Google';
+        }
+      }
+
+      loginBtn.addEventListener('click', async function() {
+        loginBtn.disabled = true;
+        loginBtn.textContent = 'Åpner Google…';
+        setAlert(loginAlert, '', 'error');
+        try {
+          var response = await fetch('/api/role-room/google/oauth/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              mode: 'login',
+              returnPath: getCleanReturnPath(),
+              browserOrigin: window.location.origin,
+            }),
+          });
+          var payload = await readJsonResponse(response);
+          if (!payload || !payload.authorizationUrl) {
+            throw new Error('Mangler autorisasjonslenke fra Google Workspace.');
+          }
+          var authorizationUrl = new URL(payload.authorizationUrl);
+          if (authorizationUrl.protocol !== 'https:' || authorizationUrl.hostname !== 'accounts.google.com') {
+            throw new Error('Google-innloggingen returnerte en ugyldig autorisasjonslenke.');
+          }
+          window.location.assign(authorizationUrl.toString());
+        } catch (error) {
+          loginBtn.disabled = false;
+          loginBtn.textContent = 'Logg inn med Google';
+          setAlert(
+            loginAlert,
+            error instanceof Error ? error.message : 'Kunne ikke starte Google-innloggingen.',
+            'error'
+          );
+        }
+      });
+
       btn.addEventListener('click', async function() {
         btn.disabled = true;
         btn.textContent = 'Parer…';
-        alertBox.innerHTML = '';
+        setAlert(alertBox, '', 'error');
         try {
           var bearer = getBearer();
           var res = await fetch('/api/post-agent/pairing/redeem', {
@@ -179,7 +364,7 @@
           }
           var data = await res.json();
           if (!res.ok) {
-            alertBox.innerHTML = '<div class="alert error">' + (data.error || ('HTTP ' + res.status)) + '</div>';
+            setAlert(alertBox, data.error || ('HTTP ' + res.status), 'error');
             btn.disabled = false;
             btn.textContent = 'Pare Post Agent';
             return;
@@ -187,11 +372,13 @@
           form.style.display = 'none';
           success.style.display = 'block';
         } catch (e) {
-          alertBox.innerHTML = '<div class="alert error">' + String(e) + '</div>';
+          setAlert(alertBox, String(e), 'error');
           btn.disabled = false;
           btn.textContent = 'Pare Post Agent';
         }
       });
+
+      completeGoogleIntent();
     })();
   </script>
 </body>
