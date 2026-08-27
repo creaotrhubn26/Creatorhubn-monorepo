@@ -20,28 +20,55 @@ import {
 } from "./realtime-user-events";
 
 class MemoryTicketDatabase {
-  private readonly tickets = new Map<string, {
-    userId: string;
-    issuedAt: number;
-    expiresAt: number;
-  }>();
+  private readonly tickets = new Map<
+    string,
+    {
+      userId: string;
+      issuedAt: number;
+      expiresAt: number;
+      clientKind: "web" | "capture-ios" | "unknown";
+      clientVersion: string | null;
+    }
+  >();
 
-  async query<T = unknown>(sql: string, parameters: unknown[] = []): Promise<{ rows: T[] }> {
+  async query<T = unknown>(
+    sql: string,
+    parameters: unknown[] = [],
+  ): Promise<{ rows: T[] }> {
     if (sql.includes("INSERT INTO realtime_user_event_tickets")) {
-      const [userId, ticketHash, issuedAt, keepExisting, expiresAt] = parameters as [
-        string, string, Date, number, Date,
+      const [
+        userId,
+        ticketHash,
+        issuedAt,
+        keepExisting,
+        expiresAt,
+        clientKind,
+        clientVersion,
+      ] = parameters as [
+        string,
+        string,
+        Date,
+        number,
+        Date,
+        "web" | "capture-ios" | "unknown",
+        string | null,
       ];
       for (const [hash, record] of this.tickets) {
         if (record.expiresAt <= issuedAt.getTime()) this.tickets.delete(hash);
       }
       const existing = [...this.tickets.entries()]
         .filter(([, record]) => record.userId === userId)
-        .sort((a, b) => b[1].issuedAt - a[1].issuedAt || b[0].localeCompare(a[0]));
-      for (const [hash] of existing.slice(keepExisting)) this.tickets.delete(hash);
+        .sort(
+          (a, b) => b[1].issuedAt - a[1].issuedAt || b[0].localeCompare(a[0]),
+        );
+      for (const [hash] of existing.slice(keepExisting))
+        this.tickets.delete(hash);
       this.tickets.set(ticketHash, {
         userId,
         issuedAt: issuedAt.getTime(),
         expiresAt: expiresAt.getTime(),
+        clientKind,
+        clientVersion,
       });
       return { rows: [] };
     }
@@ -50,10 +77,20 @@ class MemoryTicketDatabase {
       const record = this.tickets.get(ticketHash);
       this.tickets.delete(ticketHash);
       return {
-        rows: record && record.expiresAt > now.getTime()
-          ? [{ user_id: record.userId } as T]
-          : [],
+        rows:
+          record && record.expiresAt > now.getTime()
+            ? [
+                {
+                  user_id: record.userId,
+                  client_kind: record.clientKind,
+                  client_version: record.clientVersion,
+                } as T,
+              ]
+            : [],
       };
+    }
+    if (sql.includes("INSERT INTO realtime_user_event_auth_metrics")) {
+      return { rows: [] };
     }
     throw new Error(`Unexpected SQL in MemoryTicketDatabase: ${sql}`);
   }
@@ -236,18 +273,32 @@ describe("realtime-user-events broadcast routing", () => {
 describe("realtime user-event handshake tickets", () => {
   it("binds a ticket to the authenticated user and permits exactly one atomic consume", async () => {
     const database = new MemoryTicketDatabase();
-    const { ticket } = await issueUserEventsTicket(database as unknown as Pool, "user-a", 1_000);
+    const { ticket } = await issueUserEventsTicket(
+      database as unknown as Pool,
+      "user-a",
+      1_000,
+    );
     expect(ticket).not.toContain("user-a");
     const [first, replay] = await Promise.all([
       consumeUserEventsTicket(database as unknown as Pool, ticket, 1_001),
       consumeUserEventsTicket(database as unknown as Pool, ticket, 1_002),
     ]);
-    expect([first, replay].filter(Boolean)).toEqual([{ userId: "user-a" }]);
+    expect([first, replay].filter(Boolean)).toEqual([
+      {
+        userId: "user-a",
+        clientKind: "unknown",
+        clientVersion: null,
+      },
+    ]);
   });
 
   it("rejects and consumes expired tickets", async () => {
     const database = new MemoryTicketDatabase();
-    const { ticket } = await issueUserEventsTicket(database as unknown as Pool, "user-a", 5_000);
+    const { ticket } = await issueUserEventsTicket(
+      database as unknown as Pool,
+      "user-a",
+      5_000,
+    );
     expect(
       await consumeUserEventsTicket(
         database as unknown as Pool,
@@ -255,21 +306,43 @@ describe("realtime user-event handshake tickets", () => {
         5_000 + USER_EVENTS_TICKET_TTL_MS,
       ),
     ).toBeNull();
-    expect(await consumeUserEventsTicket(database as unknown as Pool, ticket, 5_001)).toBeNull();
+    expect(
+      await consumeUserEventsTicket(database as unknown as Pool, ticket, 5_001),
+    ).toBeNull();
   });
 
   it("bounds outstanding tickets per user and revokes the oldest", async () => {
     const database = new MemoryTicketDatabase();
     const tickets: string[] = [];
     for (let index = 0; index < 5; index += 1) {
-      tickets.push((await issueUserEventsTicket(
-        database as unknown as Pool,
-        "user-a",
-        10_000 + index,
-      )).ticket);
+      tickets.push(
+        (
+          await issueUserEventsTicket(
+            database as unknown as Pool,
+            "user-a",
+            10_000 + index,
+          )
+        ).ticket,
+      );
     }
-    expect(await consumeUserEventsTicket(database as unknown as Pool, tickets[0], 10_010)).toBeNull();
-    expect(await consumeUserEventsTicket(database as unknown as Pool, tickets[4], 10_010)).toEqual({ userId: "user-a" });
+    expect(
+      await consumeUserEventsTicket(
+        database as unknown as Pool,
+        tickets[0],
+        10_010,
+      ),
+    ).toBeNull();
+    expect(
+      await consumeUserEventsTicket(
+        database as unknown as Pool,
+        tickets[4],
+        10_010,
+      ),
+    ).toEqual({
+      userId: "user-a",
+      clientKind: "unknown",
+      clientVersion: null,
+    });
   });
 
   it("issues tickets only through an authenticated, non-cacheable POST", async () => {
@@ -285,21 +358,37 @@ describe("realtime user-event handshake tickets", () => {
         res.status(401).json({ error: "auth_required" });
         return null;
       },
+      requireAdminSession: (_req, res) => {
+        res.status(403).json({ error: "admin_required" });
+        return null;
+      },
     });
 
-    await request(app)
-      .post("/api/realtime/user-events-ticket")
-      .expect(401);
+    await request(app).post("/api/realtime/user-events-ticket").expect(401);
 
     const response = await request(app)
       .post("/api/realtime/user-events-ticket")
       .set("x-test-user", "user-route")
+      .set("x-creatorhub-client", "web")
+      .set("x-creatorhub-client-version", "abcdef123456")
       .expect(201);
     expect(response.headers["cache-control"]).toContain("no-store");
     expect(response.body.websocketPath).toBe("/api/ipad/ws/events");
     expect(response.body.protocolVersion).toBe(1);
-    expect(await consumeUserEventsTicket(database as unknown as Pool, response.body.ticket))
-      .toEqual({ userId: "user-route" });
+    expect(
+      await consumeUserEventsTicket(
+        database as unknown as Pool,
+        response.body.ticket,
+      ),
+    ).toEqual({
+      userId: "user-route",
+      clientKind: "web",
+      clientVersion: "abcdef123456",
+    });
+
+    await request(app)
+      .get("/api/admin/realtime/user-events-auth-metrics")
+      .expect(403);
   });
 
   it("accepts a valid ticket through the real WebSocket upgrade path", async () => {
@@ -315,7 +404,8 @@ describe("realtime user-event handshake tickets", () => {
     try {
       const { port } = server.address() as AddressInfo;
       const { ticket } = await issueUserEventsTicket(
-        database as unknown as Pool, "user-upgrade",
+        database as unknown as Pool,
+        "user-upgrade",
       );
       socket = new WebSocket(
         `ws://127.0.0.1:${port}${USER_EVENTS_WS_PATH}?ticket=${encodeURIComponent(ticket)}`,
@@ -325,7 +415,8 @@ describe("realtime user-event handshake tickets", () => {
         socket?.once("error", reject);
       });
       expect(JSON.parse(frame)).toMatchObject({
-        version: 1, type: "connection_established",
+        version: 1,
+        type: "connection_established",
       });
       expect(connectedUserClientCount("user-upgrade")).toBe(1);
     } finally {

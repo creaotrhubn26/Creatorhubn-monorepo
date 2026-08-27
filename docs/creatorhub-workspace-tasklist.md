@@ -44,6 +44,18 @@ Grunnlag: P0/P1 på `main` fra `93208107f`, med fremover-integrerte Storyboard-h
 
 ## Oppfølging etter utrulling
 
+### Avvikling av legacy-token for bruker-event-WebSocket
+
+- [x] Merk web- og Capture-billettene med en fast klienttype og en kort build-versjon.
+- [x] Aggreger godkjente WebSocket-tilkoblinger per time og auth-metode uten bruker-ID, IP, user-agent eller credentials.
+- [x] Beskytt adopsjonsrapporten med `requireAdminSession` og `Cache-Control: no-store`.
+- [x] Verifiser webflyten i workspace-smoke: ticket HTTP 201, `ticket=` i WebSocket-URL og ingen bearer/`token=`.
+- [x] Verifiser Capture i Xcode: billettkall uten query, `capture-ios`-header og fjerning av et eventuelt gammelt URL-token.
+- [ ] Kjør migrasjon `0453_realtime_user_event_auth_observability.sql` gjennom den dedikerte migreringsjobben.
+- [ ] Distribuer web, backend og en ny Capture-TestFlight fra samme eksakte `main`-commit.
+- [ ] Håndhev den ticket-kompatible Capture-builden som minimum og observer minst sju døgn med `ticket > 0` for web/Capture og `legacy = 0`.
+- [ ] Sett `REALTIME_ALLOW_LEGACY_TOKEN=false`; verifiser at ticket fortsatt kobler til og at gammel `?token=` blir avvist.
+
 - [x] Kjør migrasjon `0451_workspace_team_and_production_map.sql` før ny backend aktiveres. Kjørt og verifisert mot CreatorHub Neon 2026-08-26.
 - [ ] Når migrasjon `0451` er bekreftet i alle miljøer, fjern midlertidige runtime `CREATE/ALTER`-guards.
 - [ ] Migrer gjenværende data fra `legacy.projects` og kompatibilitets-metadata til kanoniske tabeller, med backfill og avstemmingsrapport.

@@ -1,6 +1,8 @@
 /// <reference types="vite/client" />
 
 declare global {
+  const __CREATORHUB_BUILD_VERSION__: string;
+
   interface ImportMetaEnv {
     readonly VITE_GA_MEASUREMENT_ID: string;
     readonly VITE_CREATORHUB_GA_MEASUREMENT_ID?: string;

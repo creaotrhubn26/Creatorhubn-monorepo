@@ -36,7 +36,18 @@ actor BackendClient {
         return try await postJSON(
             path: "/api/realtime/user-events-ticket",
             body: EmptyBody(),
+            additionalHeaders: [
+                "X-CreatorHub-Client": "capture-ios",
+                "X-CreatorHub-Client-Version": Self.realtimeClientVersion,
+            ],
         )
+    }
+
+    private static var realtimeClientVersion: String {
+        let info = Bundle.main.infoDictionary
+        let marketing = info?["CFBundleShortVersionString"] as? String ?? "unknown"
+        let build = info?["CFBundleVersion"] as? String ?? "unknown"
+        return "\(marketing)+\(build)"
     }
 
     // MARK: - Sessions
@@ -822,12 +833,16 @@ actor BackendClient {
     private func postJSON<RequestBody: Encodable, Response: Decodable>(
         path: String,
         body: RequestBody,
+        additionalHeaders: [String: String] = [:],
     ) async throws -> Response {
         var request = URLRequest(url: baseURL.appendingPathComponent(path))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         for (name, value) in authHeaders {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        for (name, value) in additionalHeaders {
             request.setValue(value, forHTTPHeaderField: name)
         }
         let encoder = JSONEncoder()

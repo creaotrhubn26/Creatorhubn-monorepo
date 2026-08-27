@@ -2,10 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { buildEventsWsUrl } from '@/lib/realtimeWsUrl';
 import type { UserEvent, UserEventsTicketResponse } from '@shared/realtime-user-events-contract';
-import {
-  UserEventStreamMultiplexer,
-  type UserEventStreamStatus,
-} from '@/lib/userEventStreamMultiplexer';
+import { UserEventStreamMultiplexer, type UserEventStreamStatus } from '@/lib/userEventStreamMultiplexer';
 
 export type RealtimeUserEvent = UserEvent;
 export type { UserEventStreamStatus } from '@/lib/userEventStreamMultiplexer';
@@ -18,10 +15,7 @@ interface UseUserEventStreamOptions {
   onReconnect?: () => void;
 }
 
-export function buildTicketedUserEventsWsUrl(
-  ticket: string,
-  websocketPath = '/api/ipad/ws/events',
-): string | null {
+export function buildTicketedUserEventsWsUrl(ticket: string, websocketPath = '/api/ipad/ws/events'): string | null {
   const base = buildEventsWsUrl(websocketPath);
   if (!base || !ticket.trim()) return null;
   try {
@@ -34,10 +28,15 @@ export function buildTicketedUserEventsWsUrl(
 }
 
 const tabUserEventStream = new UserEventStreamMultiplexer({
-  requestTicket: async () => apiRequest(
-    '/api/realtime/user-events-ticket',
-    { method: 'POST' },
-  ) as Promise<UserEventsTicketResponse>,
+  requestTicket: async () =>
+    apiRequest('/api/realtime/user-events-ticket', {
+      method: 'POST',
+      headers: {
+        'X-CreatorHub-Client': 'web',
+        'X-CreatorHub-Client-Version':
+          typeof __CREATORHUB_BUILD_VERSION__ === 'string' ? __CREATORHUB_BUILD_VERSION__ : 'unknown',
+      },
+    }) as Promise<UserEventsTicketResponse>,
   buildUrl: buildTicketedUserEventsWsUrl,
   createSocket: (url) => new WebSocket(url),
 });

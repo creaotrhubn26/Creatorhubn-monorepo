@@ -15,6 +15,13 @@ import {
   USER_EVENTS_TICKET_TTL_MS,
 } from "./realtime-user-event-ticket-store.js";
 import { publishRealtimeUserEvent } from "./realtime-user-event-fanout.js";
+import {
+  normalizeUserEventsClientMetadata,
+  readUserEventsAuthMetrics,
+  recordUserEventsAuthConnection,
+  USER_EVENTS_AUTH_METRICS_PATH,
+  type UserEventsClientMetadata,
+} from "./realtime-user-event-auth-metrics.js";
 
 export {
   consumeUserEventsTicket,
@@ -65,9 +72,11 @@ export type { UserEvent } from "../../frontend/shared/realtime-user-events-contr
 
 export const USER_EVENTS_WS_PATH = "/api/ipad/ws/events";
 export const USER_EVENTS_TICKET_PATH = "/api/realtime/user-events-ticket";
+export { USER_EVENTS_AUTH_METRICS_PATH } from "./realtime-user-event-auth-metrics.js";
 
 export function isLegacyUserEventsTokenAllowed(): boolean {
-  const configured = process.env.REALTIME_ALLOW_LEGACY_TOKEN?.trim().toLowerCase();
+  const configured =
+    process.env.REALTIME_ALLOW_LEGACY_TOKEN?.trim().toLowerCase();
   if (!configured) return true;
   return !["0", "false", "no", "off"].includes(configured);
 }
@@ -79,18 +88,32 @@ interface UserEventsTicketDeps {
     req: express.Request,
     res: express.Response,
   ) => { userId: string } | null;
+  requireAdminSession: (
+    req: express.Request,
+    res: express.Response,
+  ) => unknown | null;
 }
 
 export function setupUserEventsTicketRoute({
   app,
   pool,
   requireUserSession,
+  requireAdminSession,
 }: UserEventsTicketDeps): void {
   app.post(USER_EVENTS_TICKET_PATH, async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
     try {
-      const issued = await issueUserEventsTicket(pool, session.userId);
+      const client = normalizeUserEventsClientMetadata(
+        req.header("x-creatorhub-client"),
+        req.header("x-creatorhub-client-version"),
+      );
+      const issued = await issueUserEventsTicket(
+        pool,
+        session.userId,
+        Date.now(),
+        client,
+      );
       res.setHeader("Cache-Control", "no-store, max-age=0");
       res.setHeader("Pragma", "no-cache");
       res.status(201).json({
@@ -101,6 +124,25 @@ export function setupUserEventsTicketRoute({
     } catch (error) {
       console.error("Failed to issue realtime user-events ticket:", error);
       res.status(503).json({ error: "realtime_ticket_store_unavailable" });
+    }
+  });
+
+  app.get(USER_EVENTS_AUTH_METRICS_PATH, async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const requestedHours = Number(req.query.hours ?? 168);
+    try {
+      const report = await readUserEventsAuthMetrics(pool, requestedHours);
+      res.setHeader("Cache-Control", "no-store, max-age=0");
+      res.json({
+        ...report,
+        legacyTokenAllowed: isLegacyUserEventsTokenAllowed(),
+      });
+    } catch (error) {
+      console.error(
+        "Failed to read realtime auth metrics:",
+        error instanceof Error ? error.message : "unknown error",
+      );
+      res.status(503).json({ error: "realtime_auth_metrics_unavailable" });
     }
   });
 }
@@ -128,7 +170,10 @@ export function broadcastUserEvent(userId: string, event: UserEvent): void {
 
 /// Deliver only to sockets owned by this process. Redis subscribers call this
 /// path directly so a remote event is never published back into the channel.
-export function deliverUserEventLocally(userId: string, event: UserEvent): void {
+export function deliverUserEventLocally(
+  userId: string,
+  event: UserEvent,
+): void {
   const clients = userClients.get(userId);
   if (!clients || clients.size === 0) return;
   const frame = {
@@ -162,7 +207,9 @@ export function resetUserClientsForTests(): void {
     for (const ws of set) {
       try {
         ws.close();
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }
   userClients.clear();
@@ -202,7 +249,10 @@ export function attachUserEventsWebSocket(
   const wss = new WebSocketServer({ noServer: true });
 
   server.on("upgrade", (req: IncomingMessage, socket: Duplex, head) => {
-    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    const url = new URL(
+      req.url ?? "/",
+      `http://${req.headers.host ?? "localhost"}`,
+    );
     if (url.pathname !== USER_EVENTS_WS_PATH) return;
 
     const ticket = (url.searchParams.get("ticket") ?? "").trim();
@@ -225,6 +275,21 @@ export function attachUserEventsWebSocket(
         socket.destroy();
         return;
       }
+      const authMethod = ticketSession ? "ticket" : "legacy";
+      const client: UserEventsClientMetadata = ticketSession
+        ? {
+            clientKind: ticketSession.clientKind,
+            clientVersion: ticketSession.clientVersion,
+          }
+        : { clientKind: "unknown", clientVersion: null };
+      void recordUserEventsAuthConnection(pool, authMethod, client).catch(
+        (error) => {
+          console.error(
+            "Failed to record realtime auth metric:",
+            error instanceof Error ? error.message : "unknown error",
+          );
+        },
+      );
       wss.handleUpgrade(req, socket, head, (ws) => {
         registerClient(userId, ws);
       });
@@ -242,11 +307,19 @@ export function attachUserEventsWebSocket(
       for (const ws of set) {
         const live = ws as LiveWebSocket;
         if (live.isAlive === false) {
-          try { ws.terminate(); } catch { /* ignore */ }
+          try {
+            ws.terminate();
+          } catch {
+            /* ignore */
+          }
           continue;
         }
         live.isAlive = false;
-        try { ws.ping(); } catch { /* ignore */ }
+        try {
+          ws.ping();
+        } catch {
+          /* ignore */
+        }
       }
     }
   }, 30000);
@@ -276,7 +349,9 @@ function registerClient(userId: string, ws: WebSocket): () => void {
       serverTime: new Date().toISOString(),
     } satisfies UserEventsFrame;
     ws.send(JSON.stringify(frame));
-  } catch { /* closed before first frame */ }
+  } catch {
+    /* closed before first frame */
+  }
 
   const cleanup = () => {
     set.delete(ws);
@@ -293,7 +368,9 @@ function registerClient(userId: string, ws: WebSocket): () => void {
     cleanup();
     try {
       ws.terminate();
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   });
 
   return cleanup;

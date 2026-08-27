@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { Pool } from "pg";
+import type { UserEventsClientMetadata } from "./realtime-user-event-auth-metrics.js";
 
 export const USER_EVENTS_TICKET_TTL_MS = 30_000;
 export const MAX_PENDING_USER_EVENT_TICKETS = 4;
@@ -24,6 +25,10 @@ export async function issueUserEventsTicket(
   database: TicketQueryable,
   userId: string,
   now = Date.now(),
+  client: UserEventsClientMetadata = {
+    clientKind: "unknown",
+    clientVersion: null,
+  },
 ): Promise<IssuedUserEventsTicket> {
   const normalizedUserId = userId.trim();
   if (!normalizedUserId) throw new Error("userId is required");
@@ -52,8 +57,10 @@ export async function issueUserEventsTicket(
         ticket_hash,
         user_id,
         issued_at,
-        expires_at
-      ) VALUES ($2, $1, $3, $5)
+        expires_at,
+        client_kind,
+        client_version
+      ) VALUES ($2, $1, $3, $5, $6, $7)
     `,
     [
       normalizedUserId,
@@ -61,6 +68,8 @@ export async function issueUserEventsTicket(
       issuedAt,
       MAX_PENDING_USER_EVENT_TICKETS - 1,
       expiresAt,
+      client.clientKind,
+      client.clientVersion,
     ],
   );
 
@@ -76,25 +85,36 @@ export async function consumeUserEventsTicket(
   database: TicketQueryable,
   ticket: string,
   now = Date.now(),
-): Promise<{ userId: string } | null> {
+): Promise<({ userId: string } & UserEventsClientMetadata) | null> {
   const normalizedTicket = ticket.trim();
   if (!normalizedTicket) return null;
 
-  const result = await database.query<{ user_id: string }>(
+  const result = await database.query<{
+    user_id: string;
+    client_kind: UserEventsClientMetadata["clientKind"];
+    client_version: string | null;
+  }>(
     `
       WITH consumed AS (
         DELETE FROM realtime_user_event_tickets
         WHERE ticket_hash = $1
-        RETURNING user_id, expires_at
+        RETURNING user_id, expires_at, client_kind, client_version
       )
-      SELECT user_id
+      SELECT user_id, client_kind, client_version
       FROM consumed
       WHERE expires_at > $2::timestamptz
     `,
     [hashTicket(normalizedTicket), new Date(now)],
   );
-  const userId = result.rows[0]?.user_id?.trim();
-  return userId ? { userId } : null;
+  const row = result.rows[0];
+  const userId = row?.user_id?.trim();
+  return userId
+    ? {
+        userId,
+        clientKind: row.client_kind ?? "unknown",
+        clientVersion: row.client_version ?? null,
+      }
+    : null;
 }
 
 export const userEventsTicketStoreInternals = { hashTicket };

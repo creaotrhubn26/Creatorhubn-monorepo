@@ -65,8 +65,22 @@ async function collectRuntimeErrors(page: import('@playwright/test').Page) {
 async function primeAuthAndApi(
   page: import('@playwright/test').Page,
   projects: ReturnType<typeof sampleProject>[],
-  workspaceSocketUrls: string[] = [],
+  ticketRequestHeaders: Array<Record<string, string>> = [],
 ) {
+  // Registrer en ufarlig catch-all først. De spesifikke API-rutene nedenfor
+  // registreres senere og har høyere prioritet i Playwright. Dette hindrer at
+  // globale providers proxyer dusinvis av irrelevante kall til en backend som
+  // med hensikt ikke kjører i denne isolerte UI-smoken.
+  await page.route(
+    (url) => url.pathname.startsWith('/api/') && url.pathname !== '/api/ipad/ws/events',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: '{}',
+      }),
+  );
+
   await page.addInitScript(
     ([token, user]) => {
       window.localStorage.clear();
@@ -76,6 +90,23 @@ async function primeAuthAndApi(
     },
     [AUTH_TOKEN, AUTH_USER] as const,
   );
+  await page.addInitScript(() => {
+    const NativeWebSocket = window.WebSocket;
+    const attemptedUrls: string[] = [];
+    Object.defineProperty(window, '__workspaceUserEventSocketUrls', {
+      configurable: true,
+      value: attemptedUrls,
+    });
+    Object.defineProperty(window, 'WebSocket', {
+      configurable: true,
+      value: new Proxy(NativeWebSocket, {
+        construct(target, args) {
+          attemptedUrls.push(String(args[0]));
+          return Reflect.construct(target, args);
+        },
+      }),
+    });
+  });
 
   await page.route('**/api/auth/user', (route) =>
     route.fulfill({
@@ -84,33 +115,44 @@ async function primeAuthAndApi(
       body: JSON.stringify({ authenticated: true, user: AUTH_USER }),
     }),
   );
-  await page.route('**/api/realtime/user-events-ticket', (route) =>
-    route.fulfill({
+  await page.route('**/api/realtime/user-events-ticket', (route) => {
+    ticketRequestHeaders.push(route.request().headers());
+    return route.fulfill({
       status: 201,
       contentType: 'application/json',
       body: JSON.stringify({
         ticket: 'e2e-user-events-ticket',
         expiresAt: new Date(Date.now() + 30_000).toISOString(),
         websocketPath: '/api/ipad/ws/events',
+        protocolVersion: 1,
       }),
-    }),
-  );
-  await page.routeWebSocket('**/api/ipad/ws/events*', (socket) => {
-    workspaceSocketUrls.push(socket.url());
-    socket.send(JSON.stringify({ type: 'connection_established', serverTime: new Date().toISOString() }));
+    });
   });
-
   // Oversikt-fanens egne endepunkter (default-fane etter auto-redirect).
   await page.route('**/api/projects/*/board-tasks', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ tasks: [] }) }),
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ tasks: [] }),
+    }),
   );
   await page.route('**/api/projects/*/checklist', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [] }) }),
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ items: [] }),
+    }),
   );
 
   // Prosjektlisten styrer picker-vs-auto-redirect.
-  await page.route('**/api/projects?*', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ projects }) }),
+  await page.route(
+    (url) => url.pathname === '/api/projects',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ projects }),
+      }),
   );
 
   // Én autoritativ workspace-bootstrap (prosjekt + kategori + tilgang + team).
@@ -122,29 +164,49 @@ async function primeAuthAndApi(
         project: sampleProject('p1'),
         workspaceCategory: 'visual',
         access: { canRead: true, canEdit: true, isOwner: true },
-        owner: { userId: AUTH_USER.id, name: AUTH_USER.name, email: AUTH_USER.email },
+        owner: {
+          userId: AUTH_USER.id,
+          name: AUTH_USER.name,
+          email: AUTH_USER.email,
+        },
         members: [],
       }),
     }),
   );
   // Kompatibilitets-oppslag som enkelte eldre faner fortsatt kan gjøre.
   await page.route(/\/api\/projects\/[^/?]+$/, (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ project: sampleProject('p1') }) }),
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ project: sampleProject('p1') }),
+    }),
   );
   await page.route('**/api/projects/*/team/members', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ owner: null, members: [] }) }),
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ owner: null, members: [] }),
+    }),
   );
 
   // Badge-/aktivitet-endepunkter TeamWorkspacePage poller — tomt svar er nok.
   const emptyJson = (route: import('@playwright/test').Route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   await page.route('**/api/foresporsler/inbound', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [] }) }),
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ items: [] }),
+    }),
   );
   await page.route('**/api/projects/*/client-activity', emptyJson);
   await page.route('**/api/projects/*/audio-room/unseen-comments', emptyJson);
   await page.route('**/api/community/user/*/roles', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ roles: [] }) }),
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ roles: [] }),
+    }),
   );
   await page.route('**/api/design/tokens*', emptyJson);
   await page.route('**/api/editing/vendor/me', emptyJson);
@@ -167,20 +229,38 @@ test('multi-project /workspace renders the picker without runtime errors', async
 
 test('single-project /workspace auto-redirects into the workspace without React #426', async ({ page }) => {
   const errors = await collectRuntimeErrors(page);
+  const moduleFailures: string[] = [];
   const realtimeRequests: string[] = [];
   const realtimeStatuses: number[] = [];
-  const workspaceSockets: string[] = [];
+  const ticketRequestHeaders: Array<Record<string, string>> = [];
   page.on('request', (request) => {
     if (request.url().includes('/api/realtime/')) realtimeRequests.push(request.url());
   });
   page.on('response', (response) => {
     if (response.url().includes('/api/realtime/')) realtimeStatuses.push(response.status());
+    if (response.status() >= 400 && response.url().includes('/src/')) {
+      moduleFailures.push(`HTTP ${response.status()} ${response.url()}`);
+    }
   });
-  await primeAuthAndApi(page, [sampleProject('p1')], workspaceSockets);
+  page.on('requestfailed', (request) => {
+    if (request.url().includes('/src/')) {
+      moduleFailures.push(`${request.failure()?.errorText || 'request failed'} ${request.url()}`);
+    }
+  });
+  page.on('console', (message) => {
+    if (message.type() === 'error') moduleFailures.push(`console: ${message.text()}`);
+  });
+  await primeAuthAndApi(page, [sampleProject('p1')], ticketRequestHeaders);
 
   await page.goto(`${ORIGIN}/workspace`, { waitUntil: 'domcontentloaded' });
   // Auto-redirect: WorkspaceHome → /workspace/p1 (monterer lazy TeamWorkspacePage).
-  await page.waitForURL('**/workspace/p1', { timeout: 30000 });
+  try {
+    await page.waitForURL('**/workspace/p1', { timeout: 30000 });
+  } catch (error) {
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)}\nModule failures:\n${moduleFailures.join('\n')}\nPage errors:\n${errors.join('\n')}`,
+    );
+  }
   await page.waitForFunction(() => document.body.innerText.trim().length > 0, undefined, { timeout: 30000 });
 
   expect(errors, `Runtime errors on picker→project transition:\n${errors.join('\n')}`).toEqual([]);
@@ -193,8 +273,36 @@ test('single-project /workspace auto-redirects into the workspace without React 
     expect.stringContaining('/api/realtime/user-events-ticket'),
   );
   await expect.poll(() => realtimeStatuses.includes(201)).toBe(true);
-  await expect.poll(() => workspaceSockets.length).toBeGreaterThan(0);
-  const userEventsUrl = new URL(workspaceSockets[0]);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            (window as Window & { __workspaceUserEventSocketUrls?: string[] }).__workspaceUserEventSocketUrls ?? []
+          ).filter((value) => {
+            try {
+              return new URL(value).pathname === '/api/ipad/ws/events';
+            } catch {
+              return false;
+            }
+          }).length,
+      ),
+    )
+    .toBeGreaterThan(0);
+  expect(ticketRequestHeaders[0]?.['x-creatorhub-client']).toBe('web');
+  expect(ticketRequestHeaders[0]?.['x-creatorhub-client-version']).toBeTruthy();
+  const browserSocketUrls = await page.evaluate(
+    () => (window as Window & { __workspaceUserEventSocketUrls?: string[] }).__workspaceUserEventSocketUrls ?? [],
+  );
+  const userEventsSocketUrl = browserSocketUrls.find((value) => {
+    try {
+      return new URL(value).pathname === '/api/ipad/ws/events';
+    } catch {
+      return false;
+    }
+  });
+  expect(userEventsSocketUrl).toBeTruthy();
+  const userEventsUrl = new URL(userEventsSocketUrl!);
   expect(userEventsUrl.searchParams.get('ticket')).toBe('e2e-user-events-ticket');
   expect(userEventsUrl.searchParams.has('token')).toBe(false);
   expect(userEventsUrl.toString()).not.toContain(AUTH_TOKEN);

@@ -1,37 +1,75 @@
 import { describe, expect, it, vi } from 'vitest';
 import { USER_EVENTS_PROTOCOL_VERSION } from '@shared/realtime-user-events-contract';
-import {
-  UserEventStreamMultiplexer,
-  decodeUserEventFrame,
-} from '@/lib/userEventStreamMultiplexer';
+import { UserEventStreamMultiplexer, decodeUserEventFrame } from '@/lib/userEventStreamMultiplexer';
+import { buildTicketedUserEventsWsUrl } from './useUserEventStream';
+
+describe('buildTicketedUserEventsWsUrl', () => {
+  it('uses a ticket query parameter and never adds a long-lived token', () => {
+    vi.stubGlobal('window', {
+      location: {
+        host: '127.0.0.1:5001',
+        hostname: '127.0.0.1',
+        protocol: 'http:',
+      },
+    });
+
+    const value = buildTicketedUserEventsWsUrl('single-use-ticket');
+    expect(value).not.toBeNull();
+    const url = new URL(value!);
+    expect(url.pathname).toBe('/api/ipad/ws/events');
+    expect(url.searchParams.get('ticket')).toBe('single-use-ticket');
+    expect(url.searchParams.has('token')).toBe(false);
+
+    vi.unstubAllGlobals();
+  });
+});
 
 describe('decodeUserEventFrame', () => {
   it('unwraps the versioned backend user_event envelope', () => {
-    expect(decodeUserEventFrame(JSON.stringify({
-      version: USER_EVENTS_PROTOCOL_VERSION,
-      type: 'user_event',
-      event: { kind: 'board.updated', projectId: 'project-1' },
-    }))).toEqual({ kind: 'board.updated', projectId: 'project-1' });
+    expect(
+      decodeUserEventFrame(
+        JSON.stringify({
+          version: USER_EVENTS_PROTOCOL_VERSION,
+          type: 'user_event',
+          event: { kind: 'board.updated', projectId: 'project-1' },
+        }),
+      ),
+    ).toEqual({ kind: 'board.updated', projectId: 'project-1' });
   });
 
   it('accepts unversioned legacy frames during rolling deploys', () => {
-    expect(decodeUserEventFrame(JSON.stringify({
+    expect(
+      decodeUserEventFrame(
+        JSON.stringify({
+          kind: 'gallery.selection-submitted',
+          galleryId: 'gallery-1',
+        }),
+      ),
+    ).toMatchObject({
       kind: 'gallery.selection-submitted',
       galleryId: 'gallery-1',
-    }))).toMatchObject({ kind: 'gallery.selection-submitted', galleryId: 'gallery-1' });
+    });
   });
 
   it('drops unsupported protocol versions and malformed control frames', () => {
-    expect(decodeUserEventFrame(JSON.stringify({
-      version: 2,
-      type: 'user_event',
-      event: { kind: 'board.updated', projectId: 'project-1' },
-    }))).toBeNull();
+    expect(
+      decodeUserEventFrame(
+        JSON.stringify({
+          version: 2,
+          type: 'user_event',
+          event: { kind: 'board.updated', projectId: 'project-1' },
+        }),
+      ),
+    ).toBeNull();
     expect(decodeUserEventFrame('{')).toBeNull();
-    expect(decodeUserEventFrame(JSON.stringify({
-      version: 1,
-      type: 'connection_established',
-    }))).toBeNull();
+    expect(
+      decodeUserEventFrame(
+        JSON.stringify({
+          version: 1,
+          type: 'connection_established',
+        }),
+      ),
+    ).toBeNull();
   });
 });
 
@@ -125,10 +163,14 @@ describe('UserEventStreamMultiplexer', () => {
     let rejectFirst!: (reason?: unknown) => void;
     const socket = new FakeSocket();
     const createSocket = vi.fn(() => socket);
-    const requestTicket = vi.fn()
-      .mockImplementationOnce(() => new Promise((_, reject) => {
-        rejectFirst = reject;
-      }))
+    const requestTicket = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            rejectFirst = reject;
+          }),
+      )
       .mockResolvedValue({
         ticket: 'fresh-ticket',
         expiresAt: new Date(Date.now() + 30_000).toISOString(),

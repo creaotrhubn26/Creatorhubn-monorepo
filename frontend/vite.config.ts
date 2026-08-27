@@ -10,23 +10,23 @@ import { execSync } from 'node:child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const muiSystemAlias = [
-  path.resolve(__dirname, 'node_modules/@mui/system'),
-  path.resolve(__dirname, '../node_modules/@mui/material/node_modules/@mui/system'),
-  path.resolve(__dirname, '../node_modules/@mui/system'),
-].find((candidate) => existsSync(candidate)) || path.resolve(__dirname, 'node_modules/@mui/system');
-const backendProxyTarget =
-  process.env.VITE_API_PROXY_TARGET ||
-  process.env.API_PROXY_TARGET ||
-  'http://localhost:3003';
+const muiSystemAlias =
+  [
+    path.resolve(__dirname, 'node_modules/@mui/system'),
+    path.resolve(__dirname, '../node_modules/@mui/material/node_modules/@mui/system'),
+    path.resolve(__dirname, '../node_modules/@mui/system'),
+  ].find((candidate) => existsSync(candidate)) || path.resolve(__dirname, 'node_modules/@mui/system');
+const backendProxyTarget = process.env.VITE_API_PROXY_TARGET || process.env.API_PROXY_TARGET || 'http://localhost:3003';
 
 const readGitValue = (command: string): string | null => {
   try {
-    return execSync(command, {
-      cwd: __dirname,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim() || null;
+    return (
+      execSync(command, {
+        cwd: __dirname,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim() || null
+    );
   } catch {
     return null;
   }
@@ -74,16 +74,13 @@ const customPathResolver = (): Plugin => {
     resolveId(source, importer) {
       // Only handle @/* imports
       if (!source.startsWith('@/')) return null;
-      
+
       const importPath = source.replace('@/', '');
-      
+
       // Try creatorhubvirtualstudio/src first
-      const virtualStudioBase = path.resolve(
-        __dirname,
-        'client/src/components/creatorhubvirtualstudio/src'
-      );
+      const virtualStudioBase = path.resolve(__dirname, 'client/src/components/creatorhubvirtualstudio/src');
       const virtualStudioPath = path.resolve(virtualStudioBase, importPath);
-      
+
       // Check if file exists with common extensions or as directory with index
       const extensions = ['.tsx', '.ts', '.jsx', '.js'];
       for (const ext of extensions) {
@@ -92,7 +89,7 @@ const customPathResolver = (): Plugin => {
           return fullPath;
         }
       }
-      
+
       // Check for directory with index file
       if (existsSync(virtualStudioPath)) {
         try {
@@ -108,18 +105,18 @@ const customPathResolver = (): Plugin => {
           // Ignore stat errors
         }
       }
-      
+
       // Fallback to client/src
       const fallbackBase = path.resolve(__dirname, 'client/src');
       const fallbackPath = path.resolve(fallbackBase, importPath);
-      
+
       for (const ext of extensions) {
         const fullPath = fallbackPath + ext;
         if (existsSync(fullPath)) {
           return fullPath;
         }
       }
-      
+
       // Check for directory with index file in fallback
       if (existsSync(fallbackPath)) {
         try {
@@ -135,7 +132,7 @@ const customPathResolver = (): Plugin => {
           // Ignore stat errors
         }
       }
-      
+
       // Return null to let Vite's default resolver handle it
       return null;
     },
@@ -147,6 +144,13 @@ export default defineConfig({
     // Fix for third-party modules that use process.env
     'process.env': {},
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
+    __CREATORHUB_BUILD_VERSION__: JSON.stringify(
+      process.env.VITE_BUILD_GIT_SHA ||
+        process.env.VERCEL_GIT_COMMIT_SHA ||
+        process.env.RENDER_GIT_COMMIT ||
+        readGitValue('git rev-parse HEAD') ||
+        'unknown',
+    ),
     // Polyfill global for browser
     global: 'globalThis',
   },
@@ -200,7 +204,8 @@ export default defineConfig({
         // i web-frontenden. mockup-video/tauriBridge importerer den dynamisk bak
         // en isTauri()-guard, så den kjøres aldri i nettleser. Eksternaliser så
         // Rollup ikke prøver å resolve den under web-bygget.
-        if (id === '@tauri-apps/api/core' || id === '@tauri-apps/api/event' || id.startsWith('@tauri-apps/api')) return true;
+        if (id === '@tauri-apps/api/core' || id === '@tauri-apps/api/event' || id.startsWith('@tauri-apps/api'))
+          return true;
         return false;
       },
       output: {
@@ -214,9 +219,7 @@ export default defineConfig({
         },
         // Optimize chunk file names
         chunkFileNames: (chunkInfo) => {
-          const facadeModuleId = chunkInfo.facadeModuleId
-            ? chunkInfo.facadeModuleId.split('/').pop()
-            : 'chunk';
+          const facadeModuleId = chunkInfo.facadeModuleId ? chunkInfo.facadeModuleId.split('/').pop() : 'chunk';
           return `js/[name]-[hash].js`;
         },
         entryFileNames: 'js/[name]-[hash].js',
@@ -254,15 +257,9 @@ export default defineConfig({
       'zod',
       'axios',
     ],
-    exclude: [
-      'rgthree/common/rgthree_api.js',
-      'rgthree/common/components/base_custom_element',
-      'three-stdlib',
-    ],
+    exclude: ['rgthree/common/rgthree_api.js', 'rgthree/common/components/base_custom_element', 'three-stdlib'],
     // Only scan files within the project directory
-    entries: [
-      './client/**/*.{js,jsx,ts,tsx}',
-    ],
+    entries: ['./client/**/*.{js,jsx,ts,tsx}'],
     esbuildOptions: {
       // Ignore external paths completely
       plugins: [

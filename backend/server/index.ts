@@ -67597,7 +67597,12 @@ setupProjectTeamRoutes({ app, pool, requireUserSession, escapeHtml });
 setupProjectWorkspaceRoutes({ app, pool, requireUserSession });
 // Webklienter veksler vanlig Authorization-header mot en 30 sekunders,
 // engangs WebSocket-billett. Session-tokenet skal aldri inn i WS-URL-en.
-setupUserEventsTicketRoute({ app, pool, requireUserSession });
+setupUserEventsTicketRoute({
+  app,
+  pool,
+  requireUserSession,
+  requireAdminSession,
+});
 // Pro Tools Companion (native desktop-agent) + EaseVerse/Sound Room-kobling.
 setupProToolsCompanionRoutes({ app, pool, requireUserSession });
 setupPhotographerMiscRoutes({
