@@ -7,6 +7,7 @@ import XCTest
 final class FeatureVisualQATests: XCTestCase {
 
     /// iOS-varslingsdialogen (push) dukker ved første hub-innlasting.
+    @MainActor
     func dismissPushPrompt() {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let allow = springboard.alerts.buttons["Allow"].firstMatch
@@ -132,6 +133,72 @@ final class FeatureVisualQATests: XCTestCase {
         app.swipeUp()
         Thread.sleep(forTimeInterval: 1)
         attachShot(app, name: "hub-02-nedre")
+    }
+
+    // TROLL production bible: godkjenn/lock referanser og bevis at Prompt
+    // Engine arver den samme produksjonskonteksten. Ingen modellkall utføres.
+    @MainActor
+    func testTrollReferencesAndPromptInspector() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchEnvironment["SB_TOKEN"] = "e2e-verify-daniel-2026"
+        app.launchEnvironment["SB_SERVER"] = "https://theroleroom.com"
+        app.launch()
+
+        let hub = app.buttons["Åpne board"].firstMatch
+        guard hub.waitForExistence(timeout: 30) else { throw XCTSkip("prod/token") }
+        dismissPushPrompt()
+        hub.tap()
+
+        let aiStudio = app.buttons["Åpne AI Studio for aktivt shot"].firstMatch
+        XCTAssertTrue(aiStudio.waitForExistence(timeout: 15),
+                      "AI Studio mangler i Board-topbaren")
+        aiStudio.tap()
+        XCTAssertTrue(app.staticTexts["Regissørens intensjon"].waitForExistence(timeout: 8))
+
+        let references = app.buttons["Referanser"].firstMatch
+        XCTAssertTrue(references.waitForExistence(timeout: 8),
+                      "Produksjonsreferanser mangler i AI Studio")
+        references.tap()
+
+        XCTAssertTrue(app.navigationBars["Produksjonsreferanser"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["TROLL · PRODUCTION BIBLE V1"].waitForExistence(timeout: 8))
+
+        let allLocked = app.staticTexts["4/4 låst"].firstMatch
+        if !allLocked.exists {
+            for draftNumber in 1...4 {
+                let approve = app.buttons["Godkjenn"].firstMatch
+                for _ in 0..<5 where !approve.isHittable { app.swipeUp() }
+                if !approve.isHittable {
+                    for _ in 0..<5 where !allLocked.exists { app.swipeDown() }
+                    if allLocked.exists { break }
+                }
+                XCTAssertTrue(approve.isHittable,
+                              "Fant ikke Godkjenn-handlingen for utkast \(draftNumber)")
+                guard approve.isHittable else { return }
+                approve.tap()
+                XCTAssertTrue(app.buttons["Godkjent"].firstMatch.waitForExistence(timeout: 12),
+                              "Utkast \(draftNumber) ble ikke bekreftet godkjent")
+            }
+        }
+
+        for _ in 0..<5 where !allLocked.exists { app.swipeDown() }
+        XCTAssertTrue(allLocked.waitForExistence(timeout: 12),
+                      "Alle fire TROLL-referanser ble ikke godkjent og låst")
+        attachShot(app, name: "TROLL — 4 av 4 produksjonsreferanser låst")
+
+        app.buttons["Ferdig"].firstMatch.tap()
+        let inspector = app.buttons["Prompt Inspector"].firstMatch
+        XCTAssertTrue(inspector.waitForExistence(timeout: 8), "Prompt Inspector mangler")
+        inspector.tap()
+        XCTAssertTrue(app.navigationBars["Prompt Inspector"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Preflight valid"].waitForExistence(timeout: 20),
+                      "Prompt Engine kompilerte ikke TROLL-konteksten")
+        XCTAssertTrue(app.staticTexts["FINAL COMPILED PROMPT"].exists)
+        XCTAssertTrue(app.staticTexts["Locked properties"].exists)
+        attachShot(app, name: "TROLL — production-aware Prompt Inspector")
+
+        // Bevisst ingen bilde- eller videogenerering i denne testen.
     }
 
     // Assets-fanen: visuell verifisering mot prod.

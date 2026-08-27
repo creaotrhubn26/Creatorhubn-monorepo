@@ -1513,6 +1513,7 @@ private struct StoryboardReferenceLibraryView: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text(asset.name)
                         .font(.headline).foregroundStyle(.white)
+                        .accessibilityIdentifier("storyboard.reference.title.\(asset.id)")
                     Spacer()
                     if asset.sceneIDs.contains(activeSceneID) {
                         Text("AKTIV SCENE")
@@ -1558,7 +1559,6 @@ private struct StoryboardReferenceLibraryView: View {
         .background(BoardBrand.panel, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(
             asset.sceneIDs.contains(activeSceneID) ? BoardBrand.accent.opacity(0.55) : BoardBrand.border))
-        .accessibilityIdentifier("storyboard.reference.card.\(asset.id)")
     }
 
     private func statusPill(_ asset: StoryboardReferenceAsset) -> some View {
