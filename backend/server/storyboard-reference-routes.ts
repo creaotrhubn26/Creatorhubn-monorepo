@@ -30,70 +30,6 @@ function imageUrl(projectId: string, assetId: string): string {
   );
 }
 
-const REVIEW_UPDATE_MARKER = "storyboard-reference-review-update";
-const REVIEW_WAIT_DIAGNOSTIC_DELAY_MS = 2_000;
-
-/**
- * Emit a narrow lock snapshot only when a reference review UPDATE has been
- * waiting long enough to be abnormal. Query text and user data are omitted;
- * the blocker metadata is sufficient to distinguish an app transaction from
- * a migration/maintenance connection.
- */
-async function logReviewUpdateWait(pool: Pool): Promise<void> {
-  try {
-    const result = await pool.query<{
-      pid: number;
-      state: string | null;
-      wait_event_type: string | null;
-      wait_event: string | null;
-      blocking_pids: number[];
-      blockers: unknown;
-    }>(
-      `SELECT waiting.pid,
-              waiting.state,
-              waiting.wait_event_type,
-              waiting.wait_event,
-              pg_blocking_pids(waiting.pid) AS blocking_pids,
-              COALESCE((
-                SELECT jsonb_agg(jsonb_build_object(
-                  'pid', blocker.pid,
-                  'applicationName', blocker.application_name,
-                  'state', blocker.state,
-                  'waitEventType', blocker.wait_event_type,
-                  'waitEvent', blocker.wait_event,
-                  'transactionAgeSeconds', CASE
-                    WHEN blocker.xact_start IS NULL THEN NULL
-                    ELSE FLOOR(EXTRACT(EPOCH FROM
-                      (clock_timestamp() - blocker.xact_start)))
-                  END
-                ))
-                  FROM pg_stat_activity AS blocker
-                 WHERE blocker.pid = ANY(pg_blocking_pids(waiting.pid))
-              ), '[]'::jsonb) AS blockers
-         FROM pg_stat_activity AS waiting
-        WHERE waiting.state <> 'idle'
-          AND waiting.query LIKE ('/* ' || $1 || ' */%')`,
-      [REVIEW_UPDATE_MARKER],
-    );
-    if (result.rows.length > 0) {
-      console.warn("[storyboard-reference] review update waiting", {
-        waits: result.rows.map((row) => ({
-          pid: row.pid,
-          state: row.state,
-          waitEventType: row.wait_event_type,
-          waitEvent: row.wait_event,
-          blockingPids: row.blocking_pids,
-          blockers: row.blockers,
-        })),
-      });
-    }
-  } catch (error) {
-    console.warn("[storyboard-reference] wait diagnostic failed", {
-      code: (error as { code?: string } | null)?.code ?? "unknown",
-    });
-  }
-}
-
 export function registerStoryboardReferenceRoutes(
   router: Router,
   pool: Pool,
@@ -184,21 +120,22 @@ export function registerStoryboardReferenceRoutes(
       const reviewerId = (req as AuthedRequest).userId;
       const approved = parsed.data.approvalStatus === "approved";
       const locked = approved ? (parsed.data.locked ?? true) : false;
-      const waitTimer = setTimeout(() => {
-        void logReviewUpdateWait(pool);
-      }, REVIEW_WAIT_DIAGNOSTIC_DELAY_MS);
-      waitTimer.unref?.();
       let result;
       try {
         result = await pool.query(
-          `/* ${REVIEW_UPDATE_MARKER} */
-           UPDATE storyboard_reference_assets
-              SET approval_status = $1,
-                  locked = $2,
-                  approved_by = CASE WHEN $1 = 'approved' THEN $3 ELSE NULL END,
-                  approved_at = CASE WHEN $1 = 'approved' THEN NOW() ELSE NULL END,
+          `UPDATE storyboard_reference_assets
+              SET approval_status = $1::varchar,
+                  locked = $2::boolean,
+                  approved_by = CASE
+                    WHEN $1::varchar = 'approved' THEN $3::varchar
+                    ELSE NULL
+                  END,
+                  approved_at = CASE
+                    WHEN $1::varchar = 'approved' THEN NOW()
+                    ELSE NULL
+                  END,
                   updated_at = NOW()
-            WHERE id = $4 AND project_id = $5
+            WHERE id = $4::varchar AND project_id = $5::varchar
             RETURNING *`,
           [parsed.data.approvalStatus, locked, reviewerId, assetId, projectId],
         );
@@ -215,8 +152,6 @@ export function registerStoryboardReferenceRoutes(
           });
         }
         return;
-      } finally {
-        clearTimeout(waitTimer);
       }
       if (!result.rows[0]) {
         res.status(404).json({ error: "reference_not_found" });
