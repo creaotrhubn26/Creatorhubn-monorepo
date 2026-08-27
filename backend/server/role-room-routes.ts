@@ -15,12 +15,18 @@ import cors from 'cors';
 import crypto from 'crypto';
 import {
   persistOauthState,
+  consumeOauthState,
   loadOauthState,
   deleteOauthState,
   persistOauthTransfer,
   loadOauthTransfer,
   deleteOauthTransfer,
 } from './role-room-oauth-store.js';
+import {
+  buildRoleRoomNativeGoogleReturnUrl,
+  parseRoleRoomGoogleNativeClient,
+  type RoleRoomGoogleNativeClient,
+} from './role-room-native-google-oauth.js';
 import { resolveClientPortalSession } from './role-room-client-portal.js';
 import { resolveOrgIdForUser, invalidateOrgCache } from './leadgrid-org-resolver.js';
 import { resolveEducationProductionRole, listEducationProductionProjectIds } from './role-room-education-production-access.js';
@@ -464,6 +470,7 @@ interface RoleRoomGoogleAgreementSignatureRow {
 
 interface RoleRoomGoogleOauthState {
   mode: RoleRoomGoogleOauthMode;
+  nativeClient?: RoleRoomGoogleNativeClient | null;
   returnPath: string;
   browserOrigin?: string | null;
   redirectUri?: string | null;
@@ -1700,7 +1707,12 @@ function buildRoleRoomGoogleReturnUrl(
   returnPath: string,
   params: Record<string, string | null | undefined>,
   browserOrigin?: string | null,
+  nativeClient?: RoleRoomGoogleNativeClient | null,
 ): string {
+  const nativeReturnUrl = buildRoleRoomNativeGoogleReturnUrl(nativeClient, params);
+  if (nativeReturnUrl) {
+    return nativeReturnUrl;
+  }
   const nextPath = appendQueryParamsToPath(returnPath, params);
   if (browserOrigin && nextPath.startsWith('/')) {
     return `${browserOrigin}${nextPath}`;
@@ -9149,6 +9161,14 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       }
 
       const stateId = crypto.randomUUID();
+      const requestedNativeClient = readStringValue(req.body?.nativeClient);
+      const nativeClient = parseRoleRoomGoogleNativeClient(requestedNativeClient);
+      if (requestedNativeClient && !nativeClient) {
+        res.status(400).json({
+          error: 'Native OAuth-klient støttes ikke',
+        });
+        return;
+      }
       const loginAs = readStringValue(req.body?.loginAs)?.toLowerCase() ?? null;
       const requestedRole = readStringValue(req.body?.requestedRole ?? req.body?.role)?.toLowerCase() ?? null;
       const projectId = readStringValue(req.body?.projectId);
@@ -9177,6 +9197,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
 
       const oauthStatePayload: RoleRoomGoogleOauthState = {
         mode,
+        nativeClient,
         returnPath,
         browserOrigin,
         redirectUri: config.redirectUri ?? null,
@@ -9190,12 +9211,22 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         youtubeAnalytics: isYoutubeAnalyticsConsent,
         createdAt: Date.now(),
       };
+      // DB er autoritativ for OAuth-state. Da tåler flyten at Google-callback
+      // og native session-result treffer andre Render-instanser, samtidig som
+      // state fortsatt er engangsbruk og ikke kan spilles av på nytt.
+      const statePersisted = await persistOauthState(
+        pool,
+        stateId,
+        oauthStatePayload,
+        new Date(Date.now() + 10 * 60 * 1000),
+      );
+      if (!statePersisted) {
+        res.status(503).json({
+          error: 'Google-innlogging er midlertidig utilgjengelig. Prøv igjen.',
+        });
+        return;
+      }
       roleRoomGoogleOauthStateStore.set(stateId, oauthStatePayload);
-      // Sikkerhetsfix (#6): persister også til DB så multi-pod
-      // setups (Render horizontal scaling) ikke mister state når
-      // callback treffer en annen pod enn den som opprettet den.
-      // 10 min TTL — samme som in-memory pruning.
-      void persistOauthState(pool, stateId, oauthStatePayload, new Date(Date.now() + 10 * 60 * 1000));
 
       const loginHint = targetConnectionEmail ?? requestUser?.email ?? readStringValue(req.body?.email);
       // Login = kun minimale identitets-scopes (unngår Googles «scopes cannot be
@@ -9226,6 +9257,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         mode,
         authorizationUrl,
         stateId,
+        nativeClient,
       });
     } catch (error) {
       console.error('Role Room Google oauth start error:', error);
@@ -9306,28 +9338,25 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const fallbackReturnPath = sanitizeRoleRoomReturnPath(req.query.returnPath, req);
     const requestOrigin = resolveRoleRoomBrowserOrigin(req);
 
+    const stateId = readStringValue(req.query.state);
+    const code = readStringValue(req.query.code);
+    // Autoritativ, atomisk consume hindrer både cross-pod state-tap og replay
+    // mot podden som opprinnelig opprettet sin lokale cache-rad.
+    const oauthState = stateId
+      ? await consumeOauthState<RoleRoomGoogleOauthState>(pool, stateId)
+      : null;
+    if (stateId) {
+      roleRoomGoogleOauthStateStore.delete(stateId);
+    }
+
     const redirectWithError = (returnPath: string, message: string, browserOrigin?: string | null) => {
       res.redirect(
         buildRoleRoomGoogleReturnUrl(returnPath, {
           rrGoogleStatus: 'error',
           rrGoogleMessage: message,
-        }, resolveRoleRoomBrowserOrigin(req, browserOrigin) ?? requestOrigin),
+        }, resolveRoleRoomBrowserOrigin(req, browserOrigin) ?? requestOrigin, oauthState?.nativeClient),
       );
     };
-
-    const stateId = readStringValue(req.query.state);
-    const code = readStringValue(req.query.code);
-    // Sikkerhetsfix (#6): Map kan miste treff hvis callback treffer en
-    // annen pod enn den som opprettet state. DB-fallback dekker det.
-    let oauthState = stateId ? roleRoomGoogleOauthStateStore.get(stateId) : null;
-    if (!oauthState && stateId) {
-      const fromDb = await loadOauthState<RoleRoomGoogleOauthState>(pool, stateId);
-      if (fromDb) {
-        oauthState = fromDb;
-        // Cache i Map for raskere oppslag senere i samme prosess.
-        roleRoomGoogleOauthStateStore.set(stateId, fromDb);
-      }
-    }
 
     // Sikkerhetsfix (#5): bruker som klikker "Avbryt" på Googles consent-
     // skjerm sender ?error=access_denied. Tidligere fanget vi dette via
@@ -9351,10 +9380,6 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       redirectWithError(oauthState?.returnPath ?? fallbackReturnPath, 'Ugyldig Google-forespørsel', oauthState?.browserOrigin);
       return;
     }
-
-    roleRoomGoogleOauthStateStore.delete(stateId!);
-    // Sikkerhetsfix (#6): slett også fra DB
-    void deleteOauthState(pool, stateId!);
 
     try {
       const oauthClient = createRoleRoomGoogleOAuthClient(req, oauthState.redirectUri);
@@ -9579,7 +9604,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
                   rrGoogleStatus: 'needs_2fa',
                   rrGoogleMode: 'login',
                   rrGoogleTempToken: tempToken,
-                }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin),
+                }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin, oauthState.nativeClient),
               );
               return;
             }
@@ -9625,7 +9650,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             rrGoogleStatus: 'success',
             rrGoogleMode: 'login',
             rrGoogleTransfer: transferId,
-          }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin),
+          }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin, oauthState.nativeClient),
         );
         return;
       }
@@ -9653,7 +9678,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           buildRoleRoomGoogleReturnUrl(oauthState.returnPath, {
             rrGoogleStatus: 'success',
             rrGoogleMode: 'link',
-          }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin),
+          }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin, oauthState.nativeClient),
         );
         return;
       }
@@ -9681,7 +9706,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           buildRoleRoomGoogleReturnUrl(oauthState.returnPath, {
             rrGoogleStatus: 'success',
             rrGoogleMode: 'link',
-          }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin),
+          }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin, oauthState.nativeClient),
         );
         return;
       }
@@ -9741,7 +9766,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           rrGoogleStatus: 'success',
           rrGoogleMode: 'link',
           rrGoogleTransfer: transferId,
-        }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin),
+        }, resolveRoleRoomBrowserOrigin(req, oauthState.browserOrigin) ?? requestOrigin, oauthState.nativeClient),
       );
     } catch (error) {
       console.error('Role Room Google callback error:', error);

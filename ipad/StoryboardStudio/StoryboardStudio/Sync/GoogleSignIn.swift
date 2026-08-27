@@ -2,11 +2,9 @@ import Foundation
 import AuthenticationServices
 import UIKit
 
-// Google Sign-In via ASWebAuthenticationSession — samme backend-flyt som
-// LeadMapApp (leadgrid-google-auth-routes), men med platform=ios-storyboard
-// → callback storyboardstudio://oauth, og id_token byttes mot en ekte
-// Role Room-SESJON via /api/auth/google/session-exchange (krever at
-// artisten allerede har Role Room-konto).
+// Google Sign-In via The Role Rooms egen OAuth-flyt:
+// Role Room start → Google → Role Room callback → storyboardstudio://oauth
+// → engangs-transfer → Role Room-sesjon. Ingen Leadgrid-endepunkter brukes.
 
 @MainActor
 final class StoryboardGoogleSignIn: NSObject {
@@ -14,14 +12,14 @@ final class StoryboardGoogleSignIn: NSObject {
     private var currentSession: ASWebAuthenticationSession?
 
     enum SignInError: LocalizedError {
-        case noURL, cancelled, missingCode
+        case noURL, cancelled, missingTransfer
         case backend(String)
 
         var errorDescription: String? {
             switch self {
             case .noURL: return "Kunne ikke åpne Google-innlogging"
             case .cancelled: return "Avbrutt"
-            case .missingCode: return "Ingen kode mottatt"
+            case .missingTransfer: return "Role Room returnerte ingen gyldig innlogging"
             case .backend(let message): return message
             }
         }
@@ -32,23 +30,34 @@ final class StoryboardGoogleSignIn: NSObject {
         let userName: String
     }
 
-    /// Full flyt: start → ASWebAuthenticationSession → code → id_token →
-    /// Role Room-sesjonstoken.
+    /// Full flyt: Role Room start → Google → native callback → Role Room-sesjon.
     func signIn(server: String) async throws -> SessionResult {
-        guard let base = URL(string: server) else { throw SignInError.noURL }
+        guard let base = URL(string: server),
+              let browserOrigin = Self.browserOrigin(for: base) else {
+            throw SignInError.noURL
+        }
 
-        // 1) Hent OAuth-URL
-        let startURL = base.appendingPathComponent("/api/leadgrid/auth/google/start")
-            .appending(queryItems: [URLQueryItem(name: "platform", value: "ios-storyboard")])
-        let (startData, _) = try await URLSession.shared.data(from: startURL)
-        struct StartResponse: Decodable { let auth_url: String; let state: String }
-        let start = try JSONDecoder().decode(StartResponse.self, from: startData)
-        guard let authURL = URL(string: start.auth_url) else { throw SignInError.noURL }
+        let startPayload = try await requestJSONObject(
+            url: base.appendingPathComponent("api/role-room/google/oauth/start"),
+            method: "POST",
+            body: [
+                "mode": "login",
+                "browserOrigin": browserOrigin,
+                "returnPath": "/theroleroom",
+                "nativeClient": "storyboard-room",
+            ]
+        )
+        guard let authorizationURLString = startPayload["authorizationUrl"] as? String,
+              let authorizationURL = URL(string: authorizationURLString) else {
+            throw SignInError.backend(Self.errorMessage(from: startPayload)
+                ?? "Role Room returnerte ingen Google-adresse")
+        }
 
-        // 2) Web-auth-session (callback: storyboardstudio://oauth?code=…)
-        let callbackURL: URL = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
+        let callbackURL: URL = try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<URL, Error>) in
             let handler: @Sendable (URL?, Error?) -> Void = { url, error in
-                if let error = error as? ASWebAuthenticationSessionError, error.code == .canceledLogin {
+                if let error = error as? ASWebAuthenticationSessionError,
+                   error.code == .canceledLogin {
                     continuation.resume(throwing: SignInError.cancelled)
                 } else if let error {
                     continuation.resume(throwing: error)
@@ -59,7 +68,7 @@ final class StoryboardGoogleSignIn: NSObject {
                 }
             }
             let session = ASWebAuthenticationSession(
-                url: authURL,
+                url: authorizationURL,
                 callbackURLScheme: "storyboardstudio",
                 completionHandler: handler
             )
@@ -68,57 +77,97 @@ final class StoryboardGoogleSignIn: NSObject {
             self.currentSession = session
             session.start()
         }
+        currentSession = nil
 
-        guard let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
-              let code = components.queryItems?.first(where: { $0.name == "code" })?.value else {
-            if let backendError = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?
-                .queryItems?.first(where: { $0.name == "error" })?.value {
-                throw SignInError.backend(backendError)
-            }
-            throw SignInError.missingCode
+        let transferID = try Self.transferID(from: callbackURL)
+        let sessionPayload = try await requestJSONObject(
+            url: base
+                .appendingPathComponent("api/role-room/google/oauth/session-result")
+                .appendingPathComponent(transferID),
+            method: "GET"
+        )
+        guard let token = sessionPayload["sessionToken"] as? String,
+              !token.isEmpty else {
+            throw SignInError.backend(Self.errorMessage(from: sessionPayload)
+                ?? "Role Room returnerte ingen sesjon")
         }
 
-        // 3) code → id_token
-        let idToken = try await postJSON(
-            url: base.appendingPathComponent("/api/leadgrid/auth/google/callback"),
-            body: ["code": code, "state": start.state],
-            extract: { ($0["id_token"] as? String) }
-        )
-
-        // 4) id_token → Role Room-sesjon
-        var name = ""
-        let token = try await postJSON(
-            url: base.appendingPathComponent("/api/auth/google/session-exchange"),
-            body: ["id_token": idToken],
-            extract: { payload in
-                if let user = payload["user"] as? [String: Any] {
-                    name = (user["name"] as? String) ?? ""
-                }
-                return payload["token"] as? String
-            }
-        )
+        let user = sessionPayload["user"] as? [String: Any]
+        let name = (user?["name"] as? String)
+            ?? (user?["display_name"] as? String)
+            ?? (user?["email"] as? String)
+            ?? ""
         return SessionResult(token: token, userName: name)
     }
 
-    private func postJSON(
+    static func transferID(from callbackURL: URL) throws -> String {
+        guard let components = URLComponents(
+            url: callbackURL,
+            resolvingAgainstBaseURL: false
+        ) else {
+            throw SignInError.missingTransfer
+        }
+        let queryItems = components.queryItems ?? []
+        func value(_ name: String) -> String? {
+            queryItems.first(where: { $0.name == name })?.value
+        }
+
+        let status = value("rrGoogleStatus")
+        if status == "needs_2fa" {
+            throw SignInError.backend(
+                "Denne Role Room-kontoen krever 2FA. Fullfør innloggingen på theroleroom.com først."
+            )
+        }
+        guard status == "success" else {
+            throw SignInError.backend(
+                value("rrGoogleMessage") ?? "Google-innloggingen i Role Room feilet"
+            )
+        }
+        guard let transferID = value("rrGoogleTransfer"), !transferID.isEmpty else {
+            throw SignInError.missingTransfer
+        }
+        return transferID
+    }
+
+    private static func browserOrigin(for baseURL: URL) -> String? {
+        guard var components = URLComponents(
+            url: baseURL,
+            resolvingAgainstBaseURL: false
+        ), components.scheme != nil, components.host != nil else {
+            return nil
+        }
+        components.path = ""
+        components.query = nil
+        components.fragment = nil
+        return components.url?.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
+    private static func errorMessage(from payload: [String: Any]) -> String? {
+        (payload["message"] as? String) ?? (payload["error"] as? String)
+    }
+
+    private func requestJSONObject(
         url: URL,
-        body: [String: String],
-        extract: ([String: Any]) -> String?
-    ) async throws -> String {
+        method: String,
+        body: [String: Any]? = nil
+    ) async throws -> [String: Any] {
         var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
-        guard status == 200, let value = extract(payload) else {
-            let message = (payload["message"] as? String)
-                ?? (payload["error"] as? String)
-                ?? "HTTP \(status)"
-            throw SignInError.backend(message)
+        guard (200..<300).contains(status) else {
+            throw SignInError.backend(
+                Self.errorMessage(from: payload) ?? "Role Room svarte HTTP \(status)"
+            )
         }
-        return value
+        return payload
     }
 }
 
