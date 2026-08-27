@@ -43,7 +43,8 @@ import authSessionService from './authSessionService';
 import settingsService, { getCurrentUserId } from './settingsService';
 import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import { logRoleRoomDiagnostic } from '../utils/roleRoomDiagnostics';
-import { generateAvatarUrl } from '../utils/generateAvatarUrl';
+import { generateAvatarUrl } from "../utils/generateAvatarUrl";
+import { mergeCanonicalProjectShellWithLocal } from "./castingProjectSourceMerge";
 
 // Database availability cache
 let dbAvailable: boolean | null = null;
@@ -1651,7 +1652,8 @@ async function getProjectsFromDb(): Promise<CastingProject[]> {
     const normalizedDb = normalizeProjects(dbProjectsRaw);
     const dbProjects = normalizedDb.projects.map((project) => {
       const localProject = localProjects.find((entry) => entry.id === project.id);
-      const mergedProject = mergeProjectUserRoles(project, localProject).project;
+      const reconciledProject = mergeCanonicalProjectShellWithLocal(project, localProject);
+      const mergedProject = mergeProjectUserRoles(reconciledProject, localProject).project;
       return mergeProjectTemplateMetadata(mergedProject, localProject);
     });
     
@@ -1893,9 +1895,12 @@ export const castingService = {
           ? normalizeProject(dbProjectRaw as CastingProject)
           : { project: null as CastingProject | null, changed: false };
         const dbProject = normalizedDbProject.project;
-        const mergedDbProject = dbProject && localProject
-          ? mergeProjectUserRoles(dbProject, localProject).project
+        const reconciledDbProject = dbProject
+          ? mergeCanonicalProjectShellWithLocal(dbProject, localProject)
           : dbProject;
+        const mergedDbProject = reconciledDbProject && localProject
+          ? mergeProjectUserRoles(reconciledDbProject, localProject).project
+          : reconciledDbProject;
 
         const dbHasData = (mergedDbProject?.candidates?.length ?? 0) > 0 ||
                           (mergedDbProject?.roles?.length ?? 0) > 0 ||
