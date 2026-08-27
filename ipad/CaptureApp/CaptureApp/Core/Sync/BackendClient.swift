@@ -38,7 +38,7 @@ actor BackendClient {
             body: EmptyBody(),
             additionalHeaders: [
                 "X-CreatorHub-Client": "capture-ios",
-                "X-CreatorHub-Client-Version": Self.realtimeClientVersion,
+                "X-CreatorHub-Client-Version": Self.realtimeClientVersion
             ],
         )
     }
