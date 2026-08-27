@@ -53,9 +53,17 @@ export function registerRoleRoomMockupProjectsRoutes(app: Express, deps: Deps): 
       );
       return true;
     })
-    .catch((error: Error) => {
-      console.warn("[mockup-projects] tabell-feil:", error.message);
-      return false;
+    .catch(async (error: Error) => {
+      // Produksjon kan bruke en begrenset runtime-rolle: migrasjonsrollen
+      // har allerede opprettet tabell/indeks, mens runtime ikke har DDL.
+      console.warn("[mockup-projects] DDL-probe feilet:", error.message);
+      try {
+        await pool.query("SELECT 1 FROM demo_studio_mockup_projects LIMIT 0");
+        return true;
+      } catch (probeError) {
+        console.warn("[mockup-projects] tabell-feil:", probeError instanceof Error ? probeError.message : "unknown_error");
+        return false;
+      }
     });
 
   async function requireTable(res: Response): Promise<boolean> {

@@ -13,11 +13,13 @@ function makePool(opts: {
   exists?: boolean;
   count?: number;
   savedRowCount?: number;
+  schemaInitFails?: boolean;
 } = {}): Pool {
   return {
     query: vi.fn(async (sql: string, params?: unknown[]): Promise<QueryResult> => {
       const normalized = sql.toLowerCase();
       if (normalized.includes("create table") || normalized.includes("create index")) {
+        if (opts.schemaInitFails) throw new Error("permission denied for schema public");
         return { rows: [], rowCount: 0 };
       }
       if (normalized.includes("select id, name, status")) {
@@ -76,6 +78,20 @@ describe("Role Room Mockup Studio cloud projects", () => {
   it("requires a valid bearer session", async () => {
     const response = await request(makeApp(makePool())).get("/api/role-room/mockup-projects");
     expect(response.status).toBe(401);
+  });
+
+  it("uses the migrated table when the runtime role cannot execute DDL", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const pool = makePool({ schemaInitFails: true });
+    const response = await request(makeApp(pool))
+      .get("/api/role-room/mockup-projects")
+      .set("Authorization", "Bearer token-1");
+    warn.mockRestore();
+
+    expect(response.status).toBe(200);
+    expect(vi.mocked(pool.query).mock.calls.some(([sql]) =>
+      String(sql).includes("SELECT 1 FROM demo_studio_mockup_projects LIMIT 0"),
+    )).toBe(true);
   });
 
   it("lists only the authenticated owner's metadata", async () => {
