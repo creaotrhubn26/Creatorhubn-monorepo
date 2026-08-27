@@ -101,6 +101,10 @@ import {
 } from "./casting-screenplay-formats.js";
 import { newEntityId } from "./_shared-ids.js";
 import { userOwnsCastingProjectViaStore } from "./casting-project-ownership.js";
+import {
+  mirrorManuscriptToProductionTables,
+  mirrorSceneToProductionTables,
+} from "./casting-production-data-mirror.js";
 
 export interface CastingManuscriptsRoutesDeps {
   app: express.Application;
@@ -268,7 +272,8 @@ export function setupCastingManuscriptsRoutes(
   });
 
   app.post("/api/casting/manuscripts", async (req, res) => {
-    if (!requireUserSession(req, res)) return;
+    const session = requireUserSession(req, res);
+    if (!session) return;
     try {
       const payload = req.body && typeof req.body === "object" ? req.body : {};
       const manuscriptId =
@@ -281,6 +286,17 @@ export function setupCastingManuscriptsRoutes(
         payload,
         readProjectId(existing, "default-project"),
       );
+      if (
+        !projectId ||
+        !(await userOwnsCastingProjectViaStore(
+          compatStoreGet,
+          projectId,
+          session.userId,
+        ))
+      ) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
       const manuscript = {
         ...existing,
         ...payload,
@@ -294,6 +310,7 @@ export function setupCastingManuscriptsRoutes(
         manuscriptId,
         manuscript,
       );
+      if (pool) await mirrorManuscriptToProductionTables(pool, stored);
       setEtagHeader(res, stored);
       res.status(201).json(stored);
     } catch (error) {
@@ -361,6 +378,7 @@ export function setupCastingManuscriptsRoutes(
         manuscriptId,
         manuscript,
       );
+      if (pool) await mirrorManuscriptToProductionTables(pool, stored);
       setEtagHeader(res, stored);
       res.json(stored);
     } catch (error) {
@@ -555,6 +573,17 @@ export function setupCastingManuscriptsRoutes(
         res.status(400).json({ error: "manuscriptId is required" });
         return;
       }
+      if (!(await ensureManuscriptOwner(req, res, manuscriptId))) return;
+
+      const manuscript = await manuscriptsService.getManuscript(manuscriptId);
+      const projectId = readProjectId(
+        payload,
+        readProjectId(manuscript, ""),
+      );
+      if (!projectId) {
+        res.status(400).json({ error: "projectId is required" });
+        return;
+      }
 
       const current = await manuscriptsService.getScenes(manuscriptId);
       const sceneId =
@@ -594,6 +623,7 @@ export function setupCastingManuscriptsRoutes(
         next.push(scene);
       }
       await manuscriptsService.replaceScenes(manuscriptId, next);
+      if (pool) await mirrorSceneToProductionTables(pool, scene, projectId);
       res.status(existingIndex >= 0 ? 200 : 201).json(scene);
     } catch (error) {
       if ((error as Error)?.name === "CompatStoreUnavailableError") {
