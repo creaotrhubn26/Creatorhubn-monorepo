@@ -183,46 +183,70 @@ struct HubBootView: View {
     @ObservedObject var sync: SyncState
     @State private var project: ProjectSummary?
     @State private var manuscript: ManuscriptSummary?
-    @State private var failed = false
+    @State private var isBooting = true
+    @State private var showProjectBrowser = false
 
     var body: some View {
         Group {
             if let project, let manuscript {
-                ProjectHubView(project: project, manuscript: manuscript)
-            } else if failed {
+                ProjectHubView(
+                    project: project,
+                    manuscript: manuscript,
+                    onBrowseProjects: { showProjectBrowser = true })
+                    .id("\(project.id):\(manuscript.id)")
+            } else if isBooting {
                 VStack(spacing: 12) {
-                    Text("Fant ingen produksjoner")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Text("Opprett en produksjon i The Role Room først.")
-                        .font(.system(size: 13)).foregroundStyle(BoardBrand.dim)
-                    Button("Prøv igjen") { failed = false; Task { await boot() } }
-                        .foregroundStyle(BoardBrand.accent)
+                    ProgressView().tint(.white)
+                    Text("Henter produksjonene dine …")
+                        .font(.system(size: 13))
+                        .foregroundStyle(BoardBrand.dim)
                 }
             } else {
-                ProgressView().tint(.white)
+                ProductionBrowserView(onSelect: select)
             }
+        }
+        .sheet(isPresented: $showProjectBrowser) {
+            ProductionBrowserView(
+                showsCloseButton: true,
+                onSelect: { selectedProject, selectedManuscript in
+                    select(selectedProject, selectedManuscript)
+                    showProjectBrowser = false
+                })
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
         .task { await boot() }
     }
 
+    private func select(_ selectedProject: ProjectSummary, _ selectedManuscript: ManuscriptSummary) {
+        UserDefaults.standard.set(selectedProject.id, forKey: "rr.lastProjectId")
+        UserDefaults.standard.set(selectedManuscript.id, forKey: "rr.lastManuscriptId")
+        project = selectedProject
+        manuscript = selectedManuscript
+        isBooting = false
+    }
+
     private func boot() async {
         guard project == nil else { return }
+        defer { isBooting = false }
         guard let projects = try? await RoleRoomAPIClient.shared.fetchProjects(),
-              !projects.isEmpty else { failed = true; return }
-        let lastProject = UserDefaults.standard.string(forKey: "rr.lastProjectId")
-        let chosenProject = projects.first { $0.id == lastProject } ?? projects[0]
-        guard let manuscripts = try? await RoleRoomAPIClient.shared
-            .fetchManuscripts(projectId: chosenProject.id), !manuscripts.isEmpty else {
-            failed = true
+              !projects.isEmpty else { return }
+
+        let lastProjectID = UserDefaults.standard.string(forKey: "rr.lastProjectId")
+        let orderedProjects = projects.sorted { lhs, rhs in
+            if lhs.id == lastProjectID { return true }
+            if rhs.id == lastProjectID { return false }
+            return false
+        }
+        let lastManuscriptID = UserDefaults.standard.string(forKey: "rr.lastManuscriptId")
+        for candidate in orderedProjects {
+            guard let manuscripts = try? await RoleRoomAPIClient.shared
+                .fetchManuscripts(projectId: candidate.id),
+                  !manuscripts.isEmpty else { continue }
+            let chosen = manuscripts.first { $0.id == lastManuscriptID } ?? manuscripts[0]
+            select(candidate, chosen)
             return
         }
-        let lastManuscript = UserDefaults.standard.string(forKey: "rr.lastManuscriptId")
-        let chosenManuscript = manuscripts.first { $0.id == lastManuscript } ?? manuscripts[0]
-        UserDefaults.standard.set(chosenProject.id, forKey: "rr.lastProjectId")
-        UserDefaults.standard.set(chosenManuscript.id, forKey: "rr.lastManuscriptId")
-        project = chosenProject
-        manuscript = chosenManuscript
     }
 }
 

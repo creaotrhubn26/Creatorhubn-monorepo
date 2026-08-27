@@ -23,6 +23,57 @@ interface QueryablePool {
   ) => Promise<{ rows: Array<Record<string, unknown>> }>;
 }
 
+/**
+ * True when the user can open a canonical Role Room project, either as its
+ * creator or through an explicit project-role membership. Storyboard Room
+ * reads manuscripts from the legacy casting surface, but its project browser
+ * reads the canonical `casting_projects` table. Keeping this check here makes
+ * those two API surfaces share the same tenant boundary.
+ *
+ * Legacy projects that have not been mirrored to `casting_projects` still use
+ * the strict compat-store owner check as a fallback.
+ */
+export async function userCanAccessCastingProject(
+  pool: QueryablePool,
+  projectId: string,
+  userId: string | null | undefined,
+): Promise<boolean> {
+  if (!projectId || !userId) return false;
+  try {
+    const result = await pool.query(
+      `SELECT
+         EXISTS (
+           SELECT 1
+             FROM casting_projects cp
+            WHERE cp.id = $1
+         ) AS project_exists,
+         EXISTS (
+           SELECT 1
+             FROM casting_projects cp
+            WHERE cp.id = $1
+              AND (
+                cp.created_by = $2
+                OR EXISTS (
+                  SELECT 1
+                    FROM casting_user_roles cur
+                   WHERE cur.project_id = cp.id
+                     AND cur.user_id = $2
+                )
+              )
+         ) AS can_access`,
+      [projectId, userId],
+    );
+    const status = result.rows[0];
+    if (status?.project_exists === true) {
+      return status.can_access === true;
+    }
+  } catch {
+    // A legacy-only install may not have the canonical tables yet. The
+    // compat-store check below remains fail-closed and owner-only.
+  }
+  return userOwnsCastingProject(pool, projectId, userId);
+}
+
 /** Returns the owning user id for a casting project, or null if unknown. */
 export async function getCastingProjectOwner(
   pool: QueryablePool,

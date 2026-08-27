@@ -13,12 +13,12 @@ import UIKit
 // Scenene holdes som RÅ JSON ([String: Any]) internt i actoren så ukjente
 // felter bevares tapsfritt ved skriving — UI får kun Sendable summaries.
 
-struct ProjectSummary: Identifiable, Sendable {
+struct ProjectSummary: Identifiable, Sendable, Equatable {
     let id: String
     let name: String
 }
 
-struct ManuscriptSummary: Identifiable, Sendable {
+struct ManuscriptSummary: Identifiable, Sendable, Equatable {
     let id: String
     let title: String
 }
@@ -222,19 +222,27 @@ actor RoleRoomAPIClient {
     func fetchProjects() async throws -> [ProjectSummary] {
         var projects: [[String: Any]]
         do {
-            let payload = try await getJSON(path: "/api/casting/projects", query: [:])
-            guard let list = payload["projects"] as? [[String: Any]] else {
-                throw SyncError.malformed("projects")
+            projects = try await getJSONArray(path: "/api/role-room/projects")
+            // Behold eldre, eide compat-prosjekter som ennå ikke er migrert,
+            // men la den kanoniske Role Room-listen være sannhetskilden.
+            if let payload = try? await getJSON(path: "/api/casting/projects", query: [:]) {
+                let legacy = (payload["projects"] as? [[String: Any]]) ?? []
+                var known = Set(projects.compactMap { $0["id"] as? String })
+                for entry in legacy {
+                    guard let id = entry["id"] as? String, !known.contains(id) else { continue }
+                    projects.append(entry)
+                    known.insert(id)
+                }
             }
-            projects = list
-            cacheWrite(list, key: "projects")
+            cacheWrite(projects, key: "projects")
         } catch {
             guard let cached = cacheRead(key: "projects") as? [[String: Any]] else { throw error }
             projects = cached
         }
         return projects.compactMap { entry in
             guard let id = entry["id"] as? String else { return nil }
-            return ProjectSummary(id: id, name: (entry["name"] as? String) ?? id)
+            let name = (entry["name"] as? String) ?? (entry["projectName"] as? String) ?? id
+            return ProjectSummary(id: id, name: name)
         }
     }
 
@@ -264,6 +272,26 @@ actor RoleRoomAPIClient {
             let title = (entry["title"] as? String) ?? (entry["name"] as? String) ?? id
             return ManuscriptSummary(id: id, title: title)
         }
+    }
+
+    func createManuscript(projectId: String, title: String) async throws -> ManuscriptSummary {
+        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let payload = try await sendJSONResponse(
+            path: "/api/casting/manuscripts",
+            method: "POST",
+            body: [
+                "id": "manuscript-\(UUID().uuidString.lowercased())",
+                "projectId": projectId,
+                "project_id": projectId,
+                "title": normalizedTitle.isEmpty ? "Storyboard-manus" : normalizedTitle,
+                "name": normalizedTitle.isEmpty ? "Storyboard-manus" : normalizedTitle,
+                "status": "draft",
+            ])
+        guard let id = payload["id"] as? String else {
+            throw SyncError.malformed("opprettet manus")
+        }
+        let savedTitle = (payload["title"] as? String) ?? (payload["name"] as? String) ?? id
+        return ManuscriptSummary(id: id, title: savedTitle)
     }
 
     // ETag per manuskript (svarer serverens scenes-version): polling og
@@ -1055,6 +1083,24 @@ actor RoleRoomAPIClient {
         guard (200...299).contains(status) else {
             throw status == 401 ? SyncError.unauthenticated : SyncError.http(status)
         }
+    }
+
+    private func sendJSONResponse(
+        path: String, method: String, body: [String: Any]
+    ) async throws -> [String: Any] {
+        var request = try request(path: path, query: [:])
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200...299).contains(status) else {
+            throw status == 401 ? SyncError.unauthenticated : SyncError.http(status)
+        }
+        guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw SyncError.malformed(path)
+        }
+        return payload
     }
 
     // MARK: Mapping
