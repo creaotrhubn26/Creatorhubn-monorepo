@@ -52,6 +52,9 @@ final class CanvasState: ObservableObject {
     // Bumpes ved ALLE strokes-mutasjoner (også flytt, som ikke endrer antall)
     // — rebuild- og autosynk-trigger.
     @Published var revision = 0
+    // Separat visuell revisjon: nytt/oppdatert panelbilde krever GPU-rebuild,
+    // men skal aldri feiltolkes som et nytt strøk og autosynkes som tegning.
+    @Published var backgroundRevision = 0
     // Pensel-favoritter (persistert) — sorteres først i glyf-griden.
     @Published var favoriteBrushes: Set<String> =
         Set(UserDefaults.standard.stringArray(forKey: "sb.favBrushes") ?? [])
@@ -621,6 +624,7 @@ final class MetalCanvasUIView: UIView {
     private var lastHiddenLayers: Set<String> = []
     private var lastLayerOpacity: [String: Double] = [:]
     private var lastRevision = -1
+    private var lastBackgroundRevision = -1
 
     func syncIfNeeded() {
         guard let state,
@@ -628,12 +632,14 @@ final class MetalCanvasUIView: UIView {
                 || state.revision != lastRevision
                 || state.hiddenLayers != lastHiddenLayers
                 || state.layerOpacity != lastLayerOpacity
+                || state.backgroundRevision != lastBackgroundRevision
         else { return }
         renderer?.rebuild(strokes: state.visibleStrokes(), scale: renderScale)
         committedCount = state.strokes.count
         lastRevision = state.revision
         lastHiddenLayers = state.hiddenLayers
         lastLayerOpacity = state.layerOpacity
+        lastBackgroundRevision = state.backgroundRevision
         redraw()
     }
 

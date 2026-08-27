@@ -1210,6 +1210,42 @@ final class CompositionRenderTests: XCTestCase {
                           "midtpikselet skal bære bildefargen, ikke papir")
     }
 
+    /// Viskelær skal endre selve panelbildet, ikke bare tegnestrøk over det.
+    /// Kilden beholdes for undo, mens render/export flater redigeringen.
+    func testImageFrameEraserEditsOriginalPixelsInExport() throws {
+        let dataURL = solidImageDataURL(color: .systemBlue,
+                                        size: CGSize(width: 400, height: 225))
+        let eraserPoints = (0...20).map { step in
+            StrokePoint(x: 600 + Double(step) * 36, y: 540,
+                        pressure: 1, tiltX: 0, tiltY: 0,
+                        timestamp: Double(step) * 8)
+        }
+        let eraser = PencilStroke(
+            id: "erase-original", points: eraserPoints, inputType: "pencil",
+            color: "#ffffff", width: 480, opacity: 1,
+            brush: BrushSpec.preset(.eraser, size: 480,
+                                    color: "#ffffff", opacity: 1))
+        let frame = makeFrame(strokes: [eraser], id: "editable-image", imageUrl: dataURL)
+        let image = try XCTUnwrap(FrameRenderService.image(for: frame, maxWidth: 400))
+        let cg = try XCTUnwrap(image.cgImage)
+        let data = try XCTUnwrap(cg.dataProvider?.data)
+        let pixels = try XCTUnwrap(CFDataGetBytePtr(data))
+        let bytesPerPixel = cg.bitsPerPixel / 8
+
+        func channels(x: Int, y: Int) -> [UInt8] {
+            let offset = y * cg.bytesPerRow + x * bytesPerPixel
+            return (0..<min(4, bytesPerPixel)).map { pixels[offset + $0] }
+        }
+
+        let erased = channels(x: cg.width / 2, y: cg.height / 2)
+        let untouched = channels(x: 20, y: 20)
+        XCTAssertGreaterThan(erased.prefix(3).min() ?? 0, 225,
+                             "visket område skal avsløre lyst storyboardpapir")
+        XCTAssertLessThan(untouched.prefix(3).min() ?? 255, 220,
+                          "området utenfor viskelæret skal beholde originalbildet")
+        XCTAssertNotEqual(erased, untouched)
+    }
+
     /// Post-it/boble skal endre eksport-bildet mot ren tekst.
     func testAnnotationStylesAffectExport() throws {
         let base = stroke(.pencil, size: 5, opacity: 0.9, line(200, 200, 900, 700))

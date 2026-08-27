@@ -306,6 +306,12 @@ enum BoardTool: String, CaseIterable {
     }
 }
 
+struct BoardCanvasBackground {
+    let editableBase: CGImage?
+    let referenceUnderlay: CGImage?
+    let referenceOpacity: Double
+}
+
 struct NativeBoardView: View {
     @StateObject private var board: BoardState
     @StateObject private var canvasState = CanvasState()
@@ -371,7 +377,7 @@ struct NativeBoardView: View {
         .fullScreenCover(isPresented: $showFullscreenDraw) {
             if let frame = board.frame {
                 FullscreenDrawView(canvasState: canvasState, frame: frame,
-                                   underlay: composedUnderlay())
+                                   background: composedCanvasBackground())
             }
         }
         .task { await board.reload() }
@@ -379,7 +385,10 @@ struct NativeBoardView: View {
         .onChange(of: board.selectedSceneIndex) { board.activeFrameIndex = 0; loadActiveFrameIntoCanvas() }
         .onChange(of: board.scenes.count) { loadActiveFrameIntoCanvas() }
         .onChange(of: canvasState.revision) { scheduleAutosync() }
+        .onChange(of: board.frame?.imageUrl) { loadActiveFrameIntoCanvas() }
         .onChange(of: onionMode) { applyUnderlay(to: renderer) }
+        .onChange(of: board.frame?.underlayDataURL) { applyUnderlay(to: renderer) }
+        .onChange(of: board.frame?.underlayOpacity) { applyUnderlay(to: renderer) }
         .onChange(of: perspectiveMode) { persistPerspective(); updateSnapState() }
         .onChange(of: perspectiveSnap) { updateSnapState() }
         .task {
@@ -585,8 +594,23 @@ struct NativeBoardView: View {
     /// Dekod frame-underlag + ev. onion-skin (forrige shot) og sett på
     /// gitt renderer (inline og fullskjerm har hver sin instans).
     private func applyUnderlay(to target: MetalStrokeRenderer?) {
-        let (image, opacity) = composedUnderlay()
-        target?.setUnderlay(cgImage: image, opacity: opacity)
+        let background = composedCanvasBackground()
+        target?.setEditableBase(cgImage: background.editableBase)
+        target?.setUnderlay(cgImage: background.referenceUnderlay,
+                            opacity: background.referenceOpacity)
+        canvasState.backgroundRevision += 1
+    }
+
+    /// Et faktisk panelbilde går inn i rasterakkumulatoren og kan viskes i.
+    /// Referansefoto/onion uten panelbilde forblir et skjerm-underlag.
+    private func composedCanvasBackground() -> BoardCanvasBackground {
+        let (composed, opacity) = composedUnderlay()
+        if board.frame?.imageUrl != nil {
+            return BoardCanvasBackground(editableBase: composed,
+                                         referenceUnderlay: nil, referenceOpacity: 0)
+        }
+        return BoardCanvasBackground(editableBase: nil,
+                                     referenceUnderlay: composed, referenceOpacity: opacity)
     }
 
     /// Komponert underlag (referansefoto + onion-lag) for aktiv frame —
@@ -1038,8 +1062,11 @@ struct NativeBoardView: View {
         return Button {
             boardTool = tool
             // Tegn/viskelær speiles i pensel-valget (samme kobling som web).
-            if tool == .eraser { canvasState.brushType = .eraser }
-            if tool == .draw && canvasState.brushType == .eraser { canvasState.brushType = .pencil }
+            if tool == .eraser { canvasState.selectBrush(.eraser) }
+            if tool == .draw,
+               [.eraser, .kneaded, .lightlift].contains(canvasState.brushType) {
+                canvasState.selectBrush(.pencil)
+            }
         } label: {
             Image(systemName: tool.icon)
                 .font(.system(size: 14))
@@ -2360,6 +2387,12 @@ struct NativeBoardView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(BoardBrand.accent.opacity(0.25), in: Capsule())
+                if board.frame?.imageUrl != nil {
+                    Label("Bilde redigeres", systemImage: "photo.badge.checkmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.green)
+                        .accessibilityLabel("Panelbildet er redigerbart")
+                }
                 Spacer()
                 Button { canvasState.undo() } label: {
                     Image(systemName: "arrow.uturn.backward")
@@ -2387,7 +2420,12 @@ struct NativeBoardView: View {
                             ForEach(Array(chips[(row * 5)..<min(row * 5 + 5, chips.count)]), id: \.0) { type, name in
                                 let selected = canvasState.brushType == type
                                 let favorite = canvasState.favoriteBrushes.contains(type.rawValue)
-                                Button { canvasState.selectBrush(type) } label: {
+                                Button {
+                                    canvasState.selectBrush(type)
+                                    boardTool = [.eraser, .kneaded, .lightlift].contains(type)
+                                        ? .eraser
+                                        : .draw
+                                } label: {
                                     BrushTipGlyph(type: type)
                                         .frame(width: 44, height: 26)
                                         .background(selected ? Color.white.opacity(0.12) : Color.white.opacity(0.04),
@@ -3395,10 +3433,11 @@ private struct StrokePreview: View {
 struct FullscreenDrawView: View {
     @ObservedObject var canvasState: CanvasState
     let frame: FrameSummary
-    // Komponert av boardet (underlag + onion) — samme bilde begge steder.
+    // Komponert av boardet — panelbildet er redigerbar base, mens et rent
+    // referanseunderlag forblir skjerm-only.
     // Perspektiv-overlay følger bevisst IKKE med hit: fullskjerm zoomer i
     // UIScrollView-rommet der et SwiftUI-overlay ikke ville fulgt canvasen.
-    var underlay: (CGImage?, Double) = (nil, 0)
+    let background: BoardCanvasBackground
     @State private var renderer = MetalStrokeRenderer()
     @State private var fingerDraws = false
     @Environment(\.dismiss) private var dismiss
@@ -3406,7 +3445,10 @@ struct FullscreenDrawView: View {
     private var aspect: CGFloat { CGFloat(frame.drawingWidth / max(1, frame.drawingHeight)) }
 
     private func applyUnderlay() {
-        renderer?.setUnderlay(cgImage: underlay.0, opacity: underlay.1)
+        renderer?.setEditableBase(cgImage: background.editableBase)
+        renderer?.setUnderlay(cgImage: background.referenceUnderlay,
+                              opacity: background.referenceOpacity)
+        canvasState.backgroundRevision += 1
     }
 
     var body: some View {
@@ -3807,6 +3849,7 @@ enum FrameRenderService {
         guard frame.drawingWidth > 0,
               !drawable.isEmpty || frameImage != nil else { return nil }
         let scale = maxWidth / frame.drawingWidth
+        renderer.setEditableBase(cgImage: frameImage?.cgImage)
         renderer.resizeCanvas(width: Int(maxWidth),
                               height: Int(frame.drawingHeight * scale))
         renderer.rebuild(strokes: drawable, scale: scale)
@@ -3815,16 +3858,13 @@ enum FrameRenderService {
 
         let annotations = strokes.filter { ($0.textAnnotation ?? "").isEmpty == false }
         let underlayImage = includeUnderlay ? frame.underlayDataURL.flatMap(decodeDataURL) : nil
-        guard underlayImage != nil || !annotations.isEmpty || frameImage != nil else { return base }
+        guard underlayImage != nil || !annotations.isEmpty else { return base }
         let size = base.size
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         return UIGraphicsImageRenderer(size: size, format: format).image { context in
             UIColor.white.setFill()
             context.fill(CGRect(origin: .zero, size: size))
-            if let frameImage {
-                frameImage.draw(in: CGRect(origin: .zero, size: size))
-            }
             if let underlay = underlayImage {
                 underlay.draw(in: CGRect(origin: .zero, size: size), blendMode: .normal,
                               alpha: CGFloat(frame.underlayOpacity ?? 0.4))

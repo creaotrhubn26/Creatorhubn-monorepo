@@ -81,6 +81,15 @@ vertex BlitOut blit_vertex(uint vertexId [[vertex_id]]) {
     return out;
 }
 
+// Kopier et panelbilde inn i den redigerbare RGBA-akkumulatoren. Bildet
+// blir dermed første rasterlag i historikken, så destination-out-viskelær
+// påvirker både originalpiksler og tidligere strøk.
+fragment float4 blit_editable_base_fragment(BlitOut in [[stage_in]],
+                                             texture2d<float> baseTexture [[texture(0)]]) {
+    constexpr sampler blitSampler(mag_filter::linear, min_filter::linear);
+    return baseTexture.sample(blitSampler, in.uv);
+}
+
 fragment float4 blit_fragment(BlitOut in [[stage_in]],
                               texture2d<float> canvasTexture [[texture(0)]],
                               constant float3 &paperColor [[buffer(0)]]) {

@@ -13,8 +13,9 @@ Storyboardmateriale for The Role Room-produksjonen om The Role Room.
 ## Filer
 
 - `episode-XX-<tittel>-storyboard.png`: komplett syvruters episodeark, 1672 × 941
-- `frames/episode-XX-<tittel>-shot-YY.jpg`: individuell 16:9-frame, 1280 × 720
-- Det finnes 8 episodeark og 56 individuelle frame-filer.
+- `frames-drawn/episode-XX-<tittel>-shot-YY.png`: selvstendig håndtegnet 16:9-frame, 1672 × 941
+- `frames/`: tidligere utsnitt fra episodearkene, beholdt som produksjonshistorikk
+- Det finnes 8 episodeark og 56 selvstendige håndtegnede frame-filer.
 
 Shot-rekkefølgen følger scene- og frame-rekkefølgen i manusdataene i Storyboard Room. Hver episode har nøyaktig syv unike frame-bilder.
 
@@ -32,6 +33,17 @@ Bildene er generert med den innebygde imagegen-modusen. Promptsettet komponerer:
 
 Flater som skal vise produktet er bevisst tomme registreringsflater med svært diskrete fiolette merker. Ekte The Role Room- og Storyboard Room-grensesnitt skal compositeres inn senere; AI-generert produkt-UI skal ikke brukes.
 
+## Redigering
+
+Panelbildet er den redigerbare rasterbasen i Storyboard Room, ikke bare et låst
+referanseunderlag:
+
+- blyant, tusj, markør, skygge og øvrige pensler endrer den kompositerte framen
+- viskelær, knagummi og lysløft fjerner også piksler fra panelbildet
+- undo/redo beholder den opprinnelige kilden og spiller bilde + strøkhistorikk på nytt
+- iPad, Role Room-board, thumbnails og PDF/PNG/animatic bruker samme resultat
+- valg av en pensel aktiverer tegneverktøyet direkte
+
 ## Verifisering
 
 Live-verifisert 27. august 2026 mot `https://theroleroom.com`:
@@ -40,4 +52,4 @@ Live-verifisert 27. august 2026 mot `https://theroleroom.com`:
 - 7 av 7 unike bilder per episode
 - 56 av 56 storyboard-frames utfylt
 - målrettet iPad-simulatortest: 1 test, 0 feil
-
+- pikseltest for viskelær mot originalbilde og eksport: 1 test, 0 feil
