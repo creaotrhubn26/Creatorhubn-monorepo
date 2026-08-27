@@ -13,34 +13,31 @@
  * sign-in CTA.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  completePostAgentRoleRoomGoogleLogin,
+  completePostAgentRoleRoomTwoFactorLogin,
+  getCleanPostAgentReturnPath,
+  getPostAgentBearerToken,
+  startPostAgentRoleRoomGoogleLogin,
+} from './postAgentRoleRoomAuth';
 
 type Status = 'idle' | 'pairing' | 'paired' | 'error' | 'unauthorized';
 
 function getBearerFromStorage(): string | null {
-  // MÅ speile queryClient.ts: appen lagrer bearer-token under
-  // 'creatorhub_auth_token' / 'role_room_auth_token'. De gamle placeholder-
-  // nøklene (authToken osv.) fantes aldri → redeem ble sendt uten Bearer →
-  // 401 → Post Agent fikk aldri token (paring «hang»). Riktige nøkler først.
-  for (const key of [
-    'creatorhub_auth_token',
-    'role_room_auth_token',
-    'auth_token',
-    'authToken',
-    'sessionToken',
-    'rr_session',
-    'auth_session',
-  ]) {
-    const v = window.localStorage.getItem(key);
-    if (v) return v;
-  }
-  return null;
+  // Role Room-tokenet må prioriteres på denne Role Room-flaten. CreatorHub-
+  // tokenet beholdes som fallback for eldre sesjoner.
+  return getPostAgentBearerToken(window.localStorage);
 }
 
 export default function PostAgentLinkPage(): JSX.Element {
   const [code, setCode] = useState<string>('');
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const handledGoogleIntentRef = useRef<string | null>(null);
+  const isMountedRef = useRef(true);
 
   // Allow ?code=ABC-DEF prefill so Post Agent can deep-link the user here
   useEffect(() => {
@@ -49,9 +46,107 @@ export default function PostAgentLinkPage(): JSX.Element {
     if (fromUrl) setCode(fromUrl.toUpperCase());
   }, []);
 
+  useEffect(() => {
+    isMountedRef.current = true;
+    const url = new URL(window.location.href);
+    const googleStatus = url.searchParams.get('rrGoogleStatus');
+    const googleMode = url.searchParams.get('rrGoogleMode');
+    const transferId = url.searchParams.get('rrGoogleTransfer');
+    const tempToken = url.searchParams.get('rrGoogleTempToken');
+    const intentKey = [googleStatus, googleMode, transferId, tempToken].join(':');
+
+    if (!googleStatus || handledGoogleIntentRef.current === intentKey) {
+      return () => {
+        isMountedRef.current = false;
+      };
+    }
+    handledGoogleIntentRef.current = intentKey;
+
+    const clearGoogleIntent = () => {
+      window.history.replaceState(
+        {},
+        document.title,
+        getCleanPostAgentReturnPath(window.location.href),
+      );
+    };
+
+    const completeGoogleIntent = async () => {
+      setAuthLoading(true);
+      setError(null);
+      setNotice(null);
+
+      try {
+        if (googleStatus === 'error') {
+          throw new Error(
+            url.searchParams.get('rrGoogleMessage')
+              || 'Google-innloggingen kunne ikke fullføres.',
+          );
+        }
+
+        if (googleStatus === 'needs_2fa') {
+          if (!tempToken) {
+            throw new Error('Google-innloggingen mangler 2FA-token. Prøv på nytt.');
+          }
+          const twoFactorCode = window.prompt(
+            '2FA er aktivert. Skriv inn 6-sifret kode fra Authenticator-appen.',
+          );
+          if (!twoFactorCode?.trim()) {
+            throw new Error('2FA ble ikke fullført. Prøv å logge inn på nytt.');
+          }
+          await completePostAgentRoleRoomTwoFactorLogin(tempToken, twoFactorCode);
+        } else if (googleStatus === 'success' && googleMode === 'login' && transferId) {
+          await completePostAgentRoleRoomGoogleLogin(transferId);
+        } else {
+          throw new Error('Google-innloggingen returnerte et ugyldig svar. Prøv på nytt.');
+        }
+
+        if (!isMountedRef.current) return;
+        setStatus('idle');
+        setNotice('Innlogging fullført. Du kan nå pare Post Agent.');
+      } catch (googleError) {
+        if (!isMountedRef.current) return;
+        setStatus('unauthorized');
+        setError(
+          googleError instanceof Error
+            ? googleError.message
+            : 'Kunne ikke fullføre Google-innloggingen.',
+        );
+      } finally {
+        clearGoogleIntent();
+        if (isMountedRef.current) setAuthLoading(false);
+      }
+    };
+
+    void completeGoogleIntent();
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const handleRoleRoomLogin = useCallback(async () => {
+    setAuthLoading(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await startPostAgentRoleRoomGoogleLogin(
+        window.location.href,
+        (authorizationUrl) => window.location.assign(authorizationUrl),
+      );
+    } catch (googleError) {
+      setAuthLoading(false);
+      setStatus('unauthorized');
+      setError(
+        googleError instanceof Error
+          ? googleError.message
+          : 'Kunne ikke starte Google-innloggingen.',
+      );
+    }
+  }, []);
+
   const handlePair = useCallback(async () => {
     setStatus('pairing');
     setError(null);
+    setNotice(null);
     try {
       const bearer = getBearerFromStorage();
       const res = await fetch('/api/post-agent/pairing/redeem', {
@@ -164,23 +259,47 @@ export default function PostAgentLinkPage(): JSX.Element {
             >
               Du må være logget inn på Role Room for å pare en Post Agent.
             </div>
-            <a
-              href="/login?redirect=/link"
+            <button
+              type="button"
+              onClick={() => void handleRoleRoomLogin()}
+              disabled={authLoading}
               style={{
                 display: 'inline-block',
                 background: '#a030c0',
                 color: '#fff',
+                border: 'none',
                 padding: '10px 20px',
                 borderRadius: 6,
-                textDecoration: 'none',
                 fontWeight: 600,
+                cursor: authLoading ? 'wait' : 'pointer',
+                opacity: authLoading ? 0.65 : 1,
               }}
             >
-              Logg inn
-            </a>
+              {authLoading ? 'Åpner Google…' : 'Logg inn med Google'}
+            </button>
+            {error && (
+              <div style={{ color: '#ef4f6f', fontSize: 13, marginTop: 12 }}>
+                {error}
+              </div>
+            )}
           </div>
         ) : (
           <>
+            {notice && (
+              <div
+                style={{
+                  background: 'rgba(74, 212, 138, 0.1)',
+                  border: '1px solid #4ad48a',
+                  borderRadius: 8,
+                  padding: 12,
+                  color: '#4ad48a',
+                  marginBottom: 16,
+                  fontSize: 13,
+                }}
+              >
+                {notice}
+              </div>
+            )}
             <label
               style={{
                 display: 'block',
