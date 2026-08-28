@@ -16,6 +16,15 @@ import {
   type MockupWebhookEvent,
 } from "./mockup-review-webhook-service.js";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
+import {
+  applyMockupChangeOperations,
+  generateLocalMockupChangeDraft,
+  normalizeMockupChangeOperations,
+  StaleMockupChangeError,
+  submittedProjectMatchesApplied,
+  type MockupChangeComment,
+  type MockupChangeOperation,
+} from "./mockup-change-set-service.js";
 
 type SessionData = { userId: string; role: string; email: string; name: string; loginAt: string; [key: string]: unknown };
 interface Deps { pool: Pool; activeSessions: Map<string, SessionData> }
@@ -69,6 +78,7 @@ const VALID_ACCESS = new Set(["view", "comment", "approve"]);
 const VALID_ROLE = new Set(["editor", "commenter", "approver", "viewer"]);
 const VALID_DECISION = new Set(["approved", "changes_requested", "reset"]);
 const REVIEW_EVENTS = new Set<string>(MOCKUP_WEBHOOK_EVENTS);
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const uploadReviewAttachment = multer({
   storage: multer.memoryStorage(),
@@ -335,6 +345,27 @@ function mapAttachment(row: Record<string, unknown>) {
     sizeBytes: Number(row.size_bytes),
     isRecording: Boolean(row.is_recording),
     createdAt: row.created_at,
+  };
+}
+
+function mapChangeSet(row: Record<string, unknown>) {
+  return {
+    id: String(row.id),
+    projectId: String(row.project_id),
+    versionId: String(row.version_id),
+    sourceCommentIds: Array.isArray(row.source_comment_ids) ? row.source_comment_ids.map(String) : [],
+    sourceRevision: Number(row.source_revision),
+    title: String(row.title),
+    summary: String(row.summary || ""),
+    status: String(row.status),
+    operations: Array.isArray(row.operations) ? row.operations : [],
+    generator: String(row.generator || "local-rules-v1"),
+    confidence: Number(row.confidence || 0),
+    appliedVersionId: row.applied_version_id ? String(row.applied_version_id) : null,
+    reviewedAt: row.reviewed_at || null,
+    reviewNote: row.review_note || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -821,6 +852,256 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
     );
     void emitMockupWebhook(pool, id, access.created_by, "version.created", { projectId: id, versionId: rows[0].id });
     res.json({ ok: true, id: rows[0].id, createdAt: rows[0].created_at });
+  });
+
+  app.get("/api/role-room/mockup-projects/:id/change-sets", async (req: Request, res: Response) => {
+    const actor = await resolveActor(pool, activeSessions, req);
+    if (!actor) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    const access = await projectAccess(pool, actor, String(req.params.id));
+    if (!access) { res.status(404).json({ error: "finnes_ikke" }); return; }
+    const versionId = cleanText(req.query.versionId, 40);
+    if (versionId && !/^\d+$/.test(versionId)) { res.status(400).json({ error: "ugyldig_versjon" }); return; }
+    const { rows } = await pool.query(
+      `SELECT * FROM mockup_studio_change_sets
+       WHERE project_id=$1 AND created_by=$2 AND ($3::bigint IS NULL OR version_id=$3)
+       ORDER BY created_at DESC LIMIT 100`,
+      [access.id, access.created_by, versionId || null],
+    );
+    res.json({ changeSets: rows.map(mapChangeSet), accessRole: access.access_role });
+  });
+
+  app.post("/api/role-room/mockup-projects/:id/change-sets/generate", express.json({ limit: "200kb" }), async (req: Request, res: Response) => {
+    const actor = await resolveActor(pool, activeSessions, req);
+    if (!actor) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    const access = await projectAccess(pool, actor, String(req.params.id));
+    if (!access || !roleCanEdit(access.access_role)) { res.status(403).json({ error: "ingen_redigeringstilgang" }); return; }
+    const versionId = cleanText(req.body?.versionId, 40);
+    const commentIds: string[] = Array.isArray(req.body?.commentIds)
+      ? Array.from(new Set<string>((req.body.commentIds as unknown[]).map((value) => cleanText(value, 80)))).slice(0, 20)
+      : [];
+    if (!/^\d+$/.test(versionId) || !commentIds.length || commentIds.some((id) => !UUID_PATTERN.test(id))) {
+      res.status(400).json({ error: "ugyldig_grunnlag" }); return;
+    }
+    try {
+      const versionResult = await pool.query(
+        `SELECT payload, source_revision FROM mockup_studio_versions
+         WHERE id=$1 AND project_id=$2 AND created_by=$3`,
+        [versionId, access.id, access.created_by],
+      );
+      if (!versionResult.rows.length) { res.status(404).json({ error: "versjon_finnes_ikke" }); return; }
+      const commentsResult = await pool.query(
+        `SELECT id::text, comment_number, body, anchor_kind, anchor_ref, anchor_x, anchor_y
+         FROM mockup_studio_comments
+         WHERE version_id=$1 AND project_id=$2 AND created_by=$3
+           AND id=ANY($4::uuid[]) AND parent_id IS NULL
+         ORDER BY comment_number`,
+        [versionId, access.id, access.created_by, commentIds],
+      );
+      if (commentsResult.rows.length !== commentIds.length) {
+        res.status(400).json({ error: "kommentarer_tilhører_ikke_versjonen" }); return;
+      }
+      const comments: MockupChangeComment[] = commentsResult.rows.map((row) => ({
+        id: String(row.id), number: Number(row.comment_number), body: String(row.body),
+        anchorKind: String(row.anchor_kind), anchorRef: row.anchor_ref ? String(row.anchor_ref) : null,
+        anchorX: row.anchor_x == null ? null : Number(row.anchor_x),
+        anchorY: row.anchor_y == null ? null : Number(row.anchor_y),
+      }));
+      const draft = generateLocalMockupChangeDraft(versionResult.rows[0].payload, comments);
+      const inserted = await pool.query(
+        `INSERT INTO mockup_studio_change_sets
+           (project_id,created_by,version_id,source_comment_ids,source_revision,title,summary,
+            operations,generator,confidence,created_by_user_id)
+         VALUES ($1,$2,$3,$4::uuid[],$5,$6,$7,$8::jsonb,$9,$10,$11)
+         RETURNING *`,
+        [
+          access.id, access.created_by, versionId, commentIds,
+          Number(versionResult.rows[0].source_revision || 0), draft.title, draft.summary,
+          JSON.stringify(draft.operations), draft.model, draft.confidence, actor.userId,
+        ],
+      );
+      res.status(201).json({ changeSet: mapChangeSet(inserted.rows[0]) });
+    } catch (error) {
+      if (error instanceof Error && error.message === "ingen_gjennomfoerbare_endringer") {
+        res.status(422).json({
+          error: "ingen_gjennomfoerbare_endringer",
+          detail: "Feedbacken må beskrive en konkret flytting, størrelse, tekst i anførselstegn, farge eller bildeutsnitt.",
+        });
+        return;
+      }
+      console.error("[mockup-change-sets/generate]", error);
+      res.status(500).json({ error: "generering_feilet", detail: "internal_error" });
+    }
+  });
+
+  app.patch("/api/role-room/mockup-projects/:id/change-sets/:changeSetId", express.json({ limit: "200kb" }), async (req: Request, res: Response) => {
+    const actor = await resolveActor(pool, activeSessions, req);
+    if (!actor) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    const access = await projectAccess(pool, actor, String(req.params.id));
+    if (!access || !roleCanEdit(access.access_role)) { res.status(403).json({ error: "ingen_redigeringstilgang" }); return; }
+    const changeSetId = String(req.params.changeSetId);
+    if (!UUID_PATTERN.test(changeSetId)) { res.status(400).json({ error: "ugyldig_change_set" }); return; }
+    const current = await pool.query(
+      `SELECT cs.*, v.payload
+       FROM mockup_studio_change_sets cs
+       JOIN mockup_studio_versions v ON v.id=cs.version_id
+       WHERE cs.id=$1 AND cs.project_id=$2 AND cs.created_by=$3`,
+      [changeSetId, access.id, access.created_by],
+    );
+    if (!current.rows.length) { res.status(404).json({ error: "change_set_finnes_ikke" }); return; }
+    if (current.rows[0].status !== "proposed") { res.status(409).json({ error: "change_set_er_låst" }); return; }
+    const operations = req.body?.operations === undefined
+      ? current.rows[0].operations as MockupChangeOperation[]
+      : normalizeMockupChangeOperations(current.rows[0].payload, req.body.operations);
+    if (!operations.length) { res.status(400).json({ error: "ingen_gyldige_endringer" }); return; }
+    const title = req.body?.title === undefined ? String(current.rows[0].title) : cleanText(req.body.title, 160);
+    if (!title) { res.status(400).json({ error: "tittel_påkrevd" }); return; }
+    const summary = req.body?.summary === undefined ? String(current.rows[0].summary || "") : cleanText(req.body.summary, 1_500);
+    const updated = await pool.query(
+      `UPDATE mockup_studio_change_sets
+       SET title=$4,summary=$5,operations=$6::jsonb,updated_at=now()
+       WHERE id=$1 AND project_id=$2 AND created_by=$3 AND status='proposed'
+       RETURNING *`,
+      [changeSetId, access.id, access.created_by, title, summary, JSON.stringify(operations)],
+    );
+    res.json({ changeSet: mapChangeSet(updated.rows[0]) });
+  });
+
+  app.post("/api/role-room/mockup-projects/:id/change-sets/:changeSetId/reject", express.json({ limit: "20kb" }), async (req: Request, res: Response) => {
+    const actor = await resolveActor(pool, activeSessions, req);
+    if (!actor) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    const access = await projectAccess(pool, actor, String(req.params.id));
+    if (!access || !roleCanEdit(access.access_role)) { res.status(403).json({ error: "ingen_redigeringstilgang" }); return; }
+    const changeSetId = String(req.params.changeSetId);
+    if (!UUID_PATTERN.test(changeSetId)) { res.status(400).json({ error: "ugyldig_change_set" }); return; }
+    const updated = await pool.query(
+      `UPDATE mockup_studio_change_sets
+       SET status='rejected',reviewed_by_user_id=$4,reviewed_at=now(),
+           review_note=$5,updated_at=now()
+       WHERE id=$1 AND project_id=$2 AND created_by=$3 AND status='proposed'
+       RETURNING *`,
+      [changeSetId, access.id, access.created_by, actor.userId, nullableText(req.body?.note, 500)],
+    );
+    if (!updated.rows.length) { res.status(409).json({ error: "change_set_kan_ikke_avvises" }); return; }
+    res.json({ changeSet: mapChangeSet(updated.rows[0]) });
+  });
+
+  app.post("/api/role-room/mockup-projects/:id/change-sets/:changeSetId/apply", express.json({ limit: "13mb" }), async (req: Request, res: Response) => {
+    const actor = await resolveActor(pool, activeSessions, req);
+    if (!actor) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    const id = String(req.params.id);
+    const access = await projectAccess(pool, actor, id);
+    if (!access || !roleCanEdit(access.access_role)) { res.status(403).json({ error: "ingen_redigeringstilgang" }); return; }
+    const changeSetId = String(req.params.changeSetId);
+    const submitted = readProject(req.body?.project, id);
+    if (!UUID_PATTERN.test(changeSetId) || !submitted) { res.status(400).json({ error: "ugyldig_forespørsel" }); return; }
+    const raw = JSON.stringify(submitted);
+    if (Buffer.byteLength(raw, "utf8") > MAX_PROJECT_BYTES) { res.status(413).json({ error: "for_stor" }); return; }
+    const submittedUpdatedAt = Number(submitted.updatedAt);
+    if (!Number.isSafeInteger(submittedUpdatedAt) || submittedUpdatedAt <= 0) {
+      res.status(400).json({ error: "ugyldig_prosjekt" }); return;
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const changeResult = await client.query(
+        `SELECT * FROM mockup_studio_change_sets
+         WHERE id=$1 AND project_id=$2 AND created_by=$3 FOR UPDATE`,
+        [changeSetId, access.id, access.created_by],
+      );
+      const change = changeResult.rows[0];
+      if (!change) { await client.query("ROLLBACK"); res.status(404).json({ error: "change_set_finnes_ikke" }); return; }
+      if (change.status !== "proposed") { await client.query("ROLLBACK"); res.status(409).json({ error: "change_set_er_låst" }); return; }
+      const projectResult = await client.query(
+        `SELECT payload,project_updated_at FROM demo_studio_mockup_projects
+         WHERE id=$1 AND created_by=$2 FOR UPDATE`,
+        [access.id, access.created_by],
+      );
+      const currentProject = projectResult.rows[0]?.payload as Record<string, unknown> | undefined;
+      if (!currentProject) { await client.query("ROLLBACK"); res.status(404).json({ error: "finnes_ikke" }); return; }
+      const operations = change.operations as MockupChangeOperation[];
+      const applied = applyMockupChangeOperations(currentProject, operations);
+      if (!submittedProjectMatchesApplied(applied, submitted)) {
+        await client.query("ROLLBACK"); res.status(400).json({ error: "prosjektet_matcher_ikke_forslaget" }); return;
+      }
+      if (submittedUpdatedAt <= Number(projectResult.rows[0].project_updated_at || 0)) {
+        await client.query("ROLLBACK"); res.status(409).json({ error: "prosjektet_er_endret" }); return;
+      }
+      await client.query(
+        `UPDATE demo_studio_mockup_projects
+         SET name=$3,status=$4,template_id=$5,project_updated_at=$6,payload=$7::jsonb,updated_at=now()
+         WHERE id=$1 AND created_by=$2`,
+        [
+          access.id, access.created_by, String(submitted.name).slice(0, 200),
+          VALID_STATUS.has(String(submitted.status)) ? String(submitted.status) : "draft",
+          nullableText(submitted.template, 200), submittedUpdatedAt, raw,
+        ],
+      );
+      const stateResult = await client.query(
+        `UPDATE mockup_studio_project_state
+         SET campaign_id=$3,workspace_project_id=$4,revision=revision+1,updated_at=now()
+         WHERE project_id=$1 AND created_by=$2 RETURNING revision,updated_at`,
+        [
+          access.id, access.created_by, nullableText(submitted.campaignId, 200),
+          nullableText(submitted.workspaceProjectId, 255),
+        ],
+      );
+      const revision = Number(stateResult.rows[0]?.revision || access.revision + 1);
+      const versionResult = await client.query(
+        `INSERT INTO mockup_studio_versions
+           (project_id,created_by,label,payload,source_revision,review_status,created_by_user_id,note)
+         VALUES ($1,$2,$3,$4::jsonb,$5,'draft',$6,$7)
+         RETURNING id::text,label,source_revision,review_status,note,created_at`,
+        [
+          access.id, access.created_by, `Applied · ${String(change.title).slice(0, 100)}`,
+          raw, revision, actor.userId, String(change.summary || "").slice(0, 1_000) || null,
+        ],
+      );
+      await client.query(
+        `UPDATE mockup_studio_comments
+         SET status='resolved',resolved_by=$3,resolved_at=now(),updated_at=now()
+         WHERE version_id=$1 AND id=ANY($2::uuid[]) AND status NOT IN ('resolved','wontfix')`,
+        [change.version_id, change.source_comment_ids, actor.userId],
+      );
+      const appliedChange = await client.query(
+        `UPDATE mockup_studio_change_sets
+         SET status='applied',reviewed_by_user_id=$4,reviewed_at=now(),
+             applied_version_id=$5,updated_at=now()
+         WHERE id=$1 AND project_id=$2 AND created_by=$3 RETURNING *`,
+        [changeSetId, access.id, access.created_by, actor.userId, versionResult.rows[0].id],
+      );
+      await client.query("COMMIT");
+      void emitMockupWebhook(pool, access.id, access.created_by, "version.created", {
+        projectId: access.id, versionId: versionResult.rows[0].id, source: "change-set",
+      });
+      res.json({
+        project: submitted,
+        revision,
+        updatedAt: stateResult.rows[0]?.updated_at,
+        version: {
+          id: versionResult.rows[0].id, label: versionResult.rows[0].label,
+          sourceRevision: versionResult.rows[0].source_revision,
+          reviewStatus: versionResult.rows[0].review_status,
+          note: versionResult.rows[0].note, createdAt: versionResult.rows[0].created_at,
+        },
+        changeSet: mapChangeSet(appliedChange.rows[0]),
+      });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      if (error instanceof StaleMockupChangeError) {
+        res.status(409).json({
+          error: "stale_change_set",
+          detail: `${error.operation.targetLabel} · ${error.operation.label} er endret siden forslaget ble laget.`,
+        });
+        return;
+      }
+      if (error instanceof Error && ["ugyldige_operasjoner", "ugyldig_maal"].includes(error.message)) {
+        res.status(400).json({ error: error.message }); return;
+      }
+      console.error("[mockup-change-sets/apply]", error);
+      res.status(500).json({ error: "apply_feilet", detail: "internal_error" });
+    } finally {
+      client.release();
+    }
   });
 
   app.post("/api/role-room/mockup-projects/:id/share", express.json({ limit: "1mb" }), async (req: Request, res: Response) => {

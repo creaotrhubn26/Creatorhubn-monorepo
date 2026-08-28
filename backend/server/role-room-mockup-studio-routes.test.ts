@@ -51,10 +51,15 @@ describe("Mockup Studio Review Room routes", () => {
     expect(query).not.toHaveBeenCalled();
   });
 
-  it("registrerer PATCH-ruter for link- og kommentarinnstillinger", () => {
+  it("registrerer review- og Change Set-rutene", () => {
     const { handlers } = harness();
     expect(handlers.has("PATCH /api/role-room/mockup-projects/:id/shares/:shareId")).toBe(true);
     expect(handlers.has("PATCH /api/role-room/mockup-shared/:token/comments/:commentId")).toBe(true);
+    expect(handlers.has("GET /api/role-room/mockup-projects/:id/change-sets")).toBe(true);
+    expect(handlers.has("POST /api/role-room/mockup-projects/:id/change-sets/generate")).toBe(true);
+    expect(handlers.has("PATCH /api/role-room/mockup-projects/:id/change-sets/:changeSetId")).toBe(true);
+    expect(handlers.has("POST /api/role-room/mockup-projects/:id/change-sets/:changeSetId/reject")).toBe(true);
+    expect(handlers.has("POST /api/role-room/mockup-projects/:id/change-sets/:changeSetId/apply")).toBe(true);
   });
 
   it("krever komplett semantisk elementanker", async () => {
