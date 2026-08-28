@@ -15,8 +15,15 @@ import { z } from "zod";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
 import { canAccessRoleRoomProject } from "./role-room-projects-routes.js";
 import { viewerMeetsTabLevel } from "./role-room-tab-access.js";
-import { storyboardShotContextSchema } from "./storyboard-ai-context.js";
-import { compileStoryboardPrompt } from "./storyboard-prompt-engine/index.js";
+import {
+  enrichStoryboardContextWithStrokes,
+  storyboardShotContextSchema,
+} from "./storyboard-ai-context.js";
+import {
+  compileStoryboardPrompt,
+  storyboardScenarioCatalogView,
+} from "./storyboard-prompt-engine/index.js";
+import { storyboardAIModelCatalogView } from "./storyboard-ai-routing.js";
 import { hydrateStoryboardProductionContext } from "./storyboard-production-context.js";
 import * as svc from "./storyboard-service.js";
 import { registerStoryboardReferenceRoutes } from "./storyboard-reference-routes.js";
@@ -25,6 +32,19 @@ import {
   StoryboardImageGenerationError,
   storyboardImageGenerationBodySchema,
 } from "./storyboard-ai-image-service.js";
+import {
+  completeStoryboardImageCost,
+  failStoryboardImageCost,
+  reserveStoryboardImageCost,
+  StoryboardAICostError,
+} from "./storyboard-ai-cost-control.js";
+import {
+  getStoryboardVideoConfig,
+  pollStoryboardVideo,
+  setStoryboardVideoConsent,
+  StoryboardVideoError,
+  submitStoryboardVideo,
+} from "./storyboard-ai-video-service.js";
 
 interface SessionData {
   userId: string;
@@ -130,6 +150,13 @@ const promptCompileBody = z.object({
   context: storyboardShotContextSchema,
 });
 
+const storyboardVideoBody = z.object({
+  context: storyboardShotContextSchema,
+  model: z.enum(["seedance-2-i2v", "higgsfield-dop-i2v"]).default("seedance-2-i2v"),
+  duration: z.number().min(4).max(15).default(5),
+  userAction: z.string().trim().max(1_200).optional(),
+}).strict();
+
 export interface CreateStoryboardRouterDeps {
   activeSessions?: Map<string, SessionData>;
   /** Injectable provider transport for contract tests. */
@@ -146,6 +173,49 @@ export function createStoryboardRouter(
   const canManage = requireStoryboardAccess(pool, "manage");
 
   registerStoryboardReferenceRoutes(router, pool, { auth, canView, canManage });
+
+  // Public production vocabulary, available to every authenticated Storyboard
+  // Room user. It contains labels and stable IDs only; project data remains
+  // protected by the project-level routes below.
+  router.get("/storyboard-scenario-packs", auth, (_req, res) => {
+    res.json({ success: true, data: storyboardScenarioCatalogView() });
+  });
+
+  router.get("/storyboard-ai-models", auth, (_req, res) => {
+    res.json({ success: true, data: storyboardAIModelCatalogView() });
+  });
+
+  router.get(
+    "/projects/:projectId/storyboard-ai-config",
+    auth,
+    canView,
+    async (req, res) => {
+      const config = await getStoryboardVideoConfig(pool, {
+        projectId: String(req.params.projectId),
+        userEmail: (req as AuthedRequest).userEmail,
+        userRole: (req as AuthedRequest).userRole,
+      });
+      res.json({ success: true, data: config });
+    },
+  );
+
+  router.put(
+    "/projects/:projectId/storyboard-ai-consent",
+    auth,
+    canManage,
+    async (req, res) => {
+      const parsed = z.object({ consented: z.boolean() }).strict().safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "invalid_request" });
+        return;
+      }
+      await setStoryboardVideoConsent(pool, {
+        projectId: String(req.params.projectId), consented: parsed.data.consented,
+        consentedBy: (req as AuthedRequest).userEmail || (req as AuthedRequest).userId,
+      });
+      res.json({ success: true, data: { consented: parsed.data.consented } });
+    },
+  );
 
   // List for project, optional ?sceneId filter
   router.get(
@@ -204,6 +274,95 @@ export function createStoryboardRouter(
         res
           .status(500)
           .json({ error: "upsert_failed", detail: "internal_error" });
+      }
+    },
+  );
+
+  router.post(
+    "/projects/:projectId/storyboards/:id/animate",
+    auth,
+    canManage,
+    async (req, res) => {
+      const parsed = storyboardVideoBody.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "invalid_request", details: parsed.error.format() });
+        return;
+      }
+      const projectId = String(req.params.projectId);
+      const storyboard = await svc.getStoryboard(pool, String(req.params.id));
+      if (!storyboard || storyboard.projectId !== projectId || !storyboard.frameId) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
+      if ((parsed.data.context.scene.id && storyboard.sceneId
+          && parsed.data.context.scene.id !== storyboard.sceneId)
+          || (parsed.data.context.shot.id
+            && parsed.data.context.shot.id !== storyboard.frameId)) {
+        res.status(400).json({
+          error: "context_mismatch",
+          detail: "Manus- eller shotkonteksten tilhører et annet storyboard.",
+        });
+        return;
+      }
+      try {
+        const hydrated = await hydrateStoryboardProductionContext(pool, {
+          projectId, sceneId: storyboard.sceneId || parsed.data.context.scene.id,
+          context: parsed.data.context,
+        });
+        const context = enrichStoryboardContextWithStrokes(
+          hydrated, storyboard.strokes ?? [], storyboard.width, storyboard.height,
+        );
+        const compilation = compileStoryboardPrompt({
+          kind: "storyboard-video", modelId: parsed.data.model,
+          userAction: parsed.data.userAction, context,
+        });
+        if (!compilation.validation.valid) {
+          res.status(422).json({ error: "prompt_preflight_failed", data: compilation });
+          return;
+        }
+        const submitted = await submitStoryboardVideo(pool, {
+          projectId, storyboard,
+          userId: (req as AuthedRequest).userId,
+          userEmail: (req as AuthedRequest).userEmail,
+          userRole: (req as AuthedRequest).userRole,
+          modelId: parsed.data.model, duration: parsed.data.duration,
+          compiledPrompt: compilation.compiledPrompt,
+          compilationFingerprint: compilation.compilationFingerprint,
+        });
+        res.status(202).json({ success: true, data: submitted, compilation });
+      } catch (error) {
+        if (error instanceof StoryboardVideoError) {
+          res.status(error.status).json({ error: error.code, detail: error.safeDetail });
+          return;
+        }
+        res.status(500).json({ error: "animation_failed", detail: "internal_error" });
+      }
+    },
+  );
+
+  router.get(
+    "/projects/:projectId/storyboards/:id/animations/:jobId",
+    auth,
+    canView,
+    async (req, res) => {
+      const projectId = String(req.params.projectId);
+      const storyboard = await svc.getStoryboard(pool, String(req.params.id));
+      if (!storyboard || storyboard.projectId !== projectId) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
+      try {
+        const status = await pollStoryboardVideo(pool, {
+          projectId, storyboardId: storyboard.id, jobId: String(req.params.jobId),
+          fetchImpl: deps.fetchImpl,
+        });
+        res.json({ success: true, data: status });
+      } catch (error) {
+        if (error instanceof StoryboardVideoError) {
+          res.status(error.status).json({ error: error.code, detail: error.safeDetail });
+          return;
+        }
+        res.status(500).json({ error: "animation_poll_failed", detail: "internal_error" });
       }
     },
   );
@@ -308,11 +467,17 @@ export function createStoryboardRouter(
           });
         return;
       }
-      const context = await hydrateStoryboardProductionContext(pool, {
+      const hydratedContext = await hydrateStoryboardProductionContext(pool, {
         projectId,
         sceneId: storyboard.sceneId || parsed.data.context.scene.id,
         context: parsed.data.context,
       });
+      const context = enrichStoryboardContextWithStrokes(
+        hydratedContext,
+        storyboard.strokes ?? [],
+        storyboard.width,
+        storyboard.height,
+      );
       const compilation = compileStoryboardPrompt({
         kind: parsed.data.kind,
         modelId: parsed.data.model,
@@ -358,8 +523,43 @@ export function createStoryboardRouter(
           .json({ error: "invalid_request", details: parsed.error.format() });
         return;
       }
+      if (parsed.data.context
+          && ((parsed.data.context.scene.id && storyboard.sceneId
+              && parsed.data.context.scene.id !== storyboard.sceneId)
+            || (parsed.data.context.shot.id && storyboard.frameId
+              && parsed.data.context.shot.id !== storyboard.frameId))) {
+        res.status(400).json({ error: "context_mismatch" });
+        return;
+      }
 
+      const providerAccess = await getStoryboardVideoConfig(pool, {
+        projectId,
+        userEmail: (req as AuthedRequest).userEmail,
+        userRole: (req as AuthedRequest).userRole,
+      });
+      if (!providerAccess.allowed) {
+        res.status(403).json({ error: "ai_not_allowed", detail: "AI er ikke aktivert for kontoen." });
+        return;
+      }
+      if (!providerAccess.consent.consented) {
+        res.status(409).json({
+          error: "consent_required",
+          detail: "Prosjektet må samtykke før produksjonskontekst sendes til en AI-leverandør.",
+        });
+        return;
+      }
+
+      let costReservation: Awaited<ReturnType<typeof reserveStoryboardImageCost>> | null = null;
       try {
+        const selectedModel = parsed.data.model
+          ?? (parsed.data.quality === "hd" ? "gpt-image-2" : "gpt-image-1-mini");
+        costReservation = await reserveStoryboardImageCost(pool, {
+          projectId,
+          storyboardId: storyboard.id,
+          userId: (req as AuthedRequest).userId,
+          model: selectedModel,
+          quality: parsed.data.quality,
+        });
         const generated = await generateStoryboardImage({
           pool,
           storyboard,
@@ -369,6 +569,7 @@ export function createStoryboardRouter(
           apiKey,
           fetchImpl: deps.fetchImpl,
         });
+        await completeStoryboardImageCost(pool, costReservation.id);
         const updated = await svc.updateStoryboard(pool, storyboard.id, {
           imageData: generated.imageData,
           width: generated.width,
@@ -391,8 +592,20 @@ export function createStoryboardRouter(
           model: generated.model,
           referenceCount: generated.referenceCount,
           referenceAssetIds: generated.referenceAssetIds,
+          estimatedCostUsd: costReservation.estimatedCostUsd,
         });
       } catch (error) {
+        if (costReservation) {
+          await failStoryboardImageCost(
+            pool,
+            costReservation.id,
+            error instanceof Error ? error.message : "image_generation_failed",
+          );
+        }
+        if (error instanceof StoryboardAICostError) {
+          res.status(error.status).json({ error: error.code, detail: error.safeDetail });
+          return;
+        }
         if (error instanceof StoryboardImageGenerationError) {
           res.status(error.status).json({
             error: error.code,

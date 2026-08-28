@@ -102,6 +102,13 @@ describe('Prompt Inspector route', () => {
       projectId: 'project-1',
       sceneId: 'scene-3',
       frameId: 'frame-3b',
+      width: 1920,
+      height: 1080,
+      strokes: [{
+        id: 'focus-1', width: 80,
+        brush: { type: 'focusBrush', productionMark: 'focus' },
+        points: [{ x: 900, y: 400, pressure: 0.5 }, { x: 1100, y: 600, pressure: 0.7 }],
+      }],
     } as any);
   });
 
@@ -132,13 +139,88 @@ describe('Prompt Inspector route', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body.success).toBe(true);
-    expect(response.body.data.version).toBe('trr-prompt-engine-v1');
+    expect(response.body.data.version).toBe('trr-prompt-engine-v2');
     expect(response.body.data.inspector.styleProfileId).toBe('story-pencil');
     expect(response.body.data.modules.map((module: any) => module.id)).toEqual([
-      'base-cinematography', 'project-style', 'character', 'wardrobe',
+      'base-cinematography', 'project-style', 'scenario', 'character', 'wardrobe',
       'location', 'prop', 'shot', 'camera', 'lighting', 'continuity',
       'user-intent', 'model-rules',
     ]);
+    expect(response.body.data.modules.find((module: any) => module.id === 'shot')
+      .constraints.some((constraint: any) =>
+        constraint.text.includes('Explicit artist mark — focus'))).toBe(true);
+  });
+
+  it('gir den autentiserte iPad-klienten en stabil scenario-katalog', async () => {
+    const sessions = new Map([
+      ['session-1', {
+        userId: 'user-1', email: 'director@example.com', name: 'Director',
+        role: 'owner', loginAt: new Date().toISOString(),
+      }],
+    ]);
+    const router = createStoryboardRouter({} as any, { activeSessions: sessions });
+    const handlers = routeHandlers(router, 'GET', '/storyboard-scenario-packs');
+    const response = makeResponse();
+    await runHandlers(handlers, {
+      headers: { authorization: 'Bearer session-1' }, params: {}, body: {},
+    }, response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.data).toHaveLength(14);
+    expect(response.body.data.map((pack: any) => pack.id)).toEqual(expect.arrayContaining([
+      'medical.healthcare', 'restaurant.food-service', 'police.security',
+      'fire.rescue', 'education.school', 'hospitality.hotel', 'office.production',
+      'retail.shop', 'airport.travel', 'construction.site', 'industrial.workshop',
+      'residential.domestic', 'sports.fitness', 'event.entertainment',
+    ]));
+    expect(response.body.data[0].subdomains
+      .find((entry: any) => entry.id === 'emergency-department').zones)
+      .toContainEqual({ id: 'emergency-bay', label: 'Emergency Bay' });
+    expect(response.body.data[0].subdomains
+      .find((entry: any) => entry.id === 'emergency-department').roles)
+      .toContainEqual({ id: 'paramedic', label: 'Paramedic' });
+    expect(response.body.data[0].families[0].variants).toHaveLength(4);
+    expect(JSON.stringify(response.body.data)).not.toContain('prompt');
+  });
+
+  it('publiserer rimelig standardruting uten å eksponere provider keys', async () => {
+    const sessions = new Map([['session-1', {
+      userId: 'user-1', email: 'director@example.com', name: 'Director',
+      role: 'owner', loginAt: new Date().toISOString(),
+    }]]);
+    const router = createStoryboardRouter({} as any, { activeSessions: sessions });
+    const response = makeResponse();
+    await runHandlers(routeHandlers(router, 'GET', '/storyboard-ai-models'), {
+      headers: { authorization: 'Bearer session-1' }, params: {}, body: {},
+    }, response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body.data.find((entry: any) => entry.id === 'seedance-2-i2v').recommended)
+      .toBe(true);
+    expect(response.body.data.find((entry: any) => entry.id === 'higgsfield-dop-i2v').recommended)
+      .toBe(false);
+    expect(JSON.stringify(response.body)).not.toMatch(/API_KEY|secret/i);
+  });
+
+  it('avviser animasjon når konteksten peker på et annet shot', async () => {
+    const sessions = new Map([['session-1', {
+      userId: 'user-1', email: 'director@example.com', name: 'Director',
+      role: 'owner', loginAt: new Date().toISOString(),
+    }]]);
+    const router = createStoryboardRouter({} as any, { activeSessions: sessions });
+    const response = makeResponse();
+    await runHandlers(routeHandlers(
+      router, 'POST', '/projects/:projectId/storyboards/:id/animate',
+    ), {
+      headers: { authorization: 'Bearer session-1' },
+      params: { projectId: 'project-1', id: 'storyboard-1' },
+      body: {
+        context: { ...context, shot: { ...context.shot, id: 'frame-other' } },
+        model: 'seedance-2-i2v', duration: 5,
+      },
+    }, response);
+    expect(response.statusCode).toBe(400);
+    expect(response.body.error).toBe('context_mismatch');
   });
 
   it('rejects shot context from another frame', async () => {

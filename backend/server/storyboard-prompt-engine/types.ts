@@ -1,12 +1,13 @@
 import type { StoryboardShotContext } from '../storyboard-ai-context.js';
 
-export const PROMPT_ENGINE_VERSION = 'trr-prompt-engine-v1' as const;
+export const PROMPT_ENGINE_VERSION = 'trr-prompt-engine-v2' as const;
 
 export type PromptIntentKind = 'storyboard-image' | 'storyboard-video';
 
 export type PromptModuleId =
   | 'base-cinematography'
   | 'project-style'
+  | 'scenario'
   | 'character'
   | 'wardrobe'
   | 'location'
@@ -62,6 +63,17 @@ export interface PromptModelView {
   modality: 'image' | 'video';
 }
 
+export interface PromptScenarioView {
+  packId: string;
+  packVersion: string;
+  packLabel: string;
+  subdomainId: string;
+  subdomainLabel: string;
+  zoneId: string;
+  zoneLabel: string;
+  constraintCount: number;
+}
+
 export interface PromptInspectorView {
   intent: string;
   inheritedConstraintCount: number;
@@ -70,6 +82,7 @@ export interface PromptInspectorView {
   locationReferenceCount: number;
   styleProfileId: string;
   styleProfileLabel: string;
+  scenario: PromptScenarioView | null;
   lockedProperties: string[];
   model: PromptModelView;
 }

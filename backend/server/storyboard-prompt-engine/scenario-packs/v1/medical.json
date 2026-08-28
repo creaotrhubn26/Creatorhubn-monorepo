@@ -1,0 +1,110 @@
+{
+  "schemaVersion": "trr-scenario-pack-v1",
+  "id": "medical.healthcare",
+  "version": "1.0.0",
+  "label": "Medical & Healthcare",
+  "domain": "medical",
+  "description": "Production-aware visual vocabulary for healthcare environments, care teams, patient movement, clinical equipment and safe blocking.",
+  "catalog": {
+    "zones": [
+      { "id": "consultation-room", "label": "Consultation Room", "prompt": "recognizable consultation room with examination area, clinician workstation and clear patient-clinician eyelines" },
+      { "id": "hospital-room", "label": "Hospital Room", "prompt": "hospital patient room with care bed, bedside equipment, visitor position and unobstructed staff access" },
+      { "id": "operating-room", "label": "Operating Room", "prompt": "operating theatre with central procedure table, surgical light, sterile working field and organized equipment perimeter" },
+      { "id": "emergency-bay", "label": "Emergency Bay", "prompt": "emergency treatment bay with stretcher, monitoring equipment, privacy curtain and a clear clinical approach path" },
+      { "id": "ambulance-interior", "label": "Ambulance Interior", "prompt": "compact ambulance treatment compartment with secured stretcher, seated medic position and wall-mounted emergency equipment" },
+      { "id": "rehabilitation-gym", "label": "Rehabilitation Gym", "prompt": "rehabilitation gym with open exercise floor, parallel bars and supervised patient movement space" },
+      { "id": "dental-operatory", "label": "Dental Operatory", "prompt": "dental treatment room with patient chair, overhead lamp, instrument side and assistant working position" },
+      { "id": "waiting-area", "label": "Waiting Area", "prompt": "healthcare waiting area with reception sightline, accessible circulation and separated seating groups" }
+    ],
+    "roles": [
+      { "id": "patient", "label": "Patient", "prompt": "patient whose condition and mobility are readable without sensationalizing distress", "wardrobe": "context-appropriate patient clothing or gown with stable visual continuity" },
+      { "id": "physician", "label": "Physician", "prompt": "physician positioned for clear communication, examination or team leadership", "wardrobe": "clinical workwear or professional clothing with consistent identifier and silhouette" },
+      { "id": "nurse", "label": "Nurse", "prompt": "nurse performing patient care with legible hand placement and access to equipment", "wardrobe": "clinical scrubs with consistent color value, pockets and footwear silhouette" },
+      { "id": "paramedic", "label": "Paramedic", "prompt": "paramedic using stable body mechanics around a patient or stretcher", "wardrobe": "recognizable emergency-service uniform with high-visibility panels and utility pockets" },
+      { "id": "surgeon", "label": "Surgeon", "prompt": "surgeon placed relative to sterile field and procedure team", "wardrobe": "surgical scrubs, cap, mask and gloves with continuity across shots" },
+      { "id": "assistant", "label": "Clinical Assistant", "prompt": "clinical assistant supporting the primary care action without obscuring the patient", "wardrobe": "role-appropriate clinical workwear with a distinct silhouette" },
+      { "id": "visitor", "label": "Visitor", "prompt": "visitor placed with a clear emotional relationship to the patient and care team", "wardrobe": "civilian wardrobe maintained consistently across the sequence" }
+    ],
+    "propTypes": [
+      { "id": "care-bed", "label": "Care Bed", "prompt": "adjustable hospital bed with rails, mattress, readable orientation and wheel base" },
+      { "id": "stretcher", "label": "Stretcher", "prompt": "mobile stretcher with rails, handles, wheels and a clearly readable head end" },
+      { "id": "monitor", "label": "Patient Monitor", "prompt": "patient monitor with screen, cable path and plausible bedside placement" },
+      { "id": "iv-stand", "label": "IV Stand", "prompt": "wheeled IV pole with suspended bag and legible tubing direction" },
+      { "id": "wheelchair", "label": "Wheelchair", "prompt": "wheelchair with push handles, armrests, footrests and wheel silhouette" },
+      { "id": "medical-cart", "label": "Medical Cart", "prompt": "mobile clinical cart with drawers, top work surface and locking wheels" },
+      { "id": "surgical-light", "label": "Surgical Light", "prompt": "articulated overhead surgical lamp oriented toward the procedure field" },
+      { "id": "dental-chair", "label": "Dental Chair", "prompt": "adjustable dental chair with headrest, base and adjacent delivery unit" }
+    ],
+    "actions": [
+      { "id": "consultation", "label": "Consultation", "prompt": "clear conversational triangle, attentive eyelines and readable exchange of information" },
+      { "id": "examination", "label": "Examination", "prompt": "clinician examination with anatomically plausible access and visible patient response" },
+      { "id": "patient-transfer", "label": "Patient Transfer", "prompt": "coordinated patient transfer with stable support points, clear source and destination surfaces" },
+      { "id": "emergency-response", "label": "Emergency Response", "prompt": "urgent but organized team response with readable task allocation and unobstructed patient access" },
+      { "id": "procedure", "label": "Clinical Procedure", "prompt": "controlled clinical procedure with a clear working field and supporting roles" },
+      { "id": "rehabilitation", "label": "Rehabilitation", "prompt": "guided rehabilitation movement with visible balance, support and progress direction" },
+      { "id": "handover", "label": "Care Handover", "prompt": "care-team handover with shared focus on patient information and role continuity" }
+    ],
+    "states": [
+      { "id": "calm", "label": "Calm", "prompt": "calm, controlled care environment with open posture and measured pacing" },
+      { "id": "concerned", "label": "Concerned", "prompt": "concern communicated through restrained expression, body angle and eyeline" },
+      { "id": "urgent", "label": "Urgent", "prompt": "time-critical energy expressed through purposeful movement without visual chaos" },
+      { "id": "recovering", "label": "Recovering", "prompt": "patient recovery conveyed through supported posture, reduced exertion and attentive supervision" },
+      { "id": "reassured", "label": "Reassured", "prompt": "reassurance conveyed through proximity, softened posture and direct communication" }
+    ],
+    "safetyContexts": [
+      { "id": "fictional-non-instructional", "label": "Fictional, Non-instructional", "prompt": "depict a fictional production scene, not medical instruction or a procedural guide" },
+      { "id": "dignified-care", "label": "Dignified Care", "prompt": "preserve patient dignity, avoid graphic injury and avoid exploitative framing" },
+      { "id": "plausible-access", "label": "Plausible Access", "prompt": "keep staff access, exits, equipment clearance and patient support spatially plausible" },
+      { "id": "no-readable-health-data", "label": "No Readable Health Data", "prompt": "do not render readable names, diagnoses, records or other personal health information" },
+      { "id": "sterile-zoning", "label": "Sterile Zoning", "prompt": "make sterile and non-sterile working zones visually distinct without teaching a procedure" }
+    ],
+    "continuityLocks": [
+      { "id": "patient-side", "label": "Patient Side", "prompt": "lock patient screen direction, bed orientation and clinician side across connected shots" },
+      { "id": "equipment-layout", "label": "Equipment Layout", "prompt": "lock the relative placement and cable direction of major clinical equipment" },
+      { "id": "wardrobe-identifiers", "label": "Wardrobe Identifiers", "prompt": "lock role-specific wardrobe, badges and protective-equipment state across the scene" },
+      { "id": "condition-state", "label": "Condition State", "prompt": "lock visible patient condition, mobility support and attached equipment unless the script changes them" },
+      { "id": "clean-dirty-state", "label": "Clean/Used State", "prompt": "lock the clean, opened or used state of visible supplies across chronological shots" }
+    ]
+  },
+  "subdomains": [
+    { "id": "primary-care", "label": "Primary Care", "zoneIds": ["consultation-room", "waiting-area"], "roleIds": ["patient", "physician", "nurse", "visitor"], "propTypeIds": ["care-bed", "monitor", "medical-cart"], "actionIds": ["consultation", "examination", "handover"], "stateIds": ["calm", "concerned", "reassured"], "safetyContextIds": ["fictional-non-instructional", "dignified-care", "no-readable-health-data"], "continuityLockIds": ["patient-side", "wardrobe-identifiers", "condition-state"] },
+    { "id": "hospital-ward", "label": "Hospital Ward", "zoneIds": ["hospital-room", "waiting-area"], "roleIds": ["patient", "physician", "nurse", "assistant", "visitor"], "propTypeIds": ["care-bed", "monitor", "iv-stand", "wheelchair", "medical-cart"], "actionIds": ["consultation", "examination", "patient-transfer", "handover"], "stateIds": ["calm", "concerned", "recovering", "reassured"], "safetyContextIds": ["fictional-non-instructional", "dignified-care", "plausible-access", "no-readable-health-data"], "continuityLockIds": ["patient-side", "equipment-layout", "wardrobe-identifiers", "condition-state", "clean-dirty-state"] },
+    { "id": "operating-theatre", "label": "Operating Theatre", "zoneIds": ["operating-room"], "roleIds": ["patient", "surgeon", "nurse", "assistant"], "propTypeIds": ["care-bed", "monitor", "iv-stand", "medical-cart", "surgical-light"], "actionIds": ["procedure", "handover", "patient-transfer"], "stateIds": ["calm", "urgent"], "safetyContextIds": ["fictional-non-instructional", "dignified-care", "plausible-access", "sterile-zoning", "no-readable-health-data"], "continuityLockIds": ["patient-side", "equipment-layout", "wardrobe-identifiers", "condition-state", "clean-dirty-state"] },
+    { "id": "emergency-department", "label": "Emergency Department", "zoneIds": ["emergency-bay", "waiting-area"], "roleIds": ["patient", "physician", "nurse", "paramedic", "assistant", "visitor"], "propTypeIds": ["care-bed", "stretcher", "monitor", "iv-stand", "wheelchair", "medical-cart"], "actionIds": ["emergency-response", "examination", "patient-transfer", "handover"], "stateIds": ["concerned", "urgent", "reassured"], "safetyContextIds": ["fictional-non-instructional", "dignified-care", "plausible-access", "no-readable-health-data"], "continuityLockIds": ["patient-side", "equipment-layout", "wardrobe-identifiers", "condition-state"] },
+    { "id": "ambulance", "label": "Ambulance", "zoneIds": ["ambulance-interior", "emergency-bay"], "roleIds": ["patient", "paramedic", "nurse"], "propTypeIds": ["stretcher", "monitor", "iv-stand", "medical-cart"], "actionIds": ["emergency-response", "patient-transfer", "handover"], "stateIds": ["concerned", "urgent", "reassured"], "safetyContextIds": ["fictional-non-instructional", "dignified-care", "plausible-access", "no-readable-health-data"], "continuityLockIds": ["patient-side", "equipment-layout", "wardrobe-identifiers", "condition-state"] },
+    { "id": "rehabilitation", "label": "Rehabilitation", "zoneIds": ["rehabilitation-gym", "consultation-room"], "roleIds": ["patient", "physician", "nurse", "assistant", "visitor"], "propTypeIds": ["wheelchair", "medical-cart"], "actionIds": ["rehabilitation", "consultation", "patient-transfer"], "stateIds": ["calm", "recovering", "reassured"], "safetyContextIds": ["fictional-non-instructional", "dignified-care", "plausible-access"], "continuityLockIds": ["patient-side", "wardrobe-identifiers", "condition-state"] },
+    { "id": "dental-clinic", "label": "Dental Clinic", "zoneIds": ["dental-operatory", "waiting-area"], "roleIds": ["patient", "physician", "assistant", "visitor"], "propTypeIds": ["dental-chair", "monitor", "medical-cart"], "actionIds": ["consultation", "examination", "procedure"], "stateIds": ["calm", "concerned", "reassured"], "safetyContextIds": ["fictional-non-instructional", "dignified-care", "no-readable-health-data"], "continuityLockIds": ["patient-side", "equipment-layout", "wardrobe-identifiers", "condition-state", "clean-dirty-state"] }
+  ],
+  "families": [
+    { "id": "care-surface", "label": "Care Surfaces", "primaryStyleAnchor": "object-architecture", "variants": [
+      { "id": "hospital-bed", "label": "Hospital Bed", "prompt": "adjustable hospital bed, three-quarter view, rails and wheel base clearly constructed" },
+      { "id": "stretcher", "label": "Stretcher", "prompt": "mobile emergency stretcher, side three-quarter view, rails, handles and undercarriage legible" },
+      { "id": "exam-table", "label": "Exam Table", "prompt": "compact examination table with paper roll, step and cabinet base" },
+      { "id": "dental-chair", "label": "Dental Chair", "prompt": "reclined dental chair with headrest, articulated base and delivery unit" }
+    ] },
+    { "id": "clinical-equipment", "label": "Clinical Equipment", "primaryStyleAnchor": "object-architecture", "variants": [
+      { "id": "patient-monitor", "label": "Patient Monitor", "prompt": "bedside patient monitor on stand with screen, controls and cable silhouette" },
+      { "id": "iv-stand", "label": "IV Stand", "prompt": "wheeled IV pole with hooks, bag and controlled tubing curve" },
+      { "id": "medical-cart", "label": "Medical Cart", "prompt": "mobile medical cart with drawers, handle and caster wheels" },
+      { "id": "surgical-light", "label": "Surgical Light", "prompt": "multi-segment surgical light with articulated ceiling arm" }
+    ] },
+    { "id": "patient-mobility", "label": "Patient Mobility", "primaryStyleAnchor": "object-architecture", "secondaryStyleAnchor": "organic-nature", "variants": [
+      { "id": "wheelchair", "label": "Wheelchair", "prompt": "folding wheelchair with push rims, handles, armrests and footrests" },
+      { "id": "walker", "label": "Walker", "prompt": "front-wheeled walking frame with handles and stable ground contact" },
+      { "id": "crutches", "label": "Crutches", "prompt": "paired forearm crutches with cuffs, grips and rubber tips" },
+      { "id": "transfer-chair", "label": "Transfer Chair", "prompt": "compact transfer chair with attendant handles and leg support" }
+    ] },
+    { "id": "care-action", "label": "Care Actions", "primaryStyleAnchor": "organic-nature", "secondaryStyleAnchor": "object-architecture", "variants": [
+      { "id": "consultation", "label": "Consultation", "prompt": "two-person clinical conversation with clear eyeline and respectful distance" },
+      { "id": "supported-walk", "label": "Supported Walk", "prompt": "clinician supporting a patient walking with readable balance and contact points" },
+      { "id": "team-handover", "label": "Team Handover", "prompt": "two clinicians exchanging patient context beside a care surface" },
+      { "id": "stretcher-transfer", "label": "Stretcher Transfer", "prompt": "coordinated team moving a stretcher with direction and support roles clearly staged" }
+    ] },
+    { "id": "clinical-room", "label": "Clinical Rooms", "primaryStyleAnchor": "object-architecture", "variants": [
+      { "id": "consultation-room", "label": "Consultation Room", "prompt": "consultation room corner with desk, chairs and examination area" },
+      { "id": "hospital-room", "label": "Hospital Room", "prompt": "hospital room corner with bed, monitor, visitor chair and door sightline" },
+      { "id": "emergency-bay", "label": "Emergency Bay", "prompt": "emergency bay with stretcher, curtain track and equipment wall" },
+      { "id": "operating-room", "label": "Operating Room", "prompt": "operating theatre with central table, surgical light and equipment perimeter" }
+    ] }
+  ]
+}
