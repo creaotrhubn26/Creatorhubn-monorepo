@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS project_ai_consent (
 CREATE TABLE IF NOT EXISTS storyboard_ai_video_jobs (
   id UUID PRIMARY KEY,
   project_id VARCHAR(255) NOT NULL,
-  storyboard_id UUID NOT NULL REFERENCES casting_storyboards(id) ON DELETE CASCADE,
+  storyboard_id UUID NOT NULL,
   user_id VARCHAR(255),
   user_email VARCHAR(320),
   model VARCHAR(100) NOT NULL,
@@ -40,7 +40,7 @@ CREATE INDEX IF NOT EXISTS storyboard_ai_video_jobs_storyboard_idx
 CREATE TABLE IF NOT EXISTS storyboard_ai_image_usage (
   id UUID PRIMARY KEY,
   project_id VARCHAR(255) NOT NULL,
-  storyboard_id UUID NOT NULL REFERENCES casting_storyboards(id) ON DELETE CASCADE,
+  storyboard_id UUID NOT NULL,
   user_id VARCHAR(255) NOT NULL,
   model VARCHAR(100) NOT NULL,
   quality VARCHAR(30) NOT NULL,
