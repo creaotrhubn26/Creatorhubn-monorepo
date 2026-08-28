@@ -27,6 +27,8 @@ interface ProjectAccess {
   revision: number;
   status: string;
   workspace_project_id: string | null;
+  project_updated_at: number;
+  updated_at: Date | string;
   access_role: AccessRole;
 }
 interface PublicLink {
@@ -150,7 +152,7 @@ function readProject(value: unknown, routeId: string): Record<string, unknown> |
   return project.id === routeId && typeof project.name === "string" && project.version === 1 ? project : null;
 }
 function publicAppBase(): string {
-  return String(process.env.PUBLIC_APP_URL || process.env.APP_URL || "https://creatorhubn.com").replace(/\/+$/, "");
+  return String(process.env.ROLE_ROOM_PUBLIC_URL || process.env.PUBLIC_APP_URL || process.env.APP_URL || "https://theroleroom.com").replace(/\/+$/, "");
 }
 function isExpired(link: PublicLink): boolean {
   return Boolean(link.expires_at && new Date(link.expires_at).getTime() <= Date.now());
@@ -202,7 +204,8 @@ async function resolveActor(
 
 async function projectAccess(pool: Pool, actor: Actor, projectId: string): Promise<ProjectAccess | null> {
   const result = await pool.query<ProjectAccess>(
-    `SELECT p.id, p.created_by, p.payload, p.revision, p.status, p.workspace_project_id,
+    `SELECT p.id, p.created_by, p.payload, COALESCE(ms.revision,1) AS revision,
+       p.status, ms.workspace_project_id, p.project_updated_at, p.updated_at,
        CASE
          WHEN p.created_by=$2 THEN 'owner'
          WHEN c.role IS NOT NULL THEN c.role
@@ -210,16 +213,18 @@ async function projectAccess(pool: Pool, actor: Actor, projectId: string): Promi
            CASE WHEN lower(COALESCE(cur.role,'')) IN ('owner','admin','producer','editor','creative') THEN 'editor' ELSE 'commenter' END
          ELSE NULL
        END AS access_role
-     FROM mockup_studio_projects p
+     FROM demo_studio_mockup_projects p
+     LEFT JOIN mockup_studio_project_state ms
+       ON ms.project_id=p.id AND ms.created_by=p.created_by
      LEFT JOIN LATERAL (
-       SELECT role
+       SELECT role, user_id
        FROM mockup_studio_collaborators
        WHERE project_id=p.id AND created_by=p.created_by AND revoked_at IS NULL
          AND (user_id=$2 OR ($3<>'' AND lower(email)=$3))
        ORDER BY user_id=$2 DESC, created_at ASC LIMIT 1
      ) c ON true
      LEFT JOIN casting_user_roles cur
-       ON cur.project_id=p.workspace_project_id AND cur.user_id=$2 AND cur.deactivated_at IS NULL
+       ON cur.project_id=ms.workspace_project_id AND cur.user_id=$2 AND cur.deactivated_at IS NULL
      WHERE p.id=$1
        AND (p.created_by=$2 OR c.role IS NOT NULL OR cur.user_id IS NOT NULL)
      ORDER BY (p.created_by=$2) DESC, (c.user_id=$2) DESC NULLS LAST
@@ -227,6 +232,13 @@ async function projectAccess(pool: Pool, actor: Actor, projectId: string): Promi
     [projectId, actor.userId, actor.email],
   );
   const access = result.rows[0] ?? null;
+  if (access) {
+    await pool.query(
+      `INSERT INTO mockup_studio_project_state (project_id,created_by)
+       VALUES ($1,$2) ON CONFLICT (project_id,created_by) DO NOTHING`,
+      [access.id, access.created_by],
+    );
+  }
   if (access && actor.email) {
     await pool.query(
       `UPDATE mockup_studio_collaborators SET user_id=COALESCE(user_id,$1), accepted_at=COALESCE(accepted_at,now()), updated_at=now()
@@ -246,7 +258,7 @@ async function loadPublicLink(pool: Pool, rawToken: string): Promise<PublicLink 
        p.name AS project_name, p.payload AS project_payload, p.updated_at AS project_updated_at,
        v.label AS version_label, v.payload AS version_payload, v.review_status, v.source_revision
      FROM mockup_studio_share_links s
-     JOIN mockup_studio_projects p ON p.id=s.project_id AND p.created_by=s.created_by
+     JOIN demo_studio_mockup_projects p ON p.id=s.project_id AND p.created_by=s.created_by
      LEFT JOIN mockup_studio_versions v ON v.id=s.version_id
      WHERE s.token_hash=$1 AND s.revoked_at IS NULL
      LIMIT 1`,
@@ -520,26 +532,30 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
     try {
       const { rows } = await pool.query(
         `SELECT DISTINCT ON (p.id, p.created_by)
-           p.id, p.name, p.campaign_id, p.status, p.revision, p.updated_at,
-           p.workspace_project_id,
+           p.id, p.name, ms.campaign_id, p.status, p.template_id, p.project_updated_at,
+           COALESCE(ms.revision,1) AS revision, p.updated_at, ms.workspace_project_id,
            CASE WHEN p.created_by=$1 THEN 'owner'
              WHEN c.role IS NOT NULL THEN c.role
              ELSE 'commenter' END AS access_role,
            (SELECT count(*)::int FROM mockup_studio_comments mc
              WHERE mc.project_id=p.id AND mc.created_by=p.created_by AND mc.status<>'resolved') AS open_comments
-         FROM mockup_studio_projects p
+         FROM demo_studio_mockup_projects p
+         LEFT JOIN mockup_studio_project_state ms
+           ON ms.project_id=p.id AND ms.created_by=p.created_by
          LEFT JOIN mockup_studio_collaborators c
            ON c.project_id=p.id AND c.created_by=p.created_by AND c.revoked_at IS NULL
            AND (c.user_id=$1 OR ($2<>'' AND lower(c.email)=$2))
          LEFT JOIN casting_user_roles cur
-           ON cur.project_id=p.workspace_project_id AND cur.user_id=$1 AND cur.deactivated_at IS NULL
+           ON cur.project_id=ms.workspace_project_id AND cur.user_id=$1 AND cur.deactivated_at IS NULL
          WHERE p.created_by=$1 OR c.id IS NOT NULL OR cur.user_id IS NOT NULL
          ORDER BY p.id, p.created_by, p.updated_at DESC LIMIT 200`,
         [actor.userId, actor.email],
       );
       res.json({ projects: rows.map((row) => ({
         id: row.id, name: row.name, campaignId: row.campaign_id,
-        status: row.status, revision: row.revision, updatedAt: row.updated_at,
+        status: row.status, template: row.template_id ?? "",
+        projectUpdatedAt: Number(row.project_updated_at), syncedAt: row.updated_at,
+        revision: row.revision, updatedAt: row.updated_at,
         workspaceProjectId: row.workspace_project_id,
         accessRole: row.access_role, openComments: Number(row.open_comments || 0),
       })) });
@@ -555,7 +571,10 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
     try {
       const access = await projectAccess(pool, actor, String(req.params.id));
       if (!access) { res.status(404).json({ error: "finnes_ikke" }); return; }
-      res.json({ project: access.payload, revision: access.revision, accessRole: access.access_role });
+      res.json({
+        project: access.payload, revision: access.revision, updatedAt: access.updated_at,
+        projectUpdatedAt: Number(access.project_updated_at), accessRole: access.access_role,
+      });
     } catch {
       res.status(500).json({ error: "hent_feil", detail: "internal_error" });
     }
@@ -569,6 +588,10 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
     if (!project) { res.status(400).json({ error: "ugyldig_prosjekt" }); return; }
     const raw = JSON.stringify(project);
     if (Buffer.byteLength(raw, "utf8") > MAX_PROJECT_BYTES) { res.status(413).json({ error: "for_stor" }); return; }
+    const projectUpdatedAt = Number(project.updatedAt);
+    if (!Number.isSafeInteger(projectUpdatedAt) || projectUpdatedAt <= 0) {
+      res.status(400).json({ error: "ugyldig_prosjekt" }); return;
+    }
     const status = VALID_STATUS.has(String(project.status)) ? String(project.status) : "draft";
     const workspaceProjectId = nullableText(project.workspaceProjectId, 255);
     try {
@@ -578,26 +601,49 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
           res.status(403).json({ error: "ingen_redigeringstilgang" }); return;
         }
         const updated = await pool.query(
-          `UPDATE mockup_studio_projects SET
-             name=$3, campaign_id=$4, status=$5, payload=$6::jsonb,
-             workspace_project_id=$7, revision=revision+1, updated_at=now()
-           WHERE id=$1 AND created_by=$2 RETURNING revision, updated_at`,
+          `UPDATE demo_studio_mockup_projects SET
+             name=$3, status=$4, template_id=$5, project_updated_at=$6,
+             payload=$7::jsonb, updated_at=now()
+           WHERE id=$1 AND created_by=$2 AND project_updated_at <= $6
+           RETURNING updated_at`,
           [
             id, access.created_by, String(project.name).slice(0, 200),
-            nullableText(project.campaignId, 200), status, raw, workspaceProjectId,
+            status, nullableText(project.template, 200), projectUpdatedAt, raw,
           ],
         );
-        res.json({ ok: true, revision: updated.rows[0].revision, updatedAt: updated.rows[0].updated_at });
+        if (!updated.rows.length) {
+          res.json({ ok: true, updated: false, revision: access.revision, updatedAt: access.updated_at });
+          return;
+        }
+        const state = await pool.query(
+          `INSERT INTO mockup_studio_project_state
+             (project_id,created_by,campaign_id,workspace_project_id,revision,updated_at)
+           VALUES ($1,$2,$3,$4,1,now())
+           ON CONFLICT (project_id,created_by) DO UPDATE SET
+             campaign_id=EXCLUDED.campaign_id, workspace_project_id=EXCLUDED.workspace_project_id,
+             revision=mockup_studio_project_state.revision+1, updated_at=now()
+           RETURNING revision,updated_at`,
+          [id, access.created_by, nullableText(project.campaignId, 200), workspaceProjectId],
+        );
+        res.json({ ok: true, updated: true, revision: state.rows[0].revision, updatedAt: updated.rows[0].updated_at });
         return;
       }
       const inserted = await pool.query(
-        `INSERT INTO mockup_studio_projects
-           (id, created_by, name, campaign_id, status, payload, revision, workspace_project_id, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6::jsonb,1,$7,now())
-         RETURNING revision, updated_at`,
-        [id, actor.userId, String(project.name).slice(0, 200), nullableText(project.campaignId, 200), status, raw, workspaceProjectId],
+        `INSERT INTO demo_studio_mockup_projects
+           (id, created_by, name, status, template_id, project_updated_at, payload, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,now()) RETURNING updated_at`,
+        [id, actor.userId, String(project.name).slice(0, 200), status, nullableText(project.template, 200), projectUpdatedAt, raw],
       );
-      res.json({ ok: true, revision: inserted.rows[0].revision, updatedAt: inserted.rows[0].updated_at });
+      const state = await pool.query(
+        `INSERT INTO mockup_studio_project_state
+           (project_id,created_by,campaign_id,workspace_project_id,revision,updated_at)
+         VALUES ($1,$2,$3,$4,1,now())
+         ON CONFLICT (project_id,created_by) DO UPDATE SET
+           campaign_id=EXCLUDED.campaign_id,workspace_project_id=EXCLUDED.workspace_project_id,updated_at=now()
+         RETURNING revision`,
+        [id, actor.userId, nullableText(project.campaignId, 200), workspaceProjectId],
+      );
+      res.json({ ok: true, updated: true, revision: state.rows[0].revision, updatedAt: inserted.rows[0].updated_at });
     } catch (error) {
       console.error("[mockup-projects/save]", error);
       res.status(500).json({ error: "lagre_feil", detail: "internal_error" });
@@ -609,7 +655,8 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
     if (!actor) { res.status(401).json({ error: "krever_innlogging" }); return; }
     const access = await projectAccess(pool, actor, String(req.params.id));
     if (!access || access.access_role !== "owner") { res.status(403).json({ error: "kun_eier_kan_slette" }); return; }
-    await pool.query("DELETE FROM mockup_studio_projects WHERE id=$1 AND created_by=$2", [access.id, access.created_by]);
+    await pool.query("DELETE FROM mockup_studio_project_state WHERE project_id=$1 AND created_by=$2", [access.id, access.created_by]);
+    await pool.query("DELETE FROM demo_studio_mockup_projects WHERE id=$1 AND created_by=$2", [access.id, access.created_by]);
     res.json({ ok: true });
   });
 
@@ -714,10 +761,9 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
         ],
       );
       await client.query(
-        `UPDATE mockup_studio_projects SET
-           active_review_version_id=$3, status='review',
-           payload=jsonb_set(payload,'{status}',to_jsonb('review'::text),true), updated_at=now()
-         WHERE id=$1 AND created_by=$2`,
+        `UPDATE mockup_studio_project_state SET
+           active_review_version_id=$3, updated_at=now()
+         WHERE project_id=$1 AND created_by=$2`,
         [access.id, access.created_by, versionId],
       );
       await client.query("COMMIT");
@@ -978,14 +1024,6 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
       [versionId, access.id, access.created_by, status, decision, nullableText(req.body?.note, 2000), actor.userId, actor.displayName, JSON.stringify(reviewContext(req))],
     );
     if (!result.rows.length) { res.status(404).json({ error: "versjon_finnes_ikke" }); return; }
-    await pool.query(
-      `UPDATE mockup_studio_projects p SET status=$4,
-         payload=jsonb_set(p.payload,'{status}',to_jsonb($4::text),true), updated_at=now()
-       FROM mockup_studio_versions v
-       WHERE p.id=$1 AND p.created_by=$2 AND v.id=$3
-         AND v.project_id=p.id AND v.created_by=p.created_by AND v.source_revision=p.revision`,
-      [access.id, access.created_by, versionId, status === "approved" ? "approved" : "review"],
-    );
     const decisionTitle = decision === "approved" ? "Mockup godkjent" : decision === "reset" ? "Godkjenning tilbakestilt" : "Endringer ønsket";
     await notifyReviewParticipants(pool, access, versionId, "decision.created", decisionTitle, nullableText(req.body?.note, 500) || access.payload.name as string || "Mockup", actor.userId);
     if (decision !== "reset") {
@@ -1493,13 +1531,6 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
       [link.version_id, link.project_id, link.created_by, status, nullableText(req.body?.note, 2000), session.id, session.display_name, JSON.stringify(reviewContext(req))],
     );
     if (!result.rows.length) { res.status(404).json({ error: "versjon_finnes_ikke" }); return; }
-    await pool.query(
-      `UPDATE mockup_studio_projects p SET status=$4,
-         payload=jsonb_set(p.payload,'{status}',to_jsonb($4::text),true),updated_at=now()
-       FROM mockup_studio_versions v
-       WHERE p.id=$1 AND p.created_by=$2 AND v.id=$3 AND v.source_revision=p.revision`,
-      [link.project_id, link.created_by, link.version_id, status === "approved" ? "approved" : "review"],
-    );
     await notifyReviewParticipants(pool, { id: link.project_id, created_by: link.created_by }, link.version_id, "decision.created", decision === "approved" ? "Mockup godkjent" : "Endringer ønsket", nullableText(req.body?.note, 500) || session.display_name);
     const event = decision === "approved" ? "review.approved" : "review.changes_requested";
     void emitMockupWebhook(pool, link.project_id, link.created_by, event, { projectId: link.project_id, versionId: link.version_id, decisionId: result.rows[0].id });
@@ -1509,10 +1540,10 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
   app.post("/api/role-room/mockup-shared/:token/approve", express.urlencoded({ extended: false }), async (req: Request, res: Response) => {
     try {
       const { rows } = await pool.query(
-        `UPDATE mockup_studio_projects p SET
-           status='approved',
-           payload=jsonb_set(p.payload,'{status}',to_jsonb('approved'::text),true),
-           revision=p.revision+1,updated_at=now()
+        `UPDATE demo_studio_mockup_projects p SET
+           status='ready',
+           payload=jsonb_set(p.payload,'{status}',to_jsonb('ready'::text),true),
+           updated_at=now()
          FROM mockup_studio_share_links s
          WHERE s.project_id=p.id AND s.created_by=p.created_by
            AND s.token_hash=$1 AND s.revoked_at IS NULL

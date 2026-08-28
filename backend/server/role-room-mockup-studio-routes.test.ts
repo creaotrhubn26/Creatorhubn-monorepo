@@ -136,7 +136,8 @@ describe("Mockup Studio Review Room routes", () => {
       params: { token: "secret" }, headers: { accept: "application/json" },
     } as unknown as Request, res);
     expect(res.body).toEqual({ ok: true, status: "approved" });
-    expect(String(query.mock.calls[0][0])).toContain("status='approved'");
+    expect(String(query.mock.calls[0][0])).toContain("UPDATE demo_studio_mockup_projects");
+    expect(String(query.mock.calls[0][0])).toContain("status='ready'");
     expect(query.mock.calls[0][1][0]).not.toBe("secret");
     expect(query.mock.calls[0][1][0]).toHaveLength(64);
   });
