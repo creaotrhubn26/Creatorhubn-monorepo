@@ -39,7 +39,7 @@ import {
   type CloudMockupWebhook,
   type MockupAccessRole,
 } from "../../services/cloudMockupProjectsService";
-import { hydrateMockupProject } from "./mockupProjectRepository";
+import { applyHydratedMockupChangeSet } from "./mockupChangeSets";
 
 export interface MockupReviewPin {
   id: string;
@@ -342,7 +342,7 @@ export function MockupReviewPanel({
       const saved = await persistChangeSet(item);
       const preparedProject = await onBuildChangeSetProject(saved.operations);
       const result = await applyCloudMockupChangeSet(project.id, saved.id, preparedProject);
-      onApplyProject(await hydrateMockupProject(result.project));
+      onApplyProject(applyHydratedMockupChangeSet(project, saved.operations, result.project));
       await load(activeVersionId);
       onMessage("✓ Endringene er brukt, kommentarene er løst og en ny versjon er opprettet.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }

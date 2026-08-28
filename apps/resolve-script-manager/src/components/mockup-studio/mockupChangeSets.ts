@@ -56,3 +56,14 @@ export function applyMockupChangeSet(
   delete next.reviewElements;
   return next;
 }
+
+export function applyHydratedMockupChangeSet(
+  doc: MockupDoc,
+  operations: MockupChangeOperation[],
+  appliedProject: Pick<MockupDoc, "updatedAt" | "reviewPreview" | "reviewElements">,
+): MockupDoc {
+  const next = applyMockupChangeSet(doc, operations, appliedProject.updatedAt);
+  next.reviewPreview = appliedProject.reviewPreview;
+  next.reviewElements = appliedProject.reviewElements;
+  return next;
+}
