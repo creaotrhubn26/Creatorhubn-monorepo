@@ -208,6 +208,32 @@ function readProject(value: unknown, routeId: string): Record<string, unknown> |
   const project = value as Record<string, unknown>;
   return project.id === routeId && typeof project.name === "string" && project.version === 1 ? project : null;
 }
+
+function isPortableProjectAsset(value: unknown): boolean {
+  if (typeof value !== "string" || value.length === 0) return true;
+  return /^(?:data:|https?:)/i.test(value)
+    || value.startsWith("/assets/")
+    || /^mockup-cloud-file:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+/** Reject the image slots the desktop automatically reads/uploads during sync. */
+export function hasUnsafeMockupProjectAssetReferences(project: Record<string, unknown>): boolean {
+  const devices = Array.isArray(project.devices) ? project.devices : [];
+  const images = Array.isArray(project.images) ? project.images : [];
+  const canvas = project.canvas && typeof project.canvas === "object" && !Array.isArray(project.canvas)
+    ? project.canvas as Record<string, unknown>
+    : {};
+  const logo = canvas.logo && typeof canvas.logo === "object" && !Array.isArray(canvas.logo)
+    ? canvas.logo as Record<string, unknown>
+    : {};
+  return devices.some((item) => {
+    const device = item && typeof item === "object" && !Array.isArray(item) ? item as Record<string, unknown> : {};
+    return !isPortableProjectAsset(device.image);
+  }) || images.some((item) => {
+    const image = item && typeof item === "object" && !Array.isArray(item) ? item as Record<string, unknown> : {};
+    return !isPortableProjectAsset(image.image);
+  }) || !isPortableProjectAsset(logo.image);
+}
 function publicAppBase(): string {
   return String(process.env.ROLE_ROOM_PUBLIC_URL || process.env.PUBLIC_APP_URL || process.env.APP_URL || "https://theroleroom.com").replace(/\/+$/, "");
 }
@@ -716,12 +742,42 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
     }
   });
 
+  app.get("/api/role-room/mockup-projects/:id/assets/:fileId", async (req: Request, res: Response) => {
+    const actor = await resolveActor(pool, activeSessions, req);
+    if (!actor) { res.status(401).json({ error: "krever_innlogging" }); return; }
+    const fileId = String(req.params.fileId);
+    if (!UUID_PATTERN.test(fileId)) { res.status(400).json({ error: "ugyldig_fil" }); return; }
+    try {
+      const access = await projectAccess(pool, actor, String(req.params.id));
+      if (!access) { res.status(404).json({ error: "finnes_ikke" }); return; }
+      const attached = await pool.query<{ user_id: string }>(
+        `SELECT user_id FROM role_room_user_files
+         WHERE id=$1::uuid AND deleted_at IS NULL
+           AND attached_to_entity_type='mockup-project' AND attached_to_entity_id=$2
+         LIMIT 1`,
+        [fileId, access.id],
+      );
+      if (!attached.rows.length) { res.status(404).json({ error: "fil_finnes_ikke" }); return; }
+      const download = await getUserFileDownloadUrl(pool, {
+        userId: attached.rows[0].user_id, fileId, expiresInSeconds: 300,
+      });
+      if (!download.ok) {
+        res.status(download.reason === "not_found" ? 404 : 503).json({ error: download.reason });
+        return;
+      }
+      res.redirect(302, download.url);
+    } catch {
+      res.status(500).json({ error: "hent_fil_feil", detail: "internal_error" });
+    }
+  });
+
   app.put("/api/role-room/mockup-projects/:id", express.json({ limit: "13mb" }), async (req: Request, res: Response) => {
     const actor = await resolveActor(pool, activeSessions, req);
     if (!actor) { res.status(401).json({ error: "krever_innlogging" }); return; }
     const id = String(req.params.id);
     const project = readProject(req.body?.project, id);
     if (!project) { res.status(400).json({ error: "ugyldig_prosjekt" }); return; }
+    if (hasUnsafeMockupProjectAssetReferences(project)) { res.status(400).json({ error: "lokale_asset_referanser" }); return; }
     const raw = JSON.stringify(project);
     if (Buffer.byteLength(raw, "utf8") > MAX_PROJECT_BYTES) { res.status(413).json({ error: "for_stor" }); return; }
     const projectUpdatedAt = Number(project.updatedAt);
@@ -850,6 +906,7 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
     if (!access || !roleCanEdit(access.access_role)) { res.status(403).json({ error: "ingen_redigeringstilgang" }); return; }
     const project = readProject(req.body?.project, id);
     if (!project) { res.status(400).json({ error: "ugyldig_prosjekt" }); return; }
+    if (hasUnsafeMockupProjectAssetReferences(project)) { res.status(400).json({ error: "lokale_asset_referanser" }); return; }
     const raw = JSON.stringify(project);
     if (Buffer.byteLength(raw, "utf8") > MAX_PROJECT_BYTES) { res.status(413).json({ error: "for_stor" }); return; }
     const { rows } = await pool.query(
@@ -1006,6 +1063,7 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
     const changeSetId = String(req.params.changeSetId);
     const submitted = readProject(req.body?.project, id);
     if (!UUID_PATTERN.test(changeSetId) || !submitted) { res.status(400).json({ error: "ugyldig_forespørsel" }); return; }
+    if (hasUnsafeMockupProjectAssetReferences(submitted)) { res.status(400).json({ error: "lokale_asset_referanser" }); return; }
     const raw = JSON.stringify(submitted);
     if (Buffer.byteLength(raw, "utf8") > MAX_PROJECT_BYTES) { res.status(413).json({ error: "for_stor" }); return; }
     const submittedUpdatedAt = Number(submitted.updatedAt);

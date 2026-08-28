@@ -2,13 +2,22 @@ import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
-import { registerRoleRoomMockupStudioRoutes } from "./role-room-mockup-studio-routes.js";
+import {
+  hasUnsafeMockupProjectAssetReferences,
+  registerRoleRoomMockupStudioRoutes,
+} from "./role-room-mockup-studio-routes.js";
 import { createMockupWebhookSecret, signMockupWebhook, validateMockupWebhookUrl } from "./mockup-review-webhook-service.js";
 
-const { sendTransactionalEmailMock } = vi.hoisted(() => ({
+const { getUserFileDownloadUrlMock, sendTransactionalEmailMock, uploadUserFileMock } = vi.hoisted(() => ({
+  getUserFileDownloadUrlMock: vi.fn().mockResolvedValue({ ok: true, url: "https://files.example/signed", displayName: "photo.png" }),
   sendTransactionalEmailMock: vi.fn().mockResolvedValue({ sent: true, reason: null, provider: "resend" }),
+  uploadUserFileMock: vi.fn(),
 }));
 vi.mock("./transactional-email-service.js", () => ({ sendTransactionalEmail: sendTransactionalEmailMock }));
+vi.mock("./role-room-user-storage-service.js", () => ({
+  getUserFileDownloadUrl: getUserFileDownloadUrlMock,
+  uploadUserFile: uploadUserFileMock,
+}));
 
 type Handler = (req: Request, res: Response) => Promise<void> | void;
 function harness(result: { rows: unknown[] } = { rows: [] }) {
@@ -56,10 +65,65 @@ describe("Mockup Studio Review Room routes", () => {
     expect(handlers.has("PATCH /api/role-room/mockup-projects/:id/shares/:shareId")).toBe(true);
     expect(handlers.has("PATCH /api/role-room/mockup-shared/:token/comments/:commentId")).toBe(true);
     expect(handlers.has("GET /api/role-room/mockup-projects/:id/change-sets")).toBe(true);
+    expect(handlers.has("GET /api/role-room/mockup-projects/:id/assets/:fileId")).toBe(true);
     expect(handlers.has("POST /api/role-room/mockup-projects/:id/change-sets/generate")).toBe(true);
     expect(handlers.has("PATCH /api/role-room/mockup-projects/:id/change-sets/:changeSetId")).toBe(true);
     expect(handlers.has("POST /api/role-room/mockup-projects/:id/change-sets/:changeSetId/reject")).toBe(true);
     expect(handlers.has("POST /api/role-room/mockup-projects/:id/change-sets/:changeSetId/apply")).toBe(true);
+  });
+
+  it("avviser lokale bildefilstier i delte prosjektpayloads", () => {
+    expect(hasUnsafeMockupProjectAssetReferences({
+      devices: [{ image: "/Users/victim/.ssh/id_rsa.png" }], images: [], canvas: {},
+    })).toBe(true);
+    expect(hasUnsafeMockupProjectAssetReferences({
+      devices: [{ image: "data:image/png;base64,AAAA" }],
+      images: [{ image: "https://example.com/photo.jpg" }],
+      canvas: { logo: { image: "mockup-cloud-file:11111111-1111-4111-8111-111111111111" } },
+    })).toBe(false);
+    expect(hasUnsafeMockupProjectAssetReferences({
+      devices: [], images: [{ image: "mockup-cloud-file:not-a-uuid" }], canvas: {},
+    })).toBe(true);
+  });
+
+  it("lar en samarbeidspartner laste ned bare et asset som er bundet til prosjektet", async () => {
+    getUserFileDownloadUrlMock.mockClear();
+    getUserFileDownloadUrlMock.mockResolvedValue({
+      ok: true, url: "https://files.example/signed", displayName: "photo.png",
+    });
+    const handlers = new Map<string, Handler>();
+    const register = (method: string) => (path: string, ...values: unknown[]) => handlers.set(method + " " + path, values.at(-1) as Handler);
+    const app = { get: register("GET"), put: register("PUT"), post: register("POST"), patch: register("PATCH"), delete: register("DELETE") } as unknown as Express;
+    const fileId = "11111111-1111-4111-8111-111111111111";
+    const query = vi.fn().mockImplementation(async (statement: unknown) => {
+      const sql = String(statement);
+      if (sql.includes("FROM demo_studio_mockup_projects p")) {
+        return { rows: [{
+          id: "project", created_by: "owner", payload: {}, revision: 3, status: "draft",
+          workspace_project_id: null, project_updated_at: 1, updated_at: new Date(), access_role: "editor",
+        }] };
+      }
+      if (sql.includes("FROM role_room_user_files")) return { rows: [{ user_id: "asset-uploader" }] };
+      return { rows: [] };
+    });
+    const pool = { query } as unknown as Pool;
+    registerRoleRoomMockupStudioRoutes(app, { pool, activeSessions: new Map([["editor-token", {
+      userId: "editor", role: "editor", email: "editor@example.com", name: "Eva", loginAt: new Date().toISOString(),
+    }]]) });
+
+    const res = response();
+    await handlers.get("GET /api/role-room/mockup-projects/:id/assets/:fileId")!({
+      params: { id: "project", fileId }, headers: { authorization: "Bearer editor-token" },
+    } as unknown as Request, res);
+
+    expect(res.statusCode).toBe(302);
+    expect(res.body).toBe("https://files.example/signed");
+    expect(getUserFileDownloadUrlMock).toHaveBeenCalledWith(pool, {
+      userId: "asset-uploader", fileId, expiresInSeconds: 300,
+    });
+    const assetQuery = query.mock.calls.find(([statement]) => String(statement).includes("FROM role_room_user_files"));
+    expect(String(assetQuery?.[0])).toContain("attached_to_entity_type='mockup-project'");
+    expect(assetQuery?.[1]).toEqual([fileId, "project"]);
   });
 
   it("rydder Change Sets før et prosjekt slettes", async () => {
