@@ -241,6 +241,37 @@ function quotedReplacement(body: string): string | null {
     || body.match(/[«\"“]([^»\"”]{1,4000})[»\"”]/);
   return match?.[1]?.trim() || null;
 }
+function requestedDistancePx(body: string): number | null {
+  const match = body.match(/\b(\d+(?:[.,]\d+)?)\s*(?:px|piks(?:el|ler|lene)?)\b/i);
+  if (!match) return null;
+  const value = Number(match[1].replace(",", "."));
+  return Number.isFinite(value) && value > 0 ? Math.min(value, 10_000) : null;
+}
+function requestedDirections(body: string): { left: boolean; right: boolean; up: boolean; down: boolean } {
+  const explicitLeft = /\b(?:mot|til|lengre|lenger)\s+(?:mot\s+)?venstre\b/.test(body);
+  const explicitRight = /\b(?:mot|til|lengre|lenger)\s+(?:mot\s+)?(?:høyre|hoeyre)\b/.test(body);
+  const explicitUp = /\b(?:mot|til|lengre|lenger)\s+(?:mot\s+)?(?:opp|oppover)\b/.test(body);
+  const explicitDown = /\b(?:mot|til|lengre|lenger)\s+(?:mot\s+)?(?:ned|nedover)\b/.test(body);
+  const hasExplicitHorizontal = explicitLeft || explicitRight;
+  const hasExplicitVertical = explicitUp || explicitDown;
+  return {
+    left: hasExplicitHorizontal ? explicitLeft : /\bvenstre\b/.test(body),
+    right: hasExplicitHorizontal ? explicitRight : /\b(?:høyre|hoeyre)\b/.test(body),
+    up: hasExplicitVertical ? explicitUp : /\b(?:opp|høyere|hoeyere)\b/.test(body),
+    down: hasExplicitVertical ? explicitDown : /\b(?:ned|lavere)\b/.test(body),
+  };
+}
+function annotationEndpointFields(target: EditableTarget, comment: MockupChangeComment): { x: "fx" | "fx2"; y: "fy" | "fy2" } {
+  if (target.value.kind !== "connector" || typeof target.value.fx2 !== "number" || typeof target.value.fy2 !== "number") {
+    return { x: "fx", y: "fy" };
+  }
+  if (comment.anchorX == null || comment.anchorY == null || typeof target.value.fx !== "number" || typeof target.value.fy !== "number") {
+    return { x: "fx", y: "fy" };
+  }
+  const first = Math.hypot(comment.anchorX - target.value.fx, comment.anchorY - target.value.fy);
+  const second = Math.hypot(comment.anchorX - target.value.fx2, comment.anchorY - target.value.fy2);
+  return second < first ? { x: "fx2", y: "fy2" } : { x: "fx", y: "fy" };
+}
 function suggestedOperations(project: JsonObject, comments: MockupChangeComment[]): unknown[] {
   const { w: canvasW, h: canvasH } = canvasSize(project);
   const result: JsonObject[] = [];
@@ -259,10 +290,24 @@ function suggestedOperations(project: JsonObject, comments: MockupChangeComment[
     if (target.kind === "annotation" && replacement) add("label", replacement, "oppdater etiketten");
     const verticalStep = Math.max(8, Math.round(canvasH * 0.05));
     const horizontalStep = Math.max(8, Math.round(canvasW * 0.05));
-    if (/\b(opp|høyere|hoeyere)\b/.test(body) && typeof target.value.y === "number") add("y", target.value.y - verticalStep, "flytt opp");
-    if (/\b(ned|lavere)\b/.test(body) && typeof target.value.y === "number") add("y", target.value.y + verticalStep, "flytt ned");
-    if (/\bvenstre\b/.test(body) && typeof target.value.x === "number") add("x", target.value.x - horizontalStep, "flytt mot venstre");
-    if (/\bhøyre\b|\bhoeyre\b/.test(body) && typeof target.value.x === "number") add("x", target.value.x + horizontalStep, "flytt mot høyre");
+    const distancePx = requestedDistancePx(body);
+    const directions = requestedDirections(body);
+    const distanceLabel = distancePx == null ? "" : ` ${distancePx} px`;
+    if (target.kind === "annotation") {
+      const fields = annotationEndpointFields(target, comment);
+      const x = target.value[fields.x], y = target.value[fields.y];
+      const horizontalFraction = (distancePx ?? horizontalStep) / canvasW;
+      const verticalFraction = (distancePx ?? verticalStep) / canvasH;
+      if (directions.up && typeof y === "number") add(fields.y, y - verticalFraction, `flytt endepunkt${distanceLabel} opp`);
+      if (directions.down && typeof y === "number") add(fields.y, y + verticalFraction, `flytt endepunkt${distanceLabel} ned`);
+      if (directions.left && typeof x === "number") add(fields.x, x - horizontalFraction, `flytt endepunkt${distanceLabel} mot venstre`);
+      if (directions.right && typeof x === "number") add(fields.x, x + horizontalFraction, `flytt endepunkt${distanceLabel} mot høyre`);
+    } else {
+      if (directions.up && typeof target.value.y === "number") add("y", target.value.y - (distancePx ?? verticalStep), `flytt${distanceLabel} opp`);
+      if (directions.down && typeof target.value.y === "number") add("y", target.value.y + (distancePx ?? verticalStep), `flytt${distanceLabel} ned`);
+      if (directions.left && typeof target.value.x === "number") add("x", target.value.x - (distancePx ?? horizontalStep), `flytt${distanceLabel} mot venstre`);
+      if (directions.right && typeof target.value.x === "number") add("x", target.value.x + (distancePx ?? horizontalStep), `flytt${distanceLabel} mot høyre`);
+    }
     if (/\bsentr(?:er|ert|ere)\b/.test(body) && target.kind === "text") add("align", "center", "sentrer teksten");
     const sizeField = target.kind === "text" ? "size" : target.kind === "annotation" ? "scale" : "w";
     const size = target.value[sizeField];
