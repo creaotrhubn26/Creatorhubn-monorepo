@@ -19,6 +19,24 @@ type ReviewMark = {
   color: string;
   width: number;
 };
+type ReviewElement = {
+  ref: string;
+  kind: "device" | "image" | "text" | "annotation";
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  path?: ReviewPoint[];
+};
+type PendingReviewAnchor = ReviewPoint & {
+  marks: ReviewMark[];
+  anchorKind: "canvas" | "element";
+  anchorRef: string | null;
+  anchorOffsetX: number | null;
+  anchorOffsetY: number | null;
+  elementLabel?: string;
+};
 type Version = {
   id: string;
   label: string;
@@ -63,6 +81,7 @@ type ReviewData = {
     name: string;
     preview: string | null;
     canvas?: { width?: number; height?: number };
+    reviewElements?: ReviewElement[];
   };
   version: Version;
   versions: Version[];
@@ -135,6 +154,39 @@ function decisionLabel(decision: Decision["decision"]): string {
 function clamp(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
+function distanceToSegment(point: ReviewPoint, a: ReviewPoint, b: ReviewPoint): number {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  if (dx === 0 && dy === 0) return Math.hypot(point.x - a.x, point.y - a.y);
+  const t = clamp(((point.x - a.x) * dx + (point.y - a.y) * dy) / (dx * dx + dy * dy));
+  return Math.hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy));
+}
+function reviewElementAtPoint(elements: ReviewElement[], point: ReviewPoint): ReviewElement | null {
+  return elements.filter((element) => {
+    if (element.path?.length === 2 && distanceToSegment(point, element.path[0], element.path[1]) <= 0.025) return true;
+    return point.x >= element.x && point.x <= element.x + element.w
+      && point.y >= element.y && point.y <= element.y + element.h;
+  }).sort((a, b) => {
+    if (a.kind === "annotation" && b.kind !== "annotation") return -1;
+    if (b.kind === "annotation" && a.kind !== "annotation") return 1;
+    return a.w * a.h - b.w * b.h;
+  })[0] || null;
+}
+function reviewAnchor(elements: ReviewElement[], point: ReviewPoint, marks: ReviewMark[]): PendingReviewAnchor {
+  const element = reviewElementAtPoint(elements, point);
+  if (!element) return {
+    ...point, marks, anchorKind: "canvas", anchorRef: null,
+    anchorOffsetX: null, anchorOffsetY: null,
+  };
+  return {
+    ...point,
+    marks,
+    anchorKind: "element",
+    anchorRef: element.ref,
+    anchorOffsetX: clamp((point.x - element.x) / Math.max(0.0001, element.w)),
+    anchorOffsetY: clamp((point.y - element.y) / Math.max(0.0001, element.h)),
+    elementLabel: element.label,
+  };
+}
 function makeId(): string {
   return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
@@ -202,7 +254,7 @@ export default function MockupReviewPage() {
   const [text, setText] = useState("");
   const [reply, setReply] = useState("");
   const [replyTo, setReplyTo] = useState<string | null>(null);
-  const [pending, setPending] = useState<{ x: number; y: number; marks: ReviewMark[] } | null>(null);
+  const [pending, setPending] = useState<PendingReviewAnchor | null>(null);
   const [draftMark, setDraftMark] = useState<ReviewMark | null>(null);
   const draftMarkRef = useRef<ReviewMark | null>(null);
   const [tool, setTool] = useState<ReviewTool>("select");
@@ -218,6 +270,8 @@ export default function MockupReviewPage() {
   const [presence, setPresence] = useState<Presence[]>([]);
   const [version, setVersion] = useState<Version | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [reviewElements, setReviewElements] = useState<ReviewElement[]>([]);
+  const [decisions, setDecisions] = useState<Decision[]>([]);
   const [compare, setCompare] = useState<Version | null>(null);
   const [split, setSplit] = useState(50);
   const [tourStep, setTourStep] = useState(() => {
@@ -248,9 +302,13 @@ export default function MockupReviewPage() {
     try {
       const next = await requestJson<ReviewData>(base);
       setData(next);
-      setComments(next.comments || []);
-      setVersion((current) => current && current.id !== next.version.id ? current : next.version);
-      setPreview((current) => version && version.id !== next.version.id ? current : next.project.preview);
+      if (!version || version.id === next.version.id) {
+        setComments(next.comments || []);
+        setVersion(next.version);
+        setPreview(next.project.preview);
+        setReviewElements(next.project.reviewElements || []);
+        setDecisions(next.decisions || []);
+      }
       setError("");
       if (!session && !next.share.requireIdentity) {
         const joined = await requestJson<{ reviewerToken: string; reviewer: Reviewer }>(
@@ -317,7 +375,7 @@ export default function MockupReviewPage() {
   const ratio = data?.project.canvas?.width && data.project.canvas.height
     ? String(data.project.canvas.width) + "/" + String(data.project.canvas.height)
     : "1/1";
-  const currentDecisions = (data?.decisions || []).filter((item) => item.versionId === version?.id);
+  const currentDecisions = decisions.filter((item) => item.versionId === version?.id);
   const allMarks = [
     ...(pinsVisible ? shown.flatMap((comment) => comment.marks || []) : []),
     ...(pending?.marks || []),
@@ -358,9 +416,12 @@ export default function MockupReviewPage() {
           body: JSON.stringify({
             body,
             parentId,
-            anchorKind: parentId || !pending ? "general" : "canvas",
+            anchorKind: parentId || !pending ? "general" : pending.anchorKind,
+            anchorRef: parentId ? null : pending?.anchorRef,
             anchorX: parentId ? null : pending?.x,
             anchorY: parentId ? null : pending?.y,
+            anchorOffsetX: parentId ? null : pending?.anchorOffsetX,
+            anchorOffsetY: parentId ? null : pending?.anchorOffsetY,
             marks: parentId ? [] : pending?.marks,
             viewportWidth: window.innerWidth,
             viewportHeight: window.innerHeight,
@@ -446,17 +507,22 @@ export default function MockupReviewPage() {
       setVersion(data.version);
       setPreview(data.project.preview);
       setComments(data.comments);
+      setReviewElements(data.project.reviewElements || []);
+      setDecisions(data.decisions || []);
       return;
     }
     try {
       const result = await requestJson<{
         version: Version;
-        project?: { preview?: string | null };
+        project?: { preview?: string | null; reviewElements?: ReviewElement[] };
         comments: Comment[];
+        decisions?: Decision[];
       }>(base + "/versions/" + next.id);
       setVersion(result.version);
       setPreview(result.project?.preview || result.version.preview || result.version.payload?.reviewPreview || next.preview || null);
       setComments(result.comments);
+      setReviewElements(result.project?.reviewElements || []);
+      setDecisions(result.decisions || []);
       setActiveCommentId(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -480,7 +546,7 @@ export default function MockupReviewPage() {
     event.preventDefault();
     const point = stagePoint(event, event.currentTarget);
     if (tool === "pin") {
-      setPending({ ...point, marks: [] });
+      setPending(reviewAnchor(reviewElements, point, []));
       setTool("select");
       return;
     }
@@ -513,7 +579,7 @@ export default function MockupReviewPage() {
       points: mark.kind === "freehand" ? mark.points : [mark.points[0], point],
     };
     updateDraft(null);
-    setPending({ ...finished.points[0], marks: [finished] });
+    setPending(reviewAnchor(reviewElements, finished.points[0], [finished]));
     setTool("select");
   }
   function movePresence(event: ReactPointerEvent<HTMLDivElement>) {
@@ -558,17 +624,18 @@ export default function MockupReviewPage() {
         return copy;
       });
       if (!moved) return;
+      const anchor = reviewAnchor(reviewElements, point, comment.marks || []);
       void requestJson(
         base + "/comments/" + comment.id,
         {
           method: "PATCH",
           body: JSON.stringify({
-            anchorKind: "canvas",
-            anchorRef: null,
-            anchorX: point.x,
-            anchorY: point.y,
-            anchorOffsetX: null,
-            anchorOffsetY: null,
+            anchorKind: anchor.anchorKind,
+            anchorRef: anchor.anchorRef,
+            anchorX: anchor.x,
+            anchorY: anchor.y,
+            anchorOffsetX: anchor.anchorOffsetX,
+            anchorOffsetY: anchor.anchorOffsetY,
             marks: comment.marks || [],
           }),
         },
@@ -851,7 +918,11 @@ export default function MockupReviewPage() {
         {error && <p className="review-error" role="alert">{error}<button onClick={() => setError("")}>×</button></p>}
         {success && <p className="review-success">{success}<button onClick={() => setSuccess("")}>×</button></p>}
         {canComment && <div className="review-compose">
-          {pending && <small>{pending.marks.length ? "Markering valgt" : "Pin valgt"} <button onClick={() => setPending(null)}>fjern</button></small>}
+          {pending && <small>
+            {pending.marks.length ? "Markering valgt" : "Pin valgt"}
+            {pending.elementLabel ? ` · festet til ${pending.elementLabel}` : " · festet til canvas"}
+            {" "}<button onClick={() => setPending(null)}>fjern</button>
+          </small>}
           <textarea value={text} onChange={(event) => setText(event.target.value)} placeholder={pending ? "Hva skal endres her?" : "Skriv en generell kommentar…"} />
           <small>Bruk @navn for å varsle en deltaker.</small>
           <div>

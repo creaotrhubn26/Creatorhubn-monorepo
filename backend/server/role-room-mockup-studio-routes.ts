@@ -15,6 +15,7 @@ import {
   validateMockupWebhookUrl,
   type MockupWebhookEvent,
 } from "./mockup-review-webhook-service.js";
+import { sendTransactionalEmail } from "./transactional-email-service.js";
 
 type SessionData = { userId: string; role: string; email: string; name: string; loginAt: string; [key: string]: unknown };
 interface Deps { pool: Pool; activeSessions: Map<string, SessionData> }
@@ -108,6 +109,16 @@ type ReviewMark = {
   color: string;
   width: number;
 };
+type PublicReviewElement = {
+  ref: string;
+  kind: "device" | "image" | "text" | "annotation";
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  path?: Array<{ x: number; y: number }>;
+};
 function normalizeReviewMarks(value: unknown): ReviewMark[] {
   if (!Array.isArray(value)) return [];
   const marks: ReviewMark[] = [];
@@ -135,6 +146,42 @@ function normalizeReviewMarks(value: unknown): ReviewMark[] {
     });
   }
   return marks;
+}
+function sanitizeReviewElements(value: unknown): PublicReviewElement[] {
+  if (!Array.isArray(value)) return [];
+  const elements: PublicReviewElement[] = [];
+  for (const raw of value.slice(0, 1_500)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const item = raw as Record<string, unknown>;
+    const ref = cleanText(item.ref, 200);
+    const kind = cleanText(item.kind, 20);
+    const label = cleanText(item.label, 160);
+    const x = boundedNumber(item.x), y = boundedNumber(item.y);
+    const w = boundedNumber(item.w), h = boundedNumber(item.h);
+    if (!ref || !["device", "image", "text", "annotation"].includes(kind)
+      || x == null || y == null || w == null || h == null || w <= 0 || h <= 0) continue;
+    const element: PublicReviewElement = {
+      ref,
+      kind: kind as PublicReviewElement["kind"],
+      label: label || "Element",
+      x,
+      y,
+      w: Math.min(w, 1 - x),
+      h: Math.min(h, 1 - y),
+    };
+    if (element.w <= 0 || element.h <= 0) continue;
+    if (Array.isArray(item.path) && item.path.length === 2) {
+      const points = item.path.flatMap((point) => {
+        if (!point || typeof point !== "object" || Array.isArray(point)) return [];
+        const typed = point as Record<string, unknown>;
+        const px = boundedNumber(typed.x), py = boundedNumber(typed.y);
+        return px == null || py == null ? [] : [{ x: px, y: py }];
+      });
+      if (points.length === 2) element.path = points;
+    }
+    elements.push(element);
+  }
+  return elements;
 }
 function clientIp(req: Request): string {
   const forwarded = req.headers["x-forwarded-for"];
@@ -509,6 +556,64 @@ async function notifyCommentMentions(
   }
 }
 
+async function publicDecisionTimeline(pool: Pool, versionId: string): Promise<Array<Record<string, unknown>>> {
+  const result = await pool.query(
+    `SELECT id::text,version_id::text,decision,note,actor_display_name,created_at
+     FROM mockup_studio_review_decisions
+     WHERE version_id=$1::uuid
+     ORDER BY created_at DESC LIMIT 100`,
+    [versionId],
+  );
+  return result.rows.map((row) => ({
+    id: String(row.id),
+    versionId: String(row.version_id),
+    decision: cleanText(row.decision, 40),
+    note: nullableText(row.note, 2_000),
+    actorDisplayName: cleanText(row.actor_display_name, 200) || "Reviewer",
+    createdAt: row.created_at,
+  }));
+}
+
+async function emailPreviousReviewers(
+  pool: Pool,
+  args: {
+    projectId: string;
+    createdBy: string;
+    newShareTokenHash: string;
+    reviewUrl: string;
+    projectName: string;
+    actor: Actor;
+  },
+): Promise<{ attempted: number; sent: number }> {
+  const result = await pool.query<{ email: string; display_name: string }>(
+    `SELECT DISTINCT ON (lower(rs.email)) lower(rs.email) AS email,rs.display_name
+     FROM mockup_studio_review_sessions rs
+     JOIN mockup_studio_share_links s ON s.token_hash=rs.share_token_hash
+     WHERE s.project_id=$1 AND s.created_by=$2 AND rs.email IS NOT NULL
+       AND rs.share_token_hash<>$3
+       AND ($4='' OR lower(rs.email)<>$4)
+     ORDER BY lower(rs.email),rs.last_seen_at DESC
+     LIMIT 50`,
+    [args.projectId, args.createdBy, args.newShareTokenHash, args.actor.email],
+  );
+  const recipients = result.rows.flatMap((row) => {
+    const email = normalizeEmail(row.email);
+    return email ? [{ email, name: cleanText(row.display_name, 200) || "Reviewer" }] : [];
+  });
+  const sends = await Promise.all(recipients.map(({ email, name }) => sendTransactionalEmail({
+    to: email,
+    subject: `Ny gjennomgang: ${args.projectName}`,
+    text: `Hei ${name},\n\n${args.actor.displayName} har startet en ny review-runde for ${args.projectName}.\n\nÅpne gjennomgangen: ${args.reviewUrl}`,
+    html: `<p>Hei ${escapeHtml(name)},</p><p><strong>${escapeHtml(args.actor.displayName)}</strong> har startet en ny review-runde for <strong>${escapeHtml(args.projectName)}</strong>.</p><p><a href="${escapeHtml(args.reviewUrl)}">Åpne gjennomgangen</a></p>`,
+    replyTo: args.actor.email || null,
+    kind: "mockup_review_new_round",
+    projectId: args.projectId,
+    sentByUserId: args.actor.userId,
+    pool,
+  })));
+  return { attempted: recipients.length, sent: sends.filter((item) => item.sent).length };
+}
+
 function reviewContext(req: Request): Record<string, unknown> {
   const supplied = req.body?.context && typeof req.body.context === "object" && !Array.isArray(req.body.context)
     ? req.body.context as Record<string, unknown>
@@ -727,6 +832,7 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
     const expiresInDays = Math.max(1, Math.min(365, Number(req.body?.expiresInDays) || 30));
     const label = cleanText(req.body?.label, 120) || `Review ${new Date().toLocaleDateString("no-NO")}`;
     const token = randomBytes(32).toString("base64url");
+    const tokenHash = hashToken(token);
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -753,7 +859,7 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now()+($9::text||' days')::interval)
          RETURNING id::text, expires_at`,
         [
-          hashToken(token), access.id, access.created_by, versionId, accessMode,
+          tokenHash, access.id, access.created_by, versionId, accessMode,
           req.body?.requireIdentity !== false,
           req.body?.allowRecordings !== false,
           Boolean(req.body?.allowVersionHistory),
@@ -768,11 +874,25 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
       );
       await client.query("COMMIT");
       const url = `${publicAppBase()}/mockup-review/${token}`;
+      const reviewerNotifications = req.body?.notifyPreviousReviewers === false
+        ? { attempted: 0, sent: 0 }
+        : await emailPreviousReviewers(pool, {
+          projectId: access.id,
+          createdBy: access.created_by,
+          newShareTokenHash: tokenHash,
+          reviewUrl: url,
+          projectName: cleanText(access.payload.name, 200) || "Mockup",
+          actor,
+        }).catch((error) => {
+          console.error("[mockup-review/notify-previous]", error instanceof Error ? error.message : String(error));
+          return { attempted: 0, sent: 0 };
+        });
       await notifyReviewParticipants(pool, access, versionId, "review.created", "Ny gjennomgang", `${access.payload.name || "Mockup"} er klar for gjennomgang.`, actor.userId);
       void emitMockupWebhook(pool, access.id, access.created_by, "review.created", { projectId: access.id, versionId, shareId: share.rows[0].id });
       res.json({
         token, path: `/api/role-room/mockup-shared/${token}`, reviewPath: `/mockup-review/${token}`,
         url, shareId: share.rows[0].id, versionId, expiresAt: share.rows[0].expires_at,
+        reviewerNotifications,
       });
     } catch (error) {
       await client.query("ROLLBACK").catch(() => undefined);
@@ -1259,6 +1379,9 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
             [link.project_id, link.created_by],
           )
           : { rows: [] as Array<Record<string, unknown>> };
+        const [comments, decisions] = versionId
+          ? await Promise.all([listComments(pool, versionId), publicDecisionTimeline(pool, versionId)])
+          : [[], []];
         res.json({
           project: {
             id: link.project_id,
@@ -1268,6 +1391,7 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
             canvas: project.canvas && typeof project.canvas === "object"
               ? { width: (project.canvas as Record<string, unknown>).w, height: (project.canvas as Record<string, unknown>).h }
               : null,
+            reviewElements: sanitizeReviewElements(project.reviewElements),
           },
           version: { id: versionId, label: link.version_label, reviewStatus: link.review_status, sourceRevision: link.source_revision },
           share: {
@@ -1275,7 +1399,8 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
             allowRecordings: link.allow_recordings, allowVersionHistory: link.allow_version_history,
             commentsPaused: Boolean(link.comments_paused_at), expiresAt: link.expires_at,
           },
-          comments: versionId ? await listComments(pool, versionId) : [],
+          comments,
+          decisions,
           versions: versionHistory.rows.map((row) => ({
             id: String(row.id), label: row.label, reviewStatus: row.review_status,
             sourceRevision: row.source_revision, createdAt: row.created_at, preview: row.preview,
@@ -1595,18 +1720,26 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
     if (!link || isExpired(link) || !link.allow_version_history) { res.status(403).json({ error: "historikk_ikke_tillatt" }); return; }
     const result = await pool.query(
       `SELECT id::text,label,review_status,created_at,
-         (payload->>'reviewPreview') AS preview
+         (payload->>'reviewPreview') AS preview,
+         (payload->'reviewElements') AS review_elements
        FROM mockup_studio_versions WHERE id=$1 AND project_id=$2 AND created_by=$3`,
       [String(req.params.versionId), link.project_id, link.created_by],
     );
     if (!result.rows.length) { res.status(404).json({ error: "versjon_finnes_ikke" }); return; }
     const row = result.rows[0];
+    const versionId = String(req.params.versionId);
+    const [comments, decisions] = await Promise.all([
+      listComments(pool, versionId),
+      publicDecisionTimeline(pool, versionId),
+    ]);
     res.json({
       version: {
         id: String(row.id), label: row.label, reviewStatus: row.review_status,
         createdAt: row.created_at, preview: row.preview,
       },
-      comments: await listComments(pool, String(req.params.versionId)),
+      project: { preview: row.preview, reviewElements: sanitizeReviewElements(row.review_elements) },
+      comments,
+      decisions,
     });
   });
 }
