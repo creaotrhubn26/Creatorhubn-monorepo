@@ -53,6 +53,32 @@ describe("Mockup Change Sets", () => {
     expect(operations[0]).toEqual(expect.objectContaining({ field: "w", before: 640, value: 720 }));
   });
 
+  it("flytter nærmeste connector-endepunkt med oppgitt pikselavstand uten å tolke elementnavnet som retning", () => {
+    const connectorProject = project();
+    connectorProject.annotations = [{
+      id: "right-hook", kind: "connector", fx: .99, fy: .81, fx2: .68, fy2: .6, curve: -.03,
+    }];
+    connectorProject.reviewElements.push({
+      ref: "annotation:right-hook", kind: "annotation", id: "right-hook", label: "Høyre connector", x: .68, y: .6, w: .31, h: .21,
+    });
+    const draft = generateLocalMockupChangeDraft(connectorProject, [{
+      id: "22222222-2222-4222-8222-222222222222",
+      number: 2,
+      body: "Flytt høyre connector 40 px mot venstre slik at endepunktet treffer kortet.",
+      anchorKind: "element",
+      anchorRef: "annotation:right-hook",
+      anchorX: .99,
+      anchorY: .81,
+    }]);
+    expect(draft.operations).toHaveLength(1);
+    expect(draft.operations[0]).toEqual(expect.objectContaining({
+      targetRef: "annotation:right-hook",
+      field: "fx",
+      before: .99,
+      value: .953,
+    }));
+  });
+
   it("avviser et forslag hvis førverdien har blitt endret siden opprettelsen", () => {
     const operations = normalizeMockupChangeOperations(project(), [
       { targetRef: "text:headline", field: "text", value: "Etter" },
