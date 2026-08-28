@@ -16,6 +16,11 @@ on:
       version:
         description: 'Version tag (e.g. 0.1.1)'
         required: true
+      prerelease:
+        description: 'Publish as a pilot prerelease (hidden from auto-updater)'
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: write  # needed to create a Release + upload artifacts
@@ -285,6 +290,9 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.prerelease == 'true' }}
+          make_latest: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.prerelease != 'true' }}
           generate_release_notes: true
           files: dist/*
           fail_on_unmatched_files: true
@@ -294,6 +302,7 @@ jobs:
       # (continue-on-error) + henter B2-creds via Render-API'et med RENDER_API_KEY,
       # så ingen ekstra B2-secrets trengs. Hopper over hvis nøkkelen ikke er satt.
       - name: Auto-bump marketplace download (B2 + Render)
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.prerelease != 'true' }}
         continue-on-error: true
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}

@@ -56,6 +56,22 @@ const SUPPORTS_TRANSPARENT: ExportFormat[] = ['png', 'webp'];
 
 const SEV_COLOR: Record<PreflightSeverity, string> = { must: C.must, should: C.should, info: C.info };
 
+export async function exportRecommendedPng(doc: import('./mockupStudioModel').MockupDoc): Promise<string | null> {
+  const issues = await runPreflight(doc, 2);
+  const summary = preflightSummary(issues);
+  if (!summary.ok) throw new Error(`Kvalitetssjekken fant ${summary.must} feil som må løses.`);
+  const path = await saveFileDialog({
+    defaultPath: `${safeDocName(doc.name)}.png`,
+    filters: [{ name: 'PNG', extensions: ['png'] }],
+  });
+  if (typeof path !== 'string') return null;
+  const data = await rasterizeToPngDataUrl(doc, 2);
+  const saved = await demoWriteBinary(path, data);
+  addExport(doc.name, 'PNG 2× (anbefalt)', saved);
+  setProjectStatus(doc.id, 'exported');
+  return saved;
+}
+
 export function ExportDialog({ onClose }: { onClose: () => void }) {
   const doc = useMockupStudio((s) => s.doc);
   const select = useMockupStudio((s) => s.select);

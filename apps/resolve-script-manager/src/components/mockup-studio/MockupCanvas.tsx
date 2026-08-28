@@ -10,16 +10,20 @@
  * for fart; eksporten kjører full oppløsning.
  */
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { rasterizeMockup, measureTextHeight, annRect } from './mockupRaster';
 import { parseMermaidMindmap } from './mockupMindmap';
 import { deviceHeight, deriveTimeline, type MockupDoc, type MockupDeviceSlot, type MockupTextSlot, type MockupImageSlot, type MockupAnnotation } from './mockupStudioModel';
 import { convertFileSrc } from '../../api';
+import { resolveConnectorEndpoints } from './mockupAnchors';
 // Robust: convertFileSrc krever Tauri; i browser-test-modus faller vi tilbake til rå sti/URL.
 const safeFileSrc = (p: string): string => { try { return p.startsWith('data:') || p.startsWith('http') ? p : convertFileSrc(p); } catch { return p; } };
 import { useMockupStudio, type Selection } from './mockupStudioStore';
 import { snapPosition, type Box } from './mockupArrange';
 import { MockupTimelinePanel } from './MockupTimelinePanel';
+import type { MockupReviewAnchor, MockupReviewPin, MockupReviewTool } from './MockupReviewPanel';
+import { buildMockupReviewElements, elementOffset, resolveReviewAnchor, reviewElementAtPoint } from './mockupReviewAnchors';
+import type { MockupReviewMark } from '../../services/cloudMockupProjectsService';
 
 /** Preview-oppløsning (bredde i px). Lavere = raskere re-render ved skriving. */
 const PREVIEW_W = 1200;
@@ -67,7 +71,21 @@ const chevSvg = { width: '88%', height: '88%', viewBox: '0 0 24 24', fill: 'none
 const IcStepBack = () => <svg {...chevSvg}><path d="M14 6l-6 6 6 6" /></svg>;
 const IcStepFwd = () => <svg {...chevSvg}><path d="M10 6l6 6-6 6" /></svg>;
 
-export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
+interface MockupCanvasProps {
+  safeArea?: boolean;
+  reviewPins?: MockupReviewPin[];
+  reviewTool?: MockupReviewTool;
+  pendingReviewAnchor?: MockupReviewAnchor | null;
+  activeReviewPinId?: string | null;
+  onReviewDraft?: (anchor: MockupReviewAnchor) => void;
+  onReviewPinClick?: (id: string) => void;
+  onReviewPinMove?: (id: string, anchor: MockupReviewAnchor) => void;
+}
+
+export function MockupCanvas({
+  safeArea, reviewPins = [], reviewTool = 'select', pendingReviewAnchor = null,
+  activeReviewPinId = null, onReviewDraft, onReviewPinClick, onReviewPinMove,
+}: MockupCanvasProps = {}) {
   const doc = useMockupStudio((s) => s.doc);
   const selection = useMockupStudio((s) => s.selection);
   const select = useMockupStudio((s) => s.select);
@@ -82,6 +100,10 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   const dragRef = useRef<{ kind: 'device' | 'text' | 'image'; id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean; rot?: { rx: number; ry: number } } | null>(null);
   const dragAbort = useRef<AbortController | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
+  const reviewElements = useMemo(() => buildMockupReviewElements(doc), [doc]);
+  const [draftReviewMark, setDraftReviewMark] = useState<MockupReviewMark | null>(null);
+  const draftReviewMarkRef = useRef<MockupReviewMark | null>(null);
+  const [draggedReviewPins, setDraggedReviewPins] = useState<Record<string, { x: number; y: number }>>({});
 
   // ── Skrive-animasjon: timeline (scrubber + hastighet + easing/speed-ramp) ──
   // Delt m/ inspektørens keyframe-grafer (mockupStudioStore) — så playheaden er ÉN kilde,
@@ -449,6 +471,100 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
   }, [select]);
 
   const overlayCursor = dragging ? 'grabbing' : 'grab';
+  const reviewPoint = (event: { clientX: number; clientY: number }): { x: number; y: number } | null => {
+    if (!wrapRef.current) return null;
+    const rect = wrapRef.current.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    return {
+      x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
+      y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
+    };
+  };
+  const reviewAnchorAt = (point: { x: number; y: number }, marks: MockupReviewMark[] = []): MockupReviewAnchor => {
+    const element = reviewElementAtPoint(reviewElements, point);
+    const offset = elementOffset(element, point);
+    return {
+      ...point,
+      anchorKind: element ? 'element' : 'canvas',
+      anchorRef: element?.ref ?? null,
+      anchorOffsetX: offset.x,
+      anchorOffsetY: offset.y,
+      marks,
+    };
+  };
+  const updateDraftReviewMark = (mark: MockupReviewMark | null) => {
+    draftReviewMarkRef.current = mark;
+    setDraftReviewMark(mark);
+  };
+  const beginReviewAction = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (reviewTool === 'select' || !onReviewDraft) return;
+    event.preventDefault(); event.stopPropagation();
+    const point = reviewPoint(event);
+    if (!point) return;
+    if (reviewTool === 'pin') {
+      onReviewDraft(reviewAnchorAt(point));
+      return;
+    }
+    const mark: MockupReviewMark = {
+      id: typeof crypto?.randomUUID === 'function' ? crypto.randomUUID() : `review-${Date.now()}`,
+      kind: reviewTool,
+      points: [point, point],
+      color: '#f97316',
+      width: 3,
+    };
+    updateDraftReviewMark(mark);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const moveReviewAction = (event: React.PointerEvent<HTMLDivElement>) => {
+    const current = draftReviewMarkRef.current;
+    if (!current) return;
+    const point = reviewPoint(event);
+    if (!point) return;
+    const points = current.kind === 'freehand'
+      ? [...current.points.slice(0, 499), point]
+      : [current.points[0], point];
+    updateDraftReviewMark({ ...current, points });
+  };
+  const finishReviewAction = (event: React.PointerEvent<HTMLDivElement>) => {
+    const current = draftReviewMarkRef.current;
+    if (!current || !onReviewDraft) return;
+    event.preventDefault(); event.stopPropagation();
+    const point = reviewPoint(event) ?? current.points[current.points.length - 1];
+    const points = current.kind === 'freehand' ? current.points : [current.points[0], point];
+    const finished = { ...current, points };
+    updateDraftReviewMark(null);
+    onReviewDraft(reviewAnchorAt(points[0], [finished]));
+  };
+  const beginReviewPinDrag = (pin: MockupReviewPin, event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault(); event.stopPropagation();
+    onReviewPinClick?.(pin.id);
+    if (reviewTool !== 'select' || !onReviewPinMove) return;
+    const abort = new AbortController();
+    let moved = false;
+    const move = (next: PointerEvent) => {
+      const point = reviewPoint(next);
+      if (!point) return;
+      moved = true;
+      setDraggedReviewPins((current) => ({ ...current, [pin.id]: point }));
+    };
+    const up = (next: PointerEvent) => {
+      const point = reviewPoint(next);
+      abort.abort();
+      setDraggedReviewPins((current) => {
+        const copy = { ...current };
+        delete copy[pin.id];
+        return copy;
+      });
+      if (moved && point) onReviewPinMove(pin.id, reviewAnchorAt(point, pin.marks));
+    };
+    window.addEventListener('pointermove', move, { signal: abort.signal });
+    window.addEventListener('pointerup', up, { once: true, signal: abort.signal });
+  };
+  const reviewMarks = [
+    ...reviewPins.flatMap((pin) => pin.marks || []),
+    ...(pendingReviewAnchor?.marks || []),
+    ...(draftReviewMark ? [draftReviewMark] : []),
+  ];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
@@ -561,8 +677,10 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
 
         {/* Annotasjons-anker — dra ringen for å flytte callout/markør/lupe direkte på lerretet */}
         {doc.annotations?.map((a) => {
-          const s = annRect(doc, a);
-          const ax = s.x + a.fx * s.w, ay = s.y + a.fy * s.h;
+          const bounds = annRect(doc, a);
+          const semantic = a.kind === 'connector' ? resolveConnectorEndpoints(doc, a) : null;
+          const ax = semantic?.x1 ?? (bounds.x + a.fx * bounds.w);
+          const ay = semantic?.y1 ?? (bounds.y + a.fy * bounds.h);
           return (
             <button
               key={`ann_${a.id}`}
@@ -582,6 +700,66 @@ export function MockupCanvas({ safeArea }: { safeArea?: boolean } = {}) {
           <div key={`h${i}`} style={{ position: 'absolute', top: pct(y, H), left: 0, right: 0, height: 1, background: '#f472b6', pointerEvents: 'none', boxShadow: '0 0 0 0.5px #f472b6' }} />
         ))}
 
+        {reviewMarks.length > 0 && <svg
+          viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="Review-markeringer"
+          style={{ position: 'absolute', inset: 0, zIndex: 66, width: '100%', height: '100%', pointerEvents: 'none', overflow: 'visible' }}
+        >
+          <defs>
+            <marker id="mockup-review-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+              <path d="M0,0 L8,4 L0,8 z" fill="#f97316" />
+            </marker>
+          </defs>
+          {reviewMarks.map((mark) => {
+            const first = mark.points[0], last = mark.points[mark.points.length - 1];
+            if (!first || !last) return null;
+            if (mark.kind === 'rect') {
+              return <rect key={mark.id} x={Math.min(first.x, last.x) * 1000} y={Math.min(first.y, last.y) * 1000}
+                width={Math.abs(last.x - first.x) * 1000} height={Math.abs(last.y - first.y) * 1000}
+                fill="rgba(249,115,22,.08)" stroke={mark.color} strokeWidth={mark.width} vectorEffect="non-scaling-stroke" />;
+            }
+            if (mark.kind === 'arrow') {
+              return <line key={mark.id} x1={first.x * 1000} y1={first.y * 1000} x2={last.x * 1000} y2={last.y * 1000}
+                stroke={mark.color} strokeWidth={mark.width} vectorEffect="non-scaling-stroke" markerEnd="url(#mockup-review-arrow)" />;
+            }
+            return <polyline key={mark.id} points={mark.points.map((point) => `${point.x * 1000},${point.y * 1000}`).join(' ')}
+              fill="none" stroke={mark.color} strokeWidth={mark.width} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />;
+          })}
+        </svg>}
+        {reviewPins.map((pin) => {
+          const fallback = draggedReviewPins[pin.id] ?? { x: pin.x, y: pin.y };
+          const position = draggedReviewPins[pin.id] ?? resolveReviewAnchor(
+            reviewElements, pin.anchorRef, pin.anchorOffsetX, pin.anchorOffsetY, fallback,
+          );
+          return <button
+            key={pin.id}
+            onPointerDown={(event) => beginReviewPinDrag(pin, event)}
+            onClick={(event) => { event.stopPropagation(); onReviewPinClick?.(pin.id); }}
+            aria-label={'Kommentar #' + pin.number + ' fra ' + pin.author}
+            aria-pressed={activeReviewPinId === pin.id}
+            title={'#' + pin.number + ' · ' + pin.author + (reviewTool === 'select' ? ' · dra for å flytte' : '')}
+            style={{
+              position: 'absolute', left: (position.x * 100) + '%', top: (position.y * 100) + '%',
+              transform: 'translate(-50%, -50%)', zIndex: 70, width: activeReviewPinId === pin.id ? 36 : 30, height: activeReviewPinId === pin.id ? 36 : 30,
+              borderRadius: '50%', border: activeReviewPinId === pin.id ? '3px solid #22d3ee' : '2px solid #fff',
+              padding: 0, cursor: reviewTool === 'select' ? 'grab' : 'pointer', touchAction: 'none',
+              background: pin.status === 'resolved' ? '#667085' : '#d2a84a', color: '#10131a',
+              boxShadow: activeReviewPinId === pin.id ? '0 0 0 4px rgba(34,211,238,.24),0 5px 16px rgba(0,0,0,.45)' : '0 5px 16px rgba(0,0,0,.45)',
+              font: '800 12px system-ui',
+            }}
+          >{pin.number}</button>;
+        })}
+        {reviewTool !== 'select' && (
+          <div
+            onPointerDown={beginReviewAction}
+            onPointerMove={moveReviewAction}
+            onPointerUp={finishReviewAction}
+            onPointerCancel={() => updateDraftReviewMark(null)}
+            role="application"
+            aria-label={reviewTool === 'pin' ? "Klikk for å feste en kommentar" : "Dra for å markere i designet"}
+            title={reviewTool === 'pin' ? "Klikk i designet for å feste kommentaren" : "Dra i designet for å lage en markering"}
+            style={{ position: 'absolute', inset: 0, zIndex: 65, background: 'rgba(34,211,238,.025)', cursor: 'crosshair', touchAction: 'none' }}
+          />
+        )}
         {safeArea && (
           <div style={{ position: 'absolute', inset: '3%', border: '1px dashed rgba(255,255,255,0.4)', borderRadius: 8, pointerEvents: 'none' }} />
         )}

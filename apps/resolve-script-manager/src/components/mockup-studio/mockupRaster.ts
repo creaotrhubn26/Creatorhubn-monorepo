@@ -11,7 +11,7 @@
  * så vilkårlige skjermbilder fyller skjermen uten forhåndsprosessering.
  */
 
-import { convertFileSrc } from '../../api';
+import { convertFileSrc, readImageB64 } from '../../api';
 import { DEVICE_FRAMES } from '../demo-studio/deviceFrames';
 import { parseMermaidMindmap } from './mockupMindmap';
 import { revealFor, revealFromLocal, type Reveal } from './mockupMotion';
@@ -22,6 +22,7 @@ import { typedState, drawField, drawOnScreenKeyboard, drawKeyPop } from './mocku
 import { sceneById } from './mockupScenes';
 import { drawImageQuad, type Quad } from './mockupSceneWarp';
 import { isIconId, drawIcon } from './mockupIcons';
+import { resolveConnectorEndpoints } from './mockupAnchors';
 import {
   type MockupDoc,
   type MockupDeviceSlot,
@@ -51,19 +52,27 @@ import {
 // ── Bilde-lasting (cache per src) ───────────────────────────────────────────
 
 const _imgCache = new Map<string, Promise<HTMLImageElement>>();
+const isPortableImageSrc = (src: string): boolean => /^(?:data:|https?:|blob:)/i.test(src);
+const isLocalFileSrc = (src: string): boolean => !isPortableImageSrc(src) && !src.startsWith("/assets/");
 /** Cache av bakte 3D-enhets-canvas per (variant,rot,størrelse,shot-lengde). */
 const _bakeCache = new Map<string, HTMLCanvasElement>();
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   const cached = _imgCache.get(src);
   if (cached) return cached;
-  const p = new Promise<HTMLImageElement>((resolve, reject) => {
-    const img = new Image();
-    // Bundlede ramme-assets + data-URL-skjermbilder er begge samme-opphav-trygge.
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`Kunne ikke laste bilde: ${src.slice(0, 48)}`));
-    img.src = src;
-  });
+  const p = (async () => {
+    // Tauri sitt asset-protokoll kan vises direkte, men gjør WebKit-canvaset
+    // urent ved eksport. Native byte-lesing gir en origin-ren data-URL og lar
+    // oss beholde store prosjektbilder som filstier i localStorage.
+    const resolvedSrc = isLocalFileSrc(src) ? await readImageB64(src) : src;
+    return new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      if (/^https?:/i.test(resolvedSrc)) img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error(`Kunne ikke laste bilde: ${src.slice(0, 48)}`));
+      img.src = resolvedSrc;
+    });
+  })();
   _imgCache.set(src, p);
   return p;
 }
@@ -1812,9 +1821,8 @@ function drawStepBadge(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: MockupA
  *  (t.d. foto → UI-kort) mellom (fx,fy) og (fx2,fy2). `curve` (annotasjonens
  *  eget felt, redigerbart i UI) bøyer linjen sidelengs i stedet for en rett strek. */
 function drawConnectorLine(ctx: CanvasRenderingContext2D, doc: MockupDoc, a: MockupAnnotation): void {
-  const W = doc.canvas.w, H = doc.canvas.h;
-  const x1 = a.fx * W, y1 = a.fy * H;
-  const x2 = (a.fx2 ?? a.fx) * W, y2 = (a.fy2 ?? a.fy) * H;
+  const W = doc.canvas.w;
+  const { x1, y1, x2, y2 } = resolveConnectorEndpoints(doc, a);
   const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
   // Kontrollpunkt forskjøvet VINKELRETT på linjen (ikke bare sidelengs i X) —
   // gir en naturlig bue uansett linjens helning.

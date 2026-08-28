@@ -18,7 +18,7 @@
 import type { FrameVariant } from '../demo-studio/deviceFrames';
 import { MEDSIDE_COLORS, MEDSIDE_LOGO_DATA_URL } from './medsideBrand';
 import { isIconId, iconToSvg } from './mockupIcons';
-import { deleteCloudMockupProject, scheduleCloudMockupProject } from '../../services/cloudMockupProjectsService';
+import { deleteMockupProjectEverywhere, queueMockupProjectSave } from './mockupProjectRepository';
 
 /**
  * Device-varianter = demo-studio-rammene (iphone/ipad/ipad_landscape/macbook)
@@ -433,10 +433,12 @@ export function resolveBaseBg(canvas: MockupCanvasSpec): string {
   }
 }
 
-export type MockupProjectStatus = 'draft' | 'ready' | 'exported' | 'archived';
+export type MockupProjectStatus = 'draft' | 'review' | 'approved' | 'ready' | 'exported' | 'archived';
 
 export const STATUS_LABELS: Record<MockupProjectStatus, string> = {
   draft: 'Kladd',
+  review: 'Til godkjenning',
+  approved: 'Godkjent',
   ready: 'Klar',
   exported: 'Eksportert',
   archived: 'Arkivert',
@@ -449,6 +451,12 @@ export interface MockupDoc {
   version: 1;
   /** Malen dokumentet ble laget fra (metadata/analyse). */
   template: string;
+  /** Kampanje binder faktiske varianter sammen i prosjektoversikt/sammenligning. */
+  campaignId?: string;
+  campaignName?: string;
+  variantLabel?: string;
+  /** Delte merkevaredata kan oppdateres på tvers av kampanjevariantene. */
+  sharedBrandKitId?: string;
   canvas: MockupCanvasSpec;
   devices: MockupDeviceSlot[];
   texts: MockupTextSlot[];
@@ -465,6 +473,10 @@ export interface MockupDoc {
   updatedAt: number;
   /** Prosjektstatus (§ prosjektoversikt). Default 'draft'. */
   status?: MockupProjectStatus;
+  /** Flat, nedskalert forhåndsvisning brukt kun av tilbakekallbare gjennomgangslenker. */
+  reviewPreview?: string;
+  /** Sanitert hit-map for Review Room. Inneholder bare geometri/etiketter, aldri asset-data. */
+  reviewElements?: MockupReviewElement[];
   /** Multi-spor animasjons-timeline (NLE): klipp arrangert på spor over tid. */
   timeline?: MockupTimeline;
   /** Mal-definerte slots (slot-motor): kanonisk geometri + begrensninger. */
@@ -474,6 +486,22 @@ export interface MockupDoc {
    * Overstyrer auto-reflow når man bytter til det formatet. Tomt = auto.
    */
   formatLayouts?: Record<string, Record<string, SlotPlacement>>;
+}
+
+export type MockupReviewElementKind = 'device' | 'text' | 'image' | 'annotation';
+export interface MockupReviewElement {
+  /** Stabil referanse som lagres på kommentaren, f.eks. `device:dev_123`. */
+  ref: string;
+  kind: MockupReviewElementKind;
+  id: string;
+  label: string;
+  /** Normalisert geometri i review-canvaset (0..1). */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Valgfri normalisert linje for presis hit-testing av connectorer. */
+  path?: Array<{ x: number; y: number }>;
 }
 
 /** Én slot-plassering i et bestemt format (pikselperfekt override). */
@@ -549,6 +577,15 @@ export function deviceHeight(slot: Pick<MockupDeviceSlot, 'variant' | 'w'>): num
 export type MockupAnnotationKind = 'callout' | 'loupe' | 'marker' | 'step' | 'connector' | 'pill';
 export type MockupCalloutSide = 'left' | 'right' | 'top' | 'bottom';
 
+export type MockupAnchorEdge = 'center' | 'left' | 'right' | 'top' | 'bottom';
+export interface MockupAnchorRef {
+  kind: 'canvas' | 'device' | 'image' | 'text';
+  id?: string;
+  edge?: MockupAnchorEdge;
+  offsetX?: number;
+  offsetY?: number;
+}
+
 export interface MockupAnnotation {
   id: string;
   kind: MockupAnnotationKind;
@@ -569,6 +606,9 @@ export interface MockupAnnotation {
   // markør (uthev-rektangel): bredde/høyde i skjerm-fraksjon
   fw?: number;
   fh?: number;
+  // connector: semantiske mål følger elementene ved flytting/formatbytte. Koordinater er fallback.
+  startTarget?: MockupAnchorRef;
+  endTarget?: MockupAnchorRef;
   // connector: andre endepunkt (lerret-fraksjon) — fx/fy er første endepunkt.
   fx2?: number;
   fy2?: number;
@@ -625,7 +665,9 @@ export function makeDevice(variant: MockupDeviceVariant, partial: Partial<Mockup
 /** Frittstående bilde-element (mat-foto/collage direkte på lerretet). */
 export interface MockupImageSlot {
   id: string;
-  image: string;          // dataURL (også poster/first-frame når video er satt)
+  image: string;          // dataURL, URL, lokal filsti eller portabel skyreferanse
+  /** Dokumentert bildeopprinnelse for trygg utskifting og revisjon. */
+  source?: { kind: 'website' | 'upload' | 'library' | 'ai' | 'local' | 'cloud'; label?: string; origin?: string; assetId?: string };
   /** Seedance i2v-klipp (mp4-sti): craveable bevegelse (cheese-pull/damp) generert FRA `image`.
    *  Preview spiller klippet i posisjon; statisk render/eksport bruker `image` som poster. */
   video?: string;
@@ -1849,6 +1891,11 @@ export function buildTemplate(id: string): MockupDoc {
   const t = MOCKUP_TEMPLATES.find((x) => x.id === id) ?? MOCKUP_TEMPLATES[0];
   const doc = assignSlotIds(t.build());
   doc.slots = slotsFromDoc(doc);
+  if (t.category === 'kampanje') {
+    doc.campaignId = 'previsit-campaign';
+    doc.campaignName = 'PreVisit-kampanje';
+    doc.variantLabel = t.name.replace(/^PreVisit kampanje\s*[—-]\s*/, '');
+  }
   return doc;
 }
 
@@ -2169,11 +2216,12 @@ function readProjects(): MockupDoc[] {
   }
 }
 
-function writeProjects(list: MockupDoc[]): void {
+function writeProjects(list: MockupDoc[]): boolean {
   try {
     localStorage.setItem(PROJECTS_KEY, JSON.stringify(list));
+    return true;
   } catch {
-    /* quota — ignorer, ikke krasj editoren */
+    return false;
   }
 }
 
@@ -2181,6 +2229,11 @@ function validDoc(d: MockupDoc | undefined | null): MockupDoc | null {
   if (!d || d.version !== 1 || !d.canvas || !d.canvas.accent2 || !d.canvas.background) return null;
   d.devices = Array.isArray(d.devices) ? d.devices : [];
   d.texts = Array.isArray(d.texts) ? d.texts : [];
+  if (!d.campaignId && /^previsit_campaign_/.test(d.template)) {
+    d.campaignId = 'previsit-campaign';
+    d.campaignName = 'PreVisit-kampanje';
+    d.variantLabel = d.name;
+  }
   return d;
 }
 
@@ -2192,12 +2245,6 @@ export function listProjects(): MockupDoc[] {
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-/** Skriv resultatet av en vellykket toveis skyfletting tilbake lokalt. */
-export function replaceProjectsFromCloud(projects: MockupDoc[]): void {
-  const valid = projects.map(validDoc).filter((d): d is MockupDoc => d !== null);
-  writeProjects(valid.sort((a, b) => b.updatedAt - a.updatedAt));
-}
-
 /** Autolagre: upsert gjeldende dokument inn i prosjekt-registeret + peker. */
 export function saveDoc(d: MockupDoc): void {
   d.updatedAt = Date.now();
@@ -2205,8 +2252,8 @@ export function saveDoc(d: MockupDoc): void {
   const i = list.findIndex((p) => p.id === d.id);
   if (i >= 0) list[i] = d; else list.unshift(d);
   writeProjects(list);
-  try { localStorage.setItem(CURRENT_KEY, d.id); } catch { /* ignore */ }
-  scheduleCloudMockupProject(d);
+  try { localStorage.setItem(CURRENT_KEY, d.id); } catch { /* IndexedDB-kopien er fortsatt trygg */ }
+  queueMockupProjectSave(d);
 }
 
 /** Last gjeldende prosjekt (peker → nyeste ikke-arkiverte → null). */
@@ -2251,26 +2298,18 @@ export function duplicateProject(id: string): MockupDoc | null {
 export function renameProject(id: string, name: string): void {
   const list = readProjects();
   const i = list.findIndex((x) => x.id === id);
-  if (i < 0) return;
-  list[i].name = name;
-  list[i].updatedAt = Date.now();
-  writeProjects(list);
-  scheduleCloudMockupProject(list[i]);
+  if (i >= 0) { list[i].name = name; saveDoc(list[i]); }
 }
 
 export function setProjectStatus(id: string, status: MockupProjectStatus): void {
   const list = readProjects();
   const i = list.findIndex((x) => x.id === id);
-  if (i < 0) return;
-  list[i].status = status;
-  list[i].updatedAt = Date.now();
-  writeProjects(list);
-  scheduleCloudMockupProject(list[i]);
+  if (i >= 0) { list[i].status = status; saveDoc(list[i]); }
 }
 
 export function deleteProject(id: string): void {
   writeProjects(readProjects().filter((x) => x.id !== id));
-  void deleteCloudMockupProject(id);
+  void deleteMockupProjectEverywhere(id);
 }
 
 // ── Brand kits (gjenbrukbar merkevare §1.3) ────────────────────────────────
@@ -2325,6 +2364,13 @@ export function brandKitPatch(id: string): Partial<MockupCanvasSpec> | null {
   const k = listBrandKits().find((x) => x.id === id);
   if (!k) return null;
   return { accent: k.accent, accent2: k.accent2, background: k.background, bgStyle: k.bgStyle, logo: k.logo ? { ...k.logo } : undefined };
+}
+
+/** Bruk samme merkevare på alle andre faktiske varianter i kampanjen. */
+export function applyBrandPatchToCampaign(campaignId: string, currentId: string, patch: Partial<MockupCanvasSpec>, brandKitId: string): number {
+  const targets = readProjects().filter((doc) => doc.campaignId === campaignId && doc.id !== currentId);
+  for (const target of targets) saveDoc({ ...target, sharedBrandKitId: brandKitId, canvas: { ...target.canvas, ...patch } });
+  return targets.length;
 }
 
 // ── Kits (lagrede oppsett i localStorage) ────────────────────────────────

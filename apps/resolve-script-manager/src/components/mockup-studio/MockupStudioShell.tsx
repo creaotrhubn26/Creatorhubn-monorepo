@@ -10,18 +10,28 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { convertFileSrc } from '../../api';
 import { MockupCanvas } from './MockupCanvas';
+import {
+  MockupReviewPanel,
+  type MockupReviewAnchor,
+  type MockupReviewPin,
+  type MockupReviewTool,
+} from './MockupReviewPanel';
 import { MockupLibraryPanel } from './MockupLibraryPanel';
 import { ingestImage } from './mockupLibraryIngest';
 import { MockupKeyframeGraph } from './MockupKeyframeGraph';
 import { ICON_DEFS, isIconId, type IconOp } from './mockupIcons';
-import { ExportDialog } from './ExportDialog';
+import { ExportDialog, exportRecommendedPng } from './ExportDialog';
 import { OnboardingDialog } from './OnboardingDialog';
 import { DesignGallery } from './DesignGallery';
 import { CampaignCompareDialog } from './CampaignCompareDialog';
 import { CaptureDialog } from './CaptureDialog';
 import { ProjectsView } from './ProjectsView';
+import { makeMockupProjectPortable, MOCKUP_SYNC_EVENT, syncMockupProjectNow, type MockupSyncDetail } from './mockupProjectRepository';
+import { mockupCloudBearer, saveCloudMockupVersion, updateCloudMockupComment, type CloudMockupChangeOperation } from '../../services/cloudMockupProjectsService';
 import { useMockupStudio } from './mockupStudioStore';
+import { applyMockupChangeSet } from './mockupChangeSets';
 import {
   listKits,
   saveKit,
@@ -40,6 +50,7 @@ import {
   saveBrandKit,
   deleteBrandKit,
   brandKitPatch,
+  applyBrandPatchToCampaign,
   listVersions,
   saveVersion,
   deleteVersion,
@@ -57,6 +68,7 @@ import {
   type MockupBackground,
   type MockupBgStyle,
   type MockupTypographyId,
+  type MockupAnchorRef,
   type MockupDecor,
   buildMindmapDoc,
   TYPE_PRESETS,
@@ -93,7 +105,8 @@ import {
   type PreVisitQuestionContent,
   type PreVisitNoteContent,
 } from './mockupStudioModel';
-import { drawPersonLaptop } from './mockupRaster';
+import { drawPersonLaptop, rasterizeToPngDataUrl } from './mockupRaster';
+import { buildMockupReviewElements } from './mockupReviewAnchors';
 import { RECOMMENDED_MAX } from './mockupPreflight';
 import {
   captureSiteShots,
@@ -122,6 +135,14 @@ import { exportAndSaveMotion, motionExportAvailable } from './mockupMotionExport
 import { exportAndSaveGif } from './mockupGifExport';
 import { MOTION_PRESETS, type MotionConfig } from './mockupMotion';
 import { exportCinematic } from './mockupCinematicExport';
+
+const safeImageSrc = (src: string): string => {
+  try {
+    return src.startsWith('data:') || src.startsWith('http') || src.startsWith('blob:') ? src : convertFileSrc(src);
+  } catch {
+    return src;
+  }
+};
 
 // Lokal palett (mørk editor-chrome) — samme inline-mønster som demo-studio.
 const C = {
@@ -179,10 +200,20 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showGallery, setShowGallery] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
+  const [showReview, setShowReview] = useState(false);
+  const [reviewPins, setReviewPins] = useState<MockupReviewPin[]>([]);
+  const [reviewTool, setReviewTool] = useState<MockupReviewTool>('select');
+  const [activeReviewPinId, setActiveReviewPinId] = useState<string | null>(null);
+  const [pendingReviewAnchor, setPendingReviewAnchor] = useState<MockupReviewAnchor | null>(null);
   const [showCapture, setShowCapture] = useState(false);
   const [videoBusy, setVideoBusy] = useState(false);
   const [showSwitch, setShowSwitch] = useState(false);
   const [view, setView] = useState<'projects' | 'editor'>(IS_BROWSER_TEST ? 'editor' : 'projects');
+  const [editorMode, setEditorMode] = useState<'simple' | 'advanced'>(() => {
+    try { return localStorage.getItem('trrpa.mockup.editor-mode') === 'advanced' ? 'advanced' : 'simple'; } catch { return 'simple'; }
+  });
+  const [focusMode, setFocusMode] = useState(false);
+  const [syncDetail, setSyncDetail] = useState<MockupSyncDetail>({ projectId: doc.id, state: 'saving' });
 
   // URL-capture (P2)
   const [url, setUrl] = useState('');
@@ -208,9 +239,11 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
   const [versions, setVersions] = useState<MockupVersion[]>(() => listVersions());
   const [versionName, setVersionName] = useState('');
   const doSaveVersion = () => {
-    const r = saveVersion(versionName || doc.name, doc);
-    if (r.ok) { setVersions(listVersions()); setVersionName(''); setExportMsg('✓ Versjon lagret.'); }
-    else setExportMsg(r.error || 'Kunne ikke lagre versjon.');
+    const label = versionName || doc.name;
+    const r = saveVersion(label, doc);
+    if (!r.ok) { setExportMsg(r.error || 'Kunne ikke lagre versjon.'); return; }
+    setVersions(listVersions()); setVersionName(''); setExportMsg('✓ Versjon lagret lokalt.');
+    if (mockupCloudBearer()) void syncMockupProjectNow(doc).then((portable) => saveCloudMockupVersion(portable, label)).then(() => setExportMsg('✓ Versjon lagret lokalt og i skyen.')).catch(() => setExportMsg('Versjon lagret lokalt · skysynk venter.'));
   };
   const doLoadVersion = (id: string) => { const d = loadVersionDoc(id); if (d) store.setDocument(d); };
   const doDeleteVersion = (id: string) => { if (!confirm('Slette denne versjonen? Kan ikke angres.')) return; deleteVersion(id); setVersions(listVersions()); };
@@ -225,6 +258,19 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
     isCaptureReady().then((ok) => { if (alive) setEngineReady(ok); });
     return () => { alive = false; };
   }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem('trrpa.mockup.editor-mode', editorMode); } catch { /* preferanse er ikke kritisk */ }
+  }, [editorMode]);
+
+  useEffect(() => {
+    const onSync = (event: Event) => {
+      const detail = (event as CustomEvent<MockupSyncDetail>).detail;
+      if (detail?.projectId === doc.id) setSyncDetail(detail);
+    };
+    window.addEventListener(MOCKUP_SYNC_EVENT, onSync);
+    return () => window.removeEventListener(MOCKUP_SYNC_EVENT, onSync);
+  }, [doc.id]);
 
   const selectedDevice = selection.kind === 'device' ? doc.devices.find((d) => d.id === selection.id) ?? null : null;
   const selectedText = selection.kind === 'text' ? doc.texts.find((t) => t.id === selection.id) ?? null : null;
@@ -532,6 +578,61 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const runQuickExport = async () => {
+    setExportMsg('Kvalitetssjekker og eksporterer PNG 2×…');
+    try {
+      const saved = await exportRecommendedPng(doc);
+      setExportMsg(saved ? `✓ Eksportert: ${saved}` : null);
+    } catch (error) {
+      setExportMsg(error instanceof Error ? error.message : String(error));
+      setShowExport(true);
+    }
+  };
+  const prepareReview = async () => {
+    if (!mockupCloudBearer()) throw new Error('Logg inn for å opprette en review-lenke.');
+    const previewScale = Math.min(0.5, 720 / Math.max(doc.canvas.w, 1));
+    const reviewPreview = await rasterizeToPngDataUrl(doc, previewScale);
+    const reviewElements = buildMockupReviewElements(doc);
+    await syncMockupProjectNow({ ...doc, reviewPreview, reviewElements });
+  };
+  const buildChangeSetProject = async (operations: CloudMockupChangeOperation[]) => {
+    const changed = applyMockupChangeSet(doc, operations);
+    const previewScale = Math.min(0.5, 720 / Math.max(changed.canvas.w, 1));
+    const reviewPreview = await rasterizeToPngDataUrl(changed, previewScale);
+    const reviewElements = buildMockupReviewElements(changed);
+    return makeMockupProjectPortable({ ...changed, reviewPreview, reviewElements });
+  };
+
+  const shareForReview = () => {
+    if (!mockupCloudBearer()) { setExportMsg('Logg inn for å åpne Review Room.'); return; }
+    setShowReview(true);
+    setFocusMode(false);
+  };
+  const moveReviewPin = async (id: string, anchor: MockupReviewAnchor) => {
+    setReviewPins((pins) => pins.map((pin) => pin.id === id ? {
+      ...pin,
+      x: anchor.x, y: anchor.y,
+      anchorKind: anchor.anchorKind, anchorRef: anchor.anchorRef,
+      anchorOffsetX: anchor.anchorOffsetX, anchorOffsetY: anchor.anchorOffsetY,
+      marks: anchor.marks,
+    } : pin));
+    try {
+      await updateCloudMockupComment(doc.id, id, {
+        anchorKind: anchor.anchorKind, anchorRef: anchor.anchorRef,
+        anchorX: anchor.x, anchorY: anchor.y,
+        anchorOffsetX: anchor.anchorOffsetX, anchorOffsetY: anchor.anchorOffsetY,
+        marks: anchor.marks,
+      });
+    } catch (error) {
+      setExportMsg(error instanceof Error ? error.message : String(error));
+    }
+  };
+  const syncLabel = syncDetail.state === 'saving' ? 'Lagrer…'
+    : syncDetail.state === 'saved' ? '✓ Synkronisert'
+      : syncDetail.state === 'local' ? '✓ Lagret lokalt'
+        : syncDetail.state === 'offline' ? 'Lokal kopi · sky venter'
+          : 'Lagringsfeil';
+
   const missingShots = doc.devices.filter((d) => !d.image).length;
   const curFmt = currentFormatId(doc);
   const hasCustomFmt = curFmt ? hasFormatLayout(doc, curFmt) : false;
@@ -553,67 +654,62 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', background: C.bg, color: C.ink, fontFamily: C.font, minHeight: 0 }}>
-      {/* Topplinje */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+      {/* Responsiv topplinje: kjernehandlinger er alltid synlige, resten ligger i Mer. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderBottom: `1px solid ${C.border}`, flexShrink: 0, flexWrap: 'wrap', position: 'relative', zIndex: 20 }}>
         <button onClick={() => setView('projects')} style={ghostBtn}>← Prosjekter</button>
-        <span style={{ fontWeight: 700, fontSize: 15 }}>Mockup Studio</span>
-        <input
-          value={doc.name}
-          onChange={(e) => store.setName(e.target.value)}
-          style={{ ...textInput, width: 220 }}
-          placeholder="Navn på mockup"
-        />
-        <button onClick={() => setShowOnboarding(true)} style={ghostBtn} title="Velg mal / nytt materiell">Ny mockup</button>
-        <button onClick={() => setShowGallery(true)} style={ghostBtn} title="Bla i ferdig-stylede design">✦ Galleri</button>
-        <button onClick={() => setShowCompare(true)} style={ghostBtn} title="Se alle kampanje-varianter side ved side, eksporter dem som én video">⚖ Sammenlign</button>
-        <button onClick={() => store.undo()} disabled={store.past.length === 0} style={{ ...ghostBtn, opacity: store.past.length ? 1 : 0.4, padding: '6px 10px' }} title="Angre" aria-label="Angre">↶</button>
-        <button onClick={() => store.redo()} disabled={store.future.length === 0} style={{ ...ghostBtn, opacity: store.future.length ? 1 : 0.4, padding: '6px 10px' }} title="Gjør om" aria-label="Gjør om">↷</button>
-        <span style={{ fontSize: 11, color: C.inkSoft, whiteSpace: 'nowrap' }} title="Alt lagres automatisk lokalt ved hver endring">✓ Lagret{store.past.length ? ` · ${store.past.length} angre` : ''}</span>
-        <div style={{ flex: 1 }} />
-        {exportMsg && <span style={{ fontSize: FS_SM, color: C.inkSoft, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportMsg}</span>}
-        {!exportMsg && missingShots > 0 && <span style={{ fontSize: FS_SM, color: '#e0b060' }} title="Last opp eller hent skjermbilder">{missingShots} enhet{missingShots > 1 ? 'er' : ''} uten skjermbilde</span>}
-        <select
-          onChange={(e) => { const c = e.target.value; e.target.selectedIndex = 0; const l = LOCALIZE_LANGS.find((x) => x.code === c); if (l) void runLocalize(l.code, l.label); }}
-          disabled={videoBusy || !localizeAvailable()}
-          value=""
-          style={{ ...ghostBtn, padding: '7px 8px', opacity: videoBusy || !localizeAvailable() ? 0.5 : 1 }}
-          title={localizeAvailable() ? 'Oversett all tekst til et annet språk (App Store / Play-lokalisering)' : 'Krever innlogget AI (RR-token)'}
-        >
-          <option value="" disabled>🌐 Oversett</option>
-          {LOCALIZE_LANGS.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
-        </select>
-        <select
-          onChange={(e) => {
-            const v = e.target.value; e.target.selectedIndex = 0;
-            if (v.startsWith('gif:')) { const p = MOTION_PRESETS.find((x) => x.id === v.slice(4)); if (p) void runExportGif(p.cfg); }
-            else { const p = MOTION_PRESETS.find((x) => x.id === v); if (p) void runExportVideo(p.cfg); }
-          }}
-          disabled={videoBusy}
-          value=""
-          style={{ ...ghostBtn, padding: '7px 8px', opacity: videoBusy ? 0.5 : 1 }}
-          title="Animér avsløringen (enheter → tekst → callouts én etter én → lupe) og eksporter som video (WebM) eller animert GIF"
-        >
-          <option value="" disabled>{videoBusy ? '🎬 Lager…' : '🎬 Video / GIF'}</option>
-          <optgroup label="Video (WebM)">
-            {MOTION_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-          </optgroup>
-          <optgroup label="Animert GIF">
-            {MOTION_PRESETS.filter((p) => p.id !== 'full').map((p) => <option key={`gif-${p.id}`} value={`gif:${p.id}`}>🎞️ {p.label}</option>)}
-          </optgroup>
-        </select>
-        <button
-          onClick={() => void runExportCinematic()}
-          disabled={videoBusy}
-          style={{ ...ghostBtn, padding: '7px 8px', opacity: videoBusy ? 0.5 : 1 }}
-          title="Fotoreal Blender-render (Cycles) av 3D-enheten i et studio-environment → MP4. Krever Blender installert. ~1–3 min."
-        >🎥 Cinematic</button>
-        <button onClick={() => setShowExport(true)} style={primaryBtn} title="Kvalitetssjekk → format → eksport (PNG/PDF/PSD)">Eksporter</button>
+        <span style={{ fontWeight: 700, fontSize: 15, whiteSpace: 'nowrap' }}>Mockup Studio</span>
+        <input value={doc.name} onChange={(e) => store.setName(e.target.value)} style={{ ...textInput, flex: '1 1 180px', maxWidth: 320, minWidth: 140 }} placeholder="Navn på mockup" />
+        <div style={{ display: 'flex', border: `1px solid ${C.border}`, borderRadius: 8, overflow: 'hidden' }} aria-label="Redigeringsmodus">
+          <button onClick={() => setEditorMode('simple')} style={{ ...ghostBtn, border: 0, borderRadius: 0, background: editorMode === 'simple' ? C.accent : 'transparent', color: editorMode === 'simple' ? C.accentInk : C.inkSoft, padding: '6px 9px' }}>Enkel</button>
+          <button onClick={() => setEditorMode('advanced')} style={{ ...ghostBtn, border: 0, borderRadius: 0, background: editorMode === 'advanced' ? C.accent : 'transparent', color: editorMode === 'advanced' ? C.accentInk : C.inkSoft, padding: '6px 9px' }}>Avansert</button>
+        </div>
+        <button onClick={() => setFocusMode((value) => !value)} style={{ ...ghostBtn, background: focusMode ? C.panelSoft : 'transparent', padding: '6px 9px' }} title="Skjul sidepanelene og jobb uforstyrret">{focusMode ? 'Vis paneler' : 'Fokus'}</button>
+        <button onClick={() => store.undo()} disabled={store.past.length === 0} style={{ ...ghostBtn, opacity: store.past.length ? 1 : 0.4, padding: '6px 9px' }} title="Angre" aria-label="Angre">↶</button>
+        <button onClick={() => store.redo()} disabled={store.future.length === 0} style={{ ...ghostBtn, opacity: store.future.length ? 1 : 0.4, padding: '6px 9px' }} title="Gjør om" aria-label="Gjør om">↷</button>
+        <span role="status" style={{ fontSize: 11, color: syncDetail.state === 'error' ? '#f0a0a0' : syncDetail.state === 'offline' ? '#e0b060' : C.inkSoft, whiteSpace: 'nowrap' }} title={syncDetail.message}>{syncLabel}{store.past.length ? ` · ${store.past.length} angre` : ''}</span>
+        <div style={{ flex: '1 1 12px' }} />
+        {exportMsg && <span style={{ fontSize: FS_SM, color: C.inkSoft, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportMsg}</span>}
+        {!exportMsg && missingShots > 0 && <span style={{ fontSize: FS_SM, color: '#e0b060', whiteSpace: 'nowrap' }}>{missingShots} uten skjermbilde</span>}
+        <button onClick={shareForReview} style={{ ...primaryBtn, background: showReview ? '#f0c75e' : '#22d3ee' }}>Review Room{reviewPins.filter((pin) => pin.status !== 'resolved').length > 0 ? ' · ' + reviewPins.filter((pin) => pin.status !== 'resolved').length : ''}</button>
+        <button onClick={() => void runQuickExport()} style={primaryBtn} title="Anbefalt eksport: kvalitetssjekket PNG i 2× oppløsning">Eksporter PNG 2×</button>
+        <details style={{ position: 'relative' }}>
+          <summary style={{ ...ghostBtn, listStyle: 'none', userSelect: 'none' }}>Mer ▾</summary>
+          <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', width: 260, maxHeight: '72vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 7, padding: 10, borderRadius: 10, background: C.panel, border: `1px solid ${C.border}`, boxShadow: '0 16px 40px rgba(0,0,0,0.45)' }}>
+            <button onClick={() => setShowOnboarding(true)} style={ghostBtn}>Ny mockup</button>
+            <button onClick={() => setShowGallery(true)} style={ghostBtn}>✦ Design-galleri</button>
+            <button onClick={() => setShowCompare(true)} style={ghostBtn}>⚖ Sammenlign faktiske varianter</button>
+            <button onClick={shareForReview} style={ghostBtn}>Åpne Review Room</button>
+            <select value={doc.status ?? 'draft'} onChange={(e) => store.setDocument({ ...doc, status: e.target.value as import('./mockupStudioModel').MockupProjectStatus })} style={ghostBtn} aria-label="Godkjenningsstatus">
+              <option value="draft">Kladd</option><option value="review">Til godkjenning</option><option value="approved">Godkjent</option><option value="ready">Klar</option><option value="exported">Eksportert</option><option value="archived">Arkivert</option>
+            </select>
+            <select onChange={(e) => { const code = e.target.value; e.target.selectedIndex = 0; const language = LOCALIZE_LANGS.find((item) => item.code === code); if (language) void runLocalize(language.code, language.label); }} disabled={videoBusy || !localizeAvailable()} value="" style={ghostBtn}>
+              <option value="" disabled>🌐 Oversett</option>
+              {LOCALIZE_LANGS.map((language) => <option key={language.code} value={language.code}>{language.label}</option>)}
+            </select>
+            <select
+              onChange={(e) => {
+                const value = e.target.value; e.target.selectedIndex = 0;
+                if (value.startsWith('gif:')) { const preset = MOTION_PRESETS.find((item) => item.id === value.slice(4)); if (preset) void runExportGif(preset.cfg); }
+                else { const preset = MOTION_PRESETS.find((item) => item.id === value); if (preset) void runExportVideo(preset.cfg); }
+              }}
+              disabled={videoBusy}
+              value=""
+              style={ghostBtn}
+            >
+              <option value="" disabled>{videoBusy ? '🎬 Lager…' : '🎬 Video / GIF'}</option>
+              <optgroup label="Video (WebM)">{MOTION_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</optgroup>
+              <optgroup label="Animert GIF">{MOTION_PRESETS.filter((preset) => preset.id !== 'full').map((preset) => <option key={`gif-${preset.id}`} value={`gif:${preset.id}`}>🎞️ {preset.label}</option>)}</optgroup>
+            </select>
+            <button onClick={() => void runExportCinematic()} disabled={videoBusy} style={ghostBtn}>🎥 Cinematic</button>
+            <button onClick={() => setShowExport(true)} style={ghostBtn}>Avansert eksport…</button>
+          </div>
+        </details>
       </div>
 
       {/* Kropp: verktøy · lerret · inspektør */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         {/* Venstre: nettside-capture + legg til */}
-        <div style={{ width: 'clamp(190px, 15vw, 300px)', borderRight: `1px solid ${C.border}`, padding: 14, overflowY: 'auto', flexShrink: 0 }}>
+        {!focusMode && <div style={{ width: 'clamp(190px, 15vw, 300px)', borderRight: `1px solid ${C.border}`, padding: 14, overflowY: 'auto', flexShrink: 0 }}>
           <Collapsible title="Oppsett">
           <div style={{ fontSize: 11, color: C.inkSoft, marginBottom: 6 }}>Format (flate)</div>
           <select
@@ -645,6 +741,20 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
             ))}
           </div>
           <button onClick={() => setShowSwitch(true)} style={{ ...listBtn, marginBottom: 8 }} title="Bytt mal — innholdet overføres der det passer">Bytt mal…</button>
+          <label
+            style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11, color: C.inkSoft, cursor: 'pointer', marginBottom: 8 }}
+            title="Slå av for å fjerne trinnnummeret og hjørne-badgen fra prosjektet"
+          >
+            <input
+              type="checkbox"
+              checked={(doc.annotations ?? []).some((a) => a.kind === 'step')}
+              onChange={(e) => {
+                if (e.target.checked) store.addAnnotation('step', undefined);
+                else store.setAnnotations((doc.annotations ?? []).filter((a) => a.kind !== 'step'));
+              }}
+            />
+            Vis trinnnummer i venstre hjørne
+          </label>
 
           </Collapsible>
           <Collapsible title="Bibliotek">
@@ -713,6 +823,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
           )}
 
           </Collapsible>
+          {editorMode === 'advanced' && <>
           <Collapsible title="Fra simulator" defaultOpen={false}>
           <button onClick={() => void findSims()} style={{ ...listBtn, marginBottom: 6 }} title="Fang den kjørende appen fra en bootet iOS-simulator">Finn simulatorer</button>
           {sims.map((s) => (
@@ -816,15 +927,44 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
             </div>
           ))}
           </Collapsible>
-        </div>
+          </>}
+        </div>}
 
         {/* Midt: lerret */}
         <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', padding: 12, overflow: 'hidden', background: 'radial-gradient(1200px 700px at 50% 0%, #141826 0%, #0b0d13 70%)' }}>
-          <MockupCanvas safeArea={safeArea} />
+          <MockupCanvas
+            safeArea={safeArea}
+            reviewPins={showReview ? reviewPins : []}
+            reviewTool={showReview ? reviewTool : 'select'}
+            pendingReviewAnchor={showReview ? pendingReviewAnchor : null}
+            activeReviewPinId={activeReviewPinId}
+            onReviewDraft={(anchor) => { setPendingReviewAnchor(anchor); setReviewTool('select'); }}
+            onReviewPinMove={(id, anchor) => void moveReviewPin(id, anchor)}
+            onReviewPinClick={(id) => {
+              setActiveReviewPinId(id);
+              document.getElementById('mockup-comment-' + id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }}
+          />
         </div>
 
-        {/* Høyre: inspektør */}
-        <div style={{ width: 'clamp(250px, 19vw, 360px)', borderLeft: `1px solid ${C.border}`, padding: 16, overflowY: 'auto', flexShrink: 0, background: C.panel }}>
+        {/* Høyre: Review Room eller inspektør */}
+        {showReview ? (
+          <MockupReviewPanel
+            project={doc}
+            pendingAnchor={pendingReviewAnchor}
+            activePinId={activeReviewPinId}
+            reviewTool={reviewTool}
+            onPendingAnchorChange={setPendingReviewAnchor}
+            onReviewToolChange={(tool) => { setReviewTool(tool); if (tool !== 'select') setActiveReviewPinId(null); }}
+            onActivePinChange={setActiveReviewPinId}
+            onPinsChange={setReviewPins}
+            onPrepareReview={prepareReview}
+            onClose={() => { setShowReview(false); setReviewTool('select'); setActiveReviewPinId(null); setPendingReviewAnchor(null); }}
+            onBuildChangeSetProject={buildChangeSetProject}
+            onApplyProject={store.setDocument}
+            onMessage={setExportMsg}
+          />
+        ) : !focusMode && <div style={{ width: 'clamp(250px, 19vw, 360px)', borderLeft: `1px solid ${C.border}`, padding: 16, overflowY: 'auto', flexShrink: 0, background: C.panel }}>
           {selectedDevice ? (
             <DeviceInspector device={selectedDevice} onUpload={() => triggerUpload(selectedDevice.id)} advanced={advanced} />
           ) : selectedText ? (
@@ -834,11 +974,10 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
           ) : (
             <>
               <BrandingInspector onUploadLogo={triggerLogoUpload} />
-              <div style={{ height: 18 }} />
-              <IllustrationInspector />
+              {editorMode === 'advanced' && <><div style={{ height: 18 }} /><IllustrationInspector /></>}
             </>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* Bunnbar (§ editorens bunnbar) */}
@@ -888,7 +1027,8 @@ function Segmented<T extends string>({ options, value, onChange }: { options: [T
 }
 
 function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
-  const canvas = useMockupStudio((s) => s.doc.canvas);
+  const doc = useMockupStudio((s) => s.doc);
+  const canvas = doc.canvas;
   const patchCanvas = useMockupStudio((s) => s.patchCanvas);
   const base = resolveBaseBg(canvas);
   const textColor = isDark(base) ? '#ffffff' : '#101317';
@@ -920,7 +1060,7 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
         </div>
         {brandKits.map((k) => (
           <div key={k.id} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
-            <button onClick={() => { const p = brandKitPatch(k.id); if (p) patchCanvas(p); }} style={{ ...listBtn, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }} title="Bruk denne merkevaren">
+            <button onClick={() => { const patch = brandKitPatch(k.id); if (!patch) return; patchCanvas(patch); if (doc.campaignId) applyBrandPatchToCampaign(doc.campaignId, doc.id, patch, k.id); }} style={{ ...listBtn, flex: 1, display: 'flex', alignItems: 'center', gap: 8 }} title={doc.campaignId ? "Bruk merkevaren på alle varianter i kampanjen" : "Bruk denne merkevaren"}>
               <span style={{ width: 12, height: 12, borderRadius: 3, background: k.accent, flexShrink: 0 }} />
               <span style={{ width: 12, height: 12, borderRadius: 3, background: k.accent2, flexShrink: 0 }} />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{k.name}</span>
@@ -933,7 +1073,7 @@ function BrandingInspector({ onUploadLogo }: { onUploadLogo: () => void }) {
         {canvas.logo?.image ? (
           <>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-              <img src={canvas.logo.image} alt="logo" style={{ height: 34, maxWidth: 96, objectFit: 'contain', background: 'rgba(255,255,255,0.06)', borderRadius: 6, padding: 4 }} />
+              <img src={safeImageSrc(canvas.logo.image)} alt="logo" style={{ height: 34, maxWidth: 96, objectFit: 'contain', background: 'rgba(255,255,255,0.06)', borderRadius: 6, padding: 4 }} />
               <button onClick={onUploadLogo} style={{ ...listBtn, flex: 1 }}>Bytt</button>
               <button onClick={() => patchCanvas({ logo: undefined })} style={{ ...listBtn, width: 30, textAlign: 'center' }} title="Fjern logo" aria-label="Fjern logo">✕</button>
             </div>
@@ -1134,6 +1274,18 @@ function IllustrationInspector() {
     const i = doc.devices.findIndex((d) => d.id === id);
     return i >= 0 ? `${DEVICE_LABELS[doc.devices[i].variant]}${doc.devices.length > 1 ? ` ${i + 1}` : ''}` : 'Lerret';
   };
+  const connectorTargets: { value: string; label: string }[] = [
+    ...doc.devices.map((item, index) => ({ value: `device:${item.id}`, label: `Enhet: ${DEVICE_LABELS[item.variant]} ${index + 1}` })),
+    ...(doc.images ?? []).map((item, index) => ({ value: `image:${item.id}`, label: `Bilde ${index + 1}` })),
+    ...doc.texts.map((item) => ({ value: `text:${item.id}`, label: `Tekst: ${item.text.slice(0, 24) || 'uten tekst'}` })),
+    { value: 'canvas:', label: 'Lerret' },
+  ];
+  const targetValue = (ref?: MockupAnchorRef) => ref ? `${ref.kind}:${ref.id ?? ''}` : '';
+  const targetFromValue = (value: string, current?: MockupAnchorRef): MockupAnchorRef | undefined => {
+    if (!value) return undefined;
+    const [kind, id] = value.split(':');
+    return { kind: kind as MockupAnchorRef['kind'], id: id || undefined, edge: current?.edge ?? 'center' };
+  };
 
   return (
     <div>
@@ -1274,7 +1426,24 @@ function IllustrationInspector() {
 
           {a.kind === 'connector' && (
             <>
-              <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 88px', gap: 6, marginBottom: 6 }}>
+                <select value={targetValue(a.startTarget)} onChange={(e) => patchAnnotation(a.id, { startTarget: targetFromValue(e.target.value, a.startTarget) })} style={textInput} aria-label="Connector startmål">
+                  <option value="">Fri startposisjon</option>
+                  {connectorTargets.map((option) => <option key={`start-${option.value}`} value={option.value}>{option.label}</option>)}
+                </select>
+                <select value={a.startTarget?.edge ?? 'center'} disabled={!a.startTarget} onChange={(e) => patchAnnotation(a.id, { startTarget: a.startTarget ? { ...a.startTarget, edge: e.target.value as MockupAnchorRef['edge'] } : undefined })} style={textInput} aria-label="Startkant">
+                  <option value="center">Senter</option><option value="left">Venstre</option><option value="right">Høyre</option><option value="top">Topp</option><option value="bottom">Bunn</option>
+                </select>
+                <select value={targetValue(a.endTarget)} onChange={(e) => patchAnnotation(a.id, { endTarget: targetFromValue(e.target.value, a.endTarget) })} style={textInput} aria-label="Connector sluttmål">
+                  <option value="">Fri sluttposisjon</option>
+                  {connectorTargets.map((option) => <option key={`end-${option.value}`} value={option.value}>{option.label}</option>)}
+                </select>
+                <select value={a.endTarget?.edge ?? 'center'} disabled={!a.endTarget} onChange={(e) => patchAnnotation(a.id, { endTarget: a.endTarget ? { ...a.endTarget, edge: e.target.value as MockupAnchorRef['edge'] } : undefined })} style={textInput} aria-label="Sluttkant">
+                  <option value="center">Senter</option><option value="left">Venstre</option><option value="right">Høyre</option><option value="top">Topp</option><option value="bottom">Bunn</option>
+                </select>
+              </div>
+              <div style={{ fontSize: 10.5, color: C.inkSoft, marginBottom: 6 }}>Festede mål følger elementene når format eller layout endres.</div>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 4, opacity: a.endTarget ? 0.45 : 1 }}>
                 <label style={{ fontSize: 11, color: C.inkSoft, flex: 1 }}>X2: {Math.round((a.fx2 ?? a.fx) * 100)}%
                   <input type="range" min={0} max={1} step={0.01} value={a.fx2 ?? a.fx} onChange={(e) => patchAnnotation(a.id, { fx2: Number(e.target.value) })} style={{ width: '100%' }} />
                 </label>
@@ -1780,7 +1949,7 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
     e.target.value = '';
     if (!f) return;
     const r = new FileReader();
-    r.onload = () => { if (typeof r.result === 'string') patchImage(image.id, { image: r.result }); };
+    r.onload = () => { if (typeof r.result === 'string') patchImage(image.id, { image: r.result, source: { kind: 'upload', label: f.name, origin: 'Denne maskinen' } }); };
     r.readAsDataURL(f);
   };
   const videoFileInputRef = useRef<HTMLInputElement>(null);
@@ -1872,7 +2041,11 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
         </div>
       ) : (
         <>
-          <img src={image.image} alt="" style={{ width: '100%', borderRadius: 8, marginBottom: 10, maxHeight: 130, objectFit: 'cover', display: 'block' }} />
+          <img src={safeImageSrc(image.image)} alt="" style={{ width: '100%', borderRadius: 8, marginBottom: 10, maxHeight: 130, objectFit: 'cover', display: 'block' }} />
+          <div style={{ fontSize: 11, color: C.inkSoft, margin: '-3px 0 8px', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+            <span>Kilde: {image.source?.label || (image.source?.kind === 'ai' ? 'AI-generert' : 'Ukjent')}</span>
+            {image.source?.origin && <span title={image.source.origin}>{image.source.kind}</span>}
+          </div>
           <button onClick={() => imgFileInputRef.current?.click()} style={{ ...listBtn, width: '100%', marginBottom: 10 }}>Bytt bilde</button>
           <input ref={imgFileInputRef} type="file" accept="image/*" onChange={onImageFilePicked} style={{ display: 'none' }} />
         </>

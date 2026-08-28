@@ -21,6 +21,11 @@ export interface MockOptions {
 }
 
 export function installTauriMock(opts: MockOptions = {}) {
+  // Når testen installerer Tauri-internals før appen lastes, hopper den vanlige
+  // browser-shimmen med vilje over initialisering. Behold derfor testmarkøren
+  // eksplisitt slik at test-only hooks fortsatt eksponeres.
+  (globalThis as any).__BROWSER_TEST__ = true;
+
   const responses: Record<string, unknown> = {
     photoshop_status: { connected: false, plugin_version: null, photoshop_version: null, port: 1733 },
     creation_list: [],
@@ -61,6 +66,11 @@ export function installTauriMock(opts: MockOptions = {}) {
 
   // localStorage for tests
   localStorage.setItem("trrpa.firstRunComplete", "skipped");
+  // Uten denne blokkerer Photoshop-onboarding-tour-modalen (fullskjerm-overlay)
+  // ALLE klikk på Home-skjermen for enhver spec som goto()-er '/' rått — fant
+  // dette da music-video-agent-spec-en var den første til å faktisk rendre
+  // Home (andre specs bruker ?test=demo/story-snarveier som hopper forbi den).
+  localStorage.setItem("trrpa.photoshopTourCompleted", "1");
   localStorage.setItem(
     "trrpa.settings",
     JSON.stringify({ RR_BEARER_TOKEN: "test-token" }),

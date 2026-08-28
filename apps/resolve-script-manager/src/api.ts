@@ -182,6 +182,11 @@ export async function demoWriteBinary(path: string, base64Data: string): Promise
   return invoke<string>("demo_write_binary", { path, base64Data });
 }
 
+/** Les en lokal bildefil via native kode som en canvas-sikker data-URL. */
+export async function readImageB64(path: string): Promise<string> {
+  return invoke<string>("read_image_b64", { path });
+}
+
 /** Åpne manus-HTML i et print-vindu (→ «Lagre som PDF»). */
 export async function demoPrintHtml(html: string): Promise<void> {
   return invoke<void>("demo_print_html", { html });
