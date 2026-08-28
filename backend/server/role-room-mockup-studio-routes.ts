@@ -791,9 +791,21 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
     if (!actor) { res.status(401).json({ error: "krever_innlogging" }); return; }
     const access = await projectAccess(pool, actor, String(req.params.id));
     if (!access || access.access_role !== "owner") { res.status(403).json({ error: "kun_eier_kan_slette" }); return; }
-    await pool.query("DELETE FROM mockup_studio_project_state WHERE project_id=$1 AND created_by=$2", [access.id, access.created_by]);
-    await pool.query("DELETE FROM demo_studio_mockup_projects WHERE id=$1 AND created_by=$2", [access.id, access.created_by]);
-    res.json({ ok: true });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("DELETE FROM mockup_studio_change_sets WHERE project_id=$1 AND created_by=$2", [access.id, access.created_by]);
+      await client.query("DELETE FROM mockup_studio_project_state WHERE project_id=$1 AND created_by=$2", [access.id, access.created_by]);
+      await client.query("DELETE FROM demo_studio_mockup_projects WHERE id=$1 AND created_by=$2", [access.id, access.created_by]);
+      await client.query("COMMIT");
+      res.json({ ok: true });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      console.error("[mockup-projects/delete]", error);
+      res.status(500).json({ error: "slett_feil", detail: "internal_error" });
+    } finally {
+      client.release();
+    }
   });
 
   app.get("/api/role-room/mockup-projects/:id/versions", async (req: Request, res: Response) => {

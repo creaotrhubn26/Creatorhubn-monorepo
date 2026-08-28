@@ -62,6 +62,39 @@ describe("Mockup Studio Review Room routes", () => {
     expect(handlers.has("POST /api/role-room/mockup-projects/:id/change-sets/:changeSetId/apply")).toBe(true);
   });
 
+  it("rydder Change Sets før et prosjekt slettes", async () => {
+    const handlers = new Map<string, Handler>();
+    const register = (method: string) => (path: string, ...values: unknown[]) => handlers.set(method + " " + path, values.at(-1) as Handler);
+    const app = { get: register("GET"), put: register("PUT"), post: register("POST"), patch: register("PATCH"), delete: register("DELETE") } as unknown as Express;
+    const query = vi.fn().mockImplementation(async (statement: unknown) => {
+      if (String(statement).includes("FROM demo_studio_mockup_projects p")) {
+        return { rows: [{ id: "project", created_by: "owner", access_role: "owner", revision: 3 }] };
+      }
+      return { rows: [] };
+    });
+    const clientQuery = vi.fn().mockResolvedValue({ rows: [] });
+    const release = vi.fn();
+    const pool = { query, connect: vi.fn().mockResolvedValue({ query: clientQuery, release }) } as unknown as Pool;
+    registerRoleRoomMockupStudioRoutes(app, { pool, activeSessions: new Map([["owner-token", {
+      userId: "owner", role: "owner", email: "owner@example.com", name: "Ola Eier", loginAt: new Date().toISOString(),
+    }]]) });
+
+    const res = response();
+    await handlers.get("DELETE /api/role-room/mockup-projects/:id")!({
+      params: { id: "project" }, headers: { authorization: "Bearer owner-token" },
+    } as unknown as Request, res);
+
+    expect(res.body).toEqual({ ok: true });
+    expect(clientQuery.mock.calls.map(([statement]) => String(statement))).toEqual([
+      "BEGIN",
+      expect.stringContaining("DELETE FROM mockup_studio_change_sets"),
+      expect.stringContaining("DELETE FROM mockup_studio_project_state"),
+      expect.stringContaining("DELETE FROM demo_studio_mockup_projects"),
+      "COMMIT",
+    ]);
+    expect(release).toHaveBeenCalledOnce();
+  });
+
   it("krever komplett semantisk elementanker", async () => {
     const { handlers, query } = harness();
     query
