@@ -489,7 +489,9 @@ async function createComment(
 ): Promise<Record<string, unknown>> {
   const inserted = await pool.query(
     `WITH lock_version AS (
-       SELECT pg_advisory_xact_lock(hashtext($3::text))
+       -- Keep the shared parameter typed as BIGINT. Casting it to text here makes
+       -- PostgreSQL compare mockup_studio_versions.id (BIGINT) with TEXT below.
+       SELECT pg_advisory_xact_lock($3::bigint)
      ), version_ok AS (
        SELECT 1 FROM mockup_studio_versions
        WHERE id=$3 AND project_id=$1 AND created_by=$2

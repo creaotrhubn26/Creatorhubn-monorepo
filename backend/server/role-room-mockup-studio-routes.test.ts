@@ -72,6 +72,43 @@ describe("Mockup Studio Review Room routes", () => {
     expect(handlers.has("POST /api/role-room/mockup-projects/:id/change-sets/:changeSetId/apply")).toBe(true);
   });
 
+  it("binder kommentarenes versjons-ID som bigint i PostgreSQL", async () => {
+    const handlers = new Map<string, Handler>();
+    const register = (method: string) => (path: string, ...values: unknown[]) => handlers.set(method + " " + path, values.at(-1) as Handler);
+    const app = { get: register("GET"), put: register("PUT"), post: register("POST"), patch: register("PATCH"), delete: register("DELETE") } as unknown as Express;
+    const query = vi.fn().mockImplementation(async (statement: unknown) => {
+      const sql = String(statement);
+      if (sql.includes("FROM demo_studio_mockup_projects p")) {
+        return { rows: [{
+          id: "project", created_by: "owner", payload: {}, revision: 3, status: "draft",
+          workspace_project_id: null, project_updated_at: 1, updated_at: new Date(), access_role: "owner",
+        }] };
+      }
+      if (sql.includes("WITH lock_version")) return { rows: [{ id: "comment-id" }] };
+      return { rows: [] };
+    });
+    registerRoleRoomMockupStudioRoutes(app, {
+      pool: { query } as unknown as Pool,
+      activeSessions: new Map([["owner-token", {
+        userId: "owner", role: "owner", email: "owner@example.com", name: "Ola Eier", loginAt: new Date().toISOString(),
+      }]]),
+    });
+
+    const res = response();
+    await handlers.get("POST /api/role-room/mockup-projects/:id/comments")!({
+      params: { id: "project" },
+      headers: { authorization: "Bearer owner-token" },
+      body: { versionId: "7", body: "Flytt connector", anchorKind: "general" },
+      socket: { remoteAddress: "127.0.0.1" },
+    } as unknown as Request, res);
+
+    expect(res.statusCode).toBe(201);
+    const createQuery = query.mock.calls.find(([statement]) => String(statement).includes("WITH lock_version"));
+    expect(String(createQuery?.[0])).toContain("pg_advisory_xact_lock($3::bigint)");
+    expect(String(createQuery?.[0])).not.toContain("hashtext($3::text)");
+    expect(createQuery?.[1]?.[2]).toBe("7");
+  });
+
   it("avviser lokale bildefilstier i delte prosjektpayloads", () => {
     expect(hasUnsafeMockupProjectAssetReferences({
       devices: [{ image: "/Users/victim/.ssh/id_rsa.png" }], images: [], canvas: {},
