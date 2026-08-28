@@ -5,6 +5,11 @@ import type { Pool } from "pg";
 import { registerRoleRoomMockupStudioRoutes } from "./role-room-mockup-studio-routes.js";
 import { createMockupWebhookSecret, signMockupWebhook, validateMockupWebhookUrl } from "./mockup-review-webhook-service.js";
 
+const { sendTransactionalEmailMock } = vi.hoisted(() => ({
+  sendTransactionalEmailMock: vi.fn().mockResolvedValue({ sent: true, reason: null, provider: "resend" }),
+}));
+vi.mock("./transactional-email-service.js", () => ({ sendTransactionalEmail: sendTransactionalEmailMock }));
+
 type Handler = (req: Request, res: Response) => Promise<void> | void;
 function harness(result: { rows: unknown[] } = { rows: [] }) {
   const handlers = new Map<string, Handler>();
@@ -117,6 +122,90 @@ describe("Mockup Studio Review Room routes", () => {
     expect(String(res.body)).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(res.headers["Content-Security-Policy"]).toContain("default-src 'none'");
     expect(res.headers["Cache-Control"]).toBe("private, no-store");
+  });
+
+  it("returnerer bare saniterte elementer og beslutningsmetadata til lenkeinnehaveren", async () => {
+    const { handlers, query } = harness();
+    query.mockImplementation(async (statement: unknown) => {
+      const sql = String(statement);
+      if (sql.includes("FROM mockup_studio_share_links s")) return { rows: [publicLink({
+        version_payload: {
+          name: "Kampanje",
+          reviewPreview: null,
+          reviewElements: [
+            { ref: "device:d1", id: "intern-id", kind: "device", label: "Enhet 1", x: 0.1, y: 0.2, w: 0.5, h: 0.4, secret: "skjul" },
+            { ref: "bad", kind: "unknown", label: "Ugyldig", x: 0, y: 0, w: 1, h: 1 },
+          ],
+        },
+      })] };
+      if (sql.includes("FROM mockup_studio_review_decisions")) return { rows: [{
+        id: "decision-id", version_id: "7", decision: "approved", note: "Godkjent med forbehold",
+        actor_display_name: "Eva Reviewer", created_at: "2026-08-28T10:00:00.000Z", context: { secret: true },
+      }] };
+      return { rows: [] };
+    });
+    const res = response();
+    await handlers.get("GET /api/role-room/mockup-shared/:token")!({
+      params: { token: "secret" }, headers: { accept: "application/json" },
+    } as unknown as Request, res);
+    const body = res.body as { project: { reviewElements: Record<string, unknown>[] }; decisions: Record<string, unknown>[] };
+    expect(body.project.reviewElements).toEqual([{
+      ref: "device:d1", kind: "device", label: "Enhet 1", x: 0.1, y: 0.2, w: 0.5, h: 0.4,
+    }]);
+    expect(body.decisions).toEqual([{
+      id: "decision-id", versionId: "7", decision: "approved", note: "Godkjent med forbehold",
+      actorDisplayName: "Eva Reviewer", createdAt: "2026-08-28T10:00:00.000Z",
+    }]);
+  });
+
+  it("varsler bare tidligere reviewere fra samme prosjekt når ny runde opprettes", async () => {
+    sendTransactionalEmailMock.mockClear();
+    const handlers = new Map<string, Handler>();
+    const register = (method: string) => (path: string, ...values: unknown[]) => handlers.set(method + " " + path, values.at(-1) as Handler);
+    const app = { get: register("GET"), put: register("PUT"), post: register("POST"), patch: register("PATCH"), delete: register("DELETE") } as unknown as Express;
+    const query = vi.fn().mockImplementation(async (statement: unknown) => {
+      const sql = String(statement);
+      if (sql.includes("FROM demo_studio_mockup_projects p")) return { rows: [{
+        id: "project", created_by: "owner", payload: { id: "project", name: "Kampanje", version: 1 },
+        revision: 4, status: "draft", workspace_project_id: null, project_updated_at: 1,
+        updated_at: new Date(), access_role: "owner",
+      }] };
+      if (sql.includes("FROM mockup_studio_review_sessions rs")) return { rows: [{ email: "eva@example.com", display_name: "Eva" }] };
+      return { rows: [] };
+    });
+    const clientQuery = vi.fn().mockImplementation(async (statement: unknown) => {
+      const sql = String(statement);
+      if (sql.includes("INSERT INTO mockup_studio_versions")) return { rows: [{ id: "11111111-1111-4111-8111-111111111111" }] };
+      if (sql.includes("INSERT INTO mockup_studio_share_links")) return { rows: [{ id: "share-id", expires_at: "2026-09-27T10:00:00.000Z" }] };
+      return { rows: [] };
+    });
+    const pool = { query, connect: vi.fn().mockResolvedValue({ query: clientQuery, release: vi.fn() }) } as unknown as Pool;
+    registerRoleRoomMockupStudioRoutes(app, { pool, activeSessions: new Map([["owner-token", {
+      userId: "owner", role: "owner", email: "owner@example.com", name: "Ola Eier", loginAt: new Date().toISOString(),
+    }]]) });
+    const res = response();
+    await handlers.get("POST /api/role-room/mockup-projects/:id/share")!({
+      params: { id: "project" }, headers: { authorization: "Bearer owner-token" },
+      body: { notifyPreviousReviewers: true },
+    } as unknown as Request, res);
+    expect(res.statusCode).toBe(200);
+    expect(sendTransactionalEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendTransactionalEmailMock).toHaveBeenCalledWith(expect.objectContaining({
+      to: "eva@example.com", projectId: "project", kind: "mockup_review_new_round",
+    }));
+    expect((res.body as { reviewerNotifications: unknown }).reviewerNotifications).toEqual({ attempted: 1, sent: 1 });
+    const reviewerQuery = query.mock.calls.find(([statement]) => String(statement).includes("FROM mockup_studio_review_sessions rs"));
+    expect(String(reviewerQuery?.[0])).toContain("s.project_id=$1 AND s.created_by=$2");
+
+    sendTransactionalEmailMock.mockClear();
+    const optedOut = response();
+    await handlers.get("POST /api/role-room/mockup-projects/:id/share")!({
+      params: { id: "project" }, headers: { authorization: "Bearer owner-token" },
+      body: { notifyPreviousReviewers: false },
+    } as unknown as Request, optedOut);
+    expect(optedOut.statusCode).toBe(200);
+    expect(sendTransactionalEmailMock).not.toHaveBeenCalled();
+    expect((optedOut.body as { reviewerNotifications: unknown }).reviewerNotifications).toEqual({ attempted: 0, sent: 0 });
   });
 
   it("nekter kommentarer fra lenker som bare kan vises", async () => {

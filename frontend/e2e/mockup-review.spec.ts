@@ -7,7 +7,10 @@ type MockComment = {
   reviewerSessionId: string;
   authorDisplayName: string;
   body: string;
-  anchorKind: "general" | "canvas";
+  anchorKind: "general" | "canvas" | "element";
+  anchorRef: string | null;
+  anchorOffsetX: number | null;
+  anchorOffsetY: number | null;
   anchorX: number | null;
   anchorY: number | null;
   marks: unknown[];
@@ -27,6 +30,10 @@ test("komplett konto-fri Review Room-flyt", async ({ page }) => {
       name: "MedSide kampanje",
       preview: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nAsAAAAASUVORK5CYII=",
       canvas: { width: 1080, height: 1080 },
+      reviewElements: [{
+        ref: "device:phone-1", kind: "device", label: "Enhet · mobil",
+        x: 0.05, y: 0.05, w: 0.45, h: 0.45,
+      }],
     },
     version: { id: "v1", label: "Review 1", reviewStatus: "in_review" },
     versions: [{ id: "v1", label: "Review 1", reviewStatus: "in_review" }],
@@ -57,9 +64,12 @@ test("komplett konto-fri Review Room-flyt", async ({ page }) => {
       const body = request.postDataJSON() as {
         body: string;
         parentId?: string;
-        anchorKind?: "general" | "canvas";
+        anchorKind?: "general" | "canvas" | "element";
+        anchorRef?: string | null;
         anchorX?: number;
         anchorY?: number;
+        anchorOffsetX?: number | null;
+        anchorOffsetY?: number | null;
         marks?: unknown[];
       };
       const comment: MockComment = {
@@ -70,8 +80,11 @@ test("komplett konto-fri Review Room-flyt", async ({ page }) => {
         authorDisplayName: "Daniel",
         body: body.body,
         anchorKind: body.anchorKind || "general",
+        anchorRef: body.anchorRef || null,
         anchorX: body.anchorX ?? null,
         anchorY: body.anchorY ?? null,
+        anchorOffsetX: body.anchorOffsetX ?? null,
+        anchorOffsetY: body.anchorOffsetY ?? null,
         marks: body.marks || [],
         status: "open",
         priority: "normal",
@@ -131,6 +144,9 @@ test("komplett konto-fri Review Room-flyt", async ({ page }) => {
   await page.getByRole("button", { name: "Send", exact: true }).first().click();
   await expect(page.getByText("Koble linjen til enheten")).toBeVisible();
   await expect(page.locator(".review-pin").filter({ hasText: "1" })).toBeVisible();
+  await expect.poll(() => comments[0]?.anchorKind).toBe("element");
+  expect(comments[0]?.anchorRef).toBe("device:phone-1");
+  expect(comments[0]?.anchorOffsetX).not.toBeNull();
 
   await page.locator(".review-pin").filter({ hasText: "1" }).click();
   await expect(page.locator("#comment-c1")).toHaveClass(/active/);
