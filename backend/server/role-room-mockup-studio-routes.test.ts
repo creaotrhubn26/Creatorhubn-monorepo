@@ -52,6 +52,60 @@ describe("Mockup Studio Review Room routes", () => {
     expect(handlers.has("PATCH /api/role-room/mockup-shared/:token/comments/:commentId")).toBe(true);
   });
 
+  it("krever komplett semantisk elementanker", async () => {
+    const { handlers, query } = harness();
+    query
+      .mockResolvedValueOnce({ rows: [publicLink()] })
+      .mockResolvedValueOnce({ rows: [{ id: "r1", display_name: "Daniel", email: "d@example.com", share_token_hash: "hashed" }] });
+    const res = response();
+    await handlers.get("POST /api/role-room/mockup-shared/:token/comments")!({
+      params: { token: "secret" },
+      headers: { "x-mockup-reviewer": "reviewer" },
+      socket: { remoteAddress: "127.0.0.1" },
+      body: { body: "Flytt connector", anchorKind: "element", anchorX: 0.5, anchorY: 0.5 },
+    } as unknown as Request, res);
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: "ugyldig_elementanker" });
+  });
+
+  it("lar en reviewer flytte sin egen pin med normaliserte koordinater", async () => {
+    const { handlers, query } = harness();
+    query
+      .mockResolvedValueOnce({ rows: [publicLink()] })
+      .mockResolvedValueOnce({ rows: [{ id: "r1", display_name: "Daniel", email: null, share_token_hash: "hashed" }] })
+      .mockResolvedValueOnce({ rows: [{ id: "comment-id" }] });
+    const res = response();
+    await handlers.get("PATCH /api/role-room/mockup-shared/:token/comments/:commentId")!({
+      params: { token: "secret", commentId: "11111111-1111-4111-8111-111111111111" },
+      headers: { "x-mockup-reviewer": "reviewer" },
+      body: {
+        anchorKind: "canvas", anchorRef: null, anchorX: 0.25, anchorY: 0.75,
+        anchorOffsetX: null, anchorOffsetY: null, marks: [],
+      },
+    } as unknown as Request, res);
+    expect(res.body).toEqual({ ok: true });
+    const update = query.mock.calls.at(-1);
+    expect(String(update?.[0])).toContain("anchor_offset_x");
+    expect(update?.[1]).toContain(0.25);
+    expect(update?.[1]).toContain(0.75);
+  });
+
+  it("reserverer reset av godkjenning for interne godkjennere", async () => {
+    const { handlers, query } = harness();
+    query
+      .mockResolvedValueOnce({ rows: [publicLink()] })
+      .mockResolvedValueOnce({ rows: [{ id: "r1", display_name: "Daniel", email: null, share_token_hash: "hashed" }] });
+    const res = response();
+    await handlers.get("POST /api/role-room/mockup-shared/:token/decision")!({
+      params: { token: "secret" },
+      headers: { "x-mockup-reviewer": "reviewer" },
+      socket: { remoteAddress: "127.0.0.1" },
+      body: { decision: "reset" },
+    } as unknown as Request, res);
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: "ugyldig_beslutning" });
+  });
+
   it("escaper prosjektdata og låser HTML-fallback med CSP", async () => {
     const { handlers } = harness({ rows: [publicLink()] });
     const res = response();
@@ -82,7 +136,7 @@ describe("Mockup Studio Review Room routes", () => {
       params: { token: "secret" }, headers: { accept: "application/json" },
     } as unknown as Request, res);
     expect(res.body).toEqual({ ok: true, status: "approved" });
-    expect(String(query.mock.calls[0][0])).toContain("status='ready'");
+    expect(String(query.mock.calls[0][0])).toContain("status='approved'");
     expect(query.mock.calls[0][1][0]).not.toBe("secret");
     expect(query.mock.calls[0][1][0]).toHaveLength(64);
   });

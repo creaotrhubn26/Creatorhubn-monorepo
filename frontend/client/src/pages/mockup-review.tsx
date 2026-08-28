@@ -1,38 +1,942 @@
-import {useCallback,useEffect,useMemo,useRef,useState,type FormEvent,type PointerEvent as PE} from"react";
-import{useRoute}from"wouter";
-type V={id:string;label:string;reviewStatus:string;preview?:string|null;payload?:{reviewPreview?:string}};
-type C={id:string;number:number;parentId:string|null;reviewerSessionId:string|null;authorDisplayName:string;body:string;anchorKind:string;anchorX:number|null;anchorY:number|null;status:string;createdAt:string;attachments:{id:string;displayName:string;isRecording:boolean}[];reactions:Record<string,number>};
-type D={project:{name:string;preview:string|null;canvas?:{width?:number;height?:number}};version:V;versions:V[];comments:C[];share:{accessMode:"view"|"comment"|"approve";requireIdentity:boolean;allowRecordings:boolean;allowVersionHistory:boolean;commentsPaused:boolean}};
-type P={id:string;display_name?:string;displayName?:string};type Cur={participant_key:string;display_name:string;cursor_x:number|null;cursor_y:number|null};
-const A="/api/role-room/mockup-shared";
-async function q<T>(u:string,i:RequestInit={},s=""){const r=await fetch(u,{...i,headers:{Accept:"application/json",...(i.body instanceof FormData?{}:i.body?{"Content-Type":"application/json"}:{}),...(s?{"x-mockup-reviewer":s}:{}),...(i.headers||{})}});if(!r.ok){let m="HTTP "+r.status;try{const b=await r.json()as{error?:string;detail?:string};m=b.detail||b.error||m}catch{}throw Error(m.replaceAll("_"," "))}return r.json()as Promise<T>}
-const sl=(s:string)=>({draft:"Kladd",in_review:"Til gjennomgang",changes_requested:"Endringer ønsket",approved:"Godkjent",superseded:"Erstattet"}as Record<string,string>)[s]||s;
-export default function MockupReviewPage(){
- const route=useRoute("/mockup-review/:token"),p=route[1] as {token:string}|null,token=p===null?"":p.token,base=A+"/"+encodeURIComponent(token),sk="mr:"+token;
- const[d,setD]=useState<D|null>(null),[cs,setCs]=useState<C[]>([]),[ses,setSes]=useState(()=>sessionStorage.getItem(sk)||""),[who,setWho]=useState<P|null>(()=>{try{return JSON.parse(sessionStorage.getItem(sk+"p")||"null")}catch{return null}});
- const[id,setId]=useState({displayName:"",email:""}),[join,setJoin]=useState(false),[text,setText]=useState(""),[reply,setReply]=useState(""),[replyTo,setReplyTo]=useState<string|null>(null),[anchor,setAnchor]=useState<{x:number;y:number}|null>(null),[file,setFile]=useState<File|null>(null);
- const[filter,setFilter]=useState("open"),[error,setError]=useState(""),[ok,setOk]=useState(""),[busy,setBusy]=useState(""),[note,setNote]=useState(""),[cur,setCur]=useState<Cur[]>([]),[ver,setVer]=useState<V|null>(null),[pic,setPic]=useState<string|null>(null),[cmp,setCmp]=useState<V|null>(null),[split,setSplit]=useState(50),[tour,setTour]=useState(()=>localStorage.getItem("mr-tour")!=="1"),[recording,setRecording]=useState(false);
- const rec=useRef<MediaRecorder|null>(null),chunks=useRef<Blob[]>([]),last=useRef(0);
- const load=useCallback(async()=>{if(!token)return;try{const n=await q<D>(base);setD(n);setCs(n.comments||[]);setVer(n.version);setPic(n.project.preview);setError("");if(!ses&&!n.share.requireIdentity){const j=await q<{reviewerToken:string;reviewer:P}>(base+"/session",{method:"POST",body:JSON.stringify({displayName:""})});sessionStorage.setItem(sk,j.reviewerToken);sessionStorage.setItem(sk+"p",JSON.stringify(j.reviewer));setSes(j.reviewerToken);setWho(j.reviewer)}else if(!ses&&n.share.accessMode!=="view")setJoin(true)}catch(e){setError(e instanceof Error?e.message:String(e))}},[token,base,sk,ses]);
- useEffect(()=>{void load()},[token]);useEffect(()=>{const n=setInterval(()=>void q<{presence:Cur[]}>(base+"/presence").then(x=>setCur(x.presence||[])).catch(()=>{}),4000);return()=>clearInterval(n)},[base]);
- const roots=useMemo(()=>cs.filter(c=>!c.parentId),[cs]),shown=roots.filter(c=>filter==="all"||(filter==="resolved"?c.status==="resolved":c.status!=="resolved")),replies=(x:string)=>cs.filter(c=>c.parentId===x),can=d?.share.accessMode!=="view"&&!d?.share.commentsPaused&&ver?.id===d?.version.id;
- async function enter(e:FormEvent){e.preventDefault();setBusy("j");try{const j=await q<{reviewerToken:string;reviewer:P}>(base+"/session",{method:"POST",body:JSON.stringify(id)});sessionStorage.setItem(sk,j.reviewerToken);sessionStorage.setItem(sk+"p",JSON.stringify(j.reviewer));setSes(j.reviewerToken);setWho(j.reviewer);setJoin(false)}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy("")}}
- async function attach(cid:string,b:Blob,name:string,record=false){const f=new FormData();f.append("file",b,name);f.append("isRecording",String(record));await q(base+"/comments/"+cid+"/attachments",{method:"POST",body:f},ses)}
- async function post(parent?:string,blob?:Blob){const body=blob?"Skjermopptak vedlagt":parent?reply.trim():text.trim();if(!ses){setJoin(true);return}if(!body)return;setBusy("c");try{const x=await q<{comment:C}>(base+"/comments",{method:"POST",body:JSON.stringify({body,parentId:parent,anchorKind:parent||!anchor?"general":"canvas",anchorX:parent?null:anchor?.x,anchorY:parent?null:anchor?.y})},ses);if(blob)await attach(x.comment.id,blob,"review-opptak.webm",true);else if(file&&!parent)await attach(x.comment.id,file,file.name);setText("");setReply("");setReplyTo(null);setAnchor(null);setFile(null);await load()}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy("")}}
- const react=(c:C,e:string)=>void q(base+"/comments/"+c.id+"/reactions",{method:"POST",body:JSON.stringify({emoji:e})},ses).then(load).catch(x=>setError(x.message));
- const resolve=(c:C)=>void q(base+"/comments/"+c.id,{method:"PATCH",body:JSON.stringify({status:c.status==="resolved"?"open":"resolved"})},ses).then(load).catch(x=>setError(x.message));
- async function decision(x:"approved"|"changes_requested"){if(!ses){setJoin(true);return}try{await q(base+"/decision",{method:"POST",body:JSON.stringify({decision:x,note})},ses);setOk(x==="approved"?"Versjonen er godkjent.":"Endringsønsket er sendt.");await load()}catch(e){setError(e instanceof Error?e.message:String(e))}}
- async function choose(v:V){if(v.id===d?.version.id){setVer(d.version);setPic(d.project.preview);setCs(d.comments);return}try{const x=await q<{version:V;comments:C[]}>(base+"/versions/"+v.id);setVer(x.version);setPic(x.version.payload?.reviewPreview||v.preview||null);setCs(x.comments)}catch(e){setError(e instanceof Error?e.message:String(e))}}
- async function record(){if(!navigator.mediaDevices?.getDisplayMedia||typeof MediaRecorder==="undefined"){setError("Skjermopptak støttes ikke.");return}try{const stream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true}),r=new MediaRecorder(stream);chunks.current=[];r.ondataavailable=e=>{if(e.data.size)chunks.current.push(e.data)};r.onstop=()=>{stream.getTracks().forEach(t=>t.stop());setRecording(false);const b=new Blob(chunks.current,{type:"video/webm"});if(b.size)void post(undefined,b)};stream.getVideoTracks()[0]?.addEventListener("ended",()=>r.state!=="inactive"&&r.stop());rec.current=r;r.start(1000);setRecording(true)}catch{}}
- function move(e:PE<HTMLDivElement>){if(!ses||Date.now()-last.current<900)return;last.current=Date.now();const r=e.currentTarget.getBoundingClientRect();void q(base+"/presence",{method:"POST",body:JSON.stringify({cursorX:(e.clientX-r.left)/r.width,cursorY:(e.clientY-r.top)/r.height})},ses).catch(()=>{})}
- function pin(e:PE<HTMLDivElement>){if(!can||(e.target as HTMLElement).closest("button,a"))return;if(!ses){setJoin(true);return}const r=e.currentTarget.getBoundingClientRect();setAnchor({x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height})}
- if(!d)return <div className="mrl"><style>{css}</style>{error||"Åpner Review Room…"}</div>;const ratio=d.project.canvas?.width&&d.project.canvas?.height?d.project.canvas.width+"/"+d.project.canvas.height:"1/1";
- return <div className="mr"><style>{css}</style><header><div className="brand"><i>M</i><span><b>{d.project.name}</b><small>{ver?.label} · {sl(ver?.reviewStatus||"")}</small></span></div><div>{cur.slice(0,4).map(x=><i className="avatar" key={x.participant_key}>{x.display_name.slice(0,2)}</i>)}{who&&<button onClick={()=>setJoin(true)}>{who.display_name||who.displayName||"Gjest"}</button>}</div></header>
- <main><section className="left"><nav><b>{ver?.label}</b>{d.share.allowVersionHistory&&<select value={ver?.id} onChange={e=>{const v=d.versions.find(x=>x.id===e.target.value);if(v)void choose(v)}}>{d.versions.map(v=><option key={v.id} value={v.id}>{v.label}</option>)}</select>}{d.share.allowVersionHistory&&d.versions.length>1&&<select value={cmp?.id||""} onChange={e=>setCmp(d.versions.find(x=>x.id===e.target.value)||null)}><option value="">Sammenlign…</option>{d.versions.filter(v=>v.id!==ver?.id).map(v=><option key={v.id} value={v.id}>{v.label}</option>)}</select>}</nav><div className="stage" style={{aspectRatio:ratio}} onClick={pin} onPointerMove={move}>{pic?<img src={pic} alt={d.project.name}/>:<p>Forhåndsvisning mangler</p>}{cmp?.preview&&<img className="cmp" src={cmp.preview} alt="" style={{clipPath:"inset(0 0 0 "+split+"%)"}}/>}{cmp&&<i className="line" style={{left:split+"%"}}/>}{roots.filter(c=>c.anchorX!=null).map(c=><button className={"pin "+(c.status==="resolved"?"done":"")} key={c.id} style={{left:c.anchorX!*100+"%",top:c.anchorY!*100+"%"}} onClick={e=>{e.stopPropagation();document.getElementById("c"+c.id)?.scrollIntoView({behavior:"smooth"})}}>{c.number}</button>)}{anchor&&<i className="pin pending" style={{left:anchor.x*100+"%",top:anchor.y*100+"%"}}>+</i>}{cur.filter(x=>x.cursor_x!=null).map(x=><i className="cursor" key={x.participant_key} style={{left:x.cursor_x!*100+"%",top:x.cursor_y!*100+"%"}}>⌁<small>{x.display_name}</small></i>)}</div>{cmp&&<input className="range" type="range" min="0" max="100" value={split} onChange={e=>setSplit(+e.target.value)}/>}<small>{can?"Klikk i designet for å feste en kommentar.":d.share.commentsPaused?"Kommentarer er pauset.":"Kun visning."}</small></section>
- <aside><div className="ahead"><span><b>Feedback</b><small>{roots.length} kommentarer</small></span><nav>{["open","all","resolved"].map(x=><button className={filter===x?"on":""} onClick={()=>setFilter(x)} key={x}>{x==="open"?"Åpne":x==="all"?"Alle":"Løst"}</button>)}</nav></div>{error&&<p className="err">{error}</p>}{ok&&<p className="ok">{ok}</p>}{can&&<div className="compose">{anchor&&<small>Pin valgt <button onClick={()=>setAnchor(null)}>fjern</button></small>}<textarea value={text} onChange={e=>setText(e.target.value)} placeholder={anchor?"Hva skal endres her?":"Skriv en kommentar…"}/><div><label>📎 {file?.name||"Vedlegg"}<input type="file" onChange={e=>setFile(e.target.files?.[0]||null)}/></label>{d.share.allowRecordings&&<button className={recording?"red":""} onClick={recording?()=>rec.current?.stop():()=>void record()}>{recording?"■ Stopp":"● Opptak"}</button>}<button className="send" disabled={!text.trim()||busy==="c"} onClick={()=>void post()}>Send</button></div></div>}
- <div className="comments">{shown.map(c=><article id={"c"+c.id} className={c.status==="resolved"?"resolved":""} key={c.id}><div className="ch"><i>#{c.number}</i><span><b>{c.authorDisplayName}</b><small>{new Date(c.createdAt).toLocaleString("no-NO")}</small></span></div><p>{c.body}</p>{c.attachments.map(f=><a href={base+"/attachments/"+f.id} target="_blank" rel="noreferrer" key={f.id}>{f.isRecording?"🎬":"📎"} {f.displayName}</a>)}{replies(c.id).map(r=><blockquote key={r.id}><b>{r.authorDisplayName}</b> {r.body}</blockquote>)}{can&&<div className="acts">{["👍","❤️","👀"].map(e=><button onClick={()=>react(c,e)} key={e}>{e} {c.reactions[e]||""}</button>)}<button onClick={()=>setReplyTo(replyTo===c.id?null:c.id)}>Svar</button>{who?.id===c.reviewerSessionId&&<button onClick={()=>resolve(c)}>{c.status==="resolved"?"Åpne":"Løs"}</button>}</div>}{replyTo===c.id&&<div className="reply"><input autoFocus value={reply} onChange={e=>setReply(e.target.value)}/><button onClick={()=>void post(c.id)}>Send</button></div>}</article>)}</div>{d.share.accessMode==="approve"&&ver?.id===d.version.id&&<div className="decision"><textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Valgfri merknad"/><button onClick={()=>void decision("changes_requested")}>Be om endringer</button><button className="approve" onClick={()=>void decision("approved")}>✓ Godkjenn</button></div>}</aside></main>
- {join&&<div className="back"><form onSubmit={enter}><h1>Bli med i gjennomgangen</h1><p>Ingen konto er nødvendig.</p><input required autoFocus placeholder="Navn" value={id.displayName} onChange={e=>setId({...id,displayName:e.target.value})}/><input type="email" placeholder="E-post (valgfritt)" value={id.email} onChange={e=>setId({...id,email:e.target.value})}/><button>{busy==="j"?"Åpner…":"Åpne Review Room"}</button>{ses&&<button type="button" onClick={()=>setJoin(false)}>Avbryt</button>}</form></div>}{tour&&<div className="tour"><b>Rask omvisning</b><span>Klikk i designet, kommenter i tråder, og godkjenn til slutt.</span><button onClick={()=>{localStorage.setItem("mr-tour","1");setTour(false)}}>Skjønner</button></div>}</div>
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import { useRoute } from "wouter";
+import "./mockup-review.css";
+
+type ReviewTool = "select" | "pin" | "freehand" | "arrow" | "rect";
+type ReviewPoint = { x: number; y: number };
+type ReviewMark = {
+  id: string;
+  kind: "freehand" | "arrow" | "rect";
+  points: ReviewPoint[];
+  color: string;
+  width: number;
+};
+type Version = {
+  id: string;
+  label: string;
+  reviewStatus: string;
+  preview?: string | null;
+  payload?: { reviewPreview?: string };
+};
+type Attachment = {
+  id: string;
+  displayName: string;
+  isRecording: boolean;
+};
+type Comment = {
+  id: string;
+  number: number;
+  parentId: string | null;
+  reviewerSessionId: string | null;
+  authorDisplayName: string;
+  body: string;
+  anchorKind: "general" | "canvas" | "element";
+  anchorRef?: string | null;
+  anchorX: number | null;
+  anchorY: number | null;
+  anchorOffsetX?: number | null;
+  anchorOffsetY?: number | null;
+  marks?: ReviewMark[];
+  status: string;
+  createdAt: string;
+  attachments: Attachment[];
+  reactions: Record<string, number>;
+};
+type Decision = {
+  id: string;
+  versionId: string;
+  decision: "approved" | "changes_requested" | "reset";
+  note?: string | null;
+  actorDisplayName: string;
+  createdAt: string;
+};
+type ReviewData = {
+  project: {
+    name: string;
+    preview: string | null;
+    canvas?: { width?: number; height?: number };
+  };
+  version: Version;
+  versions: Version[];
+  comments: Comment[];
+  decisions?: Decision[];
+  participants?: string[];
+  share: {
+    accessMode: "view" | "comment" | "approve";
+    requireIdentity: boolean;
+    allowRecordings: boolean;
+    allowVersionHistory: boolean;
+    commentsPaused: boolean;
+  };
+};
+type Reviewer = { id: string; display_name?: string; displayName?: string };
+type Presence = {
+  participant_key: string;
+  display_name: string;
+  cursor_x: number | null;
+  cursor_y: number | null;
+};
+type RecordingPreview = {
+  blob: Blob;
+  url: string;
+  durationMs: number;
+  transcript: string;
+};
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+const API = "/api/role-room/mockup-shared";
+const FILTERS = ["open", "all", "pinned", "general", "resolved"] as const;
+const TOOLS: Array<[ReviewTool, string, string]> = [
+  ["select", "Velg", "V"],
+  ["pin", "Pin", "P"],
+  ["freehand", "Frihånd", "F"],
+  ["arrow", "Pil", "A"],
+  ["rect", "Ramme", "R"],
+];
+const TOUR = [
+  ["Marker i designet", "Velg Pin, Frihånd, Pil eller Ramme i verktøylinjen og klikk eller dra direkte på canvaset."],
+  ["Jobb i tråder", "Klikk en pin for å åpne riktig tråd. Egne pins kan flyttes med Velg-verktøyet."],
+  ["Avslutt runden", "Filtrer åpne kommentarer, legg ved filer eller opptak, og godkjenn når alt er avklart."],
+];
+
+function stored(key: string): string {
+  try { return sessionStorage.getItem(key) || ""; } catch { return ""; }
 }
-const css=`
-:root{color-scheme:dark}.mr{--b:#090c12;--p:#121722;--c:#191f2b;--l:#2b3447;--m:#929caf;--a:#29c7d8;min-height:100vh;background:var(--b);color:#f4f6fa;font:14px system-ui}.mr *{box-sizing:border-box}.mr header{height:64px;padding:0 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--l)}.brand{display:flex;gap:9px}.brand>i{width:34px;height:34px;display:grid;place-items:center;border-radius:9px;background:linear-gradient(135deg,#24365c,#d2aa53);font-weight:900}.brand>span{display:grid}.mr small{display:block;color:var(--m)}.mr button,.mr select{background:#1b2230;color:white;border:1px solid var(--l);border-radius:7px;padding:6px}.avatar{display:inline-grid;place-items:center;width:29px;height:29px;border-radius:50%;background:#354058;margin-left:-6px}.mr main{display:grid;grid-template-columns:minmax(0,1fr) 410px;height:calc(100vh - 64px)}.left{padding:16px;display:flex;flex-direction:column;align-items:center;gap:9px}.left>nav{width:min(100%,1050px);display:flex;gap:7px}.left>nav b{margin-right:auto}.stage{position:relative;width:min(100%,1050px);max-height:calc(100vh - 160px);background:#040609;overflow:hidden;border-radius:11px;box-shadow:0 25px 70px #0009}.stage>img{width:100%;height:100%;object-fit:contain}.stage>p{display:grid;place-items:center;height:100%;color:var(--m)}.cmp{position:absolute;inset:0}.line{position:absolute;top:0;bottom:0;width:2px;background:white}.pin{position:absolute;transform:translate(-50%,-50%);width:30px;height:30px;border-radius:50%;background:#d2aa53;color:#111;border:2px solid white;font-weight:900}.pin.done{background:#667184}.pin.pending{display:grid;place-items:center;background:var(--a)}.cursor{position:absolute;color:#5ce4f2;font-size:20px}.cursor small{position:absolute;left:12px;background:#176b77;color:white;padding:2px;white-space:nowrap}.range{width:60%}.mr aside{display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--l);background:var(--p)}.ahead{display:flex;justify-content:space-between;padding:11px;border-bottom:1px solid var(--l)}.ahead nav{display:flex;gap:3px}.ahead .on,.send{background:var(--a);color:#041419}.err,.ok{margin:8px;padding:8px;background:#51202a;border-radius:7px}.ok{background:#164336}.compose{padding:10px;border-bottom:1px solid var(--l)}.compose textarea,.decision textarea{width:100%;min-height:60px;background:#0b0f16;color:white;border:1px solid var(--l);border-radius:8px;padding:8px}.compose>div{display:flex;gap:5px;margin-top:5px}.compose label{padding:6px;border:1px solid var(--l);border-radius:7px}.compose label input{display:none}.compose .send{margin-left:auto}.red{background:#a52d40!important}.comments{flex:1;overflow:auto;padding:10px;display:grid;align-content:start;gap:8px}.comments article{background:var(--c);border:1px solid var(--l);border-radius:9px;padding:10px}.comments article.resolved{opacity:.6}.ch{display:flex;gap:8px}.ch>i{width:28px;height:28px;display:grid;place-items:center;border-radius:50%;background:#d2aa53;color:#111;font-weight:900}.ch>span{display:grid}.comments article>p{white-space:pre-wrap}.comments a{display:block;color:#75dfec}.comments blockquote{border-left:2px solid #3d475b;padding-left:7px}.acts{display:flex;gap:4px}.reply{display:flex;margin-top:6px}.reply input{flex:1}.decision{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:10px;border-top:1px solid var(--l)}.decision textarea{grid-column:1/-1;min-height:40px}.approve{background:#67d49d!important;color:#052116!important}.back{position:fixed;inset:0;display:grid;place-items:center;background:#03050add}.back form{width:min(90vw,390px);display:grid;gap:8px;padding:25px;background:#161c28;border:1px solid #38445c;border-radius:14px}.back input{padding:10px;background:#0b0f16;color:white;border:1px solid var(--l)}.tour{position:fixed;left:18px;bottom:18px;display:grid;gap:7px;padding:14px;background:#202838;border:1px solid #43506a;border-radius:10px}.mrl{min-height:100vh;display:grid;place-items:center;background:#090c12;color:white}@media(max-width:850px){.mr main{display:block;height:auto}.mr aside{min-height:70vh}.stage{max-height:none}.comments{overflow:visible}}
-`;
+function storedJson<T>(key: string): T | null {
+  try { return JSON.parse(sessionStorage.getItem(key) || "null") as T | null; } catch { return null; }
+}
+function reviewStatusLabel(status?: string): string {
+  return ({
+    draft: "Kladd",
+    in_review: "Til gjennomgang",
+    changes_requested: "Endringer ønsket",
+    approved: "Godkjent",
+    superseded: "Erstattet",
+  } as Record<string, string>)[status || ""] || status || "Kladd";
+}
+function decisionLabel(decision: Decision["decision"]): string {
+  return decision === "approved" ? "Godkjent" : decision === "reset" ? "Tilbakestilt" : "Endringer ønsket";
+}
+function clamp(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+function makeId(): string {
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : "review-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+}
+async function requestJson<T>(url: string, init: RequestInit = {}, session = ""): Promise<T> {
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      Accept: "application/json",
+      ...(init.body instanceof FormData ? {} : init.body ? { "Content-Type": "application/json" } : {}),
+      ...(session ? { "x-mockup-reviewer": session } : {}),
+      ...(init.headers || {}),
+    },
+  });
+  if (!response.ok) {
+    let message = "HTTP " + response.status;
+    try {
+      const body = await response.json() as { error?: string; detail?: string };
+      message = body.detail || body.error || message;
+    } catch { /* tom respons */ }
+    throw new Error(message.replaceAll("_", " "));
+  }
+  return response.json() as Promise<T>;
+}
+function uploadAttachment(
+  url: string,
+  session: string,
+  blob: Blob,
+  name: string,
+  recording: boolean,
+  onProgress: (value: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    form.append("file", blob, name);
+    form.append("isRecording", String(recording));
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.setRequestHeader("x-mockup-reviewer", session);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
+    };
+    xhr.onerror = () => reject(new Error("Opplastingen mistet forbindelsen."));
+    xhr.onload = () => xhr.status >= 200 && xhr.status < 300
+      ? resolve()
+      : reject(new Error("Opplasting feilet (HTTP " + xhr.status + ")."));
+    xhr.send(form);
+  });
+}
+
+export default function MockupReviewPage() {
+  const route = useRoute("/mockup-review/:token");
+  const params = route[1] as { token: string } | null;
+  const token = params?.token || "";
+  const base = API + "/" + encodeURIComponent(token);
+  const sessionKey = "mr:" + token;
+  const [data, setData] = useState<ReviewData | null>(null);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [session, setSession] = useState(() => stored(sessionKey));
+  const [reviewer, setReviewer] = useState<Reviewer | null>(() => storedJson<Reviewer>(sessionKey + "p"));
+  const [identity, setIdentity] = useState({ displayName: "", email: "" });
+  const [showIdentity, setShowIdentity] = useState(false);
+  const [text, setText] = useState("");
+  const [reply, setReply] = useState("");
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [pending, setPending] = useState<{ x: number; y: number; marks: ReviewMark[] } | null>(null);
+  const [draftMark, setDraftMark] = useState<ReviewMark | null>(null);
+  const draftMarkRef = useRef<ReviewMark | null>(null);
+  const [tool, setTool] = useState<ReviewTool>("select");
+  const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
+  const [pinsVisible, setPinsVisible] = useState(true);
+  const [draggedPins, setDraggedPins] = useState<Record<string, ReviewPoint>>({});
+  const [file, setFile] = useState<File | null>(null);
+  const [filter, setFilter] = useState<(typeof FILTERS)[number]>("open");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [busy, setBusy] = useState("");
+  const [note, setNote] = useState("");
+  const [presence, setPresence] = useState<Presence[]>([]);
+  const [version, setVersion] = useState<Version | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [compare, setCompare] = useState<Version | null>(null);
+  const [split, setSplit] = useState(50);
+  const [tourStep, setTourStep] = useState(() => {
+    try { return localStorage.getItem("mr-tour-v2") === "1" ? -1 : 0; } catch { return 0; }
+  });
+
+  const [showRecorder, setShowRecorder] = useState(false);
+  const [recordState, setRecordState] = useState<"setup" | "recording" | "paused" | "preview">("setup");
+  const [recordOptions, setRecordOptions] = useState({ microphone: true, camera: false, systemAudio: true, transcript: false });
+  const [recordElapsed, setRecordElapsed] = useState(0);
+  const [recordPreview, setRecordPreview] = useState<RecordingPreview | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamsRef = useRef<MediaStream[]>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const drawFrameRef = useRef<number | null>(null);
+  const recordTimerRef = useRef<number | null>(null);
+  const recordStartedRef = useRef(0);
+  const transcriptRef = useRef("");
+  const speechRef = useRef<SpeechRecognitionLike | null>(null);
+  const cameraPreviewRef = useRef<HTMLVideoElement>(null);
+  const [liveCamera, setLiveCamera] = useState<MediaStream | null>(null);
+  const presenceThrottle = useRef(0);
+
+  const load = useCallback(async () => {
+    if (!token) return;
+    try {
+      const next = await requestJson<ReviewData>(base);
+      setData(next);
+      setComments(next.comments || []);
+      setVersion((current) => current && current.id !== next.version.id ? current : next.version);
+      setPreview((current) => version && version.id !== next.version.id ? current : next.project.preview);
+      setError("");
+      if (!session && !next.share.requireIdentity) {
+        const joined = await requestJson<{ reviewerToken: string; reviewer: Reviewer }>(
+          base + "/session",
+          { method: "POST", body: JSON.stringify({ displayName: "" }) },
+        );
+        sessionStorage.setItem(sessionKey, joined.reviewerToken);
+        sessionStorage.setItem(sessionKey + "p", JSON.stringify(joined.reviewer));
+        setSession(joined.reviewerToken);
+        setReviewer(joined.reviewer);
+      } else if (!session && next.share.accessMode !== "view") {
+        setShowIdentity(true);
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }, [base, session, sessionKey, token, version]);
+
+  useEffect(() => { void load(); }, [token]);
+  useEffect(() => {
+    if (!base) return;
+    const poll = () => void requestJson<{ presence: Presence[] }>(base + "/presence")
+      .then((result) => setPresence(result.presence || []))
+      .catch(() => undefined);
+    poll();
+    const id = window.setInterval(poll, 4_000);
+    return () => window.clearInterval(id);
+  }, [base]);
+  useEffect(() => {
+    if (!cameraPreviewRef.current) return;
+    cameraPreviewRef.current.srcObject = liveCamera;
+    if (liveCamera) void cameraPreviewRef.current.play().catch(() => undefined);
+  }, [liveCamera, showRecorder, recordState]);
+  useEffect(() => () => {
+    if (recordPreview?.url) URL.revokeObjectURL(recordPreview.url);
+    streamsRef.current.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
+  }, [recordPreview?.url]);
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setTool("select");
+        setPending(null);
+        setActiveCommentId(null);
+      }
+    };
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
+  }, []);
+
+  const roots = useMemo(() => comments.filter((comment) => !comment.parentId), [comments]);
+  const shown = useMemo(() => roots.filter((comment) => {
+    if (filter === "open") return comment.status !== "resolved" && comment.status !== "wontfix";
+    if (filter === "resolved") return comment.status === "resolved" || comment.status === "wontfix";
+    if (filter === "pinned") return comment.anchorKind !== "general";
+    if (filter === "general") return comment.anchorKind === "general";
+    return true;
+  }), [filter, roots]);
+  const replies = useCallback((id: string) => comments.filter((comment) => comment.parentId === id), [comments]);
+  const currentVersion = Boolean(version && data && version.id === data.version.id);
+  const canComment = Boolean(
+    data && session && data.share.accessMode !== "view" && !data.share.commentsPaused && currentVersion,
+  );
+  const reviewerName = reviewer?.display_name || reviewer?.displayName || "Gjest";
+  const ratio = data?.project.canvas?.width && data.project.canvas.height
+    ? String(data.project.canvas.width) + "/" + String(data.project.canvas.height)
+    : "1/1";
+  const currentDecisions = (data?.decisions || []).filter((item) => item.versionId === version?.id);
+  const allMarks = [
+    ...(pinsVisible ? shown.flatMap((comment) => comment.marks || []) : []),
+    ...(pending?.marks || []),
+    ...(draftMark ? [draftMark] : []),
+  ];
+
+  async function enter(event: FormEvent) {
+    event.preventDefault();
+    setBusy("identity");
+    try {
+      const joined = await requestJson<{ reviewerToken: string; reviewer: Reviewer }>(
+        base + "/session",
+        { method: "POST", body: JSON.stringify(identity) },
+      );
+      sessionStorage.setItem(sessionKey, joined.reviewerToken);
+      sessionStorage.setItem(sessionKey + "p", JSON.stringify(joined.reviewer));
+      setSession(joined.reviewerToken);
+      setReviewer(joined.reviewer);
+      setShowIdentity(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function postComment(parentId?: string, recording?: RecordingPreview) {
+    const body = recording ? (text.trim() || "Skjermopptak vedlagt") : parentId ? reply.trim() : text.trim();
+    if (!session) { setShowIdentity(true); return; }
+    if (!body) return;
+    setBusy("comment");
+    setUploadProgress(0);
+    try {
+      const result = await requestJson<{ comment: Comment }>(
+        base + "/comments",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            body,
+            parentId,
+            anchorKind: parentId || !pending ? "general" : "canvas",
+            anchorX: parentId ? null : pending?.x,
+            anchorY: parentId ? null : pending?.y,
+            marks: parentId ? [] : pending?.marks,
+            viewportWidth: window.innerWidth,
+            viewportHeight: window.innerHeight,
+            context: recording ? {
+              transcript: recording.transcript,
+              recordingDurationMs: recording.durationMs,
+            } : undefined,
+          }),
+        },
+        session,
+      );
+      if (recording) {
+        await uploadAttachment(
+          base + "/comments/" + result.comment.id + "/attachments",
+          session,
+          recording.blob,
+          "review-opptak.webm",
+          true,
+          setUploadProgress,
+        );
+      } else if (file && !parentId) {
+        await uploadAttachment(
+          base + "/comments/" + result.comment.id + "/attachments",
+          session,
+          file,
+          file.name,
+          false,
+          setUploadProgress,
+        );
+      }
+      setText("");
+      setReply("");
+      setReplyTo(null);
+      setPending(null);
+      setFile(null);
+      setTool("select");
+      setSuccess("Kommentaren er sendt.");
+      if (recording) closeRecorder();
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy("");
+      setUploadProgress(0);
+    }
+  }
+
+  function react(comment: Comment, emoji: string) {
+    if (!session) { setShowIdentity(true); return; }
+    void requestJson(
+      base + "/comments/" + comment.id + "/reactions",
+      { method: "POST", body: JSON.stringify({ emoji }) },
+      session,
+    ).then(load).catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
+  }
+  function toggleResolved(comment: Comment) {
+    void requestJson(
+      base + "/comments/" + comment.id,
+      { method: "PATCH", body: JSON.stringify({ status: comment.status === "resolved" ? "open" : "resolved" }) },
+      session,
+    ).then(load).catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
+  }
+  async function decision(value: "approved" | "changes_requested") {
+    if (!session) { setShowIdentity(true); return; }
+    setBusy("decision");
+    try {
+      await requestJson(
+        base + "/decision",
+        { method: "POST", body: JSON.stringify({ decision: value, note }) },
+        session,
+      );
+      setSuccess(value === "approved" ? "Versjonen er godkjent." : "Endringsønsket er sendt.");
+      setNote("");
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy("");
+    }
+  }
+  async function chooseVersion(next: Version) {
+    if (next.id === data?.version.id) {
+      setVersion(data.version);
+      setPreview(data.project.preview);
+      setComments(data.comments);
+      return;
+    }
+    try {
+      const result = await requestJson<{
+        version: Version;
+        project?: { preview?: string | null };
+        comments: Comment[];
+      }>(base + "/versions/" + next.id);
+      setVersion(result.version);
+      setPreview(result.project?.preview || result.version.preview || result.version.payload?.reviewPreview || next.preview || null);
+      setComments(result.comments);
+      setActiveCommentId(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }
+
+  function stagePoint(event: { clientX: number; clientY: number }, element: HTMLElement): ReviewPoint {
+    const rect = element.getBoundingClientRect();
+    return {
+      x: clamp((event.clientX - rect.left) / Math.max(1, rect.width)),
+      y: clamp((event.clientY - rect.top) / Math.max(1, rect.height)),
+    };
+  }
+  function updateDraft(mark: ReviewMark | null) {
+    draftMarkRef.current = mark;
+    setDraftMark(mark);
+  }
+  function beginMarkup(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!canComment || tool === "select") return;
+    if ((event.target as HTMLElement).closest("button,a,input,select")) return;
+    event.preventDefault();
+    const point = stagePoint(event, event.currentTarget);
+    if (tool === "pin") {
+      setPending({ ...point, marks: [] });
+      setTool("select");
+      return;
+    }
+    const mark: ReviewMark = {
+      id: makeId(),
+      kind: tool,
+      points: [point, point],
+      color: "#f97316",
+      width: 3,
+    };
+    updateDraft(mark);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function moveMarkup(event: ReactPointerEvent<HTMLDivElement>) {
+    const mark = draftMarkRef.current;
+    if (!mark) return;
+    const point = stagePoint(event, event.currentTarget);
+    updateDraft({
+      ...mark,
+      points: mark.kind === "freehand" ? [...mark.points.slice(0, 499), point] : [mark.points[0], point],
+    });
+  }
+  function finishMarkup(event: ReactPointerEvent<HTMLDivElement>) {
+    const mark = draftMarkRef.current;
+    if (!mark) return;
+    event.preventDefault();
+    const point = stagePoint(event, event.currentTarget);
+    const finished = {
+      ...mark,
+      points: mark.kind === "freehand" ? mark.points : [mark.points[0], point],
+    };
+    updateDraft(null);
+    setPending({ ...finished.points[0], marks: [finished] });
+    setTool("select");
+  }
+  function movePresence(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!session || Date.now() - presenceThrottle.current < 900) return;
+    presenceThrottle.current = Date.now();
+    const point = stagePoint(event, event.currentTarget);
+    void requestJson(
+      base + "/presence",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          cursorX: point.x,
+          cursorY: point.y,
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+        }),
+      },
+      session,
+    ).catch(() => undefined);
+  }
+  function beginPinDrag(comment: Comment, event: ReactPointerEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    setActiveCommentId(comment.id);
+    document.getElementById("comment-" + comment.id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (tool !== "select" || reviewer?.id !== comment.reviewerSessionId) return;
+    const stage = event.currentTarget.closest(".mockup-review-stage") as HTMLElement | null;
+    if (!stage) return;
+    const abort = new AbortController();
+    let moved = false;
+    const move = (next: PointerEvent) => {
+      moved = true;
+      const point = stagePoint(next, stage);
+      setDraggedPins((current) => ({ ...current, [comment.id]: point }));
+    };
+    const up = (next: PointerEvent) => {
+      const point = stagePoint(next, stage);
+      abort.abort();
+      setDraggedPins((current) => {
+        const copy = { ...current };
+        delete copy[comment.id];
+        return copy;
+      });
+      if (!moved) return;
+      void requestJson(
+        base + "/comments/" + comment.id,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            anchorKind: "canvas",
+            anchorRef: null,
+            anchorX: point.x,
+            anchorY: point.y,
+            anchorOffsetX: null,
+            anchorOffsetY: null,
+            marks: comment.marks || [],
+          }),
+        },
+        session,
+      ).then(load).catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
+    };
+    window.addEventListener("pointermove", move, { signal: abort.signal });
+    window.addEventListener("pointerup", up, { once: true, signal: abort.signal });
+  }
+
+  function cleanupRecordingStreams() {
+    streamsRef.current.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
+    streamsRef.current = [];
+    setLiveCamera(null);
+    if (drawFrameRef.current != null) cancelAnimationFrame(drawFrameRef.current);
+    drawFrameRef.current = null;
+    if (recordTimerRef.current != null) window.clearInterval(recordTimerRef.current);
+    recordTimerRef.current = null;
+    void audioContextRef.current?.close().catch(() => undefined);
+    audioContextRef.current = null;
+    speechRef.current?.stop();
+    speechRef.current = null;
+  }
+  function closeRecorder() {
+    if (recorderRef.current && recorderRef.current.state !== "inactive") recorderRef.current.stop();
+    cleanupRecordingStreams();
+    if (recordPreview?.url) URL.revokeObjectURL(recordPreview.url);
+    setRecordPreview(null);
+    setRecordState("setup");
+    setRecordElapsed(0);
+    setShowRecorder(false);
+  }
+  function openRecorder() {
+    if (!navigator.mediaDevices?.getDisplayMedia || typeof MediaRecorder === "undefined") {
+      setError("Skjermopptak støttes ikke i denne nettleseren.");
+      return;
+    }
+    setRecordState("setup");
+    setShowRecorder(true);
+  }
+  async function startRecording() {
+    try {
+      setError("");
+      transcriptRef.current = "";
+      const display = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: recordOptions.systemAudio,
+      });
+      streamsRef.current = [display];
+      let userMedia: MediaStream | null = null;
+      if (recordOptions.microphone || recordOptions.camera) {
+        userMedia = await navigator.mediaDevices.getUserMedia({
+          audio: recordOptions.microphone,
+          video: recordOptions.camera ? { width: { ideal: 640 }, height: { ideal: 360 } } : false,
+        });
+        streamsRef.current.push(userMedia);
+      }
+      const output = new MediaStream();
+      if (recordOptions.camera && userMedia?.getVideoTracks().length) {
+        setLiveCamera(userMedia);
+        const displayVideo = document.createElement("video");
+        const cameraVideo = document.createElement("video");
+        displayVideo.srcObject = display;
+        cameraVideo.srcObject = userMedia;
+        displayVideo.muted = true;
+        cameraVideo.muted = true;
+        await Promise.all([displayVideo.play(), cameraVideo.play()]);
+        const settings = display.getVideoTracks()[0]?.getSettings();
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.min(1920, settings.width || 1920);
+        canvas.height = Math.min(1080, settings.height || 1080);
+        const context = canvas.getContext("2d");
+        const draw = () => {
+          if (!context) return;
+          context.drawImage(displayVideo, 0, 0, canvas.width, canvas.height);
+          const cameraWidth = Math.round(canvas.width * 0.22);
+          const cameraHeight = Math.round(cameraWidth * 9 / 16);
+          const x = canvas.width - cameraWidth - 28;
+          const y = canvas.height - cameraHeight - 28;
+          context.save();
+          context.beginPath();
+          context.roundRect(x, y, cameraWidth, cameraHeight, 18);
+          context.clip();
+          context.drawImage(cameraVideo, x, y, cameraWidth, cameraHeight);
+          context.restore();
+          drawFrameRef.current = requestAnimationFrame(draw);
+        };
+        draw();
+        canvas.captureStream(30).getVideoTracks().forEach((track) => output.addTrack(track));
+      } else {
+        display.getVideoTracks().forEach((track) => output.addTrack(track));
+      }
+      const audioTracks = [
+        ...display.getAudioTracks(),
+        ...(userMedia?.getAudioTracks() || []),
+      ];
+      if (audioTracks.length === 1) {
+        output.addTrack(audioTracks[0]);
+      } else if (audioTracks.length > 1) {
+        const audioContext = new AudioContext();
+        audioContextRef.current = audioContext;
+        const destination = audioContext.createMediaStreamDestination();
+        audioTracks.forEach((track) => {
+          const source = audioContext.createMediaStreamSource(new MediaStream([track]));
+          source.connect(destination);
+        });
+        destination.stream.getAudioTracks().forEach((track) => output.addTrack(track));
+      }
+      streamsRef.current.push(output);
+      if (recordOptions.transcript) {
+        const SpeechCtor = (window as unknown as {
+          SpeechRecognition?: new () => SpeechRecognitionLike;
+          webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+        }).SpeechRecognition || (window as unknown as {
+          webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+        }).webkitSpeechRecognition;
+        if (SpeechCtor) {
+          const speech = new SpeechCtor();
+          speech.continuous = true;
+          speech.interimResults = false;
+          speech.lang = "nb-NO";
+          speech.onresult = (event) => {
+            for (let index = 0; index < event.results.length; index += 1) {
+              if (event.results[index].isFinal) transcriptRef.current += event.results[index][0].transcript + " ";
+            }
+          };
+          speech.start();
+          speechRef.current = speech;
+        }
+      }
+      const mimeType = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"]
+        .find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(output, mimeType ? { mimeType } : undefined);
+      chunksRef.current = [];
+      recorder.ondataavailable = (event) => { if (event.data.size) chunksRef.current.push(event.data); };
+      recorder.onstop = () => {
+        const durationMs = Math.min(600_000, Date.now() - recordStartedRef.current);
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "video/webm" });
+        cleanupRecordingStreams();
+        if (!blob.size) { setError("Opptaket ble tomt. Prøv på nytt."); setRecordState("setup"); return; }
+        const url = URL.createObjectURL(blob);
+        setRecordPreview({ blob, url, durationMs, transcript: transcriptRef.current.trim() });
+        setRecordState("preview");
+      };
+      display.getVideoTracks()[0]?.addEventListener("ended", () => {
+        if (recorder.state !== "inactive") recorder.stop();
+      });
+      recorderRef.current = recorder;
+      recorder.start(1_000);
+      recordStartedRef.current = Date.now();
+      setRecordElapsed(0);
+      setRecordState("recording");
+      recordTimerRef.current = window.setInterval(() => {
+        const elapsed = Date.now() - recordStartedRef.current;
+        setRecordElapsed(elapsed);
+        if (elapsed >= 600_000 && recorder.state !== "inactive") recorder.stop();
+      }, 500);
+    } catch (cause) {
+      cleanupRecordingStreams();
+      setRecordState("setup");
+      if (cause instanceof DOMException && cause.name === "NotAllowedError") return;
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }
+  function toggleRecordingPause() {
+    const recorder = recorderRef.current;
+    if (!recorder) return;
+    if (recorder.state === "recording") {
+      recorder.pause();
+      setRecordState("paused");
+    } else if (recorder.state === "paused") {
+      recorder.resume();
+      setRecordState("recording");
+    }
+  }
+  function stopRecording() {
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+  }
+  function reshoot() {
+    if (recordPreview?.url) URL.revokeObjectURL(recordPreview.url);
+    setRecordPreview(null);
+    setRecordState("setup");
+    setRecordElapsed(0);
+  }
+
+  if (!data) {
+    return <div className="mockup-review-loading">{error || "Åpner Review Room…"}</div>;
+  }
+
+  return <div className="mockup-review">
+    <header className="mockup-review-header">
+      <div className="review-brand">
+        <i>M</i>
+        <span>
+          <b>{data.project.name}</b>
+          <small>{version?.label} · {reviewStatusLabel(version?.reviewStatus)}</small>
+        </span>
+      </div>
+      <div className="review-header-actions">
+        <span className={"review-status status-" + (version?.reviewStatus || "draft")}>{reviewStatusLabel(version?.reviewStatus)}</span>
+        {presence.slice(0, 4).map((person) => <i className="review-avatar" key={person.participant_key} title={person.display_name}>{person.display_name.slice(0, 2)}</i>)}
+        {reviewer && <button onClick={() => setShowIdentity(true)}>{reviewerName}</button>}
+        {data.share.accessMode === "approve" && currentVersion && <>
+          <button disabled={busy === "decision"} onClick={() => void decision("changes_requested")}>Be om endringer</button>
+          <button className="review-approve" disabled={busy === "decision"} onClick={() => void decision("approved")}>✓ Godkjenn</button>
+        </>}
+      </div>
+    </header>
+
+    <main className="mockup-review-main">
+      <section className="review-canvas-column">
+        <nav className="review-canvas-nav">
+          <b>{version?.label}</b>
+          {data.share.allowVersionHistory && <select value={version?.id} onChange={(event) => {
+            const next = data.versions.find((item) => item.id === event.target.value);
+            if (next) void chooseVersion(next);
+          }}>{data.versions.map((item) => <option key={item.id} value={item.id}>{item.label} · {reviewStatusLabel(item.reviewStatus)}</option>)}</select>}
+          {data.share.allowVersionHistory && data.versions.length > 1 && <select value={compare?.id || ""} onChange={(event) => setCompare(data.versions.find((item) => item.id === event.target.value) || null)}>
+            <option value="">Sammenlign…</option>
+            {data.versions.filter((item) => item.id !== version?.id).map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </select>}
+          <button onClick={() => setPinsVisible((visible) => !visible)}>{pinsVisible ? "Skjul pins" : "Vis pins"}</button>
+        </nav>
+
+        <div className="review-toolbar" role="toolbar" aria-label="Review-verktøy">
+          {TOOLS.map(([value, label, shortcut]) => <button
+            key={value}
+            className={tool === value ? "active" : ""}
+            aria-pressed={tool === value}
+            disabled={!canComment && value !== "select"}
+            onClick={() => { setTool(value); if (value !== "select") setActiveCommentId(null); }}
+          ><span>{label}</span><kbd>{shortcut}</kbd></button>)}
+        </div>
+
+        <div
+          className={"mockup-review-stage tool-" + tool}
+          style={{ aspectRatio: ratio }}
+          onPointerDown={beginMarkup}
+          onPointerMove={(event) => { moveMarkup(event); movePresence(event); }}
+          onPointerUp={finishMarkup}
+          onPointerCancel={() => updateDraft(null)}
+        >
+          {preview ? <img src={preview} alt={data.project.name} /> : <p>Forhåndsvisning mangler</p>}
+          {compare?.preview && <img className="review-compare-image" src={compare.preview} alt="" style={{ clipPath: "inset(0 0 0 " + split + "%)" }} />}
+          {compare && <i className="review-compare-line" style={{ left: split + "%" }} />}
+          {allMarks.length > 0 && <svg className="review-marks" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-label="Review-markeringer">
+            <defs><marker id="public-review-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#f97316" /></marker></defs>
+            {allMarks.map((mark) => {
+              const first = mark.points[0];
+              const last = mark.points[mark.points.length - 1];
+              if (!first || !last) return null;
+              if (mark.kind === "rect") return <rect key={mark.id} x={Math.min(first.x, last.x) * 1000} y={Math.min(first.y, last.y) * 1000} width={Math.abs(last.x - first.x) * 1000} height={Math.abs(last.y - first.y) * 1000} fill="rgba(249,115,22,.08)" stroke={mark.color} strokeWidth={mark.width} vectorEffect="non-scaling-stroke" />;
+              if (mark.kind === "arrow") return <line key={mark.id} x1={first.x * 1000} y1={first.y * 1000} x2={last.x * 1000} y2={last.y * 1000} stroke={mark.color} strokeWidth={mark.width} vectorEffect="non-scaling-stroke" markerEnd="url(#public-review-arrow)" />;
+              return <polyline key={mark.id} points={mark.points.map((point) => String(point.x * 1000) + "," + String(point.y * 1000)).join(" ")} fill="none" stroke={mark.color} strokeWidth={mark.width} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />;
+            })}
+          </svg>}
+          {pinsVisible && shown.filter((comment) => comment.anchorX != null && comment.anchorY != null).map((comment) => {
+            const position = draggedPins[comment.id] || { x: comment.anchorX || 0, y: comment.anchorY || 0 };
+            return <button
+              className={"review-pin " + (comment.status === "resolved" ? "done " : "") + (activeCommentId === comment.id ? "active" : "")}
+              key={comment.id}
+              style={{ left: position.x * 100 + "%", top: position.y * 100 + "%" }}
+              aria-label={"Kommentar #" + comment.number + " fra " + comment.authorDisplayName}
+              onPointerDown={(event) => beginPinDrag(comment, event)}
+            >{comment.number}</button>;
+          })}
+          {pending && <i className="review-pin pending" style={{ left: pending.x * 100 + "%", top: pending.y * 100 + "%" }}>+</i>}
+          {presence.filter((person) => person.cursor_x != null).map((person) => <i className="review-cursor" key={person.participant_key} style={{ left: (person.cursor_x || 0) * 100 + "%", top: (person.cursor_y || 0) * 100 + "%" }}>⌁<small>{person.display_name}</small></i>)}
+        </div>
+        {compare && <input className="review-range" aria-label="Sammenligningsskille" type="range" min="0" max="100" value={split} onChange={(event) => setSplit(Number(event.target.value))} />}
+        <small className="review-stage-hint">{canComment ? tool === "select" ? "Velg en tråd eller dra din egen pin for å flytte den." : tool === "pin" ? "Klikk i designet for å feste en kommentar." : "Dra i designet for å markere." : data.share.commentsPaused ? "Kommentarer er pauset." : "Kun visning."}</small>
+      </section>
+
+      <aside className="review-sidebar">
+        <div className="review-sidebar-head">
+          <span><b>Feedback</b><small>{roots.length} kommentarer</small></span>
+          <nav>{FILTERS.map((value) => <button className={filter === value ? "active" : ""} onClick={() => setFilter(value)} key={value}>{({ open: "Åpne", all: "Alle", pinned: "Festede", general: "Generelle", resolved: "Løst" })[value]}</button>)}</nav>
+        </div>
+        {error && <p className="review-error" role="alert">{error}<button onClick={() => setError("")}>×</button></p>}
+        {success && <p className="review-success">{success}<button onClick={() => setSuccess("")}>×</button></p>}
+        {canComment && <div className="review-compose">
+          {pending && <small>{pending.marks.length ? "Markering valgt" : "Pin valgt"} <button onClick={() => setPending(null)}>fjern</button></small>}
+          <textarea value={text} onChange={(event) => setText(event.target.value)} placeholder={pending ? "Hva skal endres her?" : "Skriv en generell kommentar…"} />
+          <small>Bruk @navn for å varsle en deltaker.</small>
+          <div>
+            <label>📎 {file?.name || "Vedlegg"}<input type="file" onChange={(event) => setFile(event.target.files?.[0] || null)} /></label>
+            {data.share.allowRecordings && <button onClick={openRecorder}>● Opptak</button>}
+            <button className="review-send" disabled={!text.trim() || busy === "comment"} onClick={() => void postComment()}>{busy === "comment" ? uploadProgress ? "Laster opp " + uploadProgress + "%" : "Sender…" : "Send"}</button>
+          </div>
+        </div>}
+        <div className="review-comments">
+          {shown.length === 0 && <p className="review-empty">Ingen kommentarer i dette filteret.</p>}
+          {shown.map((comment) => <article
+            id={"comment-" + comment.id}
+            className={(comment.status === "resolved" ? "resolved " : "") + (activeCommentId === comment.id ? "active" : "")}
+            key={comment.id}
+            onClick={() => setActiveCommentId(comment.anchorKind === "general" ? null : comment.id)}
+          >
+            <div className="review-comment-head">
+              <i>#{comment.number}</i>
+              <span><b>{comment.authorDisplayName}</b><small>{new Date(comment.createdAt).toLocaleString("no-NO")} · {comment.anchorKind === "general" ? "Generell" : "Festet"}</small></span>
+            </div>
+            <p>{comment.body}</p>
+            {comment.attachments.map((attachment) => <a href={base + "/attachments/" + attachment.id} target="_blank" rel="noreferrer" key={attachment.id}>{attachment.isRecording ? "🎬" : "📎"} {attachment.displayName}</a>)}
+            {replies(comment.id).map((item) => <blockquote key={item.id}><b>{item.authorDisplayName}</b> {item.body}</blockquote>)}
+            {canComment && <div className="review-comment-actions">
+              {["👍", "❤️", "👀"].map((emoji) => <button onClick={(event) => { event.stopPropagation(); react(comment, emoji); }} key={emoji}>{emoji} {comment.reactions[emoji] || ""}</button>)}
+              <button onClick={(event) => { event.stopPropagation(); setReplyTo(replyTo === comment.id ? null : comment.id); }}>Svar</button>
+              {reviewer?.id === comment.reviewerSessionId && <button onClick={(event) => { event.stopPropagation(); toggleResolved(comment); }}>{comment.status === "resolved" ? "Åpne" : "Løs"}</button>}
+            </div>}
+            {replyTo === comment.id && <div className="review-reply" onClick={(event) => event.stopPropagation()}><input autoFocus value={reply} onChange={(event) => setReply(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void postComment(comment.id); }} /><button onClick={() => void postComment(comment.id)}>Send</button></div>}
+          </article>)}
+          {currentDecisions.length > 0 && <section className="review-decisions">
+            <b>Beslutningshistorikk</b>
+            {currentDecisions.map((item) => <div key={item.id}><span className={"decision-" + item.decision}>{decisionLabel(item.decision)}</span><small>{item.actorDisplayName} · {new Date(item.createdAt).toLocaleString("no-NO")}</small>{item.note && <p>{item.note}</p>}</div>)}
+          </section>}
+        </div>
+        {data.share.accessMode === "approve" && currentVersion && <div className="review-decision">
+          <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Valgfri merknad" />
+          <button disabled={busy === "decision"} onClick={() => void decision("changes_requested")}>Be om endringer</button>
+          <button className="review-approve" disabled={busy === "decision"} onClick={() => void decision("approved")}>✓ Godkjenn</button>
+        </div>}
+      </aside>
+    </main>
+
+    {showIdentity && <div className="review-modal-backdrop"><form className="review-identity" onSubmit={enter}>
+      <h1>Bli med i gjennomgangen</h1>
+      <p>Ingen konto er nødvendig. Navnet vises ved kommentarene dine.</p>
+      <input required autoFocus placeholder="Navn" value={identity.displayName} onChange={(event) => setIdentity({ ...identity, displayName: event.target.value })} />
+      <input type="email" placeholder="E-post for varsler (valgfritt)" value={identity.email} onChange={(event) => setIdentity({ ...identity, email: event.target.value })} />
+      <button className="review-send">{busy === "identity" ? "Åpner…" : "Åpne Review Room"}</button>
+      {session && <button type="button" onClick={() => setShowIdentity(false)}>Avbryt</button>}
+    </form></div>}
+
+    {showRecorder && <div className="review-modal-backdrop"><section className="review-recorder" role="dialog" aria-modal="true" aria-label="Skjermopptak">
+      <header><div><b>Skjermopptak</b><small>Maks 10 minutter</small></div><button onClick={closeRecorder} aria-label="Lukk">×</button></header>
+      {recordState === "setup" && <>
+        <div className="recording-options">
+          <label><input type="checkbox" checked={recordOptions.microphone} onChange={(event) => setRecordOptions({ ...recordOptions, microphone: event.target.checked })} /> Mikrofon</label>
+          <label><input type="checkbox" checked={recordOptions.camera} onChange={(event) => setRecordOptions({ ...recordOptions, camera: event.target.checked })} /> Kamera i hjørnet</label>
+          <label><input type="checkbox" checked={recordOptions.systemAudio} onChange={(event) => setRecordOptions({ ...recordOptions, systemAudio: event.target.checked })} /> Systemlyd</label>
+          <label><input type="checkbox" checked={recordOptions.transcript} onChange={(event) => setRecordOptions({ ...recordOptions, transcript: event.target.checked })} /> Automatisk transkripsjon</label>
+        </div>
+        <p>Velg skjermen eller fanen du vil forklare. Nettleseren ber om tillatelse før opptaket starter.</p>
+        <button className="review-send" onClick={() => void startRecording()}>Velg skjerm og start</button>
+      </>}
+      {(recordState === "recording" || recordState === "paused") && <div className="recording-live">
+        <div className="recording-clock"><i />{new Date(recordElapsed).toISOString().slice(14, 19)} / 10:00</div>
+        {liveCamera && <video ref={cameraPreviewRef} muted playsInline />}
+        <p>{recordState === "paused" ? "Opptaket er satt på pause." : "Forklar det du ser. Kameraet legges inn nederst til høyre."}</p>
+        <div><button onClick={toggleRecordingPause}>{recordState === "paused" ? "Fortsett" : "Pause"}</button><button className="record-stop" onClick={stopRecording}>■ Stopp</button></div>
+      </div>}
+      {recordState === "preview" && recordPreview && <>
+        <video className="recording-preview" src={recordPreview.url} controls />
+        {recordPreview.transcript && <details><summary>Transkripsjon</summary><p>{recordPreview.transcript}</p></details>}
+        <div className="recording-finish"><button onClick={reshoot}>Ta opp på nytt</button><button className="review-send" disabled={busy === "comment"} onClick={() => void postComment(undefined, recordPreview)}>{busy === "comment" ? "Laster opp " + uploadProgress + "%" : "Legg ved kommentar"}</button></div>
+      </>}
+    </section></div>}
+
+    {tourStep >= 0 && <div className="review-tour" role="dialog" aria-label="Rask omvisning">
+      <small>{tourStep + 1} / {TOUR.length}</small>
+      <b>{TOUR[tourStep][0]}</b>
+      <span>{TOUR[tourStep][1]}</span>
+      <div><button onClick={() => { localStorage.setItem("mr-tour-v2", "1"); setTourStep(-1); }}>Hopp over</button><button className="review-send" onClick={() => {
+        if (tourStep === TOUR.length - 1) { localStorage.setItem("mr-tour-v2", "1"); setTourStep(-1); }
+        else setTourStep((step) => step + 1);
+      }}>{tourStep === TOUR.length - 1 ? "Ferdig" : "Neste"}</button></div>
+    </div>}
+  </div>;
+}
