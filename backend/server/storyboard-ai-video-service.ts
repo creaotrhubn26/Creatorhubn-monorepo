@@ -9,6 +9,7 @@ import {
   falPoll,
   falSubmit,
   getGenSettings,
+  higgsfieldEstimate,
   higgsfieldConfigured,
   higgsfieldPoll,
   higgsfieldSubmit,
@@ -23,6 +24,17 @@ export class StoryboardVideoError extends Error {
     readonly code: string,
     readonly safeDetail: string,
   ) { super(code); }
+}
+
+export interface StoryboardVideoPreflight {
+  model: string;
+  provider: string;
+  duration: number;
+  estimatedCostUsd: number;
+  providerCredits?: number;
+  sourceFingerprint: string;
+  sourceB2Key: string;
+  sourceUrl: string;
 }
 
 async function ensureVideoSchema(pool: Pool): Promise<void> {
@@ -103,7 +115,7 @@ function decodeStoryboardImage(imageData: string | null): {
   };
 }
 
-export async function submitStoryboardVideo(
+export async function preflightStoryboardVideo(
   pool: Pool,
   input: {
     projectId: string;
@@ -114,9 +126,8 @@ export async function submitStoryboardVideo(
     modelId: 'seedance-2-i2v' | 'higgsfield-dop-i2v';
     duration: number;
     compiledPrompt: string;
-    compilationFingerprint: string;
   },
-) {
+): Promise<StoryboardVideoPreflight> {
   await ensureVideoSchema(pool);
   const settings = await getGenSettings(pool);
   if (!settings.enabled || !aiAllowed(settings, input.userEmail, input.userRole)) {
@@ -136,7 +147,29 @@ export async function submitStoryboardVideo(
       'Prosjektet må samtykke før et storyboard sendes til tredjeparts AI.');
   }
   const duration = Math.min(15, Math.max(4, Math.round(input.duration || 5)));
-  const estimatedCostUsd = duration * (model.costPerSecondUsd ?? model.estCostUsd / 5);
+  const source = decodeStoryboardImage(input.storyboard.imageData);
+  const sourceFingerprint = crypto.createHash('sha256').update(source.bytes).digest('hex').slice(0, 16);
+  const sourceKey = `workspace/${input.projectId}/storyboards/${input.storyboard.id}/animation-sources/${sourceFingerprint}.${source.extension}`;
+  const stored = await archiveToRoleRoomB2(sourceKey, source.bytes, source.contentType);
+  if (!stored) throw new StoryboardVideoError(503, 'source_unavailable', 'Startbildet kunne ikke klargjøres.');
+  const sourceUrl = await presignRoleRoomB2Download(sourceKey, undefined, 3600);
+  if (!sourceUrl) throw new StoryboardVideoError(503, 'source_unavailable', 'Startbildet kunne ikke åpnes.');
+
+  let providerCredits: number | undefined;
+  let estimatedCostUsd: number;
+  if (model.provider === 'higgsfield') {
+    const estimate = await higgsfieldEstimate({ imageUrl: sourceUrl, prompt: input.compiledPrompt });
+    if (estimate.error || estimate.usd === undefined) {
+      throw new StoryboardVideoError(
+        502, 'provider_estimate_failed',
+        'Higgsfield kunne ikke beregne kostnaden; jobben ble ikke startet.',
+      );
+    }
+    providerCredits = estimate.credits;
+    estimatedCostUsd = estimate.usd;
+  } else {
+    estimatedCostUsd = duration * (model.costPerSecondUsd ?? model.estCostUsd / 5);
+  }
   const workspaceSpent = await pool.query(
     `SELECT COALESCE(SUM(est_cost_usd),0)::float AS spent
        FROM generative_ai_jobs WHERE created_at::date = NOW()::date`,
@@ -157,12 +190,49 @@ export async function submitStoryboardVideo(
     }
   }
 
-  const source = decodeStoryboardImage(input.storyboard.imageData);
-  const sourceKey = `workspace/${input.projectId}/storyboards/${input.storyboard.id}/animation-source.${source.extension}`;
-  const stored = await archiveToRoleRoomB2(sourceKey, source.bytes, source.contentType);
-  if (!stored) throw new StoryboardVideoError(503, 'source_unavailable', 'Startbildet kunne ikke klargjøres.');
-  const sourceUrl = await presignRoleRoomB2Download(sourceKey, undefined, 3600);
-  if (!sourceUrl) throw new StoryboardVideoError(503, 'source_unavailable', 'Startbildet kunne ikke åpnes.');
+  return {
+    model: model.key, provider: model.provider, duration, estimatedCostUsd,
+    providerCredits, sourceFingerprint, sourceB2Key: sourceKey, sourceUrl,
+  };
+}
+
+export async function submitStoryboardVideo(
+  pool: Pool,
+  input: {
+    projectId: string;
+    storyboard: Storyboard;
+    userId: string;
+    userEmail: string;
+    userRole: string;
+    modelId: 'seedance-2-i2v' | 'higgsfield-dop-i2v';
+    duration: number;
+    compiledPrompt: string;
+    compilationFingerprint: string;
+    confirmedPreflight?: {
+      compilationFingerprint: string;
+      sourceFingerprint: string;
+      maxEstimatedCostUsd: number;
+    };
+  },
+) {
+  const preflight = await preflightStoryboardVideo(pool, input);
+  if (input.confirmedPreflight) {
+    const estimateIncreased = preflight.estimatedCostUsd
+      > input.confirmedPreflight.maxEstimatedCostUsd + 0.000_001;
+    if (input.confirmedPreflight.compilationFingerprint !== input.compilationFingerprint
+        || input.confirmedPreflight.sourceFingerprint !== preflight.sourceFingerprint
+        || estimateIncreased) {
+      throw new StoryboardVideoError(
+        409, 'preflight_changed',
+        'Kilde, prompt eller pris er endret. Kontroller den nye forhåndsvisningen før start.',
+      );
+    }
+  }
+  const model = providerFor(input.modelId);
+  const duration = preflight.duration;
+  const estimatedCostUsd = preflight.estimatedCostUsd;
+  const sourceKey = preflight.sourceB2Key;
+  const sourceUrl = preflight.sourceUrl;
 
   let requestId: string | undefined;
   let responseUrl: string | null | undefined;
@@ -194,7 +264,8 @@ export async function submitStoryboardVideo(
     [jobId, input.projectId, input.storyboard.id, input.userId, input.userEmail, model.key, model.provider,
       requestId, responseUrl ?? null, JSON.stringify({
         storyboardId: input.storyboard.id, prompt: input.compiledPrompt, duration,
-        sourceB2Key: sourceKey, compilationFingerprint: input.compilationFingerprint,
+        sourceB2Key: sourceKey, sourceFingerprint: preflight.sourceFingerprint,
+        compilationFingerprint: input.compilationFingerprint,
       }), estimatedCostUsd],
   );
   return { jobId, status: 'queued', estimatedCostUsd, model: model.key };

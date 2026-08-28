@@ -41,6 +41,7 @@ import {
 import {
   getStoryboardVideoConfig,
   pollStoryboardVideo,
+  preflightStoryboardVideo,
   setStoryboardVideoConsent,
   StoryboardVideoError,
   submitStoryboardVideo,
@@ -155,7 +156,14 @@ const storyboardVideoBody = z.object({
   model: z.enum(["seedance-2-i2v", "higgsfield-dop-i2v"]).default("seedance-2-i2v"),
   duration: z.number().min(4).max(15).default(5),
   userAction: z.string().trim().max(1_200).optional(),
+  confirmedPreflight: z.object({
+    compilationFingerprint: z.string().trim().min(8).max(128),
+    sourceFingerprint: z.string().trim().min(8).max(128),
+    maxEstimatedCostUsd: z.number().nonnegative().max(100),
+  }).strict().optional(),
 }).strict();
+
+const storyboardVideoPreflightBody = storyboardVideoBody.omit({ confirmedPreflight: true });
 
 export interface CreateStoryboardRouterDeps {
   activeSessions?: Map<string, SessionData>;
@@ -279,6 +287,77 @@ export function createStoryboardRouter(
   );
 
   router.post(
+    "/projects/:projectId/storyboards/:id/animation-preflight",
+    auth,
+    canManage,
+    async (req, res) => {
+      const parsed = storyboardVideoPreflightBody.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "invalid_request", details: parsed.error.format() });
+        return;
+      }
+      const projectId = String(req.params.projectId);
+      const storyboard = await svc.getStoryboard(pool, String(req.params.id));
+      if (!storyboard || storyboard.projectId !== projectId || !storyboard.frameId) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
+      if ((parsed.data.context.scene.id && storyboard.sceneId
+          && parsed.data.context.scene.id !== storyboard.sceneId)
+          || (parsed.data.context.shot.id
+            && parsed.data.context.shot.id !== storyboard.frameId)) {
+        res.status(400).json({
+          error: "context_mismatch",
+          detail: "Manus- eller shotkonteksten tilhører et annet storyboard.",
+        });
+        return;
+      }
+      try {
+        const hydrated = await hydrateStoryboardProductionContext(pool, {
+          projectId, sceneId: storyboard.sceneId || parsed.data.context.scene.id,
+          context: parsed.data.context,
+        });
+        const context = enrichStoryboardContextWithStrokes(
+          hydrated, storyboard.strokes ?? [], storyboard.width, storyboard.height,
+        );
+        const compilation = compileStoryboardPrompt({
+          kind: "storyboard-video", modelId: parsed.data.model,
+          userAction: parsed.data.userAction, context,
+        });
+        if (!compilation.validation.valid) {
+          res.status(422).json({ error: "prompt_preflight_failed", data: compilation });
+          return;
+        }
+        const checked = await preflightStoryboardVideo(pool, {
+          projectId, storyboard,
+          userId: (req as AuthedRequest).userId,
+          userEmail: (req as AuthedRequest).userEmail,
+          userRole: (req as AuthedRequest).userRole,
+          modelId: parsed.data.model, duration: parsed.data.duration,
+          compiledPrompt: compilation.compiledPrompt,
+        });
+        res.json({
+          success: true,
+          data: {
+            model: checked.model, provider: checked.provider, duration: checked.duration,
+            estimatedCostUsd: checked.estimatedCostUsd,
+            providerCredits: checked.providerCredits,
+            sourceFingerprint: checked.sourceFingerprint,
+            compilationFingerprint: compilation.compilationFingerprint,
+          },
+          compilation,
+        });
+      } catch (error) {
+        if (error instanceof StoryboardVideoError) {
+          res.status(error.status).json({ error: error.code, detail: error.safeDetail });
+          return;
+        }
+        res.status(500).json({ error: "animation_preflight_failed", detail: "internal_error" });
+      }
+    },
+  );
+
+  router.post(
     "/projects/:projectId/storyboards/:id/animate",
     auth,
     canManage,
@@ -328,6 +407,7 @@ export function createStoryboardRouter(
           modelId: parsed.data.model, duration: parsed.data.duration,
           compiledPrompt: compilation.compiledPrompt,
           compilationFingerprint: compilation.compilationFingerprint,
+          confirmedPreflight: parsed.data.confirmedPreflight,
         });
         res.status(202).json({ success: true, data: submitted, compilation });
       } catch (error) {

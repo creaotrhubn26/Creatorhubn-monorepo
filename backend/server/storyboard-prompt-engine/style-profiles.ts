@@ -22,6 +22,20 @@ export const STORYBOARD_STYLE_PROFILES: Record<string, StoryboardStyleProfile> =
     avoid: ['polished concept-art finish', 'photoreal rendering', 'decorative illustration detail'],
     lockedProperties: ['style', 'line-language', 'tonal-range'],
   },
+  'story-pencil-color': {
+    id: 'story-pencil-color',
+    label: 'TRR Story Pencil · Color',
+    medium: 'hand-colored graphite production storyboard drawing',
+    constraints: [
+      'preserve every confident graphite construction line from the source frame',
+      'restrained colored-pencil pigment and translucent production color beneath the line art',
+      'selective atmospheric light, weather and depth without repainting the drawing',
+      'clear silhouettes and readable actor blocking',
+      'visible paper tooth and purposeful unfinished marks',
+    ],
+    avoid: ['photoreal rendering', 'painted-over line art', 'plastic surfaces', 'new decorative detail'],
+    lockedProperties: ['style', 'line-language', 'color-script', 'atmosphere'],
+  },
   cinematic: {
     id: 'cinematic', label: 'Cinematic', medium: 'cinematic production concept frame',
     constraints: ['filmic composition', 'motivated practical lighting', 'realistic depth and production design'],

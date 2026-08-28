@@ -66,6 +66,9 @@ const adapters: Record<string, ModelPromptAdapter> = {
       "Execute one deliberate director-of-photography camera move from the supplied storyboard frame while preserving production continuity.",
     rules: [
       "Prefer a single explicit camera trajectory.",
+      "Animate the supplied drawing; never reinterpret it as live action, photography, polished concept art, or a different illustration style.",
+      "Preserve graphite line placement, paper texture, applied color, atmosphere, value grouping, framing, and all visible silhouettes exactly.",
+      "Keep background marks stable; motion must not crawl, boil, redraw, or add detail between frames.",
       "No cuts, face/hand morphing, new subjects, captions, logos, or audio.",
     ],
   },

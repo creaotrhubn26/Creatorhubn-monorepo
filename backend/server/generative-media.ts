@@ -152,13 +152,13 @@ export async function beeblePoll(generationId: string): Promise<{ status: string
 }
 
 // ─── Higgsfield DoP-klient (bilde→video, kinematisk kamera) ──────────────────
-// Verifisert skjema (offisiell SDK v2, https://platform.higgsfield.ai):
-//   POST /v1/image2video/dop  m/ Authorization: Key KEY_ID:KEY_SECRET
-//   body { input: { model, prompt, input_images:[{type:'image_url',image_url}] } }
-//   submit → { request_id, status_url }; poll status_url → jobs[0].results.raw.url
+// Offentlig OpenAPI: https://docs.higgsfield.ai/docs/openapi.json
+//   POST /higgsfield-ai/dop/turbo, body { prompt, image_url, enhance_prompt }
+//   estimate bruker /estimate + samme modellsti og body.
 // Render kan lagre legitimasjonen som separate secrets. Kombinert variabel
 // beholdes som bakoverkompatibel fallback for eksisterende miljøer.
-const HIGGSFIELD_BASE = "https://platform.higgsfield.ai";
+const HIGGSFIELD_BASE = "https://api.higgsfield.ai";
+const HIGGSFIELD_DOP_PATH = "/higgsfield-ai/dop/turbo";
 
 function higgsfieldCredentials(): string | undefined {
   const keyId = process.env.HIGGSFIELD_API_KEY_ID?.trim();
@@ -173,12 +173,35 @@ export function higgsfieldConfigured(): boolean {
   return Boolean(higgsfieldCredentials());
 }
 
+function higgsfieldDopBody(opts: { imageUrl: string; prompt: string }) {
+  return { prompt: opts.prompt, image_url: opts.imageUrl, enhance_prompt: false };
+}
+
+export async function higgsfieldEstimate(opts: { imageUrl: string; prompt: string }): Promise<{ credits?: number; usd?: number; error?: string }> {
+  const key = higgsfieldCredentials();
+  if (!key) return { error: "higgsfield_not_configured" };
+  try {
+    const r = await fetch(`${HIGGSFIELD_BASE}/estimate${HIGGSFIELD_DOP_PATH}`, {
+      method: "POST",
+      headers: { Authorization: `Key ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify(higgsfieldDopBody(opts)),
+    });
+    const j: any = await r.json().catch(() => ({}));
+    if (!r.ok) return { error: j?.error?.message || j?.detail || `higgsfield_estimate_${r.status}` };
+    const credits = Number(j.credits);
+    const usd = Number(j.usd);
+    if (!Number.isFinite(usd) || usd < 0) return { error: "higgsfield_estimate_invalid" };
+    return { credits: Number.isFinite(credits) ? credits : undefined, usd };
+  } catch (e: any) {
+    return { error: `higgsfield_estimate_threw:${e?.message || e}` };
+  }
+}
+
 export async function higgsfieldSubmit(opts: { imageUrl: string; prompt: string; model?: string }): Promise<{ id?: string; statusUrl?: string; error?: string }> {
   const key = higgsfieldCredentials();
   if (!key) return { error: "higgsfield_not_configured" };
   try {
-    const body = { input: { model: opts.model || "dop-turbo", prompt: opts.prompt, input_images: [{ type: "image_url", image_url: opts.imageUrl }] } };
-    const r = await fetch(`${HIGGSFIELD_BASE}/v1/image2video/dop`, { method: "POST", headers: { Authorization: `Key ${key}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const r = await fetch(`${HIGGSFIELD_BASE}${HIGGSFIELD_DOP_PATH}`, { method: "POST", headers: { Authorization: `Key ${key}`, "Content-Type": "application/json" }, body: JSON.stringify(higgsfieldDopBody(opts)) });
     const j: any = await r.json().catch(() => ({}));
     if (!r.ok) return { error: j?.error?.message || j?.detail || `higgsfield_${r.status}` };
     const id = j.request_id || j.requestId || j.id;
@@ -191,13 +214,20 @@ export async function higgsfieldPoll(statusUrlOrId: string): Promise<{ status: s
   const key = higgsfieldCredentials();
   if (!key) return { status: "ERROR", error: "higgsfield_not_configured" };
   try {
-    const url = statusUrlOrId.startsWith("http") ? statusUrlOrId : `${HIGGSFIELD_BASE}/requests/${statusUrlOrId}/status`;
+    let url = `${HIGGSFIELD_BASE}/requests/${encodeURIComponent(statusUrlOrId)}/status`;
+    if (statusUrlOrId.startsWith("http")) {
+      const parsed = new URL(statusUrlOrId);
+      if (parsed.protocol !== "https:" || parsed.hostname !== "api.higgsfield.ai") {
+        return { status: "ERROR", error: "higgsfield_invalid_status_url" };
+      }
+      url = parsed.toString();
+    }
     const r = await fetch(url, { headers: { Authorization: `Key ${key}` } });
     const j: any = await r.json().catch(() => ({}));
     if (!r.ok) return { status: "ERROR", error: j?.error?.message || `higgsfield_${r.status}` };
     const jobs = Array.isArray(j.jobs) ? j.jobs : [];
     const raw = String(j.status || jobs[0]?.status || "").toLowerCase();
-    const out = jobs[0]?.results?.raw?.url || jobs[0]?.results?.min?.url || j.results?.raw?.url || j.output?.url || j.video?.url || null;
+    const out = j.video?.url || jobs[0]?.results?.raw?.url || jobs[0]?.results?.min?.url || j.results?.raw?.url || j.output?.url || null;
     if (raw === "completed" || raw === "succeeded" || raw === "success" || out) return { status: "COMPLETED", outputUrl: out };
     if (raw === "failed" || raw === "error" || raw === "nsfw" || raw === "canceled" || raw === "cancelled") return { status: "ERROR", error: j?.error?.message || raw };
     return { status: raw ? raw.toUpperCase() : "IN_PROGRESS" };
