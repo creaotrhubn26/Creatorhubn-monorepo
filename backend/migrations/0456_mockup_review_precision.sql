@@ -1,5 +1,5 @@
 -- Review Room precision layer: semantic element offsets, visual marks and mention tracking.
--- Additive and backwards compatible with review data created by 0449.
+-- Additive and backwards compatible with review data created by 0455.
 
 ALTER TABLE mockup_studio_comments
   ADD COLUMN IF NOT EXISTS anchor_offset_x REAL,
