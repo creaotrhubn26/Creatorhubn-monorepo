@@ -156,13 +156,25 @@ export async function beeblePoll(generationId: string): Promise<{ status: string
 //   POST /v1/image2video/dop  m/ Authorization: Key KEY_ID:KEY_SECRET
 //   body { input: { model, prompt, input_images:[{type:'image_url',image_url}] } }
 //   submit → { request_id, status_url }; poll status_url → jobs[0].results.raw.url
-// HIGGSFIELD_API_KEY settes som "KEY_ID:KEY_SECRET" (samme streng SDK-en bruker).
+// Render kan lagre legitimasjonen som separate secrets. Kombinert variabel
+// beholdes som bakoverkompatibel fallback for eksisterende miljøer.
 const HIGGSFIELD_BASE = "https://platform.higgsfield.ai";
 
-export function higgsfieldConfigured(): boolean { return !!process.env.HIGGSFIELD_API_KEY; }
+function higgsfieldCredentials(): string | undefined {
+  const keyId = process.env.HIGGSFIELD_API_KEY_ID?.trim();
+  const keySecret = process.env.HIGGSFIELD_API_KEY_SECRET?.trim();
+  if (keyId && keySecret) return `${keyId}:${keySecret}`;
+
+  const combined = process.env.HIGGSFIELD_API_KEY?.trim();
+  return combined || undefined;
+}
+
+export function higgsfieldConfigured(): boolean {
+  return Boolean(higgsfieldCredentials());
+}
 
 export async function higgsfieldSubmit(opts: { imageUrl: string; prompt: string; model?: string }): Promise<{ id?: string; statusUrl?: string; error?: string }> {
-  const key = process.env.HIGGSFIELD_API_KEY;
+  const key = higgsfieldCredentials();
   if (!key) return { error: "higgsfield_not_configured" };
   try {
     const body = { input: { model: opts.model || "dop-turbo", prompt: opts.prompt, input_images: [{ type: "image_url", image_url: opts.imageUrl }] } };
@@ -176,7 +188,7 @@ export async function higgsfieldSubmit(opts: { imageUrl: string; prompt: string;
 }
 
 export async function higgsfieldPoll(statusUrlOrId: string): Promise<{ status: string; outputUrl?: string | null; error?: string }> {
-  const key = process.env.HIGGSFIELD_API_KEY;
+  const key = higgsfieldCredentials();
   if (!key) return { status: "ERROR", error: "higgsfield_not_configured" };
   try {
     const url = statusUrlOrId.startsWith("http") ? statusUrlOrId : `${HIGGSFIELD_BASE}/requests/${statusUrlOrId}/status`;

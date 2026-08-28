@@ -2860,7 +2860,11 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const wantHiggsfield = ["higgsfield", "higgsfield-dop-i2v"].includes(String(req.body?.model || req.body?.provider || ""));
       const model = GEN_MODELS[wantHiggsfield ? "higgsfield-dop-i2v" : "seedance-2-i2v"];
       const providerReady = model.provider === "higgsfield" ? higgsfieldConfigured() : falConfigured();
-      if (!providerReady) return res.status(503).json({ error: "provider_not_configured", message: model.provider === "higgsfield" ? "Higgsfield (HIGGSFIELD_API_KEY) er ikke konfigurert." : "fal (FAL_KEY) er ikke konfigurert." });
+      if (!providerReady) return res.status(503).json({
+        error: "provider_not_configured",
+        message: model.provider === "higgsfield"
+          ? "Higgsfield-servercredential er ikke konfigurert." : "fal (FAL_KEY) er ikke konfigurert.",
+      });
       const consent = await pool.query(`SELECT consented FROM project_ai_consent WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
       if (!consent.rows[0]?.consented) return res.status(409).json({ error: "consent_required", message: "Krever samtykke: kundebilder sendes til tredjeparts AI utenfor EØS." });
       const duration = Math.min(15, Math.max(4, parseInt(String(req.body?.duration || 5), 10) || 5));
