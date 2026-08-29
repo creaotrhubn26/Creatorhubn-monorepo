@@ -1420,10 +1420,16 @@ struct PrepCoreModal: View {
             }
             return
         }
-        guard let api = appState.api else { return }
-        if let mb = try? await api.hentMoteMaal(selskap: meetingCompany) {
+        guard let api = appState.api,
+              let organizationId = appState.activeOrganizationId else { return }
+        do {
+            let mb = try await api.hentMoteMaal(
+                organizationId: organizationId,
+                selskap: meetingCompany)
             maal = mb.maal
             behov = mb.behov
+        } catch {
+            _ = appState.handleAPIError(error)
         }
     }
 
@@ -1433,13 +1439,22 @@ struct PrepCoreModal: View {
             melding = "Demo: mål og behov lagres i innlogget modus."
             return
         }
-        guard let api = appState.api else { melding = "Krever innlogget modus."; return }
+        guard let api = appState.api,
+              let organizationId = appState.activeOrganizationId else {
+            melding = "Krever innlogget modus."
+            return
+        }
         lagrer = true
         defer { lagrer = false }
         do {
-            try await api.lagreMoteMaal(selskap: meetingCompany, maal: maal, behov: behov)
+            try await api.lagreMoteMaal(
+                organizationId: organizationId,
+                selskap: meetingCompany,
+                maal: maal,
+                behov: behov)
             melding = "Lagret — møtebriefen bruker dette fra nå."
         } catch {
+            _ = appState.handleAPIError(error)
             melding = "Lagring feilet — prøv igjen."
         }
     }

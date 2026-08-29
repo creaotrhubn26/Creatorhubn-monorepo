@@ -410,7 +410,8 @@ struct EtterMoteSheet: View {
             merkSomLogget()
             return
         }
-        guard let api = appState.api else {
+        guard let api = appState.api,
+              let organizationId = appState.activeOrganizationId else {
             feil = "Krever innlogget modus."
             return
         }
@@ -418,11 +419,13 @@ struct EtterMoteSheet: View {
         defer { analyserer = false }
         do {
             resultat = try await api.sendMoteEtterarbeid(
+                organizationId: organizationId,
                 selskap: selskap, tekst: samletTekst,
                 kontakt: kontakt, moteMaal: moteMaal,
                 leadId: moteId?.uuidString.lowercased())
             merkSomLogget()
         } catch {
+            _ = appState.handleAPIError(error)
             feil = "Analysen feilet — sjekk nettet, og at «Møter · AI-møtebrief» er aktivert for organisasjonen."
         }
     }

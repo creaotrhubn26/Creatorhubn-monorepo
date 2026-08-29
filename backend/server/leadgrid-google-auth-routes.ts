@@ -13,7 +13,7 @@
  *
  *   3. POST /api/leadgrid/auth/google/exchange
  *      → Bytter id_token mot Leadgrid bearer-token.
- *        Verifiserer JWT mot Google's JWK (issuer + audience).
+ *        Verifiserer tokenet hos Google og audience mot konfigurert klient.
  *        Oppretter Solo Free-org hvis ny bruker.
  *        Returnerer { bearer, user: { id, email } } — samme format som
  *        /api/ipad-tokens/exchange.
@@ -22,9 +22,23 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
-import { persistAuthSession } from "./auth-session-store";
+import {
+  ensureAuthSessionTable,
+  persistAuthSessionInTransaction,
+} from "./auth-session-store";
+import {
+  consumeOauthState,
+  deleteOauthState,
+  loadOauthState,
+  persistOauthState,
+} from "./role-room-oauth-store";
 
-type SessionData = { userId: string; role?: string; email?: string };
+type SessionData = {
+  userId: string;
+  role?: string;
+  email?: string;
+  authSessionVersion?: string;
+};
 
 interface Deps {
   app: Express;
@@ -40,29 +54,42 @@ const GOOGLE_CLIENT_SECRET = process.env.CREATORHUB_GOOGLE_CLIENT_SECRET
                           ?? "";
 const PUBLIC_BASE = process.env.ROLE_ROOM_PUBLIC_URL ?? "https://theroleroom.com";
 
-// State-cache for OAuth flow. Holdes i memory siden flowen er <5min.
-const stateCache = new Map<string, { platform: string; createdAt: number }>();
+type LeadgridGoogleState = { platform: string; createdAt: number };
+const GOOGLE_STATE_RE = /^[a-f0-9]{32}$/;
+const GOOGLE_PLATFORMS = new Set(["web", "ios", "ios-storyboard"]);
 
-// Decode JWT (id_token) uten signatur-validering. For full sikkerhet bør
-// vi cache + validere mot Google's JWK, men for MVP — Google's egne
-// token-info-endpoint dekker verifisering.
+function requestString(value: unknown, maxLength: number): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (!normalized || normalized.length > maxLength) return null;
+  return normalized;
+}
+
+function setAuthResponseHeaders(res: Response): void {
+  res.setHeader("Cache-Control", "no-store, max-age=0");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Referrer-Policy", "no-referrer");
+}
+
+// Google validerer signatur, issuer, levetid og tokenformat i tokeninfo.
+// Vi verifiserer i tillegg audience eksplisitt mot våre konfigurerte klienter.
 async function verifyGoogleIdToken(idToken: string): Promise<{
   email: string; name: string; sub: string; aud: string; email_verified: boolean;
 } | null> {
   try {
-    const r = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+    const r = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`, {
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!r.ok) return null;
     const d = (await r.json()) as any;
-    // aud (audience) må matche client_id
-    if (GOOGLE_CLIENT_ID && d.aud !== GOOGLE_CLIENT_ID) {
-      // For multiple Google clients (web vs ios), aksepterer vi flere
-      const allowed = [
-        GOOGLE_CLIENT_ID,
-        process.env.CAPTUREAPP_GOOGLE_CLIENT_ID,
-        process.env.LEADGRID_IOS_GOOGLE_CLIENT_ID,
-      ].filter(Boolean);
-      if (!allowed.includes(d.aud)) return null;
-    }
+    // Audience må alltid matche en eksplisitt konfigurert klient. Tidligere
+    // ble aud-kontrollen utilsiktet hoppet over når web-client-ID manglet.
+    const allowed = [
+      GOOGLE_CLIENT_ID,
+      process.env.CAPTUREAPP_GOOGLE_CLIENT_ID,
+      process.env.LEADGRID_IOS_GOOGLE_CLIENT_ID,
+    ].filter((value): value is string => Boolean(value?.trim()));
+    if (allowed.length === 0 || !allowed.includes(d.aud)) return null;
     return {
       email: d.email,
       name: d.name ?? d.given_name,
@@ -80,16 +107,26 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
 
   // ---------- Start ----------
   app.get("/api/leadgrid/auth/google/start", async (req, res) => {
-    const platform = (req.query.platform as string) ?? "web";
+    setAuthResponseHeaders(res);
+    const requestedPlatform = requestString(req.query.platform, 32) ?? "web";
+    if (!GOOGLE_PLATFORMS.has(requestedPlatform)) {
+      return res.status(400).json({ error: "Ugyldig platform" });
+    }
+    const platform = requestedPlatform;
     if (!GOOGLE_CLIENT_ID) {
       return res.status(500).json({ error: "Google client_id ikke konfigurert" });
     }
 
     const state = crypto.randomBytes(16).toString("hex");
-    stateCache.set(state, { platform, createdAt: Date.now() });
-    // Cleanup gamle states
-    for (const [k, v] of stateCache.entries()) {
-      if (Date.now() - v.createdAt > 10 * 60 * 1000) stateCache.delete(k);
+    const statePayload: LeadgridGoogleState = { platform, createdAt: Date.now() };
+    const persisted = await persistOauthState(
+      pool,
+      state,
+      statePayload,
+      new Date(Date.now() + 10 * 60 * 1000),
+    );
+    if (!persisted) {
+      return res.status(503).json({ error: "OAuth state-lager er utilgjengelig" });
     }
 
     // Redirect-URI bestemmes av platform:
@@ -112,15 +149,30 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
   // ---------- Web callback (GET via Google redirect) ----------
   // For iOS: vi redirecter videre til leadgrid:// scheme m/ samme code+state.
   app.get("/api/leadgrid/auth/google/web-callback", async (req, res) => {
-    const { code, state, error } = req.query as Record<string, string>;
-    if (error) {
-      return res.redirect(`leadgrid://oauth?error=${encodeURIComponent(error)}`);
+    setAuthResponseHeaders(res);
+    const code = requestString(req.query.code, 8_192);
+    const state = requestString(req.query.state, 64);
+    const error = requestString(req.query.error, 256);
+    if (!state || !GOOGLE_STATE_RE.test(state)) {
+      return res.status(400).send("Ugyldig state");
     }
-    if (!code || !state) {
+    const cached = await loadOauthState<LeadgridGoogleState>(pool, state);
+    if (!cached || !GOOGLE_PLATFORMS.has(cached.platform)) {
+      return res.status(400).send("Ugyldig state");
+    }
+    if (error) {
+      await deleteOauthState(pool, state);
+      if (cached?.platform === "ios" || cached?.platform === "ios-storyboard") {
+        const scheme = cached.platform === "ios-storyboard" ? "storyboardstudio" : "leadgrid";
+        return res.redirect(`${scheme}://oauth?error=${encodeURIComponent(error)}`);
+      }
+      return res.redirect(
+        `${PUBLIC_BASE}/leadgrid/welcome#google_error=${encodeURIComponent(error)}`,
+      );
+    }
+    if (!code) {
       return res.status(400).send("Mangler code eller state");
     }
-    const cached = stateCache.get(state);
-    if (!cached) return res.status(400).send("Ugyldig state");
 
     // iOS: redirect tilbake til app via app-scheme. Storyboard Studio bruker
     // samme flyt med platform=ios-storyboard → storyboardstudio://oauth.
@@ -128,17 +180,23 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
       const scheme = cached.platform === "ios-storyboard" ? "storyboardstudio" : "leadgrid";
       return res.redirect(`${scheme}://oauth?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`);
     }
-    // Web: redirect til /leadgrid/welcome m/ code (handler lengre frem)
-    res.redirect(`${PUBLIC_BASE}/leadgrid/welcome?google_code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`);
+    // Web: fragmentet sendes ikke videre til webserver-/proxylogger.
+    res.redirect(`${PUBLIC_BASE}/leadgrid/welcome#google_code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`);
   });
 
   // ---------- Bytte code mot id_token (server-side flow) ----------
   app.post("/api/leadgrid/auth/google/callback", async (req, res) => {
-    const { code, state } = req.body ?? {};
+    setAuthResponseHeaders(res);
+    const code = requestString(req.body?.code, 8_192);
+    const state = requestString(req.body?.state, 64);
     if (!code || !state) return res.status(400).json({ error: "code og state påkrevd" });
-    const cached = stateCache.get(state);
-    if (!cached) return res.status(400).json({ error: "Ugyldig state" });
-    stateCache.delete(state);
+    if (!GOOGLE_STATE_RE.test(state)) {
+      return res.status(400).json({ error: "Ugyldig state" });
+    }
+    const cached = await consumeOauthState<LeadgridGoogleState>(pool, state);
+    if (!cached || !GOOGLE_PLATFORMS.has(cached.platform)) {
+      return res.status(400).json({ error: "Ugyldig state" });
+    }
 
     if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
       return res.status(500).json({ error: "Google credentials ikke konfigurert" });
@@ -148,6 +206,7 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
       const tokenR = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        signal: AbortSignal.timeout(10_000),
         body: new URLSearchParams({
           code,
           client_id: GOOGLE_CLIENT_ID,
@@ -175,7 +234,8 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
   // ingen auto-opprett fra tegneappen). Returnerer creatorhub-sesjonstoken
   // som fungerer mot /api/auth/user, /api/casting/* osv.
   app.post("/api/auth/google/session-exchange", async (req, res) => {
-    const { id_token } = req.body ?? {};
+    setAuthResponseHeaders(res);
+    const id_token = requestString(req.body?.id_token, 16_384);
     if (!id_token) return res.status(400).json({ error: "id_token påkrevd" });
 
     const verified = await verifyGoogleIdToken(id_token);
@@ -185,12 +245,20 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
     }
 
     try {
-      // users-tabellen har first_name/last_name/username — IKKE display_name/
-      // name (kolonnereferansen kastet 42703 → internal_error på all innlogging).
-      const r = await pool.query<{ id: string; email: string; name: string | null; role: string | null }>(
+      // users-tabellen har first_name/last_name — ikke en canonical name-kolonne.
+      const r = await pool.query<{
+        id: string;
+        email: string;
+        name: string | null;
+        role: string | null;
+        auth_session_version: string;
+        is_active: boolean;
+      }>(
         `SELECT id, email,
-                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', first_name, last_name)), ''), username, email) AS name,
-                role
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', first_name, last_name)), ''), email) AS name,
+                role,
+                auth_session_version::text AS auth_session_version,
+                COALESCE(is_active, TRUE) AS is_active
            FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
         [verified.email],
       );
@@ -201,6 +269,9 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
           message: "Ingen Role Room-konto for denne e-posten. Opprett konto i The Role Room først.",
         });
       }
+      if (user.is_active !== true) {
+        return res.status(403).json({ error: "account_inactive" });
+      }
 
       const token = crypto.randomBytes(32).toString("hex");
       const session = {
@@ -208,12 +279,20 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
         email: user.email,
         name: user.name ?? user.email,
         role: user.role ?? "user",
+        authSessionVersion: String(user.auth_session_version ?? "0"),
         loginAt: new Date().toISOString(),
         isAdmin: user.role === "admin" || user.role === "super_admin",
         verified_email: true,
       };
+      if (!(await ensureAuthSessionTable(pool))) {
+        return res.status(503).json({ error: "session_store_unavailable" });
+      }
+      try {
+        await persistAuthSessionInTransaction(pool, token, session);
+      } catch {
+        return res.status(503).json({ error: "session_store_unavailable" });
+      }
       activeSessions.set(token, session as SessionData);
-      void persistAuthSession(pool, token, session as any);
       res.json({ token, user: { id: user.id, email: user.email, name: session.name, role: session.role } });
     } catch (e) {
       console.error("[google session-exchange]", e);
@@ -225,7 +304,9 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
   // Hovedendepunktet for iOS-appen. Verifiserer JWT mot Google,
   // oppretter Solo Free-org hvis ny bruker, returnerer bearer + user.
   app.post("/api/leadgrid/auth/google/exchange", async (req, res) => {
-    const { id_token, deviceInfo, platform } = req.body ?? {};
+    setAuthResponseHeaders(res);
+    const id_token = requestString(req.body?.id_token, 16_384);
+    const { deviceInfo } = req.body ?? {};
     if (!id_token) return res.status(400).json({ error: "id_token påkrevd" });
 
     const verified = await verifyGoogleIdToken(id_token);
@@ -235,7 +316,15 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
       return res.status(400).json({ error: "Google e-post ikke verifisert" });
     }
 
-    const client = await pool.connect();
+    if (!(await ensureAuthSessionTable(pool))) {
+      return res.status(503).json({ error: "session_store_unavailable" });
+    }
+
+    const client = await pool.connect().catch(() => null);
+    if (!client) {
+      return res.status(503).json({ error: "session_store_unavailable" });
+    }
+    let canonicalWriteStarted = false;
     try {
       await client.query("BEGIN");
 
@@ -245,14 +334,30 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
       // overskrives med 'member'.
       let userId: string;
       let userRole: string = "member";
+      let authSessionVersion = "0";
       let isNew = false;
-      const userR = await client.query<{ id: string; role: string | null }>(
-        `SELECT id, role FROM users WHERE LOWER(email) = LOWER($1)`,
+      const userR = await client.query<{
+        id: string;
+        role: string | null;
+        auth_session_version: string;
+        is_active: boolean;
+      }>(
+        `SELECT id, role,
+                auth_session_version::text AS auth_session_version,
+                COALESCE(is_active, TRUE) AS is_active
+           FROM users WHERE LOWER(email) = LOWER($1)`,
         [verified.email],
       );
       if (userR.rows.length > 0) {
+        if (userR.rows[0].is_active !== true) {
+          await client.query("ROLLBACK");
+          return res.status(403).json({ error: "account_inactive" });
+        }
         userId = userR.rows[0].id;
         userRole = userR.rows[0].role ?? "member";
+        authSessionVersion = String(
+          userR.rows[0].auth_session_version ?? "0",
+        );
       } else {
         userId = crypto.randomUUID();
         // users.password er NOT NULL uten default. Bruker aldri passord her
@@ -312,12 +417,13 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
 
       // 3) Lag bearer-token + lagre i samme tabell som ipad-tokens
       const bearer = crypto.randomBytes(32).toString("hex");
-      const deviceName = (deviceInfo as any)?.deviceName ?? "Google Sign-In";
-      const deviceModel = (deviceInfo as any)?.model ?? null;
-      const osVersion = (deviceInfo as any)?.osVersion ?? null;
-      const appVersion = (deviceInfo as any)?.appVersion ?? null;
+      const deviceName = requestString((deviceInfo as any)?.deviceName, 160) ?? "Google Sign-In";
+      const deviceModel = requestString((deviceInfo as any)?.model, 160);
+      const osVersion = requestString((deviceInfo as any)?.osVersion, 80);
+      const appVersion = requestString((deviceInfo as any)?.appVersion, 80);
 
       // Bruk ipad_tokens-tabellen som allerede eksisterer for bearer-lagring
+      await client.query("SAVEPOINT leadgrid_ipad_token_insert");
       try {
         await client.query(
           `INSERT INTO ipad_tokens (token, user_id, device_name, device_model,
@@ -325,35 +431,65 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
            VALUES ($1, $2, $3, $4, $5, $6, 'google_signin', now())`,
           [bearer, userId, deviceName, deviceModel, osVersion, appVersion],
         );
+        await client.query("RELEASE SAVEPOINT leadgrid_ipad_token_insert");
       } catch (e) {
         // Hvis ipad_tokens-tabellen ikke har source-kolonne, prøv uten
+        await client.query("ROLLBACK TO SAVEPOINT leadgrid_ipad_token_insert");
         await client.query(
           `INSERT INTO ipad_tokens (token, user_id, device_name, device_model,
                                     os_version, app_version, created_at)
            VALUES ($1, $2, $3, $4, $5, $6, now())`,
           [bearer, userId, deviceName, deviceModel, osVersion, appVersion],
         );
+        await client.query("RELEASE SAVEPOINT leadgrid_ipad_token_insert");
       }
+
+      const session = {
+        userId,
+        email: verified.email.trim().toLowerCase(),
+        name: verified.name?.trim() || verified.email.split("@")[0],
+        displayName: verified.name?.trim() || verified.email.split("@")[0],
+        role: userRole,
+        authSessionVersion,
+        activeOrganizationId: orgId,
+        loginAt: new Date().toISOString(),
+        isAdmin: userRole === "admin" || userRole === "super_admin",
+        verified_email: true,
+      };
+      // Samme transaksjon som bruker/org/device-token. En webklient får aldri
+      // et bearer som bare finnes i én instans' minne.
+      canonicalWriteStarted = true;
+      await persistAuthSessionInTransaction(client, bearer, session);
 
       await client.query("COMMIT");
 
       // Auto-aktiver session-cache (in-memory) så bruker er innlogget umiddelbart.
       // userRole settes fra DB — eksisterende super_admin bevares (Daniel),
       // nye brukere får 'member' fra default-en over.
-      activeSessions.set(bearer, {
-        userId, email: verified.email, role: userRole,
-      });
+      activeSessions.set(bearer, session);
 
       res.json({
         bearer,
-        user: { id: userId, email: verified.email, role: userRole },
+        user: {
+          id: userId,
+          email: session.email,
+          name: session.name,
+          displayName: session.displayName,
+          role: userRole,
+          isAdmin: session.isAdmin,
+          verified_email: true,
+        },
         is_new_user: isNew,
         organization_id: orgId,
       });
     } catch (e: any) {
       await client.query("ROLLBACK");
       console.error("[google-auth exchange]", e);
-      res.status(500).json({ error: "internal_error" });
+      res.status(canonicalWriteStarted ? 503 : 500).json({
+        error: canonicalWriteStarted
+          ? "session_store_unavailable"
+          : "internal_error",
+      });
     } finally {
       client.release();
     }

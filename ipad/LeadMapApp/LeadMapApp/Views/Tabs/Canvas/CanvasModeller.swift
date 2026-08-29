@@ -26,10 +26,26 @@ enum CvBrand {
     static let textTertiary = Color.white.opacity(0.4)
 }
 
+/// Persistensstatus per lokalt Canvas-notat. Statusen er notatspesifikk slik
+/// at en sen respons fra et tidligere notat aldri kan endre indikatoren for
+/// notatet som nå er åpent.
+enum CanvasSaveStatus: Equatable {
+    case idle
+    case queued
+    case saving
+    case saved
+    case failed(String)
+    case conflict
+
+    var isBusy: Bool {
+        self == .queued || self == .saving
+    }
+}
+
 /// Notat-TYPENE (Daniels struktur 2026-08-05): Møte / Lead / Befaring /
 /// Salgsplan / Prosjekt / Rute — hver med sitt eget cover. Gamle
 /// kategorier beholdes som legacy så eksisterende notater dekoder.
-enum CanvasKategori: String, CaseIterable, Identifiable {
+enum CanvasKategori: String, CaseIterable, Identifiable, Codable, Sendable {
     // Strukturen
     case mote = "mote"
     case lead = "lead"
@@ -103,7 +119,7 @@ enum CanvasKategori: String, CaseIterable, Identifiable {
 
 /// Klistremerke/stempel oppå tegneflata (fase 4) — posisjon i canvas-
 /// punkter, persistert som JSON ved siden av tegningen.
-struct CanvasStempel: Codable, Identifiable, Hashable {
+struct CanvasStempel: Codable, Identifiable, Hashable, Sendable {
     var id: String = UUID().uuidString
     var tegn: String       // emoji
     var x: Double
@@ -138,7 +154,7 @@ enum CanvasLag: String, CaseIterable, Identifiable {
 /// egne; Map Marker og Planning Pen er presets; Laser og Arrow er MODUSER
 /// (strøk som toner bort / strøk som blir perfekte piler).
 enum PennValg: String, CaseIterable, Identifiable {
-    case pen, marker, kartMarkor, laser, pil, planlegging
+    case pen, marker, kartMarkor, laser, pil, planlegging, viskelar, lasso
 
     var id: String { rawValue }
 
@@ -150,6 +166,8 @@ enum PennValg: String, CaseIterable, Identifiable {
         case .laser: return "Laser"
         case .pil: return "Pil-penn"
         case .planlegging: return "Plan-penn"
+        case .viskelar: return "Viskelær"
+        case .lasso: return "Lasso"
         }
     }
 
@@ -161,12 +179,14 @@ enum PennValg: String, CaseIterable, Identifiable {
         case .laser: return "rays"
         case .pil: return "arrow.up.right"
         case .planlegging: return "pencil.and.ruler"
+        case .viskelar: return "eraser"
+        case .lasso: return "lasso"
         }
     }
 
     /// PKInkingTool-preset (farger konverteres til lys-referanse så de
     /// vises riktig i mørk rendring).
-    var verktoy: PKInkingTool {
+    var verktoy: PKTool {
         func farge(_ c: UIColor) -> UIColor {
             PKInkingTool.convertColor(c, from: .dark, to: .light)
         }
@@ -191,6 +211,41 @@ enum PennValg: String, CaseIterable, Identifiable {
             return PKInkingTool(.pen,
                                 color: farge(UIColor(red: 0.34, green: 0.60, blue: 0.98, alpha: 1)),
                                 width: 2)
+        case .viskelar:
+            return PKEraserTool(.vector)
+        case .lasso:
+            return PKLassoTool()
+        }
+    }
+}
+
+/// Touch-policy følger systeminnstillingen som standard. Brukeren kan
+/// overstyre per app når feltarbeidet krever ren Pencil eller fingertegning.
+enum CanvasInputMode: String, CaseIterable, Identifiable {
+    case system
+    case pencilOnly
+    case anyInput
+
+    var id: String { rawValue }
+
+    var etikett: String {
+        switch self {
+        case .system: return "Følg systemet"
+        case .pencilOnly: return "Kun Apple Pencil"
+        case .anyInput: return "Pencil eller finger"
+        }
+    }
+
+    @MainActor var drawingPolicy: PKCanvasViewDrawingPolicy {
+        switch self {
+        case .system:
+            // PencilKit følger da både systempreferansen og endringer gjort i
+            // sin egen tool picker, uten at SwiftUI fryser et øyeblikksbilde.
+            return .default
+        case .pencilOnly:
+            return .pencilOnly
+        case .anyInput:
+            return .anyInput
         }
     }
 }
@@ -205,7 +260,7 @@ struct CanvasSnapshot: Hashable {
 /// Objekt-laget (fase 8): bilder + lead-/KPI-/kart-/oppgave-kort som
 /// ligger UNDER blekket (tegn oppå = annoter). Lasso/objekt-modusen
 /// gjør dem flyttbare/skalerbare; ellers går all touch til Pencil.
-struct CanvasObjekt: Codable, Identifiable, Hashable {
+struct CanvasObjekt: Codable, Identifiable, Hashable, Sendable {
     var id: String = UUID().uuidString
     var type: String        // bilde / lead / kpi / kart / oppgave / pdf
     var x: Double
@@ -224,7 +279,7 @@ struct CanvasObjekt: Codable, Identifiable, Hashable {
 
 /// Originaldokument (PDF) lagret tapsfritt i notatet: vektor-rendering
 /// på flata og eksport i original kvalitet med annoteringene oppå.
-struct CanvasDokument: Codable, Identifiable, Hashable {
+struct CanvasDokument: Codable, Identifiable, Hashable, Sendable {
     var id: String = UUID().uuidString
     var navn: String
     /// Tom når bytene bor i backend-tabellen (lazy) — hentes ved åpning.
@@ -238,7 +293,7 @@ struct CanvasDokument: Codable, Identifiable, Hashable {
 /// «+» føder koblet barn, dra flytter (streken følger), tap redigerer
 /// teksten (Scribble: skriv i boblen med Pencil). Brainstorm = noder
 /// uten forelder (frittstående lapper).
-struct CanvasNode: Codable, Identifiable, Hashable {
+struct CanvasNode: Codable, Identifiable, Hashable, Sendable {
     var id: String = UUID().uuidString
     var parentId: String? = nil
     var tekst: String = ""
@@ -250,7 +305,7 @@ struct CanvasNode: Codable, Identifiable, Hashable {
 /// Flyttbar OG skalerbar figur oppå flata (fase 6) — «Former» som ekte
 /// objekter: dra flytter, klyp skalerer, hold fjerner. Tegnes i SwiftUI
 /// (utenfor PencilKit) så fargene aldri inverteres i mørk modus.
-struct CanvasFigur: Codable, Identifiable, Hashable {
+struct CanvasFigur: Codable, Identifiable, Hashable, Sendable {
     var id: String = UUID().uuidString
     var form: String       // rektangel/sirkel/pil/linje
     var x: Double
@@ -265,7 +320,7 @@ struct CanvasFigur: Codable, Identifiable, Hashable {
 }
 
 /// Flyttbar tekstboks oppå flata (fase 5) — «Skriv»-modusen fra mocken.
-struct CanvasTekstboks: Codable, Identifiable, Hashable {
+struct CanvasTekstboks: Codable, Identifiable, Hashable, Sendable {
     var id: String = UUID().uuidString
     var tekst: String
     var x: Double
@@ -273,7 +328,7 @@ struct CanvasTekstboks: Codable, Identifiable, Hashable {
 }
 
 /// Lokal notat-modell (speiler CanvasNotatDTO; drawing som rå PKDrawing-data).
-struct CanvasNotat: Identifiable, Hashable {
+struct CanvasNotat: Identifiable, Hashable, Codable, Sendable {
     var id: String
     var tittel: String
     var kategori: CanvasKategori
@@ -304,6 +359,9 @@ struct CanvasNotat: Identifiable, Hashable {
     var dokumenter: [CanvasDokument] = []
     /// Papirkurven: satt når notatet er soft-slettet (tømmes etter 30 dager).
     var slettetAt: Date? = nil
+    /// Optimistisk lås fra backend. `id` beholdes stabilt fra lokal opprettelse
+    /// og sendes til serveren; kun revisjonen endres etter en vellykket save.
+    var revision: Int = 0
 
     /// Kundeminnet identifiseres på tittel-prefixet (enkel v1-konvensjon).
     var erKundeminne: Bool { tittel.hasPrefix("Kundeminne") }
@@ -315,15 +373,17 @@ struct CanvasNotat: Identifiable, Hashable {
 }
 
 /// Verktøyraden i editoren jobber i moduser — én ting om gangen:
-/// Tegn (penn/papir), Sett inn (objekter), Ordne (lasso/flytt).
+/// Tegn (penn/papir), Sett inn (objekter), Ordne (lasso/flytt) og
+/// Panorer (én finger flytter flata uten at PencilKit tar gesten).
 enum VerktoyModus: String, CaseIterable, Identifiable {
-    case tegn, settInn, ordne
+    case tegn, settInn, ordne, panorer
     var id: String { rawValue }
     var etikett: String {
         switch self {
         case .tegn: return "Tegn"
         case .settInn: return "Sett inn"
         case .ordne: return "Ordne"
+        case .panorer: return "Panorer"
         }
     }
     var ikon: String {
@@ -331,12 +391,13 @@ enum VerktoyModus: String, CaseIterable, Identifiable {
         case .tegn: return "pencil.tip"
         case .settInn: return "plus.square.on.square"
         case .ordne: return "lasso"
+        case .panorer: return "hand.draw"
         }
     }
 }
 
 
-enum CanvasPapir: String, CaseIterable, Identifiable {
+enum CanvasPapir: String, CaseIterable, Identifiable, Codable, Sendable {
     case blank
     case brainstorm
     case mote

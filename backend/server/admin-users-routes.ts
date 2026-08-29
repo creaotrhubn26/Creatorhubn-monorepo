@@ -20,8 +20,14 @@
 
 import crypto from "crypto";
 import type express from "express";
-import type { Pool } from "pg";
-import { deletePersistedAuthSessionsByUserId } from "./auth-session-store.js";
+import type { Pool, PoolClient } from "pg";
+import {
+  AuthSessionStoreUnavailableError,
+  deletePersistedAuthSessionsByUserIdStrict,
+  ensureAuthSessionTableStrict,
+  persistAuthSessionInTransaction,
+} from "./auth-session-store.js";
+import type { AuthoritativeSessionRequestResolver } from "./auth-session-authority.js";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export interface AdminUsersRoutesDeps {
@@ -35,7 +41,13 @@ export interface AdminUsersRoutesDeps {
   normalizeAdminRoleId: (role: any) => any;
   resolveAdminProfessionForPersistence: (input: any) => any;
   upsertAdminInviteRequest: (input: any) => Promise<any>;
-  upsertAdminAccountUser: (input: any) => Promise<any>;
+  upsertAdminAccountUser: (
+    input: any,
+    options?: {
+      queryClient?: Pick<Pool, "query">;
+      bumpAuthSessionVersion?: boolean;
+    },
+  ) => Promise<any>;
   ensureInviteRequestAccessProvisioning: (inviteRequest: any) => Promise<any>;
   resolveAdminUserView: (id: string, email?: string) => Promise<any>;
   toAdminString: (value: any) => string | null;
@@ -45,7 +57,7 @@ export interface AdminUsersRoutesDeps {
   ensureCommunityAccessForApprovedInvite: (inviteRow: any, userId: string | null) => Promise<any>;
   normalizeInvitePlanId: (value: any) => any;
   buildAdminRoleEntry: (role: any) => any;
-  persistAuthSession: (pool: Pool, token: string, session: any) => Promise<any>;
+  resolveAuthoritativeSession: AuthoritativeSessionRequestResolver;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -71,7 +83,7 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
     ensureCommunityAccessForApprovedInvite,
     normalizeInvitePlanId,
     buildAdminRoleEntry,
-    persistAuthSession,
+    resolveAuthoritativeSession,
   } = deps;
 
   app.get("/api/admin/users", async (req, res) => {
@@ -235,17 +247,58 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
             })
           : undefined;
 
-      if (accountUserId) {
-        await upsertAdminAccountUser({
-          email,
-          firstName: nextFirstName,
-          lastName: nextLastName,
-          role: nextRole,
-          profession: nextProfession,
-          businessName: nextBusinessName,
-          organizationNumber: undefined,
-          isActive: nextIsActive,
-        });
+      // Role and activation changes must atomically bump the user's session
+      // generation and revoke every durable snapshot. Cache eviction happens
+      // only after COMMIT so a rollback cannot strand the process in a state
+      // that disagrees with PostgreSQL.
+      const roleChanged =
+        nextRole !== undefined && nextRole !== currentRole;
+      const currentIsActive = toAdminBoolean(userView.isActive);
+      const isActiveChanged =
+        nextIsActive !== undefined && nextIsActive !== currentIsActive;
+      const securityStateChanged = roleChanged || isActiveChanged;
+      const accountUpdate = {
+        email,
+        firstName: nextFirstName,
+        lastName: nextLastName,
+        role: nextRole,
+        profession: nextProfession,
+        businessName: nextBusinessName,
+        organizationNumber: undefined,
+        isActive: nextIsActive,
+      };
+      let accountUpdated = false;
+
+      if (securityStateChanged && accountUserId) {
+        let client: PoolClient | null = null;
+        try {
+          await ensureAuthSessionTableStrict(pool);
+          client = await pool.connect();
+          await client.query("BEGIN");
+          await upsertAdminAccountUser(accountUpdate, {
+            queryClient: client,
+            bumpAuthSessionVersion: true,
+          });
+          await deletePersistedAuthSessionsByUserIdStrict(client, accountUserId);
+          await client.query("COMMIT");
+          accountUpdated = true;
+        } catch (error) {
+          await client?.query("ROLLBACK").catch(() => undefined);
+          console.error("Admin user session revocation failed:", error);
+          return res.status(503).json({ error: "session_store_unavailable" });
+        } finally {
+          client?.release();
+        }
+        for (const [tok, sess] of activeSessions.entries()) {
+          if (
+            String(sess?.userId) === accountUserId ||
+            String(sess?.impersonatorId) === accountUserId
+          ) activeSessions.delete(tok);
+        }
+      }
+
+      if (accountUserId && !accountUpdated) {
+        await upsertAdminAccountUser(accountUpdate);
       }
 
       if (inviteRequestId) {
@@ -266,15 +319,6 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
       // admin would otherwise retain admin access in their existing session
       // indefinitely (there is no session TTL). Forcing re-login rebuilds a
       // fresh snapshot from the persisted role.
-      const roleChanged =
-        nextRole !== undefined && nextRole !== currentRole;
-      if ((nextIsActive === false || roleChanged) && accountUserId) {
-        for (const [tok, sess] of activeSessions.entries()) {
-          if (String(sess?.userId) === accountUserId) activeSessions.delete(tok);
-        }
-        await deletePersistedAuthSessionsByUserId(pool, accountUserId);
-      }
-
       const updatedUser = await resolveAdminUserView(req.params.id, email);
       res.json({ success: true, user: updatedUser });
     } catch (error) {
@@ -478,7 +522,38 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
 
   app.post("/api/admin/impersonate/start", async (req, res) => {
     try {
+      const authority = await resolveAuthoritativeSession(req);
+      if (authority.status === "unavailable") {
+        return res.status(503).json({ error: "session_store_unavailable" });
+      }
+      if (authority.status !== "authenticated") {
+        return res.status(401).json({ error: "authentication_required" });
+      }
+      const callingAdmin = authority.session as {
+        userId: string;
+        role?: string;
+        authSessionVersion?: string;
+        impersonatedByAdmin?: boolean;
+      };
+      if (callingAdmin.impersonatedByAdmin === true) {
+        return res.status(403).json({ error: "nested_impersonation_forbidden" });
+      }
+      if (!ADMIN_SESSION_ROLES.has(String(callingAdmin.role || "").toLowerCase())) {
+        return res.status(403).json({ error: "Admin-tilgang kreves" });
+      }
+      if (!callingAdmin.userId) {
+        return res.status(401).json({ error: "authentication_required" });
+      }
+      const callingAdminVersion = String(
+        callingAdmin.authSessionVersion ?? "",
+      ).trim();
+      const callingAdminRole = String(callingAdmin.role || "").toLowerCase();
+      if (!/^\d+$/.test(callingAdminVersion)) {
+        return res.status(401).json({ error: "authentication_required" });
+      }
       if (!requireAdminSession(req, res)) {
+        // Keep the route's established admin guard for defense in depth after
+        // durable authority has proven the same request token.
         return;
       }
       const requestedTargetId = toAdminString(req.body?.targetUserId);
@@ -499,6 +574,10 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
           .json({ error: "Fant ingen aktiv brukerkonto å impersonere." });
       }
 
+      if (targetAccount.is_active === false) {
+        return res.status(403).json({ error: "Kan ikke impersonere en deaktivert bruker." });
+      }
+
       const targetRole = normalizeAdminRoleId(
         targetAccount.role || userView?.role || "user",
       );
@@ -507,13 +586,12 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
         return res.status(403).json({ error: "Kan ikke impersonere super_admin." });
       }
 
-      const callingAdmin = requireAdminSession(req, res);
-      if (!callingAdmin) return;
       const targetRoleEntry = buildAdminRoleEntry(targetRole);
       const targetProfession =
         toAdminString(targetAccount.profession) ||
         toAdminString(userView?.profession);
       const targetSessionToken = crypto.randomUUID();
+      const impersonationExpiresAt = Date.now() + 30 * 60 * 1000;
       const targetSession = {
         userId: String(targetAccount.id),
         email: toAdminString(targetAccount.email) || String(userView?.email || ""),
@@ -544,13 +622,30 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
           "CreatorHub User",
         impersonatedByAdmin: true,
         impersonatorId: callingAdmin.userId,
-        impersonationExpiresAt: Date.now() + 30 * 60 * 1000,
+        impersonatorAuthSessionVersion: callingAdminVersion,
+        impersonatorRole: callingAdminRole,
+        impersonationExpiresAt,
         isAdmin: ADMIN_SESSION_ROLES.has(targetRole),
+        authSessionVersion: String(targetAccount.auth_session_version ?? "0"),
         loginAt: new Date().toISOString(),
       };
 
+      // A returned impersonation token must exist in the canonical store
+      // before it enters process-local cache. Otherwise a transient database
+      // failure creates a token that immediately 401s on another instance.
+      try {
+        await ensureAuthSessionTableStrict(pool);
+        await persistAuthSessionInTransaction(
+          pool,
+          targetSessionToken,
+          targetSession,
+          { expiresAt: new Date(impersonationExpiresAt) },
+        );
+      } catch (error) {
+        console.error("Failed to persist impersonation session:", error);
+        return res.status(503).json({ error: "session_store_unavailable" });
+      }
       activeSessions.set(targetSessionToken, targetSession);
-      await persistAuthSession(pool, targetSessionToken, targetSession);
       await pool.query(
         `INSERT INTO org_audit_log (actor_user_id, action, target_user_id, metadata, created_at)
          VALUES ($1, 'admin_impersonate_start', $2, $3, now())
@@ -672,18 +767,23 @@ export function setupAdminUsersRoutes(deps: AdminUsersRoutesDeps): void {
           await client.query(`DELETE FROM ${ident} WHERE ${col}::text = $1`, [targetId]);
         }
       }
+      await deletePersistedAuthSessionsByUserIdStrict(client, targetId);
       const del = await client.query("DELETE FROM users WHERE id::text = $1", [targetId]);
       await client.query("COMMIT");
       // Evict all in-memory sessions for deleted user
       for (const [tok, sess] of activeSessions.entries()) {
-        if (String(sess?.userId) === targetId) activeSessions.delete(tok);
+        if (
+          String(sess?.userId) === targetId ||
+          String(sess?.impersonatorId) === targetId
+        ) activeSessions.delete(tok);
       }
-      // Evict persisted sessions so they aren't rehydrated on restart
-      await deletePersistedAuthSessionsByUserId(pool, targetId);
       return res.json({ success: true, deletedEmail: target.email, deleted: del.rowCount });
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
       console.error("Error deleting user:", error);
+      if (error instanceof AuthSessionStoreUnavailableError) {
+        return res.status(503).json({ error: "session_store_unavailable" });
+      }
       return res.status(500).json({ error: "Kunne ikke slette bruker." });
     } finally {
       client.release();

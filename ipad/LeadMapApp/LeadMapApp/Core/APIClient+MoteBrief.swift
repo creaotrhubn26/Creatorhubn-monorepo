@@ -104,10 +104,22 @@ struct MoteOppgaveDTO: Decodable, Hashable, Identifiable {
 
 extension APIClient {
 
+    private func moteOrganizationHeaders(
+        organizationId: String
+    ) throws -> [String: String] {
+        let normalized = organizationId
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty, normalized.count <= 200 else {
+            throw APIError.invalidResponse
+        }
+        return ["X-Organization-ID": normalized]
+    }
+
     /// Etterarbeid: rå notater/transkripsjon → strukturert notat + løfter +
     /// oppgaver + oppfølgings-epost-UTKAST. Backend logger møtet slik at
     /// NESTE brief åpner med «hva vi lovte sist».
-    func sendMoteEtterarbeid(selskap: String, tekst: String,
+    func sendMoteEtterarbeid(organizationId: String,
+                             selskap: String, tekst: String,
                              kontakt: String? = nil, moteMaal: String? = nil,
                              orgnr: String? = nil,
                              leadId: String? = nil) async throws -> EtterarbeidDTO {
@@ -123,14 +135,18 @@ extension APIClient {
         let r: Resp = try await _post(
             "/api/leadgrid/moter/etterarbeid",
             body: Body(selskap: selskap, tekst: tekst, kontakt: kontakt,
-                       moteMaal: moteMaal, orgnr: orgnr, leadId: leadId))
+                       moteMaal: moteMaal, orgnr: orgnr, leadId: leadId),
+            headers: try moteOrganizationHeaders(
+                organizationId: organizationId))
         return r.resultat
     }
 
     /// Åpne oppgaver fra møtelogging (ugated) — Oversikt/Neste handlinger.
-    func hentMoteOppgaver() async throws -> [MoteOppgaveDTO] {
+    func hentMoteOppgaver(organizationId: String) async throws -> [MoteOppgaveDTO] {
         struct Resp: Decodable { let oppgaver: [MoteOppgaveDTO] }
-        let r: Resp = try await _get("/api/leadgrid/oppgaver")
+        let r: Resp = try await _get(
+            "/api/leadgrid/oppgaver",
+            headers: try moteOrganizationHeaders(organizationId: organizationId))
         return r.oppgaver
     }
 
@@ -153,21 +169,38 @@ extension APIClient {
     }
 
     /// Huk av / gjenåpne en oppgave.
-    func settMoteOppgaveStatus(id: String, ferdig: Bool) async throws {
+    func settMoteOppgaveStatus(
+        organizationId: String,
+        id: String,
+        ferdig: Bool
+    ) async throws {
         struct Body: Encodable { let status: String }
         let data = try JSONEncoder().encode(Body(status: ferdig ? "done" : "open"))
         _ = try await _request("/api/leadgrid/oppgaver/\(id)",
-                               method: "PATCH", body: data)
+                               method: "PATCH", body: data,
+                               headers: try moteOrganizationHeaders(
+                                organizationId: organizationId))
     }
 
     /// Mål & behov (ugated): hent/lagre per selskap.
-    func hentMoteMaal(selskap: String) async throws -> MoteMaalDTO {
+    func hentMoteMaal(
+        organizationId: String,
+        selskap: String
+    ) async throws -> MoteMaalDTO {
         var comps = URLComponents(string: "/api/leadgrid/moter/maal")!
         comps.queryItems = [URLQueryItem(name: "selskap", value: selskap)]
-        return try await _get(comps.string ?? "/api/leadgrid/moter/maal")
+        return try await _get(
+            comps.string ?? "/api/leadgrid/moter/maal",
+            headers: try moteOrganizationHeaders(
+                organizationId: organizationId))
     }
 
-    func lagreMoteMaal(selskap: String, maal: String, behov: [String]) async throws {
+    func lagreMoteMaal(
+        organizationId: String,
+        selskap: String,
+        maal: String,
+        behov: [String]
+    ) async throws {
         struct Body: Encodable {
             let selskap: String
             let maal: String
@@ -176,7 +209,9 @@ extension APIClient {
         struct Resp: Decodable { let ok: Bool }
         let _: Resp = try await _put(
             "/api/leadgrid/moter/maal",
-            body: Body(selskap: selskap, maal: maal, behov: behov))
+            body: Body(selskap: selskap, maal: maal, behov: behov),
+            headers: try moteOrganizationHeaders(
+                organizationId: organizationId))
     }
 
     /// Flytt et møte (= leadens next_follow_up_at) til nytt tidspunkt.
@@ -191,7 +226,8 @@ extension APIClient {
 
     /// Hent AI-møtebrief for et selskap/møte. Orgnr er valgfritt — backend
     /// finner det via Brreg-navnesøk når det mangler.
-    func hentMoteBrief(selskap: String, orgnr: String? = nil,
+    func hentMoteBrief(organizationId: String,
+                       selskap: String, orgnr: String? = nil,
                        kontakt: String? = nil, kontaktRolle: String? = nil,
                        motetid: String? = nil, notater: String? = nil,
                        leadStatus: String? = nil) async throws -> MoteBriefDTO {
@@ -208,6 +244,8 @@ extension APIClient {
             "/api/leadgrid/moter/brief",
             body: Body(selskap: selskap, orgnr: orgnr, kontakt: kontakt,
                        kontaktRolle: kontaktRolle, motetid: motetid,
-                       notater: notater, leadStatus: leadStatus))
+                       notater: notater, leadStatus: leadStatus),
+            headers: try moteOrganizationHeaders(
+                organizationId: organizationId))
     }
 }

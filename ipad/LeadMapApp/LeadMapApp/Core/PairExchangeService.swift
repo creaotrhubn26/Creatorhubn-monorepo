@@ -30,11 +30,18 @@ struct PairExchangeError: Error, LocalizedError {
             return "Koden er allerede brukt. Generer en ny i web."
         case "kode_utlopt":
             return "Koden utløp. Generer en ny i web."
+        case "pairing_authority_changed":
+            return "Innloggingen som opprettet koden er endret eller utløpt. Logg inn på web på nytt og generer en ny kode."
         case "network_error":
             return "Nettverksfeil. Sjekk forbindelsen og prøv igjen."
         default:
             return "Uventet feil (\(code))."
         }
+    }
+
+    var requiresNewPairing: Bool {
+        ["ukjent_kode", "kode_allerede_brukt", "kode_utlopt",
+         "pairing_authority_changed"].contains(code)
     }
 }
 

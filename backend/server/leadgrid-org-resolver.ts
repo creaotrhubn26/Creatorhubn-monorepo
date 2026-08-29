@@ -13,7 +13,8 @@
  *      (Skrive-endepunktet håndhever super_admin; resolveren stoler på
  *      at rader kun finnes for autoriserte brukere.)
  *   2. enterprise_team_members (nyeste aktive medlemskap)
- *   3. Fallback: userId (solo-modus)
+ *   3. organization_members (native/Lead Map organization membership)
+ *   4. Fallback: userId (legacy solo-modus)
  *
  * Cache: 30s per bruker så override-oppslaget ikke koster en ekstra
  * query på hvert eneste API-kall.
@@ -23,6 +24,10 @@ import type { Pool } from "pg";
 
 const CACHE_TTL_MS = 30_000;
 const cache = new Map<string, { orgId: string; expiresAt: number }>();
+
+function isMissingRelation(error: unknown): boolean {
+  return (error as { code?: unknown } | null)?.code === "42P01";
+}
 
 export async function resolveOrgIdForUser(
   pool: Pool,
@@ -45,8 +50,9 @@ export async function resolveOrgIdForUser(
       cache.set(userId, { orgId, expiresAt: Date.now() + CACHE_TTL_MS });
       return orgId;
     }
-  } catch {
-    // Tabell mangler — fortsett til medlemskap.
+  } catch (error) {
+    if (!isMissingRelation(error)) throw error;
+    // Optional override table missing — continue to membership.
   }
 
   // 2. Enterprise-medlemskap
@@ -59,9 +65,34 @@ export async function resolveOrgIdForUser(
         LIMIT 1`,
       [userId],
     );
-    if (r.rows[0]?.organization_id) orgId = String(r.rows[0].organization_id);
-  } catch {
-    // Tabell mangler — behold solo-fallback.
+    if (r.rows[0]?.organization_id) {
+      orgId = String(r.rows[0].organization_id);
+      cache.set(userId, { orgId, expiresAt: Date.now() + CACHE_TTL_MS });
+      return orgId;
+    }
+  } catch (error) {
+    if (!isMissingRelation(error)) throw error;
+    // Optional enterprise table missing — continue to canonical membership.
+  }
+
+  // 3. Native Google auth and the Lead Map organization UI use the canonical
+  // organization_members table. Preserve enterprise precedence above, but do
+  // not collapse a real native membership to the unrelated user-id fallback.
+  try {
+    const membership = await pool.query<{ organization_id: string }>(
+      `SELECT organization_id
+         FROM organization_members
+        WHERE user_id = $1
+        ORDER BY joined_at DESC NULLS LAST
+        LIMIT 1`,
+      [userId],
+    );
+    if (membership.rows[0]?.organization_id) {
+      orgId = String(membership.rows[0].organization_id);
+    }
+  } catch (error) {
+    if (!isMissingRelation(error)) throw error;
+    // Older installations may not have the membership table yet.
   }
 
   cache.set(userId, { orgId, expiresAt: Date.now() + CACHE_TTL_MS });

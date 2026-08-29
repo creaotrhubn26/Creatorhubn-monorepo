@@ -1390,8 +1390,16 @@ struct KartView: View {
                 ]
                 return
             }
-            guard let api = appState.api else { return }
-            let notater = (try? await api.hentCanvasNotater()) ?? []
+            guard let api = appState.api,
+                  let organizationId = appState.activeOrganizationId else { return }
+            let notater: [CanvasNotatDTO]
+            do {
+                notater = try await api.hentCanvasNotater(
+                    organizationId: organizationId)
+            } catch {
+                _ = appState.handleAPIError(error)
+                return
+            }
             canvasKartNotater = notater.compactMap { d in
                 guard let lat = d.lat, let lon = d.lon else { return nil }
                 return CanvasKartNotat(id: d.id, tittel: d.tittel, lat: lat, lon: lon)
@@ -2142,7 +2150,19 @@ struct KartView: View {
             if DemoModeManager.isActiveNonisolated {
                 dto = MoteBriefSheet.demoBrief(selskap: navn)
             } else {
-                dto = try? await appState.api?.hentMoteBrief(selskap: navn)
+                guard let api = appState.api,
+                      let organizationId = appState.activeOrganizationId else {
+                    showToast("Krever innlogget organisasjon")
+                    return
+                }
+                do {
+                    dto = try await api.hentMoteBrief(
+                        organizationId: organizationId,
+                        selskap: navn)
+                } catch {
+                    _ = appState.handleAPIError(error)
+                    dto = nil
+                }
             }
             guard let b = dto else {
                 showToast("Fikk ikke laget brief nå")

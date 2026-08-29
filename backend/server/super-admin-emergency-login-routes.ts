@@ -9,8 +9,9 @@
  * fikser OAuth-flyten.
  *
  * Sikkerhet:
- *  - Krever env-var SUPER_ADMIN_EMERGENCY_TOKEN (hemmelighet kun Daniel har)
- *  - Email MÅ være daniel@creatorhubn.com (hardkodet)
+ *  - Krever env-varene SUPER_ADMIN_EMERGENCY_TOKEN og
+ *    SUPER_ADMIN_EMERGENCY_EMAIL
+ *  - Brukeren må fortsatt være aktiv super_admin i databasen
  *  - Rate-limit: én login per minutt per IP
  *  - Logger ALT i admin_activity_log
  *
@@ -18,34 +19,47 @@
  * inkluderer i Bearer-header på alle admin-kall.
  */
 
-import type { Express, Request, Response } from "express";
+import type { Express, Request } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
-import { persistSession } from "./persistent-session-store.js";
+import { persistAuthSessionInTransaction } from "./auth-session-store.js";
 
-const SUPER_ADMIN_EMAIL = "daniel@creatorhubn.com";
-
-type SessionData = { userId: string; role?: string; email?: string };
+type SessionData = {
+  userId: string;
+  email: string;
+  name: string;
+  role: string;
+  loginAt: string;
+  authSessionVersion: string;
+  isAdmin: boolean;
+};
 
 interface Deps {
   app: Express;
   pool: Pool;
-  activeSessions: Map<string, SessionData>;
+  activeSessions: { set: (token: string, session: SessionData) => unknown };
+  persistCanonicalSession?: typeof persistAuthSessionInTransaction;
+  resolveClientIp?: (req: Request) => string;
 }
 
 // Naive rate-limit: ett forsøk per minutt per IP
 const lastAttempt = new Map<string, number>();
 
+// Never trust a caller-controlled forwarding header by default. Deployments
+// that have an exact proxy topology can inject a vetted resolver through the
+// route dependency without coupling emergency auth to self-onboarding code.
+const resolveSocketClientIp = (req: Request): string =>
+  req.socket?.remoteAddress?.trim() || "unknown";
+
 export function registerSuperAdminEmergencyLoginRoutes({
   app,
   pool,
   activeSessions,
+  persistCanonicalSession = persistAuthSessionInTransaction,
+  resolveClientIp = resolveSocketClientIp,
 }: Deps): void {
   app.post("/api/super-admin/emergency-login", async (req, res) => {
-    const ip =
-      (req.headers["x-forwarded-for"]?.toString().split(",")[0] ?? "") ||
-      req.socket?.remoteAddress ||
-      "unknown";
+    const ip = resolveClientIp(req);
 
     const last = lastAttempt.get(ip) ?? 0;
     if (Date.now() - last < 60_000) {
@@ -54,17 +68,20 @@ export function registerSuperAdminEmergencyLoginRoutes({
     lastAttempt.set(ip, Date.now());
 
     const expected = process.env.SUPER_ADMIN_EMERGENCY_TOKEN;
-    if (!expected || expected.length < 16) {
-      console.error("[emergency-login] SUPER_ADMIN_EMERGENCY_TOKEN ikke satt eller for kort");
-      return res.status(500).json({ error: "ikke_konfigurert" });
+    const expectedEmail = process.env.SUPER_ADMIN_EMERGENCY_EMAIL
+      ?.trim()
+      .toLowerCase();
+    if (!expected || expected.length < 32 || !expectedEmail) {
+      console.error("[emergency-login] emergency credential er ikke konfigurert");
+      return res.status(503).json({ error: "ikke_konfigurert" });
     }
 
     const body = (req.body ?? {}) as { token?: string; email?: string };
     if (!body.token || !body.email) {
       return res.status(400).json({ error: "mangler_token_eller_email" });
     }
-    if (body.email.trim().toLowerCase() !== SUPER_ADMIN_EMAIL) {
-      return res.status(403).json({ error: "feil_email" });
+    if (body.email.trim().toLowerCase() !== expectedEmail) {
+      return res.status(403).json({ error: "ugyldig_legitimasjon" });
     }
 
     // Konstant-tids-sjekk for å unngå timing-leak
@@ -74,40 +91,56 @@ export function registerSuperAdminEmergencyLoginRoutes({
       expectedBuf.length !== providedBuf.length ||
       !crypto.timingSafeEqual(expectedBuf, providedBuf)
     ) {
-      return res.status(403).json({ error: "feil_token" });
+      return res.status(403).json({ error: "ugyldig_legitimasjon" });
     }
 
-    // Finn Daniels user-id i users-tabellen
+    // Resolve the configured identity from the database; env never grants role.
     try {
-      const userResult = await pool.query<{ id: string; email: string }>(
-        `SELECT id, email FROM users WHERE LOWER(email) = $1 LIMIT 1`,
-        [SUPER_ADMIN_EMAIL],
+      const userResult = await pool.query<{
+        id: string;
+        email: string;
+        name: string | null;
+        role: string | null;
+        is_active: boolean;
+        auth_session_version: string;
+      }>(
+        `SELECT id::text, email::text,
+                COALESCE(
+                  NULLIF(BTRIM(CONCAT_WS(' ', first_name, last_name)), ''),
+                  email::text
+                )::text AS name,
+                role::text,
+                COALESCE(is_active, TRUE) AS is_active,
+                auth_session_version::text AS auth_session_version
+           FROM users
+          WHERE LOWER(email) = $1
+          LIMIT 1`,
+        [expectedEmail],
       );
-      if (userResult.rows.length === 0) {
-        return res.status(404).json({ error: "bruker_ikke_funnet" });
-      }
       const user = userResult.rows[0];
+      if (!user || user.is_active !== true || user.role !== "super_admin") {
+        return res.status(403).json({ error: "ugyldig_superadmin" });
+      }
 
       // Generer ny session-token
       const sessionToken = crypto.randomBytes(32).toString("hex");
       const sessionData = {
         userId: user.id,
         email: user.email,
-        role: "admin",
+        name: user.name?.trim() || user.email,
+        role: user.role,
+        loginAt: new Date().toISOString(),
+        authSessionVersion: String(user.auth_session_version),
+        isAdmin: true,
       };
+      try {
+        await persistCanonicalSession(pool, sessionToken, sessionData);
+      } catch (error) {
+        console.error("[emergency-login] canonical session persistence failed", error);
+        return res.status(503).json({ error: "session_store_unavailable" });
+      }
+      // Cache only after the canonical write has committed successfully.
       activeSessions.set(sessionToken, sessionData);
-
-      // Persistér til DB så sessionen overlever Render-restart.
-      // Best-effort: hvis DB skriv feiler logger vi men returnerer
-      // fortsatt token (in-memory holder fortsatt på denne instansen).
-      void persistSession(pool, {
-        token: sessionToken,
-        session: sessionData,
-        source: "emergency_login",
-        ttlDays: 30,
-        ip,
-        userAgent: req.headers["user-agent"] as string | undefined,
-      });
 
       // Logg aktiviteten
       try {
@@ -116,7 +149,7 @@ export function registerSuperAdminEmergencyLoginRoutes({
            VALUES ($1, 'auth', $2, 'emergency_login', $3, $4::jsonb)`,
           [
             user.id,
-            sessionToken.slice(0, 8),
+            crypto.createHash("sha256").update(sessionToken).digest("hex").slice(0, 12),
             "Emergency login via super-admin-bypass",
             JSON.stringify({ ip, timestamp: new Date().toISOString() }),
           ],
@@ -130,7 +163,8 @@ export function registerSuperAdminEmergencyLoginRoutes({
         user: {
           id: user.id,
           email: user.email,
-          role: "admin",
+          name: sessionData.name,
+          role: user.role,
         },
       });
     } catch (err) {

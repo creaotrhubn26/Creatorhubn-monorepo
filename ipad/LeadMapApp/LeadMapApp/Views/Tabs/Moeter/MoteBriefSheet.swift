@@ -100,7 +100,15 @@ struct MoteBriefSheet: View {
         .task {
             guard !DemoModeManager.isActiveNonisolated,
                   let api = appState.api,
-                  let notater = try? await api.hentCanvasNotater() else { return }
+                  let organizationId = appState.activeOrganizationId else { return }
+            let notater: [CanvasNotatDTO]
+            do {
+                notater = try await api.hentCanvasNotater(
+                    organizationId: organizationId)
+            } catch {
+                _ = appState.handleAPIError(error)
+                return
+            }
             guard let match = notater.first(where: {
                 ($0.selskap ?? "").caseInsensitiveCompare(selskap) == .orderedSame
                     && !($0.drawingBase64 ?? "").isEmpty
@@ -343,7 +351,8 @@ struct MoteBriefSheet: View {
             brief = Self.demoBrief(selskap: selskap)
             return
         }
-        guard let api = appState.api else {
+        guard let api = appState.api,
+              let organizationId = appState.activeOrganizationId else {
             feil = "Krever innlogget modus."
             return
         }
@@ -351,10 +360,12 @@ struct MoteBriefSheet: View {
         defer { laster = false }
         do {
             brief = try await api.hentMoteBrief(
+                organizationId: organizationId,
                 selskap: selskap, orgnr: orgnr, kontakt: kontakt,
                 kontaktRolle: kontaktRolle, motetid: motetid,
                 notater: nil, leadStatus: leadStatus)
         } catch {
+            _ = appState.handleAPIError(error)
             feil = "Sjekk nettet — og at «Møter · AI-møtebrief» er aktivert for organisasjonen din."
         }
     }

@@ -26,8 +26,11 @@
 import type { Server as HTTPServer } from "http";
 import type { Pool } from "pg";
 import { WebSocketServer, WebSocket } from "ws";
-import { URL } from "url";
 import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
+import {
+  parseWebSocketRequestUrl,
+  resolveWebSocketPathOwner,
+} from "./websocket-path-policy.js";
 
 type SessionData = {
   userId: string;
@@ -56,8 +59,10 @@ class LeadgridRealtimeServer {
     this.wss = new WebSocketServer({ noServer: true });
 
     httpServer.on("upgrade", (req, socket, head) => {
-      const url = new URL(req.url ?? "/", "http://localhost");
-      if (url.pathname !== "/ws/leadgrid") return;
+      const url = parseWebSocketRequestUrl(req.url);
+      if (!url || resolveWebSocketPathOwner(url.pathname) !== "leadgrid-realtime") {
+        return;
+      }
 
       // Auth via token query-param eller Authorization-header
       let token: string | null = null;

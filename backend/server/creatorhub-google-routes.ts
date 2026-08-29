@@ -3,8 +3,9 @@ import { Router, type Request, type Response } from 'express';
 import { google } from 'googleapis';
 import type { Pool } from 'pg';
 import {
+  ensureAuthSessionTable,
   loadPersistedAuthSession,
-  persistAuthSession,
+  persistAuthSessionInTransaction,
 } from './auth-session-store.js';
 import {
   consumeOauthState,
@@ -28,6 +29,7 @@ type ActiveSessionData = {
   email: string;
   name: string;
   role: string;
+  authSessionVersion?: string;
   loginAt: string;
   roleLabel?: string;
   permissions?: string[];
@@ -112,6 +114,7 @@ type CreatorHubResolvedUser = {
   email: string;
   name: string;
   role: string;
+  authSessionVersion: string;
   profession?: string;
   roleLabel?: string;
   displayName?: string;
@@ -422,7 +425,9 @@ async function resolveCreatorHubGoogleLoginUser(
   let result: { rows: Array<Record<string, unknown>>; rowCount?: number };
   try {
     result = (await pool.query(
-      `SELECT id, email, username, first_name, last_name, role, profession, company_name
+      `SELECT id, email, username, first_name, last_name, role, profession, company_name,
+              auth_session_version::text AS auth_session_version,
+              COALESCE(is_active, TRUE) AS is_active
        FROM users
        WHERE LOWER(email) = LOWER($1)
        LIMIT 1`,
@@ -433,7 +438,9 @@ async function resolveCreatorHubGoogleLoginUser(
       // "column does not exist" — fall back til minimal SELECT
       console.warn('[creatorhub-google] users-tabell mangler kolonner — bruker minimal SELECT:', err.message);
       result = (await pool.query(
-        `SELECT id, email, username, first_name, last_name, role
+        `SELECT id, email, username, first_name, last_name, role,
+                auth_session_version::text AS auth_session_version,
+                COALESCE(is_active, TRUE) AS is_active
          FROM users
          WHERE LOWER(email) = LOWER($1)
          LIMIT 1`,
@@ -445,7 +452,7 @@ async function resolveCreatorHubGoogleLoginUser(
   }
 
   const row = result.rows[0] as Record<string, unknown> | undefined;
-  if (!row) {
+  if (!row || row.is_active === false) {
     return null;
   }
 
@@ -495,6 +502,7 @@ async function resolveCreatorHubGoogleLoginUser(
     name: baseName,
     displayName: coupleCheck.rows[0]?.display_name || baseName,
     role,
+    authSessionVersion: String(row.auth_session_version ?? '0'),
     roleLabel: roleLabelForRole(role),
     profession: readStringValue(row.profession) ?? undefined,
     vendorId: vendorCheck.rows[0]?.id ? String(vendorCheck.rows[0].id) : undefined,
@@ -620,6 +628,7 @@ function buildCreatorHubSessionData(
     email: user.email,
     name: user.name,
     role: user.role,
+    authSessionVersion: user.authSessionVersion,
     roleLabel: user.roleLabel,
     profession: user.profession,
     userType: user.profession,
@@ -955,8 +964,25 @@ export function createCreatorHubGoogleRouter(
 
         const sessionToken = crypto.randomUUID();
         const sessionData = buildCreatorHubSessionData(resolvedUser, googleProfile);
+        if (!(await ensureAuthSessionTable(pool))) {
+          redirectWithError(
+            oauthState.returnPath,
+            'Google-innlogging kan ikke fullføres akkurat nå. Prøv igjen.',
+            oauthState.browserOrigin,
+          );
+          return;
+        }
+        try {
+          await persistAuthSessionInTransaction(pool, sessionToken, sessionData);
+        } catch {
+          redirectWithError(
+            oauthState.returnPath,
+            'Google-innlogging kan ikke fullføres akkurat nå. Prøv igjen.',
+            oauthState.browserOrigin,
+          );
+          return;
+        }
         activeSessions?.set(sessionToken, sessionData);
-        await persistAuthSession(pool, sessionToken, sessionData);
 
         const transferId = crypto.randomUUID();
         const transferPayload: CreatorHubGoogleTransferPayload = {

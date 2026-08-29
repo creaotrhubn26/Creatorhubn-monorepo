@@ -43,7 +43,7 @@ export interface AuthRoutesDeps {
   pool: Pool;
   buildAdminRoleEntry: (...args: any[]) => any;
   buildSessionUserFromActiveSession: (...args: any[]) => any;
-  deletePersistedAuthSession: (...args: any[]) => Promise<void>;
+  deletePersistedAuthSessionStrict: (...args: any[]) => Promise<void>;
   getRoleRoomCommercialLoginGate: (...args: any[]) => any;
   getTableColumns: (tableName: string) => Promise<Set<string>>;
   isRoleRoomCommercialLoginIntent: (...args: any[]) => boolean;
@@ -56,7 +56,8 @@ export interface AuthRoutesDeps {
   ADMIN_SESSION_ROLES: Set<string>;
   pendingTwoFactorLogins: Map<string, any>;
   activeSessions: Map<string, any>;
-  persistAuthSession: (...args: any[]) => Promise<void>;
+  ensureAuthSessionTable: (...args: any[]) => Promise<boolean>;
+  persistAuthSessionInTransaction: (...args: any[]) => Promise<void>;
   purgeExpiredPendingTwoFactor: () => void;
   readActiveSessionToken: (req: any) => string | null;
   resolveActiveSessionFromRequest: (req: any) => Promise<any>;
@@ -69,13 +70,14 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
     pool,
     buildAdminRoleEntry,
     buildSessionUserFromActiveSession,
-    deletePersistedAuthSession,
+    deletePersistedAuthSessionStrict,
     getRoleRoomCommercialLoginGate,
     getTableColumns,
     isRoleRoomCommercialLoginIntent,
     normalizeAdminProfession,
     normalizeAdminRoleId,
-    persistAuthSession,
+    ensureAuthSessionTable,
+    persistAuthSessionInTransaction,
     purgeExpiredPendingTwoFactor,
     readActiveSessionToken,
     resolveActiveSessionFromRequest,
@@ -159,6 +161,12 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
         userColumns.has("role") ? "role" : "NULL::text AS role",
         userColumns.has("profession") ? "profession" : "NULL::text AS profession",
         userColumns.has("company_name") ? "company_name" : "NULL::text AS company_name",
+        userColumns.has("is_active")
+          ? "COALESCE(is_active, TRUE) AS is_active"
+          : "TRUE AS is_active",
+        userColumns.has("auth_session_version")
+          ? "auth_session_version::text AS auth_session_version"
+          : "'0'::text AS auth_session_version",
       ];
 
       // Look up user by email
@@ -260,6 +268,13 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
         }
       }
 
+      // Keep the response indistinguishable from a normal credential failure,
+      // but never mint a session for a deactivated account.
+      if (dbUser.is_active === false) {
+        _recordFailedLogin(normalizedEmail);
+        return res.status(401).json({ error: "Ugyldig e-post eller passord" });
+      }
+
       // Determine role
       const dbRole = String(dbUser.role || "").trim().toLowerCase();
       let role =
@@ -306,7 +321,8 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
       const sessionToken = crypto.randomUUID();
       const name =
         [dbUser.first_name, dbUser.last_name].filter(Boolean).join(" ") ||
-        dbUser.username;
+        dbUser.username ||
+        dbUser.email;
 
       const normalizedRequestedRole = requestedRole || null;
       const roleRoomSessionRole = isRoleRoomLogin
@@ -337,6 +353,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
         isAdmin: ADMIN_SESSION_ROLES.has(normalizedSessionRole),
         loginAs: loginAs || undefined,
         requestedRole: normalizedRequestedRole,
+        authSessionVersion: String(dbUser.auth_session_version ?? "0"),
         loginAt: new Date().toISOString(),
       };
       if (role === "vendor" && vendorCheck.rows.length > 0) {
@@ -415,8 +432,16 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
       }
 
       _clearFailedLogins(normalizedEmail);
+      if (!(await ensureAuthSessionTable(pool))) {
+        return res.status(503).json({ error: "session_store_unavailable" });
+      }
+      try {
+        await persistAuthSessionInTransaction(pool, sessionToken, sessionData);
+      } catch {
+        return res.status(503).json({ error: "session_store_unavailable" });
+      }
       activeSessions.set(sessionToken, sessionData);
-      await persistAuthSession(pool, sessionToken, sessionData);
+      pool.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [dbUser.id]).catch(() => {});
 
       console.log(
         `[Auth] Login: ${dbUser.email} as ${roleRoomSessionRole} (session: ${sessionToken.substring(0, 8)}...)`,
@@ -567,13 +592,17 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
       if (!result.ok) {
         const httpStatus = result.error === "weak_password" ? 400
                          : result.error === "expired" || result.error === "already_used" || result.error === "invalid_token" ? 410
+                         : result.error === "db_error" ? 503
                          : 500;
         return res.status(httpStatus).json({ error: result.error, message: result.message });
       }
       // Purge in-memory sessions for this user so stolen cookies can't survive a reset
       if (result.userId) {
         for (const [tok, sess] of activeSessions.entries()) {
-          if (sess?.userId === result.userId) activeSessions.delete(tok);
+          if (
+            sess?.userId === result.userId ||
+            sess?.impersonatorId === result.userId
+          ) activeSessions.delete(tok);
         }
       }
       return res.json({ status: "ok", message: result.message });
@@ -611,11 +640,44 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
             : "Verifisering feilet.",
         });
       }
+      const currentUser = await pool.query<{
+        auth_session_version: string;
+        is_active: boolean;
+      }>(
+        `SELECT auth_session_version::text AS auth_session_version,
+                COALESCE(is_active, TRUE) AS is_active
+           FROM users
+          WHERE id::text = $1
+          LIMIT 1`,
+        [String(pending.userId)],
+      );
+      const currentSnapshot = currentUser.rows[0];
+      if (
+        !currentSnapshot ||
+        currentSnapshot.is_active !== true ||
+        String(currentSnapshot.auth_session_version) !==
+          String(pending.sessionData.authSessionVersion)
+      ) {
+        pendingTwoFactorLogins.delete(tempToken);
+        return res.status(401).json({ error: "session_snapshot_stale" });
+      }
       // Commit session
       pendingTwoFactorLogins.delete(tempToken);
       const sessionToken = String(pending.responsePayload.token);
+      if (!(await ensureAuthSessionTable(pool))) {
+        return res.status(503).json({ error: "session_store_unavailable" });
+      }
+      try {
+        await persistAuthSessionInTransaction(
+          pool,
+          sessionToken,
+          pending.sessionData,
+        );
+      } catch {
+        return res.status(503).json({ error: "session_store_unavailable" });
+      }
       activeSessions.set(sessionToken, pending.sessionData);
-      await persistAuthSession(pool, sessionToken, pending.sessionData);
+      pool.query("UPDATE users SET last_login_at = NOW() WHERE email = $1", [pending.sessionData.email]).catch(() => {});
       console.log(`[Auth] 2FA login completed for ${pending.sessionData.email}${result.usedBackupCode ? " (backup-code)" : ""}`);
       res.setHeader('Cache-Control', 'no-store');
       return res.json({
@@ -631,10 +693,15 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
 
   // POST /api/auth/logout — Logout
   app.post("/api/auth/logout", async (req, res) => {
-    const token = req.headers.authorization?.replace("Bearer ", "");
+    const token = readActiveSessionToken(req);
     if (token) {
+      try {
+        await deletePersistedAuthSessionStrict(pool, token);
+      } catch (error) {
+        console.error("[/api/auth/logout] persistent revocation failed", error);
+        return res.status(503).json({ error: "session_store_unavailable" });
+      }
       activeSessions.delete(token);
-      await deletePersistedAuthSession(pool, token);
     }
     res.json({ success: true });
   });

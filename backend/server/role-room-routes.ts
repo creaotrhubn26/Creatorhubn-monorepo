@@ -1855,6 +1855,7 @@ type SessionData = {
   verified_email?: boolean;
   requestedRole?: string | null;
   loginAs?: string;
+  authSessionVersion?: string;
 };
 
 function isRoleRoomDevBypassEnabled(): boolean {
@@ -3969,6 +3970,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     email: string;
     name: string;
     role: string;
+    authSessionVersion: string;
   };
 
   function isRoleRoomPlatformAdminRole(role: string | null | undefined): boolean {
@@ -3979,7 +3981,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
   async function findRoleRoomUserByEmail(email: string): Promise<RoleRoomGoogleResolvedUser | null> {
     const normalizedEmail = email.trim().toLowerCase();
     const result = await pool.query(
-      `SELECT id, email, username, first_name, last_name, role
+      `SELECT id, email, username, first_name, last_name, role,
+              auth_session_version::text AS auth_session_version,
+              COALESCE(is_active, TRUE) AS is_active
        FROM users
        WHERE LOWER(email) = LOWER($1)
        LIMIT 1`,
@@ -3987,7 +3991,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     );
 
     const row = result.rows[0] as Record<string, unknown> | undefined;
-    if (!row) {
+    if (!row || row.is_active === false) {
       return null;
     }
 
@@ -4002,6 +4006,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         || normalizedEmail.split('@')[0]
         || 'Role Room',
       role: readStringValue(row.role)?.toLowerCase() ?? 'user',
+      authSessionVersion: readStringValue(row.auth_session_version) ?? '0',
     };
   }
 
@@ -4039,7 +4044,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const inserted = await pool.query(
       `INSERT INTO users (email, username, first_name, role, password, created_at, updated_at)
        VALUES ($1, $2, $3, 'user', $4, NOW(), NOW())
-       RETURNING id, email, username, first_name, last_name, role`,
+       RETURNING id, email, username, first_name, last_name, role,
+                 auth_session_version::text AS auth_session_version`,
       [normalizedEmail, nextUsername, inferredFirstName, placeholderPassword],
     );
 
@@ -4054,6 +4060,8 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         || normalizedEmail.split('@')[0]
         || 'Role Room',
       role: readStringValue(inserted.rows[0].role)?.toLowerCase() ?? 'user',
+      authSessionVersion:
+        readStringValue(inserted.rows[0].auth_session_version) ?? '0',
     };
   }
 
@@ -9559,6 +9567,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           verified_email: googleProfile?.verified_email === true,
           requestedRole: oauthState.requestedRole ?? null,
           loginAs: oauthState.loginAs ?? undefined,
+          authSessionVersion: resolvedUser.authSessionVersion,
           loginAt: new Date().toISOString(),
         };
 
@@ -19314,6 +19323,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
         displayName: ensuredUser.name,
         requestedRole: 'client',
         loginAs: 'content_producer',
+        authSessionVersion: ensuredUser.authSessionVersion,
         loginAt: new Date().toISOString(),
       };
       activeSessions?.set(sessionToken, sessionData);
