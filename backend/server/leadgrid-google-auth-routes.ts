@@ -504,8 +504,14 @@ export function registerLeadgridGoogleAuthRoutes({
         role: string | null;
         is_active: boolean;
       }>(
-        `SELECT id, role, COALESCE(is_active, TRUE) AS is_active
-           FROM users WHERE LOWER(email) = LOWER($1)`,
+        `SELECT u.id,
+                u.role,
+                COALESCE(
+                  (to_jsonb(u)->>'is_active')::boolean,
+                  TRUE
+                ) AS is_active
+           FROM users u
+          WHERE LOWER(u.email) = LOWER($1)`,
         [verified.email],
       );
       if (userR.rows.length > 0) {

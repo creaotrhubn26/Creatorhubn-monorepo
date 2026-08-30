@@ -6164,7 +6164,7 @@ export const users = pgTable("users", {
 	gmailConnected: boolean("gmail_connected").default(false),
 	googleWorkspaceToken: text("google_workspace_token"),
 	googleRefreshToken: text("google_refresh_token"),
-	isActive: boolean("is_active").default(true),
+	isActive: boolean("is_active").default(true).notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
