@@ -14,6 +14,7 @@ const migrationBasenames = [
   "0476_storyboard_ai_image_billing_outbox.sql",
   "0477_storyboard_mentions_identity_scope.sql",
   "0478_project_video_direct_upload_registration.sql",
+  "0479_storyboard_tenant_identity.sql",
 ] as const;
 
 const migrations = Object.fromEntries(
@@ -32,15 +33,16 @@ const legacyBilling = compactSQL(migrations[migrationBasenames[3]]);
 const imageBilling = compactSQL(migrations[migrationBasenames[4]]);
 const mentionIdentity = compactSQL(migrations[migrationBasenames[5]]);
 const projectVideoUpload = compactSQL(migrations[migrationBasenames[6]]);
+const tenantIdentity = compactSQL(migrations[migrationBasenames[7]]);
 
 describe("Storyboard Room migration integrity", () => {
-  it("uses one unique, contiguous migration filename for 0472 through 0478", () => {
+  it("uses one unique, contiguous migration filename for 0472 through 0479", () => {
     const files = readdirSync(migrationDirectory)
-      .filter((filename) => /^(047[2-8])_.*\.sql$/.test(filename))
+      .filter((filename) => /^(047[2-9])_.*\.sql$/.test(filename))
       .sort();
 
     expect(files).toEqual([...migrationBasenames]);
-    expect(new Set(files.map((filename) => filename.slice(0, 4))).size).toBe(7);
+    expect(new Set(files.map((filename) => filename.slice(0, 4))).size).toBe(8);
 
     const obsoleteBasenames = [
       "0454_storyboard_ai_image_versions.sql",
@@ -181,6 +183,92 @@ describe("Storyboard Room migration integrity", () => {
     expect(projectVideoUpload).toContain(
       "ADD COLUMN IF NOT EXISTS storage_version_id text",
     );
+  });
+
+  it("binds AI image identities to one storyboard tenant", () => {
+    const versionGuard = tenantIdentity.indexOf(
+      "ADD CONSTRAINT storyboard_ai_image_versions_storyboard_project_fkey",
+    );
+    const versionBackfill = tenantIdentity.indexOf(
+      "UPDATE storyboard_ai_image_versions AS image_version SET project_id = storyboard.project_id",
+    );
+    const versionValidation = tenantIdentity.indexOf(
+      "VALIDATE CONSTRAINT storyboard_ai_image_versions_storyboard_project_fkey",
+    );
+    const operationGuard = tenantIdentity.indexOf(
+      "ADD CONSTRAINT storyboard_ai_image_operations_storyboard_project_fkey",
+    );
+    const collisionGuard = tenantIdentity.indexOf(
+      "DO $storyboard_operation_identity_collision$",
+    );
+    const operationBackfill = tenantIdentity.indexOf(
+      "UPDATE storyboard_ai_image_operations AS image_operation SET project_id = storyboard.project_id",
+    );
+    const operationValidation = tenantIdentity.indexOf(
+      "VALIDATE CONSTRAINT storyboard_ai_image_operations_storyboard_project_fkey",
+    );
+
+    expect(tenantIdentity).toContain(
+      "CREATE UNIQUE INDEX IF NOT EXISTS casting_storyboards_id_project_uidx ON casting_storyboards (id, project_id)",
+    );
+    expect(tenantIdentity).toContain(
+      "ADD CONSTRAINT storyboard_ai_image_versions_storyboard_project_fkey FOREIGN KEY (storyboard_id, project_id) REFERENCES casting_storyboards (id, project_id) ON DELETE CASCADE NOT VALID",
+    );
+    expect(tenantIdentity).toContain(
+      "ADD CONSTRAINT storyboard_ai_image_operations_storyboard_project_fkey FOREIGN KEY (storyboard_id, project_id) REFERENCES casting_storyboards (id, project_id) ON DELETE CASCADE NOT VALID",
+    );
+    expect(versionGuard).toBeGreaterThanOrEqual(0);
+    expect(versionBackfill).toBeGreaterThan(versionGuard);
+    expect(versionValidation).toBeGreaterThan(versionBackfill);
+    expect(operationGuard).toBeGreaterThan(versionValidation);
+    expect(collisionGuard).toBeGreaterThan(operationGuard);
+    expect(operationBackfill).toBeGreaterThan(collisionGuard);
+    expect(operationValidation).toBeGreaterThan(operationBackfill);
+    expect(tenantIdentity).toContain("HAVING COUNT(*) > 1");
+    expect(tenantIdentity).toContain(
+      "FOREIGN KEY (parent_version_id, storyboard_id, project_id) REFERENCES storyboard_ai_image_versions (id, storyboard_id, project_id) ON DELETE SET NULL (parent_version_id) NOT VALID",
+    );
+    expect(tenantIdentity).toContain(
+      "FOREIGN KEY (version_id, storyboard_id, project_id) REFERENCES storyboard_ai_image_versions (id, storyboard_id, project_id) ON DELETE SET NULL (version_id) NOT VALID",
+    );
+    expect(tenantIdentity).toContain(
+      "FOREIGN KEY (reservation_id, storyboard_id, project_id) REFERENCES storyboard_ai_image_usage (id, storyboard_id, project_id) ON DELETE SET NULL (reservation_id) NOT VALID",
+    );
+    expect(tenantIdentity).toContain(
+      "FOREIGN KEY (operation_id, storyboard_id, project_id) REFERENCES storyboard_ai_image_operations (id, storyboard_id, project_id) ON DELETE SET NULL (operation_id) NOT VALID",
+    );
+  });
+
+  it("guards new durable image usage and video jobs without cascading history", () => {
+    const lastTrigger = tenantIdentity.indexOf(
+      "CREATE TRIGGER storyboard_ai_video_jobs_tenant_identity",
+    );
+    const durableAudit = tenantIdentity.indexOf("DO $storyboard_durable_tenant_identity$");
+    expect(tenantIdentity).toContain(
+      "CREATE OR REPLACE FUNCTION enforce_storyboard_project_identity() RETURNS TRIGGER",
+    );
+    expect(tenantIdentity).toContain(
+      "WHERE id = NEW.storyboard_id AND project_id = NEW.project_id FOR KEY SHARE",
+    );
+    expect(tenantIdentity).toContain(
+      "BEFORE INSERT OR UPDATE OF storyboard_id, project_id ON storyboard_ai_image_usage",
+    );
+    expect(tenantIdentity).toContain(
+      "BEFORE INSERT OR UPDATE OF storyboard_id, project_id ON storyboard_ai_video_jobs",
+    );
+    expect(tenantIdentity).not.toContain(
+      "ALTER TABLE storyboard_ai_video_jobs ADD CONSTRAINT",
+    );
+    expect(lastTrigger).toBeGreaterThanOrEqual(0);
+    expect(durableAudit).toBeGreaterThan(lastTrigger);
+    expect(tenantIdentity).toContain(
+      "storyboard image usage has a conflicting durable project identity",
+    );
+    expect(tenantIdentity).toContain(
+      "storyboard video job has a conflicting durable project identity",
+    );
+    expect(tenantIdentity).not.toContain("UPDATE storyboard_ai_image_usage AS");
+    expect(tenantIdentity).not.toContain("UPDATE storyboard_ai_video_jobs AS");
   });
 
   it("keeps optional legacy indexing replay-safe and references renumbered files", () => {
