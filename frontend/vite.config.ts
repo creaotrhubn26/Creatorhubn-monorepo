@@ -18,6 +18,7 @@ const muiSystemAlias =
   ].find((candidate) => existsSync(candidate)) || path.resolve(__dirname, 'node_modules/@mui/system');
 const backendProxyTarget = process.env.VITE_API_PROXY_TARGET || process.env.API_PROXY_TARGET || 'http://localhost:3003';
 const isStoryboardE2EHarness = process.env.STORYBOARD_E2E === '1';
+const storyboardE2ECacheScope = (process.env.PLAYWRIGHT_PORT || '5001').replace(/[^a-zA-Z0-9_-]/g, '_');
 
 const readGitValue = (command: string): string | null => {
   try {
@@ -148,7 +149,7 @@ export default defineConfig({
   // servers. Concurrent Vite processes must never invalidate each other's
   // dependency metadata and force a full-page reload mid-scenario.
   cacheDir: isStoryboardE2EHarness
-    ? path.resolve(__dirname, 'node_modules/.vite-storyboard-e2e')
+    ? path.resolve(__dirname, `node_modules/.vite-storyboard-e2e-${storyboardE2ECacheScope}`)
     : undefined,
   define: {
     // Fix for third-party modules that use process.env
@@ -269,9 +270,8 @@ export default defineConfig({
       ...(isStoryboardE2EHarness ? ['@mui/material/styles', 'react-is'] : []),
     ],
     exclude: ['rgthree/common/rgthree_api.js', 'rgthree/common/components/base_custom_element', 'three-stdlib'],
-    // The main application has a broad dependency graph. Storyboard E2E uses a
-    // dedicated entry so unrelated dynamic routes cannot discover new chunks
-    // mid-scenario and force a destructive full-page reload.
+    // The dedicated Storyboard script has a closed dependency graph. Other
+    // Playwright suites exercise the full app and keep normal Vite discovery.
     entries: isStoryboardE2EHarness
       ? ['e2e-drawing-editor.html']
       : ['./client/**/*.{js,jsx,ts,tsx}'],

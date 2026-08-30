@@ -1,5 +1,28 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const requestedPlaywrightPort = process.env.PLAYWRIGHT_PORT || '5001';
+const parsedPlaywrightPort = Number(requestedPlaywrightPort);
+if (
+  !/^\d{1,5}$/.test(requestedPlaywrightPort)
+  || !Number.isInteger(parsedPlaywrightPort)
+  || parsedPlaywrightPort < 1
+  || parsedPlaywrightPort > 65_535
+) {
+  throw new Error(`PLAYWRIGHT_PORT must be an integer from 1 to 65535; received "${requestedPlaywrightPort}".`);
+}
+const playwrightPort = String(parsedPlaywrightPort);
+const playwrightBaseURL = process.env.PLAYWRIGHT_BASE_URL || `http://localhost:${playwrightPort}`;
+const isStoryboardHarnessRun = process.env.STORYBOARD_E2E === '1'
+  || process.env.npm_lifecycle_event === 'test:e2e:storyboard-drawing-editor';
+// A few legacy specs read the environment directly instead of Playwright's
+// configured baseURL. Keep them on the same isolated origin as the runner.
+process.env.PLAYWRIGHT_BASE_URL = playwrightBaseURL;
+if (isStoryboardHarnessRun) {
+  // `npx` replaces npm_lifecycle_event for its child process, so normalize the
+  // dedicated harness flag before Vite is spawned.
+  process.env.STORYBOARD_E2E = '1';
+}
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
@@ -9,7 +32,7 @@ export default defineConfig({
   reporter: [['html', { open: 'never' }], ['list']],
   timeout: 120_000,
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5001',
+    baseURL: playwrightBaseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     headless: true,
@@ -55,13 +78,13 @@ export default defineConfig({
       grep: /@tablet/,
     },
   ],
-  // webServer-port leses fra PLAYWRIGHT_PORT (default 5001) — gjør at
-  // parallelle worktrees kan kjøre Playwright mot egne dev-servere uten
-  // å kollidere. baseURL leses tilsvarende fra PLAYWRIGHT_BASE_URL.
+  // Port og standard-baseURL deler samme kilde, slik at parallelle worktrees
+  // ikke kan starte én Vite-instans og ved et uhell teste en annen. Gjenbruk
+  // av en allerede kjørende server må velges eksplisitt.
   webServer: {
-    command: `STORYBOARD_E2E=1 npx vite --port ${process.env.PLAYWRIGHT_PORT || '5001'} --host`,
-    port: Number(process.env.PLAYWRIGHT_PORT || '5001'),
-    reuseExistingServer: true,
+    command: `npx vite --port ${playwrightPort} --host --strictPort`,
+    port: Number(playwrightPort),
+    reuseExistingServer: process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER === '1',
     timeout: 30_000,
   },
 });

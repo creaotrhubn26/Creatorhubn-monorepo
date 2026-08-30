@@ -11,6 +11,9 @@ const openDrawingEditor = async (page: Page, url: string) => {
   await expect(page.getByTestId('drawing-editor-harness-ready')).toBeVisible({
     timeout: EDITOR_HYDRATION_TIMEOUT_MS,
   });
+  await expect(page.getByTestId('frame-editor-shell')).toBeVisible({
+    timeout: EDITOR_HYDRATION_TIMEOUT_MS,
+  });
 };
 
 type RuntimeCollector = {
