@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 type StoredState = {
   platform: string;
   createdAt: number;
+  clientId?: string;
+  redirectUri?: string;
 };
 
 const oauthStore = vi.hoisted(() => {
@@ -36,12 +38,48 @@ vi.mock("./role-room-oauth-store", () => ({
   consumeOauthState: oauthStore.consume,
 }));
 
-async function buildAppPair() {
-  vi.stubEnv("CREATORHUB_GOOGLE_CLIENT_ID", "leadgrid-web-client");
-  vi.stubEnv("CREATORHUB_GOOGLE_CLIENT_SECRET", "leadgrid-web-secret");
-  vi.stubEnv("GOOGLE_CLIENT_ID", "");
-  vi.stubEnv("GOOGLE_CLIENT_SECRET", "");
-  vi.stubEnv("ROLE_ROOM_PUBLIC_URL", "https://leadgrid.example.test");
+const googleVerifier = vi.hoisted(() => ({
+  verifyIdToken: vi.fn(),
+}));
+
+vi.mock("google-auth-library", () => ({
+  OAuth2Client: class {
+    verifyIdToken = googleVerifier.verifyIdToken;
+  },
+}));
+
+type GoogleEnvOverrides = Partial<{
+  LEADGRID_GOOGLE_CLIENT_ID: string;
+  LEADGRID_GOOGLE_CLIENT_SECRET: string;
+  CREATORHUB_GOOGLE_CLIENT_ID: string;
+  CREATORHUB_GOOGLE_CLIENT_SECRET: string;
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
+  LEADGRID_PUBLIC_URL: string;
+  ROLE_ROOM_PUBLIC_URL: string;
+  ROLE_ROOM_GOOGLE_CLIENT_ID: string;
+  CAPTUREAPP_GOOGLE_CLIENT_ID: string;
+  LEADGRID_IOS_GOOGLE_CLIENT_ID: string;
+}>;
+
+async function buildAppPair(overrides: GoogleEnvOverrides = {}) {
+  const env = {
+    LEADGRID_GOOGLE_CLIENT_ID: "",
+    LEADGRID_GOOGLE_CLIENT_SECRET: "",
+    CREATORHUB_GOOGLE_CLIENT_ID: "leadgrid-web-client",
+    CREATORHUB_GOOGLE_CLIENT_SECRET: "leadgrid-web-secret",
+    GOOGLE_CLIENT_ID: "",
+    GOOGLE_CLIENT_SECRET: "",
+    LEADGRID_PUBLIC_URL: "",
+    ROLE_ROOM_PUBLIC_URL: "https://leadgrid.example.test",
+    ROLE_ROOM_GOOGLE_CLIENT_ID: "",
+    CAPTUREAPP_GOOGLE_CLIENT_ID: "",
+    LEADGRID_IOS_GOOGLE_CLIENT_ID: "",
+    ...overrides,
+  };
+  for (const [key, value] of Object.entries(env)) {
+    vi.stubEnv(key, value);
+  }
   vi.resetModules();
 
   const { registerLeadgridGoogleAuthRoutes } =
@@ -64,6 +102,9 @@ async function buildAppPair() {
 beforeEach(() => {
   oauthStore.states.clear();
   vi.clearAllMocks();
+  googleVerifier.verifyIdToken.mockRejectedValue(
+    new Error("test token rejected"),
+  );
 });
 
 afterEach(() => {
@@ -73,6 +114,227 @@ afterEach(() => {
 });
 
 describe("Leadgrid Google OAuth state", () => {
+  it("prefers the dedicated Leadgrid client and callback base consistently", async () => {
+    const fetchMock = vi.fn(
+      async (_input: string | URL | Request, _init?: RequestInit) => ({
+        ok: true,
+        json: vi.fn(async () => ({ id_token: "dedicated-id-token" })),
+        text: vi.fn(async () => ""),
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { first } = await buildAppPair({
+      LEADGRID_GOOGLE_CLIENT_ID: " dedicated-leadgrid-client ",
+      LEADGRID_GOOGLE_CLIENT_SECRET: " dedicated-leadgrid-secret ",
+      CREATORHUB_GOOGLE_CLIENT_ID: "shared-creatorhub-client",
+      CREATORHUB_GOOGLE_CLIENT_SECRET: "shared-creatorhub-secret",
+      GOOGLE_CLIENT_ID: "generic-google-client",
+      GOOGLE_CLIENT_SECRET: "generic-google-secret",
+      LEADGRID_PUBLIC_URL: " https://leadgrid.example.test/ ",
+      ROLE_ROOM_PUBLIC_URL: "https://role-room.example.test",
+    });
+
+    const started = await request(first)
+      .get("/api/leadgrid/auth/google/start?platform=web")
+      .expect(200);
+    const authUrl = new URL(String(started.body.auth_url));
+    expect(authUrl.searchParams.get("client_id")).toBe(
+      "dedicated-leadgrid-client",
+    );
+    expect(authUrl.searchParams.get("redirect_uri")).toBe(
+      "https://leadgrid.example.test/api/leadgrid/auth/google/web-callback",
+    );
+    expect(authUrl.searchParams.has("access_type")).toBe(false);
+
+    await request(first)
+      .post("/api/leadgrid/auth/google/callback")
+      .send({ code: "one-time-code", state: started.body.state })
+      .expect(200, { id_token: "dedicated-id-token" });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const tokenRequest = fetchMock.mock.calls[0]?.[1];
+    const tokenBody = new URLSearchParams(String(tokenRequest?.body));
+    expect(tokenBody.get("client_id")).toBe("dedicated-leadgrid-client");
+    expect(tokenBody.get("client_secret")).toBe("dedicated-leadgrid-secret");
+    expect(tokenBody.get("redirect_uri")).toBe(
+      "https://leadgrid.example.test/api/leadgrid/auth/google/web-callback",
+    );
+  });
+
+  it("keeps the existing CreatorHub and Role Room configuration as fallback", async () => {
+    const { first } = await buildAppPair();
+
+    const started = await request(first)
+      .get("/api/leadgrid/auth/google/start?platform=web")
+      .expect(200);
+    const authUrl = new URL(String(started.body.auth_url));
+
+    expect(authUrl.searchParams.get("client_id")).toBe("leadgrid-web-client");
+    expect(authUrl.searchParams.get("redirect_uri")).toBe(
+      "https://leadgrid.example.test/api/leadgrid/auth/google/web-callback",
+    );
+  });
+
+  it("uses the complete generic pair when CreatorHub is only partially configured", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: vi.fn(async () => ({ id_token: "generic-id-token" })),
+      text: vi.fn(async () => ""),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { first } = await buildAppPair({
+      CREATORHUB_GOOGLE_CLIENT_ID: "partial-creatorhub-client",
+      CREATORHUB_GOOGLE_CLIENT_SECRET: "  ",
+      GOOGLE_CLIENT_ID: "generic-google-client",
+      GOOGLE_CLIENT_SECRET: "generic-google-secret",
+    });
+
+    const started = await request(first)
+      .get("/api/leadgrid/auth/google/start?platform=web")
+      .expect(200);
+    const authUrl = new URL(String(started.body.auth_url));
+
+    expect(authUrl.searchParams.get("client_id")).toBe("generic-google-client");
+
+    await request(first)
+      .post("/api/leadgrid/auth/google/callback")
+      .send({ code: "one-time-code", state: started.body.state })
+      .expect(200, { id_token: "generic-id-token" });
+
+    const tokenRequest = fetchMock.mock.calls[0]?.[1];
+    const tokenBody = new URLSearchParams(String(tokenRequest?.body));
+    expect(tokenBody.get("client_id")).toBe("generic-google-client");
+    expect(tokenBody.get("client_secret")).toBe("generic-google-secret");
+  });
+
+  it.each([
+    ["client ID only", "dedicated-leadgrid-client", ""],
+    ["client secret only", "", "dedicated-leadgrid-secret"],
+  ])(
+    "fails closed before state creation for partial dedicated config: %s",
+    async (_case, clientId, clientSecret) => {
+      const { first } = await buildAppPair({
+        LEADGRID_GOOGLE_CLIENT_ID: clientId,
+        LEADGRID_GOOGLE_CLIENT_SECRET: clientSecret,
+      });
+
+      await request(first)
+        .get("/api/leadgrid/auth/google/start?platform=web")
+        .expect(500, {
+          error: "Leadgrid Google credentials er ufullstendig konfigurert",
+        });
+
+      expect(oauthStore.persist).not.toHaveBeenCalled();
+
+      await request(first)
+        .post("/api/leadgrid/auth/google/exchange")
+        .send({ id_token: "otherwise-valid-google-token" })
+        .expect(503, {
+          error: "Leadgrid Google OAuth er ufullstendig konfigurert",
+        });
+      expect(googleVerifier.verifyIdToken).not.toHaveBeenCalled();
+    },
+  );
+
+  it("fails closed on direct exchange when no Leadgrid credential pair exists", async () => {
+    const { first } = await buildAppPair({
+      CREATORHUB_GOOGLE_CLIENT_ID: "",
+      CREATORHUB_GOOGLE_CLIENT_SECRET: "",
+      GOOGLE_CLIENT_ID: "",
+      GOOGLE_CLIENT_SECRET: "",
+    });
+
+    await request(first)
+      .post("/api/leadgrid/auth/google/exchange")
+      .send({ id_token: "otherwise-valid-google-token" })
+      .expect(503, {
+        error: "Leadgrid Google OAuth er ufullstendig konfigurert",
+      });
+    expect(googleVerifier.verifyIdToken).not.toHaveBeenCalled();
+  });
+
+  it("limits Leadgrid token verification to Leadgrid audiences", async () => {
+    googleVerifier.verifyIdToken.mockResolvedValue({
+      getPayload: () => ({
+        aud: "capture-app-client",
+        email: "daniel@example.test",
+        email_verified: true,
+        sub: "google-user",
+      }),
+    });
+    const { first } = await buildAppPair({
+      LEADGRID_GOOGLE_CLIENT_ID: "dedicated-leadgrid-client",
+      LEADGRID_GOOGLE_CLIENT_SECRET: "dedicated-leadgrid-secret",
+      LEADGRID_IOS_GOOGLE_CLIENT_ID: "leadgrid-ios-a, leadgrid-ios-b",
+      CAPTUREAPP_GOOGLE_CLIENT_ID: "capture-app-client",
+      CREATORHUB_GOOGLE_CLIENT_ID: "shared-creatorhub-client",
+      CREATORHUB_GOOGLE_CLIENT_SECRET: "shared-creatorhub-secret",
+    });
+
+    await request(first)
+      .post("/api/leadgrid/auth/google/exchange")
+      .send({ id_token: "capture-token" })
+      .expect(401, { error: "Ugyldig Google-token" });
+
+    expect(googleVerifier.verifyIdToken).toHaveBeenCalledWith({
+      idToken: "capture-token",
+      audience: [
+        "dedicated-leadgrid-client",
+        "leadgrid-ios-a",
+        "leadgrid-ios-b",
+      ],
+    });
+  });
+
+  it("keeps legacy Storyboard starts on the shared client and Role Room host", async () => {
+    const { first } = await buildAppPair({
+      LEADGRID_GOOGLE_CLIENT_ID: "dedicated-leadgrid-client",
+      LEADGRID_GOOGLE_CLIENT_SECRET: "dedicated-leadgrid-secret",
+      LEADGRID_PUBLIC_URL: "https://leadgrid.example.test",
+      CREATORHUB_GOOGLE_CLIENT_ID: "shared-creatorhub-client",
+      CREATORHUB_GOOGLE_CLIENT_SECRET: "shared-creatorhub-secret",
+      ROLE_ROOM_PUBLIC_URL: "https://role-room.example.test",
+    });
+
+    const started = await request(first)
+      .get("/api/leadgrid/auth/google/start?platform=ios-storyboard")
+      .expect(200);
+    const authUrl = new URL(String(started.body.auth_url));
+
+    expect(authUrl.searchParams.get("client_id")).toBe(
+      "shared-creatorhub-client",
+    );
+    expect(authUrl.searchParams.get("redirect_uri")).toBe(
+      "https://role-room.example.test/api/leadgrid/auth/google/web-callback",
+    );
+  });
+
+  it("rejects a callback when the OAuth client changed after state creation", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const original = await buildAppPair({
+      LEADGRID_GOOGLE_CLIENT_ID: "leadgrid-client-a",
+      LEADGRID_GOOGLE_CLIENT_SECRET: "leadgrid-secret-a",
+    });
+    const started = await request(original.first)
+      .get("/api/leadgrid/auth/google/start?platform=web")
+      .expect(200);
+
+    const changed = await buildAppPair({
+      LEADGRID_GOOGLE_CLIENT_ID: "leadgrid-client-b",
+      LEADGRID_GOOGLE_CLIENT_SECRET: "leadgrid-secret-b",
+    });
+    await request(changed.second)
+      .post("/api/leadgrid/auth/google/callback")
+      .send({ code: "one-time-code", state: started.body.state })
+      .expect(409, {
+        error:
+          "Google OAuth-konfigurasjonen ble endret. Start innloggingen på nytt.",
+      });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("survives a callback on another instance and is atomically consumed once", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
