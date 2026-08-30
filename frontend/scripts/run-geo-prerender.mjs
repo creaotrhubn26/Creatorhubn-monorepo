@@ -7,9 +7,9 @@
  *   2. Skriver én statisk HTML-fil per publisert pillar-side til
  *      client/dist/geo/<key>.html (full artikkeltekst + JSON-LD i rå-HTML,
  *      lesbart for AI-crawlere som ikke kjører JavaScript).
- *   3. Validerer at vercel.json har en theroleroom.com-rewrite
+ *   3. Validerer at netlify/host-routes.json har en bot-rute
  *      /<path> → /geo/<key>.html for hver publisert side — feiler builden
- *      ved mismatch, så config og routing ikke kan skli fra hverandre.
+ *      ved mismatch, så innhold og Netlify-ruting ikke kan skli fra hverandre.
  */
 
 import { existsSync } from 'node:fs';
@@ -26,7 +26,7 @@ const ssrBundleJs = resolve(frontendRoot, 'client/dist-geo/geo-prerender-entry.j
 const ssrBundleMjs = resolve(frontendRoot, 'client/dist-geo/geo-prerender-entry.mjs');
 const ssrBundle = existsSync(ssrBundleJs) ? ssrBundleJs : ssrBundleMjs;
 const outDir = resolve(frontendRoot, 'client/dist/geo');
-const vercelJsonPath = resolve(frontendRoot, 'vercel.json');
+const hostRoutesPath = resolve(frontendRoot, '..', 'netlify/host-routes.json');
 
 const { renderPublishedPages, renderLeadgridPages } = await import(ssrBundle);
 
@@ -54,35 +54,43 @@ async function writePage(page, relTarget) {
 for (const page of pages) await writePage(page, `${page.key}.html`);
 for (const page of leadgridPages) await writePage(page, `leadgrid/${page.key}.html`);
 
-// ── Valider vercel.json-rewrites ──────────────────────────────────
-const vercelConfig = JSON.parse(await readFile(vercelJsonPath, 'utf8'));
-const rewrites = vercelConfig.rewrites ?? [];
+// ── Valider Netlify host-/bot-ruter ───────────────────────────────
+const hostRoutesConfig = JSON.parse(await readFile(hostRoutesPath, 'utf8'));
+if (hostRoutesConfig.version !== 1 || !Array.isArray(hostRoutesConfig.routes)) {
+  console.error('geo-prerender: netlify/host-routes.json har ugyldig format, avbryter.');
+  process.exit(1);
+}
+const routes = hostRoutesConfig.routes;
 const missing = [];
 for (const page of pages) {
   const expected = `/geo/${page.key}.html`;
-  const found = rewrites.some(
-    (rw) =>
-      rw.source === page.path &&
-      rw.destination === expected &&
-      (rw.has ?? []).some((h) => h.type === 'host' && /theroleroom/.test(h.value)) &&
-      (rw.has ?? []).some((h) => h.type === 'header' && h.key === 'user-agent'),
+  const found = routes.some(
+    (route) =>
+      route.source === page.path &&
+      route.destination === expected &&
+      typeof route.hostPattern === 'string' &&
+      /theroleroom/.test(route.hostPattern) &&
+      typeof route.uaPattern === 'string' &&
+      route.uaPattern.length > 0,
   );
   if (!found) missing.push(`${page.path} → ${expected} (bot-rewrite)`);
 }
 for (const page of leadgridPages) {
   const expected = `/geo/leadgrid/${page.key}.html`;
-  const found = rewrites.some(
-    (rw) =>
-      rw.source === page.path &&
-      rw.destination === expected &&
-      (rw.has ?? []).some((h) => h.type === 'host' && /leadgrid/.test(h.value)) &&
-      (rw.has ?? []).some((h) => h.type === 'header' && h.key === 'user-agent'),
+  const found = routes.some(
+    (route) =>
+      route.source === page.path &&
+      route.destination === expected &&
+      typeof route.hostPattern === 'string' &&
+      /leadgrid/.test(route.hostPattern) &&
+      typeof route.uaPattern === 'string' &&
+      route.uaPattern.length > 0,
   );
   if (!found) missing.push(`leadgrid.no${page.path} → ${expected} (bot-rewrite)`);
 }
 
 if (missing.length > 0) {
-  console.error('geo-prerender: vercel.json mangler host-rewrites for publiserte sider:');
+  console.error('geo-prerender: netlify/host-routes.json mangler bot-ruter for publiserte sider:');
   for (const m of missing) console.error(`  ${m}`);
   process.exit(1);
 }

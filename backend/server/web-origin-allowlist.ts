@@ -26,7 +26,17 @@ const KNOWN_WEB_ORIGINS = new Set<string>([
   "http://127.0.0.1:5173",
 ]);
 
-const VERCEL_PREVIEW = /^https:\/\/[a-z0-9-]+-creatorhubcom\.vercel\.app$/;
+// Bare production aliases only. Branch-, PR- and immutable deploy previews can
+// contain unreviewed code and must never become trusted credentialed origins.
+const NETLIFY_PRODUCTION_ORIGINS = new Set([
+  "https://creatorhub-frontend-mig.netlify.app",
+  "https://leadgrid-no.netlify.app",
+  "https://theroleroom.netlify.app",
+]);
+
+export function isTrustedNetlifyProductionOrigin(origin: string): boolean {
+  return NETLIFY_PRODUCTION_ORIGINS.has(origin);
+}
 
 function configuredAppBaseUrl(): string {
   return (
@@ -38,7 +48,7 @@ function configuredAppBaseUrl(): string {
 }
 
 function isTrustedOrigin(origin: string): boolean {
-  return KNOWN_WEB_ORIGINS.has(origin) || VERCEL_PREVIEW.test(origin);
+  return KNOWN_WEB_ORIGINS.has(origin) || isTrustedNetlifyProductionOrigin(origin);
 }
 
 /**

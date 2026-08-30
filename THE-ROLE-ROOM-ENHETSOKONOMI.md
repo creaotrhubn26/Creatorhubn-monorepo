@@ -77,7 +77,7 @@ sterkeste motoren per kunde.
 | Post | Kr/mnd |
 |---|---|
 | Din grunnlønn (loaded, A6×A7) | 58 500 |
-| Plattform (Neon, Vercel, monitoring, domener) | 7 000 |
+| Plattform (Neon, Netlify, monitoring, domener) | 7 000 |
 | Verktøy / SaaS / regnskap / forsikring | 4 000 |
 | **Sum fast** | **~69 500** |
 

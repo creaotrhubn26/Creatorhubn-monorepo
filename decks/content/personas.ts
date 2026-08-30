@@ -70,7 +70,7 @@ export const VERIFIED_FACTS = {
     "Cohere Rerank",
     "Printful",
     "YouTube Insights",
-    "Vercel API",
+    "Netlify Deploy API",
     "Render API",
     "IMAP",
   ],

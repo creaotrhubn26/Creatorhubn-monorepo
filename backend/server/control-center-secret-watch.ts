@@ -12,7 +12,6 @@
  *   Render : RENDER_API_KEY      → GET /v1/services (200 ok / 401 ugyldig)
  *   GitHub : GITHUB_DEPLOY_TOKEN | GITHUB_TOKEN → GET /rate_limit; leser
  *            `github-authentication-token-expiration`-header = EKTE utløpsdato
- *   Vercel : VERCEL_API_TOKEN    → GET /v2/user (200 ok / 403 ugyldig)
  *
  * Ærlig-inaktiv: manglende env → status `not_configured` (ikke falsk-feil, ikke
  * varsel). Kun GitHub-PAT gir reell utløpsdato; de andre er gyldighet/liveness
@@ -176,26 +175,6 @@ const PROBES: SecretProbeDef[] = [
                 ? `Utløper om ${daysLeft} dager — roter snart`
                 : `Gyldig, utløper om ${daysLeft} dager`,
         };
-      } catch (err) {
-        return { status: "error", httpStatus: null, expiresAt: null, daysLeft: null, message: `Probe-feil: ${(err as Error).message}` };
-      }
-    },
-  },
-  {
-    key: "vercel",
-    label: "Vercel API-token",
-    configured: (env) => Boolean((env.VERCEL_API_TOKEN || "").trim()),
-    async run(env, fetchImpl) {
-      const token = (env.VERCEL_API_TOKEN || "").trim();
-      try {
-        const res = await timedFetch(fetchImpl, "https://api.vercel.com/v2/user", {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-        });
-        if (res.status === 200) {
-          return { status: "ok", httpStatus: 200, expiresAt: null, daysLeft: null, message: "Gyldig (GET /v2/user 200)" };
-        }
-        return { status: "invalid", httpStatus: res.status, expiresAt: null, daysLeft: null, message: `Ugyldig token (HTTP ${res.status})` };
       } catch (err) {
         return { status: "error", httpStatus: null, expiresAt: null, daysLeft: null, message: `Probe-feil: ${(err as Error).message}` };
       }

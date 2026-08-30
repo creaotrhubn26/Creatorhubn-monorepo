@@ -79,8 +79,8 @@ test.describe('CMS media R2 — endpoint smoke (uten auth)', () => {
     expect([404]).toContain(res.status());
   });
 
-  test('Vercel /cdn/-proxy rewriter til R2 pub-URL', async ({ request }) => {
-    // Anonym request mot /cdn/ikke-eksisterende key — Vercel rewrites til R2
+  test('Netlify /cdn/-proxy ruter til R2 pub-URL', async ({ request }) => {
+    // Anonym request mot /cdn/ikke-eksisterende key — Netlify ruter til R2
     // Forventer 404 (R2 svarer på rewriten request)
     const res = await request.get(`${FRONTEND_URL}/cdn/__healthcheck-nonexistent`);
     expect([404]).toContain(res.status());

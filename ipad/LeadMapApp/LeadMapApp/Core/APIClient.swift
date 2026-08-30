@@ -2778,7 +2778,7 @@ extension APIClient {
 
 extension APIClient {
 
-    /// Aggregert plattform-helse: Render + Neon + Vercel + Stripe + Anthropic + bruker-presence.
+    /// Aggregert plattform-helse: Render + Neon + Netlify + Stripe + Anthropic + bruker-presence.
     func fetchPlatformStatus() async throws -> PlatformStatusResponse {
         try await get("/api/admin-room/platform-status")
     }

@@ -81,15 +81,11 @@ const OPTIONAL: EnvVar[] = [
   { name: "SENTRY_AUTH_TOKEN", description: "Sentry read-token (project:read/org:read). Lar Control Center LESE issues/feilrate tilbake. Uten den faller cockpiten tilbake på error_log." },
   { name: "SENTRY_ORG", description: "Sentry org-slug. Hører sammen med SENTRY_AUTH_TOKEN (Control Center)." },
   { name: "SENTRY_PROJECT", description: "Sentry project-slug. Hører sammen med SENTRY_AUTH_TOKEN (Control Center)." },
-  { name: "VERCEL_URL", description: "Auto-satt av Vercel build-pipeline. Kun for build-time." },
   { name: "RENDER_EXTERNAL_URL", description: "Auto-satt av Render. Kun for build-time." },
   { name: "RENDER_API_KEY", description: "Render lese-API. Lar Control Center vise Render-deploys (Fase 2). Sammen med RENDER_SERVICE_ID." },
   { name: "RENDER_SERVICE_ID", description: "Render service-ID (srv-…) for deploy-innsikt. Hører sammen med RENDER_API_KEY." },
   { name: "GITHUB_DEPLOY_TOKEN", description: "GitHub read-token (actions:read/repo). Lar Control Center vise GitHub Actions-kjøringer (Fase 2). Sammen med GITHUB_REPO." },
   { name: "GITHUB_REPO", description: "GitHub-repo 'owner/repo' for deploy-innsikt. Hører sammen med GITHUB_DEPLOY_TOKEN." },
-  { name: "VERCEL_API_TOKEN", description: "Vercel lese-token. Lar Control Center vise Vercel-deploys (Fase 2). Sammen med VERCEL_PROJECT_ID." },
-  { name: "VERCEL_PROJECT_ID", description: "Vercel prosjekt-ID for deploy-innsikt. Hører sammen med VERCEL_API_TOKEN." },
-  { name: "VERCEL_TEAM_ID", description: "Vercel team-ID (valgfri) hvis prosjektet ligger under et team-scope." },
   { name: "CONTROL_CENTER_FRONTEND_URL", description: "Frontend-URL som Control Center helse-prober (Fase 3). Default https://creatorhubn.com." },
   { name: "CONTROL_CENTER_UPLOADS_HEALTH_URL", description: "Valgfri fallback health-URL for lagring (Fase 3). Brukes kun hvis verken B2 (B2_APPLICATION_KEY_ID/-KEY) eller R2 (R2_ENDPOINT) er satt." },
   { name: "CONTROL_CENTER_REALTIME_HEALTH_URL", description: "Valgfri health-URL for realtime-tjenesten (Fase 3 health-ping). Mangler → status 'not_configured'." },
@@ -210,7 +206,7 @@ export function validateEnvOrExit(): void {
     // eslint-disable-next-line no-console
     console.error(
       "🔴 BOOT BLOKKERT — kritiske environment-variabler mangler eller er ugyldige. " +
-      "Se rapport over. Sjekk Render/Vercel-dashboard og oppdater env-vars før restart.",
+      "Se rapport over. Sjekk Render/Netlify-dashboard og oppdater env-vars før restart.",
     );
     process.exit(1);
   }

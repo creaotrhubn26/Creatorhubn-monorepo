@@ -63,8 +63,13 @@
       "frontend/client/src/hooks/",
       "frontend/client/src/contexts/",
       "frontend/client/index.html",
+      "frontend/package.json",
+      "frontend/package-lock.json",
       "frontend/vite.config.ts",
+      "frontend/scripts/generate-netlify-host-routes.mjs",
+      "frontend/scripts/run-geo-prerender.mjs",
       "netlify.toml",
+      "netlify/host-routes.json",
       "netlify/edge-functions/",
       "package.json",
       "package-lock.json"

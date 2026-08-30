@@ -6,7 +6,8 @@ funksjoner i The Role Room Agent, slik at Innholdsprodusenten kan tilby en
 klient det samme oppsettet — med riktige events, consent-gating og
 verifisering. Dokumentet er fasiten fra vårt eget oppsett (juli 2026),
 funksjonskatalogen agenten trenger, og gap-analysen implementert vs. må
-utvikles.
+utvikles. CreatorHubs hosting-/ruteoppsett er revidert til Netlify-status
+2026-08-30.
 
 **Kildekode-referanser** peker til mønstrene vi selv bruker i produksjon —
 det er disse som skal generaliseres, ikke gjenoppfinnes.
@@ -20,8 +21,9 @@ det er disse som skal generaliseres, ikke gjenoppfinnes.
 Hva vi gjorde (theroleroom.com + leadgrid.no):
 
 1. **Verifiseringsfil**: `google<token>.html` legges i `frontend/client/public/`
-   og serveres på riktig host via vercel.json-rewrites. OBS: filen er
-   domene-spesifikk — vi la først leadgrid-filen på feil merkevare.
+   og deployes via riktig Netlify merke-site/produksjonsgren. OBS: filen er
+   domene-spesifikk — vi la først leadgrid-filen på feil merkevare. Verifiser
+   alltid den tiltenkte hosten etter `Promoter merke`.
 2. **Sitemap per host**: `client/public/leadgrid-sitemap.xml` (statisk, 12
    locs) + backend-generert `theroleroom-sitemap.xml`
    (`backend/server/theroleroom-sitemap-routes.ts`). Robots per host peker
@@ -121,11 +123,11 @@ Arkitekturen (verifisert live for 19 TRR-pillarsider + 8 Leadgrid-sider):
    er parametrisert per site (TRR_SITE/LEADGRID_SITE) — en tredje site
    (klientens) er et konfigobjekt, ikke ny kode. Komponent-mappen THROWER
    på umappet nøkkel — bevisst, så manglende sider stopper bygget.
-2. **Serving**: UA-betingede rewrites i `frontend/vercel.json` (bot-UA →
-   `/geo/...html`). **Fella:** `/` KAN IKKE rewrites i vercel.json
-   (filesystem-precedence serverer index.html først) →
-   `frontend/middleware.ts` (@vercel/edge, matcher `['/']`) tar bot-grenen
-   for rotsidene. Mennesker påvirkes aldri (juni-beslutningen står).
+2. **Serving**: `netlify/host-routes.json` er kilden for host- og
+   UA-betingede ruter (bot-UA → `/geo/...html`). Frontend-builden genererer
+   `netlify/edge-functions/host-routes.ts`, som dekker både `/` og de øvrige
+   pillarsidene. Mennesker faller gjennom til vanlig SPA-respons og påvirkes
+   aldri (juni-beslutningen står).
 3. **Struktur i prerendret HTML**: full artikkel-HTML, Article/FAQPage
    JSON-LD, ærlig avsender-deklarasjon.
 4. **Måling**: citation-tracker (geo-visibility-tjenesten, doc 08) kjører
@@ -218,7 +220,8 @@ Input: F1-resultatet + liste over klientens viktigste innholdssider.
 Output: forslag om (a) hvilke sider som bør bot-serveres statisk, (b)
 robots.txt-linjer som eksplisitt SLIPPER INN AI-boter, (c) sitemap-hull,
 (d) serving-oppskrift per plattform (Vercel-rewrites + edge-middleware for
-rot; nginx `map $http_user_agent`; Netlify `_redirects`-begrensningene),
+rot hos kunder som bruker Vercel; nginx `map $http_user_agent`; Netlify Edge
+Function fordi `_redirects` ikke kan betinge på Host/User-Agent),
 (e) JSON-LD-maler (Article/FAQPage) for innholdet.
 For kunder hostet PÅ The Role Room/Leadgrid: gjenbruk prerender-pipelinen
 direkte (ny SITE-konfig i `geo-prerender-entry.tsx`) — da er dette en
@@ -248,7 +251,7 @@ kjøring, resultat inn i klientportalen. Perplexity som kilde må bygges
 | F2 | generate_analytics_bootstrap | Malen ER `index.html`-bootstrapen + `googleAnalyticsRuntime.ts` | Generator (template + input-validering), tool-schema. Liten jobb. |
 | F3 | generate_event_plan | Event-taksonomien + META_STANDARD_EVENT_MAP i `ga4-client-tracking.ts`; brief-feltene i agent-konteksten | Prompt-/tool-design; kobling brief → mål → events. Liten-medium. |
 | F4 | guide_platform_setup | Alt innholdet står i dette dokumentet (del 1) | Struktureres som data (steg-lister per plattform), tool + UI. Ren innholdsjobb. |
-| F5 | generate_geo_prerender_plan | Hele pipeline-en (`geo-prerender-entry.tsx`, vercel.json-mønsteret, middleware.ts); doc 08/09 | For eksterne kunder: plan-generator. For hostede kunder: SITE-konfig-generalisering (i dag hardkodet TRR/Leadgrid). Medium. |
+| F5 | generate_geo_prerender_plan | Hele pipeline-en (`geo-prerender-entry.tsx`, `netlify/host-routes.json`, generatoren og Netlify Edge Function); doc 08/09 | For eksterne kunder: plan-generator. For hostede kunder: SITE-konfig-generalisering (i dag hardkodet TRR/Leadgrid). Medium. |
 | F6 | submit_indexnow | Ingenting | Nøkkelfil-generering + innmeldings-endepunkt m/ confirm. Liten. |
 | F7 | check_ai_visibility | geo_prompt_sets (org-scopet, approved-flyt), ukes-cron, citation-tracker | Klient-vendt visning i portalen; **Perplexity-kilde i trackeren** (felles gap med oss selv). Medium. |
 | — | OAuth-utvidelse (GA4 Admin API) | `role_room_google_connections` + connected-platforms-tjenesten | Nytt scope (analytics.edit), property/key-event-oppretting via API, confirm-flyt. Størst løft — fase 2; F1–F4 gir verdi uten. |

@@ -637,7 +637,7 @@ export function setupStorageProvidersRoutes(deps: StorageProvidersRoutesDeps): v
           );
           if ((dup.rowCount ?? 0) > 0) continue;
 
-          // image_url er Worker-proxy-stien — Vercel rewrite ruter
+          // image_url er Worker-proxy-stien — Netlify-rutingen sender
           // /api/showcase/cdn/* → showcase-cdn.creatorhubn.workers.dev
           const proxyUrl = `/api/showcase/cdn/${accessToken}/${itemId}`;
           await pool.query(

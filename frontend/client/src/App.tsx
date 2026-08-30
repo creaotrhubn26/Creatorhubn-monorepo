@@ -1186,9 +1186,8 @@ function App() {
                 <UniversalSessionManager />
                 <Toaster />
                 <WsDialogHost />
-                {/* SpeedInsights fjernet: Vercel-rest fra før Netlify-migreringen —
-                    /_vercel/speed-insights/script.js finnes ikke på Netlify og ga
-                    «Unexpected token '<'» (HTML-fallback) i konsollen på hver last. */}
+                {/* SpeedInsights er fjernet fordi endepunktet ikke finnes på Netlify
+                    og ga HTML-fallback i stedet for JavaScript på hver last. */}
                       </GlobalChatProvider>
                     </ProjectProvider>
                   </EnhancedMasterIntegrationProvider>

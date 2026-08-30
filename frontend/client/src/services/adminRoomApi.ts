@@ -1292,6 +1292,7 @@ export type PlatformCostCategory =
 
 export type PlatformCostAllocation = 'role_room_only' | 'total_platform' | 'per_active_user';
 
+// `vercel` beholdes for historiske kostnadsrader; nye Netlify-rader er manuelle.
 export type PlatformCostSource = 'manual' | 'render' | 'neon' | 'vercel' | 'stripe' | 'anthropic' | 'google';
 
 export interface PlatformFixedCost {
@@ -1409,9 +1410,6 @@ export const platformFixedCostsApi = {
   },
   refreshNeon: async (): Promise<{ ok: boolean; created: number; updated: number; total: number }> => {
     return jsonFetch('/platform-fixed-costs/refresh/neon', { method: 'POST' });
-  },
-  refreshVercel: async (): Promise<{ ok: boolean; created: number; updated: number; total: number }> => {
-    return jsonFetch('/platform-fixed-costs/refresh/vercel', { method: 'POST' });
   },
 };
 

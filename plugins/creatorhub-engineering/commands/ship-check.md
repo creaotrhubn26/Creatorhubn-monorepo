@@ -18,7 +18,8 @@ Creatorhubn-monorepoet, i denne rekkefølgen:
    verdiktet med sterkeste modell (si fra om modellvalget).
 5. **Release-readiness:** gå gjennom sjekklisten i
    `release-readiness`-skillen (lockfile-sync, migrasjonsvindu, env-vars,
-   Docker-deps, Vercel-manuell-deploy-påminnelse ved frontend-endring).
+   Docker-deps, riktig Netlify-site/produksjonsgren og eksplisitt
+   merke-promotering ved Role Room-/Leadgrid-endringer).
 
 Lever verdiktet FØRST: **GO / NO-GO / GO-med-vilkår**, deretter funnene
 sortert etter alvorlighet — hvert funn som hva + hvor (fil:linje) + fiks.

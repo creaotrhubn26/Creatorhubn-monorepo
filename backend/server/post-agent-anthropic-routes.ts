@@ -252,7 +252,7 @@ export function createPostAgentRouter(
         res.status(503).json({ error: 'pairing_storage_unavailable' });
         return;
       }
-      // Redeem-siden (/link) ligger på SAMME Vercel-deployment for både
+      // Redeem-siden (/link) ligger i SAMME Netlify-bundle for både
       // theroleroom.com og creatorhubn.com og bruker relativ fetch — så en
       // pairing-kode kan løses inn på hvilket som helst av domenene. Returnér
       // begge, så appen kan vise det domenet brukeren faktisk er logget inn på.

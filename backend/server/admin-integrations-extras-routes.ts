@@ -54,7 +54,7 @@ const SAFE_ENV_KEY_PREFIXES = [
   "R2_",
   "CLOUDFLARE_",
   "RENDER_",
-  "VERCEL_",
+  "NETLIFY_",
   "NEON_",
   "SUPABASE_",
   "SENDGRID_",
@@ -80,7 +80,7 @@ function categoryForKey(name: string): string {
   if (name.startsWith("GOOGLE_") || name.startsWith("META_") || name.startsWith("FACEBOOK_") || name.startsWith("LINKEDIN_") || name.startsWith("TIKTOK_") || name.startsWith("YOUTUBE_") || name.startsWith("INSTAGRAM_") || name.startsWith("BANKID_")) return "auth";
   if (name.startsWith("OPENAI_") || name.startsWith("ANTHROPIC_") || name.startsWith("CLAUDE_") || name.startsWith("ELEVENLABS_")) return "ai";
   if (name.startsWith("RESEND_") || name.startsWith("TWILIO_") || name.startsWith("SENDGRID_") || name.startsWith("MAILGUN_") || name.startsWith("POSTMARK_")) return "communication";
-  if (name.startsWith("RENDER_") || name.startsWith("VERCEL_")) return "infrastructure";
+  if (name.startsWith("RENDER_") || name.startsWith("NETLIFY_")) return "infrastructure";
   if (name.startsWith("POSTHOG_") || name.startsWith("SENTRY_") || name.startsWith("DATADOG_")) return "observability";
   if (name.startsWith("ZAPIER_") || name.startsWith("MAKE_") || name.startsWith("N8N_") || name.startsWith("TIDUM_")) return "automation";
   return "other";

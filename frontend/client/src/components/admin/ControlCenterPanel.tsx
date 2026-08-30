@@ -10,7 +10,7 @@
  *   - Oversikt     — feilrate-KPI + kilde-status + observability-uttrekk
  *   - Hendelser    — Sentry unresolved + error_log unresolved, med ack-layer
  *   - Helse        — aktive health-prober (API/DB/betaling/frontend/storage…) + oppetid/p95 (Fase 3)
- *   - Deploys      — Render + GitHub Actions + Vercel deploy-tidslinje (read-only)
+ *   - Deploys      — Render + GitHub Actions + Netlify deploy-tidslinje (read-only)
  *   - Logg         — error_log (backend-feil)
  *
  * Auth: super_admin (håndhevet server-side). apiRequest legger på Bearer +
@@ -116,7 +116,7 @@ interface LogsResponse {
   data: LoggedError[];
 }
 
-type DeployProvider = 'render' | 'github' | 'vercel';
+type DeployProvider = 'render' | 'github' | 'netlify';
 type DeployStatus = 'live' | 'building' | 'failed' | 'canceled' | 'superseded' | 'unknown';
 
 interface DeployRecord {
@@ -134,7 +134,7 @@ interface DeployRecord {
 }
 
 interface DeploysResponse {
-  providers: { render: boolean; github: boolean; vercel: boolean };
+  providers: { render: boolean; github: boolean; netlify: boolean };
   deploys: DeployRecord[];
   anyConfigured: boolean;
   generatedAt: string;
@@ -419,7 +419,7 @@ const DEPLOY_STATUS_META: Record<DeployStatus, { label: string; color: string }>
 const DEPLOY_PROVIDER_LABEL: Record<DeployProvider, string> = {
   render: 'Render',
   github: 'GitHub',
-  vercel: 'Vercel',
+  netlify: 'Netlify',
 };
 
 // ─── KPI-kort ──────────────────────────────────────────────────────────────
@@ -1505,8 +1505,8 @@ const DeploysSection: React.FC<{ deploys: ReturnType<typeof useQuery<DeploysResp
     return (
       <Alert severity="info" icon={<DeployIcon fontSize="small" />}>
         Ingen deploy-provider er koblet. Sett <code>RENDER_API_KEY</code>+<code>RENDER_SERVICE_ID</code>,{' '}
-        <code>GITHUB_DEPLOY_TOKEN</code>+<code>GITHUB_REPO</code> og/eller{' '}
-        <code>VERCEL_API_TOKEN</code>+<code>VERCEL_PROJECT_ID</code> i backend-env for å vise deploy-tidslinjen.
+        <code>GITHUB_DEPLOY_TOKEN</code>+<code>GITHUB_REPO</code> i backend-env. Netlify-feed for
+        CreatorHub krever ingen token.
       </Alert>
     );
   }

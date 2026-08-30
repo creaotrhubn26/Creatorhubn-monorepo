@@ -1,5 +1,5 @@
 /**
- * PlatformStatusWidget — health-glimt på Render / Neon / Vercel / Stripe / Anthropic
+ * PlatformStatusWidget — health-glimt på Render / Neon / Netlify / Stripe / Anthropic
  * + live user-presence. Brukes i DashboardTab i AdminRoom.
  *
  * Backend: GET /api/admin-room/platform-status

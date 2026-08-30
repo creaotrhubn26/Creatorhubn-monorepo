@@ -727,7 +727,7 @@ export default function CommunityPage({ userId, profession }: CommunityPageProps
     // Initial fetch
     fetchChannelMessages(selectedChannel.id);
 
-    // Connect to WebSocket. null i prod uten eksplisitt WS-host (Vercel
+    // Connect to WebSocket. null i prod uten eksplisitt WS-host (Netlify
     // proxy-er ikke WS) — da hopper vi over koblingen så vi ikke spammer
     // failed-connections i konsollen.
     const wsUrl = buildEventsWsUrl('/ws/events');

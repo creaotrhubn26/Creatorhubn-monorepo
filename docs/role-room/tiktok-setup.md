@@ -75,14 +75,21 @@ til den ekte pixel-koden fra steg 3:
 var ROLE_ROOM_TIKTOK_PIXEL_CODE = 'D1ABC2DEFG3HIJ4KLMN5'; // fra TikTok Events Manager
 ```
 
-Commit + force-deploy:
+Commit, push og promoter Role Room-siten på Netlify:
 
 ```bash
 git add frontend/client/index.html
 git commit -m "feat(theroleroom): live TikTok Pixel-code"
-git push
-vercel deploy --prod --yes --force
+git push origin HEAD
+gh workflow run promote-brand.yml \
+  -f brand=theroleroom.com \
+  -f ref="$(git rev-parse HEAD)"
 ```
+
+Workflowen flytter den godkjente commiten til `live/roleroom`; Netlify-siten
+`theroleroom` bygger deretter produksjon automatisk. Selve promoterings-
+kommandoen flytter ikke CreatorHub-siten; en merge/push til `main` kan likevel
+utløse CreatorHubs ordinære Netlify-build.
 
 Pixel respekterer eksisterende GDPR consent — fyrer kun når brukeren har samtykket til analytics-cookies (`__creatorhubApplyConsent`-callback). Bygd inn i `ensureTiktokPixelLoaded()` i `frontend/client/index.html`.
 

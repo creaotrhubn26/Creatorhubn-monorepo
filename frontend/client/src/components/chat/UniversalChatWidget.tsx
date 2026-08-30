@@ -955,8 +955,8 @@ const getChatWebSocketUrl = (
     : '';
 
   // Slice 9X.69 — Skip WS-connection i prod hvis ikke VITE_WS_URL er satt.
-  // Vercel rewrite gjelder ikke /ws, så wss://creatorhubn.com/ws… går til
-  // edge som ikke har WS-handler → spammer "WebSocket failed" i console.
+  // Netlify-proxyen gjelder ikke /ws, så wss://creatorhubn.com/ws… går til
+  // frontend-hostingen uten WS-handler → spammer "WebSocket failed" i console.
   const isProd = !import.meta.env.DEV && !['localhost', '127.0.0.1'].includes(window.location.hostname);
   if (isProd && !configuredWsUrl) {
     return null;

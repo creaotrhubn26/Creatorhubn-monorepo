@@ -1,6 +1,7 @@
 # TheRoleRoom — Personvern & databehandleravtaler: handlingsnotat
 
 > Følgenotat til produktdokumentasjonen. Bygget 2026-05-27.
+> Leverandørlisten for frontendhosting er oppdatert til Netlify 2026-08-30.
 > **Ikke juridisk rådgivning.** Praktisk veiledning basert på Datatilsynets og Digdirs
 > offentlige kilder (mai 2026). Få en jurist / personvernrådgiver til å kvalitetssikre før
 > du går i produksjon.
@@ -51,7 +52,7 @@ en DPA **oppover** til kundene dine. Begge retninger må på plass.
 | Underleverandør | Funksjon | Rolle ift. deg | Region / merknad |
 |---|---|---|---|
 | Neon (Postgres) | Database | Underdatabehandler | Velg **EU-region** (f.eks. Frankfurt) |
-| Vercel | Hosting | Underdatabehandler | Konfigurer **EU-region** |
+| Netlify | Frontendhosting / CDN | Underdatabehandler | Aksepter DPA og dokumenter behandlingssteder / overføringsgrunnlag |
 | AWS S3 / Cloudflare R2 | Fillagring | Underdatabehandler | Velg **EU-region** |
 | Stripe | Betaling | Underdatabehandler | US — standard DPA + SCC/DPF |
 | Anthropic (Claude) | AI | Underdatabehandler | US — DPA + SCC/DPF; vurder zero-retention |
@@ -119,7 +120,8 @@ Commfides) er **erstattet** av et nytt system med **tre** nivåer: **lavt / bety
 
 ## 6. Datalagring / EU-EØS
 
-- **Verifiser** at Neon, Vercel og S3/R2 faktisk er satt til **EU-region** (jf. Seksjon 4 i
+- **Verifiser** at Neon og S3/R2 faktisk er satt til **EU-region**, og dokumenter
+  Netlify-DPA, behandlingssteder og eventuelle tredjelandsoverføringer (jf. Seksjon 4 i
   hoveddokumentet — åpent punkt).
 - **Tredjelandsoverføring:** Stripe, Anthropic, Twilio er US-baserte. Sørg for gyldig
   overføringsgrunnlag (Standard Contractual Clauses / EU-US Data Privacy Framework) — finnes
@@ -155,8 +157,8 @@ sletteregler) — du havner sannsynligvis under terskelen for forhåndsdrøfting
 
 | # | Oppgave | Innsats | Kost |
 |---|---|---|---|
-| 1 | Aksepter standard-DPA hos Neon, Vercel, Stripe, Anthropic, Google, Twilio | Lav | 0 kr |
-| 2 | Verifiser EU-region på Neon/Vercel/S3 + sjekk SCC/DPF for US-leverandører | Lav–middels | 0 kr |
+| 1 | Aksepter standard-DPA hos Neon, Netlify, Stripe, Anthropic, Google, Twilio | Lav | 0 kr |
+| 2 | Verifiser EU-region på Neon/S3-R2, dokumenter Netlify-dataflyt og sjekk SCC/DPF for US-leverandører | Lav–middels | 0 kr |
 | 3 | Skriv personvernerklæring | Middels | 0 kr (mal) |
 | 4 | Sett opp behandlingsprotokoll (art. 30) | Middels | 0 kr (mal) |
 | 5 | Lag kunde-DPA-mal (du som databehandler) | Middels | 0 kr (Datatilsynets mal) |

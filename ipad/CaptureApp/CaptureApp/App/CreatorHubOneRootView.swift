@@ -40,7 +40,7 @@ struct CreatorHubOneRootView: View {
     /// so the target hub picks it up on mount.
     enum TabPath {
         /// Host that serves the photographer dashboard. This is the web
-        /// FRONTEND (the React SPA on Vercel) — deliberately NOT the API
+        /// FRONTEND (the React SPA on Netlify) — deliberately NOT the API
         /// backend (`session.backendBaseURL`). The backend only serves
         /// `/api/*` and returns Express's "Cannot GET <path>" for these
         /// SPA routes, which is exactly what a backend-based URL produced.

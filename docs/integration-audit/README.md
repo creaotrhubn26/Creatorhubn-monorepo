@@ -95,8 +95,9 @@ Disse kan ikke automatiseres fra kodebasen:
 4. **API-nøkkel-restriksjoner i Google Cloud Console**: bekreft
    referrer-/IP-restriksjoner på Places/Maps-nøklene (repo-et kan ikke
    verifisere dette — samme punkt som Security-rapporten).
-5. **Vercel env-vars**: legg inn VITE_-analytics-variablene (P1.4-renamen,
-   se `frontend/client/.env.production.example`).
+5. **Netlify env-vars**: legg inn VITE_-analytics-variablene på riktig
+   merke-site (P1.4-renamen, se
+   `frontend/client/.env.production.example`).
 6. **Leverandørvilkår/lisenskjøp** ved valg av kommersiell datakilde for
    konkurrent-/review-data (G2/Capterra/Trustpilot har ikke fri API-tilgang —
    se `04-provider-strategy-licensing-cost.md`).

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # verify-tester-program.sh — Slice 9X.53–9X.57 production-verifikasjon.
 #
-# Kjør etter Render+Vercel-deploy:
+# Kjør etter Render+Netlify-deploy:
 #   $ bash scripts/verify-tester-program.sh
 #
 # Tester:
@@ -150,7 +150,7 @@ assert_status_oneof "POST /me/team/invite (uten auth)"     "$BACKEND/api/prototy
 
 # 8. Frontend-ruter — sjekk at de er deployed
 echo ""
-echo "── 8. Frontend-ruter (Vercel) ─────────────────────────────"
+echo "── 8. Frontend-ruter (Netlify) ────────────────────────────"
 assert_status "Landing /"                                  "$CREATORHUB/"                                          "200"
 assert_status "Accept-side for tester-NDA"                 "$CREATORHUB/prototype-tester/accept-invite?token=x"    "200"
 
@@ -207,7 +207,7 @@ cat <<EOF
 NB: Disse må verifiseres manuelt — kan ikke testes utenfra:
 
   1. CREATORHUB_STRIPE_PRICE_ID_ENTERPRISE er satt på Render.
-     Sjekk: \$ vercel env pull eller Render dashboard.
+     Sjekk Render dashboard for creatorhub-backend-rtbl.
 
   2. CREATORHUB_STRIPE_SECRET_KEY er gyldig.
      Sjekk: prøv POST /api/tester-enterprise-offer/test-offer-id/checkout

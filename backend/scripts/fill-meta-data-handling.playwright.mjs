@@ -39,7 +39,7 @@ Infrastructure processors:
 - Render Services, Inc. — application hosting (US, SCCs)
 - Neon, Inc. — managed PostgreSQL database (EU-west-2, Ireland)
 - Cloudflare, Inc. — R2 object storage for uploaded images, carousel media and reels video (EU jurisdiction, SCCs)
-- Vercel Inc. — static frontend and legal-page hosting (US, SCCs)
+- Netlify, Inc. — static frontend and legal-page hosting (US, SCCs)
 
 All processors are bound by written data processing agreements. Instagram tokens and media are accessed only by these processors in the course of delivering the service. Never shared with advertising networks, data brokers, or analytics third parties.`;
 

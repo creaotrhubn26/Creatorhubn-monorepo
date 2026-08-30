@@ -12,7 +12,7 @@
  *
  * Denne entryen bygges med `vite build --ssr` og kjøres av
  * scripts/run-geo-prerender.mjs, som skriver én statisk HTML-fil per
- * publisert side til dist/geo/<key>.html. vercel.json ruter
+ * publisert side til dist/geo/<key>.html. Netlify Edge Function ruter
  * theroleroom.com/<path> dit KUN for crawler-user-agents (dynamic
  * rendering) — mennesker beholder SPA-en, som også kan vise live
  * CMS-overrides fra Admin Room (useCmsBlocks kjører ikke i SSR, så

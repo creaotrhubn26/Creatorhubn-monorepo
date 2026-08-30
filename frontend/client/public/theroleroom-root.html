@@ -17,7 +17,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!--
       theroleroom-root.html — server-rendered HTML served at theroleroom.com/
-      via vercel.json host-aware rewrite. Loads the same /src/main.tsx React
+      via Netlify host-aware routing. Loads the same /src/main.tsx React
       entry as index.html, so the SPA experience is identical, but the raw
       HTML inspected by TikTok/Meta/LinkedIn review crawlers shows The Role
       Room branding from the start (instead of CreatorHub Norge).
@@ -55,8 +55,8 @@
     <meta name="tiktok-developers-site-verification" content="q87vGxhQah3w3SKohAfLMKRZvWtzPkTB" />
     <script>
       // Host-aware SEO overrides: when this document is served on
-      // theroleroom.com (Vercel filesystem precedence defeats our
-      // host-based rewrite rules, so the single index.html is shared
+      // theroleroom.com (the same Netlify bundle serves several brands,
+      // so the single index.html can be shared
       // across both domains), rewrite the title, canonical, and
       // Open Graph tags in-place before the React app mounts. Google's
       // crawler executes JS and will index the updated tags; social

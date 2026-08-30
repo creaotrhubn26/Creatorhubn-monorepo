@@ -43,8 +43,10 @@ Rå-rapportene (før-bildet) er bevart i `geo-baselines/2026-07-10-*.md`.
 | TRR: dansestudio | 0/10, 0 siteringer | Studio Director 40 %, Jackrabbit/DanceStudio-Pro/Spond 20 % hver — **tynt eid kategori (kun 5 omtaler totalt), lettest å ta** |
 | CreatorHub (fotograf/videograf-verktøy) | 0/8, 0 siteringer | HoneyBook 45 %, Studio Ninja 27 %, Dubsado 18 % — ingen norsk aktør nevnes |
 
-CreatorHub-tiltak startet samme dag: `creatorhubn-llms.txt` opprettet + 
-/llms.txt-rewrite for creatorhubn.com i vercel.json (hadde ingen llms.txt).
+CreatorHub-tiltak startet samme dag: `creatorhubn-llms.txt` opprettet og
+`/llms.txt` host-rutet for creatorhubn.com. Dette ble opprinnelig lagt i den
+daværende hostingkonfigen; dagens produksjonskilde er
+`netlify/host-routes.json`.
 
 **Marketing-målingen er markedsintelligens, ikke optimaliserings-mål**
 (Marketing Cockpit er intern admin-flate — Daniels avklaring 2026-07-10).

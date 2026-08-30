@@ -30,7 +30,6 @@ import { chromium } from "playwright";
 
 const ADS_HOST = "https://ads.google.com";
 const RENDER_SERVICE_ID = "srv-d76ob60ule4c73dv2p60"; // creatorhub-backend
-const VERCEL_PROJECT_ID = "prj_Xw3uaKEtM64cVUaI6C7SaOt2jDfW"; // creatorhub-frontend
 
 const profileDir = path.resolve(process.cwd(), "output/google-ads-setup/chromium-profile");
 
@@ -113,7 +112,7 @@ if (!awId.startsWith("AW-")) {
   process.exit(1);
 }
 
-console.log("\n→ Skriver til Render + Vercel env-vars...\n");
+console.log("\n→ Skriver til Render env-vars...\n");
 
 const RENDER_API_KEY = process.env.RENDER_API_KEY;
 if (!RENDER_API_KEY) {

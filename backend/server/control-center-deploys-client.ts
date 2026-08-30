@@ -4,7 +4,7 @@
  * CreatorHub Control Center — Fase 2 (byggeplanen): deploy-innsikt.
  *
  * Tynne, server-side LESE-klienter mot deploy-providerne (Render, GitHub
- * Actions, Vercel). Alt aggregeres til én felles `DeployRecord`-form slik at
+ * Actions, Netlify). Alt aggregeres til én felles `DeployRecord`-form slik at
  * cockpiten kan vise en samlet deploy-tidslinje uavhengig av provider.
  *
  * VIKTIG (aggregator-topologi + Fase-avgrensning):
@@ -18,10 +18,10 @@
  * Env (alle valgfrie — se env-validator OPTIONAL):
  *   Render  : RENDER_API_KEY + RENDER_SERVICE_ID
  *   GitHub  : GITHUB_DEPLOY_TOKEN (evt. GITHUB_TOKEN) + GITHUB_REPO ("owner/repo")
- *   Vercel  : VERCEL_API_TOKEN + VERCEL_PROJECT_ID (+ VERCEL_TEAM_ID valgfri)
+ *   Netlify : offentlig deploy-feed for creatorhub-frontend-mig.netlify.app
  */
 
-export type DeployProvider = "render" | "github" | "vercel";
+export type DeployProvider = "render" | "github" | "netlify";
 
 /** Normalisert status på tvers av providere. */
 export type DeployStatus =
@@ -53,7 +53,7 @@ export interface DeployRecord {
 export interface ProviderConfigStatus {
   render: boolean;
   github: boolean;
-  vercel: boolean;
+  netlify: boolean;
 }
 
 // ─── Felles hjelpere ───────────────────────────────────────────────────────
@@ -247,84 +247,111 @@ async function fetchGithubRuns(limit: number): Promise<DeployRecord[]> {
     }));
 }
 
-// ─── Vercel ──────────────────────────────────────────────────────────────────
+// ─── Netlify ─────────────────────────────────────────────────────────────────
 
-interface VercelConfig { token: string; projectId: string; teamId: string | null; }
+/** CreatorHub-frontenden har offentlig deploy-logg, så lesing krever ingen secret. */
+export const NETLIFY_SITE_HOST = "creatorhub-frontend-mig.netlify.app";
+export const NETLIFY_SITE_API_URL = `https://api.netlify.com/api/v1/sites/${NETLIFY_SITE_HOST}`;
+export const NETLIFY_DASHBOARD_URL = "https://app.netlify.com/projects/creatorhub-frontend-mig/deploys";
 
-function getVercelConfig(): VercelConfig | null {
-  const token = readEnv("VERCEL_API_TOKEN");
-  const projectId = readEnv("VERCEL_PROJECT_ID");
-  if (!token || !projectId) return null;
-  return { token, projectId, teamId: readEnv("VERCEL_TEAM_ID") };
-}
-
-function normalizeVercelStatus(state: string): DeployStatus {
-  switch (state) {
-    case "READY": return "live";
-    case "BUILDING":
-    case "INITIALIZING":
-    case "QUEUED": return "building";
-    case "ERROR": return "failed";
-    case "CANCELED": return "canceled";
+export function normalizeNetlifyStatus(state: string, skipped = false): DeployStatus {
+  if (skipped) return "canceled";
+  switch (state.toLowerCase()) {
+    case "ready": return "live";
+    case "error":
+    case "rejected": return "failed";
+    case "new":
+    case "pending_review":
+    case "accepted":
+    case "enqueued":
+    case "building":
+    case "uploading":
+    case "uploaded":
+    case "preparing":
+    case "prepared":
+    case "processing":
+    case "processed":
+    case "retrying": return "building";
     default: return "unknown";
   }
 }
 
-interface RawVercelDeploymentsResponse {
-  deployments?: Array<{
-    uid?: string;
-    name?: string;
-    url?: string;
-    inspectorUrl?: string;
-    created?: number;
-    ready?: number;
-    state?: string;
-    readyState?: string;
-    target?: string | null;
-    meta?: {
-      githubCommitRef?: string;
-      githubCommitSha?: string;
-      githubCommitMessage?: string;
-      githubCommitAuthorName?: string;
-    };
-  }>;
+interface RawNetlifyDeployment {
+  id?: string;
+  state?: string;
+  name?: string;
+  admin_url?: string;
+  deploy_ssl_url?: string;
+  review_url?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  published_at?: string | null;
+  branch?: string;
+  commit_ref?: string;
+  title?: string;
+  context?: string;
+  skipped?: boolean | null;
 }
 
-async function fetchVercelDeploys(limit: number): Promise<DeployRecord[]> {
-  const config = getVercelConfig();
-  if (!config) return [];
-  const params = new URLSearchParams({
-    projectId: config.projectId,
-    limit: String(Math.min(limit, 50)),
-  });
-  if (config.teamId) params.set("teamId", config.teamId);
-  const raw = await getJson<RawVercelDeploymentsResponse>(
-    `https://api.vercel.com/v6/deployments?${params.toString()}`,
-    { Authorization: `Bearer ${config.token}`, Accept: "application/json" },
-    "vercel deployments",
+function trustedNetlifyUrl(value: string | null | undefined): URL | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    const trustedHost =
+      url.hostname === "app.netlify.com" || url.hostname.endsWith(".netlify.app");
+    return url.protocol === "https:" && trustedHost ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+function netlifyDeployUrl(deployment: RawNetlifyDeployment): string | null {
+  const id = String(deployment.id ?? "");
+  const dashboardUrl = trustedNetlifyUrl(deployment.admin_url);
+  if (dashboardUrl && dashboardUrl.hostname === "app.netlify.com") {
+    dashboardUrl.search = "";
+    dashboardUrl.hash = "";
+    dashboardUrl.pathname = `${dashboardUrl.pathname.replace(/\/$/, "")}/deploys/${encodeURIComponent(id)}`;
+    return dashboardUrl.toString();
+  }
+  return (
+    trustedNetlifyUrl(deployment.review_url)?.toString() ??
+    trustedNetlifyUrl(deployment.deploy_ssl_url)?.toString() ??
+    null
   );
-  const deployments = raw?.deployments;
+}
+
+async function fetchNetlifyDeploys(limit: number): Promise<DeployRecord[]> {
+  const params = new URLSearchParams({ per_page: String(Math.min(Math.max(limit, 1), 50)) });
+  const deployments = await getJson<RawNetlifyDeployment[]>(
+    `${NETLIFY_SITE_API_URL}/deploys?${params.toString()}`,
+    { Accept: "application/json" },
+    "netlify deployments",
+  );
   if (!deployments || !Array.isArray(deployments)) return [];
 
   return deployments
-    .filter((d) => d.uid)
+    .filter((d) => d.id)
     .map((d) => {
-      const stateRaw = d.readyState ?? d.state ?? "";
+      const stateRaw = d.state ?? "unknown";
+      const status = normalizeNetlifyStatus(stateRaw, d.skipped === true);
       return {
-        provider: "vercel" as const,
-        id: String(d.uid),
-        status: normalizeVercelStatus(stateRaw),
-        rawStatus: stateRaw || "unknown",
+        provider: "netlify" as const,
+        id: String(d.id),
+        status,
+        rawStatus: d.skipped === true ? "skipped" : stateRaw,
         title: firstLine(
-          d.meta?.githubCommitMessage,
-          d.target ? `${d.name ?? "deploy"} (${d.target})` : d.name ?? "Vercel-deploy",
+          d.title,
+          d.context ? `${d.name ?? "creatorhub-frontend-mig"} (${d.context})` : d.name ?? "Netlify-deploy",
         ),
-        branch: d.meta?.githubCommitRef ?? null,
-        commit: shortSha(d.meta?.githubCommitSha),
-        url: d.inspectorUrl ?? (d.url ? `https://${d.url}` : null),
-        author: d.meta?.githubCommitAuthorName ?? null,
-        createdAt: d.created ? new Date(d.created).toISOString() : null,
-        finishedAt: d.ready ? new Date(d.ready).toISOString() : null,
+        branch: d.branch ?? null,
+        commit: shortSha(d.commit_ref),
+        url: netlifyDeployUrl(d),
+        author: null,
+        createdAt: d.created_at ?? null,
+        finishedAt:
+          d.published_at ??
+          (status === "live" || status === "failed" || status === "canceled" ? (d.updated_at ?? null) : null),
       };
     });
 }
@@ -335,13 +362,13 @@ export function getDeployProviderStatus(): ProviderConfigStatus {
   return {
     render: getRenderConfig() !== null,
     github: getGithubConfig() !== null,
-    vercel: getVercelConfig() !== null,
+    netlify: true,
   };
 }
 
 export function isAnyDeployProviderConfigured(): boolean {
   const s = getDeployProviderStatus();
-  return s.render || s.github || s.vercel;
+  return s.render || s.github || s.netlify;
 }
 
 export interface DeploysResult {
@@ -355,13 +382,13 @@ export interface DeploysResult {
  * bidrar bare med tom liste.
  */
 export async function fetchAllDeploys(limitPerProvider = 15): Promise<DeploysResult> {
-  const [render, github, vercel] = await Promise.all([
+  const [render, github, netlify] = await Promise.all([
     fetchRenderDeploys(limitPerProvider).catch(() => [] as DeployRecord[]),
     fetchGithubRuns(limitPerProvider).catch(() => [] as DeployRecord[]),
-    fetchVercelDeploys(limitPerProvider).catch(() => [] as DeployRecord[]),
+    fetchNetlifyDeploys(limitPerProvider).catch(() => [] as DeployRecord[]),
   ]);
 
-  const deploys = [...render, ...github, ...vercel].sort((a, b) => {
+  const deploys = [...render, ...github, ...netlify].sort((a, b) => {
     const ta = a.createdAt ? Date.parse(a.createdAt) : 0;
     const tb = b.createdAt ? Date.parse(b.createdAt) : 0;
     return tb - ta;

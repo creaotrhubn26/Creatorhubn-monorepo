@@ -3,7 +3,7 @@
 > Strategisk produktdokumentasjon for posisjonering, investor-pitcher, onboarding,
 > strategisk planlegging og partner-outreach (NSF, NFI, produksjonsselskaper, byråer).
 >
-> Sist oppdatert: 2026-05-27.
+> Sist faglig oppdatert: 2026-05-27. Hosting-/driftsstatus revidert: 2026-08-30.
 
 ---
 
@@ -428,7 +428,7 @@ dras inn via B2B2C-motoren og bidrar til vekst snarere enn til daglig retention.
 | **Realtime** | Socket.io |
 | **Frontend** | React + Next.js, MUI, React Query |
 | **Bygg/test** | Vite, esbuild, Playwright (E2E) |
-| **Hosting** | Vercel |
+| **Hosting** | Netlify (frontend) + Render (backend) |
 | **Fillagring** | AWS S3 / Cloudflare R2 |
 | **AI** | Claude (Anthropic), Replicate |
 
@@ -503,7 +503,8 @@ samtykke med PIN/tilgangskoder, audit-logg.
 
 1. **DPA + Datatilsynet-klassifisering** — i pipeline; trenger ekstern bistand.
 2. **BankID-leverandør og -løsning** — ikke valgt; gated på inntekt.
-3. **Verifiser regionkonfigurasjon** (Neon / Vercel / S3-R2) faktisk er satt til EU/EØS.
+3. **Verifiser regionkonfigurasjon** for Neon og S3/R2, og dokumenter Netlify-DPA,
+   behandlingssteder og eventuelle tredjelandsoverføringer.
 4. **Offentlig API** — arkitektur finnes, men produktisering/dokumentasjon for tredjeparter
    gjenstår.
 

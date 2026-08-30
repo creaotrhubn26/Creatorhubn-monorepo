@@ -37,12 +37,13 @@ const buildInfoPlugin = (): Plugin => ({
   generateBundle() {
     const gitSha =
       process.env.VITE_BUILD_GIT_SHA ||
-      process.env.VERCEL_GIT_COMMIT_SHA ||
+      process.env.COMMIT_REF ||
       process.env.RENDER_GIT_COMMIT ||
       readGitValue('git rev-parse HEAD');
     const branch =
       process.env.VITE_BUILD_BRANCH ||
-      process.env.VERCEL_GIT_COMMIT_REF ||
+      process.env.HEAD ||
+      process.env.BRANCH ||
       process.env.RENDER_GIT_BRANCH ||
       readGitValue('git rev-parse --abbrev-ref HEAD');
     const buildInfo = {
@@ -52,10 +53,12 @@ const buildInfoPlugin = (): Plugin => ({
       shortSha: gitSha ? gitSha.slice(0, 7) : null,
       branch,
       builtAt: new Date().toISOString(),
-      source: process.env.VITE_BUILD_SOURCE || (process.env.VERCEL ? 'vercel' : 'local'),
-      vercel: {
-        env: process.env.VERCEL_ENV || null,
-        url: process.env.VERCEL_URL || null,
+      source: process.env.VITE_BUILD_SOURCE || (process.env.NETLIFY ? 'netlify' : 'local'),
+      netlify: {
+        context: process.env.CONTEXT || null,
+        deployId: process.env.DEPLOY_ID || null,
+        deployUrl: process.env.DEPLOY_PRIME_URL || process.env.DEPLOY_URL || process.env.URL || null,
+        siteName: process.env.SITE_NAME || null,
       },
     };
 
@@ -146,7 +149,7 @@ export default defineConfig({
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
     __CREATORHUB_BUILD_VERSION__: JSON.stringify(
       process.env.VITE_BUILD_GIT_SHA ||
-        process.env.VERCEL_GIT_COMMIT_SHA ||
+        process.env.COMMIT_REF ||
         process.env.RENDER_GIT_COMMIT ||
         readGitValue('git rev-parse HEAD') ||
         'unknown',

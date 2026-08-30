@@ -19,7 +19,7 @@ import {
 
 /**
  * Plattform-status-kort — én sentral oversikt over alle eksterne tjenester
- * (Render, Neon, Vercel, Stripe, Anthropic) + aktive innloggede Role Room-
+ * (Render, Neon, Netlify, Stripe, Anthropic) + aktive innloggede Role Room-
  * brukere. Refresher hvert 30. sekund. Hver leverandør har klikk-til-dashboard.
  */
 
@@ -85,7 +85,7 @@ export function PlatformStatusCard() {
             Plattform-status — alt på ett sted
           </Typography>
           <Typography sx={{ color: 'rgba(203,213,225,0.6)', fontSize: '0.78rem' }}>
-            Sanntid fra Render, Neon, Vercel, Stripe, Anthropic + aktive Role Room-brukere.
+            Sanntid fra Render, Neon, Netlify, Stripe, Anthropic + aktive Role Room-brukere.
             {data?.checkedAt ? ` Oppdatert ${new Date(data.checkedAt).toLocaleTimeString('nb-NO')}.` : ''}
           </Typography>
         </Box>

@@ -50,7 +50,7 @@ export function initBackendSentry(): boolean {
     Sentry.init({
       dsn,
       environment: process.env.NODE_ENV ?? "development",
-      release: process.env.RENDER_GIT_COMMIT ?? process.env.VERCEL_GIT_COMMIT_SHA,
+      release: process.env.RENDER_GIT_COMMIT ?? process.env.COMMIT_REF,
       tracesSampleRate: 0.1,           // 10% av requests = traces
       profilesSampleRate: 0.1,
       sendDefaultPii: false,           // GDPR-vennlig — vi setter user selv

@@ -2308,7 +2308,7 @@ function AnalyticsTab() {
             />
           </Stack>
           <Typography sx={{ color: 'rgba(203,213,225,0.7)', fontSize: '0.78rem', mb: 1 }}>
-            Lytter på <code>window.dataLayer.push</code> for å fange opp gtag-events i sanntid. Tom på localhost — Clarity og GA4 skipper localhost. Bruk Vercel-preview eller produksjon for å se trafikk.
+            Lytter på <code>window.dataLayer.push</code> for å fange opp gtag-events i sanntid. Tom på localhost — Clarity og GA4 skipper localhost. Bruk Netlify-preview eller produksjon for å se trafikk.
           </Typography>
           {recentEvents.length === 0 ? (
             <Alert severity="info" sx={{ bgcolor: 'rgba(59,130,246,0.08)' }}>

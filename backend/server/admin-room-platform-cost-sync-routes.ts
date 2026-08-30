@@ -4,7 +4,6 @@
  * Live-synk fra eksterne leverandører til platform_fixed_costs:
  *   POST /api/admin-room/platform-fixed-costs/refresh/render
  *   POST /api/admin-room/platform-fixed-costs/refresh/neon
- *   POST /api/admin-room/platform-fixed-costs/refresh/vercel
  *
  * Hver route henter live data via leverandørens REST API (Bearer token i ENV),
  * mapper plan til kjent månedspris, og upserts mot platform_fixed_costs med
@@ -14,6 +13,7 @@
  *
  * Pris-tabeller er hardkodet i koden — leverandørene gir ikke plan→pris i API-en.
  * Når Render eller Neon oppdaterer prisene må PRICE-konstantene oppdateres her.
+ * Historiske rader med source='vercel' beholdes urørt i databasen.
  */
 
 import type { AdminRoomRoutesDeps } from "./_shared";
@@ -137,26 +137,12 @@ async function fetchNeonProjects(token: string): Promise<NeonProjectSummary[]> {
   return payload.projects ?? [];
 }
 
-interface VercelProjectSummary {
-  id: string;
-  name: string;
-}
-
-async function fetchVercelProjects(token: string, teamId?: string): Promise<VercelProjectSummary[]> {
-  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
-  const url = `https://api.vercel.com/v9/projects${teamId ? `?teamId=${encodeURIComponent(teamId)}` : ''}`;
-  const response = await fetch(url, { headers });
-  if (!response.ok) throw new Error(`Vercel API ${response.status}`);
-  const payload = await response.json() as { projects: VercelProjectSummary[] };
-  return payload.projects ?? [];
-}
-
 export function setupAdminPlatformCostSyncRoutes(deps: AdminRoomRoutesDeps): void {
   const { app, pool, requireAdminRoomAccess, logAdminActivity } = deps;
 
   async function upsertPlatformCost(args: {
     userId: string;
-    source: 'render' | 'neon' | 'vercel';
+    source: 'render' | 'neon';
     externalId: string;
     name: string;
     vendor: string;
@@ -280,43 +266,4 @@ export function setupAdminPlatformCostSyncRoutes(deps: AdminRoomRoutesDeps): voi
     }
   });
 
-  app.post("/api/admin-room/platform-fixed-costs/refresh/vercel", async (req, res) => {
-    const session = requireAdminRoomAccess(req, res);
-    if (!session) return;
-    const token = process.env.VERCEL_TOKEN;
-    if (!token) {
-      res.status(503).json({ error: "VERCEL_TOKEN ikke konfigurert. Hent fra vercel.com/account/tokens og sett som ENV-var. Inkluder VERCEL_TEAM_ID hvis prosjektene ligger under et team." });
-      return;
-    }
-    try {
-      const projects = await fetchVercelProjects(token, process.env.VERCEL_TEAM_ID);
-      // Vercel gir ikke pris per prosjekt — vi oppretter én rad per prosjekt
-      // som default ($0) og lar brukeren editere manuelt.
-      let created = 0;
-      let updated = 0;
-      for (const proj of projects) {
-        const result = await upsertPlatformCost({
-          userId: session.userId,
-          source: 'vercel',
-          externalId: proj.id,
-          name: `Vercel — ${proj.name}`,
-          vendor: 'Vercel',
-          category: 'hosting',
-          amountUsdMonthly: 0,
-          notes: `Vercel prosjekt ${proj.id}. Vercel API gir ikke pris per prosjekt — editér beløp manuelt etter dashboard.`,
-        });
-        if (result.created) created++; else updated++;
-      }
-      await logAdminActivity({
-        userId: session.userId,
-        entityType: 'platform_fixed_cost',
-        action: 'synced',
-        summary: `Vercel: ${created} nye, ${updated} oppdatert (${projects.length} prosjekter)`,
-      });
-      res.json({ ok: true, created, updated, total: projects.length });
-    } catch (err) {
-      console.error("[platform-cost-sync] vercel error", err);
-      res.status(500).json({ error: "Vercel-synk feilet" });
-    }
-  });
 }

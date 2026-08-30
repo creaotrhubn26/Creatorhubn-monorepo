@@ -4,9 +4,8 @@
  * Gitt F1-auditens observasjoner av et klient-domene: bygg en konkret,
  * deterministisk GEO-plan — hvilke sider som bør bot-serveres statisk,
  * robots-linjer som eksplisitt slipper inn AI-boter, serving-oppskrift
- * per plattform, og JSON-LD-mal. Fasiten er vårt eget oppsett (doc 14
- * §1.6), inkludert fella som kostet oss en dag: «/» kan ikke rewrites i
- * vercel.json (filesystem-precedence) — rotsiden krever edge-middleware.
+ * per plattform, og JSON-LD-mal. Oppskriftene dokumenterer også kjente
+ * leverandørfeller, blant annet Vercels filesystem-precedence for rotsiden.
  *
  * For kunder hostet PÅ vår plattform er planen en konfigurasjonsjobb
  * (ny SITE i geo-prerender-entry.tsx), ikke en kundejobb — planen sier
@@ -78,7 +77,7 @@ export function buildRobotsLines(domain: string): string[] {
   ];
 }
 
-const VERCEL_RECIPE = (domain: string) => `# Vercel — to deler (lærdom fra eget oppsett):
+const VERCEL_RECIPE = (domain: string) => `# Vercel — typisk oppsett i to deler:
 # 1) UA-betingede rewrites i vercel.json for ALLE stier UNNTATT "/":
 {
   "source": "/(?<path>.+)",
@@ -110,13 +109,14 @@ const NETLIFY_RECIPE = () => `# Netlify — begrensning (viktig å vite FØR man
 # _redirects/_headers kan IKKE matche på User-Agent. Alternativene er:
 #   a) Edge Functions (Deno): les User-Agent, returner /geo/<side>.html
 #   b) Prerendering-betaen (bot-deteksjon styrt av Netlify, mindre kontroll)
-# Anbefaling: Edge Function per doc 14 — samme logikk som Vercel-middlewaren.`;
+# Anbefaling: Edge Function per doc 14 — les User-Agent og server den statiske bot-filen.`;
 
 const HOSTED_RECIPE = () => `# Hostet hos oss: dette er en KONFIGURASJONSJOBB, ikke kundejobb.
 # Ny SITE-konfig i frontend/client/src/prerender/geo-prerender-entry.tsx
 # (samme mønster som TRR_SITE/LEADGRID_SITE) + host-mapping i
-# frontend/middleware.ts og vercel.json. Komponent-mappen kaster på
-# umappet nøkkel — manglende sider stopper bygget, med vilje.`;
+# netlify/host-routes.json. Netlify Edge Function genereres i builden.
+# Komponent-mappen kaster på umappet nøkkel — manglende sider stopper
+# bygget, med vilje.`;
 
 const UNKNOWN_RECIPE = () => `# Plattform ikke gjenkjent fra svar-headere. Prinsippet er likt overalt:
 # 1) Prerender innholdssidene til statisk HTML (fullt innhold + JSON-LD)

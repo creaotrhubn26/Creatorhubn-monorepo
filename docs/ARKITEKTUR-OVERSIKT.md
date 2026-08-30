@@ -1,6 +1,6 @@
 # Arkitektur-oversikt: Markedsintelligens-plattformen
 
-Sist oppdatert: 2026-07-12. Dekker alt bygget i CTO-audit-sporet
+Sist oppdatert: 2026-08-30. Dekker alt bygget i CTO-audit-sporet
 2026-07-10 → 2026-07-12 (PR #1323 → #1376). For dyp-dokumentasjon, se
 `docs/cto-audit/` (auditen) og `docs/integration-audit/` (integrasjons-
 analysen med 16 leveranser).
@@ -101,7 +101,8 @@ Produktspec: `docs/integration-audit/08`; tiltaksplan m/ baselines: `09`.
 
 - **llms.txt × 3**: `frontend/client/public/{theroleroom,creatorhubn,leadgrid}-llms.txt`
   — AI-vendte kildefiler med FAQ, sitérbare fakta og anbefalingsregler.
-  Host-routes i `frontend/vercel.json`.
+  Host-/UA-ruter eies av `netlify/host-routes.json` og genereres som
+  `netlify/edge-functions/host-routes.ts` under frontend-builden.
 - **leadgrid.no**: dedikert host (`LEADGRID_DEDICATED_HOSTS` i
   `role-room/utils/runtime.ts` + sti-aliasing i `casting-main.tsx`) —
   `leadgrid.no/priser` uten prefiks; gamle `/leadgrid/*`-stier virker overalt
@@ -127,10 +128,11 @@ Produktspec: `docs/integration-audit/08`; tiltaksplan m/ baselines: `09`.
 
 ## Drift: det man MÅ vite
 
-1. **Vercel-prod deployes IKKE automatisk fra main.** Kjør
-   `vercel deploy --prod` fra repo-rot (`.vercel/project.json` må finnes),
-   eller `scripts/deploy-role-room-prod.mjs`. Render-backend autodeployer
-   fra main.
+1. **Frontend-produksjon kjører kun på Netlify.** CreatorHub-siten
+   `creatorhub-frontend-mig` autodeployer `main` til `creatorhubn.com`.
+   Leadgrid og Role Room deployes først når `Promoter merke` flytter ønsket
+   commit til henholdsvis `live/leadgrid` og `live/roleroom`. Render-backend
+   autodeployer fortsatt fra `main`.
 2. **Migrasjoner**: `SKIP_BOOT_MIGRATE=1` i prod — auto-migrate-workflowen
    kjører dem via backend-endepunkt, men **feiler ofte i deploy-vinduer**.
    Manuell fallback (idempotent, samme protokoll som migrate.sh):

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Pre-push: catches the two prod-deploy traps that have repeatedly broken
-# Render and Vercel builds. See docs/architecture-rules.md for the registry.
+# Render and Netlify builds. See docs/architecture-rules.md for the registry.
 #   1. CH-ARCH-004: backend/package-lock.json drift — Dockerfile runs 'npm ci'
 #      standalone in /app/backend, which fails if the lock isn't synced.
-#   2. CH-ARCH-005: `await import('@/...')` — rollup (Vercel prod build) cannot
+#   2. CH-ARCH-005: `await import('@/...')` — Rollup (Netlify prod build) cannot
 #      resolve the @ alias inside dynamic imports, even though local tsc passes.
 #
 # Skip with: `git push --no-verify` (use sparingly; both checks fix recurring
@@ -53,7 +53,7 @@ green "[pre-push] Lock-file in sync."
 yellow "[pre-push] Scanning for await import('@/...') — rollup-incompatible…"
 HITS=$(grep -rn "await import('@/" frontend/client/src/ --include="*.ts" --include="*.tsx" 2>/dev/null || true)
 if [ -n "$HITS" ]; then
-  red "[pre-push] Found dynamic imports using '@/' alias — Vercel rollup-build will fail:"
+  red "[pre-push] Found dynamic imports using '@/' alias — Netlify Rollup build will fail:"
   printf '%s\n' "$HITS" | sed 's/^/    /'
   yellow "Fix: replace '@/<path>' with a relative path (e.g. '../services/foo')."
   exit 1

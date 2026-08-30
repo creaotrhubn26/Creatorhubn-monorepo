@@ -1,14 +1,14 @@
 // SuperAdminFase20Views.swift
 //
 // Fase 20: Platform-status + Integrations + API-endpoints-health.
-// Lar Daniel sjekke plattform-helse fra felt — er Render/Neon/Vercel/
+// Lar Daniel sjekke plattform-helse fra felt — er Render/Neon/Netlify/
 // Stripe/Anthropic OK? Er noen integrations brutt? Hvilke API-ruter
 // har errors siste 24t?
 
 import SwiftUI
 
 // ============================================================
-// MARK: - Platform-status (Render/Neon/Vercel/Stripe/Anthropic)
+// MARK: - Platform-status (Render/Neon/Netlify/Stripe/Anthropic)
 // ============================================================
 
 struct SuperAdminPlatformStatusView: View {

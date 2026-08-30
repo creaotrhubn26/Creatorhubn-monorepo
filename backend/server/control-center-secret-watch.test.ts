@@ -183,7 +183,7 @@ describe("runSecretWatch", () => {
     const logErrorFn = vi.fn();
     const notifyFn = vi.fn();
     const summary = await runSecretWatch(pool as never, {
-      probes: [makeProbe("vercel", "ok", false)] as never,
+      probes: [makeProbe("render", "ok", false)] as never,
       logErrorFn,
       notifyFn,
       env: {} as NodeJS.ProcessEnv,

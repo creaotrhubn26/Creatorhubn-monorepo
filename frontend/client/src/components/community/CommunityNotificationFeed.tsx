@@ -70,7 +70,7 @@ export default function CommunityNotificationFeed({ userId, maxHeight = 400 }: C
     fetchNotifications();
 
     // Connect to WebSocket for real-time notifications.
-    // null i prod uten eksplisitt WS-host (Vercel proxy-er ikke WS) — da
+    // null i prod uten eksplisitt WS-host (frontend-hostingen proxy-er ikke WS) — da
     // hopper vi over koblingen i stedet for å spamme failed-connections.
     const wsUrl = buildEventsWsUrl('/ws/events');
     if (!wsUrl) {
@@ -295,5 +295,4 @@ export default function CommunityNotificationFeed({ userId, maxHeight = 400 }: C
     </Card>
   );
 }
-
 
