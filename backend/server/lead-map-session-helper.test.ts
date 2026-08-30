@@ -66,8 +66,9 @@ describe("resolveLeadMapSession", () => {
       [VALID_NATIVE_TOKEN],
     );
     expect(query.mock.calls[0]?.[0]).toContain(
-      "COALESCE(u.is_active, TRUE) AS is_active",
+      "(to_jsonb(u)->>'is_active')::boolean",
     );
+    expect(query.mock.calls[0]?.[0]).not.toContain("u.is_active");
   });
 
   it("does not query ipad_tokens for an unrelated bearer format", async () => {

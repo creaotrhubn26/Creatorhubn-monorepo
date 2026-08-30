@@ -76064,7 +76064,10 @@ httpServer.listen(PORT, "0.0.0.0", () => {
            FROM ipad_tokens t
            JOIN users u ON u.id::text = t.user_id
           WHERE t.revoked_at IS NULL
-            AND COALESCE(u.is_active, TRUE) = TRUE`,
+            AND COALESCE(
+                  (to_jsonb(u)->>'is_active')::boolean,
+                  TRUE
+                ) = TRUE`,
       );
       let hydrated = 0;
       for (const row of r.rows) {

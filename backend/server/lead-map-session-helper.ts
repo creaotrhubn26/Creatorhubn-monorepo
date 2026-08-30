@@ -68,6 +68,10 @@ async function loadIpadTokenSession(
     return { found: false, session: null };
   }
 
+  // Production databases created before users.is_active was formalized can
+  // legitimately lack that physical column. Reading it through the row JSON
+  // keeps rolling/schema-skew deploys compatible while still honoring an
+  // explicit false value once migration 0471 has expanded the table.
   const result = await pool.query<IpadTokenSessionRow>(
     `SELECT t.user_id,
             u.email,
@@ -78,7 +82,10 @@ async function loadIpadTokenSession(
             ) AS name,
             t.created_at::text AS login_at,
             t.revoked_at::text,
-            COALESCE(u.is_active, TRUE) AS is_active
+            COALESCE(
+              (to_jsonb(u)->>'is_active')::boolean,
+              TRUE
+            ) AS is_active
        FROM ipad_tokens t
        LEFT JOIN users u ON u.id::text = t.user_id
       WHERE t.token = $1

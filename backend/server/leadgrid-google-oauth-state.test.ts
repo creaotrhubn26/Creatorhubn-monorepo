@@ -309,7 +309,7 @@ describe("Leadgrid Google OAuth state", () => {
     const clientQuery = vi.fn(async (sqlValue: unknown) => {
       const sql = String(sqlValue);
       if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
-      if (sql.includes("SELECT id, role")) {
+      if (sql.includes("FROM users u")) {
         return {
           rows: [{ id: "user-1", role: "super_admin", is_active: true }],
         };
@@ -345,13 +345,18 @@ describe("Leadgrid Google OAuth state", () => {
       name: "Leadgrid User",
       loginAt: expect.any(String),
     });
-    expect(clientQuery.mock.calls.map(([sql]) => String(sql))).toEqual([
+    const sqlCalls = clientQuery.mock.calls.map(([sql]) => String(sql));
+    expect(sqlCalls).toEqual([
       "BEGIN",
-      expect.stringContaining("SELECT id, role"),
+      expect.stringContaining("FROM users u"),
       expect.stringContaining("FROM organization_members om"),
       expect.stringContaining("INSERT INTO ipad_tokens"),
       "COMMIT",
     ]);
+    const userLookupSql =
+      sqlCalls.find((sql) => sql.includes("FROM users u")) ?? "";
+    expect(userLookupSql).toContain("(to_jsonb(u)->>'is_active')::boolean");
+    expect(userLookupSql).not.toContain("u.is_active");
     expect(release).toHaveBeenCalledOnce();
   });
 
@@ -368,7 +373,7 @@ describe("Leadgrid Google OAuth state", () => {
     const clientQuery = vi.fn(async (sqlValue: unknown) => {
       const sql = String(sqlValue);
       if (sql === "BEGIN" || sql === "ROLLBACK") return { rows: [] };
-      if (sql.includes("SELECT id, role")) {
+      if (sql.includes("FROM users u")) {
         return {
           rows: [{ id: "inactive-user", role: "member", is_active: false }],
         };
@@ -394,7 +399,7 @@ describe("Leadgrid Google OAuth state", () => {
 
     expect(clientQuery.mock.calls.map(([sql]) => String(sql))).toEqual([
       "BEGIN",
-      expect.stringContaining("SELECT id, role"),
+      expect.stringContaining("FROM users u"),
       "ROLLBACK",
     ]);
     expect(sessionMaps[0].size).toBe(0);
