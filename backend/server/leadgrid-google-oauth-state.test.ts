@@ -62,7 +62,10 @@ type GoogleEnvOverrides = Partial<{
   LEADGRID_IOS_GOOGLE_CLIENT_ID: string;
 }>;
 
-async function buildAppPair(overrides: GoogleEnvOverrides = {}) {
+async function buildAppPair(
+  overrides: GoogleEnvOverrides = {},
+  poolOverride?: Pool,
+) {
   const env = {
     LEADGRID_GOOGLE_CLIENT_ID: "",
     LEADGRID_GOOGLE_CLIENT_SECRET: "",
@@ -84,19 +87,24 @@ async function buildAppPair(overrides: GoogleEnvOverrides = {}) {
 
   const { registerLeadgridGoogleAuthRoutes } =
     await import("./leadgrid-google-auth-routes.js");
-  const pool = {} as Pool;
+  const pool = poolOverride ?? ({} as Pool);
   const apps = [express(), express()];
+  const sessionMaps = [new Map(), new Map()];
 
-  for (const app of apps) {
+  for (const [index, app] of apps.entries()) {
     app.use(express.json());
     registerLeadgridGoogleAuthRoutes({
       app: app as Express,
       pool,
-      activeSessions: new Map(),
+      activeSessions: sessionMaps[index],
     });
   }
 
-  return { first: apps[0], second: apps[1] };
+  return {
+    first: apps[0],
+    second: apps[1],
+    sessionMaps,
+  };
 }
 
 beforeEach(() => {
@@ -176,11 +184,13 @@ describe("Leadgrid Google OAuth state", () => {
   });
 
   it("uses the complete generic pair when CreatorHub is only partially configured", async () => {
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: vi.fn(async () => ({ id_token: "generic-id-token" })),
-      text: vi.fn(async () => ""),
-    }));
+    const fetchMock = vi.fn(
+      async (_input: string | URL | Request, _init?: RequestInit) => ({
+        ok: true,
+        json: vi.fn(async () => ({ id_token: "generic-id-token" })),
+        text: vi.fn(async () => ""),
+      }),
+    );
     vi.stubGlobal("fetch", fetchMock);
     const { first } = await buildAppPair({
       CREATORHUB_GOOGLE_CLIENT_ID: "partial-creatorhub-client",
@@ -284,6 +294,111 @@ describe("Leadgrid Google OAuth state", () => {
         "leadgrid-ios-b",
       ],
     });
+  });
+
+  it("commits the native bearer before caching a complete local session", async () => {
+    googleVerifier.verifyIdToken.mockResolvedValue({
+      getPayload: () => ({
+        aud: "dedicated-leadgrid-client",
+        email: "leadgrid@example.test",
+        email_verified: true,
+        name: "Leadgrid User",
+        sub: "google-user",
+      }),
+    });
+    const clientQuery = vi.fn(async (sqlValue: unknown) => {
+      const sql = String(sqlValue);
+      if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
+      if (sql.includes("SELECT id, role")) {
+        return {
+          rows: [{ id: "user-1", role: "super_admin", is_active: true }],
+        };
+      }
+      if (sql.includes("FROM organization_members om")) {
+        return { rows: [{ id: "org-1" }] };
+      }
+      if (sql.includes("INSERT INTO ipad_tokens")) return { rows: [] };
+      throw new Error(`Unexpected SQL in test: ${sql}`);
+    });
+    const release = vi.fn();
+    const pool = {
+      connect: vi.fn(async () => ({ query: clientQuery, release })),
+    } as unknown as Pool;
+    const { first, sessionMaps } = await buildAppPair(
+      {
+        LEADGRID_GOOGLE_CLIENT_ID: "dedicated-leadgrid-client",
+        LEADGRID_GOOGLE_CLIENT_SECRET: "dedicated-leadgrid-secret",
+      },
+      pool,
+    );
+
+    const exchanged = await request(first)
+      .post("/api/leadgrid/auth/google/exchange")
+      .send({ id_token: "valid-leadgrid-token", platform: "ios_native_app" })
+      .expect(200);
+
+    expect(exchanged.body.bearer).toMatch(/^[a-f0-9]{64}$/);
+    expect(sessionMaps[0].get(exchanged.body.bearer)).toMatchObject({
+      userId: "user-1",
+      email: "leadgrid@example.test",
+      role: "super_admin",
+      name: "Leadgrid User",
+      loginAt: expect.any(String),
+    });
+    expect(clientQuery.mock.calls.map(([sql]) => String(sql))).toEqual([
+      "BEGIN",
+      expect.stringContaining("SELECT id, role"),
+      expect.stringContaining("FROM organization_members om"),
+      expect.stringContaining("INSERT INTO ipad_tokens"),
+      "COMMIT",
+    ]);
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("rejects an inactive existing account before minting a bearer", async () => {
+    googleVerifier.verifyIdToken.mockResolvedValue({
+      getPayload: () => ({
+        aud: "dedicated-leadgrid-client",
+        email: "inactive@example.test",
+        email_verified: true,
+        name: "Inactive User",
+        sub: "google-user",
+      }),
+    });
+    const clientQuery = vi.fn(async (sqlValue: unknown) => {
+      const sql = String(sqlValue);
+      if (sql === "BEGIN" || sql === "ROLLBACK") return { rows: [] };
+      if (sql.includes("SELECT id, role")) {
+        return {
+          rows: [{ id: "inactive-user", role: "member", is_active: false }],
+        };
+      }
+      throw new Error(`Unexpected SQL in test: ${sql}`);
+    });
+    const release = vi.fn();
+    const pool = {
+      connect: vi.fn(async () => ({ query: clientQuery, release })),
+    } as unknown as Pool;
+    const { first, sessionMaps } = await buildAppPair(
+      {
+        LEADGRID_GOOGLE_CLIENT_ID: "dedicated-leadgrid-client",
+        LEADGRID_GOOGLE_CLIENT_SECRET: "dedicated-leadgrid-secret",
+      },
+      pool,
+    );
+
+    await request(first)
+      .post("/api/leadgrid/auth/google/exchange")
+      .send({ id_token: "inactive-account-token" })
+      .expect(403, { error: "account_inactive" });
+
+    expect(clientQuery.mock.calls.map(([sql]) => String(sql))).toEqual([
+      "BEGIN",
+      expect.stringContaining("SELECT id, role"),
+      "ROLLBACK",
+    ]);
+    expect(sessionMaps[0].size).toBe(0);
+    expect(release).toHaveBeenCalledOnce();
   });
 
   it("keeps legacy Storyboard starts on the shared client and Role Room host", async () => {

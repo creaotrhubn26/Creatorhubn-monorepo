@@ -572,6 +572,7 @@ import { setupMarketScansSuperAdminRoutes } from "./market-scans-superadmin-rout
 import { setupControlCenterRoutes } from "./control-center-routes.js";
 import { setupAdminLeadMapPricingRoutes } from "./admin-lead-map-pricing-routes.js";
 import { setupLeadMapRoutes } from "./lead-map-routes.js";
+import { createLeadMapSessionHydrator } from "./lead-map-session-helper.js";
 import { registerLeadMapCompetitorRoutes } from "./lead-map-competitor-routes.js";
 import { registerIpadPairRoutes } from "./ipad-pair-routes.js";
 import { registerLeadMapProjectRoutes } from "./lead-map-project-routes.js";
@@ -2186,6 +2187,20 @@ type ActiveSessionData = {
 };
 
 const activeSessions: Map<string, ActiveSessionData> = new Map();
+
+// Native Leadgrid bearers are persisted in Postgres, while many legacy route
+// guards still read activeSessions synchronously. Warm the process-local Map
+// before every Leadgrid handler so a token minted on Render pod A is
+// immediately usable on pod B. The middleware is hydration-only: public
+// routes without a bearer continue unchanged. /api/auth/user is included
+// because it is part of the native app's post-login bootstrap.
+const leadMapSessionHydrator = createLeadMapSessionHydrator(
+  pool,
+  activeSessions,
+);
+app.use("/api/admin-room/lead-map", leadMapSessionHydrator);
+app.use("/api/leadgrid", leadMapSessionHydrator);
+app.use("/api/auth/user", leadMapSessionHydrator);
 
 // Pending-2FA-state for login-flow. Når en bruker har TOTP aktivert,
 // stasher vi alt vi trenger for å fullføre sessionen mens vi venter på
@@ -76048,7 +76063,8 @@ httpServer.listen(PORT, "0.0.0.0", () => {
         `SELECT t.token, t.user_id, u.email, u.role
            FROM ipad_tokens t
            JOIN users u ON u.id::text = t.user_id
-          WHERE t.revoked_at IS NULL`,
+          WHERE t.revoked_at IS NULL
+            AND COALESCE(u.is_active, TRUE) = TRUE`,
       );
       let hydrated = 0;
       for (const row of r.rows) {
