@@ -165,7 +165,7 @@ const InlineFrameCanvas: React.FC<{
       // Lag-opacity multipliseres inn i brush-opacity (stamp-motoren styrer
       // alpha per dab selv, så ctx.globalAlpha alene når ikke frem der).
       const strokeBrush = { ...buildBrush(), ...(stroke.brush ?? {}), size: stroke.width ?? 4, color: stroke.color ?? '#26282e', opacity: (stroke.opacity ?? 1) * strokeLayerOpacity };
-      if (['eraser', 'kneaded', 'lightlift'].includes(strokeBrush.type)) {
+      if (['eraser', 'vinyl', 'kneaded', 'lightlift'].includes(strokeBrush.type)) {
         ctx.save();
         ctx.globalCompositeOperation = 'destination-out';
         ctx.lineCap = 'round';
@@ -307,7 +307,7 @@ const InlineFrameCanvas: React.FC<{
     const previous = activePointsRef.current[activePointsRef.current.length - 1];
     activePointsRef.current.push(point);
     const liveBrush = buildBrush();
-    if (['eraser', 'kneaded', 'lightlift'].includes(liveBrush.type)) {
+    if (['eraser', 'vinyl', 'kneaded', 'lightlift'].includes(liveBrush.type)) {
       previewCtx.save();
       previewCtx.strokeStyle = 'rgba(180,180,180,0.5)';
       previewCtx.lineWidth = liveBrush.size * 2;

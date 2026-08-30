@@ -594,11 +594,11 @@ struct AssetsView: View {
                             .foregroundStyle(BoardBrand.label))
                         .task {
                             guard file.isImage,
-                                  FrameImageCache.images[file.downloadPath] == nil else { return }
+                                  FrameImageCache.image(for: file.downloadPath) == nil else { return }
                             if let data = await RoleRoomAPIClient.shared
                                 .fetchRemoteImageData(path: file.downloadPath),
                                let image = UIImage(data: data) {
-                                FrameImageCache.images[file.downloadPath] = image
+                                FrameImageCache.store(image, for: file.downloadPath)
                                 state.objectWillChange.send()
                             }
                         }

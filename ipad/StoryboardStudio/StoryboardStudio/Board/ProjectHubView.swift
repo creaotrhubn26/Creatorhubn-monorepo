@@ -247,7 +247,11 @@ final class HubState: ObservableObject {
             storageUsed = stats.used
             storageQuota = stats.quota
         }
-        await FrameImageCache.prefetch(frames: Array(allFrames.prefix(20)))
+        let recentPreviewFrames = recentScenes.compactMap {
+            StoryboardPreviewPolicy.representativeFrame(in: $0.frames)
+        }
+        await FrameImageCache.prefetchPreviewSources(
+            frames: Array(recentPreviewFrames.prefix(20)))
         refreshPalette()
     }
 
@@ -489,7 +493,7 @@ struct ProjectHubView: View {
                     attachedToEntityType: "storyboard_moodboard",
                     attachedToEntityId: hub.manuscript.id) {
                     imageUrl = path
-                    FrameImageCache.images[path] = image
+                    FrameImageCache.store(image, for: path)
                 }
                 hub.moodboard.append(imageUrl)
                 hub.persistMeta()
@@ -631,7 +635,9 @@ struct ProjectHubView: View {
             // til siste tegnede frame.
             if let image = hub.moodboard.first.flatMap({ FrameImageCache.image(for: $0) })
                 ?? hub.recentScenes.first?.frames.first.flatMap({
-                    decodeDataURL($0.thumbnailDataURL) ?? FrameImageCache.image(for: $0.imageUrl)
+                    StoryboardFramePreviewResolver.image(
+                        for: $0,
+                        maxWidth: 600)
                 }) {
                 Image(uiImage: image)
                     .resizable().scaledToFill()
@@ -876,7 +882,7 @@ struct ProjectHubView: View {
                                     if let data = await RoleRoomAPIClient.shared
                                         .fetchRemoteImageData(path: imageUrl),
                                        let image = UIImage(data: data) {
-                                        FrameImageCache.images[imageUrl] = image
+                                        FrameImageCache.store(image, for: imageUrl)
                                         hub.objectWillChange.send()
                                     }
                                 }
@@ -1155,7 +1161,7 @@ struct ProjectHubView: View {
             } else {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6),
                           spacing: 10) {
-                    ForEach(hub.assets.prefix(18)) { asset in
+                    ForEach(Array(hub.assets.prefix(18))) { asset in
                         VStack(spacing: 4) {
                             if asset.isImage,
                                let image = FrameImageCache.image(for: asset.downloadPath) {
@@ -1172,7 +1178,7 @@ struct ProjectHubView: View {
                                         if let data = await RoleRoomAPIClient.shared
                                             .fetchRemoteImageData(path: asset.downloadPath),
                                            let image = UIImage(data: data) {
-                                            FrameImageCache.images[asset.downloadPath] = image
+                                            FrameImageCache.store(image, for: asset.downloadPath)
                                             hub.objectWillChange.send()
                                         }
                                     }
@@ -1228,9 +1234,11 @@ struct ProjectHubView: View {
 
     private func sceneThumb(_ scene: SceneSummary, width: CGFloat, height: CGFloat) -> some View {
         Group {
-            if let frame = scene.frames.first,
-               let image = decodeDataURL(frame.thumbnailDataURL)
-                ?? FrameImageCache.image(for: frame.imageUrl) {
+            if let frame = StoryboardPreviewPolicy.representativeFrame(
+                in: scene.frames),
+               let image = StoryboardFramePreviewResolver.image(
+                for: frame,
+                maxWidth: max(width, height) * 2) {
                 Image(uiImage: image).resizable().scaledToFill()
             } else {
                 Rectangle().fill(Color.white.opacity(0.06))
@@ -1241,5 +1249,16 @@ struct ProjectHubView: View {
         .frame(width: width, height: height)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(BoardBrand.border))
+        .task(id: StoryboardPreviewPolicy.representativeFrame(
+            in: scene.frames).map {
+                StoryboardFramePreviewResolver.loadTaskKey(for: $0)
+            }) {
+            guard let frame = StoryboardPreviewPolicy.representativeFrame(
+                in: scene.frames),
+                  await StoryboardFramePreviewResolver.load(
+                    for: frame,
+                    maxWidth: max(width, height) * 2) != nil else { return }
+            hub.objectWillChange.send()
+        }
     }
 }

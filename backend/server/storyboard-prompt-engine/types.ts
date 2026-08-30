@@ -2,7 +2,11 @@ import type { StoryboardShotContext } from '../storyboard-ai-context.js';
 
 export const PROMPT_ENGINE_VERSION = 'trr-prompt-engine-v2' as const;
 
-export type PromptIntentKind = 'storyboard-image' | 'storyboard-video';
+export type PromptIntentKind =
+  | 'storyboard-image'
+  | 'storyboard-color'
+  | 'storyboard-atmosphere'
+  | 'storyboard-video';
 
 export type PromptModuleId =
   | 'base-cinematography'

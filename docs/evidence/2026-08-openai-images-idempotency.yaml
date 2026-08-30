@@ -1,0 +1,35 @@
+claim: >
+  No provider-side idempotency guarantee for POST /images/generations or
+  POST /images/edits could be verified in the current official OpenAI Images
+  API reference or image-generation guide. A locally supplied
+  Idempotency-Key header must therefore not justify automatic resubmission
+  after an ambiguous provider-boundary failure.
+source_type: official_docs
+sources:
+  - "https://developers.openai.com/api/reference/resources/images"
+  - "https://developers.openai.com/api/docs/guides/image-generation"
+authority_tier: 1
+vendor: OpenAI
+product: Images API
+version_scope: "Live official documentation, accessed 2026-08-30"
+document_revision: "Unversioned live pages; no publication date stated"
+section_or_symbol: "POST /images/generations; POST /images/edits"
+evidence_summary: >
+  The official endpoint reference documents the image generation and edit
+  operations, request bodies, and response objects. The official guide
+  documents image generation workflows. Searches of both current pages found
+  no Idempotency-Key parameter or provider deduplication contract.
+interpretation: >
+  This is evidence of an undocumented guarantee, not proof that OpenAI will
+  reject or ignore the header. Role Room may continue forwarding a stable
+  local operation ID as a best-effort header, but correctness cannot depend on
+  it. A stale processing operation is classified as generation_result_unknown
+  and is never automatically reclaimed, refunded, or submitted again.
+project_impact: >
+  storyboard-ai-image-stage-service.ts only reclaims stale claimed operations,
+  which have not crossed the provider boundary. Transport failures, provider
+  5xx responses, invalid successful payloads, and local result-persistence
+  failures preserve processing/reserved state without refund or resubmission.
+  Durable usage and settlement rows preserve billing/refund intent without
+  inventing exactly-once provider behavior.
+confidence: verified_negative_documentation

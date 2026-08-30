@@ -4,6 +4,9 @@
  */
 
 import type { StoryboardDocumentAspectRatio } from '../state/storyboardDrawingDocument';
+import type { ShotFramingState } from '@shared/storyboard-shot-framing';
+
+export type { ShotFramingMode, ShotFramingState } from '@shared/storyboard-shot-framing';
 
 export type UserRoleType =
   | 'director'
@@ -2008,6 +2011,8 @@ export interface StoryboardFrame {
   title?: string;
   description?: string;
   duration?: number;
+  /** Applied non-destructive viewport; shot intent stays in shotType/angle/lensMm. */
+  shotFraming?: ShotFramingState;
   createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;
@@ -2763,4 +2768,3 @@ export interface AISuggestionFilter {
   status?: AISuggestionStatus | AISuggestionStatus[];
   minConfidence?: number;
 }
-

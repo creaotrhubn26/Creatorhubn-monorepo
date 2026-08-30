@@ -112,6 +112,31 @@ function percent(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
+function appliedFramingConstraint(
+  framing: StoryboardShotContext['shot']['shotFraming'],
+  viewportFocus: { x: number; y: number } | null | undefined,
+): string {
+  if (!framing) return '';
+  const focusAnchor = viewportFocus === undefined
+      && framing.focusAnchorX != null && framing.focusAnchorY != null
+    ? { x: framing.focusAnchorX, y: framing.focusAnchorY }
+    : viewportFocus;
+  const focus = focusAnchor
+    ? ` Keep the focus anchor at ${percent(focusAnchor.x)} from left, `
+      + `${percent(focusAnchor.y)} from top${viewportFocus === undefined
+        ? '' : ' in the applied viewport'}.`
+    : '';
+  const intent = [framing.shotSize, framing.angle,
+    framing.lensMm ? `${framing.lensMm} mm` : ''].filter(Boolean).join(' · ');
+  const intentSnapshot = intent ? ` Intent snapshot: ${intent}.` : '';
+  return `Applied viewport is authoritative: center ${percent(framing.centerX)} from left, `
+    + `${percent(framing.centerY)} from top; ${framing.zoom.toFixed(2)}x zoom; `
+    + `${framing.rollDegrees.toFixed(1)} degree roll; `
+    + `${framing.aspectRatio.toFixed(3)}:1 aspect ratio; ${framing.mode} composition.`
+    + `${focus}${intentSnapshot} Preserve this exact crop, subject scale, headroom, horizon, `
+    + 'edge relationships, and negative space; do not zoom out, recenter, level, or reframe.';
+}
+
 function productionMarkConstraints(
   marks: StoryboardProductionMark[],
 ): Array<PromptConstraint | null> {
@@ -207,6 +232,7 @@ function fitPrompt(opening: string, modules: CompiledPromptModule[], maxCharacte
   const selected = new Set<string>();
   const essentialIds = [
     'data-boundary', 'shot-action', 'user-action', 'shot-size', 'camera-angle', 'lens', 'movement',
+    'applied-framing',
     'continuity-locks', 'style-medium', 'scenario-pack', 'scenario-subdomain', 'scenario-zone',
     'character-lock', 'scene-place-time',
     'lighting-plan', 'previous-shot', 'next-shot',
@@ -231,6 +257,8 @@ function fitPrompt(opening: string, modules: CompiledPromptModule[], maxCharacte
 
 export function compileStoryboardPrompt(input: CompileStoryboardPromptInput): CompiledStoryboardPrompt {
   const { context } = input;
+  const viewportMarks = context.appliedViewport?.productionMarks
+    ?? context.productionMarks ?? [];
   const adapter = resolvePromptModelAdapter(input.modelId, input.kind);
   const style = resolveStoryboardStyleProfile(context.project.styleProfileId);
   const resolvedScenario = resolveStoryboardScenario(context.scenario);
@@ -327,7 +355,7 @@ export function compileStoryboardPrompt(input: CompileStoryboardPromptInput): Co
       constraint('shot-notes', context.shot.notes, 'shot', false, 75),
       constraint('duration', context.shot.durationSec == null ? '' : `Intended duration: ${context.shot.durationSec} seconds.`, 'shot', false, 60),
       constraint('dramatic-beat', context.shot.beat, 'shot', false, 75),
-      ...productionMarkConstraints(context.productionMarks ?? []),
+      ...productionMarkConstraints(viewportMarks),
     ]),
     module('camera', [
       constraint('shot-size', shotSize?.prompt || context.shot.shotType, 'shot', true, 100),
@@ -335,6 +363,10 @@ export function compileStoryboardPrompt(input: CompileStoryboardPromptInput): Co
       constraint('lens', context.shot.lensMm ? `${context.shot.lensMm} mm lens${isGrammarLens(context.shot.lensMm) ? '' : ' (custom production lens)'}.` : '', 'shot', true, 95),
       constraint('movement', movement?.prompt || context.shot.movement, 'shot', true, 90),
       constraint('focus', context.shot.focusDepth ? `${context.shot.focusDepth} depth of field.` : '', 'shot', true, 80),
+      constraint('applied-framing', appliedFramingConstraint(
+        context.shot.shotFraming,
+        context.appliedViewport?.focusAnchor,
+      ), 'shot', true, 100),
     ]),
     module('lighting', [
       constraint('lighting-plan', context.shot.lighting, 'shot', true, 90),
@@ -358,7 +390,8 @@ export function compileStoryboardPrompt(input: CompileStoryboardPromptInput): Co
     compiledPrompt,
     maxCharacters: adapter.maxCharacters,
     hasShotAction: Boolean(compact(context.shot.description || context.scene.action || explicitUserIntent)),
-    hasCamera: Boolean(shotSize || angle || context.shot.lensMm || movement),
+    hasCamera: Boolean(shotSize || angle || context.shot.lensMm || movement
+      || context.shot.shotFraming),
     hasCharacters: characters.length > 0,
   });
   const inheritedConstraintCount = modules

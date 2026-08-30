@@ -115,25 +115,39 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/video-versions/${current.id}/approve`, { method: 'POST', body: {} }); load(); }
     catch (e: any) { wsAlert(e?.message || 'Kunne ikke godkjenne'); }
   };
-  // Last opp videofil → B2 (server-side multer) m/ fremdrift via XHR.
+  // Last opp videofil direkte til en serverbundet, presignet B2-nøkkel. Backend
+  // registrerer versjonen før PUT og verifiserer objektet før publisering.
   const uploadVersion = async () => {
     if (!vFile) return;
     setBusy(true); setUploadPct(0);
     try {
-      const fd = new FormData();
-      fd.append('file', vFile);
-      if (vLabel.trim()) fd.append('versionLabel', vLabel.trim());
+      const contentType = String(vFile.type || 'video/mp4');
+      const signed: any = await apiRequest(
+        `/api/projects/${encodeURIComponent(projectId)}/video-versions/upload-url`,
+        {
+          method: 'POST',
+          body: {
+            fileName: vFile.name || 'video.mp4',
+            contentType,
+            sizeBytes: vFile.size,
+            versionLabel: vLabel.trim() || undefined,
+          },
+        },
+      );
+      if (!signed?.uploadUrl || !signed?.id) throw new Error('Kunne ikke klargjøre opplasting');
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open('POST', `/api/projects/${encodeURIComponent(projectId)}/video-versions/upload`);
-        xhr.withCredentials = true;
-        const tok = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token');
-        if (tok) xhr.setRequestHeader('Authorization', `Bearer ${tok}`);
+        xhr.open('PUT', signed.uploadUrl);
+        xhr.setRequestHeader('Content-Type', contentType);
         xhr.upload.onprogress = (e) => { if (e.lengthComputable) setUploadPct(Math.round((e.loaded / e.total) * 100)); };
         xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve(null) : reject(new Error(`Opplasting feilet (${xhr.status})`));
         xhr.onerror = () => reject(new Error('Nettverksfeil under opplasting'));
-        xhr.send(fd);
+        xhr.send(vFile);
       });
+      await apiRequest(
+        `/api/projects/${encodeURIComponent(projectId)}/video-versions/${encodeURIComponent(signed.id)}/confirm-upload`,
+        { method: 'POST', body: {} },
+      );
       setAddOpen(false); setVFile(null); setVLabel(''); setUploadPct(0); load();
     } catch (e: any) { wsAlert(e?.message || 'Kunne ikke laste opp'); }
     finally { setBusy(false); }

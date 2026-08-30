@@ -2245,6 +2245,10 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
 
   const handleDeleteScene = async () => {
     if (!editingScene) return;
+    if (!selectedManuscript?.id) {
+      showError('Kan ikke slette scene uten valgt manuskript');
+      return;
+    }
     if (!window.confirm(`Er du sikker på at du vil slette scene ${editingScene.sceneNumber ?? ''}?`)) {
       return;
     }
@@ -2260,7 +2264,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
     closeSceneDialog();
 
     try {
-      await manuscriptService.deleteScene(sceneId);
+      await manuscriptService.deleteScene(sceneId, selectedManuscript.id);
       showSuccess('Scene slettet');
     } catch (error) {
       console.error('Failed to delete scene:', error);
@@ -3551,7 +3555,7 @@ const ManuscriptPanelComponent: React.FC<ManuscriptPanelProps> = ({
                     const oldScenes = scenes;
                     setScenes(scenes.filter(s => s.id !== sceneId));
                     try {
-                      await manuscriptService.deleteScene(sceneId);
+                      await manuscriptService.deleteScene(sceneId, selectedManuscript.id);
                       showSuccess('Scene slettet');
                     } catch (error) {
                       console.error('Failed to delete scene:', error);
@@ -6141,10 +6145,15 @@ const DialogueTab: React.FC<{
 
   const handleDelete = async (lineId: string) => {
     if (!confirm('Er du sikker på at du vil slette denne replikken?')) return;
-    
+
+    if (!manuscriptId) {
+      showError('Kan ikke slette dialog uten valgt manuskript');
+      return;
+    }
+
     try {
       // Delete from database
-      await manuscriptService.deleteDialogue(lineId);
+      await manuscriptService.deleteDialogue(lineId, manuscriptId);
       
       // Update local state
       onDialogueChange?.(dialogueLines.filter(l => l.id !== lineId));

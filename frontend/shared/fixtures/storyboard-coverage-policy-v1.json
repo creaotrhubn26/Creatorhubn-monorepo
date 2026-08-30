@@ -1,0 +1,322 @@
+{
+  "fixtureVersion": 1,
+  "policyVersion": 1,
+  "cases": [
+    {
+      "id": "static-centered-t0-valid",
+      "input": {
+        "policyVersion": 1,
+        "sourceSize": { "width": 1920, "height": 1080 },
+        "outputSize": { "width": 1920, "height": 1080 },
+        "initialFraming": {
+          "version": 1,
+          "centerX": 0.5,
+          "centerY": 0.5,
+          "zoom": 1,
+          "rollDegrees": 0,
+          "aspectRatio": 1.7777777777777777,
+          "mode": "automatic",
+          "revision": 0
+        },
+        "asset": { "kind": "source_space" }
+      },
+      "expected": {
+        "classification": "valid",
+        "blockingCodes": [],
+        "warningCodes": [],
+        "infoCodes": [],
+        "minimumCoverageFraction": 1,
+        "evaluatedSampleCount": 1,
+        "evaluatedTimesFingerprint": "sha256:a93875fe509ac2fae0e0939d3ec71c4d978244c7398dd7185ca68c393426a5a6"
+      }
+    },
+    {
+      "id": "static-low-resolution-warning",
+      "input": {
+        "policyVersion": 1,
+        "sourceSize": { "width": 1280, "height": 720 },
+        "outputSize": { "width": 1920, "height": 1080 },
+        "initialFraming": {
+          "version": 1,
+          "centerX": 0.5,
+          "centerY": 0.5,
+          "zoom": 1,
+          "rollDegrees": 0,
+          "aspectRatio": 1.7777777777777777,
+          "mode": "automatic",
+          "revision": 0
+        },
+        "asset": { "kind": "source_space" }
+      },
+      "expected": {
+        "classification": "warning",
+        "blockingCodes": [],
+        "warningCodes": ["low_source_resolution"],
+        "infoCodes": [],
+        "minimumCoverageFraction": 1,
+        "evaluatedSampleCount": 1,
+        "evaluatedTimesFingerprint": "sha256:a93875fe509ac2fae0e0939d3ec71c4d978244c7398dd7185ca68c393426a5a6"
+      }
+    },
+    {
+      "id": "simple-push-in-samples-t0-export-pts-and-keyframe",
+      "input": {
+        "policyVersion": 1,
+        "sourceSize": { "width": 1920, "height": 1080 },
+        "outputSize": { "width": 1920, "height": 1080 },
+        "initialFraming": {
+          "version": 1,
+          "centerX": 0.5,
+          "centerY": 0.5,
+          "zoom": 1,
+          "rollDegrees": 0,
+          "aspectRatio": 1.7777777777777777,
+          "mode": "manual",
+          "revision": 3
+        },
+        "asset": { "kind": "source_space" },
+        "shotDuration": { "value": 2, "timescale": 1 },
+        "projectFrameRate": { "value": 25, "timescale": 1 },
+        "motionTrack": {
+          "version": 1,
+          "enabled": true,
+          "mode": "keyframed",
+          "presetId": "push-in",
+          "keyframes": [
+            {
+              "id": "end",
+              "time": { "value": 2, "timescale": 1 },
+              "pose": {
+                "centerX": 0.5,
+                "centerY": 0.5,
+                "zoom": 1.5,
+                "rollDegrees": 0
+              },
+              "easingFromPrevious": { "kind": "easeInOut" }
+            }
+          ]
+        }
+      },
+      "expected": {
+        "classification": "warning",
+        "blockingCodes": [],
+        "warningCodes": ["low_source_resolution"],
+        "infoCodes": [],
+        "minimumCoverageFraction": 1,
+        "evaluatedSampleCount": 101,
+        "evaluatedTimesFingerprint": "sha256:7c465b1931c1bfd44364006a8a64f92ccc3c5b8571e2abc0e47fddc10241eec0"
+      }
+    },
+    {
+      "id": "source-space-pan-exposes-canvas-blocking",
+      "input": {
+        "policyVersion": 1,
+        "sourceSize": { "width": 1920, "height": 1080 },
+        "outputSize": { "width": 1920, "height": 1080 },
+        "initialFraming": {
+          "version": 1,
+          "centerX": 0.5,
+          "centerY": 0.5,
+          "zoom": 1,
+          "rollDegrees": 0,
+          "aspectRatio": 1.7777777777777777,
+          "mode": "manual",
+          "revision": 1
+        },
+        "asset": { "kind": "source_space" },
+        "shotDuration": { "value": 1, "timescale": 1 },
+        "projectFrameRate": { "value": 25, "timescale": 1 },
+        "motionTrack": {
+          "version": 1,
+          "enabled": true,
+          "mode": "keyframed",
+          "keyframes": [
+            {
+              "id": "pan-right",
+              "time": { "value": 1, "timescale": 1 },
+              "pose": {
+                "centerX": 0.75,
+                "centerY": 0.5,
+                "zoom": 1,
+                "rollDegrees": 0
+              },
+              "easingFromPrevious": { "kind": "linear" }
+            }
+          ]
+        }
+      },
+      "expected": {
+        "classification": "blocking",
+        "blockingCodes": ["uncovered_viewport"],
+        "warningCodes": [],
+        "infoCodes": [],
+        "minimumCoverageFraction": 0.75,
+        "evaluatedSampleCount": 27,
+        "evaluatedTimesFingerprint": "sha256:76f3b5e05a397edee918f038cc9c86125278640157d3fd26ba5ca0c76f9d7dd7"
+      }
+    },
+    {
+      "id": "viewport-raster-push-in-stays-inside-baked-coverage",
+      "input": {
+        "policyVersion": 1,
+        "sourceSize": { "width": 3840, "height": 2160 },
+        "outputSize": { "width": 1920, "height": 1080 },
+        "initialFraming": {
+          "version": 1,
+          "centerX": 0.5,
+          "centerY": 0.5,
+          "zoom": 1,
+          "rollDegrees": 0,
+          "aspectRatio": 1.7777777777777777,
+          "mode": "manual",
+          "revision": 2
+        },
+        "asset": {
+          "kind": "viewport_raster",
+          "rasterPlacementFraming": {
+            "version": 1,
+            "centerX": 0.5,
+            "centerY": 0.5,
+            "zoom": 1,
+            "rollDegrees": 0,
+            "aspectRatio": 1.7777777777777777,
+            "mode": "manual",
+            "revision": 2
+          }
+        },
+        "shotDuration": { "value": 2, "timescale": 1 },
+        "projectFrameRate": { "value": 25, "timescale": 1 },
+        "motionTrack": {
+          "version": 1,
+          "enabled": true,
+          "mode": "keyframed",
+          "presetId": "push-in",
+          "keyframes": [
+            {
+              "id": "end",
+              "time": { "value": 2, "timescale": 1 },
+              "pose": {
+                "centerX": 0.5,
+                "centerY": 0.5,
+                "zoom": 1.5,
+                "rollDegrees": 0
+              },
+              "easingFromPrevious": { "kind": "easeInOut" }
+            }
+          ]
+        }
+      },
+      "expected": {
+        "classification": "valid",
+        "blockingCodes": [],
+        "warningCodes": [],
+        "infoCodes": [],
+        "minimumCoverageFraction": 1,
+        "evaluatedSampleCount": 101,
+        "evaluatedTimesFingerprint": "sha256:7c465b1931c1bfd44364006a8a64f92ccc3c5b8571e2abc0e47fddc10241eec0"
+      }
+    },
+    {
+      "id": "viewport-raster-pull-out-requires-motion-plate",
+      "input": {
+        "policyVersion": 1,
+        "sourceSize": { "width": 3840, "height": 2160 },
+        "outputSize": { "width": 1920, "height": 1080 },
+        "initialFraming": {
+          "version": 1,
+          "centerX": 0.5,
+          "centerY": 0.5,
+          "zoom": 2,
+          "rollDegrees": 0,
+          "aspectRatio": 1.7777777777777777,
+          "mode": "manual",
+          "revision": 4
+        },
+        "asset": {
+          "kind": "viewport_raster",
+          "rasterPlacementFraming": {
+            "version": 1,
+            "centerX": 0.5,
+            "centerY": 0.5,
+            "zoom": 2,
+            "rollDegrees": 0,
+            "aspectRatio": 1.7777777777777777,
+            "mode": "manual",
+            "revision": 4
+          }
+        },
+        "shotDuration": { "value": 2, "timescale": 1 },
+        "projectFrameRate": { "value": 25, "timescale": 1 },
+        "motionTrack": {
+          "version": 1,
+          "enabled": true,
+          "mode": "keyframed",
+          "presetId": "pull-out",
+          "keyframes": [
+            {
+              "id": "end",
+              "time": { "value": 2, "timescale": 1 },
+              "pose": {
+                "centerX": 0.5,
+                "centerY": 0.5,
+                "zoom": 1.25,
+                "rollDegrees": 0
+              },
+              "easingFromPrevious": { "kind": "easeInOut" }
+            }
+          ]
+        }
+      },
+      "expected": {
+        "classification": "blocking",
+        "blockingCodes": ["motion_plate_required"],
+        "warningCodes": [],
+        "infoCodes": ["provider_may_synthesize_outside_source"],
+        "minimumCoverageFraction": 1,
+        "evaluatedSampleCount": 99,
+        "evaluatedTimesFingerprint": "sha256:21fd9e913d08fbb84d2a3abb7e886ce57a04be733ffaf203b44f0799fd7ab6e4"
+      }
+    },
+    {
+      "id": "viewport-raster-aspect-change-requires-motion-plate",
+      "input": {
+        "policyVersion": 1,
+        "sourceSize": { "width": 4000, "height": 4000 },
+        "outputSize": { "width": 900, "height": 1600 },
+        "initialFraming": {
+          "version": 1,
+          "centerX": 0.5,
+          "centerY": 0.5,
+          "zoom": 2,
+          "rollDegrees": 0,
+          "aspectRatio": 0.5625,
+          "mode": "manual",
+          "revision": 2
+        },
+        "asset": {
+          "kind": "viewport_raster",
+          "rasterPlacementFraming": {
+            "version": 1,
+            "centerX": 0.5,
+            "centerY": 0.5,
+            "zoom": 2,
+            "rollDegrees": 0,
+            "aspectRatio": 1.7777777777777777,
+            "mode": "manual",
+            "revision": 1
+          }
+        },
+        "projectFrameRate": { "value": 25, "timescale": 1 }
+      },
+      "expected": {
+        "classification": "blocking",
+        "blockingCodes": ["motion_plate_required"],
+        "warningCodes": [],
+        "infoCodes": ["provider_may_synthesize_outside_source"],
+        "minimumCoverageFraction": 1,
+        "evaluatedSampleCount": 1,
+        "evaluatedTimesFingerprint": "sha256:a93875fe509ac2fae0e0939d3ec71c4d978244c7398dd7185ca68c393426a5a6"
+      }
+    }
+  ]
+}

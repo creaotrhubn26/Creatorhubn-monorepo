@@ -388,9 +388,15 @@ const PRO_BRUSH_OPTIONS: ProBrushType[] = [
   'forest', 'debris', 'organictex', 'fur', 'toneblock', 'speedlines',
   'airbrush', 'wethair', 'softfocus', 'skintex', 'rocktex', 'gloss',
   'wash', 'spikes', 'fill', 'halftone', 'stamp', 'custom',
+  'bluepencil', 'redpencil', 'mechanical', 'dryink', 'tonemarker',
+  'tortillon', 'vinyl', 'pastel', 'stipple', 'sumi', 'gouache', 'oil',
   // Klassiske
   'graphite', 'charcoal', 'conte', 'pen', 'marker', 'highlighter', 'watercolor',
 ];
+// The header is a quick-switch, not the full library. Keeping this list
+// explicit prevents newly added brush families from overflowing iPad and
+// desktop chrome; every brush remains available in Brush Packs/Library.
+const HEADER_PRO_BRUSH_OPTIONS: ProBrushType[] = ['pen', 'marker', 'highlighter'];
 const PRO_BRUSH_LABELS: Record<string, string> = {
   layout: 'Layout',
   heavy: 'Heavy',
@@ -427,6 +433,10 @@ const PRO_BRUSH_LABELS: Record<string, string> = {
   watercolor: 'Akvarell',
   smudge: 'Smudge',
   eraser: 'Viskelær',
+  bluepencil: 'Blå layout', redpencil: 'Rød layout', mechanical: 'Mekanisk',
+  dryink: 'Tørr tusj', tonemarker: 'Tonemarker', tortillon: 'Tortillon',
+  vinyl: 'Hard vinyl', pastel: 'Pastell', stipple: 'Stipple', sumi: 'Sumi',
+  gouache: 'Gouache', oil: 'Olje',
 };
 const STUDIO_DECK_TABS = ['ROUGH', 'INK', 'SHADOW', 'LIGHT', 'FX', 'TEXT'] as const;
 const STUDIO_ANIMATION_OUTPUTS = ['Storyboards', 'GIFs', 'Animatics', 'Simple Anim'] as const;
@@ -5723,13 +5733,15 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
       ambientOcclusion,
     };
     const currentApproval = drawingDocumentRef.current.metadata.approvalStatus ?? 'draft';
-    const lightingChanged = !currentLighting
-      || currentLighting.cameraHeight !== nextLighting.cameraHeight
-      || currentLighting.keyLightIntensity !== nextLighting.keyLightIntensity
-      || currentLighting.keyLightTempPct !== nextLighting.keyLightTempPct
-      || currentLighting.keyLightSoftness !== nextLighting.keyLightSoftness
-      || currentLighting.castsShadows !== nextLighting.castsShadows
-      || currentLighting.ambientOcclusion !== nextLighting.ambientOcclusion;
+    // Missing lighting metadata represents the same documented defaults as the
+    // controls. Do not dirty a frame merely by materializing those defaults;
+    // persist the block once the artist actually changes a value.
+    const lightingChanged = (currentLighting?.cameraHeight ?? 62) !== nextLighting.cameraHeight
+      || (currentLighting?.keyLightIntensity ?? 78) !== nextLighting.keyLightIntensity
+      || (currentLighting?.keyLightTempPct ?? 32) !== nextLighting.keyLightTempPct
+      || (currentLighting?.keyLightSoftness ?? 'soft') !== nextLighting.keyLightSoftness
+      || (currentLighting?.castsShadows ?? true) !== nextLighting.castsShadows
+      || (currentLighting?.ambientOcclusion ?? true) !== nextLighting.ambientOcclusion;
     const approvalChanged = currentApproval !== approvalStatus;
     if (!lightingChanged && !approvalChanged) return;
     commitDocumentUpdate((prev) => ({
@@ -8612,9 +8624,15 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
 
   // Handle stroke changes
   const handleStrokesChange = useCallback((newStrokes: PencilStroke[]) => {
+    // PencilCanvasPro publishes its hydrated stroke collection on mount. Treat that
+    // notification as synchronization, not as a user edit, so a freshly opened
+    // frame remains clean and the Save action stays disabled until content changes.
+    if (buildStrokeSignature(newStrokes) === buildStrokeSignature(strokes)) {
+      return;
+    }
     setEditorStrokesFromLocal(newStrokes);
     setHasUnsavedChanges(true);
-  }, []);
+  }, [setEditorStrokesFromLocal, strokes]);
 
   // Handle save
   const handleSave = useCallback((imageData: string) => {
@@ -9196,7 +9214,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                     },
                   }}
                 >
-                  {(proMode ? PRO_BRUSH_OPTIONS : STANDARD_BRUSH_OPTIONS).map((type) => (
+                  {(proMode ? HEADER_PRO_BRUSH_OPTIONS : STANDARD_BRUSH_OPTIONS).map((type) => (
                     <ToggleButton key={type} value={type}>{PRO_BRUSH_LABELS[type] ?? type}</ToggleButton>
                   ))}
                 </ToggleButtonGroup>
@@ -9475,7 +9493,7 @@ export const FrameDrawingEditor: FC<FrameDrawingEditorProps> = ({
                   },
                 }}
               >
-                {(proMode ? PRO_BRUSH_OPTIONS : STANDARD_BRUSH_OPTIONS).map((type) => (
+                {(proMode ? HEADER_PRO_BRUSH_OPTIONS : STANDARD_BRUSH_OPTIONS).map((type) => (
                   <ToggleButton key={type} value={type}>{PRO_BRUSH_LABELS[type] ?? type}</ToggleButton>
                 ))}
               </ToggleButtonGroup>

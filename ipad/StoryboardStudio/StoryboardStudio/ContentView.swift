@@ -4,20 +4,12 @@ import SwiftUI
 struct BrushToolbar: View {
     @ObservedObject var canvasState: CanvasState
     var onExport: (() -> Void)?
+    @State private var showBrushPicker = false
+    @State private var showBrushEditor = false
 
-    private let brushOptions: [(BrushType, String)] = [
-        (.layout, "Layout"), (.pencil, "Blyant"), (.heavy, "Heavy"),
-        (.detail, "Detalj"), (.ink, "Tusj"),
-        (.hatch, "Skraver"), (.crosshatch, "Kryss"), (.shade, "Skygge"),
-        (.graintex, "Korn"), (.smudge, "Smudge"),
-        (.eraser, "Viskelær"), (.kneaded, "Kna"), (.lightlift, "Lysløft"),
-        (.forest, "Skog"), (.debris, "Bunn"), (.organictex, "Bark"), (.fur, "Pels"),
-        (.toneblock, "Tone"), (.speedlines, "Fart"),
-        (.airbrush, "Luft"), (.wethair, "Hår"), (.softfocus, "Fokus"),
-        (.skintex, "Hud"), (.rocktex, "Stein"), (.gloss, "Glans"),
-        (.wash, "Vask"), (.spikes, "Pigg"), (.watercolor, "Akvarell"),
-        (.fill, "Fyll"), (.halftone, "Raster"), (.stamp, "Stamp"), (.custom, "Egen"),
-    ]
+    private var brushOptions: [(BrushType, String)] {
+        BrushCatalog.all.map { ($0, BrushCatalog.displayName($0)) }
+    }
 
     private var colorBinding: Binding<Color> {
         Binding(
@@ -28,18 +20,72 @@ struct BrushToolbar: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // 13 pensler — meny i stedet for segmenter; valg setter
-            // spec-defaults via selectBrush.
-            Menu {
-                ForEach(brushOptions, id: \.0) { option in
-                    Button(option.1) { canvasState.selectBrush(option.0) }
-                }
+            // Hele katalogen er større enn det iOS Menu kan vise på iPad.
+            // En scrollbar popover gjør samtlige kategorier og pensler
+            // tilgjengelige uten at de siste seksjonene klippes bort.
+            Button {
+                showBrushPicker = true
             } label: {
                 Label(brushOptions.first(where: { $0.0 == canvasState.brushType })?.1 ?? "Pensel",
                       systemImage: "paintbrush.pointed")
                     .font(.subheadline.bold())
             }
             .accessibilityLabel("Penselvalg")
+            .popover(isPresented: $showBrushPicker, arrowEdge: .top) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        ForEach(BrushCatalog.sections, id: \.category) { section in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(section.title.uppercased())
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 12)
+
+                                ForEach(section.brushes, id: \.self) { type in
+                                    Button {
+                                        canvasState.selectBrush(type)
+                                        showBrushPicker = false
+                                    } label: {
+                                        HStack(spacing: 10) {
+                                            Image(systemName: type == canvasState.brushType
+                                                  ? "checkmark.circle.fill"
+                                                  : "circle")
+                                                .foregroundStyle(type == canvasState.brushType
+                                                                 ? Color.purple
+                                                                 : Color.secondary)
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(BrushCatalog.displayName(type))
+                                                    .font(.subheadline.weight(.semibold))
+                                                Text(BrushDefaults.describe(type))
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                                    .lineLimit(2)
+                                            }
+                                            Spacer(minLength: 8)
+                                        }
+                                        .contentShape(Rectangle())
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 7)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel(BrushCatalog.displayName(type))
+                                }
+                            }
+                        }
+                    }
+                    .padding(.vertical, 14)
+                }
+                .frame(width: 390, height: 620)
+                .presentationCompactAdaptation(.sheet)
+            }
+            if canvasState.brushType.isProductionStamp {
+                Button {
+                    showBrushEditor = true
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                }
+                .accessibilityLabel("Stamp Inspector")
+            }
             Button {
                 canvasState.colorPickArmed.toggle()
             } label: {
@@ -47,7 +93,7 @@ struct BrushToolbar: View {
                     .foregroundStyle(canvasState.colorPickArmed ? Color.purple : Color.secondary)
             }
             .accessibilityLabel("Fargeplukker")
-            if canvasState.brushType == .eraser {
+            if canvasState.brushType == .eraser || canvasState.brushType == .vinyl {
                 Button {
                     canvasState.eraserObjectMode.toggle()
                 } label: {
@@ -69,10 +115,21 @@ struct BrushToolbar: View {
             Button { canvasState.undo() } label: {
                 Image(systemName: "arrow.uturn.backward")
             }
+            .disabled(canvasState.undoStack.isEmpty)
             .accessibilityLabel("Angre")
+            .accessibilityHint("To fingre på tegneflaten eller Kommando-Z")
+            .keyboardShortcut("z", modifiers: .command)
+            Button { canvasState.redo() } label: {
+                Image(systemName: "arrow.uturn.forward")
+            }
+            .disabled(canvasState.redoStack.isEmpty)
+            .accessibilityLabel("Gjenta")
+            .accessibilityHint("Tre fingre på tegneflaten eller Skift-Kommando-Z")
+            .keyboardShortcut("z", modifiers: [.command, .shift])
             Button { canvasState.clear() } label: {
                 Image(systemName: "trash")
             }
+            .disabled(canvasState.strokes.isEmpty)
             .accessibilityLabel("Tøm")
             if let onExport {
                 Button(action: onExport) {
@@ -88,6 +145,10 @@ struct BrushToolbar: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.bar)
+        .sheet(isPresented: $showBrushEditor) {
+            BrushEditorSheet(canvasState: canvasState)
+                .presentationDetents([.medium, .large])
+        }
     }
 }
 
@@ -123,7 +184,15 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             BoardBrand.chrome.ignoresSafeArea()
-            if sync.isLoggedIn {
+            if StoryboardSampleProject.isEnabled {
+                NavigationStack {
+                    NativeBoardView(
+                        manuscript: StoryboardSampleProject.manuscript,
+                        projectId: nil,
+                        sampleScenes: StoryboardSampleProject.scenes)
+                }
+                .accessibilityIdentifier("sample-production-board")
+            } else if sync.isLoggedIn {
                 // Rett inn i produksjons-huben — ingen mellomskjermer.
                 HubBootView(sync: sync)
             } else {
@@ -140,24 +209,32 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: Binding(
-            get: { bootChecked && !sync.isLoggedIn },
+            get: { !StoryboardSampleProject.isEnabled && bootChecked && !sync.isLoggedIn },
             set: { _ in })) {
             RoleRoomLoginModal(sync: sync, showFreeCanvas: $showFreeCanvas)
                 .interactiveDismissDisabled(true)
-        }
-        .fullScreenCover(isPresented: $showFreeCanvas) {
-            NavigationStack {
-                FreeCanvasView()
-                    .toolbar {
-                        Button("Lukk") { showFreeCanvas = false }
+                // Coveret må presenteres fra den aktive sheet-hierarkien.
+                // Et cover på ContentView ligger bak login-sheeten og blir
+                // derfor aldri synlig selv om bindingen endres.
+                .fullScreenCover(isPresented: $showFreeCanvas) {
+                    NavigationStack {
+                        FreeCanvasView()
+                            .toolbar {
+                                Button("Lukk") { showFreeCanvas = false }
+                            }
                     }
-            }
+                }
         }
         .task {
+            guard !StoryboardSampleProject.isEnabled else { return }
             // Test-harness (samme mønster som web ?token=): sim-launch med
             // SB_TOKEN/SB_SERVER env auto-konfigurerer sync for verifisering.
             let env = ProcessInfo.processInfo.environment
             defer { bootChecked = true }
+            // UI-testene skal ikke bruke eller mutere en virkelig Role Room-
+            // sesjon. Dette deaktiverer kun automatisk Keychain-innlogging;
+            // login-modalen og dens lokale Frikanvas åpnes på vanlig måte.
+            guard env["SB_UI_TEST_DISABLE_KEYCHAIN"] != "1" else { return }
             guard !sync.isLoggedIn else { return }
             // Env-token (sim-verifisering) vinner; ellers Keychain (vanlig
             // app-restart — innloggingen skal overleve).
@@ -345,6 +422,7 @@ struct RoleRoomLoginModal: View {
                     .font(.system(size: 12))
                     .foregroundStyle(BoardBrand.dim)
             }
+            .accessibilityIdentifier("open-free-canvas")
             .buttonStyle(.plain)
             .padding(.bottom, 22)
         }

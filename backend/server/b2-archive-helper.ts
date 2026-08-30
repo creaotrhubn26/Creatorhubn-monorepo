@@ -22,7 +22,7 @@
  *   ad-hoc/{filename}   (manuelle uploads fra B2-arkiv-fanen)
  */
 
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 // NB: the-role-room-prod-bøtta ligger i eu-central-003 (verifisert via B2
@@ -43,6 +43,11 @@ function getRoleRoomB2Client(): { client: S3Client; bucket: string } | null {
     endpoint: B2_ENDPOINT,
     credentials: { accessKeyId: keyId, secretAccessKey: appKey },
     forcePathStyle: true,
+    // AWS SDK >= 3.729 legger ellers automatisk CRC32 for en tom PutObject-body
+    // inn i presigned PUT-URL-er. Den URL-en avviser en reell, ikke-tom fil.
+    // Direkteopplastinger binder størrelse/MIME i signaturen og HEAD-verifiseres
+    // etterpå, så automatisk body-checksum må bare brukes når API-et krever den.
+    requestChecksumCalculation: "WHEN_REQUIRED",
   });
   return { client, bucket };
 }
@@ -73,7 +78,7 @@ export async function archiveToRoleRoomB2(
   key: string,
   body: Buffer | Uint8Array | string,
   contentType: string,
-): Promise<{ bucket: string; key: string; size: number } | null> {
+): Promise<{ bucket: string; key: string; size: number; versionId?: string } | null> {
   const config = getRoleRoomB2Client();
   if (!config) {
     console.warn(
@@ -83,10 +88,16 @@ export async function archiveToRoleRoomB2(
     return null;
   }
 
-  const buf = typeof body === "string" ? Buffer.from(body, "utf8") : Buffer.from(body);
+  // Buffer.from(Buffer) lager en full kopi. Video-fallbacken kan være titalls MB,
+  // så behold den eksisterende backing-store når kalleren allerede har en Buffer.
+  const buf = typeof body === "string"
+    ? Buffer.from(body, "utf8")
+    : Buffer.isBuffer(body)
+      ? body
+      : Buffer.from(body);
 
   try {
-    await config.client.send(
+    const result = await config.client.send(
       new PutObjectCommand({
         Bucket: config.bucket,
         Key: key,
@@ -94,7 +105,12 @@ export async function archiveToRoleRoomB2(
         ContentType: contentType,
       }),
     );
-    return { bucket: config.bucket, key, size: buf.length };
+    return {
+      bucket: config.bucket,
+      key,
+      size: buf.length,
+      ...(result.VersionId ? { versionId: result.VersionId } : {}),
+    };
   } catch (err) {
     console.warn("[b2-archive] upload failed", {
       key,
@@ -140,6 +156,7 @@ export async function presignRoleRoomB2Download(
   key: string,
   downloadFilename?: string,
   expiresInSeconds = 300,
+  versionId?: string,
 ): Promise<string | null> {
   const config = getRoleRoomB2Client();
   if (!config) return null;
@@ -147,6 +164,7 @@ export async function presignRoleRoomB2Download(
     const command = new GetObjectCommand({
       Bucket: config.bucket,
       Key: key,
+      ...(versionId ? { VersionId: versionId } : {}),
       ...(downloadFilename
         ? { ResponseContentDisposition: `attachment; filename="${downloadFilename}"` }
         : {}),
@@ -167,6 +185,7 @@ export async function presignRoleRoomB2Upload(
   key: string,
   contentType: string,
   expiresInSeconds = 3600,
+  contentLength?: number,
 ): Promise<string | null> {
   const config = getRoleRoomB2Client();
   if (!config) return null;
@@ -175,10 +194,44 @@ export async function presignRoleRoomB2Upload(
       Bucket: config.bucket,
       Key: key,
       ContentType: contentType || "application/octet-stream",
+      ...(Number.isSafeInteger(contentLength) && Number(contentLength) > 0
+        ? { ContentLength: Number(contentLength) }
+        : {}),
     });
-    return await getSignedUrl(config.client, command, { expiresIn: expiresInSeconds });
+    return await getSignedUrl(config.client, command, {
+      expiresIn: expiresInSeconds,
+      // Content-Type ligger ellers ikke i X-Amz-SignedHeaders. Upload-klienten
+      // må sende nøyaktig MIME som ble validert og registrert av backend.
+      signableHeaders: new Set(["content-type"]),
+    });
   } catch (err) {
     console.warn("[b2-archive] presign upload failed", { key, err: (err as Error).message });
+    return null;
+  }
+}
+
+/**
+ * Verifiser at en direkte klient→B2-opplasting faktisk finnes før en registrert
+ * ressurs gjøres synlig. Null betyr enten at B2 ikke er konfigurert eller at
+ * objektet ikke kan verifiseres; kalleren skal da ikke publisere ressursen.
+ */
+export async function headRoleRoomB2Object(
+  key: string,
+): Promise<{ size: number | null; contentType: string | null; versionId: string | null } | null> {
+  const config = getRoleRoomB2Client();
+  if (!config) return null;
+  try {
+    const result = await config.client.send(new HeadObjectCommand({
+      Bucket: config.bucket,
+      Key: key,
+    }));
+    return {
+      size: typeof result.ContentLength === "number" ? result.ContentLength : null,
+      contentType: result.ContentType || null,
+      versionId: result.VersionId || null,
+    };
+  } catch (err) {
+    console.warn("[b2-archive] head failed", { key, err: (err as Error).message });
     return null;
   }
 }

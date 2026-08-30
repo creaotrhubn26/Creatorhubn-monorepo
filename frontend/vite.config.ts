@@ -17,6 +17,7 @@ const muiSystemAlias =
     path.resolve(__dirname, '../node_modules/@mui/system'),
   ].find((candidate) => existsSync(candidate)) || path.resolve(__dirname, 'node_modules/@mui/system');
 const backendProxyTarget = process.env.VITE_API_PROXY_TARGET || process.env.API_PROXY_TARGET || 'http://localhost:3003';
+const isStoryboardE2EHarness = process.env.STORYBOARD_E2E === '1';
 
 const readGitValue = (command: string): string | null => {
   try {
@@ -143,6 +144,12 @@ const customPathResolver = (): Plugin => {
 };
 
 export default defineConfig({
+  // Keep the dedicated Storyboard E2E optimizer isolated from ordinary dev
+  // servers. Concurrent Vite processes must never invalidate each other's
+  // dependency metadata and force a full-page reload mid-scenario.
+  cacheDir: isStoryboardE2EHarness
+    ? path.resolve(__dirname, 'node_modules/.vite-storyboard-e2e')
+    : undefined,
   define: {
     // Fix for third-party modules that use process.env
     'process.env': {},
@@ -259,10 +266,21 @@ export default defineConfig({
       'notistack',
       'zod',
       'axios',
+      ...(isStoryboardE2EHarness ? ['@mui/material/styles', 'react-is'] : []),
     ],
     exclude: ['rgthree/common/rgthree_api.js', 'rgthree/common/components/base_custom_element', 'three-stdlib'],
-    // Only scan files within the project directory
-    entries: ['./client/**/*.{js,jsx,ts,tsx}'],
+    // The main application has a broad dependency graph. Storyboard E2E uses a
+    // dedicated entry so unrelated dynamic routes cannot discover new chunks
+    // mid-scenario and force a destructive full-page reload.
+    entries: isStoryboardE2EHarness
+      ? ['e2e-drawing-editor.html']
+      : ['./client/**/*.{js,jsx,ts,tsx}'],
+    // The harness dependencies above are intentionally explicit. Disabling
+    // runtime discovery in E2E mode prevents a late lazy import from starting
+    // a second optimization pass and reloading the editor under Playwright.
+    // Normal development keeps Vite's automatic discovery enabled.
+    noDiscovery: isStoryboardE2EHarness,
+    holdUntilCrawlEnd: true,
     esbuildOptions: {
       // Ignore external paths completely
       plugins: [
@@ -319,6 +337,10 @@ export default defineConfig({
         '**/backups_temp/**',
         '**/.git/**',
         '**/node_modules/**',
+        // Build verification may run beside Playwright in the same worktree.
+        // Generated HTML must not reload an active editor scenario.
+        '**/dist/**',
+        '**/dist-geo/**',
         '**/Volumes/Samsung_T9_4TB1/**', // Ignore external drive paths
         '**/pretrained_models/**', // Ignore pretrained models directories
         '**/ComfyUI/**', // Ignore ComfyUI directories

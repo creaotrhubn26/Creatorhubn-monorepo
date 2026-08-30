@@ -18,6 +18,7 @@ import {
 } from '../constants/producerDemo';
 import { shouldUseRoleRoomLocalFallback } from '../utils/runtime';
 import authSessionService from './authSessionService';
+import { buildManuscriptScopedEntityUrl } from './manuscriptApiContract';
 
 const getAuthHeaders = (): Record<string, string> =>
   authSessionService.getAuthHeadersSync() as Record<string, string>;
@@ -517,7 +518,7 @@ async function purgeDemoManuscriptData(manuscriptId: string, isDbAvailable: bool
   if (isDbAvailable) {
     const databaseDialogue = await fetchDialogueFromDatabase(manuscriptId, isDbAvailable);
     for (const line of databaseDialogue) {
-      const response = await fetch(`/api/casting/dialogue/${line.id}`, {
+      const response = await fetch(buildManuscriptScopedEntityUrl('dialogue', line.id, manuscriptId), {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -531,7 +532,7 @@ async function purgeDemoManuscriptData(manuscriptId: string, isDbAvailable: bool
 
     const databaseScenes = await fetchScenesFromDatabase(manuscriptId, isDbAvailable);
     for (const scene of databaseScenes) {
-      const response = await fetch(`/api/casting/scenes/${scene.id}`, {
+      const response = await fetch(buildManuscriptScopedEntityUrl('scenes', scene.id, manuscriptId), {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -545,7 +546,7 @@ async function purgeDemoManuscriptData(manuscriptId: string, isDbAvailable: bool
 
     const databaseActs = await fetchActsFromDatabase(manuscriptId, isDbAvailable);
     for (const act of databaseActs) {
-      const response = await fetch(`/api/casting/acts/${act.id}`, {
+      const response = await fetch(buildManuscriptScopedEntityUrl('acts', act.id, manuscriptId), {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -2190,13 +2191,15 @@ class ManuscriptService {
   /**
    * Delete a scene
    */
-  async deleteScene(sceneId: string): Promise<void> {
+  async deleteScene(sceneId: string, manuscriptId: string): Promise<void> {
+    const endpoint = buildManuscriptScopedEntityUrl('scenes', sceneId, manuscriptId);
     const isDbAvailable = await checkDatabaseAvailability();
 
     if (isDbAvailable) {
       try {
-        const response = await fetch(`/api/casting/scenes/${sceneId}`, {
+        const response = await fetch(endpoint, {
           method: 'DELETE',
+          headers: getAuthHeaders(),
         });
 
         if (!response.ok) {
@@ -2280,13 +2283,15 @@ class ManuscriptService {
   /**
    * Delete a dialogue line from database
    */
-  async deleteDialogue(dialogueId: string): Promise<boolean> {
+  async deleteDialogue(dialogueId: string, manuscriptId: string): Promise<boolean> {
+    const endpoint = buildManuscriptScopedEntityUrl('dialogue', dialogueId, manuscriptId);
     const isDbAvailable = await checkDatabaseAvailability();
     
     if (isDbAvailable) {
       try {
-        const response = await fetch(`/api/casting/dialogue/${dialogueId}`, {
+        const response = await fetch(endpoint, {
           method: 'DELETE',
+          headers: getAuthHeaders(),
         });
         
         if (!response.ok) {
@@ -2806,12 +2811,13 @@ class ManuscriptService {
   /**
    * Get a single act by ID
    */
-  async getAct(actId: string): Promise<Act | null> {
+  async getAct(actId: string, manuscriptId: string): Promise<Act | null> {
+    const endpoint = buildManuscriptScopedEntityUrl('acts', actId, manuscriptId);
     const isDbAvailable = await checkDatabaseAvailability();
     
     if (isDbAvailable) {
       try {
-        const response = await fetch(`/api/casting/acts/${actId}`);
+        const response = await fetch(endpoint, { headers: getAuthHeaders() });
         if (!response.ok) {
           if (response.status === 404) {
             markManuscriptApiUnavailable('GET /api/casting/acts/:id');
@@ -2905,12 +2911,14 @@ class ManuscriptService {
    * Delete an act
    */
   async deleteAct(actId: string, manuscriptId: string): Promise<void> {
+    const endpoint = buildManuscriptScopedEntityUrl('acts', actId, manuscriptId);
     const isDbAvailable = await checkDatabaseAvailability();
     
     if (isDbAvailable) {
       try {
-        const response = await fetch(`/api/casting/acts/${actId}`, {
+        const response = await fetch(endpoint, {
           method: 'DELETE',
+          headers: getAuthHeaders(),
         });
         
         if (!response.ok) {

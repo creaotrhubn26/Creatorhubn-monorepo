@@ -12,6 +12,10 @@ struct DabInstance {
     float  alpha;      // 0..1
     float2 stretch;    // oval-skalering (Shade-tilt); (1,1) = rund
     float3 color;      // lineær rgb
+    float  hardness;   // 0 = myk falloff, 1 = skarp kant
+    float  grain;      // canvas-låst papirtann
+    float  bleed;      // våt kantutvidelse
+    float  paperProfile; // 0 smooth, 1 storyboard, 2 rough, 3 absorbent
 };
 
 struct VertexOut {
@@ -19,6 +23,11 @@ struct VertexOut {
     float2 uv;
     float  alpha;
     float3 color;
+    float2 canvasPixel;
+    float  hardness;
+    float  grain;
+    float  bleed;
+    float  paperProfile;
 };
 
 vertex VertexOut dab_vertex(uint vertexId [[vertex_id]],
@@ -43,13 +52,39 @@ vertex VertexOut dab_vertex(uint vertexId [[vertex_id]],
     out.uv = corners[vertexId] + 0.5;
     out.alpha = dab.alpha;
     out.color = dab.color;
+    out.canvasPixel = pixel;
+    out.hardness = dab.hardness;
+    out.grain = dab.grain;
+    out.bleed = dab.bleed;
+    out.paperProfile = dab.paperProfile;
     return out;
+}
+
+static float paper_tooth(float2 pixel, float profile) {
+    if (profile < 0.5) return 1.0;
+    float frequency = profile < 1.5 ? 0.19 : (profile < 2.5 ? 0.31 : 0.14);
+    float amplitude = profile < 1.5 ? 0.16 : (profile < 2.5 ? 0.29 : 0.12);
+    float2 cell = floor(pixel * frequency);
+    float noise = fract(sin(dot(cell, float2(12.9898, 78.233))) * 43758.5453);
+    return 1.0 - amplitude + noise * amplitude;
 }
 
 fragment float4 dab_fragment(VertexOut in [[stage_in]],
                              texture2d<float> dabTexture [[texture(0)]]) {
     constexpr sampler dabSampler(mag_filter::linear, min_filter::linear);
     float mask = dabTexture.sample(dabSampler, in.uv).r;
+    // Hardness former kanten uten å gjøre en teksturert blyant helt binær.
+    float feather = mix(0.34, 0.025, clamp(in.hardness, 0.0, 1.0));
+    float hardMask = smoothstep(0.5 - feather, 0.5 + feather, mask);
+    mask = mix(mask, hardMask, clamp(in.hardness * 0.78, 0.0, 0.78));
+    // Våte medier utvider en svak halo fra samme dabform.
+    if (in.bleed > 0.001) {
+        float2 expandedUV = (in.uv - 0.5) / (1.0 + in.bleed * 0.28) + 0.5;
+        float expanded = dabTexture.sample(dabSampler, expandedUV).r;
+        mask = max(mask, expanded * in.bleed * 0.42);
+    }
+    mask *= mix(1.0, paper_tooth(in.canvasPixel, in.paperProfile),
+                clamp(in.grain, 0.0, 1.0));
     float a = mask * in.alpha;
     return float4(in.color * a, a);   // premultiplied
 }
@@ -81,20 +116,63 @@ vertex BlitOut blit_vertex(uint vertexId [[vertex_id]]) {
     return out;
 }
 
+// Non-destructive camera window. The committed texture always remains in the
+// full drawing coordinate space; only the final presentation samples through
+// this inverse camera transform. This keeps Pencil strokes editable after a
+// shot-size/lens change and gives thumbnails/exports the same canonical crop.
+static float2 framed_source_uv(
+    float2 viewportUV, float4 framing, float4 sourceViewportSize) {
+    const float zoom = max(0.0001, framing.z);
+    const float roll = framing.w;
+    const float c = cos(roll);
+    const float s = sin(roll);
+    const float2 sourceSize = max(sourceViewportSize.xy, float2(1.0));
+    const float2 viewportSize = max(sourceViewportSize.zw, float2(1.0));
+    const float sourceScale = max(viewportSize.x / sourceSize.x,
+                                  viewportSize.y / sourceSize.y) * zoom;
+    const float2 viewportDelta = (viewportUV - 0.5) * viewportSize;
+    const float2 unrolledPixels = float2(
+        viewportDelta.x * c + viewportDelta.y * s,
+        -viewportDelta.x * s + viewportDelta.y * c);
+    return framing.xy + unrolledPixels / (sourceScale * sourceSize);
+}
+
+static bool uv_is_inside(float2 uv) {
+    return all(uv >= float2(0.0)) && all(uv <= float2(1.0));
+}
+
 // Kopier et panelbilde inn i den redigerbare RGBA-akkumulatoren. Bildet
 // blir dermed første rasterlag i historikken, så destination-out-viskelær
 // påvirker både originalpiksler og tidligere strøk.
 fragment float4 blit_editable_base_fragment(BlitOut in [[stage_in]],
-                                             texture2d<float> baseTexture [[texture(0)]]) {
+                                             texture2d<float> baseTexture [[texture(0)]],
+                                             constant float4 &sourceUVTransform [[buffer(0)]]) {
     constexpr sampler blitSampler(mag_filter::linear, min_filter::linear);
-    return baseTexture.sample(blitSampler, in.uv);
+    const float2 sourceUV = sourceUVTransform.xy + in.uv * sourceUVTransform.zw;
+    return baseTexture.sample(blitSampler, sourceUV);
+}
+
+// Approved AI stages are generated for the final camera viewport. They must
+// be aspect-filled only for provider rounding (for example 1536×864), never
+// passed through framed_source_uv again.
+fragment float4 blit_viewport_preview_fragment(
+    BlitOut in [[stage_in]],
+    texture2d<float> previewTexture [[texture(0)]],
+    constant float4 &sourceUVTransform [[buffer(0)]]) {
+    constexpr sampler blitSampler(mag_filter::linear, min_filter::linear);
+    const float2 sourceUV = sourceUVTransform.xy + in.uv * sourceUVTransform.zw;
+    return previewTexture.sample(blitSampler, sourceUV);
 }
 
 fragment float4 blit_fragment(BlitOut in [[stage_in]],
                               texture2d<float> canvasTexture [[texture(0)]],
-                              constant float3 &paperColor [[buffer(0)]]) {
+                              constant float3 &paperColor [[buffer(0)]],
+                              constant float4 &framing [[buffer(2)]],
+                              constant float4 &sourceViewportSize [[buffer(3)]]) {
     constexpr sampler blitSampler(mag_filter::linear, min_filter::linear);
-    float4 ink = canvasTexture.sample(blitSampler, in.uv); // premultiplied
+    const float2 sourceUV = framed_source_uv(in.uv, framing, sourceViewportSize);
+    if (!uv_is_inside(sourceUV)) return float4(paperColor, 1.0);
+    float4 ink = canvasTexture.sample(blitSampler, sourceUV); // premultiplied
     float3 rgb = paperColor * (1.0 - ink.a) + ink.rgb;
     return float4(rgb, 1.0);
 }
@@ -106,10 +184,17 @@ fragment float4 blit_underlay_fragment(BlitOut in [[stage_in]],
                                        texture2d<float> canvasTexture [[texture(0)]],
                                        texture2d<float> underlayTexture [[texture(1)]],
                                        constant float3 &paperColor [[buffer(0)]],
-                                       constant float &underlayOpacity [[buffer(1)]]) {
+                                       constant float &underlayOpacity [[buffer(1)]],
+                                       constant float4 &framing [[buffer(2)]],
+                                       constant float4 &sourceViewportSize [[buffer(3)]],
+                                       constant float4 &underlayUVTransform [[buffer(4)]]) {
     constexpr sampler blitSampler(mag_filter::linear, min_filter::linear);
-    float4 ink = canvasTexture.sample(blitSampler, in.uv);
-    float3 reference = underlayTexture.sample(blitSampler, in.uv).rgb;
+    const float2 sourceUV = framed_source_uv(in.uv, framing, sourceViewportSize);
+    if (!uv_is_inside(sourceUV)) return float4(paperColor, 1.0);
+    float4 ink = canvasTexture.sample(blitSampler, sourceUV);
+    const float2 underlayUV = underlayUVTransform.xy
+        + sourceUV * underlayUVTransform.zw;
+    float3 reference = underlayTexture.sample(blitSampler, underlayUV).rgb;
     float3 base = mix(paperColor, reference, underlayOpacity);
     return float4(base * (1.0 - ink.a) + ink.rgb, 1.0);
 }

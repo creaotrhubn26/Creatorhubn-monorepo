@@ -743,6 +743,7 @@ final class CompositionRenderTests: XCTestCase {
 
     private func makeFrame(strokes: [PencilStroke], id: String = "test-frame",
                            durationSec: Double = 2, imageUrl: String? = nil,
+                           imageSource: String? = nil,
                            thumbnailDataURL: String? = nil,
                            description: String = "") -> FrameSummary {
         FrameSummary(
@@ -756,7 +757,7 @@ final class CompositionRenderTests: XCTestCase {
             frameStatus: nil, comments: [], updatedAt: nil,
             underlayDataURL: nil, underlayOpacity: nil,
             perspectiveMode: nil, vanishingPoints: nil, voiceoverDataURL: nil,
-            imageUrl: imageUrl,
+            imageUrl: imageUrl, imageSource: imageSource,
             reviewPriority: nil, reviewDueAt: nil,
             reviewApprovedBy: nil, reviewApprovedAt: nil, reviewStarred: nil,
             reviewAssignee: nil, reviewColorLabel: nil, reviewSnoozedUntil: nil)
@@ -770,6 +771,373 @@ final class CompositionRenderTests: XCTestCase {
         XCTAssertEqual(
             StoryboardPreviewPolicy.sourceURLs(for: frame),
             ["/api/storage/original.png", "data:image/jpeg;base64,stale-white-preview"])
+    }
+
+    func testLegacyThumbnailOnlyPosterIsPreviewOnlyAtIdentityCamera() throws {
+        let poster = solidImageDataURL(
+            color: .systemOrange,
+            size: CGSize(width: 320, height: 180))
+        let frame = makeFrame(
+            strokes: [],
+            id: "legacy-preview-only",
+            imageSource: "drawn",
+            thumbnailDataURL: poster)
+
+        XCTAssertEqual(
+            StoryboardPreviewPolicy.legacyThumbnailOnlyPosterURL(for: frame),
+            poster)
+        XCTAssertNotNil(FrameImageCache.image(for: poster))
+        XCTAssertTrue(AnimaticFrameContentPolicy.declaresVisualContent(frame))
+        XCTAssertNil(FrameRenderCoordinator.image(
+            for: frame,
+            maxWidth: 400,
+            legacyThumbnailFallback: true),
+            "Preview-only posters must never become production renders")
+
+        var newerDrawing = frame
+        newerDrawing.strokesJSON = "[{}]"
+        XCTAssertNil(StoryboardPreviewPolicy
+            .legacyThumbnailOnlyPosterURL(for: newerDrawing))
+
+        var malformedDrawing = frame
+        malformedDrawing.strokesJSON = "not-json"
+        XCTAssertNil(StoryboardPreviewPolicy
+            .legacyThumbnailOnlyPosterURL(for: malformedDrawing))
+    }
+
+    func testLegacyThumbnailOnlyPosterRejectsCameraAndStaleAIState() {
+        let poster = solidImageDataURL(
+            color: .systemOrange,
+            size: CGSize(width: 320, height: 180))
+        var transformed = makeFrame(
+            strokes: [],
+            id: "legacy-preview-transformed",
+            imageSource: "drawn",
+            thumbnailDataURL: poster)
+        transformed.shotFraming = ShotFramingState(
+            centerX: 0.5,
+            centerY: 0.5,
+            zoom: 1.4,
+            aspectRatio: 16.0 / 9.0)
+        XCTAssertNil(StoryboardPreviewPolicy
+            .legacyThumbnailOnlyPosterURL(for: transformed))
+
+        var staleAI = makeFrame(
+            strokes: [],
+            id: "legacy-preview-stale-ai",
+            imageSource: "ai-color-approved",
+            thumbnailDataURL: poster)
+        staleAI.aiOutputStale = true
+        XCTAssertNil(StoryboardPreviewPolicy
+            .legacyThumbnailOnlyPosterURL(for: staleAI))
+    }
+
+    func testEditableRasterIdentityChangesWithRevisionAndPlacement() throws {
+        let raster = solidImageDataURL(
+            color: .systemPurple,
+            size: CGSize(width: 320, height: 180))
+        var original = makeFrame(
+            strokes: [],
+            id: "retained-raster-identity",
+            imageUrl: raster,
+            imageSource: "ai-color-approved")
+        original.shotFraming = .standard
+        original.aiStoryboardId = "approved-storyboard"
+        original.aiSourceRevision = 7
+        original.aiRasterPlacementFraming = ShotFramingState.standard
+        original.aiSourceFramingFingerprint =
+            ShotFramingState.standard.canonicalFingerprint
+        let identity = try XCTUnwrap(
+            EditableFrameRasterIdentity(frame: original))
+
+        var newRevision = original
+        newRevision.aiSourceRevision = 8
+        XCTAssertNotEqual(
+            identity,
+            EditableFrameRasterIdentity(frame: newRevision))
+
+        var newPlacement = original
+        newPlacement.aiRasterPlacementFraming = ShotFramingState(
+            centerX: 0.55,
+            centerY: 0.5,
+            zoom: 1.25,
+            aspectRatio: 16.0 / 9.0)
+        XCTAssertNotEqual(
+            identity,
+            EditableFrameRasterIdentity(frame: newPlacement))
+    }
+
+    func testAIRasterEditingPolicyRestoresOnlyAutomaticLayerChoice() {
+        let automatic = StoryboardAIRasterEditingPolicy.resolve(
+            canUseRaster: true,
+            activeLayer: "Drawing",
+            automaticallySelectedLayer: nil,
+            targetLayer: "Color")
+        XCTAssertEqual(automatic, StoryboardAIRasterEditingDecision(
+            activeLayer: "Color",
+            automaticallySelectedLayer: "Color",
+            suppressedSourceLayers: ["Drawing"]))
+
+        let becameUnsafe = StoryboardAIRasterEditingPolicy.resolve(
+            canUseRaster: false,
+            activeLayer: automatic.activeLayer,
+            automaticallySelectedLayer: automatic.automaticallySelectedLayer,
+            targetLayer: "Color")
+        XCTAssertEqual(becameUnsafe, StoryboardAIRasterEditingDecision(
+            activeLayer: "Drawing",
+            automaticallySelectedLayer: nil,
+            suppressedSourceLayers: []))
+
+        let explicitColor = StoryboardAIRasterEditingPolicy.resolve(
+            canUseRaster: false,
+            activeLayer: "Color",
+            automaticallySelectedLayer: nil,
+            targetLayer: "Color")
+        XCTAssertEqual(explicitColor.activeLayer, "Color")
+        XCTAssertNil(explicitColor.automaticallySelectedLayer)
+        XCTAssertTrue(explicitColor.suppressedSourceLayers.isEmpty)
+    }
+
+    func testAIRasterEditingPolicyAcceptsOnlyCameraStaleReason() {
+        XCTAssertTrue(StoryboardAIRasterEditingPolicy.permitsRaster(
+            isOutputStale: false,
+            staleReason: nil))
+        XCTAssertTrue(StoryboardAIRasterEditingPolicy.permitsRaster(
+            isOutputStale: true,
+            staleReason: "shot-framing-changed"))
+        XCTAssertFalse(StoryboardAIRasterEditingPolicy.permitsRaster(
+            isOutputStale: true,
+            staleReason: "source-document-changed"))
+        XCTAssertFalse(StoryboardAIRasterEditingPolicy.permitsRaster(
+            isOutputStale: true,
+            staleReason: nil))
+    }
+
+    func testPaintoverClassifierSeparatesPencilContentFromCamera() throws {
+        var drawing = stroke(
+            .pencil,
+            size: 8,
+            opacity: 1,
+            line(200, 540, 1_700, 540, steps: 8))
+        drawing.boardLayer = "Drawing"
+        let baseJSON = try StrokeSerialization.encodeToWebJSON([drawing])
+        let changedCamera = ShotFramingState(
+            centerX: 0.5,
+            centerY: 0.5,
+            zoom: 1.5,
+            aspectRatio: 16.0 / 9.0)
+
+        let cameraOnly = StoryboardPaintoverDocumentPolicy.classify(
+            baseStrokesJSON: baseJSON,
+            currentStrokes: [drawing],
+            baseLayerState: .standard,
+            currentLayerState: .standard,
+            baseShotFraming: .standard,
+            currentShotFraming: changedCamera)
+        XCTAssertFalse(cameraOnly.pencilContentChanged)
+        XCTAssertTrue(cameraOnly.framingChanged)
+        XCTAssertTrue(cameraOnly.pencilChanged)
+
+        var added = drawing
+        added.id = "drawing-added-after-camera"
+        let contentAndCamera = StoryboardPaintoverDocumentPolicy.classify(
+            baseStrokesJSON: baseJSON,
+            currentStrokes: [drawing, added],
+            baseLayerState: .standard,
+            currentLayerState: .standard,
+            baseShotFraming: .standard,
+            currentShotFraming: changedCamera)
+        XCTAssertTrue(contentAndCamera.pencilContentChanged)
+        XCTAssertTrue(contentAndCamera.framingChanged)
+    }
+
+    func testSourceStaleReasonOutranksEarlierAndLaterCameraStale() throws {
+        var scene = StoryboardSampleProject.scenes[0]
+        var frame = scene.frames[0]
+        frame.aiStoryboardId = "approved-storyboard"
+        frame.aiSourceFramingFingerprint =
+            (frame.shotFraming ?? .standard).canonicalFingerprint
+        scene.frames[0] = frame
+        let board = BoardState(
+            manuscript: StoryboardSampleProject.manuscript,
+            sampleScenes: [scene])
+
+        board.markActiveAIOutputStaleLocally(
+            reason: "shot-framing-changed")
+        XCTAssertEqual(
+            board.frame?.aiOutputStaleReason,
+            "shot-framing-changed")
+        board.markActiveAIOutputStaleLocally(
+            reason: "source-document-changed")
+        XCTAssertEqual(
+            board.frame?.aiOutputStaleReason,
+            "source-document-changed")
+        board.markActiveAIOutputStaleLocally(
+            reason: "shot-framing-changed")
+        XCTAssertEqual(
+            board.frame?.aiOutputStaleReason,
+            "source-document-changed")
+    }
+
+    func testActiveRasterGateSkipsSourceStaleAIButWaitsForValidRaster() {
+        var ai = makeFrame(
+            strokes: [],
+            id: "active-raster-policy",
+            imageUrl: "/generated/current.png",
+            imageSource: "ai-color-approved")
+        ai.aiStoryboardId = "approved-storyboard"
+        ai.aiSourceFramingFingerprint =
+            (ai.shotFraming ?? .standard).canonicalFingerprint
+        ai.aiOutputStale = true
+        ai.aiOutputStaleReason = "source-document-changed"
+        XCTAssertFalse(StoryboardActiveRasterPolicy.expectsRaster(ai))
+
+        ai.aiOutputStaleReason = "shot-framing-changed"
+        XCTAssertTrue(StoryboardActiveRasterPolicy.expectsRaster(ai))
+
+        var imported = makeFrame(
+            strokes: [],
+            id: "active-import-policy",
+            imageUrl: "/imports/original.png",
+            imageSource: "imported")
+        imported.aiOutputStale = true
+        imported.aiOutputStaleReason = "source-document-changed"
+        XCTAssertTrue(StoryboardActiveRasterPolicy.expectsRaster(imported))
+    }
+
+    func testCoordinatorCoverageUsesProjectFrameRate() throws {
+        var frame = makeFrame(
+            strokes: [],
+            id: "unsupported-project-rate")
+        frame.storyboardTiming = try StoryboardTiming(
+            projectFrameRate: MediaTime(value: 23, timescale: 1),
+            timelineTimescale: 2_300)
+        let snapshot = try FrameRenderCoordinator.snapshot(
+            for: frame,
+            includeFrameImage: false)
+
+        let report = FrameRenderCoordinator.coverageReport(
+            frame: frame,
+            snapshot: snapshot)
+
+        XCTAssertEqual(report.classification, .blocking)
+        XCTAssertEqual(
+            report.blockingCodes,
+            [.unsupportedProjectFrameRate])
+    }
+
+    func testExplicitImportRemainsSourceSpaceAfterReplacingApprovedAIImage() {
+        var frame = makeFrame(
+            strokes: [], imageUrl: "/api/storage/replacement.png",
+            imageSource: "imported")
+        // Importing replacement B can coexist briefly with provenance fields
+        // from approved A until the server reload completes. Explicit import
+        // provenance must win so B is never camera-cropped as old AI output.
+        frame.aiStoryboardId = "storyboard"
+        frame.aiSourceFramingFingerprint = "old-camera"
+
+        XCTAssertTrue(StoryboardFrameImagePolicy.isImportedPencilSource(frame))
+        XCTAssertFalse(StoryboardFrameImagePolicy.isAIViewportEncoded(frame))
+        XCTAssertFalse(StoryboardFrameImagePolicy.usesViewportCoordinates(frame))
+    }
+
+    func testApprovedAIImageUsesArchivedPlacementAcrossSafeCameraChanges() throws {
+        var frame = makeFrame(
+            strokes: [], imageUrl: "/api/storage/color.png",
+            imageSource: "ai-color-approved")
+        let framing = ShotFramingState(
+            shotSize: "MCU", centerX: 0.5, centerY: 0.5,
+            zoom: 1.6, aspectRatio: 16.0 / 9.0)
+        frame.shotFraming = framing
+        frame.aiStoryboardId = "storyboard"
+        frame.aiSourceFramingFingerprint = framing.canonicalFingerprint
+
+        XCTAssertTrue(StoryboardFrameImagePolicy.isApprovedAIOutput(frame))
+        XCTAssertTrue(StoryboardFrameImagePolicy.isAIViewportEncoded(frame))
+        XCTAssertTrue(StoryboardFrameImagePolicy.usesViewportCoordinates(frame))
+        XCTAssertEqual(
+            StoryboardFrameImagePolicy.rasterPlacementFraming(for: frame),
+            framing.normalized())
+
+        let changedFraming = ShotFramingState(
+            shotSize: "CU", centerX: 0.55, centerY: 0.5,
+            zoom: 2.4, aspectRatio: 16.0 / 9.0)
+        frame.shotFraming = changedFraming
+        XCTAssertFalse(StoryboardFrameImagePolicy.usesViewportCoordinates(frame))
+
+        // New approvals archive the authored placement, so a later camera
+        // edit can reconstruct the raster in source space instead of hiding it.
+        frame.aiRasterPlacementFraming = framing
+        XCTAssertTrue(StoryboardFrameImagePolicy.usesViewportCoordinates(frame))
+        XCTAssertEqual(
+            StoryboardFrameImagePolicy.rasterPlacementFraming(for: frame),
+            framing.normalized())
+        XCTAssertNotEqual(framing.normalized(), changedFraming.normalized())
+
+        let safeSnapshot = try FrameRenderCoordinator.snapshot(
+            for: frame, at: .zero)
+        XCTAssertTrue(FrameRenderCoordinator.canRender(
+            frame: frame, snapshot: safeSnapshot))
+
+        // Pulling wider than the generated viewport asks for pixels that do
+        // not exist. The shared policy blocks instead of synthesizing white
+        // borders or silently falling back to the old thumbnail.
+        frame.shotFraming = ShotFramingState(
+            shotSize: "WS", centerX: 0.5, centerY: 0.5,
+            zoom: 1, aspectRatio: 16.0 / 9.0)
+        let uncoveredSnapshot = try FrameRenderCoordinator.snapshot(
+            for: frame, at: .zero)
+        let report = FrameRenderCoordinator.coverageReport(
+            frame: frame, snapshot: uncoveredSnapshot)
+        XCTAssertFalse(FrameRenderCoordinator.canRender(
+            frame: frame, snapshot: uncoveredSnapshot))
+        XCTAssertTrue(report.blockingCodes.contains(.motionPlateRequired))
+    }
+
+    func testCanvasInputIsReadOnlyAwayFromCanonicalPresentationPose() {
+        let state = CanvasState()
+        state.shotFraming = ShotFramingState(
+            shotSize: "MCU", centerX: 0.5, centerY: 0.5,
+            zoom: 1.6, aspectRatio: 16.0 / 9.0)
+
+        XCTAssertTrue(state.acceptsDrawingInputForCurrentPresentation)
+
+        state.presentationFraming = state.shotFraming
+        XCTAssertTrue(state.acceptsDrawingInputForCurrentPresentation)
+
+        state.presentationFraming = ShotFramingState(
+            shotSize: "CU", centerX: 0.6, centerY: 0.45,
+            zoom: 2.4, aspectRatio: 16.0 / 9.0)
+        XCTAssertFalse(state.acceptsDrawingInputForCurrentPresentation)
+
+        state.presentationFraming = nil
+        XCTAssertTrue(state.acceptsDrawingInputForCurrentPresentation)
+    }
+
+    func testCanvasInputGestureIsCancelledWhenPresentationChangesMidStroke() {
+        let state = CanvasState()
+        state.shotFraming = ShotFramingState(
+            shotSize: "MCU", centerX: 0.5, centerY: 0.5,
+            zoom: 1.6, aspectRatio: 16.0 / 9.0)
+        let beganAt = state.drawingInputPresentationFingerprint
+
+        XCTAssertNotNil(beganAt)
+        XCTAssertTrue(state.continuesDrawingInput(from: beganAt))
+
+        state.presentationFraming = ShotFramingState(
+            shotSize: "CU", centerX: 0.58, centerY: 0.46,
+            zoom: 2.4, aspectRatio: 16.0 / 9.0)
+        XCTAssertNil(state.drawingInputPresentationFingerprint)
+        XCTAssertFalse(state.continuesDrawingInput(from: beganAt))
+
+        state.presentationFraming = nil
+        XCTAssertTrue(state.continuesDrawingInput(from: beganAt))
+
+        state.shotFraming = ShotFramingState(
+            shotSize: "WS", centerX: 0.5, centerY: 0.5,
+            zoom: 1, aspectRatio: 16.0 / 9.0)
+        XCTAssertFalse(state.continuesDrawingInput(from: beganAt))
+        XCTAssertFalse(state.continuesDrawingInput(from: nil))
     }
 
     func testScenePreviewSkipsEmptyFrameWhenLaterFrameHasArtwork() {
@@ -818,6 +1186,38 @@ final class CompositionRenderTests: XCTestCase {
         XCTAssertNotEqual(plainPNG, annotatedPNG, "annotasjonen endret ikke eksport-bildet")
     }
 
+    /// Camera Rig er produksjonsmetadata: synlig på arbeidsflaten, men ikke i
+    /// en ren PNG/PDF med mindre eksportøren ber eksplisitt om overlay-laget.
+    func testCleanExportExcludesProductionStampOverlay() throws {
+        let brush = BrushSpec.preset(
+            .cameraRigStamp, size: 240, color: "#26313a", opacity: 0.9)
+        let variant = try XCTUnwrap(
+            ProductionStampCatalog.variant(2, for: .cameraRigStamp))
+        let stamp = ProductionStampInstance(
+            variant: variant.id, variantName: variant.name, seed: 42,
+            scale: 1.5, rotationDegrees: 15, flipX: false,
+            depth: .midground, styleProfileId: "trr-story-pencil",
+            continuityId: "camera-a", renderLayer: .productionOverlay,
+            parameters: variant.parameters)
+        let rig = PencilStroke(
+            id: "camera-rig-overlay",
+            points: [StrokePoint(x: 960, y: 540, pressure: 0.8,
+                                 tiltX: 0, tiltY: 0, timestamp: 1)],
+            inputType: "pencil", color: brush.color, width: brush.size,
+            opacity: brush.opacity, brush: brush,
+            boardLayer: "Camera / Arrows", stampInstance: stamp)
+        let frame = makeFrame(strokes: [rig], id: "camera-overlay")
+
+        let clean = try XCTUnwrap(
+            FrameRenderService.image(for: frame, maxWidth: 400)?.pngData())
+        let production = try XCTUnwrap(FrameRenderService.image(
+            for: frame, maxWidth: 400,
+            includeProductionOverlay: true)?.pngData())
+
+        XCTAssertNotEqual(clean, production,
+                          "ren eksport skal ikke bake inn Camera Rig-stempelet")
+    }
+
     /// Animatic-MP4: total varighet = sum av shot-varigheter.
     func testAnimaticVideoDuration() async throws {
         let frameA = makeFrame(strokes: [stroke(.pencil, size: 5, opacity: 0.9,
@@ -832,6 +1232,23 @@ final class CompositionRenderTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: url) }
         let duration = try await AVURLAsset(url: url).load(.duration).seconds
         XCTAssertEqual(duration, 3.0, accuracy: 0.15)
+    }
+
+    func testAnimaticPrefersCanonicalRationalDurationOverLegacyDouble() async throws {
+        var frame = makeFrame(
+            strokes: [stroke(
+                .pencil, size: 5, opacity: 0.9,
+                line(100, 100, 800, 600))],
+            id: "anim-canonical-duration", durationSec: 9)
+        frame.shotDuration = try MediaTime(value: 3, timescale: 2)
+        frame.durationRevision = 4
+
+        let exported = await AnimaticVideoExporter.export(
+            sceneHeading: "CANONICAL-TIMING", frames: [frame])
+        let url = try XCTUnwrap(exported)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let duration = try await AVURLAsset(url: url).load(.duration).seconds
+        XCTAssertEqual(duration, 1.5, accuracy: 0.02)
     }
 
     // Fokal klarhet (§73–§74 forenklet): tett klynge ett sted skal gi
@@ -1235,6 +1652,292 @@ final class CompositionRenderTests: XCTestCase {
         return "data:image/jpeg;base64," + image.jpegData(compressionQuality: 0.8)!.base64EncodedString()
     }
 
+    func testCoordinatorPencilRenderIgnoresExcludedStaleViewportRaster() throws {
+        var drawing = stroke(
+            .pencil,
+            size: 18,
+            opacity: 1,
+            line(240, 540, 1_680, 540, steps: 12),
+            color: "#202126")
+        drawing.boardLayer = "Drawing"
+        let oldRaster = solidImageDataURL(
+            color: .systemRed,
+            size: CGSize(width: 320, height: 180))
+        var frame = makeFrame(
+            strokes: [drawing],
+            id: "pencil-with-stale-viewport",
+            imageUrl: oldRaster,
+            imageSource: "ai-color-approved")
+        frame.shotFraming = ShotFramingState.standard
+        frame.aiStoryboardId = "storyboard"
+        frame.aiSourceRevision = 8
+        frame.aiRasterPlacementFraming = ShotFramingState(
+            zoom: 2,
+            aspectRatio: 16.0 / 9.0)
+
+        let staleSnapshot = try FrameRenderCoordinator.snapshot(for: frame)
+        XCTAssertEqual(
+            staleSnapshot.rasterSourceIdentity?.coordinateSpace,
+            .viewport)
+        XCTAssertFalse(FrameRenderCoordinator.canRender(
+            frame: frame,
+            snapshot: staleSnapshot))
+
+        let pencilSnapshot = try FrameRenderCoordinator.snapshot(
+            for: frame,
+            includeFrameImage: false)
+        XCTAssertNil(pencilSnapshot.rasterSourceIdentity)
+        XCTAssertTrue(FrameRenderCoordinator.canRender(
+            frame: frame,
+            snapshot: pencilSnapshot))
+        XCTAssertNotNil(FrameRenderCoordinator.image(
+            for: frame,
+            maxWidth: 400,
+            includeFrameImage: false,
+            includeAnnotations: false))
+    }
+
+    func testViewportRasterSnapshotAndPixelsSuppressDrawingLayer() throws {
+        var drawing = stroke(
+            .ink,
+            size: 80,
+            opacity: 1,
+            line(160, 540, 1_760, 540, steps: 20),
+            color: "#000000")
+        drawing.boardLayer = "Drawing"
+        let viewport = solidImageDataURL(
+            color: .white,
+            size: CGSize(width: 320, height: 180))
+        var frame = makeFrame(
+            strokes: [drawing],
+            id: "viewport-suppresses-drawing",
+            imageUrl: viewport,
+            imageSource: "ai-color-approved")
+        frame.shotFraming = ShotFramingState.standard
+        frame.aiRasterPlacementFraming = ShotFramingState.standard
+        frame.aiSourceRevision = 1
+
+        let snapshot = try FrameRenderCoordinator.snapshot(for: frame)
+        XCTAssertTrue(snapshot.layerState.hidden.contains("Drawing"))
+        XCTAssertEqual(snapshot.visibleStrokeIDs, [])
+
+        let image = try XCTUnwrap(FrameRenderCoordinator.image(
+            for: frame,
+            maxWidth: 400,
+            includeAnnotations: false))
+        let cgImage = try XCTUnwrap(image.cgImage)
+        let data = try XCTUnwrap(cgImage.dataProvider?.data)
+        let bytes = try XCTUnwrap(CFDataGetBytePtr(data))
+        let bytesPerPixel = cgImage.bitsPerPixel / 8
+        let offset = (cgImage.height / 2) * cgImage.bytesPerRow
+            + (cgImage.width / 2) * bytesPerPixel
+        let colorChannels = (0..<min(3, bytesPerPixel)).map {
+            bytes[offset + $0]
+        }
+        XCTAssertTrue(colorChannels.allSatisfy { $0 > 245 })
+    }
+
+    func testViewportMapperCacheSeparatesExplicitRasterOverrides() throws {
+        let firstRaster = solidImageDataURL(
+            color: .systemRed,
+            size: CGSize(width: 320, height: 180))
+        let secondRaster = solidImageDataURL(
+            color: .systemBlue,
+            size: CGSize(width: 320, height: 180))
+        var frame = makeFrame(
+            strokes: [],
+            id: "mapper-explicit-override-identity")
+        frame.shotFraming = ShotFramingState.standard
+
+        let first = try XCTUnwrap(FrameRenderCoordinator.image(
+            for: frame,
+            maxWidth: 400,
+            frameImageURLOverride: firstRaster,
+            frameImageIsViewportEncodedOverride: true))
+        let second = try XCTUnwrap(FrameRenderCoordinator.image(
+            for: frame,
+            maxWidth: 400,
+            frameImageURLOverride: secondRaster,
+            frameImageIsViewportEncodedOverride: true))
+
+        XCTAssertNotEqual(first.pngData(), second.pngData())
+    }
+
+    func testInheritedRasterNeverFallsBackToGenericURLCache() throws {
+        let stale = solidImageDataURL(
+            color: .systemRed,
+            size: CGSize(width: 320, height: 180))
+        let reusedURL = "/not-cached/reused-revision-source.png"
+        FrameImageCache.store(
+            try XCTUnwrap(decodeDataURL(stale)),
+            for: reusedURL)
+        var frame = makeFrame(
+            strokes: [],
+            id: "exact-raster-revision-gate",
+            imageUrl: reusedURL,
+            imageSource: "imported")
+        frame.aiSourceRevision = 99
+
+        XCTAssertNil(FrameImageCache.image(for: frame))
+        XCTAssertNil(FrameRenderCoordinator.image(
+            for: frame,
+            maxWidth: 400))
+    }
+
+    func testLegacyThumbnailFallbackRejectsTransformedSourceRaster() {
+        let poster = solidImageDataURL(
+            color: .systemGreen,
+            size: CGSize(width: 320, height: 180))
+        var frame = makeFrame(
+            strokes: [],
+            id: "unsafe-legacy-thumbnail",
+            imageUrl: "/not-cached/source-art.png",
+            imageSource: "imported",
+            thumbnailDataURL: poster)
+        frame.shotFraming = ShotFramingState(
+            centerX: 0.5,
+            centerY: 0.5,
+            zoom: 2,
+            rollDegrees: 0,
+            aspectRatio: 16.0 / 9.0)
+
+        XCTAssertFalse(FrameRenderCoordinator.allowsDirectRasterFallback(
+            for: frame))
+        XCTAssertNil(FrameRenderCoordinator.image(
+            for: frame,
+            maxWidth: 400,
+            legacyThumbnailFallback: true))
+    }
+
+    func testDirectRasterFallbackRejectsVisibleCompositeContributions() {
+        var colorStroke = stroke(
+            .colorHard,
+            size: 22,
+            opacity: 0.8,
+            line(320, 300, 1_600, 780, steps: 10),
+            color: "#7f4be8")
+        colorStroke.boardLayer = "Color"
+        let raster = solidImageDataURL(
+            color: .systemGray5,
+            size: CGSize(width: 320, height: 180))
+        var frame = makeFrame(
+            strokes: [colorStroke],
+            id: "direct-fallback-composite",
+            imageUrl: raster,
+            imageSource: "imported")
+        frame.shotFraming = .standard
+
+        XCTAssertFalse(FrameRenderCoordinator.allowsDirectRasterFallback(
+            for: frame),
+            "Raw pixels must not replace a failed composite with visible overlays")
+
+        var hiddenLayers = frame.layerState ?? .standard
+        hiddenLayers.hidden.insert("Color")
+        frame.layerState = hiddenLayers
+        XCTAssertTrue(FrameRenderCoordinator.allowsDirectRasterFallback(
+            for: frame))
+    }
+
+    func testRenderSessionRejectsPostSnapshotStrokeAndRasterChanges() throws {
+        let base = stroke(
+            .pencil,
+            size: 12,
+            opacity: 1,
+            line(240, 400, 1_680, 680, steps: 10))
+        let replacementRaster = solidImageDataURL(
+            color: .systemGreen,
+            size: CGSize(width: 320, height: 180))
+        let otherRaster = solidImageDataURL(
+            color: .systemBlue,
+            size: CGSize(width: 320, height: 180))
+        let frame = makeFrame(
+            strokes: [base],
+            id: "immutable-render-session")
+        let session = try FrameRenderCoordinator.evaluatedSession(
+            for: frame,
+            strokesOverride: [base],
+            frameImageURLOverride: replacementRaster,
+            frameImageIsViewportEncodedOverride: false)
+
+        XCTAssertNotNil(session.image(maxWidth: 400))
+
+        let extra = stroke(
+            .pencil,
+            size: 8,
+            opacity: 1,
+            line(300, 800, 1_600, 800, steps: 8))
+        XCTAssertNil(session.image(
+            maxWidth: 400,
+            strokesOverride: [base, extra]))
+        XCTAssertNil(session.image(
+            maxWidth: 400,
+            frameImageURLOverride: otherRaster))
+    }
+
+    func testCoordinatorRendersCleanPaperForAllHiddenDocument() throws {
+        var hiddenStroke = stroke(
+            .pencil,
+            size: 28,
+            opacity: 1,
+            line(200, 540, 1_720, 540, steps: 12))
+        hiddenStroke.boardLayer = "Drawing"
+        var frame = makeFrame(
+            strokes: [hiddenStroke],
+            id: "all-hidden-clean-paper")
+        var layers = BoardLayerState.standard
+        layers.hidden = ["Drawing"]
+        frame.layerState = layers
+
+        let snapshot = try FrameRenderCoordinator.snapshot(
+            for: frame,
+            includeFrameImage: false)
+        XCTAssertEqual(snapshot.visibleStrokeIDs, [])
+        let image = try XCTUnwrap(FrameRenderCoordinator.image(
+            for: frame,
+            maxWidth: 400,
+            includeFrameImage: false))
+        let cgImage = try XCTUnwrap(image.cgImage)
+        let data = try XCTUnwrap(cgImage.dataProvider?.data)
+        let bytes = try XCTUnwrap(CFDataGetBytePtr(data))
+        let bytesPerPixel = cgImage.bitsPerPixel / 8
+        let offset = (cgImage.height / 2) * cgImage.bytesPerRow
+            + (cgImage.width / 2) * bytesPerPixel
+        let channels = (0..<min(3, bytesPerPixel)).map {
+            bytes[offset + $0]
+        }
+        XCTAssertTrue(channels.allSatisfy { $0 > 245 })
+    }
+
+    func testCoordinatorTZeroPixelsMatchFrameRenderService() throws {
+        let base = stroke(
+            .pencil,
+            size: 16,
+            opacity: 0.9,
+            line(220, 260, 1_700, 820, steps: 18))
+        let frame = makeFrame(
+            strokes: [base],
+            id: "coordinator-t-zero-parity")
+
+        let legacy = try XCTUnwrap(FrameRenderService.image(
+            for: frame,
+            maxWidth: 400,
+            strokesOverride: [base],
+            includeFrameImage: false))
+        let coordinated = try XCTUnwrap(FrameRenderCoordinator.image(
+            for: frame,
+            maxWidth: 400,
+            strokesOverride: [base],
+            includeFrameImage: false))
+        let legacyCG = try XCTUnwrap(legacy.cgImage)
+        let coordinatedCG = try XCTUnwrap(coordinated.cgImage)
+        XCTAssertEqual(legacyCG.width, coordinatedCG.width)
+        XCTAssertEqual(legacyCG.height, coordinatedCG.height)
+        let legacyData = try XCTUnwrap(legacyCG.dataProvider?.data)
+        let coordinatedData = try XCTUnwrap(
+            coordinatedCG.dataProvider?.data)
+        XCTAssertEqual(legacyData as Data, coordinatedData as Data)
+    }
+
     /// Bilde-frame uten strokes skal rendres i eksport (før: nil).
     func testImageFrameRendersInExport() throws {
         let dataURL = solidImageDataURL(color: .systemBlue, size: CGSize(width: 320, height: 180))
@@ -1250,6 +1953,409 @@ final class CompositionRenderTests: XCTestCase {
         let channels = (0..<4).map { Double(pixels[offset + $0]) }
         XCTAssertLessThan(channels.min() ?? 255, 200,
                           "midtpikselet skal bære bildefargen, ikke papir")
+    }
+
+    func testExportDimensionsFollowAppliedCinematicAndVerticalViewport() throws {
+        let ink = stroke(
+            .pencil, size: 12, opacity: 1,
+            line(120, 120, 1_800, 960, steps: 16), color: "#202126")
+        var cinematic = makeFrame(strokes: [ink], id: "cinematic-239")
+        cinematic.shotFraming = ShotFramingState(
+            shotSize: "WS", centerX: 0.5, centerY: 0.5,
+            zoom: 1, aspectRatio: 2.39)
+        let cinematicImage = try XCTUnwrap(
+            FrameRenderService.image(for: cinematic, maxWidth: 478))
+        XCTAssertEqual(cinematicImage.cgImage?.width, 478)
+        XCTAssertEqual(cinematicImage.cgImage?.height, 200)
+
+        var vertical = makeFrame(strokes: [ink], id: "vertical-916")
+        vertical.shotFraming = ShotFramingState(
+            shotSize: "MS", centerX: 0.5, centerY: 0.5,
+            zoom: 1.8, aspectRatio: 9.0 / 16.0)
+        let verticalImage = try XCTUnwrap(
+            FrameRenderService.image(for: vertical, maxWidth: 225))
+        XCTAssertEqual(verticalImage.cgImage?.width, 225)
+        XCTAssertEqual(verticalImage.cgImage?.height, 400)
+    }
+
+    func testFixedExportSurfacesAspectFitPortraitCinemaScopeAndLegacyFormats() {
+        let container = CGRect(x: 36, y: 58, width: 280, height: 157.5)
+
+        let portrait = StoryboardAspectLayout.aspectFitRect(
+            sourceSize: CGSize(width: 900, height: 1_600), in: container)
+        XCTAssertEqual(portrait.height, container.height, accuracy: 0.000_001)
+        XCTAssertEqual(portrait.width / portrait.height, 9.0 / 16.0,
+                       accuracy: 0.000_001)
+        XCTAssertEqual(portrait.midX, container.midX, accuracy: 0.000_001)
+        XCTAssertEqual(portrait.midY, container.midY, accuracy: 0.000_001)
+
+        let cinemaScope = StoryboardAspectLayout.aspectFitRect(
+            sourceSize: CGSize(width: 2_390, height: 1_000), in: container)
+        XCTAssertEqual(cinemaScope.width, container.width, accuracy: 0.000_001)
+        XCTAssertEqual(cinemaScope.width / cinemaScope.height, 2.39,
+                       accuracy: 0.000_001)
+        XCTAssertEqual(cinemaScope.midX, container.midX, accuracy: 0.000_001)
+        XCTAssertEqual(cinemaScope.midY, container.midY, accuracy: 0.000_001)
+
+        let fourThree = StoryboardAspectLayout.aspectFitRect(
+            sourceSize: CGSize(width: 1_200, height: 900), in: container)
+        XCTAssertEqual(fourThree.width / fourThree.height, 4.0 / 3.0,
+                       accuracy: 0.000_001)
+        XCTAssertLessThanOrEqual(fourThree.width, container.width)
+        XCTAssertLessThanOrEqual(fourThree.height, container.height)
+
+        let square = StoryboardAspectLayout.aspectFitRect(
+            sourceSize: CGSize(width: 1_000, height: 1_000), in: container)
+        XCTAssertEqual(square.width, square.height, accuracy: 0.000_001)
+        XCTAssertEqual(square.midX, container.midX, accuracy: 0.000_001)
+        XCTAssertEqual(square.midY, container.midY, accuracy: 0.000_001)
+    }
+
+    func testAnimationSourceStagesComposePencilColorAndAtmosphereProgressively() throws {
+        func layeredStroke(
+            _ type: BrushType, layer: String, color: String,
+            from start: (Double, Double), to end: (Double, Double)
+        ) -> PencilStroke {
+            var value = stroke(
+                type, size: 120, opacity: 0.8,
+                line(start.0, start.1, end.0, end.1, steps: 8), color: color)
+            value.boardLayer = layer
+            return value
+        }
+        let strokes = [
+            layeredStroke(.colorSoft, layer: "Color", color: "#c96f4a",
+                          from: (300, 300), to: (1500, 300)),
+            layeredStroke(.dustSmoke, layer: "Atmosphere", color: "#65758a",
+                          from: (400, 520), to: (1400, 520)),
+            layeredStroke(.pencil, layer: "Drawing", color: "#25242a",
+                          from: (300, 740), to: (1500, 740)),
+        ]
+        let frame = makeFrame(strokes: strokes, id: "animation-source-layers")
+
+        let pencil = try XCTUnwrap(FrameRenderService.animationSourceDataURL(
+            for: frame, visibleStrokes: strokes, stage: .pencil, maxWidth: 400))
+        let color = try XCTUnwrap(FrameRenderService.animationSourceDataURL(
+            for: frame, visibleStrokes: strokes, stage: .color, maxWidth: 400))
+        let atmosphere = try XCTUnwrap(FrameRenderService.animationSourceDataURL(
+            for: frame, visibleStrokes: strokes, stage: .atmosphere, maxWidth: 400))
+
+        XCTAssertNotEqual(pencil, color)
+        XCTAssertNotEqual(color, atmosphere)
+        XCTAssertEqual(StoryboardAnimationSourceStage.pencil.includedBoardLayers,
+                       Set(["Drawing"]))
+        XCTAssertEqual(StoryboardAnimationSourceStage.color.includedBoardLayers,
+                       Set(["Drawing", "Color"]))
+        XCTAssertLessThan(BoardLayers.index(of: "Color"), BoardLayers.index(of: "Drawing"),
+                          "farge skal rendres under grafittlinjene")
+    }
+
+    func testPaintoverStateDecoderRequiresCompleteServerIdentity() throws {
+        let colorFingerprint = String(repeating: "a", count: 64)
+        let atmosphereFingerprint = String(repeating: "B", count: 64)
+        let payload: [String: Any] = [
+            "version": 1,
+            "colorRevision": 7,
+            "atmosphereRevision": 4,
+            "colorFingerprint": colorFingerprint,
+            "atmosphereFingerprint": atmosphereFingerprint,
+            "colorHasContent": true,
+            "atmosphereHasContent": false,
+            "atmosphereStale": true,
+            "videoStale": true,
+        ]
+
+        let decoded = try XCTUnwrap(
+            StoryboardPaintoverStateCoding.decode(payload))
+        XCTAssertEqual(decoded.colorRevision, 7)
+        XCTAssertEqual(decoded.atmosphereRevision, 4)
+        XCTAssertEqual(decoded.colorFingerprint, colorFingerprint)
+        XCTAssertEqual(decoded.atmosphereFingerprint,
+                       atmosphereFingerprint.lowercased())
+        XCTAssertTrue(decoded.colorHasContent)
+        XCTAssertFalse(decoded.atmosphereHasContent)
+        XCTAssertTrue(decoded.atmosphereStale)
+        XCTAssertTrue(decoded.videoStale)
+
+        var missingRevision = payload
+        missingRevision.removeValue(forKey: "colorRevision")
+        XCTAssertNil(StoryboardPaintoverStateCoding.decode(missingRevision))
+        var malformedFingerprint = payload
+        malformedFingerprint["colorFingerprint"] = "not-a-sha256"
+        XCTAssertNil(StoryboardPaintoverStateCoding.decode(
+            malformedFingerprint))
+    }
+
+    func testAnimationRequestBodyCarriesExactStageBaseAndComposite() throws {
+        let composite = StoryboardPaintoverComposite(
+            imageData: "data:image/png;base64,AAAA",
+            width: 1920, height: 1080,
+            includedThroughStage: .atmosphere,
+            baseVersionId: "11111111-1111-1111-1111-111111111111",
+            frameUpdatedAt: "frame-occ",
+            sourceUpdatedAt: "source-occ",
+            sourceRevision: 9,
+            framingFingerprint: "framing",
+            colorRevision: 5,
+            atmosphereRevision: 6,
+            colorFingerprint: String(repeating: "a", count: 64),
+            atmosphereFingerprint: String(repeating: "b", count: 64))
+        let preflight = StoryboardAnimationPreflightSummary(
+            model: "video-model", provider: "provider", duration: 5,
+            estimatedCostUsd: 1.25, providerCredits: nil,
+            sourceFingerprint: "provider-source",
+            bindingFingerprint:
+                "sha256:" + String(repeating: "c", count: 64),
+            compilationFingerprint: "compiled")
+        let body = RoleRoomAPIClient.storyboardAnimationRequestBody(
+            context: ["intent": "animate"], model: "video-model",
+            duration: 5, paintoverComposite: composite,
+            confirmedPreflight: preflight)
+
+        XCTAssertEqual(body["sourceStage"] as? String, "atmosphere")
+        XCTAssertEqual(body["baseVersionId"] as? String,
+                       composite.baseVersionId)
+        let encoded = try XCTUnwrap(
+            body["paintoverComposite"] as? [String: Any])
+        XCTAssertEqual(encoded["imageData"] as? String, composite.imageData)
+        XCTAssertEqual(encoded["includedThroughStage"] as? String,
+                       "atmosphere")
+        XCTAssertEqual(encoded["frameUpdatedAt"] as? String, "frame-occ")
+        XCTAssertEqual(encoded["sourceRevision"] as? Int, 9)
+        XCTAssertEqual(encoded["colorRevision"] as? Int, 5)
+        XCTAssertEqual(encoded["atmosphereRevision"] as? Int, 6)
+        let confirmed = try XCTUnwrap(
+            body["confirmedPreflight"] as? [String: Any])
+        XCTAssertEqual(
+            confirmed["bindingFingerprint"] as? String,
+            preflight.bindingFingerprint)
+        XCTAssertEqual(
+            confirmed["duration"] as? Int,
+            preflight.duration)
+
+        let preflightBody = RoleRoomAPIClient.storyboardAnimationRequestBody(
+            context: ["intent": "animate"], model: "video-model",
+            duration: 5, paintoverComposite: composite)
+        XCTAssertEqual(preflightBody["sourceStage"] as? String,
+                       body["sourceStage"] as? String)
+        XCTAssertEqual(preflightBody["baseVersionId"] as? String,
+                       body["baseVersionId"] as? String)
+        let preflightComposite = preflightBody["paintoverComposite"]
+            as? [String: Any]
+        XCTAssertEqual(preflightComposite?["imageData"] as? String,
+                       composite.imageData)
+        XCTAssertNil(preflightBody["confirmedPreflight"])
+
+        let imageStageBody = RoleRoomAPIClient.storyboardImageStageRequestBody(
+            context: ["intent": "add atmosphere"],
+            expectedSourceRevision: 9,
+            expectedCompatFrameUpdatedAt: "frame-occ",
+            idempotencyKey: "ios-operation",
+            paintoverComposite: composite)
+        let imageStageComposite = imageStageBody["paintoverComposite"]
+            as? [String: Any]
+        XCTAssertEqual(imageStageComposite?["baseVersionId"] as? String,
+                       composite.baseVersionId)
+        XCTAssertEqual(imageStageBody["expectedSourceRevision"] as? Int, 9)
+        XCTAssertEqual(
+            imageStageBody["expectedCompatFrameUpdatedAt"] as? String,
+            "frame-occ")
+    }
+
+    func testCanonicalSHA256FingerprintRequiresExactLowercaseASCII() {
+        let valid = "sha256:" + String(repeating: "a1", count: 32)
+        XCTAssertTrue(
+            RoleRoomAPIClient.isCanonicalSHA256Fingerprint(valid))
+        XCTAssertFalse(RoleRoomAPIClient.isCanonicalSHA256Fingerprint(
+            "sha256:" + String(repeating: "A1", count: 32)))
+        XCTAssertFalse(RoleRoomAPIClient.isCanonicalSHA256Fingerprint(
+            "sha256:" + String(repeating: "١", count: 64)))
+        XCTAssertFalse(RoleRoomAPIClient.isCanonicalSHA256Fingerprint(
+            "sha256:" + String(repeating: "a", count: 63)))
+        XCTAssertFalse(RoleRoomAPIClient.isCanonicalSHA256Fingerprint(
+            "sha256:" + String(repeating: "a", count: 65)))
+        XCTAssertFalse(RoleRoomAPIClient.isCanonicalSHA256Fingerprint(
+            "SHA256:" + String(repeating: "a", count: 64)))
+    }
+
+    @MainActor
+    func testPaintoverCompositeChangesImageIdempotencyIdentity() throws {
+        let prefix = "paintover-\(UUID().uuidString)"
+        func identity(compositeFingerprint: String) ->
+            AIImageGenerationOperationIdentity {
+            AIImageGenerationOperationIdentity(
+                projectId: prefix, storyboardId: "storyboard",
+                frameId: "frame", stage: "atmosphere",
+                sourceRevision: 9, sourceUpdatedAt: "source-occ",
+                framingFingerprint: "framing",
+                requestFingerprint: "request",
+                paintoverCompositeFingerprint: compositeFingerprint)
+        }
+        let first = identity(compositeFingerprint: String(
+            repeating: "a", count: 64))
+        let second = identity(compositeFingerprint: String(
+            repeating: "b", count: 64))
+        let firstKey = try AIImageGenerationOperationStore.operationKey(
+            for: first)
+        let secondKey = try AIImageGenerationOperationStore.operationKey(
+            for: second)
+        defer {
+            _ = AIImageGenerationOperationStore.clear(
+                first, ifOperationKeyMatches: firstKey)
+            _ = AIImageGenerationOperationStore.clear(
+                second, ifOperationKeyMatches: secondKey)
+        }
+        XCTAssertNotEqual(firstKey, secondKey)
+    }
+
+    func testPaintoverStageSelectionFallsBackWithoutDoubleBaking() {
+        let state = StoryboardPaintoverState(
+            colorRevision: 3, atmosphereRevision: 4,
+            colorFingerprint: String(repeating: "a", count: 64),
+            atmosphereFingerprint: String(repeating: "b", count: 64),
+            colorHasContent: true, atmosphereHasContent: true,
+            atmosphereStale: false, videoStale: false)
+        XCTAssertEqual(StoryboardPaintoverStageSelection.animationStage(
+            hasApprovedColor: true, hasApprovedAtmosphere: true,
+            state: state), .atmosphere)
+
+        var staleAtmosphere = state
+        staleAtmosphere.atmosphereStale = true
+        XCTAssertEqual(StoryboardPaintoverStageSelection.animationStage(
+            hasApprovedColor: true, hasApprovedAtmosphere: true,
+            state: staleAtmosphere), .color)
+        XCTAssertEqual(StoryboardPaintoverStageSelection.animationStage(
+            hasApprovedColor: true, hasApprovedAtmosphere: true,
+            state: state,
+            localChanges: StoryboardPaintoverChangeSet(
+                pencilChanged: false, colorChanged: true,
+                atmosphereChanged: false)), .color)
+        XCTAssertEqual(StoryboardPaintoverStageSelection.overlayLayers(
+            for: .color), Set(["Color"]))
+        XCTAssertEqual(StoryboardPaintoverStageSelection.overlayLayers(
+            for: .atmosphere), Set(["Atmosphere"]))
+    }
+
+    func testAtmosphereCandidateMayOmitColorBindingOnlyWhenColorIsEmpty() {
+        let noChanges = StoryboardPaintoverChangeSet(
+            pencilChanged: false, colorChanged: false,
+            atmosphereChanged: false)
+        var state = StoryboardPaintoverState(
+            colorRevision: 0, atmosphereRevision: 0,
+            colorFingerprint: String(repeating: "a", count: 64),
+            atmosphereFingerprint: String(repeating: "b", count: 64),
+            colorHasContent: false, atmosphereHasContent: false,
+            atmosphereStale: false, videoStale: false)
+        XCTAssertTrue(AIImageStagePaintoverPolicy.matches(
+            stage: "atmosphere", isApproved: false,
+            capturedColorRevision: nil, capturedColorFingerprint: nil,
+            state: state, localChanges: noChanges))
+        state.colorHasContent = true
+        XCTAssertFalse(AIImageStagePaintoverPolicy.matches(
+            stage: "atmosphere", isApproved: false,
+            capturedColorRevision: nil, capturedColorFingerprint: nil,
+            state: state, localChanges: noChanges))
+        XCTAssertTrue(AIImageStagePaintoverPolicy.matches(
+            stage: "atmosphere", isApproved: false,
+            capturedColorRevision: 0,
+            capturedColorFingerprint: state.colorFingerprint,
+            state: state, localChanges: noChanges))
+    }
+
+    func testFrozenStageCompositeIncludesOnlyItsEditableOverlay() throws {
+        func layeredStroke(
+            layer: String, color: String, y: Double
+        ) -> PencilStroke {
+            var value = stroke(
+                layer == "Color" ? .colorHard : .dustSmoke,
+                size: 150, opacity: 0.9,
+                line(300, y, 1_600, y, steps: 10), color: color)
+            value.boardLayer = layer
+            return value
+        }
+        func approved(_ frame: FrameSummary) -> FrameSummary {
+            var copy = frame
+            let framing = ShotFramingState(
+                aspectRatio: frame.drawingWidth / frame.drawingHeight)
+            copy.shotFraming = framing
+            copy.aiStoryboardId = "approved-stage"
+            copy.aiSourceRevision = 1
+            copy.aiSourceFramingFingerprint = framing.canonicalFingerprint
+            copy.aiRasterPlacementFraming = framing
+            return copy
+        }
+        let colorStroke = layeredStroke(
+            layer: "Color", color: "#ff3010", y: 330)
+        let atmosphereStroke = layeredStroke(
+            layer: "Atmosphere", color: "#244fff", y: 700)
+
+        let approvedColor = solidImageDataURL(
+            color: .systemYellow, size: CGSize(width: 640, height: 360))
+        let bothOnColor = approved(makeFrame(
+            strokes: [colorStroke, atmosphereStroke],
+            id: "approved-color-base", imageUrl: approvedColor,
+            imageSource: "ai-color-approved"))
+        let colorOnly = approved(makeFrame(
+            strokes: [colorStroke], id: "approved-color-only",
+            imageUrl: approvedColor, imageSource: "ai-color-approved"))
+        let frozenColor = try XCTUnwrap(
+            FrameRenderService.animationSourceDataURL(
+                for: bothOnColor,
+                visibleStrokes: [colorStroke, atmosphereStroke],
+                stage: .color, overlayLayers: ["Color"], maxWidth: 400))
+        let expectedColor = try XCTUnwrap(
+            FrameRenderService.animationSourceDataURL(
+                for: colorOnly, visibleStrokes: [colorStroke],
+                stage: .color, overlayLayers: ["Color"], maxWidth: 400))
+        XCTAssertEqual(frozenColor, expectedColor,
+                       "Atmosphere must not leak into a Color composite")
+
+        let approvedAtmosphere = solidImageDataURL(
+            color: .systemGreen, size: CGSize(width: 640, height: 360))
+        let bothOnAtmosphere = approved(makeFrame(
+            strokes: [colorStroke, atmosphereStroke],
+            id: "approved-atmosphere-base", imageUrl: approvedAtmosphere,
+            imageSource: "ai-atmosphere-approved"))
+        let atmosphereOnly = approved(makeFrame(
+            strokes: [atmosphereStroke], id: "approved-atmosphere-only",
+            imageUrl: approvedAtmosphere,
+            imageSource: "ai-atmosphere-approved"))
+        let frozenAtmosphere = try XCTUnwrap(
+            FrameRenderService.animationSourceDataURL(
+                for: bothOnAtmosphere,
+                visibleStrokes: [colorStroke, atmosphereStroke],
+                stage: .atmosphere, overlayLayers: ["Atmosphere"],
+                maxWidth: 400))
+        let expectedAtmosphere = try XCTUnwrap(
+            FrameRenderService.animationSourceDataURL(
+                for: atmosphereOnly, visibleStrokes: [atmosphereStroke],
+                stage: .atmosphere, overlayLayers: ["Atmosphere"],
+                maxWidth: 400))
+        XCTAssertEqual(frozenAtmosphere, expectedAtmosphere,
+                       "Color must not be double-baked over approved Atmosphere")
+        XCTAssertNotEqual(frozenColor, frozenAtmosphere)
+    }
+
+    func testAIColorPencilSourceExcludesExistingRasterPreview() throws {
+        var drawing = stroke(
+            .pencil, size: 18, opacity: 1,
+            line(250, 760, 1650, 760, steps: 12), color: "#202126")
+        drawing.boardLayer = "Drawing"
+        let oldAIPreview = solidImageDataURL(
+            color: .systemRed, size: CGSize(width: 320, height: 180))
+        let frame = makeFrame(
+            strokes: [drawing], id: "immutable-pencil-source", imageUrl: oldAIPreview)
+
+        let sourceURL = try XCTUnwrap(FrameRenderService.pencilSourceDataURL(
+            for: frame, visibleStrokes: [drawing], maxWidth: 400))
+        let source = try XCTUnwrap(decodeDataURL(sourceURL)?.cgImage)
+        let data = try XCTUnwrap(source.dataProvider?.data)
+        let pixels = try XCTUnwrap(CFDataGetBytePtr(data))
+        let x = 20
+        let y = 20
+        let offset = y * source.bytesPerRow + x * (source.bitsPerPixel / 8)
+        let channels = (0..<3).map { Int(pixels[offset + $0]) }
+        XCTAssertTrue(channels.allSatisfy { $0 > 235 },
+                      "Pencil-kilden skal ha hvitt papir, ikke forrige AI-preview")
     }
 
     /// Viskelær skal endre selve panelbildet, ikke bare tegnestrøk over det.
@@ -1333,5 +2439,104 @@ final class CompositionRenderTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: fileURL) }
         let size = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int) ?? 0
         XCTAssertGreaterThan(size, 10_000, "PDF-en skal inneholde paneler")
+    }
+
+    func testPDFExportsRejectPreviewOnlyLegacyPoster() async {
+        let poster = solidImageDataURL(
+            color: .darkGray,
+            size: CGSize(width: 320, height: 180))
+        let frame = makeFrame(
+            strokes: [],
+            id: "pdf-preview-only",
+            imageSource: "drawn",
+            thumbnailDataURL: poster)
+        let scene = SceneSummary(
+            id: "pdf-preview-only-scene",
+            heading: "LEGACY",
+            frames: [frame],
+            presentationConcept: nil,
+            presentationFooter: nil,
+            hubTasks: nil, hubNotes: nil,
+            hubQuote: nil, hubMoodboard: nil,
+            hubMapPositions: nil, hubMapNotes: nil,
+            hubTeam: nil, hubInfo: nil,
+            hubAssetFolders: nil, hubAssetColors: nil,
+            sceneNumber: 1, intExt: nil,
+            location: nil, timeOfDay: nil,
+            descriptionText: nil, characters: [])
+
+        let production = await BoardPDFExporter.export(
+            projectTitle: "Legacy poster", scenes: [scene])
+        let presentation = await BoardPDFExporter.exportPresentation(
+            projectTitle: "Legacy poster", scenes: [scene])
+        XCTAssertNil(production)
+        XCTAssertNil(presentation)
+    }
+
+    func testPaintoverPolicyKeepsStageEditsOutOfPencilSource() throws {
+        var drawing = stroke(
+            .pencil, size: 4, opacity: 1,
+            points([(100, 100), (200, 200)], pressure: 0.8))
+        drawing.boardLayer = "Drawing"
+        let baseJSON = try StrokeSerialization.encodeToWebJSON([drawing])
+        var color = stroke(
+            .colorHard, size: 24, opacity: 0.6,
+            points([(110, 110), (190, 190)], pressure: 0.7),
+            color: "#cc5533")
+        color.boardLayer = "Color"
+
+        let changes = StoryboardPaintoverDocumentPolicy.classify(
+            baseStrokesJSON: baseJSON,
+            currentStrokes: [drawing, color],
+            baseLayerState: nil,
+            currentLayerState: .standard,
+            baseShotFraming: .standard,
+            currentShotFraming: .standard)
+
+        XCTAssertFalse(changes.pencilChanged)
+        XCTAssertTrue(changes.colorChanged)
+        XCTAssertFalse(changes.atmosphereChanged)
+        XCTAssertTrue(changes.isPaintoverOnly)
+    }
+
+    func testPaintoverPolicyInvalidatesOnlyDownstreamStage() throws {
+        var atmosphere = stroke(
+            .airbrush, size: 48, opacity: 0.3,
+            points([(300, 200), (600, 400)], pressure: 0.5))
+        atmosphere.boardLayer = "Atmosphere"
+        let baseJSON = try StrokeSerialization.encodeToWebJSON([])
+        let changes = StoryboardPaintoverDocumentPolicy.classify(
+            baseStrokesJSON: baseJSON,
+            currentStrokes: [atmosphere],
+            baseLayerState: .standard,
+            currentLayerState: .standard,
+            baseShotFraming: .standard,
+            currentShotFraming: .standard)
+        let next = StoryboardPaintoverState(
+            colorRevision: 3, atmosphereRevision: 8,
+            atmosphereStale: false, videoStale: false)
+            .applying(changes)
+
+        XCTAssertEqual(next.colorRevision, 3)
+        XCTAssertEqual(next.atmosphereRevision, 9)
+        XCTAssertFalse(next.atmosphereStale)
+        XCTAssertTrue(next.videoStale)
+    }
+
+    func testPaintoverPolicyTreatsCameraAsPencilSourceChange() throws {
+        let baseJSON = try StrokeSerialization.encodeToWebJSON([])
+        var reframed = ShotFramingState.standard
+        reframed.zoom = 2
+        let changes = StoryboardPaintoverDocumentPolicy.classify(
+            baseStrokesJSON: baseJSON,
+            currentStrokes: [],
+            baseLayerState: nil,
+            currentLayerState: .standard,
+            baseShotFraming: .standard,
+            currentShotFraming: reframed)
+
+        XCTAssertTrue(changes.pencilChanged)
+        XCTAssertFalse(changes.colorChanged)
+        XCTAssertFalse(changes.atmosphereChanged)
     }
 }

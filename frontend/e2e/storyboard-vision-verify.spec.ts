@@ -8,10 +8,9 @@ import { test, expect, type Page } from '@playwright/test';
 
 const TEST_PAGE = '/e2e-casting-test.html?project=troll-1780071501773&tab=storyboard';
 const SHOT_DIR = 'test-results/storyboard-vision';
-// Sesjon lagt inn av scratchpad/lag-verify-sesjon.mjs (1 dag TTL) — autentiserer
-// som Daniel så TROLL (troll-1780071501773) er synlig. Harnessen hardkoder
-// dev-admin-token i localStorage; init-scriptet fryser vårt token i stedet.
-const VERIFY_TOKEN = 'e2e-verify-daniel-2026';
+// Live-legitimasjon skal bare komme fra lokal/CI secret store. Filen kan
+// importeres trygt uten token; testen hopper eksplisitt over ved manglende env.
+const VERIFY_TOKEN = process.env.SB_E2E_TOKEN?.trim() ?? '';
 
 async function openRoleRoom(page: Page) {
   await page.context().addInitScript((token) => {
@@ -59,6 +58,8 @@ async function dismissStartupDialogs(page: Page) {
 }
 
 test.describe('Storyboard-visjonen — TROLL', () => {
+  test.skip(!VERIFY_TOKEN, 'krever SB_E2E_TOKEN fra lokal/CI secret store');
+
   test('alle bølge A-E-flatene rendrer med TROLL-data', async ({ page }) => {
     test.setTimeout(240_000);
     page.on('pageerror', (error) => {

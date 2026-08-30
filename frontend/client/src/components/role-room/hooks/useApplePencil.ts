@@ -19,6 +19,12 @@ export interface PencilPoint {
   tiltX: number;
   tiltY: number;
   timestamp: number;
+  rollAngle?: number;
+  altitudeAngle?: number;
+  azimuthAngle?: number;
+  velocity?: number;
+  estimationUpdateIndex?: number;
+  estimatedProperties?: number;
 }
 
 export interface PencilStroke {
@@ -27,6 +33,7 @@ export interface PencilStroke {
   color: string;
   width: number;
   opacity: number;
+  engineVersion?: number;
   brush?: {
     type: string;
     size: number;
@@ -38,6 +45,13 @@ export interface PencilStroke {
     grain: number;
     tiltSensitivity: number;
     pressureSensitivity: number;
+    engineVersion?: number;
+    tipModel?: 'stamp' | 'ribbon' | 'filament' | 'particle' | 'region' | 'wet';
+    material?: string;
+    paperProfile?: 'smooth' | 'storyboard' | 'rough' | 'absorbent';
+    pigmentDepletion?: number;
+    bleed?: number;
+    bristleCount?: number;
   };
 }
 
@@ -111,13 +125,21 @@ export const useApplePencil = (
 
   const createPoint = (event: PointerEvent, element: HTMLElement): PencilPoint => {
     const rect = element.getBoundingClientRect();
+    const poseEvent = event as PointerEvent & {
+      twist?: number;
+      altitudeAngle?: number;
+      azimuthAngle?: number;
+    };
     return {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top,
       pressure: event.pressure || 0.5,
       tiltX: event.tiltX || 0,
       tiltY: event.tiltY || 0,
-      timestamp: Date.now(),
+      timestamp: event.timeStamp,
+      rollAngle: event.pointerType === 'pen' ? (poseEvent.twist ?? 0) : undefined,
+      altitudeAngle: event.pointerType === 'pen' ? poseEvent.altitudeAngle : undefined,
+      azimuthAngle: event.pointerType === 'pen' ? poseEvent.azimuthAngle : undefined,
     };
   };
 
@@ -215,6 +237,14 @@ export const useApplePencil = (
       if (state.current.isDrawing && currentStroke.current) {
         for (const sampleEvent of samples) {
           const samplePoint = createPoint(sampleEvent, element);
+          const previousPoint = currentStroke.current.points.at(-1);
+          if (previousPoint) {
+            const elapsed = Math.max(0.001, samplePoint.timestamp - previousPoint.timestamp);
+            samplePoint.velocity = Math.hypot(
+              samplePoint.x - previousPoint.x,
+              samplePoint.y - previousPoint.y,
+            ) / elapsed * 1000;
+          }
           samplePoint.pressure = inputType === 'pen'
             ? Math.max(minPressure, samplePoint.pressure)
             : samplePoint.pressure;

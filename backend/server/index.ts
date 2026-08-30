@@ -179,6 +179,8 @@ import {
 } from "./dance-team-routes.js";
 import { createDanceAddonRouter } from "./dance-addon-routes.js";
 import { createStoryboardRouter } from "./storyboard-routes.js";
+import { createStoryboardVideoWebhookRouter } from "./storyboard-video-webhook-routes.js";
+import { startStoryboardAiVideoReconciler } from "./storyboard-ai-video-reconciler.js";
 import { createStoryboardAiRouter } from "./storyboard-ai-routes.js";
 import { createCrewNotificationsRouter } from "./crew-notifications-routes.js";
 import { createEducationCohortsRouter } from "./role-room-education-cohorts-routes.js";
@@ -2111,6 +2113,12 @@ app.use((req, _res, next) => {
   next();
 });
 setupWorkspaceParticipantDocumentBodyParserBoundary(app);
+// Public provider callback: mount before the global 50 MB parsers. The route
+// owns a 256 KB streaming JSON limit and a bounded direct-peer rate limiter.
+app.use(
+  "/api/role-room/storyboard-video-webhooks",
+  createStoryboardVideoWebhookRouter(pool),
+);
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
@@ -15103,6 +15111,61 @@ async function compatStoreTransaction<T>(
   }
 }
 
+/**
+ * Serialize one compat-store read/compare/write section across every backend
+ * worker. The callback receives client-scoped get/set operations, so the
+ * read, comparison, write and advisory lock all use this one PoolClient and
+ * cannot exhaust the pool while waiting for a second connection.
+ *
+ * Advisory locking also covers a not-yet-created key, unlike SELECT FOR
+ * UPDATE. PostgreSQL hash collisions can only cause harmless extra
+ * serialization; they cannot allow two equal keys through concurrently.
+ */
+async function compatStoreWithKeyLock<T>(
+  storeKey: string,
+  callback: (store: {
+    get<U>(key: string): Promise<U | null>;
+    setStrict(key: string, value: unknown): Promise<void>;
+  }) => Promise<T>,
+): Promise<T> {
+  if (!(await ensureLegacyCompatTable())) {
+    throw new CompatStoreUnavailableError(storeKey);
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+      [storeKey],
+    );
+    const lockedStore = {
+      get: async <U>(key: string): Promise<U | null> => {
+        const selected = await client.query(
+          `SELECT store_value FROM ${LEGACY_COMPAT_TABLE_NAME}
+            WHERE store_key=$1 LIMIT 1`,
+          [key],
+        );
+        if (!Array.isArray(selected.rows) || !selected.rows[0]) return null;
+        return (selected.rows[0].store_value as U | undefined) ?? null;
+      },
+      setStrict: (key: string, value: unknown) =>
+        compatStoreSetStrict(key, value, client),
+    };
+    const result = await callback(lockedStore);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error("compatStoreWithKeyLock ROLLBACK failed:", rollbackError);
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 function legacySettingKey(
   userId: string,
   namespace: string,
@@ -15317,6 +15380,7 @@ const manuscriptsService = createCastingManuscriptsService({
   compatStoreDelete,
   compatStoreListByPrefix,
   compatStoreSetStrict,
+  compatStoreWithKeyLock,
 });
 
 // Revisions-service for diff/restore-API. Avhenger av manuscriptsService.
@@ -76164,6 +76228,9 @@ httpServer.listen(PORT, "0.0.0.0", () => {
   // META_APP_ID/SECRET ikke er satt.
   // Jobb-kø (0400): handlers + worker (claim/heartbeat/stale-reclaim).
   startBackgroundJobs(pool);
+  // Higgsfield status-GET reconciler. Claims only durable, due provider
+  // handles; it has no generation-POST path and is multi-instance safe.
+  startStoryboardAiVideoReconciler(pool);
   startTokenRefreshWorker(pool);
   // LinkedIn-insights polling: 1-time sweep mot /v2/socialActions for
   // post-level engagement (likes + comments). LinkedIn har ingen webhooks

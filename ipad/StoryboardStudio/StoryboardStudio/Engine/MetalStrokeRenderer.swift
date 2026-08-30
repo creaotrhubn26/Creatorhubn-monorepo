@@ -23,6 +23,12 @@ struct DabInstanceData {
     // Ligger i det som var padding før float3 — stride er fortsatt 48.
     var stretch: SIMD2<Float> = SIMD2(1, 1)
     var color: SIMD3<Float>
+    // GPU-materialparametere. 64-byte stride holder Swift/Metal-layouten
+    // eksplisitt og lar hardness/papirtann/blødning påvirke selve masken.
+    var hardness: Float = 0.6
+    var grain: Float = 0
+    var bleed: Float = 0
+    var paperProfile: Float = 1
 }
 
 @MainActor
@@ -33,24 +39,31 @@ final class MetalStrokeRenderer {
     // bgra8. Eraser har egen blending (destination-out: zero /
     // oneMinusSourceAlpha) mot akkumulatoren.
     private let dabPipelineAccumulator: MTLRenderPipelineState
+    private let dabPipelineMultiplyAccumulator: MTLRenderPipelineState
+    private let dabPipelineScreenAccumulator: MTLRenderPipelineState
+    private let dabPipelineAddAccumulator: MTLRenderPipelineState
     private let dabPipelineScreen: MTLRenderPipelineState
     private let dabPipelineEraser: MTLRenderPipelineState
     private let smudgePipeline: MTLRenderPipelineState
     private let blitPipeline: MTLRenderPipelineState
     private let editableBaseBlitPipeline: MTLRenderPipelineState
+    private let viewportPreviewBlitPipeline: MTLRenderPipelineState
     private var smudgeRegionTexture: MTLTexture?
     private var dabTextures: [DabPreset: MTLTexture] = [:]
+    private var productionStampTextures: [String: MTLTexture] = [:]
     // Egne penselspisser/stamps (PNG-dataURL bakt i strøket) — dekodes og
     // caches per innholds-hash.
-    private var customTipTextures: [Int: MTLTexture] = [:]
+    private var customTipTextures: [String: MTLTexture] = [:]
 
     private func customTipTexture(for dataURL: String?) -> MTLTexture? {
         guard let dataURL else { return nil }
-        let key = dataURL.hashValue
-        if let cached = customTipTextures[key] { return cached }
         guard let comma = dataURL.firstIndex(of: ","),
-              let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])),
-              let image = UIImage(data: data)?.cgImage else { return nil }
+              let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])) else {
+            return nil
+        }
+        let key = StampTextureCacheIdentity.customTipKey(for: data)
+        if let cached = customTipTextures[key] { return cached }
+        guard let image = UIImage(data: data)?.cgImage else { return nil }
         let width = min(256, image.width), height = min(256, image.height)
         guard width > 0, height > 0 else { return nil }
         // Dab-shaderen leser .r som alpha-MASKE (r8Unorm, som de prosedurale
@@ -75,12 +88,47 @@ final class MetalStrokeRenderer {
         customTipTextures[key] = texture
         return texture
     }
+
+    private func productionStampTexture(for stroke: PencilStroke,
+                                        preset: DabPreset) -> MTLTexture? {
+        guard preset.isProductionStamp, let stamp = stroke.stampInstance else {
+            return nil
+        }
+        // Invalid/non-finite legacy geometry may fail canonical JSON encoding.
+        // It can still render, but is deliberately left uncached rather than
+        // being assigned an incomplete or unstable identity.
+        let key = try? StampTextureCacheIdentity.productionKey(
+            preset: preset, stamp: stamp)
+        if let key, let cached = productionStampTextures[key] { return cached }
+        guard let texture = DabTextureGenerator.makeTexture(
+            device: device, preset: preset, variant: stamp.variant,
+            seed: stamp.seed, stampInstance: stamp
+        ) else { return nil }
+        // 64 × 512² r8-masker ≈ 16 MB. Tøm samlet for forutsigbar
+        // minnebruk på iPad; ferdige strøk kan regenereres deterministisk.
+        if let key {
+            if productionStampTextures.count >= 64 {
+                productionStampTextures.removeAll(keepingCapacity: true)
+            }
+            productionStampTextures[key] = texture
+        }
+        return texture
+    }
+
+    private func resolvedTipTexture(for stroke: PencilStroke,
+                                    preset: DabPreset) -> MTLTexture? {
+        productionStampTexture(for: stroke, preset: preset)
+            ?? customTipTexture(for: stroke.brush?.stampDataURL)
+    }
     private(set) var committedTexture: MTLTexture?
     private var canvasSize = SIMD2<Float>(0, 0)
     // Panelbildet er et redigerbart rastergrunnlag, ikke et beskyttet
     // skjerm-underlag. rebuild starter alltid her og spiller så strøkene i
     // rekkefølge; viskelær kan derfor fjerne originalpiksler og angres.
     private var editableBaseTexture: MTLTexture?
+    // Approved AI Color/Atmosphere is output-space, not document-space.
+    // It is sampled identity in present() and never baked into committedTexture.
+    private var viewportPreviewTexture: MTLTexture?
     var paperColor = SIMD3<Float>(0.961, 0.949, 0.918) // #f5f2ea
     // Referanse-underlag (kun skjerm — aldri i thumbnails/eksport)
     private let underlayBlitPipeline: MTLRenderPipelineState
@@ -94,7 +142,7 @@ final class MetalStrokeRenderer {
         self.device = device
         self.queue = queue
 
-        enum BlendMode { case none, premultiplied, destinationOut }
+        enum BlendMode { case none, premultiplied, destinationOut, multiply, screen, add }
         func pipeline(vertex: String, fragment: String, format: MTLPixelFormat,
                       blend: BlendMode) -> MTLRenderPipelineState? {
             let descriptor = MTLRenderPipelineDescriptor()
@@ -115,6 +163,21 @@ final class MetalStrokeRenderer {
                     attachment.sourceAlphaBlendFactor = .zero
                     attachment.destinationRGBBlendFactor = .oneMinusSourceAlpha
                     attachment.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+                case .multiply:
+                    attachment.sourceRGBBlendFactor = .destinationColor
+                    attachment.destinationRGBBlendFactor = .oneMinusSourceAlpha
+                    attachment.sourceAlphaBlendFactor = .one
+                    attachment.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+                case .screen:
+                    attachment.sourceRGBBlendFactor = .one
+                    attachment.destinationRGBBlendFactor = .oneMinusSourceColor
+                    attachment.sourceAlphaBlendFactor = .one
+                    attachment.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+                case .add:
+                    attachment.sourceRGBBlendFactor = .one
+                    attachment.destinationRGBBlendFactor = .one
+                    attachment.sourceAlphaBlendFactor = .one
+                    attachment.destinationAlphaBlendFactor = .oneMinusSourceAlpha
                 case .none:
                     break
                 }
@@ -124,6 +187,12 @@ final class MetalStrokeRenderer {
 
         guard let dabAccumulator = pipeline(vertex: "dab_vertex", fragment: "dab_fragment",
                                             format: .rgba8Unorm, blend: .premultiplied),
+              let dabMultiply = pipeline(vertex: "dab_vertex", fragment: "dab_fragment",
+                                         format: .rgba8Unorm, blend: .multiply),
+              let dabLayerScreen = pipeline(vertex: "dab_vertex", fragment: "dab_fragment",
+                                            format: .rgba8Unorm, blend: .screen),
+              let dabAdd = pipeline(vertex: "dab_vertex", fragment: "dab_fragment",
+                                    format: .rgba8Unorm, blend: .add),
               let dabScreen = pipeline(vertex: "dab_vertex", fragment: "dab_fragment",
                                        format: .bgra8Unorm, blend: .premultiplied),
               let dabEraser = pipeline(vertex: "dab_vertex", fragment: "dab_fragment",
@@ -134,18 +203,34 @@ final class MetalStrokeRenderer {
                                   format: .bgra8Unorm, blend: .none),
               let editableBaseBlit = pipeline(vertex: "blit_vertex", fragment: "blit_editable_base_fragment",
                                               format: .rgba8Unorm, blend: .none),
+              let viewportPreviewBlit = pipeline(
+                vertex: "blit_vertex", fragment: "blit_viewport_preview_fragment",
+                format: .bgra8Unorm, blend: .none),
               let underlayBlit = pipeline(vertex: "blit_vertex", fragment: "blit_underlay_fragment",
                                           format: .bgra8Unorm, blend: .none) else { return nil }
         dabPipelineAccumulator = dabAccumulator
+        dabPipelineMultiplyAccumulator = dabMultiply
+        dabPipelineScreenAccumulator = dabLayerScreen
+        dabPipelineAddAccumulator = dabAdd
         dabPipelineScreen = dabScreen
         dabPipelineEraser = dabEraser
         smudgePipeline = smudge
         blitPipeline = blit
         editableBaseBlitPipeline = editableBaseBlit
+        viewportPreviewBlitPipeline = viewportPreviewBlit
         underlayBlitPipeline = underlayBlit
 
         for preset in [DabPreset.pencilGraphite, .charcoalTooth, .inkRound, .markerChisel,
-                       .softRound, .skinPore, .rockGrit, .halftoneDot] {
+                       .softRound, .skinPore, .rockGrit, .halftoneDot,
+                       .crowdStamp, .treeStamp, .windowStamp, .carStamp,
+                       .chairStamp, .faceExpressionStamp, .handPoseStamp,
+                       .cameraRigStamp, .characterPoseStamp, .doorStamp,
+                       .tableStamp, .sofaStamp, .buildingStamp,
+                       .streetLightStamp, .boomMicStamp, .filmLightStamp,
+                       .bedStamp, .staircaseStamp, .counterStamp,
+                       .workstationStamp, .communicationStamp, .luggageStamp,
+                       .publicTransportStamp, .animalStamp, .rockTerrainStamp,
+                       .waterStamp, .fireSmokeStamp, .weatherFXStamp] {
             dabTextures[preset] = DabTextureGenerator.makeTexture(device: device, preset: preset)
         }
     }
@@ -185,10 +270,34 @@ final class MetalStrokeRenderer {
     /// Gjør panelbildet til første, redigerbare rasterlag. Selve kilden
     /// beholdes slik at undo/rebuild kan spille historikken på nytt uten
     /// generasjonstap; eksporten flater resultatet til nye piksler.
-    func setEditableBase(cgImage: CGImage?) {
+    func setEditableBase(
+        cgImage: CGImage?,
+        maximumDimension: Int? = nil,
+        maximumPixelCount: Int? = nil
+    ) {
         guard let cgImage else { editableBaseTexture = nil; return }
-        let width = cgImage.width, height = cgImage.height
-        guard width > 0, height > 0 else { editableBaseTexture = nil; return }
+        let sourceWidth = cgImage.width
+        let sourceHeight = cgImage.height
+        guard sourceWidth > 0, sourceHeight > 0 else {
+            editableBaseTexture = nil
+            return
+        }
+        let dimensionScale = maximumDimension.map { maximumDimension in
+            min(
+                1,
+                Double(max(1, maximumDimension))
+                    / Double(max(sourceWidth, sourceHeight))
+            )
+        } ?? 1
+        let sourcePixels = Double(sourceWidth) * Double(sourceHeight)
+        let pixelScale = maximumPixelCount.map { maximumPixelCount in
+            sourcePixels > Double(max(1, maximumPixelCount))
+                ? sqrt(Double(max(1, maximumPixelCount)) / sourcePixels)
+                : 1
+        } ?? 1
+        let scale = min(dimensionScale, pixelScale)
+        let width = max(1, Int(floor(Double(sourceWidth) * scale)))
+        let height = max(1, Int(floor(Double(sourceHeight) * scale)))
         let bytesPerRow = width * 4
         var pixels = [UInt8](repeating: 0, count: bytesPerRow * height)
         guard let context = CGContext(
@@ -198,6 +307,7 @@ final class MetalStrokeRenderer {
             editableBaseTexture = nil
             return
         }
+        context.interpolationQuality = .high
         context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: false)
@@ -209,6 +319,35 @@ final class MetalStrokeRenderer {
         texture.replace(region: MTLRegionMake2D(0, 0, width, height),
                         mipmapLevel: 0, withBytes: pixels, bytesPerRow: bytesPerRow)
         editableBaseTexture = texture
+    }
+
+    /// Sets a display-only raster that already occupies camera/output space.
+    /// A dedicated texture prevents approved AI output from being sampled by
+    /// the non-destructive source-space framing transform a second time.
+    func setViewportPreview(cgImage: CGImage?) {
+        guard let cgImage else { viewportPreviewTexture = nil; return }
+        let width = cgImage.width, height = cgImage.height
+        guard width > 0, height > 0 else { viewportPreviewTexture = nil; return }
+        let bytesPerRow = width * 4
+        var pixels = [UInt8](repeating: 0, count: bytesPerRow * height)
+        guard let context = CGContext(
+            data: &pixels, width: width, height: height, bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+            viewportPreviewTexture = nil
+            return
+        }
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: false)
+        descriptor.usage = [.shaderRead]
+        guard let texture = device.makeTexture(descriptor: descriptor) else {
+            viewportPreviewTexture = nil
+            return
+        }
+        texture.replace(region: MTLRegionMake2D(0, 0, width, height),
+                        mipmapLevel: 0, withBytes: pixels, bytesPerRow: bytesPerRow)
+        viewportPreviewTexture = texture
     }
 
     /// Sett/fjern referanse-underlag. Bildet strekkes til canvas-flaten
@@ -259,6 +398,19 @@ final class MetalStrokeRenderer {
         pass.colorAttachments[0].storeAction = .store
         guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
         encoder.setRenderPipelineState(editableBaseBlitPipeline)
+        let transform = StoryboardImageAspectPolicy.aspectFillUVTransform(
+            sourceSize: ShotFramingSize(
+                width: Double(base.width), height: Double(base.height)),
+            destinationSize: ShotFramingSize(
+                width: Double(target.width), height: Double(target.height))
+        ) ?? .identity
+        var sourceUVTransform = SIMD4<Float>(
+            Float(transform.offsetX), Float(transform.offsetY),
+            Float(transform.scaleX), Float(transform.scaleY))
+        encoder.setFragmentBytes(
+            &sourceUVTransform,
+            length: MemoryLayout<SIMD4<Float>>.size,
+            index: 0)
         encoder.setFragmentTexture(base, index: 0)
         encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         encoder.endEncoding()
@@ -274,9 +426,29 @@ final class MetalStrokeRenderer {
         var rng = SeededRandom(seedKey: stroke.id)
         var dabs: [DabInstanceData] = []
         let rgb = Self.parseHex(brush.color)
-        let baseSize = max(2, brush.size * config.sizeMultiplier) * scale
+        let stampScale = stroke.stampInstance.map {
+            $0.scale * $0.depth.renderScale
+        } ?? 1
+        let baseSize = max(2, brush.size * config.sizeMultiplier)
+            * scale * stampScale
         let spacing = max(0.5, baseSize * config.spacing)
         var carry = 0.0
+        let fallbackPhysics = BrushPhysicsCatalog.profile(for: brush.type)
+        let tipModel = brush.tipModel ?? fallbackPhysics.tipModel
+        let paper = brush.paperProfile ?? fallbackPhysics.paper
+        let pigmentDepletion = max(0, min(1,
+            brush.pigmentDepletion ?? fallbackPhysics.pigmentDepletion))
+        let bleed = max(0, min(1, max(
+            brush.bleed ?? fallbackPhysics.bleed,
+            brush.wetness * 0.65
+        )))
+        let bristleCount = max(1, min(16, brush.bristleCount ?? fallbackPhysics.bristleCount))
+        let paperValue: Float = switch paper {
+        case .smooth: 0
+        case .storyboard: 1
+        case .rough: 2
+        case .absorbent: 3
+        }
 
         // Total lengde (for taper inn/ut) + fartsberegning per segment.
         var totalLength = 0.0
@@ -288,6 +460,53 @@ final class MetalStrokeRenderer {
             }
         }
         totalLength *= scale
+
+        func appendMaterialized(_ base: DabInstanceData) {
+            switch tipModel {
+            case .filament:
+                let normal = SIMD2<Double>(-sin(Double(base.rotation)), cos(Double(base.rotation)))
+                for index in 0..<bristleCount {
+                    let lane = bristleCount == 1 ? 0
+                        : Double(index) / Double(bristleCount - 1) - 0.5
+                    let irregular = (rng.next() - 0.5) * 0.16
+                    var bristle = base
+                    let offset = (lane + irregular) * Double(base.size) * 0.7
+                    bristle.position.x += Float(normal.x * offset)
+                    bristle.position.y += Float(normal.y * offset)
+                    bristle.size *= Float(0.2 + rng.next() * 0.13)
+                    bristle.alpha *= Float(0.42 + rng.next() * 0.28)
+                    bristle.stretch = SIMD2(max(1.8, base.stretch.x * 2.4),
+                                            max(0.35, base.stretch.y * 0.62))
+                    dabs.append(bristle)
+                }
+            case .particle:
+                dabs.append(base)
+                let particles = max(2, min(6, Int(2 + brush.grain * 4)))
+                for _ in 0..<particles {
+                    var particle = base
+                    let angle = rng.next() * .pi * 2
+                    let radius = rng.next() * Double(base.size) * 0.58
+                    particle.position.x += Float(cos(angle) * radius)
+                    particle.position.y += Float(sin(angle) * radius)
+                    particle.size *= Float(0.16 + rng.next() * 0.34)
+                    particle.alpha *= Float(0.3 + rng.next() * 0.38)
+                    particle.rotation += Float((rng.next() - 0.5) * .pi)
+                    dabs.append(particle)
+                }
+            case .wet:
+                dabs.append(base)
+                if bleed > 0.01 {
+                    var halo = base
+                    halo.size *= Float(1 + bleed * 0.22)
+                    halo.alpha *= Float(bleed * 0.2)
+                    halo.hardness = min(halo.hardness, 0.15)
+                    halo.grain *= 0.55
+                    dabs.append(halo)
+                }
+            case .stamp, .ribbon, .region:
+                dabs.append(base)
+            }
+        }
 
         func emit(at point: StrokePoint, direction: SIMD2<Double>,
                   traveledTotal: Double, velocity: Double) {
@@ -309,8 +528,15 @@ final class MetalStrokeRenderer {
             let presetFlow = BrushSpec.preset(brush.type, size: 1, color: "#000000", opacity: 1).flow
             let flowFactor = presetFlow > 0.001 ? min(2.5, brush.flow / presetFlow) : 1
             var alpha = brush.opacity * config.flow * flowFactor * alphaFactor
+            if let stamp = stroke.stampInstance {
+                alpha *= stamp.depth.opacityMultiplier
+            }
             if config.velocityToOpacity != 0 {
                 alpha *= max(0.5, 1 + config.velocityToOpacity * min(velocity, 2))
+            }
+            if pigmentDepletion > 0, totalLength > 0 {
+                let progress = min(1, traveledTotal / totalLength)
+                alpha *= max(0.28, 1 - pigmentDepletion * progress)
             }
             // Wet mix: pigmentet brukes opp langs strøket …
             if config.wetFalloffLength > 0 {
@@ -356,11 +582,15 @@ final class MetalStrokeRenderer {
             }
 
             var rotation: Double
-            if config.tiltRotation, let roll = point.rollAngle {
+            if let stamp = stroke.stampInstance {
+                rotation = stamp.rotationDegrees * .pi / 180
+            } else if config.tiltRotation, brush.tiltSensitivity > 0.05,
+               let roll = point.rollAngle {
                 // Pencil Pro barrel-roll: fysisk penn-rotasjon vinner over
                 // tilt-utledet retning (chisel/flate pensler).
                 rotation = roll * .pi / 180
-            } else if config.tiltRotation, point.tiltX != 0 || point.tiltY != 0 {
+            } else if config.tiltRotation, brush.tiltSensitivity > 0.05,
+                      point.tiltX != 0 || point.tiltY != 0 {
                 rotation = atan2(point.tiltY, point.tiltX)
             } else {
                 rotation = atan2(direction.y, direction.x)
@@ -372,21 +602,29 @@ final class MetalStrokeRenderer {
             // Tilt-oval (spec §12): flat stylus → bred og flat grafittside.
             var stretch = SIMD2<Float>(1, 1)
             if config.tiltOval > 0 {
-                let tilt = min(1, (point.tiltX * point.tiltX + point.tiltY * point.tiltY).squareRoot() / 90)
+                let rawTilt = (point.tiltX * point.tiltX + point.tiltY * point.tiltY).squareRoot() / 90
+                let tilt = min(1, rawTilt * max(0, brush.tiltSensitivity))
                 stretch = SIMD2(Float(1 + tilt * 2.5 * config.tiltOval),
                                 Float(max(0.3, 1 - tilt * 0.55 * config.tiltOval)))
+            }
+            if stroke.stampInstance?.flipX == true {
+                stretch.x *= -1
             }
             var dabColor = rgb
             if let jitter = brush.hueJitter, jitter > 0 {
                 dabColor = Self.hueShift(rgb, by: (rng.next() - 0.5) * 2 * jitter * 0.25)
             }
-            dabs.append(DabInstanceData(
+            appendMaterialized(DabInstanceData(
                 position: SIMD2<Float>(Float(x), Float(y)),
                 size: Float(size),
                 rotation: Float(rotation),
                 alpha: Float(min(1, alpha)),
                 stretch: stretch,
-                color: dabColor))
+                color: dabColor,
+                hardness: Float(max(0, min(1, brush.hardness))),
+                grain: Float(grain),
+                bleed: Float(bleed),
+                paperProfile: paperValue))
             // Shade 2.0 (spec §38): mikrolinjer i strøkretningen — små
             // ekstra dabs foran/bak som simulerer grafittsidens striper.
             if config.directionTexture > 0, rng.next() < config.directionTexture {
@@ -401,7 +639,11 @@ final class MetalStrokeRenderer {
                     rotation: Float(atan2(uy, ux)),
                     alpha: Float(min(1, alpha * 0.8)),
                     stretch: SIMD2(3.5, 0.5),
-                    color: rgb))
+                    color: rgb,
+                    hardness: Float(max(0, min(1, brush.hardness))),
+                    grain: Float(grain),
+                    bleed: Float(bleed),
+                    paperProfile: paperValue))
             }
         }
 
@@ -416,8 +658,16 @@ final class MetalStrokeRenderer {
                                      config: config, mode: mode, rng: &rng)
         }
 
+        if let stamp = stroke.stampInstance {
+            let radians = stamp.rotationDegrees * .pi / 180
+            emit(at: stroke.points[0],
+                 direction: SIMD2(cos(radians), sin(radians)),
+                 traveledTotal: 0, velocity: 0)
+            return dabs
+        }
         if stroke.points.count == 1 {
-            emit(at: stroke.points[0], direction: SIMD2(1, 0), traveledTotal: 0, velocity: 0)
+            emit(at: stroke.points[0], direction: SIMD2(1, 0),
+                 traveledTotal: 0, velocity: 0)
             return dabs
         }
         var accumulated = 0.0
@@ -440,7 +690,13 @@ final class MetalStrokeRenderer {
                     pressure: from.pressure + (to.pressure - from.pressure) * t,
                     tiltX: from.tiltX + (to.tiltX - from.tiltX) * t,
                     tiltY: from.tiltY + (to.tiltY - from.tiltY) * t,
-                    timestamp: from.timestamp)
+                    timestamp: from.timestamp + (to.timestamp - from.timestamp) * t,
+                    rollAngle: Self.interpolateAngleDegrees(from.rollAngle, to.rollAngle, t: t),
+                    altitudeAngle: Self.interpolate(from.altitudeAngle, to.altitudeAngle, t: t),
+                    azimuthAngle: Self.interpolateAngleRadians(from.azimuthAngle, to.azimuthAngle, t: t),
+                    velocity: from.velocity.map { value in
+                        value + ((to.velocity ?? value) - value) * t
+                    })
                 emit(at: sample, direction: SIMD2(dx, dy),
                      traveledTotal: accumulated + traveled, velocity: velocity)
             }
@@ -525,6 +781,7 @@ final class MetalStrokeRenderer {
         let markWidth = max(1, params.lineWidth * 1.6 * scale)
         let markSpacing = params.lineSpacing * sizeRatio * scale
         let alwaysCross = stroke.brush?.type == .crosshatch
+            || stroke.brush?.type == .toneCross
 
         func mark(at cx: Double, _ cy: Double, angle: Double, alpha: Double) {
             let length = markLength * (1 + (rng.next() - 0.5) * params.lengthJitter)
@@ -846,30 +1103,59 @@ final class MetalStrokeRenderer {
     private func encodeDabs(_ dabs: [DabInstanceData], preset: DabPreset,
                             into encoder: MTLRenderCommandEncoder,
                             pipeline: MTLRenderPipelineState,
-                            customTexture: MTLTexture? = nil) {
+                            customTexture: MTLTexture? = nil,
+                            viewportSize: SIMD2<Float>? = nil) {
         guard !dabs.isEmpty,
               let texture = customTexture ?? dabTextures[preset] else { return }
         encoder.setRenderPipelineState(pipeline)
-        var viewport = canvasSize
-        // ponytail: setVertexBytes tåler ~4KB; store strokes chunkes.
-        let chunkSize = 120
-        var start = 0
-        while start < dabs.count {
-            let chunk = Array(dabs[start..<min(start + chunkSize, dabs.count)])
-            chunk.withUnsafeBytes { raw in
-                encoder.setVertexBytes(raw.baseAddress!, length: raw.count, index: 0)
-            }
-            encoder.setVertexBytes(&viewport, length: MemoryLayout<SIMD2<Float>>.size, index: 1)
-            encoder.setFragmentTexture(texture, index: 0)
-            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0,
-                                   vertexCount: 4, instanceCount: chunk.count)
-            start += chunkSize
+        var viewport = viewportSize ?? canvasSize
+        // setVertexBytes har en liten inline-grense og den gamle 120-dab-
+        // chunkingen passerte 4 KB. Én eksplisitt MTLBuffer er både tryggere
+        // og én draw-call per strøk; command-bufferen beholder ressursen.
+        let instanceBuffer: MTLBuffer? = dabs.withUnsafeBytes { raw in
+            guard let base = raw.baseAddress else { return nil }
+            return device.makeBuffer(bytes: base, length: raw.count, options: .storageModeShared)
         }
+        guard let instanceBuffer else { return }
+        encoder.setVertexBuffer(instanceBuffer, offset: 0, index: 0)
+        encoder.setVertexBytes(&viewport, length: MemoryLayout<SIMD2<Float>>.size, index: 1)
+        encoder.setFragmentTexture(texture, index: 0)
+        encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0,
+                               vertexCount: 4, instanceCount: dabs.count)
     }
 
     // Dab-cache: dabsForStroke er deterministisk per (strøk, scale, opacity)
     // — full rebuild ved lag-toggle/undo gjenbruker CPU-arbeidet. Nøkkel per
     // stroke-id; opacity i nøkkelen fordi lag-opacity bakes inn i strøket.
+    static func interpolate(_ from: Double?, _ to: Double?, t: Double) -> Double? {
+        guard let from else { return to }
+        guard let to else { return from }
+        return from + (to - from) * t
+    }
+
+    /// Korteste vei over 0/360, slik at Pencil Pro-roll 359°→1° ikke
+    /// spinner chisel-tuppen nesten en hel omdreining under resampling.
+    static func interpolateAngleDegrees(_ from: Double?, _ to: Double?,
+                                        t: Double) -> Double? {
+        guard let from else { return to }
+        guard let to else { return from }
+        var delta = (to - from).truncatingRemainder(dividingBy: 360)
+        if delta > 180 { delta -= 360 }
+        if delta < -180 { delta += 360 }
+        let value = from + delta * t
+        return value.truncatingRemainder(dividingBy: 360)
+    }
+
+    static func interpolateAngleRadians(_ from: Double?, _ to: Double?,
+                                        t: Double) -> Double? {
+        guard let from else { return to }
+        guard let to else { return from }
+        var delta = (to - from).truncatingRemainder(dividingBy: .pi * 2)
+        if delta > .pi { delta -= .pi * 2 }
+        if delta < -.pi { delta += .pi * 2 }
+        return from + delta * t
+    }
+
     /// Enkel hue-rotasjon (color dynamics) — billig per-dab.
     static func hueShift(_ rgb: SIMD3<Float>, by amount: Double) -> SIMD3<Float> {
         let angle = Float(amount) * .pi * 2
@@ -887,11 +1173,43 @@ final class MetalStrokeRenderer {
         return rotated
     }
 
-    private var dabCache: [String: (scale: Double, opacity: Double, dabs: [DabInstanceData])] = [:]
+    private var dabCache: [String: (scale: Double, opacity: Double,
+                                    signature: Int, dabs: [DabInstanceData])] = [:]
     private var cachedDabTotal = 0
 
+    private func renderSignature(for stroke: PencilStroke) -> Int {
+        var hasher = Hasher()
+        hasher.combine(stroke.width)
+        hasher.combine(stroke.opacity)
+        hasher.combine(stroke.color)
+        hasher.combine(stroke.brush?.size)
+        hasher.combine(stroke.brush?.grain)
+        hasher.combine(stroke.points.count)
+        for point in stroke.points {
+            hasher.combine(point.x)
+            hasher.combine(point.y)
+            hasher.combine(point.pressure)
+            hasher.combine(point.rollAngle)
+        }
+        if let stamp = stroke.stampInstance {
+            hasher.combine(stamp.variant)
+            hasher.combine(stamp.seed)
+            hasher.combine(stamp.scale)
+            hasher.combine(stamp.rotationDegrees)
+            hasher.combine(stamp.flipX)
+            hasher.combine(stamp.depth.rawValue)
+            hasher.combine(stamp.styleProfileId)
+            hasher.combine(stamp.perspectiveSkew)
+            hasher.combine(stamp.compoundGeometry?.version)
+            hasher.combine(stamp.compoundGeometry?.paths.count)
+        }
+        return hasher.finalize()
+    }
+
     private func cachedDabs(for stroke: PencilStroke, scale: Double) -> [DabInstanceData] {
-        if let hit = dabCache[stroke.id], hit.scale == scale, hit.opacity == stroke.opacity {
+        let signature = renderSignature(for: stroke)
+        if let hit = dabCache[stroke.id], hit.scale == scale,
+           hit.opacity == stroke.opacity, hit.signature == signature {
             return hit.dabs
         }
         let dabs = dabsForStroke(stroke, scale: scale)
@@ -903,14 +1221,16 @@ final class MetalStrokeRenderer {
             dabCache.removeAll(keepingCapacity: true)
             cachedDabTotal = dabs.count
         }
-        dabCache[stroke.id] = (scale, stroke.opacity, dabs)
+        dabCache[stroke.id] = (scale, stroke.opacity, signature, dabs)
         return dabs
     }
 
     /// Append ferdig strøk til committed-akkumulator (inkrementelt).
     /// Eraser rendres destination-out (piksel-viskelær — web-paritet).
-    func commitStroke(_ stroke: PencilStroke, scale: Double) {
-        if stroke.brush?.type == .smudge || stroke.brush?.type == .softfocus {
+    func commitStroke(_ stroke: PencilStroke, scale: Double,
+                      blendMode: BoardLayerBlendMode = .normal) {
+        if stroke.brush?.type == .smudge || stroke.brush?.type == .softfocus
+            || stroke.brush?.type == .tortillon {
             smudgeStroke(stroke, scale: scale)
             return
         }
@@ -924,10 +1244,12 @@ final class MetalStrokeRenderer {
         pass.colorAttachments[0].loadAction = .load
         pass.colorAttachments[0].storeAction = .store
         guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
-        let isErase = brush.type == .eraser || brush.type == .kneaded || brush.type == .lightlift
-        let pipeline = isErase ? dabPipelineEraser : dabPipelineAccumulator
+        let isErase = brush.type == .eraser || brush.type == .vinyl
+            || brush.type == .kneaded || brush.type == .lightlift
+        let pipeline = isErase ? dabPipelineEraser : accumulatorPipeline(for: blendMode)
         encodeDabs(dabs, preset: config.preset, into: encoder, pipeline: pipeline,
-                   customTexture: customTipTexture(for: brush.stampDataURL))
+                   customTexture: resolvedTipTexture(for: stroke,
+                                                     preset: config.preset))
         encoder.endEncoding()
         buffer.commit()
         // Wet pull: dra underliggende pigment langs strøket (svakt smudge-
@@ -950,7 +1272,9 @@ final class MetalStrokeRenderer {
         // Soft focus: mye større region, mye svakere drag — jevner ut i
         // stedet for å dra (poor-man's dybdeuskarphet).
         let isSoftFocus = stroke.brush?.type == .softfocus
-        let radius = max(6.0, brushSize * (isSoftFocus ? 1.1 : 1.5)) * scale
+        let isTortillon = stroke.brush?.type == .tortillon
+        let radiusFactor = isSoftFocus ? 1.1 : (isTortillon ? 0.72 : 1.5)
+        let radius = max(6.0, brushSize * radiusFactor) * scale
         let regionSide = Int((radius * 2).rounded(.up))
         if smudgeRegionTexture == nil || smudgeRegionTexture!.width < regionSide {
             let descriptor = MTLTextureDescriptor.texture2DDescriptor(
@@ -980,6 +1304,7 @@ final class MetalStrokeRenderer {
             // 2) Stemple regionen på NY posisjon med trykkstyrt styrke
             var strength = min(0.85, (0.2 + 0.5 * max(0.05, point.pressure)) * (stroke.brush?.opacity ?? 1))
             if isSoftFocus { strength *= 0.35 }
+            if isTortillon { strength *= 0.62 }
             strength *= strengthMultiplier
             let pass = MTLRenderPassDescriptor()
             pass.colorAttachments[0].texture = committed
@@ -1011,7 +1336,17 @@ final class MetalStrokeRenderer {
     /// For GPU-barrieren i extension (queue er private).
     func queueForBarrier() -> MTLCommandBuffer? { queue.makeCommandBuffer() }
 
-    func rebuild(strokes: [PencilStroke], scale: Double) {
+    private func accumulatorPipeline(for mode: BoardLayerBlendMode) -> MTLRenderPipelineState {
+        switch mode {
+        case .normal: return dabPipelineAccumulator
+        case .multiply: return dabPipelineMultiplyAccumulator
+        case .screen: return dabPipelineScreenAccumulator
+        case .add: return dabPipelineAddAccumulator
+        }
+    }
+
+    func rebuild(strokes: [PencilStroke], scale: Double,
+                 layerBlendModes: [String: BoardLayerBlendMode] = [:]) {
         clearCommitted()
         // Én command-buffer per strøk metter command-køen (~64 in-flight) —
         // makeCommandBuffer() gir da nil og resten av strøkene droppes
@@ -1020,7 +1355,8 @@ final class MetalStrokeRenderer {
         // smudge må fortsatt gå alene (leser committed via blit).
         guard let target = committedTexture else { return }
         var batch: [(dabs: [DabInstanceData], preset: DabPreset, erase: Bool,
-                     stampDataURL: String?)] = []
+                     blendMode: BoardLayerBlendMode,
+                     texture: MTLTexture?)] = []
 
         func flushBatch() {
             guard !batch.isEmpty else { return }
@@ -1033,8 +1369,9 @@ final class MetalStrokeRenderer {
             guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
             for entry in batch {
                 encodeDabs(entry.dabs, preset: entry.preset, into: encoder,
-                           pipeline: entry.erase ? dabPipelineEraser : dabPipelineAccumulator,
-                           customTexture: customTipTexture(for: entry.stampDataURL))
+                           pipeline: entry.erase ? dabPipelineEraser
+                             : accumulatorPipeline(for: entry.blendMode),
+                           customTexture: entry.texture)
             }
             encoder.endEncoding()
             buffer.commit()
@@ -1042,15 +1379,19 @@ final class MetalStrokeRenderer {
 
         for stroke in strokes {
             guard let brush = stroke.brush else { continue }
-            if brush.type == .smudge || brush.type == .softfocus {
+            if brush.type == .smudge || brush.type == .softfocus
+                || brush.type == .tortillon {
                 flushBatch()
                 smudgeStroke(stroke, scale: scale)
                 continue
             }
             guard let config = StampConfig.forBrush(brush.type) else { continue }
-            let isErase = brush.type == .eraser || brush.type == .kneaded || brush.type == .lightlift
+            let isErase = brush.type == .eraser || brush.type == .vinyl
+                || brush.type == .kneaded || brush.type == .lightlift
+            let blendMode = layerBlendModes[stroke.boardLayer ?? "Drawing"] ?? .normal
             batch.append((cachedDabs(for: stroke, scale: scale), config.preset,
-                          isErase, brush.stampDataURL))
+                          isErase, blendMode, resolvedTipTexture(for: stroke,
+                                                    preset: config.preset)))
             // Hold batchen håndterlig (GPU-encode er billig; minne er poenget)
             if batch.count >= 40 { flushBatch() }
             // Wet pull leser committed — flush og kjør etterpasset alene.
@@ -1066,7 +1407,8 @@ final class MetalStrokeRenderer {
     func present(drawable: CAMetalDrawable,
                  activeStroke: PencilStroke?,
                  predictedStroke: PencilStroke?,
-                 scale: Double) {
+                 scale: Double,
+                 framing: ShotFramingState = .standard) {
         guard let committed = committedTexture,
               let buffer = queue.makeCommandBuffer() else { return }
         let pass = MTLRenderPassDescriptor()
@@ -1076,17 +1418,63 @@ final class MetalStrokeRenderer {
         pass.colorAttachments[0].storeAction = .store
         guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
 
+        let normalizedFraming = framing.normalized()
         var paper = paperColor
-        if let underlay = underlayTexture, underlayOpacity > 0.001 {
+        var framingUniform = SIMD4<Float>(
+            Float(normalizedFraming.centerX),
+            Float(normalizedFraming.centerY),
+            Float(normalizedFraming.zoom),
+            Float(normalizedFraming.rollDegrees * .pi / 180)
+        )
+        var sourceViewportSize = SIMD4<Float>(
+            Float(committed.width), Float(committed.height),
+            Float(drawable.texture.width), Float(drawable.texture.height))
+        if let preview = viewportPreviewTexture {
+            encoder.setRenderPipelineState(viewportPreviewBlitPipeline)
+            let transform = StoryboardImageAspectPolicy.aspectFillUVTransform(
+                sourceSize: ShotFramingSize(
+                    width: Double(preview.width), height: Double(preview.height)),
+                destinationSize: ShotFramingSize(
+                    width: Double(drawable.texture.width),
+                    height: Double(drawable.texture.height))
+            ) ?? .identity
+            var sourceUVTransform = SIMD4<Float>(
+                Float(transform.offsetX), Float(transform.offsetY),
+                Float(transform.scaleX), Float(transform.scaleY))
+            encoder.setFragmentBytes(
+                &sourceUVTransform,
+                length: MemoryLayout<SIMD4<Float>>.size,
+                index: 0)
+            encoder.setFragmentTexture(preview, index: 0)
+        } else if let underlay = underlayTexture, underlayOpacity > 0.001 {
             encoder.setRenderPipelineState(underlayBlitPipeline)
             encoder.setFragmentBytes(&paper, length: MemoryLayout<SIMD3<Float>>.size, index: 0)
             var opacity = underlayOpacity
             encoder.setFragmentBytes(&opacity, length: MemoryLayout<Float>.size, index: 1)
+            encoder.setFragmentBytes(&framingUniform,
+                                     length: MemoryLayout<SIMD4<Float>>.size, index: 2)
+            encoder.setFragmentBytes(&sourceViewportSize,
+                                     length: MemoryLayout<SIMD4<Float>>.size, index: 3)
+            let underlayTransform = StoryboardImageAspectPolicy.aspectFillUVTransform(
+                sourceSize: ShotFramingSize(
+                    width: Double(underlay.width), height: Double(underlay.height)),
+                destinationSize: ShotFramingSize(
+                    width: Double(committed.width), height: Double(committed.height))
+            ) ?? .identity
+            var underlayUVTransform = SIMD4<Float>(
+                Float(underlayTransform.offsetX), Float(underlayTransform.offsetY),
+                Float(underlayTransform.scaleX), Float(underlayTransform.scaleY))
+            encoder.setFragmentBytes(&underlayUVTransform,
+                                     length: MemoryLayout<SIMD4<Float>>.size, index: 4)
             encoder.setFragmentTexture(committed, index: 0)
             encoder.setFragmentTexture(underlay, index: 1)
         } else {
             encoder.setRenderPipelineState(blitPipeline)
             encoder.setFragmentBytes(&paper, length: MemoryLayout<SIMD3<Float>>.size, index: 0)
+            encoder.setFragmentBytes(&framingUniform,
+                                     length: MemoryLayout<SIMD4<Float>>.size, index: 2)
+            encoder.setFragmentBytes(&sourceViewportSize,
+                                     length: MemoryLayout<SIMD4<Float>>.size, index: 3)
             encoder.setFragmentTexture(committed, index: 0)
         }
         encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
@@ -1105,14 +1493,55 @@ final class MetalStrokeRenderer {
                         dabs[index].alpha = min(1, dabs[index].alpha + 0.25)
                     }
                 }
+                dabs = viewportDabs(
+                    dabs,
+                    sourceSize: SIMD2(Float(committed.width), Float(committed.height)),
+                    viewportSize: SIMD2(Float(drawable.texture.width),
+                                        Float(drawable.texture.height)),
+                    framing: normalizedFraming
+                )
                 encodeDabs(dabs, preset: config.preset, into: encoder,
                            pipeline: dabPipelineScreen,
-                           customTexture: customTipTexture(for: brush.stampDataURL))
+                           customTexture: resolvedTipTexture(for: stroke,
+                                                            preset: config.preset),
+                           viewportSize: SIMD2(Float(drawable.texture.width),
+                                               Float(drawable.texture.height)))
             }
         }
         encoder.endEncoding()
         buffer.present(drawable)
         buffer.commit()
+    }
+
+    /// Maps transient Pencil dabs from the immutable document texture into the
+    /// currently framed viewport. Committed strokes stay untouched; this is
+    /// only the low-latency active/predicted overlay shown before commit.
+    private func viewportDabs(
+        _ sourceDabs: [DabInstanceData],
+        sourceSize: SIMD2<Float>,
+        viewportSize: SIMD2<Float>,
+        framing: ShotFramingState
+    ) -> [DabInstanceData] {
+        guard sourceSize.x > 0, sourceSize.y > 0,
+              viewportSize.x > 0, viewportSize.y > 0 else { return sourceDabs }
+        let radians = Float(framing.rollDegrees * .pi / 180)
+        let cosine = cos(radians)
+        let sine = sin(radians)
+        let zoom = Float(framing.zoom)
+        let sourceToViewportScale = max(viewportSize.x / sourceSize.x,
+                                        viewportSize.y / sourceSize.y) * zoom
+        return sourceDabs.map { source in
+            var dab = source
+            let sourceCenter = SIMD2<Float>(Float(framing.centerX) * sourceSize.x,
+                                            Float(framing.centerY) * sourceSize.y)
+            let delta = source.position - sourceCenter
+            let rotated = SIMD2<Float>(delta.x * cosine - delta.y * sine,
+                                       delta.x * sine + delta.y * cosine)
+            dab.position = viewportSize * 0.5 + rotated * sourceToViewportScale
+            dab.size *= sourceToViewportScale
+            dab.rotation += radians
+            return dab
+        }
     }
 
     static func parseHex(_ hex: String) -> SIMD3<Float> {
@@ -1143,40 +1572,117 @@ extension MetalStrokeRenderer {
         buffer.waitUntilCompleted()
     }
 
-    func thumbnailDataURL(maxWidth: CGFloat = 280) -> String? {
-        waitForPendingWork()
-        guard let texture = committedTexture else { return nil }
-        let width = texture.width, height = texture.height
-        guard width > 0, height > 0 else { return nil }
+    func thumbnailDataURL(maxWidth: CGFloat = 280,
+                          framing: ShotFramingState = .standard) -> String? {
+        guard let texture = thumbnailReadbackTexture(
+            maxWidth: maxWidth, framing: framing) else { return nil }
+        let width = texture.width
+        let height = texture.height
         let bytesPerRow = width * 4
-        var pixels = [UInt8](repeating: 0, count: bytesPerRow * height)
-        texture.getBytes(&pixels, bytesPerRow: bytesPerRow,
+        let byteCount = bytesPerRow.multipliedReportingOverflow(by: height)
+        guard !byteCount.overflow else { return nil }
+        let storage = UnsafeMutableRawPointer.allocate(
+            byteCount: byteCount.partialValue,
+            alignment: 64
+        )
+        texture.getBytes(storage, bytesPerRow: bytesPerRow,
                          from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+        let pixels = Data(
+            bytesNoCopy: storage,
+            count: byteCount.partialValue,
+            deallocator: .custom { pointer, _ in pointer.deallocate() }
+        )
         let colorSpace = CGColorSpaceCreateDeviceRGB()
-        guard let provider = CGDataProvider(data: Data(pixels) as CFData),
+        let bitmapInfo = CGBitmapInfo.byteOrder32Little.union(
+            CGBitmapInfo(
+                rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue)
+        )
+        guard let provider = CGDataProvider(data: pixels as CFData),
               let image = CGImage(
                 width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
                 bytesPerRow: bytesPerRow, space: colorSpace,
-                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                bitmapInfo: bitmapInfo,
                 provider: provider, decode: nil, shouldInterpolate: true,
                 intent: .defaultIntent) else { return nil }
-        let scale = min(1, maxWidth / CGFloat(width))
-        let outSize = CGSize(width: CGFloat(width) * scale, height: CGFloat(height) * scale)
-        let renderer = UIGraphicsImageRenderer(size: outSize,
-                                               format: {
-            let format = UIGraphicsImageRendererFormat()
-            format.scale = 1
-            return format
-        }())
-        let composited = renderer.image { context in
-            UIColor.white.setFill()
-            context.fill(CGRect(origin: .zero, size: outSize))
-            UIImage(cgImage: image).draw(in: CGRect(origin: .zero, size: outSize))
-        }
         // JPEG (hvit bakgrunn komposittert — ingen alpha å miste): ~1/3 av
         // PNG-størrelsen; hele scenen POSTes ved hver synk, så payload teller.
-        guard let jpeg = composited.jpegData(compressionQuality: 0.7) else { return nil }
+        guard let jpeg = UIImage(cgImage: image)
+            .jpegData(compressionQuality: 0.7) else { return nil }
         return "data:image/jpeg;base64," + jpeg.base64EncodedString()
+    }
+
+    /// Applies camera crop, paper compositing and bilinear GPU
+    /// downsampling before CPU readback. Only the bounded output texture is
+    /// copied; the full-resolution accumulator never becomes a second Data.
+    private func thumbnailReadbackTexture(
+        maxWidth: CGFloat,
+        framing: ShotFramingState
+    ) -> MTLTexture? {
+        guard let committed = committedTexture else { return nil }
+        let normalizedFraming = framing.normalized()
+        let policy = FrameRenderMemoryPolicy.current
+        guard let outputSize = policy.readbackSize(
+            sourceWidth: committed.width,
+            sourceHeight: committed.height,
+            maximumWidth: Double(maxWidth),
+            aspectRatio: normalizedFraming.aspectRatio
+        ) else { return nil }
+        let width = max(1, Int(outputSize.width))
+        let height = max(1, Int(outputSize.height))
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .bgra8Unorm,
+            width: width,
+            height: height,
+            mipmapped: false
+        )
+        descriptor.usage = [.renderTarget, .shaderRead]
+        descriptor.storageMode = .shared
+        guard let target = device.makeTexture(descriptor: descriptor),
+              let buffer = queueForBarrier() else { return nil }
+
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = target
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].clearColor = MTLClearColor(
+            red: Double(paperColor.x),
+            green: Double(paperColor.y),
+            blue: Double(paperColor.z),
+            alpha: 1
+        )
+        pass.colorAttachments[0].storeAction = .store
+        guard let encoder = buffer.makeRenderCommandEncoder(
+            descriptor: pass) else { return nil }
+        var paper = paperColor
+        var framingUniform = SIMD4<Float>(
+            Float(normalizedFraming.centerX),
+            Float(normalizedFraming.centerY),
+            Float(normalizedFraming.zoom),
+            Float(normalizedFraming.rollDegrees * .pi / 180)
+        )
+        var sourceViewportSize = SIMD4<Float>(
+            Float(committed.width), Float(committed.height),
+            Float(width), Float(height)
+        )
+        encoder.setRenderPipelineState(blitPipeline)
+        encoder.setFragmentBytes(
+            &paper, length: MemoryLayout<SIMD3<Float>>.size, index: 0)
+        encoder.setFragmentBytes(
+            &framingUniform,
+            length: MemoryLayout<SIMD4<Float>>.size,
+            index: 2
+        )
+        encoder.setFragmentBytes(
+            &sourceViewportSize,
+            length: MemoryLayout<SIMD4<Float>>.size,
+            index: 3
+        )
+        encoder.setFragmentTexture(committed, index: 0)
+        encoder.drawPrimitives(
+            type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        encoder.endEncoding()
+        buffer.commit()
+        buffer.waitUntilCompleted()
+        return buffer.status == .completed ? target : nil
     }
 }
 
