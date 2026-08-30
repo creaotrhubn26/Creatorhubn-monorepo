@@ -16,15 +16,16 @@
   # Derfor: base = repo-rot (install hoister alt), bygg workspacet, publiser dets dist.
   command = "npm run build --workspace creatorhub-frontend"
   publish = "frontend/client/dist"
-  # Hopp over bygg som ikke rører frontend/. Produksjonsgrenene (main for
-  # creatorhubn.com, live/* for de andre merkene) bygger alltid.
+  # Hopp over bygg som ikke rører frontend/ eller Netlify-konfigurasjonen.
+  # Produksjonsgrenene (main for creatorhubn.com, live/* for de andre merkene)
+  # bygger alltid.
   #
   # Merke-isolasjon: creatorhubn.com deployer fra main, mens leadgrid.no og
   # theroleroom.com deployer fra hver sin live/*-gren (flyttes av workflowen
   # «Promoter merke»). Dermed bygger én push til main KUN CreatorHub, og en
   # regresjon på main når aldri de andre merkene før du promoterer.
   # Netlify: exit 0 = hopp over, non-zero = bygg.
-  ignore = "case \"$BRANCH\" in main|live/*) exit 1 ;; esac; git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- frontend"
+  ignore = "case \"$BRANCH\" in main|live/*) exit 1 ;; esac; git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- frontend netlify.toml netlify"
 
 [build.environment]
   NPM_FLAGS = "--legacy-peer-deps"   # matcher Vercel installCommand
