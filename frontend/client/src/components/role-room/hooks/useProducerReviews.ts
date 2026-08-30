@@ -15,7 +15,7 @@ interface UseProducerReviewsOptions {
    * Sett > 0 for å poll'e backend på intervall (ms) så klient-beslutninger og
    * -kommentarer som skjer i klientportalen (en annen enhet/sesjon) dukker opp
    * hos produsenten i tilnærmet sanntid — uten WebSocket (som ikke går gjennom
-   * Vercel-rewriten). `onProducerWorkflowEvent` dekker kun samme fane, så uten
+   * den statiske frontend-proxyen). `onProducerWorkflowEvent` dekker kun samme fane, så uten
    * polling ser ikke Stig klientens handlinger før han laster på nytt.
    */
   livePollMs?: number;

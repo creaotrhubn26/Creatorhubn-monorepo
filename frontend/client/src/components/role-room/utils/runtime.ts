@@ -26,8 +26,8 @@ export function isLeadgridDedicatedHost(hostname: string | null | undefined): bo
 
 // Deploy-preview-domener (Netlify) skal rendre Role Room-appen, slik at migrasjons-
 // og PR-previews viser samme flate som produksjon (theroleroom.com) i stedet for å
-// henge på det statiske «Laster …»-skallet. Påvirker ikke produksjon eller Vercel
-// (hostnavn der er theroleroom.com / *.vercel.app, ikke *.netlify.app).
+// henge på det statiske «Laster …»-skallet. Produksjon bruker eget domene,
+// mens Netlify branch-/deploy-previews bruker *.netlify.app.
 const ROLE_ROOM_PREVIEW_HOST_SUFFIXES = ['.netlify.app'];
 
 export function isRoleRoomDedicatedHost(hostname: string | null | undefined): boolean {

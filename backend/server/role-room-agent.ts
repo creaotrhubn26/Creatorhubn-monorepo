@@ -5632,7 +5632,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
       fallbacksUsed,
     } as RoleRoomAgentNormalizedPayload;
     // Item #40 — telemetry event. Structured prefix so ops can grep on
-    // any log backend (Render, Vercel, Datadog) without an SDK. Stays in
+    // any log backend (Render, Datadog) without an SDK. Stays in
     // a single line so log aggregators don't split it across records.
     try {
       const datapoints =

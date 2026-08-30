@@ -520,7 +520,7 @@ class CrossComponentEventBusClass {
     // Only initialize in browser environment
     if (typeof window === 'undefined') return;
 
-    // Returnerer null i prod uten eksplisitt WS-host (Vercel proxy-er ikke
+    // Returnerer null i prod uten eksplisitt WS-host (frontend-hostingen proxy-er ikke
     // WS). Da kobler vi ikke — og attemptReconnect() trigges aldri, så vi
     // unngår den uendelige «WebSocket failed»-spammen.
     const wsUrl = buildEventsWsUrl('/ws/events');

@@ -826,7 +826,7 @@ export interface PartnerInviteDetail {
 }
 
 // Named export for samtidig bruk i `import { roleRoomTalentsService }`-syntaks
-// (e.g. TalentProposalCard, AvailabilityCalendar). Vercel/Rollup følger ESM-
+// (e.g. TalentProposalCard, AvailabilityCalendar). Vite/Rollup følger ESM-
 // regler strengt: named import krever named export.
 export { roleRoomTalentsService };
 export default roleRoomTalentsService;

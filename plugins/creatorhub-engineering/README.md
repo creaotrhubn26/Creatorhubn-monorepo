@@ -17,7 +17,7 @@ dyrekjøpte feilklasser — ikke generiske råd.
 | `skills/e2e-verify` | Gate-kartet: hardened E2E-gates, Playwright-oppsett, live-smokes |
 | `skills/security-review` | Org-isolasjon, RBAC-feller, webhooks/CORS/OAuth, secrets, GDPR |
 | `skills/regression-check` | Kjente feilklasser: whitescreen, «grønn CI lyver», migrasjonsdrift, rute-skygging |
-| `skills/release-readiness` | Deploy-topologi (Render/Vercel/TestFlight/Tauri) + GO/NO-GO-sjekkliste |
+| `skills/release-readiness` | Deploy-topologi (Render/Netlify/TestFlight/Tauri) + GO/NO-GO-sjekkliste |
 | `commands/ship-check` | `/creatorhub-engineering:ship-check` — full leveransesjekk av gjeldende branch |
 
 Arbeidsflyten skillsene er bygget rundt:
@@ -43,7 +43,7 @@ versjonen og repo-versjonen holdes i sync. Repoet er kilden til sannhet.
 - Ny produksjonshendelse med ≥2 forekomster → oppdater
   `docs/architecture-rules.md` først, deretter speil klassen i
   `regression-check`-skillen.
-- Endret deploy-topologi (f.eks. Netlify-cutover, fikset Vercel-webhook) →
+- Endret deploy-topologi (f.eks. ny Netlify-site eller produksjonsgren) →
   oppdater `release-readiness` i samme PR.
 - Kildene skillsene peker på: `memory.md`, `docs/architecture-rules.md`,
   `docs/evidence/`, `docs/impact-reports/`, `docs/baselines/`,

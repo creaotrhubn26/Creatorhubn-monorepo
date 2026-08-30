@@ -31,7 +31,12 @@ npm run lint
 
 ## Deployment
 
-Deployed to Vercel. Configure environment variables in Vercel dashboard:
+Production is hosted on Netlify. CreatorHub deploys automatically from
+`main` to the Netlify site `creatorhub-frontend-mig`; the other brand sites
+are promoted independently through the `Promoter merke` workflow.
+
+Configure build environment variables in the Netlify dashboard:
+
 - `VITE_API_URL` - Backend API URL
 
 ## Project Structure

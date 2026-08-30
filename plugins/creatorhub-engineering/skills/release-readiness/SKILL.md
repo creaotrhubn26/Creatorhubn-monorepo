@@ -1,6 +1,6 @@
 ---
 name: release-readiness
-description: Pre-deploy/release checklist for the Creatorhubn monorepo — Render backend, Vercel frontend, migrations, TestFlight, Tauri releases, env vars, rollback. Use before merging to main, deploying, cutting an app release, or when asked "are we ready to ship".
+description: Pre-deploy/release checklist for the Creatorhubn monorepo — Render backend, Netlify frontend, migrations, TestFlight, Tauri releases, env vars, rollback. Use before merging to main, deploying, cutting an app release, or when asked "are we ready to ship".
 ---
 
 # Release-readiness — Creatorhubn-monorepo
@@ -13,15 +13,15 @@ Deploy-topologien og sjekklisten som faktisk gjelder. Verdikt-format:
 | Tjeneste | Hvor | Detaljer |
 |---|---|---|
 | Backend | **Render** `creatorhub-backend-rtbl`, docker (`Dockerfile`), auto-deploy fra `main` | `render.yaml`; plan **standard** — IKKE nedgrader (RAW-enhance/RawTherapee OOM-er på 512 MB); health `/api/health` |
-| Frontend | **Vercel** `creatorhub-frontend` — aliaser `creatorhubn.com`, `theroleroom.com` | Webhook er brutt → manuell `npx vercel --prod --force --yes` (DEPLOY.md) |
-| Netlify | `netlify.toml` er en PÅBEGYNT migrering, ikke live host | DNS-cutover ikke gjort; verifiser kun på deploy-preview |
+| Frontend | **Netlify** — `creatorhub-frontend-mig`, `leadgrid-no`, `theroleroom` | `creatorhubn.com` autodeployer fra `main`; `leadgrid.no` fra `live/leadgrid`; `theroleroom.com` fra `live/roleroom`; `netlify.toml` + `netlify/host-routes.json` er produksjonskildene |
 | Cron | Render cron via `Dockerfile.cron` (alpine+curl) | `scripts/cron/nextrole-trial-expiry.sh`, daglig 09:00 UTC |
 | CDN | Cloudflare Worker `workers/showcase-cdn/` + R2-proxy i frontend-config | signerte B2-URL-er, 30-dagers cache |
 | iPad | TestFlight via fastlane-workflows | `capture-testflight.yml`, `leadmap-testflight.yml` |
 | Desktop-apper | Tauri-release-workflows | `release-creatorhub-one-desk.yml`, `protools-companion-release.yml`, RELEASE.md/SIGNING.md i `apps/resolve-script-manager/` |
 
-Rolle Room-spesifikk deploy-orkestrering: `npm run deploy:role-room:prod`
-(`scripts/deploy-role-room-prod.mjs`).
+Role Room og Leadgrid promoteres via GitHub Actions-workflowen
+`Promoter merke` (`.github/workflows/promote-brand.yml`). Ikke flytt en
+`live/*`-gren som del av en vanlig CreatorHub-release.
 
 ## Sjekkliste før merge til main
 
@@ -50,8 +50,9 @@ Rolle Room-spesifikk deploy-orkestrering: `npm run deploy:role-room:prod`
   `smoke:role-room:live` / `smoke-production.sh` / Leadgrid
   post-deploy-smoketest. Overvåkning: `canary-monitor.yml`,
   `anomaly-scan.yml`, Sentry (hvis DSN satt).
-- Frontend: manuell Vercel-deploy til webhooken er fikset — glem den ikke;
-  «backend deployet, frontend gammel» er en kjent forvirringskilde.
+- Frontend: bekreft riktig Netlify-site og commit. CreatorHub autodeployer
+  fra `main`; Role Room/Leadgrid krever eksplisitt `Promoter merke` etter
+  merke-spesifikk verifisering.
 
 ## App-releaser
 

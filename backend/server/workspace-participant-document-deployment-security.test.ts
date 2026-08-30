@@ -21,30 +21,7 @@ const escapeRegExp = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 describe("Workspace participant document deployment boundaries", () => {
-  it("sets private-route response headers in Vercel", () => {
-    const config = JSON.parse(repoFile("frontend/vercel.json")) as {
-      headers?: Array<{
-        source: string;
-        headers: Array<{ key: string; value: string }>;
-      }>;
-    };
-    const route = config.headers?.find(
-      (entry) => entry.source === "/participant-document/:path*",
-    );
-    expect(route).toBeDefined();
-    const values = new Map(
-      route?.headers.map((header) => [header.key, header.value]),
-    );
-    for (const [name, expected] of Object.entries(requiredHeaders)) {
-      expect(values.get(name)).toContain(expected);
-    }
-    expect(values.get("Content-Security-Policy")).toContain(
-      "connect-src 'self'",
-    );
-    expect(values.get("Content-Security-Policy")).toBe(participantDocumentCsp);
-  });
-
-  it("sets the equivalent private-route headers in Netlify", () => {
+  it("sets private-route response headers in Netlify", () => {
     const config = repoFile("netlify.toml");
     expect(config).toContain('for = "/participant-document/*"');
     for (const [name, expected] of Object.entries(requiredHeaders)) {

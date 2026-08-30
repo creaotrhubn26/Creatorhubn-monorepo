@@ -1,15 +1,13 @@
-# Netlify-konfig — portet fra frontend/vercel.json (Vercel → Netlify-migrasjon).
+# Netlify-produksjonskonfig for CreatorHub, Leadgrid og The Role Room.
+# DNS og produksjonsdeploy er på Netlify; denne filen er sannhetskilden for
+# headers, redirects, proxyer, build og SPA-fallback. Host-/UA-ruter eies av
+# netlify/host-routes.json og genereres som en Netlify Edge Function.
 #
-# ⚠️ IKKE DNS-cutover ennå. Verifiser HELE ruting-tabellen på en Netlify deploy-preview
-# (koble repoet, la denne grenen bygge, test rutene mot preview-URL-en) FØR domenet
-# pekes om. Reverse-proxy-reglene under er load-bearing for theroleroom.no/-siden.
-#
-# Semantikk-forskjeller fra Vercel som er håndtert her:
-#   • Vercel `rewrites` (URL uendret)      → Netlify [[redirects]] status = 200
-#   • Vercel `redirects` (permanent)       → Netlify [[redirects]] status = 301
-#   • Ekstern proxy (backend/R2/worker)    → status = 200 + force = true
-#   • `(.*)`/`$1`  → `*`/`:splat` ;  første-treff-vinner (som Vercel-rekkefølgen)
-#   • `force = true` der regelen ellers ville skygges av en ekte fil (/, /robots.txt, proxyer)
+# Historisk migrasjonsnotat (2026-08-05): konfigen ble portet fra Vercel.
+# Tidligere rewrites ble Netlify [[redirects]] med status 200, permanente
+# redirects fikk status 301, `(.*)`/`$1` ble `*`/`:splat`, og eksterne
+# proxyer fikk `force = true`. Notatet beskriver kun migrasjonshistorikk;
+# Vercel er ikke et aktivt deploymål.
 
 [build]
   # `frontend` er en npm-WORKSPACE → deps (vite m.fl.) hoistes til ROT-node_modules.
@@ -27,8 +25,8 @@
   ignore = "case \"$BRANCH\" in main|live/*) exit 1 ;; esac; git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- frontend"
 
 [build.environment]
-  NPM_FLAGS = "--legacy-peer-deps"   # matcher Vercel installCommand
-  NODE_VERSION = "20"                # Vite 5 — juster ved behov
+  NPM_FLAGS = "--legacy-peer-deps"   # kreves av dagens dependency-graf
+  NODE_VERSION = "20"                # hold synkronisert med Vite/CI-runtime
 
 # Personlige dokumentlenker må aldri caches, indekseres, rammes inn eller
 # lekke URL-en via Referer. CSP-en tillater fortsatt samme-origin SPA/API,
@@ -43,7 +41,7 @@
     Content-Security-Policy = "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://creatorhub-backend-rtbl.onrender.com; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'"
 
 # ─────────────────────────── REDIRECTS (301) ───────────────────────────
-# Vercel kjører redirects FØR rewrites → de må stå først (Netlify = første-treff).
+# Netlify bruker første treff → permanente redirects må stå før rewrites.
 
 [[redirects]]
   from = "/casting.html"
@@ -57,8 +55,8 @@
   status = 301
   force = true
 # ⚠️ MERK: denne 301-en skygger rewrite-en «/theroleroom → /theroleroom.html» lenger nede
-#    (samme som på Vercel i dag). Verifiser at det er ØNSKET — ser ut som en utilsiktet
-#    skygge i den eksisterende vercel.json.
+#    (samme oppførsel som før Netlify-migrasjonen). Verifiser at det er ØNSKET —
+#    dette ser ut som en historisk, utilsiktet skygge.
 
 [[redirects]]
   from = "/theroleroom/"
@@ -66,13 +64,13 @@
   status = 301
   force = true
 
-# MERK: Vercels «/talentportal/ → /talentportal» + «/utdanningsinstitusjon/ → …»
-# (trailing-slash-stripping) er FJERNET — Netlify normaliserer trailing slash
-# automatisk (Vercel gjør ikke), så reglene matchet «/talentportal» seg selv →
-# 301-loop. Uten dem faller «/talentportal» gjennom til rewrite-en
+# Historisk migrasjonsnotat: de tidligere reglene «/talentportal/ →
+# /talentportal» og «/utdanningsinstitusjon/ → …» ble fjernet fordi Netlify
+# normaliserer trailing slash automatisk. Reglene matchet ellers seg selv og
+# ga 301-loop. Uten dem faller «/talentportal» gjennom til rewrite-en
 # «/talentportal → /theroleroom.html» (200) som forventet.
 
-# Skygget av reglene over (duplikat-source, første-treff vant på Vercel også) — beholdt
+# Skygget av reglene over (duplikat-source, Netlify bruker første treff) — beholdt
 # som dokumentasjon, deaktivert:
 #   /casting.html   → /theroleroom   (skygget av /casting.html → /)
 #   /theroleroom/   → /theroleroom   (skygget av /theroleroom/ → /)
@@ -107,11 +105,9 @@
 # 2026-08-20: /robots.txt, /sitemap.xml, /llms.txt (og all geo-prerendert
 # bot-innhold) er nå host+User-Agent-betinget rutet av
 # netlify/edge-functions/host-routes.ts — Netlify [[redirects]] har ingen
-# native Host/UA-betingelser (i motsetning til Vercels `has:`), så de
-# unconditional theroleroom-only redirectene som sto her FØR (arvet fra
-# vercel.json's evalueringsrekkefølge, aldri korrekt på Netlify) er
-# fjernet — de serverte theroleroom sin robots/sitemap/llms.txt til ALLE
-# tre domener, inkl. leadgrid.no og creatorhubn.com.
+# native Host/UA-betingelser. De tidligere ubetingede theroleroom-reglene
+# er derfor fjernet; de var aldri korrekte på Netlify og serverte Role Room
+# sin robots/sitemap/llms.txt til alle tre domener.
 
 # ─────────────────────── INTERNE REWRITES (200) ───────────────────────
 
@@ -217,15 +213,15 @@
   to = "/theroleroom.html"
   status = 200
 [[redirects]]
-  from = "/theroleroom"                # ⚠️ skygget av 301 «/theroleroom → /» over (jf. Vercel)
+  from = "/theroleroom"                # ⚠️ skygget av 301 «/theroleroom → /» over
   to = "/theroleroom.html"
   status = 200
 
 # Rot: server den BYGDE index.html (SPA-entry) — ikke theroleroom-root.html.
 # theroleroom-root.html (public/) er IKKE Vite-prosessert og peker på dev-kilden
-# `/src/main.tsx` → laster ikke i prod → blank side. På Vercel «defeates» rot-
-# rewriten av filsystem-presedens så Vercel serverer egentlig index.html; her
-# gjør vi det eksplisitt. Appen setter SEO-meta klient-side (host-bevisst).
+# `/src/main.tsx` → laster ikke i prod → blank side. Netlify serverer derfor
+# eksplisitt den bygde index.html. Appen setter SEO-meta klient-side
+# (host-bevisst).
 [[redirects]]
   from = "/"
   to = "/index.html"

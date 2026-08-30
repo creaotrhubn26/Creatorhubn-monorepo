@@ -25,7 +25,7 @@ const getRealTimeWebSocketUrl = (userIdentifier?: string | null): string | null 
     : '';
 
   // Slice 9X.69 — Prod-fix: hvis vi ikke har en eksplisitt VITE_WS_URL,
-  // ikke prøv å koble til en WS via Vercel-domenet (Vercel rewrite for
+  // ikke prøv å koble til en WS via frontend-domenet (Netlify-proxyen for
   // /api/* gjelder ikke WS). Backend må eksponere WS via egen subdomain
   // eller env-var. Inntil videre returnerer vi null så ingen tilkobling
   // forsøkes — Stines console spammet WS-feil hvert sekund.

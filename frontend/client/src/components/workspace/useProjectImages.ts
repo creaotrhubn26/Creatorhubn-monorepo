@@ -36,7 +36,7 @@ export function useProjectImages(projectId: string, panel: string) {
     fd.append('label', file.name);
     if (category) fd.append('category', category);
     // Auth-token MÅ med (appen autentiserer via Bearer, ikke cookie) og URL-en må
-    // gå gjennom buildApiUrl (ellers treffer relativ URL Vercel-fronten, ikke API-et).
+    // gå gjennom buildApiUrl (ellers treffer relativ URL Netlify-fronten, ikke API-et).
     // Content-Type fjernes så browseren setter multipart-boundary selv.
     const headers = await getAuthHeader();
     delete (headers as any)['Content-Type'];

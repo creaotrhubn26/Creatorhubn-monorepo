@@ -8,7 +8,7 @@ import Foundation
 // MARK: - /api/admin-room/platform-status
 // ============================================================
 
-/// Health-status per provider (Render/Neon/Vercel/Stripe/Anthropic).
+/// Health-status per provider (Render/Neon/Netlify/Stripe/Anthropic).
 /// Backend (admin-room-platform-status-routes.ts) gir `metrics: Record<string,
 /// string | number>` — vi støtter begge i custom init.
 struct ProviderHealthStatus: Codable, Hashable, Identifiable {

@@ -20,7 +20,6 @@ import {
   TextField,
 } from '@mui/material';
 import {
-  CheckCircle,
   Cloud,
   Code,
   ContentCopy,
@@ -29,7 +28,6 @@ import {
 } from '@mui/icons-material';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-import { deploymentService } from '@/services/DeploymentService';
 
 interface PlatformExporterProps {
   open: boolean;
@@ -250,7 +248,6 @@ export const PlatformExporter: React.FC<PlatformExporterProps> = ({
     type: 'success' | 'error' | 'info';
     message: string;
   } | null>(null);
-  const [deploymentUrl, setDeploymentUrl] = useState('');
 
   const normalizedProjectName = useMemo(
     () => sanitizeProjectName(projectName),
@@ -359,52 +356,6 @@ export const PlatformExporter: React.FC<PlatformExporterProps> = ({
         type: 'error',
         message: error instanceof Error ? error.message : `Failed to copy ${label}`,
       });
-    }
-  };
-
-  const deployToVercel = async () => {
-    setIsExporting(true);
-    setDeploymentUrl('');
-    setExportStatus(null);
-
-    try {
-      const deploymentFiles = deploymentService.generateDeploymentFiles(
-        code.html ?? '',
-        code.css ?? '',
-        code.javascript ?? '',
-        exportFormat === 'react' ? 'react' : 'static',
-      );
-
-      const deployment = await deploymentService.deploy(
-        normalizedProjectName,
-        deploymentFiles,
-        'production',
-        {
-          framework: exportFormat === 'react' ? 'react' : 'static',
-          projectName: normalizedProjectName,
-        },
-      );
-
-      if (deployment.status !== 'ready') {
-        throw new Error(deployment.error || 'Deployment failed');
-      }
-
-      const nextUrl = deployment.url.startsWith('http')
-        ? deployment.url
-        : `https://${deployment.url}`;
-
-      setDeploymentUrl(nextUrl);
-      setExportStatus({
-        type: 'success',
-        message: 'Deployed successfully to Vercel',
-      });
-    } catch (error) {
-      setExportStatus({
-        type: 'error',
-        message: error instanceof Error ? error.message : 'Deployment failed',
-      });
-    } finally {
-      setIsExporting(false);
     }
   };
 
@@ -555,59 +506,6 @@ export const PlatformExporter: React.FC<PlatformExporterProps> = ({
           </Card>
         </Box>
 
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Deploy to Production
-          </Typography>
-
-          <Card variant="outlined" sx={{ bgcolor: 'primary.50', borderColor: 'primary.main' }}>
-            <CardContent>
-              <Box display="flex" alignItems="center" gap={1} mb={1}>
-                <Cloud color="primary" />
-                <Typography variant="h6">Deploy to Vercel</Typography>
-                <Chip label="One-Click" size="small" color="primary" />
-              </Box>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Deploy the current project snapshot with one click.
-              </Typography>
-
-              {deploymentUrl && (
-                <Alert severity="success" sx={{ mt: 2 }} icon={<CheckCircle />}>
-                  <Typography variant="body2">Deployed successfully</Typography>
-                  <Button
-                    size="small"
-                    href={deploymentUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    endIcon={<Launch />}
-                    sx={{ mt: 1 }}
-                  >
-                    Visit Site
-                  </Button>
-                </Alert>
-              )}
-
-              {!deploymentService.isConfigured() && (
-                <Alert severity="info" sx={{ mt: 2 }}>
-                  <Typography variant="caption">
-                    Configure a Vercel token in settings to enable deployment.
-                  </Typography>
-                </Alert>
-              )}
-            </CardContent>
-            <CardActions>
-              <Button
-                variant="contained"
-                fullWidth
-                onClick={deployToVercel}
-                disabled={isExporting || !deploymentService.isConfigured()}
-                startIcon={<Cloud />}
-              >
-                {isExporting ? 'Deploying...' : 'Deploy Now'}
-              </Button>
-            </CardActions>
-          </Card>
-        </Box>
       </DialogContent>
 
       <DialogActions>

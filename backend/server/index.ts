@@ -19,6 +19,7 @@ import {
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
+import { isTrustedNetlifyProductionOrigin } from "./web-origin-allowlist.js";
 import multer from "multer";
 import { createRequire } from "module";
 const _require = createRequire(import.meta.url);
@@ -2049,8 +2050,8 @@ async function ensureFirmwareUpdatesCompatibilityColumns(): Promise<void> {
 const KNOWN_ORIGINS = new Set([
   'https://creatorhubn.com',
   'https://www.creatorhubn.com',
-  // Admin-dedikert host (Control Center-cockpit). Serveres av samme Vercel-
-  // prosjekt (same-origin /api/*-rewrite), men enkelte klient-kall bruker
+  // Admin-dedikert host (Control Center-cockpit). Serveres av samme Netlify-
+  // nettsted (same-origin /api/*-proxy), men enkelte klient-kall bruker
   // hardkodet backend-URL → CORS-subjekt. Uten denne CORS-blokkeres bl.a.
   // /api/auth/user på admin.creatorhubn.com (innlogging feiler).
   'https://admin.creatorhubn.com',
@@ -2090,8 +2091,9 @@ app.use(cors({
     // Ingen origin (samme-origin eller server-til-server) — tillat
     if (!origin) return callback(null, true);
     if (KNOWN_ORIGINS.has(origin)) return callback(null, origin);
-    // Vercel preview-deploys
-    if (/^https:\/\/[a-z0-9-]+-creatorhubcom\.vercel\.app$/.test(origin)) {
+    // Kun stabile Netlify-produksjonsaliaser. Preview-origins kan inneholde
+    // ukontrollert PR-kode og får derfor aldri credentialed CORS.
+    if (isTrustedNetlifyProductionOrigin(origin)) {
       return callback(null, origin);
     }
     // Ikke-matchet origin — svar uten CORS-header (browseren blokkerer da)
@@ -17339,7 +17341,7 @@ setupAdminRoleRoomEconomyRoutes({
   getRoleRoomStripeClient,
 });
 
-// ── Platform cost sync — live-hent fra Render/Neon/Vercel API
+// ── Platform cost sync — live-hent fra Render/Neon API
 setupAdminPlatformCostSyncRoutes({
   app,
   pool,

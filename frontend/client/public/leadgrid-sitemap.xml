@@ -2,7 +2,7 @@
 <!-- Sitemap for leadgrid.no (Google Search Console).
      Kun offentlige sider uten auth — rene stier per casting-main.tsx
      sin leadgrid-host-aliasing ('/' → /leadgrid, '/priser' → /leadgrid/priser).
-     Serveres via vercel.json-rewrite: leadgrid.no/sitemap.xml → denne fila. -->
+     Serveres via Netlify-routing: leadgrid.no/sitemap.xml → denne fila. -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://leadgrid.no/</loc>

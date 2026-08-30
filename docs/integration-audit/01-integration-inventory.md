@@ -123,7 +123,7 @@ Render-tjeneste (`creatorhub-backend`, API-oppslag 2026-07-10, kun navn lest):**
 | `ROLE_ROOM_LINKEDIN_*` | linkedin (Role Room) | **Nei** (deklarert i render.yaml, aldri satt) | Verifiser om RR-LinkedIn-flyten faller tilbake på plain `LINKEDIN_*` eller er død |
 
 **To prod-backender med credential-drift (funn 2026-07-10):**
-`creatorhub-backend` (creatorhub-backend-rtbl — dit Vercel-rewrites går, 233
+`creatorhub-backend` (creatorhub-backend-rtbl — dit Netlify-proxyene går, 233
 env-vars) og `backend` (backend-djm5 — som `frontend/.env.example` fortsatt
 peker på, 86 env-vars med eget sett: `OPENAI_API_KEY`, `COHERE_API_KEY`,
 `FACEBOOK_*`/`INSTAGRAM_*`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`/`ADC_JSON`,

@@ -54,7 +54,7 @@ Tabellen i Seksjon B nedenfor er annotert med ✅ for løste funn.
 |---|---|
 | «Express 5» | **Express 4** (4.22.1) kjører serveren. Express 5 lå kun i ubrukt root-package. |
 | «React + Next.js» | Frontend er en **Vite + React SPA** (wouter-routing, React 18.3.1). Next.js er en **ubrukt** backend-dependency. |
-| «Hosting: Vercel» | **Kun frontend** på Vercel. **Backend kjører på Render** (Docker, Render Cron). |
+| «Hosting: Vercel» | **Historisk auditfunn (2026-05-27):** frontenden kjørte da på Vercel og backend på Render. **Nå (2026-08-30):** frontenden kjører kun på Netlify; backend kjører fortsatt på Render. |
 
 ## B. Overdrevne funksjoner (status-justert / forbehold)
 

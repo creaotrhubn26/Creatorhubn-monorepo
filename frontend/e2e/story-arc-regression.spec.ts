@@ -319,7 +319,6 @@ function collectRuntimeErrors(page: Page): RuntimeErrorCollector {
     if (
       text.includes('Download the React DevTools') ||
       text.includes('404 (Not Found)') ||
-      text.includes('[Vercel Speed Insights]') ||
       text.includes('The resource <URL> was preloaded') ||
       text.includes('WebSocket connection') ||
       text.includes('forwardRef render functions accept exactly two parameters')

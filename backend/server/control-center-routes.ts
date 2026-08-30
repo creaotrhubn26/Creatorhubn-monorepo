@@ -449,8 +449,9 @@ export function setupControlCenterRoutes(deps: Deps): void {
 
   // ── GET /api/control-center/deploys ────────────────────────────────
   // Fase 2: deploy-innsikt. Read-only aggregat av Render + GitHub Actions
-  // + Vercel siste deploys. Hver provider uavhengig gated (mangler token →
-  // tom liste, ingen 500). Ingen provider-WRITE (trigge/rollback = Fase 4).
+  // + Netlify siste deploys. Hver provider uavhengig gated (mangler token →
+  // tom liste, ingen 500). Netlify leses fra offentlig deploy-feed. Ingen
+  // provider-WRITE (trigge/rollback = Fase 4).
   app.get("/api/control-center/deploys", async (req, res) => {
     const s = await requireSuperAdmin(req, res, pool, activeSessions);
     if (!s) return;
@@ -461,7 +462,7 @@ export function setupControlCenterRoutes(deps: Deps): void {
       );
       return res.json({
         ...result,
-        anyConfigured: result.providers.render || result.providers.github || result.providers.vercel,
+        anyConfigured: result.providers.render || result.providers.github || result.providers.netlify,
         generatedAt: new Date().toISOString(),
       });
     } catch (err) {

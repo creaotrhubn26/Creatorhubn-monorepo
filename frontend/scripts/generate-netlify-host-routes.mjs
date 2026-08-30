@@ -1,16 +1,13 @@
 /**
  * generate-netlify-host-routes.mjs
  *
- * Netlify Edge Functions kan ikke condition'e redirects på Host-header
- * eller User-Agent (i motsetning til Vercels `has: [{type:'host'|'header'}]`
- * — dét brukte vercel.json for host+bot-rutet SEO-innhold (geo-prerenderte
- * sider + robots.txt/sitemap.xml/llms.txt per merke). Vercel→Netlify-
- * migrasjonen (2026-08-05) portet ALDRI disse reglene — vercel.json er død
- * kode siden DNS peker på Netlify, så all denne rutingen har vært helt
- * borte i ~2 uker (leadgrid.no viste CreatorHub-branding til alle bots).
+ * Netlify [[redirects]] kan ikke betinge regler på Host-header eller
+ * User-Agent. De host-/bot-rutede SEO-sidene (geo-prerenderte sider +
+ * robots.txt/sitemap.xml/llms.txt per merke) må derfor kjøres som en Edge
+ * Function. Den Netlify-eide rutekilden er netlify/host-routes.json.
  *
  * Genererer HELE edge-funksjonen netlify/edge-functions/host-routes.ts som
- * ÉN selvstendig fil (rute-logikk + rute-tabell fra vercel.json inlinet i
+ * ÉN selvstendig fil (rute-logikk + rute-tabell fra host-routes.json inlinet i
  * samme fil) — ikke to filer med en sideimport. Netlify sin Deno-edge-
  * bundler feilet ("Build script returned non-zero exit code: 2") på et
  * to-fils-oppsett (host-routes.ts importerte ./_generated-host-routes.ts);
@@ -25,51 +22,36 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..', '..');
-const vercelJsonPath = resolve(repoRoot, 'frontend/vercel.json');
+const hostRoutesPath = resolve(repoRoot, 'netlify/host-routes.json');
 const outPath = resolve(repoRoot, 'netlify/edge-functions/host-routes.ts');
 
-const vercelConfig = JSON.parse(await readFile(vercelJsonPath, 'utf8'));
-const rewrites = vercelConfig.rewrites ?? [];
+const hostRoutesConfig = JSON.parse(await readFile(hostRoutesPath, 'utf8'));
+const routes = hostRoutesConfig.routes;
 
-// Kun regler som (a) er host-betinget OG (b) peker på en av de tre SEO-
-// filtypene vi faktisk vil host-rute: geo-prerenderte sider + robots/
-// sitemap/llms.txt. Andre host-betingede Vercel-regler (gamle SPA-path-
-// rewrites til f.eks. theroleroom.html) er allerede erstattet av client-
-// side React Router + host-deteksjon — porter dem IKKE, det ville
-// reintrodusere før-SPA-atferd som memory eksplisitt dokumenterer som fikset.
-function isWanted(destination) {
-  return (
-    destination.startsWith('/geo/')
-    || /-(robots\.txt|sitemap\.xml|llms\.txt)$/.test(destination)
-  );
-}
-
-const routes = [];
-for (const r of rewrites) {
-  const has = r.has ?? [];
-  const hostCond = has.find((h) => h.type === 'host');
-  if (!hostCond) continue;
-  if (!isWanted(r.destination)) continue;
-  const uaCond = has.find((h) => h.type === 'header' && h.key === 'user-agent');
-  routes.push({
-    source: r.source,
-    hostPattern: hostCond.value,
-    uaPattern: uaCond ? uaCond.value : null,
-    destination: r.destination,
-  });
-}
-
-// Ubetingede fallback-regler (creatorhubn.com = default/siste-i-Vercel-
-// rekkefølgen for robots/sitemap/llms — ingen `has` i det hele tatt).
-for (const r of rewrites) {
-  if (r.has) continue;
-  if (!['/robots.txt', '/sitemap.xml', '/llms.txt'].includes(r.source)) continue;
-  routes.push({ source: r.source, hostPattern: null, uaPattern: null, destination: r.destination });
-}
-
-if (routes.length === 0) {
-  console.error('generate-netlify-host-routes: 0 regler funnet — det er alltid feil, avbryter.');
+if (hostRoutesConfig.version !== 1 || !Array.isArray(routes) || routes.length === 0) {
+  console.error('generate-netlify-host-routes: ugyldig eller tom rutekilde, avbryter.');
   process.exit(1);
+}
+
+for (const [index, route] of routes.entries()) {
+  const valid =
+    typeof route.source === 'string'
+    && route.source.startsWith('/')
+    && (route.hostPattern === null || typeof route.hostPattern === 'string')
+    && (route.uaPattern === null || typeof route.uaPattern === 'string')
+    && typeof route.destination === 'string'
+    && (route.destination.startsWith('/') || route.destination.startsWith('https://'));
+  if (!valid) {
+    console.error(`generate-netlify-host-routes: ugyldig regel på indeks ${index}, avbryter.`);
+    process.exit(1);
+  }
+  try {
+    if (route.hostPattern) new RegExp(`^${route.hostPattern}$`, 'i');
+    if (route.uaPattern) new RegExp(route.uaPattern, 'i');
+  } catch {
+    console.error(`generate-netlify-host-routes: ugyldig regex på indeks ${index}, avbryter.`);
+    process.exit(1);
+  }
 }
 
 await mkdir(dirname(outPath), { recursive: true });
@@ -84,12 +66,11 @@ const fileContent = `// host-routes.ts
 // ikke rediger for hånd, endre generator-scriptet i stedet. Regenereres
 // ved hver frontend-build (npm run build:netlify-host-routes).
 //
-// Netlify Edge Function — gjenoppretter host+bot-UA-betinget SEO-ruting
-// (geo-prerenderte sider + robots.txt/sitemap.xml/llms.txt per merke) som
-// levde i frontend/vercel.json's \`has: [{type:'host'|'header'}]\`-regler
-// FØR Vercel→Netlify-migrasjonen (2026-08-05). Netlify [[redirects]] har
-// ingen native Host/User-Agent-betingelser (kun Country/Language/Role),
-// derfor Edge Function — vercel.json er fortsatt KILDEN til reglene.
+// Netlify Edge Function — host+bot-UA-betinget SEO-ruting for
+// geo-prerenderte sider + robots.txt/sitemap.xml/llms.txt per merke.
+// Netlify [[redirects]] har ingen native Host/User-Agent-betingelser (kun
+// Country/Language/Role), derfor Edge Function. Rutekilden er
+// netlify/host-routes.json.
 //
 // Uten dette: leadgrid.no/theroleroom.com viser CreatorHub-branding og
 // tom SPA-shell til ALLE bots (Googlebot, GPTBot, social-unfurl osv.) —

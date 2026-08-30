@@ -716,7 +716,7 @@ export function setupRoleRoomMarketingPlanRoutes(
   // Item #168 ekte fiks — thumbnail-generering. Bruker post-hook + brand-
   // farger som prompt. Returnerer URL (gyldig 60 min for OpenAI).
   // Frontend rendrer som <img>. For varig persistering må vi senere
-  // laste opp til Vercel Blob / R2.
+  // laste opp til R2.
   //
   // Provider-routing (#59):
   //   1. Hvis AI_GATEWAY_API_KEY er satt → ruter via Vercel AI Gateway

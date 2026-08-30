@@ -6,8 +6,8 @@
  *   - Alle competitor-sammenligning-sider (/vs-*)
  *   - Alle publiserte brief-utgaver (/brief/<slug>)
  *
- * Erstatter den statiske theroleroom-sitemap.xml ved at vercel.json
- * rewriter /sitemap.xml på theroleroom.com til /api/theroleroom-sitemap.xml.
+ * Erstatter den statiske theroleroom-sitemap.xml ved at Netlify-rutingen
+ * sender /sitemap.xml på theroleroom.com til /api/theroleroom-sitemap.xml.
  *
  * Public — ingen auth.
  */

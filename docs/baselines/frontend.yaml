@@ -61,8 +61,6 @@ components:
       - { name: "@types/react-beautiful-dnd", declared: "^13.1.8", resolved: "13.1.8" }
       - { name: "@types/react-dom", declared: "^18.3.7", resolved: "18.3.7" }
       - { name: "@types/uuid", declared: "^10.0.0", resolved: "10.0.0" }
-      - { name: "@vercel/edge", declared: "^1.3.1" }
-      - { name: "@vercel/speed-insights", declared: "^1.2.0", resolved: "1.2.0" }
       - { name: "@vitejs/plugin-react", declared: "^4.7.0", resolved: "4.7.0" }
       - { name: "@vitejs/plugin-vue", declared: "^6.0.5", resolved: "6.0.5" }
       - { name: "axe-core", declared: "^4.11.1", resolved: "4.11.1" }
