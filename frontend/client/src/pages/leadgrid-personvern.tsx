@@ -37,7 +37,7 @@ const PALETTE = {
   textFaint: 'rgba(244, 240, 255, 0.45)',
 };
 
-const LAST_UPDATED = '17. juni 2026';
+const LAST_UPDATED = '30. august 2026';
 
 export default function LeadgridPersonvern() {
   useEffect(() => {
@@ -99,6 +99,15 @@ export default function LeadgridPersonvern() {
           </P>
           <Bullets items={[
             <><strong>Brukerkonto:</strong> navn, e-postadresse, telefon, profilbilde, rolle i organisasjonen, push-token (APNs).</>,
+            <><strong>Google-innlogging (valgfritt):</strong> når du velger
+              «Fortsett med Google», mottar vi et kortvarig Google ID-token
+              med en stabil kontoidentifikator, bekreftet e-postadresse og
+              grunnleggende profilinformasjon som navn. Vi bruker bare e-post
+              og navn for å finne eller opprette Leadgrid-kontoen din. Vi
+              mottar aldri Google-passordet ditt eller tilgang til Gmail,
+              Drive, Kalender eller andre Google-tjenester gjennom denne
+              innloggingen.
+            </>,
             <><strong>Lead-data:</strong> bedriftsnavn, adresse, kontaktperson, telefon, e-post, bransje, åpen kildeinformasjon (Google Places, BRREG).</>,
             <><strong>Posisjonsdata (GPS):</strong> selgerens nåværende posisjon når app-en er aktiv (for «leads i nærheten»), og automatisk koordinat-fanging ved logging av fysiske besøk. Background-sporing skjer kun for «nær-lead»-varsling og krever eksplisitt samtykke.</>,
             <><strong>Visit-logg:</strong> tidsstempel, kontaktperson, samtale-sammendrag, neste handling, oppfølgings­dato. Stemme-dikterte notater behandles på enheten av Apple Speech og lagres som transkribert tekst på vår server.</>,
@@ -145,12 +154,29 @@ export default function LeadgridPersonvern() {
           </P>
           <Bullets items={[
             <><strong>Apple Inc.</strong>: App Store, TestFlight, APNs, iCloud Keychain.</>,
-            <><strong>Google LLC</strong>: Google Places API (geo-oppslag av bedriftsnavn). Sender kun søke-streng + brukerens grov-region, ikke andre personopplysninger.</>,
+            <><strong>Google LLC</strong>: Google Sign-In for valgfri
+              kontoautentisering, og Google Places API for geo-oppslag av
+              bedriftsnavn. Ved Google Sign-In ber vi kun om{' '}
+              <code>openid</code>, <code>email</code> og <code>profile</code>.
+              Ved Places-oppslag sendes kun søkestreng og brukerens
+              grov-region, ikke øvrige konto- eller CRM-data.
+            </>,
             <><strong>Anthropic PBC</strong>: Claude AI for pitch-deck-generering, brief-generering og tale-analyse av visit-notater. Vi sender kun det som er strengt nødvendig for spørringen, og det er ingen treningsbruk i henhold til Anthropics API-avtale.</>,
             <><strong>Twilio Ireland</strong>: SMS-utsending (kun ved aktivt salgs-flyt-bruk).</>,
             <><strong>Resend, Inc.</strong>: Transaksjons-e-poster.</>,
             <><strong>Stripe Payments Europe Ltd.</strong>: Betalings­behandling for abonnement.</>,
           ]} />
+          <P>
+            <strong>Slik bruker og lagrer vi Google-brukerdata:</strong>{' '}
+            Google-ID- og tilgangstoken brukes bare kortvarig på serveren for å
+            verifisere innloggingen og lagres ikke som en Google-integrasjon.
+            Navn og bekreftet e-post lagres i Leadgrid-kontoen din på samme måte
+            som ved ordinær registrering. Opplysningene selges ikke, brukes ikke
+            til annonsering eller AI-trening, og deles ikke med andre enn våre
+            databehandlere når det er nødvendig for sikker drift av tjenesten.
+            Kontoopplysningene slettes etter reglene i punkt 6 og kan slettes på
+            forespørsel etter punkt 7.
+          </P>
         </Section>
 
         <Section title="6. Hvor lenge vi oppbevarer data">
