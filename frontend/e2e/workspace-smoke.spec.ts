@@ -14,6 +14,7 @@ import { expect, test, type ConsoleMessage } from '@playwright/test';
  */
 
 const ORIGIN = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5001';
+test.use({ serviceWorkers: 'block' });
 const AUTH_TOKEN = 'e2e-token';
 const AUTH_USER = {
   id: 'e2e-user',
@@ -50,7 +51,7 @@ function sampleProject(id: string) {
 /** Fanger uncaught exceptions + console.error som matcher kjente signaturer. */
 async function collectRuntimeErrors(page: import('@playwright/test').Page) {
   const errors: string[] = [];
-  page.on('pageerror', (err) => errors.push(`[pageerror] ${err.message}`));
+  page.on('pageerror', (err) => errors.push(`[pageerror] ${err.stack || err.message}`));
   page.on('console', (msg: ConsoleMessage) => {
     if (msg.type() !== 'error') return;
     const text = msg.text();
@@ -225,6 +226,28 @@ test('multi-project /workspace renders the picker without runtime errors', async
   expect(page.url()).toContain('/workspace');
   const bodyText = await page.locator('body').innerText();
   expect(bodyText.trim().length).toBeGreaterThan(0);
+});
+
+test('legacy /dashboard redirect tolerates a cold WorkspaceHome chunk without React #426', async ({ page }) => {
+  const errors = await collectRuntimeErrors(page);
+  await primeAuthAndApi(page, [sampleProject('p1'), sampleProject('p2')]);
+
+  let delayedWorkspaceChunk = false;
+  await page.route(/\/src\/components\/workspace\/WorkspaceHome\.tsx(?:\?.*)?$/, async (route) => {
+    delayedWorkspaceChunk = true;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await route.continue();
+  });
+
+  await page.goto(
+    `${ORIGIN}/dashboard?chGoogleStatus=success`,
+    { waitUntil: 'domcontentloaded' },
+  );
+  await page.waitForURL('**/workspace', { timeout: 30000 });
+  await expect(page.getByText('Smoke Project p1', { exact: true })).toBeVisible({ timeout: 30000 });
+
+  expect(delayedWorkspaceChunk, 'Testen må faktisk forsinke lazy-chunken').toBe(true);
+  expect(errors, `Runtime errors on /dashboard → /workspace:\n${errors.join('\n')}`).toEqual([]);
 });
 
 test('single-project /workspace auto-redirects into the workspace without React #426', async ({ page }) => {

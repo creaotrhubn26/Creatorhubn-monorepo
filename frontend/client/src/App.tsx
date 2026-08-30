@@ -456,7 +456,17 @@ const StoryArcStudioRouteWrapper = () => (
 const WorkspaceHomeRouteWrapper = () => (
   <SettingsProvider>
     <RealTimeProvider>
-      <WorkspaceHome />
+      <ErrorBoundary componentName="workspace-home-route">
+        <React.Suspense
+          fallback={
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#0a0b0f' }}>
+              <CircularProgress />
+            </Box>
+          }
+        >
+          <WorkspaceHome />
+        </React.Suspense>
+      </ErrorBoundary>
     </RealTimeProvider>
   </SettingsProvider>
 );
