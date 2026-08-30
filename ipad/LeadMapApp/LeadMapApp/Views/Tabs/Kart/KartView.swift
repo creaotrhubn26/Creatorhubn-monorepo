@@ -935,6 +935,7 @@ struct KartView: View {
     @State private var discoverySheetOpen = false
     @State private var discoveryPollTask: Task<Void, Never>?
     @State private var discoveryRadiusKmUsed: Int?
+    @State private var discoveryIndustryQueryUsed: String?
     /// 2026-08-19: "Søk anbud i stedet"-veien for brede B2B-selgere uten
     /// søkbar Places-kundetype — se LeadDiscoveryError.industryRequired.
     @State private var anbudSheetOpen = false
@@ -1352,7 +1353,7 @@ struct KartView: View {
         .sheet(isPresented: $discoverySheetOpen) {
             DiscoveryProgressView(
                 state: discoveryState,
-                discoveryQueryHint: nil,
+                discoveryQueryHint: discoveryIndustryQueryUsed,
                 radiusKmHint: discoveryRadiusKmUsed,
                 onCancel: {
                     discoveryPollTask?.cancel()
@@ -1364,9 +1365,12 @@ struct KartView: View {
                 },
                 onImportMore: {
                     discoverySheetOpen = false
-                    discoverLeadsHere()
+                    runLeadDiscovery(industryQuery: discoveryIndustryQueryUsed)
                 },
                 onClose: { discoverySheetOpen = false },
+                onRetryWithIndustryQuery: { query in
+                    runLeadDiscovery(industryQuery: query)
+                },
                 onSearchAnbud: { cpvCodes in
                     discoverySheetOpen = false
                     anbudCpvOverride = cpvCodes
@@ -3671,6 +3675,10 @@ struct KartView: View {
     /// bulk-URL-research-batchen (samme motor discover-leads bygger på)
     /// hvert 2. sek til status ikke lenger er active.
     private func discoverLeadsHere() {
+        runLeadDiscovery(industryQuery: nil)
+    }
+
+    private func runLeadDiscovery(industryQuery: String?) {
         guard !DemoModeManager.isActiveNonisolated else {
             showToast("Demo-modus — Finn leads er ikke tilgjengelig")
             return
@@ -3681,8 +3689,13 @@ struct KartView: View {
         }
         discoveryPollTask?.cancel()
         let center = currentRegion.center
+        let normalizedIndustryQuery = industryQuery?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .prefix(120)
+        let query = normalizedIndustryQuery.map(String.init).flatMap { $0.isEmpty ? nil : $0 }
         let radiusKm = min(25, max(1, Int((currentRegion.span.latitudeDelta * 111 / 2).rounded())))
         discoveryRadiusKmUsed = radiusKm
+        discoveryIndustryQueryUsed = query
         discoveryState.begin(projectName: nil)
         discoverySheetOpen = true
         discoveryPollTask = Task {
@@ -3690,6 +3703,7 @@ struct KartView: View {
                 let start = try await api.discoverLeadsForProject(
                     projectId: projectId,
                     request: LeadDiscoveryRequest(
+                        industryQuery: query,
                         geo: LeadDiscoveryGeo(lat: center.latitude, lng: center.longitude, radiusKm: radiusKm)
                     )
                 )
@@ -3734,8 +3748,10 @@ struct KartView: View {
             } catch LeadDiscoveryError.industryRequired(let cpvSuggestion, let reason) {
                 guard !Task.isCancelled else { return }
                 discoveryState.stage = .failed(
-                    reason ?? "Fant ingen søkbar kundetype for kart-søk i din bransje.",
-                    cpvSuggestion: cpvSuggestion
+                    reason ?? "Vi trenger å vite hvilke bedrifter du vil finne. " +
+                        "Skriv inn kundetype nedenfor.",
+                    cpvSuggestion: cpvSuggestion,
+                    requiresIndustryQuery: true
                 )
             } catch {
                 guard !Task.isCancelled else { return }

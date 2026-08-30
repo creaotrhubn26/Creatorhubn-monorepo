@@ -881,11 +881,20 @@ export async function searchPlaces(
     languageCode: 'no',
     maxResultCount: 20,
   };
-  if (opts.latitude && opts.longitude && opts.radiusMeters) {
+  const { latitude, longitude, radiusMeters } = opts;
+  if (
+    typeof latitude === 'number'
+    && Number.isFinite(latitude)
+    && typeof longitude === 'number'
+    && Number.isFinite(longitude)
+    && typeof radiusMeters === 'number'
+    && Number.isFinite(radiusMeters)
+    && radiusMeters > 0
+  ) {
     body.locationBias = {
       circle: {
-        center: { latitude: opts.latitude, longitude: opts.longitude },
-        radius: opts.radiusMeters,
+        center: { latitude, longitude },
+        radius: radiusMeters,
       },
     };
   }
