@@ -1881,6 +1881,7 @@ function Footer() {
               links: [
                 { label: 'Kontakt oss', href: '#demo' },
                 { label: 'Personvern', href: '/leadgrid/personvern' },
+                { label: 'Vilkår', href: '/terms-and-conditions' },
               ],
             },
           ].map((col) => (

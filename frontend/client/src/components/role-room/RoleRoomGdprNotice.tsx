@@ -35,6 +35,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import PolicyOutlinedIcon from '@mui/icons-material/PolicyOutlined';
 import { applyMarketingConsent } from '@/lib/marketingPixelsRuntime';
+import { isLeadgridDedicatedHost } from './utils/runtime';
 
 interface CookieConsentSettings {
   necessary: boolean;
@@ -139,6 +140,12 @@ const CATEGORY = {
 } as const;
 
 export default function RoleRoomGdprNotice() {
+  const isLeadgrid =
+    typeof window !== 'undefined' &&
+    isLeadgridDedicatedHost(window.location.hostname);
+  const productName = isLeadgrid ? 'Leadgrid' : 'The Role Room';
+  const privacyHref = isLeadgrid ? '/leadgrid/personvern' : '/privacy';
+  const termsHref = isLeadgrid ? '/terms-and-conditions' : '/terms';
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -196,7 +203,9 @@ export default function RoleRoomGdprNotice() {
             }}
           />
         </Stack>
-        <Typography sx={{ color: palette.textSecondary, fontSize: '0.78rem', lineHeight: 1.5, mb: 0.4 }}>{c.desc}</Typography>
+        <Typography sx={{ color: palette.textSecondary, fontSize: '0.78rem', lineHeight: 1.5, mb: 0.4 }}>
+          {c.desc.replace('The Role Room', productName)}
+        </Typography>
         <Typography sx={{ color: palette.textMuted, fontSize: '0.68rem' }}>{c.meta}</Typography>
       </Box>
     );
@@ -244,7 +253,7 @@ export default function RoleRoomGdprNotice() {
               <Typography sx={{ fontWeight: 800, color: palette.textPrimary, fontSize: '1.1rem' }}>
                 Personvern og cookies
               </Typography>
-              <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>The Role Room</Typography>
+              <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>{productName}</Typography>
             </Box>
           </Stack>
           <IconButton onClick={() => setVisible(false)} size="small" aria-label="Lukk" sx={{ color: palette.textMuted, '&:hover': { color: palette.accentBright } }}>
@@ -253,7 +262,7 @@ export default function RoleRoomGdprNotice() {
         </Stack>
 
         <Typography sx={{ color: palette.textSecondary, fontSize: '0.88rem', lineHeight: 1.65, mb: 1.6 }}>
-          <strong style={{ color: palette.textPrimary }}>Vi respekterer personvernet ditt.</strong> The Role Room bruker
+          <strong style={{ color: palette.textPrimary }}>Vi respekterer personvernet ditt.</strong> {productName} bruker
           cookies. Nødvendige cookies kreves for at tjenesten skal fungere — øvrige er valgfrie og krever ditt samtykke.
         </Typography>
 
@@ -340,8 +349,8 @@ export default function RoleRoomGdprNotice() {
         <Box sx={{ mt: 1.6, pt: 1.6, borderTop: `1px solid ${palette.border}` }}>
           <Stack direction="row" justifyContent="center" spacing={2} sx={{ flexWrap: 'wrap', gap: 1, mb: 0.8 }}>
             {[
-              { label: 'Personvern', href: '/privacy' },
-              { label: 'Vilkår', href: '/terms' },
+              { label: 'Personvern', href: privacyHref },
+              { label: 'Vilkår', href: termsHref },
               { label: 'Kontakt personvernombud', href: `mailto:${CONTACT_EMAIL}` },
             ].map((l) => (
               <Link key={l.href} href={l.href} sx={{ color: palette.accentBright, textDecoration: 'none', fontSize: '0.76rem', fontWeight: 600, '&:hover': { textDecoration: 'underline' } }}>

@@ -45,6 +45,7 @@ type TermsBrand = {
   website: string;
   supportEmail: string;
   socialLabel: string;
+  lastUpdated?: string;
   intro: string;
   summary: string;
   allowed: string[];
@@ -53,8 +54,54 @@ type TermsBrand = {
   aiNotice?: string[];
 };
 
+const LEADGRID_PUBLIC_HOSTS = new Set([
+  'leadgrid.no',
+  'www.leadgrid.no',
+  'leadgrid.theroleroom.com',
+]);
+
+function isLeadgridPublicHost(): boolean {
+  if (typeof window === 'undefined') return false;
+  return LEADGRID_PUBLIC_HOSTS.has(window.location.hostname.trim().toLowerCase());
+}
+
 function getTermsBrand(): TermsBrand {
   const brandKey = resolvePublicBrandFromWindow();
+
+  if (isLeadgridPublicHost()) {
+    return {
+      appName: 'Leadgrid',
+      subtitle: 'Vilkår for den kartbaserte CRM-plattformen Leadgrid',
+      accent: '#7c3aed',
+      accentSoft: 'rgba(124, 58, 237, 0.10)',
+      accentBorder: 'rgba(124, 58, 237, 0.24)',
+      pageBg: 'linear-gradient(135deg, #faf7ff 0%, #f3e8ff 45%, #ede9fe 100%)',
+      iconGradient: 'linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)',
+      website: 'https://leadgrid.no',
+      supportEmail: 'daniel@creatorhubn.com',
+      socialLabel: 'Leadgrid',
+      lastUpdated: '30. august 2026',
+      intro:
+        'Ved å bruke Leadgrid aksepterer du disse vilkårene for konto, abonnement, kartbasert lead-CRM, salgsoppfølging, integrasjoner og valgfrie AI-funksjoner.',
+      summary:
+        'Leadgrid leveres av Creatorhub AS og hjelper virksomheter med å finne, organisere, følge opp og dokumentere salgsleads i ett visuelt arbeidsverktøy.',
+      allowed: [
+        'Registrere og følge opp legitime bedriftsleads og salgsaktiviteter i tråd med gjeldende personvernregler.',
+        'Invitere autoriserte teammedlemmer og bruke rollebasert tilgang innenfor egen organisasjon.',
+        'Koble til Google Sign-In og andre uttrykkelig tilgjengelige integrasjoner med de tilganger som vises i samtykkeflyten.',
+      ],
+      prohibited: [
+        'Bruke Leadgrid til spam, ulovlig profilering, trakassering eller kontakt uten gyldig rettslig grunnlag.',
+        'Samle inn, laste opp eller dele opplysninger du ikke har rett til å behandle.',
+        'Omgå tilgangskontroll, dele konto eller forsøke å hente data fra andre organisasjoner.',
+      ],
+      aiNotice: [
+        'Valgfrie AI-funksjoner kan bruke relevante lead-, notat- eller pitchopplysninger for å lage utkast og anbefalinger.',
+        'AI-resultater er forslag som må kvalitetssikres av brukeren før de brukes i kundekontakt eller beslutninger.',
+        'Google Sign-In-data brukes ikke til AI-trening eller annonsering.',
+      ],
+    };
+  }
 
   if (brandKey === 'roleRoom') {
     return {
@@ -131,7 +178,13 @@ const TermsAndConditions: React.FC = () => {
   const theming = useTheming('photographer');
   const brandKey = resolvePublicBrandFromWindow();
   const brand = getTermsBrand();
-  const socialLinks = getPublicSocialProfiles(brandKey);
+  const isLeadgrid = isLeadgridPublicHost();
+  const privacyHref = isLeadgrid ? '/leadgrid/personvern' : '/privacy-policy';
+  const socialLinks = isLeadgrid ? [] : getPublicSocialProfiles(brandKey);
+
+  React.useEffect(() => {
+    document.title = brand.appName + ' · Vilkår og betingelser';
+  }, [brand.appName]);
 
   const isRoleRoom = brandKey === 'roleRoom';
   const surfaceSx = {
@@ -232,7 +285,7 @@ const TermsAndConditions: React.FC = () => {
                       {brand.appName} · Vilkår og betingelser
                     </Typography>
                     <Typography variant="body1" sx={{ color: mutedColor, mt: 1 }}>
-                      {brand.subtitle} · Sist oppdatert: 6. april 2026
+                      {brand.subtitle} · Sist oppdatert: {brand.lastUpdated ?? '6. april 2026'}
                     </Typography>
                   </Box>
                 </Stack>
@@ -281,7 +334,7 @@ const TermsAndConditions: React.FC = () => {
                   <Button variant="outlined" onClick={() => setLocation('/')}>
                     Tilbake til forsiden
                   </Button>
-                  <Button variant="text" href="/privacy-policy" sx={{ color: brand.accent }}>
+                  <Button variant="text" href={privacyHref} sx={{ color: brand.accent }}>
                     Personvernerklæring
                   </Button>
                 </Stack>
@@ -359,10 +412,17 @@ const TermsAndConditions: React.FC = () => {
               4. Integrasjoner, AI og tredjepartstjenester
             </Typography>
             <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
-              Tjenesten kan kobles til tredjepartstjenester som Google Workspace, betalingsleverandører, bedriftsoppslag og AI-tjenester. Når du eller administrator aktiverer slike integrasjoner, godtar du at relevante data behandles for å levere funksjonen.
+              {isLeadgrid
+                ? 'Leadgrid bruker Google Sign-In til valgfri kontoautentisering, Google Places til bedriftsoppslag og kan bruke betalings- og AI-leverandører for funksjoner du aktiverer.'
+                : 'Tjenesten kan kobles til tredjepartstjenester som Google Workspace, betalingsleverandører, bedriftsoppslag og AI-tjenester. Når du eller administrator aktiverer slike integrasjoner, godtar du at relevante data behandles for å levere funksjonen.'}
             </Typography>
             <List>
-              <ListItem disableGutters><ListItemText primary="Google-integrasjoner" secondary="Dokumenter, kalender, e-post, Tasks, YouTube, bedriftsprofiler og andre godkjente Google-funksjoner behandles bare innenfor oppsatt tilgang og scopes." /></ListItem>
+              <ListItem disableGutters><ListItemText
+                primary="Google-integrasjoner"
+                secondary={isLeadgrid
+                  ? 'Google Sign-In ber bare om openid, email og profile. Det gir ikke Leadgrid tilgang til Gmail, Drive, Kalender eller andre Google-tjenester.'
+                  : 'Dokumenter, kalender, e-post, Tasks, YouTube, bedriftsprofiler og andre godkjente Google-funksjoner behandles bare innenfor oppsatt tilgang og scopes.'}
+              /></ListItem>
               <ListItem disableGutters><ListItemText primary="AI-genererte forslag" secondary="AI-funksjoner kan generere utkast, anbefalinger og oppsummeringer, men du er ansvarlig for å kontrollere resultatene før de brukes i praksis." /></ListItem>
               <ListItem disableGutters><ListItemText primary="Tilgjengelighet og endringer" secondary="Vi kan endre, forbedre eller fjerne integrasjoner og AI-funksjoner dersom leverandører, sikkerhetskrav eller produktbehov tilsier det." /></ListItem>
             </List>
@@ -468,7 +528,7 @@ const TermsAndConditions: React.FC = () => {
             <Typography variant="body1" sx={{ color: bodyColor, lineHeight: 1.8, mb: 2 }}>
               Din bruk av tjenesten er også underlagt vår personvernerklæring. Disse vilkårene reguleres av norsk rett. Eventuelle tvister skal søkes løst i minnelighet først, og kan deretter bringes inn for ordinære domstoler i Norge med mindre ufravikelig forbrukerlovgivning sier noe annet.
             </Typography>
-            <Button href="/privacy-policy" sx={{ color: brand.accent, px: 0 }}>
+            <Button href={privacyHref} sx={{ color: brand.accent, px: 0 }}>
               Les personvernerklæringen
             </Button>
           </Box>
@@ -498,6 +558,7 @@ const TermsAndConditions: React.FC = () => {
               <Typography variant="body2" sx={{ color: bodyColor }}>Nettside: {brand.website}</Typography>
               <Typography variant="body2" sx={{ color: bodyColor }}>E-post: {brand.supportEmail}</Typography>
             </Paper>
+            {!isLeadgrid && (
             <PublicSocialLinks
               label={brand.socialLabel}
               body={
@@ -510,6 +571,7 @@ const TermsAndConditions: React.FC = () => {
               sx={{ my: 2.2 }}
               showTopDivider
             />
+            )}
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <Button
                 variant="contained"
@@ -522,7 +584,7 @@ const TermsAndConditions: React.FC = () => {
               <Button variant="outlined" onClick={() => setLocation('/')}>
                 Tilbake til forsiden
               </Button>
-              <Button variant="text" href="/privacy-policy" sx={{ color: brand.accent }}>
+              <Button variant="text" href={privacyHref} sx={{ color: brand.accent }}>
                 Personvernerklæring
               </Button>
             </Stack>
