@@ -22,14 +22,20 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
-import { persistAuthSession } from "./auth-session-store";
+import { persistAuthSession } from "./auth-session-store.js";
 import {
   consumeOauthState,
   loadOauthState,
   persistOauthState,
 } from "./role-room-oauth-store";
 
-type SessionData = { userId: string; role?: string; email?: string };
+type SessionData = {
+  userId: string;
+  role?: string;
+  email?: string;
+  name?: string;
+  loginAt?: string;
+};
 
 interface Deps {
   app: Express;
@@ -493,11 +499,20 @@ export function registerLeadgridGoogleAuthRoutes({
       let userId: string;
       let userRole: string = "member";
       let isNew = false;
-      const userR = await client.query<{ id: string; role: string | null }>(
-        `SELECT id, role FROM users WHERE LOWER(email) = LOWER($1)`,
+      const userR = await client.query<{
+        id: string;
+        role: string | null;
+        is_active: boolean;
+      }>(
+        `SELECT id, role, COALESCE(is_active, TRUE) AS is_active
+           FROM users WHERE LOWER(email) = LOWER($1)`,
         [verified.email],
       );
       if (userR.rows.length > 0) {
+        if (userR.rows[0].is_active !== true) {
+          await client.query("ROLLBACK");
+          return res.status(403).json({ error: "account_inactive" });
+        }
         userId = userR.rows[0].id;
         userRole = userR.rows[0].role ?? "member";
       } else {
@@ -598,6 +613,8 @@ export function registerLeadgridGoogleAuthRoutes({
         userId,
         email: verified.email,
         role: userRole,
+        name: verified.name?.trim() || verified.email,
+        loginAt: new Date().toISOString(),
       });
 
       res.json({
