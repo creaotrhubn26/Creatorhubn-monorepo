@@ -628,13 +628,17 @@ import { registerClientPortalRoutes } from "./leadgrid-client-portal-routes.js";
 import { registerDeliveryPlaybookRoutes } from "./delivery-playbook-routes.js";
 import { registerSuperadminRoutes } from "./superadmin-routes.js";
 import { registerOrgSelfOnboardRoutes } from "./org-self-onboard-routes.js";
+import { createLeadgridBodyParserBoundary } from "./leadgrid-body-parser-security.js";
 import { registerPlanRoutes } from "./plan-routes.js";
 import {
   registerLeadgridBillingRoutes,
   isLeadgridInvoice,
   handleLeadgridInvoicePaid,
 } from "./leadgrid-billing-routes.js";
-import { enforceOrgStatus } from "./org-status-enforcement.js";
+import {
+  enforceOrgStatus,
+  isLeadgridOrgStatusExempt,
+} from "./org-status-enforcement.js";
 import { registerLeadgridPartnersRoutes } from "./leadgrid-partners-routes.js";
 import { registerPartnerApplicationsRoutes } from "./partner-applications-routes.js";
 import { registerPartnerIntentRoutes } from "./partner-intent-routes.js";
@@ -1099,11 +1103,18 @@ import { createReferenceProxyRouter } from "./reference-proxy-routes.js";
 import { createYouTubeRouter, buildAuthorizedYoutubeClient, buildAuthorizedGoogleCalendar } from "./youtube-routes.js";
 import { createGoogleWorkspaceExtraRouter } from "./google-workspace-extra-routes.js";
 import {
-  deletePersistedAuthSession,
+  deletePersistedAuthSessionStrict,
+  ensureAuthSessionTable,
   hydratePersistedAuthSessions,
   loadPersistedAuthSession,
   persistAuthSession,
+  persistAuthSessionInTransaction,
 } from "./auth-session-store.js";
+import {
+  createLeadgridAuthoritativeWriteMiddleware,
+  resolveAuthoritativeAuthSession,
+} from "./auth-session-authority.js";
+import { parseWebSocketRequestUrl } from "./websocket-path-policy.js";
 import { exchangeGoogleIdToken } from "./google-id-token-service.js";
 import {
   derivePreferredGoogleWorkspaceOauthApps,
@@ -2082,6 +2093,61 @@ app.use(cors({
   credentials: true,
   exposedHeaders: ['Content-Disposition'],
 }));
+// Canonicalize API URLs before any body parser. Alternate spellings must not
+// bypass the small public-auth envelope and fall through to the legacy 50 MB
+// parser before Express resolves the route.
+app.use((req, _res, next) => {
+  const normalizedUrl = normalizeIncomingApiUrl(req.url);
+  if (normalizedUrl !== req.url) {
+    req.url = normalizedUrl;
+  }
+  const normalizedOriginalUrl = normalizeIncomingApiUrl(req.originalUrl);
+  if (normalizedOriginalUrl !== req.originalUrl) {
+    req.originalUrl = normalizedOriginalUrl;
+  }
+  next();
+});
+
+// Resolve durable session authority before any request body is buffered. The
+// actual guard is configured later in module initialization, but Express does
+// not accept traffic until the module has finished and the server is started;
+// the null branch remains fail-closed for defensive startup behavior.
+let leadgridAuthoritativeWriteGuard: express.RequestHandler | null = null;
+const leadgridAuthoritativePreBodyGuard: express.RequestHandler = (
+  req,
+  res,
+  next,
+) => {
+  const guard = leadgridAuthoritativeWriteGuard;
+  if (!guard) {
+    res.status(503).json({ error: "session_authority_unavailable" });
+    return;
+  }
+  guard(req, res, next);
+};
+app.use("/api/leadgrid", leadgridAuthoritativePreBodyGuard);
+app.use("/api/admin-room/lead-map", leadgridAuthoritativePreBodyGuard);
+app.use("/api/admin-room/ipad-tokens", leadgridAuthoritativePreBodyGuard);
+
+// Parse Leadgrid payloads with route-specific, bounded limits before the
+// historical repository-wide 50 MB parser. Large Canvas/audio bodies must
+// prove a durable session before the server buffers them.
+const leadgridBodyParserBoundary = createLeadgridBodyParserBoundary({
+  resolveSession: async (request) => {
+    const resolution = await resolveAuthoritativeSessionFromRequest(request);
+    if (resolution.status === "unavailable") {
+      throw new Error("session_authority_unavailable");
+    }
+    return resolution.status === "authenticated" ? resolution.session : null;
+  },
+});
+app.use("/api/leadgrid", leadgridBodyParserBoundary);
+app.use("/api/admin-room/lead-map", leadgridBodyParserBoundary);
+app.use("/api/admin-room/ipad-tokens", leadgridBodyParserBoundary);
+// Pair exchange is intentionally public, but must never fall through to the
+// repository-wide 50 MB parser. Its exact path is JSON-only and capped at
+// 16 KiB by the public-auth classification.
+app.use("/api/ipad-tokens/exchange", leadgridBodyParserBoundary);
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
@@ -2128,14 +2194,6 @@ function normalizeIncomingApiUrl(rawUrl: string): string {
   return query ? `${normalizedPath}?${query}` : normalizedPath;
 }
 
-app.use((req, _res, next) => {
-  const normalizedUrl = normalizeIncomingApiUrl(req.url);
-  if (normalizedUrl !== req.url) {
-    req.url = normalizedUrl;
-  }
-  next();
-});
-
 // ── Role Room API (x-api-key or Bearer session token) ────
 type ActiveSessionData = {
   userId: string;
@@ -2143,6 +2201,7 @@ type ActiveSessionData = {
   name: string;
   role: string;
   loginAt: string;
+  authSessionVersion?: string;
   roleLabel?: string;
   permissions?: string[];
   profession?: string;
@@ -2155,6 +2214,8 @@ type ActiveSessionData = {
   // målbrukeren, men beholder super_adminen for gjenoppretting + audit.
   impersonatorId?: string;
   impersonatorEmail?: string;
+  impersonatorAuthSessionVersion?: string;
+  impersonatorRole?: string;
   impersonatorSnapshot?: Partial<ActiveSessionData>;
   impersonationExpiresAt?: number;
   isAdmin?: boolean;
@@ -2311,6 +2372,10 @@ async function resolveActiveSessionFromRequest(
 
   const inMemorySession = activeSessions.get(sessionToken);
   if (inMemorySession) {
+    if (inMemorySession.impersonatedByAdmin) {
+      const authority = await resolveAuthoritativeSessionFromRequest(req);
+      return authority.status === "authenticated" ? authority.session : null;
+    }
     return reconcileSessionAdminRole(sessionToken, inMemorySession);
   }
 
@@ -2324,11 +2389,49 @@ async function resolveActiveSessionFromRequest(
     sessionToken,
   );
   if (persistedSession) {
+    if (persistedSession.impersonatedByAdmin) {
+      // A cold instance must not return the derived snapshot once before the
+      // global cache-aware middleware notices it. Parent + target authority is
+      // proven before the session enters process-local cache.
+      const authority = await resolveAuthoritativeSessionFromRequest(req);
+      return authority.status === "authenticated" ? authority.session : null;
+    }
     activeSessions.set(sessionToken, persistedSession);
     return reconcileSessionAdminRole(sessionToken, persistedSession);
   }
 
   return null;
+}
+
+type AuthoritativeSessionResolution =
+  | { status: "authenticated"; session: ActiveSessionData }
+  | { status: "unauthenticated" }
+  | { status: "unavailable" };
+
+/**
+ * Canvas and other high-consequence Leadgrid writes use persisted storage as
+ * authority on every request. This makes expiry, logout, user deactivation and
+ * auth_session_version revocation win over stale process-local cache entries.
+ */
+async function resolveAuthoritativeSessionFromRequest(
+  req: express.Request,
+): Promise<AuthoritativeSessionResolution> {
+  const sessionToken = readActiveSessionToken(req);
+  if (!sessionToken || sessionToken.length > 512) {
+    return { status: "unauthenticated" };
+  }
+
+  const localDevelopmentSession = getLocalDevelopmentSession(sessionToken);
+  if (localDevelopmentSession) {
+    return { status: "authenticated", session: localDevelopmentSession };
+  }
+
+  return resolveAuthoritativeAuthSession({
+    pool,
+    token: sessionToken,
+    activeSessions,
+    onEvict: (token) => adminRoleReconciledTokens.delete(token),
+  });
 }
 
 function requireAdminSession(
@@ -2355,36 +2458,36 @@ function requireAdminSession(
 // Skriv-audit under impersonation: logg alle mutasjoner utført mens en super_admin
 // «ser som» en bruker (impersonator ansvarlig). Registrert her — FØR rutene — så
 // den fanger så godt som alle endepunkter. Fire-and-forget, blokkerer aldri.
-app.use((req, _res, next) => {
+app.use(async (req, res, next) => {
   try {
     const token = readActiveSessionToken(req);
-    const s = token ? activeSessions.get(token) : null;
-    if (s?.impersonatedByAdmin) {
-      // Håndhev 30-min TTL på HVER request. Uten dette utløper impersonasjonen
-      // kun når frontend poller /impersonation-status — bruker man token-en
-      // direkte (eller slutter å polle) beholder super_adminen målbrukerens
-      // sesjon med skrivetilgang i det uendelige. Gjenopprett fra snapshot.
-      if (s.impersonationExpiresAt && Date.now() > s.impersonationExpiresAt) {
-        const snap = s.impersonatorSnapshot || {};
-        Object.assign(s, snap);
-        s.impersonatedByAdmin = false;
-        delete s.impersonatorId; delete s.impersonatorEmail;
-        delete s.impersonatorSnapshot; delete s.impersonationExpiresAt;
-        activeSessions.set(token as string, s);
-        void persistAuthSession(pool, token as string, s);
-      } else {
-        const m = req.method.toUpperCase();
-        if ((m === "POST" || m === "PUT" || m === "PATCH" || m === "DELETE")
-            && !req.path.includes("/impersonat")) {
-          void pool.query(
-            `INSERT INTO superadmin_impersonation_audit (super_admin_id, action, target_user_id, details)
-             VALUES ($1,'write',$2,$3::jsonb)`,
-            [s.impersonatorId || null, s.userId, JSON.stringify({ method: m, path: String(req.path).slice(0, 200) })],
-          ).catch(() => { /* audit skal aldri blokkere */ });
-        }
+    let session = token ? activeSessions.get(token) : null;
+    if (token && session?.impersonatedByAdmin) {
+      // Every request carrying a known derived session re-checks both target
+      // and parent authority. Canvas/Lead Map also run the earlier pre-body
+      // guard, while this closes ordinary route-local cache use.
+      const authority = await resolveAuthoritativeSessionFromRequest(req);
+      if (authority.status === "unavailable") {
+        return res.status(503).json({ error: "session_authority_unavailable" });
+      }
+      if (authority.status !== "authenticated") {
+        return res.status(401).json({ error: "authentication_required" });
+      }
+      session = authority.session;
+      const m = req.method.toUpperCase();
+      if ((m === "POST" || m === "PUT" || m === "PATCH" || m === "DELETE")
+          && !req.path.includes("/impersonat")) {
+        void pool.query(
+          `INSERT INTO superadmin_impersonation_audit (super_admin_id, action, target_user_id, details)
+           VALUES ($1,'write',$2,$3::jsonb)`,
+          [session.impersonatorId || null, session.userId, JSON.stringify({ method: m, path: String(req.path).slice(0, 200) })],
+        ).catch(() => { /* audit skal aldri blokkere */ });
       }
     }
-  } catch { /* aldri blokkér requesten */ }
+  } catch (error) {
+    console.warn("[impersonation] authority check failed", error);
+    return res.status(503).json({ error: "session_authority_unavailable" });
+  }
   next();
 });
 
@@ -22815,6 +22918,78 @@ app.get("/api/version", (_req, res) => {
   });
 });
 
+leadgridAuthoritativeWriteGuard =
+  createLeadgridAuthoritativeWriteMiddleware({
+    resolveSession: resolveAuthoritativeSessionFromRequest,
+    independentCredentials: {
+      workflowEventServiceToken:
+        process.env.LEADGRID_WORKFLOW_EVENT_SERVICE_TOKEN,
+      cronTokensByPath: {
+        "/api/admin-room/lead-map/cron/followup-notifications": [
+          process.env.MIGRATE_TRIGGER_TOKEN,
+        ],
+        "/api/leadgrid/scheduled-reports/run": [
+          process.env.LEADGRID_CRON_TRIGGER_TOKEN,
+        ],
+        "/api/leadgrid/trips/report/cron": [
+          process.env.CRON_TRIGGER_TOKEN,
+        ],
+        "/api/leadgrid/drips/run": [
+          process.env.LEADGRID_CRON_TRIGGER_TOKEN ??
+            process.env.MIGRATE_TRIGGER_TOKEN,
+        ],
+        "/api/leadgrid/drips/converted": [
+          process.env.LEADGRID_CRON_TRIGGER_TOKEN ??
+            process.env.MIGRATE_TRIGGER_TOKEN,
+        ],
+        "/api/leadgrid/plan-grace/expire": [
+          process.env.LEADGRID_CRON_TRIGGER_TOKEN ??
+            process.env.MIGRATE_TRIGGER_TOKEN,
+        ],
+        "/api/leadgrid/api-overage/process": [
+          process.env.LEADGRID_CRON_TRIGGER_TOKEN,
+        ],
+        "/api/leadgrid/cpv/backfill": [
+          process.env.LEADGRID_CRON_TRIGGER_TOKEN,
+        ],
+        "/api/leadgrid/leadbook/ai-usage/bill": [
+          process.env.LEADGRID_CRON_TRIGGER_TOKEN,
+        ],
+        "/api/leadgrid/reverifications/check": [
+          process.env.LEADGRID_CRON_TRIGGER_TOKEN,
+        ],
+        "/api/leadgrid/doffin/cron/ukesdigest": [
+          process.env.LEADGRID_CRON_TRIGGER_TOKEN,
+        ],
+        "/api/leadgrid/doffin/cron/check-watches": [
+          process.env.LEADGRID_CRON_TRIGGER_TOKEN,
+        ],
+        "/api/leadgrid/intelligence/cron/daily-rescore": [
+          process.env.LEADGRID_INTELLIGENCE_CRON_TOKEN,
+        ],
+        "/api/leadgrid/cron/backfill-organization-id": [
+          process.env.LEADGRID_INTELLIGENCE_CRON_TOKEN,
+        ],
+        "/api/leadgrid/cron/backfill-organization-nace": [
+          process.env.LEADGRID_INTELLIGENCE_CRON_TOKEN,
+        ],
+        "/api/leadgrid/cron/expire-old-webhook-secrets": [
+          process.env.LEADGRID_INTELLIGENCE_CRON_TOKEN,
+        ],
+        "/api/leadgrid/cron/retention-cleanup": [
+          process.env.LEADGRID_INTELLIGENCE_CRON_TOKEN,
+        ],
+      },
+    },
+  });
+
+const leadgridOrgStatusGuard = enforceOrgStatus(pool, activeSessions, {
+  isExempt: isLeadgridOrgStatusExempt,
+  resolveSession: resolveActiveSessionFromRequest,
+});
+app.use("/api/admin-room/lead-map", leadgridOrgStatusGuard);
+app.use("/api/leadgrid", leadgridOrgStatusGuard);
+
 // AI-queue health for observability (Leadgrid skalering nivå 2).
 // Eksponerer per-provider RPM-bruk, in-flight og pending wait-queue.
 app.get("/api/leadgrid/ai-queue/health", async (req, res) => {
@@ -25334,7 +25509,12 @@ setupLeadMapRoutes({ app, pool, activeSessions });
 // lead-rangering, kombinert /market-points-endepunkt)
 registerLeadMapCompetitorRoutes({ app, pool, activeSessions });
 // iPad-paring (LeadMapApp + fremtidige iPad-apper)
-registerIpadPairRoutes({ app, pool, activeSessions });
+registerIpadPairRoutes({
+  app,
+  pool,
+  activeSessions,
+  resolveAuthoritativeSession: resolveAuthoritativeSessionFromRequest,
+});
 // Lead Map ↔ Prosjekt-kobling (per-bedrift filtering + ProjectCard)
 registerLeadMapProjectRoutes({ app, pool, activeSessions });
 // Lead Map ↔ Team-invitasjoner per prosjekt (eier/medlem/lese + Resend)
@@ -25529,7 +25709,7 @@ registerDeliveryPlaybookRoutes({ app, pool, activeSessions });
 // Super-admin governance: org-registry + impersonation + audit
 registerSuperadminRoutes({ app, pool, activeSessions });
 // Selv-onboard for Solo-planen (åpen registrering uten super-admin)
-registerOrgSelfOnboardRoutes({ app, pool });
+registerOrgSelfOnboardRoutes({ app, pool, activeSessions });
 // Plan-grenser/usage/upgrade for PlanUsageBar + pricing-page
 registerPlanRoutes({ app, pool, activeSessions });
 // Leadgrid billing: Customer Portal-link, invoice-liste, superadmin payments-overview
@@ -25583,10 +25763,6 @@ registerLeadStatusRoutes({ app, pool, activeSessions });
 registerLeadExportRoutes({ app, pool, activeSessions });
 // Schedulerte rapporter (ukentlig PDF på e-post til markedssjefer)
 registerLeadgridScheduledReportsRoutes({ app, pool, activeSessions });
-// Håndhev org-status (paused/suspended) på alle Leadgrid-rutene.
-// Bypass for super_admin er ON som default.
-app.use("/api/admin-room/lead-map", enforceOrgStatus(pool, activeSessions));
-app.use("/api/leadgrid", enforceOrgStatus(pool, activeSessions));
 // Brand Kit (Market Intelligence Fase 1 — wrappet website_analyses)
 registerBrandKitRoutes({
   app,
@@ -26074,7 +26250,7 @@ setupAdminUsersRoutes({
   ensureCommunityAccessForApprovedInvite,
   normalizeInvitePlanId,
   buildAdminRoleEntry,
-  persistAuthSession,
+  resolveAuthoritativeSession: resolveAuthoritativeSessionFromRequest,
 });
 
 // /api/davinci-resolve/* (8 endpoints) → ./davinci-resolve-routes.ts
@@ -45070,9 +45246,13 @@ async function upsertAdminAccountUser(input: {
   businessName?: string | null;
   organizationNumber?: string | null;
   isActive?: boolean;
-}) {
+}, options: {
+  queryClient?: Pick<Pool, "query">;
+  bumpAuthSessionVersion?: boolean;
+} = {}) {
   if (!(await hasTable("users"))) return null;
 
+  const queryClient = options.queryClient ?? pool;
   const userColumns = await getTableColumns("users");
   const existingUser = await findAdminAccountUser(input.email);
   const normalizedRole = normalizeAdminRoleId(input.role);
@@ -45113,6 +45293,12 @@ async function upsertAdminAccountUser(input: {
     if (userColumns.has("is_active") && input.isActive !== undefined) {
       pushValue("is_active", input.isActive);
     }
+    if (options.bumpAuthSessionVersion) {
+      if (!userColumns.has("auth_session_version")) {
+        throw new Error("auth_session_version_missing");
+      }
+      updates.push("auth_session_version = auth_session_version + 1");
+    }
     if (userColumns.has("updated_at")) {
       pushValue("updated_at", new Date());
     }
@@ -45122,7 +45308,7 @@ async function upsertAdminAccountUser(input: {
     }
 
     values.push(existingUser.id);
-    const result = await pool.query(
+    const result = await queryClient.query(
       `UPDATE users
        SET ${updates.join(", ")}
        WHERE id = $${values.length}
@@ -45176,7 +45362,7 @@ async function upsertAdminAccountUser(input: {
     pushInsert("updated_at", new Date());
   }
 
-  const result = await pool.query(
+  const result = await queryClient.query(
     `INSERT INTO users (${insertColumns.join(", ")})
      VALUES (${placeholders.join(", ")})
      RETURNING *`,
@@ -66957,7 +67143,7 @@ setupEditingPartnerApplicationsAdminRoutes({ app, pool, activeSessions });
 setupSuperadminImpersonationRoutes({
   app, pool, activeSessions,
   readSessionToken: readActiveSessionToken,
-  persistSession: (token, session) => persistSession(pool, { token, session }),
+  resolveAuthoritativeSession: resolveAuthoritativeSessionFromRequest,
 });
 setupSuperadminDebugRoutes({ app, pool, activeSessions, readSessionToken: readActiveSessionToken });
 
@@ -68134,13 +68320,14 @@ setupAuthRoutes({
   pool,
   buildAdminRoleEntry,
   buildSessionUserFromActiveSession,
-  deletePersistedAuthSession,
+  deletePersistedAuthSessionStrict,
   getRoleRoomCommercialLoginGate,
   getTableColumns,
   isRoleRoomCommercialLoginIntent,
   normalizeAdminProfession,
   normalizeAdminRoleId,
-  persistAuthSession,
+  ensureAuthSessionTable,
+  persistAuthSessionInTransaction,
   purgeExpiredPendingTwoFactor,
   readActiveSessionToken,
   resolveActiveSessionFromRequest,
@@ -75871,10 +76058,11 @@ leadgridRealtime.attach(httpServer, pool, activeSessions);
 // claimed upgrade-paths.
 httpServer.on("upgrade", (req, socket) => {
   try {
-    const p = new URL(
-      req.url ?? "/",
-      `http://${req.headers.host ?? "localhost"}`,
-    ).pathname;
+    const p = parseWebSocketRequestUrl(req.url)?.pathname;
+    if (!p) {
+      socket.destroy();
+      return;
+    }
     const known =
       p === "/ws" ||
       p.startsWith("/ws/") ||
@@ -75921,37 +76109,6 @@ httpServer.on("close", () => {
 
 httpServer.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend server running on port ${PORT} (HTTP + WebSocket)`);
-  // iPad-bearer hydrering — last alle ikke-revokerte ipad_tokens inn i
-  // activeSessions ved boot. Uten dette mister vi alle iPad-sessions ved
-  // hver Render-redeploy → 401 på alle iPad-kall til Daniel re-logger.
-  void (async () => {
-    try {
-      const r = await pool.query<{
-        token: string; user_id: string; email: string | null; role: string | null;
-      }>(
-        `SELECT t.token, t.user_id, u.email, u.role
-           FROM ipad_tokens t
-           JOIN users u ON u.id::text = t.user_id
-          WHERE t.revoked_at IS NULL`,
-      );
-      let hydrated = 0;
-      for (const row of r.rows) {
-        if (!activeSessions.has(row.token)) {
-          activeSessions.set(row.token, {
-            userId: row.user_id,
-            email: row.email ?? "",
-            name: row.email ?? row.user_id,
-            role: row.role ?? "member",
-            loginAt: new Date().toISOString(),
-          });
-          hydrated++;
-        }
-      }
-      console.log(`🔑 Hydrated ${hydrated} iPad-bearer-sessions fra ipad_tokens`);
-    } catch (e) {
-      console.warn("[boot] ipad_tokens hydrering feilet:", (e as Error).message);
-    }
-  })();
   // Slice 9X.79 — SmartFlyt scheduler-loop (poller every 60s)
   void (async () => {
     try {

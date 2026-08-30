@@ -8,7 +8,7 @@ import PencilKit
 import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
-import Vision
+@preconcurrency import Vision
 
 struct CanvasAnalyseSheet: View {
     let drawing: PKDrawing
@@ -309,10 +309,18 @@ struct CanvasAnalyseSheet: View {
                 analyserer = false
                 onDeviceKilde = true
                 resultat = lokal
-                if let api = appState.api {
-                    Task { try? await api.persisterCanvasAnalyse(
-                        selskap: selskap.isEmpty ? nil : selskap,
-                        leadId: leadId, resultat: lokal) }
+                if let api = appState.api,
+                   let organizationId = appState.activeOrganizationId {
+                    Task { @MainActor in
+                        do {
+                            try await api.persisterCanvasAnalyse(
+                                organizationId: organizationId,
+                                selskap: selskap.isEmpty ? nil : selskap,
+                                leadId: leadId, resultat: lokal)
+                        } catch {
+                            _ = appState.handleAPIError(error)
+                        }
+                    }
                 }
                 return
             }
@@ -329,8 +337,9 @@ struct CanvasAnalyseSheet: View {
                 lofter: ["Sende forslag til opplegg"])
             return
         }
-        guard let api = appState.api else {
-            feil = "Krever innlogget modus."
+        guard let api = appState.api,
+              let organizationId = appState.activeOrganizationId else {
+            feil = "Velg en organisasjon og logg inn på nytt."
             return
         }
         analyserer = true
@@ -340,9 +349,11 @@ struct CanvasAnalyseSheet: View {
                 ? ocrTekst
                 : ocrTekst + "\n\nOBJEKTER PÅ FLATA (plassering): " + romligTillegg
             resultat = try await api.analyserCanvasNotat(
+                organizationId: organizationId,
                 selskap: selskap.isEmpty ? nil : selskap,
                 tekst: full, leadId: leadId)
         } catch {
+            _ = appState.handleAPIError(error)
             feil = "Analysen feilet — sjekk nettet, og at «Møter · AI-møtebrief» er aktivert (Canvas-analysen bruker samme AI-nøkkel)."
         }
     }
@@ -548,16 +559,19 @@ struct PdfAnalyseSheet: View {
             valgte = Set(punkter.indices)
             return
         }
-        guard let api = appState.api else {
-            feil = "Krever innlogget modus."
+        guard let api = appState.api,
+              let organizationId = appState.activeOrganizationId else {
+            feil = "Velg en organisasjon og logg inn på nytt."
             return
         }
         do {
             resultat = try await api.analyserCanvasNotat(
+                organizationId: organizationId,
                 selskap: selskap.isEmpty ? nil : selskap,
                 tekst: dokTekst, leadId: leadId)
             valgte = Set(punkter.indices)
         } catch {
+            _ = appState.handleAPIError(error)
             feil = "Analysen feilet — sjekk nettet, og at «Møter · AI-møtebrief» er aktivert."
         }
     }
@@ -571,14 +585,21 @@ struct PdfAnalyseSheet: View {
             .map(\.element)
         guard !valgtePunkter.isEmpty, let res = resultat else { return }
         onLagPunktObjekter?(valgtePunkter)
-        if !DemoModeManager.isActiveNonisolated, let api = appState.api {
+        if !DemoModeManager.isActiveNonisolated,
+           let api = appState.api,
+           let organizationId = appState.activeOrganizationId {
             let dto = CanvasAnalyseDTO(
                 oppsummering: "Fra PDF «\(dokumentNavn)»: \(res.oppsummering)",
                 oppgaver: valgtePunkter,
                 lofter: [])
-            try? await api.persisterCanvasAnalyse(
-                selskap: selskap.isEmpty ? nil : selskap,
-                leadId: leadId, resultat: dto)
+            do {
+                try await api.persisterCanvasAnalyse(
+                    organizationId: organizationId,
+                    selskap: selskap.isEmpty ? nil : selskap,
+                    leadId: leadId, resultat: dto)
+            } catch {
+                if appState.handleAPIError(error) { return }
+            }
         }
         dismiss()
     }
@@ -785,8 +806,9 @@ struct CanvasTypeVelger: View {
 
 struct TidsreiseSheet: View {
     let notatId: String
+    let revision: Int
     let naavaerende: PKDrawing
-    let onGjenopprett: (PKDrawing) -> Void
+    let onGjenopprett: (CanvasNotatDTO) -> Void
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
@@ -794,6 +816,8 @@ struct TidsreiseSheet: View {
     @State private var versjoner: [CanvasVersjonDTO] = []
     @State private var posisjon: Double = 0
     @State private var lastet = false
+    @State private var gjenoppretter = false
+    @State private var gjenopprettFeil: String?
 
     private var valgtIndeks: Int {
         min(Int(posisjon.rounded()), maxIndeks)
@@ -886,22 +910,38 @@ struct TidsreiseSheet: View {
 
                         if valgtIndeks < maxIndeks {
                             Button {
-                                if let tegning = tegningForValgt() {
-                                    onGjenopprett(tegning)
-                                }
+                                gjenopprettValgt()
                             } label: {
-                                Text("Gjenopprett dette tidspunktet")
-                                    .font(.appScaled(size: 13, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(
-                                        LinearGradient(colors: [CvBrand.purple, CvBrand.purpleLight],
-                                                       startPoint: .leading, endPoint: .trailing),
-                                        in: RoundedRectangle(cornerRadius: 12))
+                                HStack(spacing: 8) {
+                                    if gjenoppretter { ProgressView().tint(.white) }
+                                    Text("Gjenopprett hele dokumentet")
+                                        .font(.appScaled(size: 13, weight: .bold))
+                                }
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(
+                                    LinearGradient(colors: [CvBrand.purple, CvBrand.purpleLight],
+                                                   startPoint: .leading, endPoint: .trailing),
+                                    in: RoundedRectangle(cornerRadius: 12))
                             }
                             .buttonStyle(.plain)
+                            .disabled(gjenoppretter || !valgtErFullSnapshot)
                             .padding(.horizontal, 16)
+                            if !valgtErFullSnapshot {
+                                Text("Denne eldre versjonen inneholder bare tegningen og kan forhåndsvises, men ikke trygt gjenopprettes.")
+                                    .font(.appScaled(size: 10))
+                                    .foregroundStyle(CvBrand.orange)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, 20)
+                            }
+                            if let gjenopprettFeil {
+                                Text(gjenopprettFeil)
+                                    .font(.appScaled(size: 10))
+                                    .foregroundStyle(CvBrand.red)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, 20)
+                            }
                         }
                     }
                 }
@@ -919,8 +959,16 @@ struct TidsreiseSheet: View {
         .preferredColorScheme(.dark)
         .task {
             defer { lastet = true }
-            guard let api = appState.api else { return }
-            versjoner = (try? await api.hentCanvasVersjoner(notatId: notatId)) ?? []
+            guard let api = appState.api,
+                  let organizationId = appState.activeOrganizationId else { return }
+            do {
+                versjoner = try await api.hentCanvasVersjoner(
+                    organizationId: organizationId,
+                    notatId: notatId)
+            } catch {
+                _ = appState.handleAPIError(error)
+                gjenopprettFeil = error.localizedDescription
+            }
             posisjon = Double(versjoner.count)   // start på «Nå»
         }
     }
@@ -930,6 +978,36 @@ struct TidsreiseSheet: View {
               let b64 = versjoner[valgtIndeks].drawingBase64,
               let data = Data(base64Encoded: b64) else { return nil }
         return try? PKDrawing(data: data)
+    }
+
+    private var valgtErFullSnapshot: Bool {
+        guard valgtIndeks < versjoner.count else { return false }
+        return versjoner[valgtIndeks].schemaVersion == 1
+    }
+
+    private func gjenopprettValgt() {
+        guard valgtIndeks < versjoner.count,
+              valgtErFullSnapshot,
+              let api = appState.api,
+              let organizationId = appState.activeOrganizationId else { return }
+        let versionId = versjoner[valgtIndeks].id
+        gjenoppretter = true
+        gjenopprettFeil = nil
+        Task { @MainActor in
+            defer { gjenoppretter = false }
+            do {
+                let dto = try await api.gjenopprettCanvasVersjon(
+                    organizationId: organizationId,
+                    notatId: notatId,
+                    versionId: versionId,
+                    revision: revision)
+                onGjenopprett(dto)
+                dismiss()
+            } catch {
+                _ = appState.handleAPIError(error)
+                gjenopprettFeil = error.localizedDescription
+            }
+        }
     }
 
     private func bildeForValgt() -> UIImage? {
@@ -951,4 +1029,3 @@ struct TidsreiseSheet: View {
         return f.string(from: d)
     }
 }
-

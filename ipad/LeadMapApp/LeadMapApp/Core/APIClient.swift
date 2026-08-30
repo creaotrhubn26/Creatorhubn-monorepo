@@ -4662,7 +4662,8 @@ extension APIClient {
         _ path: String,
         method: String = "GET",
         body: Data? = nil,
-        contentType: String = "application/json"
+        contentType: String = "application/json",
+        headers: [String: String] = [:]
     ) async throws -> Data {
         // Fix (2026-07-02): `baseURL.appendingPathComponent(path)` percent-koder
         // `?` og `&` i path (behandler hele strengen som én path-segment) — så
@@ -4681,6 +4682,9 @@ extension APIClient {
         req.httpMethod = method
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        for (field, value) in headers {
+            req.setValue(value, forHTTPHeaderField: field)
+        }
         req.httpBody = body
         let (data, response) = try await session.data(for: req)
         try Self.validate(response, data: data)
@@ -4694,20 +4698,33 @@ extension APIClient {
         try await _request(path, method: "GET")
     }
 
-    func _get<R: Decodable>(_ path: String) async throws -> R {
-        let data = try await _request(path, method: "GET")
+    func _get<R: Decodable>(
+        _ path: String,
+        headers: [String: String] = [:]
+    ) async throws -> R {
+        let data = try await _request(path, method: "GET", headers: headers)
         return try Self._sharedDecoder.decode(R.self, from: data)
     }
 
-    func _post<B: Encodable, R: Decodable>(_ path: String, body: B) async throws -> R {
+    func _post<B: Encodable, R: Decodable>(
+        _ path: String,
+        body: B,
+        headers: [String: String] = [:]
+    ) async throws -> R {
         let payload = try Self._sharedEncoder.encode(body)
-        let data = try await _request(path, method: "POST", body: payload)
+        let data = try await _request(
+            path, method: "POST", body: payload, headers: headers)
         return try Self._sharedDecoder.decode(R.self, from: data)
     }
 
-    func _post<B: Encodable>(_ path: String, body: B) async throws {
+    func _post<B: Encodable>(
+        _ path: String,
+        body: B,
+        headers: [String: String] = [:]
+    ) async throws {
         let payload = try Self._sharedEncoder.encode(body)
-        _ = try await _request(path, method: "POST", body: payload)
+        _ = try await _request(
+            path, method: "POST", body: payload, headers: headers)
     }
 
     func _postEmpty<R: Decodable>(_ path: String) async throws -> R {
@@ -4726,9 +4743,14 @@ extension APIClient {
         _ = try await _request(path, method: "PATCH", body: payload)
     }
 
-    func _put<B: Encodable, R: Decodable>(_ path: String, body: B) async throws -> R {
+    func _put<B: Encodable, R: Decodable>(
+        _ path: String,
+        body: B,
+        headers: [String: String] = [:]
+    ) async throws -> R {
         let payload = try Self._sharedEncoder.encode(body)
-        let data = try await _request(path, method: "PUT", body: payload)
+        let data = try await _request(
+            path, method: "PUT", body: payload, headers: headers)
         return try Self._sharedDecoder.decode(R.self, from: data)
     }
 

@@ -1,6 +1,9 @@
 import type { Pool } from "pg";
 import crypto from "crypto";
-import { persistAuthSession } from "./auth-session-store.js";
+import {
+  ensureAuthSessionTable,
+  persistAuthSessionInTransaction,
+} from "./auth-session-store.js";
 
 /// Mobile sign-in flow: a native client (iPad CaptureApp, future iOS/
 /// Android apps) obtains a Google ID token via Google Sign-In, posts it
@@ -43,6 +46,7 @@ export interface ActiveSessionLike {
   email: string;
   name: string;
   role: string;
+  authSessionVersion: string;
   loginAt: string;
   [key: string]: unknown;
 }
@@ -67,6 +71,8 @@ export type GoogleIdTokenResult =
         | "google_oauth_not_configured"
         | "invalid_id_token"
         | "email_not_verified"
+        | "account_inactive"
+        | "session_store_unavailable"
         | "user_upsert_failed";
       detail?: string;
     };
@@ -146,7 +152,12 @@ export async function exchangeGoogleIdToken(
   // carry the same value. Reusing one `$1` for two columns makes Postgres
   // try to deduce a single type from both positions and throw
   // "inconsistent types deduced for parameter $1" at prepare time.
-  const upsert = await input.pool.query<{ id: string; role: string | null }>(
+  const upsert = await input.pool.query<{
+    id: string;
+    role: string | null;
+    auth_session_version: string;
+    is_active: boolean;
+  }>(
     `
       INSERT INTO users (email, username, password, first_name, last_name, profile_image_url, role, last_login_at, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, 'user', NOW(), NOW(), NOW())
@@ -158,13 +169,18 @@ export async function exchangeGoogleIdToken(
         profile_image_url = COALESCE(EXCLUDED.profile_image_url, users.profile_image_url),
         last_login_at = NOW(),
         updated_at = NOW()
-      RETURNING id, role
+      RETURNING id, role,
+                auth_session_version::text AS auth_session_version,
+                COALESCE(is_active, TRUE) AS is_active
     `,
     [email, email, placeholderPassword, givenName, familyName, profileImage],
   );
   const userRow = upsert.rows[0];
   if (!userRow) {
     return { ok: false, status: 500, error: "user_upsert_failed" };
+  }
+  if (userRow.is_active === false) {
+    return { ok: false, status: 403, error: "account_inactive" };
   }
 
   const role = (userRow.role ?? "user").toString();
@@ -176,10 +192,30 @@ export async function exchangeGoogleIdToken(
     email,
     name: fullName,
     role,
+    authSessionVersion: String(userRow.auth_session_version ?? "0"),
     loginAt: now.toISOString(),
   };
+  if (!(await ensureAuthSessionTable(input.pool))) {
+    return {
+      ok: false,
+      status: 503,
+      error: "session_store_unavailable",
+    };
+  }
+  try {
+    await persistAuthSessionInTransaction(
+      input.pool,
+      sessionToken,
+      sessionData,
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      error: "session_store_unavailable",
+    };
+  }
   input.activeSessions.set(sessionToken, sessionData);
-  await persistAuthSession(input.pool, sessionToken, sessionData);
 
   return {
     ok: true,

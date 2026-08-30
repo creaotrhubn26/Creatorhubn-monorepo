@@ -3706,6 +3706,15 @@ private struct LeadsOversiktCard: View {
 
 // MARK: - MoteOppgaverCard (oppgaver fra møtelogging — leadgrid_oppgaver)
 
+enum MoteOppgaveLoadScope {
+    static func canApply(
+        requestedOrganizationId: String,
+        currentOrganizationId: String?
+    ) -> Bool {
+        requestedOrganizationId == currentOrganizationId
+    }
+}
+
 /// Avhukbar oppgaveliste fra etter-møte-analysen: det møtet ba deg gjøre
 /// dør ikke i etterarbeids-arket, men dukker opp her til det er gjort.
 private struct MoteOppgaverCard: View {
@@ -3785,16 +3794,36 @@ private struct MoteOppgaverCard: View {
                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.stroke, lineWidth: 1))
             }
         }
-        .task { await lastOppgaver() }
+        .task(id: appState.activeOrganizationId) {
+            let organizationId = appState.activeOrganizationId
+            oppgaver = []
+            guard let organizationId else { return }
+            await lastOppgaver(organizationId: organizationId)
+        }
     }
 
-    private func lastOppgaver() async {
+    private func lastOppgaver(organizationId: String) async {
         if DemoModeManager.isActiveNonisolated {
             if oppgaver.isEmpty { oppgaver = Self.demoOppgaver }
             return
         }
         guard let api = appState.api else { return }
-        oppgaver = (try? await api.hentMoteOppgaver()) ?? []
+        do {
+            let lastedeOppgaver = try await api.hentMoteOppgaver(
+                organizationId: organizationId)
+            guard MoteOppgaveLoadScope.canApply(
+                requestedOrganizationId: organizationId,
+                currentOrganizationId: appState.activeOrganizationId
+            ) else { return }
+            oppgaver = lastedeOppgaver
+        } catch {
+            guard MoteOppgaveLoadScope.canApply(
+                requestedOrganizationId: organizationId,
+                currentOrganizationId: appState.activeOrganizationId
+            ) else { return }
+            _ = appState.handleAPIError(error)
+            oppgaver = []
+        }
     }
 
     /// Huk av: optimistisk fjerning + PATCH (demo: kun lokalt).
@@ -3803,8 +3832,18 @@ private struct MoteOppgaverCard: View {
             oppgaver.removeAll { $0.id == o.id }
         }
         guard !DemoModeManager.isActiveNonisolated,
-              let api = appState.api else { return }
-        Task { try? await api.settMoteOppgaveStatus(id: o.id, ferdig: true) }
+              let api = appState.api,
+              let organizationId = appState.activeOrganizationId else { return }
+        Task {
+            do {
+                try await api.settMoteOppgaveStatus(
+                    organizationId: organizationId,
+                    id: o.id,
+                    ferdig: true)
+            } catch {
+                _ = appState.handleAPIError(error)
+            }
+        }
     }
 
     private static let demoOppgaver: [MoteOppgaveDTO] = [
@@ -10152,4 +10191,3 @@ struct PrizeFulfillmentSheet: View {
         name.split(separator: " ").prefix(2).map { String($0.prefix(1)) }.joined().uppercased()
     }
 }
-

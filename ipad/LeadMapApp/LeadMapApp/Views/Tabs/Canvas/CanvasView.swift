@@ -15,10 +15,11 @@ import PencilKit
 import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
-import Vision
+@preconcurrency import Vision
 
 struct CanvasView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var notater: [CanvasNotat] = []
     @State private var valgtId: String?
@@ -26,6 +27,20 @@ struct CanvasView: View {
     @State private var lastet = false
     @State private var lagrer = false
     @State private var lagretToast = false
+    @State private var saveStatus: [String: CanvasSaveStatus] = [:]
+    @State private var saveCoordinator = CanvasSaveCoordinator()
+    @State private var editGeneration: [String: Int] = [:]
+    @State private var dirtyNoteIDs: Set<String> = []
+    @State private var deletingNoteIDs: Set<String> = []
+    @State private var autosaveTask: Task<Void, Never>?
+    @State private var draftTask: Task<Void, Never>?
+    @State private var loadedCanvasScope = "__not_loaded__"
+    @State private var editorGeneration = UUID()
+    @State private var dokumentZoom: CGFloat = 1
+    @GestureState private var pinchZoom: CGFloat = 1
+    @State private var canvasViewportWidth: CGFloat = Self.logiskSidebredde
+    @State private var underHydrering = false
+    @State private var visNotatlisteSheet = false
 
     // Editor-state for valgt notat (kopieres inn/ut ved bytte).
     @State private var tittel = ""
@@ -36,6 +51,7 @@ struct CanvasView: View {
     @State private var deltMedTeam = false
     @State private var sok = ""
     @State private var visAnalyse = false
+    @State private var analyseKontekst: CanvasEditorContext?
     @State private var stempler: [CanvasStempel] = []
     @State private var tekstbokser: [CanvasTekstboks] = []
     @State private var figurer: [CanvasFigur] = []
@@ -56,12 +72,14 @@ struct CanvasView: View {
     /// velg() auto-lagrer forrige notat stille).
     @State private var aapneFaner: [String] = []
     @State private var pennValg: PennValg = .pen
+    @State private var pennSelectionRevision = 0
     /// Multi-select (Lasso-modus): tap velger flere — dra én, alle følger.
     @State private var valgte: Set<String> = []
     @State private var bibliotek: [BibliotekElement] = BibliotekElement.lastAlle()
     @State private var lagrerElementNavn = false
     @State private var elementNavn = ""
     @State private var visTidsreise = false
+    @State private var tidsreiseKontekst: CanvasEditorContext?
     /// Spatial Search: søk i notatet → flata scroller til treffet.
     @State private var visEditorSok = false
     @State private var editorSok = ""
@@ -83,8 +101,9 @@ struct CanvasView: View {
     @State private var redigererTekstboks: CanvasTekstboks?
     @State private var visTypeVelger = false
     @State private var formFarge: UIColor = .white
-    /// Pencil-first: kun Pencil tegner (håndflata kan hvile på skjermen).
-    @AppStorage("canvas.kunPencil") private var kunPencil = false
+    /// Følg iPad-innstillingen som standard; eksplisitt overstyring beholdes.
+    @AppStorage("canvas.inputMode") private var canvasInputModeRaw =
+        CanvasInputMode.system.rawValue
     /// Miniatyrer per notat — regenereres når oppdatert-tid endres.
     @State private var thumbs: [String: UIImage] = [:]
     // Mapper per kunde (Daniel 2026-08-05): mappe = selskapet notatet er
@@ -100,6 +119,7 @@ struct CanvasView: View {
     @State private var pdfAnalyseTekst: String?
     @State private var pdfAnalyseNavn = ""
     @State private var visPdfAnalyse = false
+    @State private var pdfAnalyseKontekst: CanvasEditorContext?
     /// Tilbuds-diff: navnet på forrige versjon analysen sammenlignes med.
     @State private var pdfAnalyseSammenlign: String?
     // Markering → møtepunkt: tusj over en PDF-side foreslår teksten under.
@@ -108,10 +128,99 @@ struct CanvasView: View {
     // Leser-modus + «Send til kontakten».
     @State private var lesDokument: CanvasDokument?
     @State private var sendDokument: CanvasDokument?
+    @State private var sendKontekst: CanvasEditorContext?
     // Ekte multi-penn: WebSocket-relay for delte notater.
     @State private var realtime = CanvasRealtime()
 
+    private static let logiskSidebredde: CGFloat = 1_024
+    private static let logiskSidehoyde: CGFloat = 1_448
+    private static let adaptivListegrense: CGFloat = 900
+    private static let minimumDokumentZoom: CGFloat = 0.25
+
+    private var effektivDokumentZoom: CGFloat {
+        min(2.5, max(Self.minimumDokumentZoom, dokumentZoom * pinchZoom))
+    }
+
     private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
+
+    private var canvasInputMode: CanvasInputMode {
+        CanvasInputMode(rawValue: canvasInputModeRaw) ?? .system
+    }
+
+    /// Råverdien forlater aldri prosessen. CanvasDraftStore bruker kun
+    /// SHA-256 av denne som katalognavn, slik at kladder ikke kan blandes
+    /// mellom bruker eller aktiv organisasjon.
+    private var canvasDraftScope: String? {
+        Self.canvasDraftScope(
+            email: appState.userEmail,
+            organizationID: appState.activeOrganizationId)
+    }
+
+    private var activeCanvasOrganizationId: String? {
+        guard let value = appState.activeOrganizationId?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else { return nil }
+        return value
+    }
+
+    /// Canvas bruker både REST og WebSocket. Alle autoritative auth-avslag
+    /// skal ende i samme re-login-flyt, mens lokale kladder blir liggende.
+    @MainActor
+    @discardableResult
+    private func handterCanvasAPIError(_ error: Error) -> Bool {
+        guard appState.handleAPIError(error) else { return false }
+        realtime.koblFra()
+        return true
+    }
+
+    private struct CanvasEditorContext: Equatable {
+        let noteID: String
+        let editorGeneration: UUID
+        let editGeneration: Int
+        let revision: Int
+        let drawingData: Data
+        let romligBeskrivelse: String
+        let selskap: String?
+        let leadID: String?
+        let kontaktEpost: String?
+    }
+
+    private func gjeldendeEditorKontekst() -> CanvasEditorContext? {
+        guard let noteID = valgtId else { return nil }
+        return CanvasEditorContext(
+            noteID: noteID,
+            editorGeneration: editorGeneration,
+            editGeneration: editGeneration[noteID, default: 0],
+            revision: notater.first(where: { $0.id == noteID })?.revision ?? 0,
+            drawingData: drawing.dataRepresentation(),
+            romligBeskrivelse: romligBeskrivelse(),
+            selskap: kobletSelskap,
+            leadID: kobletLeadId,
+            kontaktEpost: kontaktEpost)
+    }
+
+    private func erGjeldende(
+        _ context: CanvasEditorContext?, krevSammeEditGeneration: Bool = false
+    ) -> Bool {
+        guard let context,
+              valgtId == context.noteID,
+              editorGeneration == context.editorGeneration else { return false }
+        return !krevSammeEditGeneration
+            || editGeneration[context.noteID, default: 0] == context.editGeneration
+    }
+
+    private static func canvasDraftScope(
+        email: String?, organizationID: String?
+    ) -> String? {
+        guard let email = email?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+              !email.isEmpty,
+              let organizationID = organizationID?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !organizationID.isEmpty else { return nil }
+        return "\(email)|\(organizationID)"
+    }
 
     /// RBAC i tre lag: superadmin (entitlement per org) → org/admin
     /// (salgslederes funksjoner) → salgsleder (selgernes funksjoner).
@@ -158,9 +267,17 @@ struct CanvasView: View {
                 else if !liste.contains(nokkel) { liste.append(nokkel) }
                 if gruppe == "selger" { rollePolicy.selger = liste }
                 else { rollePolicy.leder = liste }
-                guard !isDemo, let api = appState.api else { return }
-                Task { try? await api.lagreCanvasRollePolicy(
-                    malgruppe: gruppe, skjulteFunksjoner: liste) }
+                guard !isDemo, let api = appState.api,
+                      let organizationId = activeCanvasOrganizationId else { return }
+                Task { @MainActor in
+                    do {
+                        try await api.lagreCanvasRollePolicy(
+                            organizationId: organizationId,
+                            malgruppe: gruppe, skjulteFunksjoner: liste)
+                    } catch {
+                        _ = handterCanvasAPIError(error)
+                    }
+                }
             })
     }
 
@@ -187,7 +304,49 @@ struct CanvasView: View {
     /// Er notatet i editoren mitt eget (redigerbart)?
     private var valgtErMin: Bool {
         guard let id = valgtId else { return true }
-        return notater.first(where: { $0.id == id })?.erMin ?? true
+        return !deletingNoteIDs.contains(id)
+            && (notater.first(where: { $0.id == id })?.erMin ?? true)
+    }
+
+    private var rolleKanSkriveCanvas: Bool {
+        if appState.isSuperAdmin { return true }
+        let rolle = (appState.roleInOrg ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return rolle != "viewer"
+    }
+
+    /// Eierskap alene er ikke skrivetilgang: rolle og live-kanalen kan gjøre
+    /// et eget notat skrivebeskyttet mens det står åpent.
+    private var kanRedigereValgtNotat: Bool {
+        valgtErMin && rolleKanSkriveCanvas && realtime.canWrite != false
+    }
+
+    private var skrivebeskyttetForklaring: String {
+        if !valgtErMin {
+            let eier = notater.first(where: { $0.id == valgtId })?.eierNavn
+                ?? "kollega"
+            return "Delt av \(eier) — kun visning"
+        }
+        if !rolleKanSkriveCanvas {
+            return "Rollen din har kun lesetilgang"
+        }
+        return "Skrivetilgangen ble endret — kun visning"
+    }
+
+    private var valgtSaveStatus: CanvasSaveStatus {
+        valgtId.flatMap { saveStatus[$0] } ?? .idle
+    }
+
+    private var saveKnappPresentasjon: (tekst: String, ikon: String, farge: Color) {
+        switch valgtSaveStatus {
+        case .queued: return ("Venter …", "clock", CvBrand.purple)
+        case .saving: return ("Lagrer …", "clock.arrow.circlepath", CvBrand.purple)
+        case .saved: return ("Lagret", "checkmark", CvBrand.green.opacity(0.45))
+        case .failed: return ("Prøv igjen", "exclamationmark.arrow.circlepath", CvBrand.red)
+        case .conflict: return ("Konflikt", "exclamationmark.triangle.fill", CvBrand.orange)
+        case .idle: return ("Lagre", "square.and.arrow.down.fill", CvBrand.purple)
+        }
     }
 
     var body: some View {
@@ -195,7 +354,28 @@ struct CanvasView: View {
             innhold
         }
         .background(CvBrand.bg)
-        .task { await lastInn() }
+        .task(id: canvasDraftScope) { await lastInn() }
+        .onChange(of: appState.activeOrganizationId) { gammelOrg, _ in
+            // Organisasjonen er allerede byttet når callbacken kjører. Ta
+            // derfor kun en lokal snapshot under den gamle scopingen; aldri
+            // send den via API-klienten med ny org-header.
+            guard let gammelScope = Self.canvasDraftScope(
+                email: appState.userEmail,
+                organizationID: gammelOrg),
+                  let request = snapshotAvGjeldendeNotat() else { return }
+            lagreLokalKladd(request, scope: gammelScope)
+        }
+        .onChange(of: scenePhase) { _, fase in
+            if fase != .active { _ = leggGjeldendeLagringIKo(stille: true) }
+        }
+        .onDisappear {
+            _ = leggGjeldendeLagringIKo(stille: true)
+            autosaveTask?.cancel()
+            draftTask?.cancel()
+            autoTittelTask?.cancel()
+            markeringsTask?.cancel()
+            realtime.koblFra()
+        }
         // QA-hook (mockups/verifisering): generer en ekte PDF i minnet og
         // kjør hele import-pipelinen (vektor-sider + analyse-arket).
         // QA_PDF=1 → med analyse-ark; QA_PDF=2 → kun sidene på flata.
@@ -269,16 +449,63 @@ struct CanvasView: View {
     }
 
     private var innhold: some View {
-        HStack(spacing: 0) {
-            notatListe
-                .frame(width: 300)
-            Divider().overlay(CvBrand.stroke)
-            if valgtId != nil {
-                editor
-            } else {
-                tomEditor
+        GeometryReader { geo in
+            let viserFastListe = geo.size.width >= Self.adaptivListegrense
+            HStack(spacing: 0) {
+                if viserFastListe {
+                    notatListe
+                        .frame(width: min(360, max(260, geo.size.width * 0.30)))
+                    Divider().overlay(CvBrand.stroke)
+                }
+                if valgtId != nil {
+                    editor
+                } else if viserFastListe {
+                    tomEditor
+                } else {
+                    notatListe
+                }
+            }
+            .toolbar {
+                if !viserFastListe, valgtId != nil {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { visNotatlisteSheet = true } label: {
+                            Label("Notater", systemImage: "sidebar.left")
+                                .frame(minWidth: 44, minHeight: 44)
+                        }
+                        .accessibilityHint("Åpner listen over Canvas-notater")
+                    }
+                }
             }
         }
+        .sheet(isPresented: $visNotatlisteSheet) {
+            NavigationStack {
+                notatListe
+                    .navigationTitle("Canvas-notater")
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Ferdig") { visNotatlisteSheet = false }
+                        }
+                    }
+            }
+            .presentationDetents([.medium, .large])
+        }
+        .background { canvasTastatursnarveier }
+    }
+
+    private var canvasTastatursnarveier: some View {
+        ZStack {
+            Button { Task { await lagre() } } label: { EmptyView() }
+                .keyboardShortcut("s", modifiers: .command)
+                .disabled(!kanRedigereValgtNotat)
+            Button { nyttNotat() } label: { EmptyView() }
+                .keyboardShortcut("n", modifiers: .command)
+                .disabled(!rolleKanSkriveCanvas)
+            Button { visEditorSok = true } label: { EmptyView() }
+                .keyboardShortcut("f", modifiers: .command)
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+        .accessibilityHidden(true)
     }
 
     // MARK: Venstre kolonne — liste
@@ -308,6 +535,9 @@ struct CanvasView: View {
                         in: Capsule())
                 }
                 .buttonStyle(.plain)
+                .frame(minHeight: 44)
+                .disabled(!rolleKanSkriveCanvas)
+                .accessibilityLabel("Opprett nytt Canvas-notat")
             }
             .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 10)
 
@@ -695,16 +925,18 @@ struct CanvasView: View {
                     .background(CvBrand.green.opacity(0.15), in: Capsule())
             }
             .buttonStyle(.plain)
+            .disabled(!rolleKanSkriveCanvas)
             Button {
                 slettPermanent(n)
             } label: {
                 Image(systemName: "trash.fill")
                     .font(.appScaled(size: 10, weight: .bold))
                     .foregroundStyle(CvBrand.red)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 44, height: 44)
                     .background(CvBrand.red.opacity(0.15), in: Circle())
             }
             .buttonStyle(.plain)
+            .disabled(!rolleKanSkriveCanvas)
         }
         .padding(10)
         .background(CvBrand.card.opacity(0.7), in: RoundedRectangle(cornerRadius: 12))
@@ -713,24 +945,61 @@ struct CanvasView: View {
 
     @MainActor
     private func lastPapirkurv() async {
-        guard !isDemo, let api = appState.api else { return }
-        guard let dtoer = try? await api.hentCanvasNotater(papirkurv: true) else { return }
-        papirkurvNotater = dtoer.map { Self.fraDTO($0) }
+        guard !isDemo, let api = appState.api,
+              let organizationId = activeCanvasOrganizationId else { return }
+        do {
+            let dtoer = try await api.hentCanvasNotater(
+                organizationId: organizationId,
+                papirkurv: true)
+            papirkurvNotater = dtoer.map { Self.fraDTO($0) }
+        } catch {
+            _ = handterCanvasAPIError(error)
+        }
     }
 
     private func gjenopprettFraPapirkurv(_ n: CanvasNotat) {
+        guard rolleKanSkriveCanvas else { return }
         papirkurvNotater.removeAll { $0.id == n.id }
         var tilbake = n
         tilbake.slettetAt = nil
         notater.insert(tilbake, at: 0)
-        guard !isDemo, let api = appState.api else { return }
-        Task { try? await api.gjenopprettCanvasNotat(id: n.id) }
+        guard !isDemo, let api = appState.api,
+              let organizationId = activeCanvasOrganizationId else { return }
+        Task { @MainActor in
+            do {
+                let revision = try await api.gjenopprettCanvasNotat(
+                    organizationId: organizationId,
+                    id: n.id, revision: n.revision)
+                if let i = notater.firstIndex(where: { $0.id == n.id }) {
+                    notater[i].revision = revision
+                }
+            } catch {
+                notater.removeAll { $0.id == n.id }
+                papirkurvNotater.insert(n, at: 0)
+                _ = handterCanvasAPIError(error)
+                saveStatus[n.id] = erRevisjonskonflikt(error)
+                    ? .conflict : .failed(error.localizedDescription)
+            }
+        }
     }
 
     private func slettPermanent(_ n: CanvasNotat) {
+        guard rolleKanSkriveCanvas else { return }
         papirkurvNotater.removeAll { $0.id == n.id }
-        guard !isDemo, let api = appState.api else { return }
-        Task { try? await api.slettCanvasNotat(id: n.id, permanent: true) }
+        guard !isDemo, let api = appState.api,
+              let organizationId = activeCanvasOrganizationId else { return }
+        Task { @MainActor in
+            do {
+                try await api.slettCanvasNotat(
+                    organizationId: organizationId,
+                    id: n.id, revision: n.revision, permanent: true)
+            } catch {
+                papirkurvNotater.insert(n, at: 0)
+                _ = handterCanvasAPIError(error)
+                saveStatus[n.id] = erRevisjonskonflikt(error)
+                    ? .conflict : .failed(error.localizedDescription)
+            }
+        }
     }
 
     private func filterChip(_ k: CanvasKategori?, etikett: String) -> some View {
@@ -821,7 +1090,7 @@ struct CanvasView: View {
         // Pencil Hover: kortet løfter seg når pennen svever over.
         .hoverEffect(.lift)
         .contextMenu {
-            if n.erMin {
+            if n.erMin && rolleKanSkriveCanvas {
                 Button(role: .destructive) { slett(n) } label: {
                     Label("Slett notat", systemImage: "trash")
                 }
@@ -848,7 +1117,7 @@ struct CanvasView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var editor: some View {
+    private var editorKjerne: some View {
         VStack(spacing: 0) {
             // Faner: flere dokumenter åpne samtidig — bytt med ett tap.
             if aapneFaner.count > 1 { faneRad }
@@ -868,13 +1137,7 @@ struct CanvasView: View {
             if let hvem = kollegaOppdatering {
                 Button {
                     kollegaOppdatering = nil
-                    Task {
-                        await lastInn()
-                        if let id = valgtId,
-                           let n = notater.first(where: { $0.id == id }) {
-                            velg(n)
-                        }
-                    }
+                    handterSamarbeidsReload()
                 } label: {
                     HStack(spacing: 7) {
                         Circle().fill(CvBrand.green).frame(width: 7, height: 7)
@@ -892,235 +1155,17 @@ struct CanvasView: View {
                 .buttonStyle(.plain)
             }
             // Topp: tittel + kategori + lead-kobling + lagre (ekstrahert).
-            editorTopp
-                .task {
-                    // Multi-penn: kollegaens strøk legges rett i tegningen.
-                    realtime.onNyeStrok = { delta, _ in
-                        realtime.registrerMottatte(antall: delta.strokes.count)
-                        var ny = drawing
-                        ny.append(delta)
-                        drawing = ny
-                    }
-                }
-                .onChange(of: drawing.strokes.count) { _, _ in
-                    // Multi-penn: send mine nye strøk til rommet.
-                    realtime.sendNyeStrok(fra: drawing)
-                }
-                .onChange(of: drawing.strokes.count) { gammelt, nytt in
-                    // Markering → møtepunkt: tusj-strøk over en PDF-side
-                    // slår opp teksten under strøket og foreslår den som
-                    // punkt å ta opp på møtet.
-                    guard nytt > gammelt, pennValg == .marker, valgtErMin,
-                          let siste = drawing.strokes.last else { return }
-                    let boks = siste.renderBounds
-                    markeringsTask?.cancel()
-                    markeringsTask = Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: 700_000_000)
-                        guard !Task.isCancelled else { return }
-                        foreslaaMarkering(boks: boks)
-                    }
-                }
-                .onChange(of: drawing.strokes.count) {
-                    // Tittelen skriver seg selv: 1,2 s etter siste strøk
-                    // leses øverste linja med Vision — kun når feltet er tomt.
-                    guard valgtErMin,
-                          tittel.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                    autoTittelTask?.cancel()
-                    autoTittelTask = Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: 1_200_000_000)
-                        guard !Task.isCancelled else { return }
-                        await foreslaTittelFraBlekk()
-                    }
-                }
+            editorToppMedTegneobservasjon
 
             Divider().overlay(CvBrand.stroke)
 
             // Verktøyraden i moduser: Tegn / Sett inn / Ordne + ⋯.
-            if valgtErMin { verktoyRad }
+            if kanRedigereValgtNotat { verktoyRad }
 
-            if visEditorSok {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.appScaled(size: 11))
-                        .foregroundStyle(CvBrand.textTertiary)
-                    TextField("Søk i notatet — også håndskrift …", text: $editorSok)
-                        .font(.appScaled(size: 12))
-                        .foregroundStyle(.white)
-                        .textFieldStyle(.plain)
-                        .onSubmit { Task { await finnTreffIEditor() } }
-                    if !sokTreff.isEmpty {
-                        Text("\(sokTreffIndeks + 1)/\(sokTreff.count)")
-                            .font(.appScaled(size: 10, weight: .bold))
-                            .foregroundStyle(CvBrand.purpleLight)
-                        Button {
-                            sokTreffIndeks = (sokTreffIndeks + 1) % sokTreff.count
-                        } label: {
-                            Image(systemName: "chevron.down.circle.fill")
-                                .font(.appScaled(size: 14))
-                                .foregroundStyle(CvBrand.purpleLight)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    Button {
-                        Task { await finnTreffIEditor() }
-                    } label: {
-                        Text("Finn")
-                            .font(.appScaled(size: 11, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 10).padding(.vertical, 5)
-                            .background(CvBrand.purple, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 12).padding(.vertical, 7)
-                .background(CvBrand.card.opacity(0.8))
-            }
+            if visEditorSok { editorSokRad }
             // Selve tegneflata — PKToolPicker docker seg til bunnen.
             // Andres delte notater: kun visning (PUT er uansett eier-scopet).
-            GeometryReader { geo in
-            ScrollViewReader { scrollProxy in
-            ScrollView(.vertical, showsIndicators: true) {
-            ZStack(alignment: .topLeading) {
-                CvBrand.bg
-                // Spatial Search: usynlig anker + pulserende markering.
-                if let forslag = markeringForslag {
-                    markeringsKort(forslag)
-                        .position(forslag.punkt)
-                        .zIndex(60)
-                }
-                if sokTreffIndeks < sokTreff.count {
-                    let treff = sokTreff[sokTreffIndeks]
-                    Circle()
-                        .stroke(CvBrand.yellow, lineWidth: 3)
-                        .frame(width: 90, height: 90)
-                        .position(treff)
-                        .id("sokTreffAnker")
-                        .allowsHitTesting(false)
-                        .shadow(color: CvBrand.yellow.opacity(0.7), radius: 10)
-                }
-                // Malen gjentas per side («+ Side» = aldri tom for plass).
-                VStack(spacing: 0) {
-                    ForEach(0..<sider, id: \.self) { _ in
-                        PapirView(papir: papir)
-                            .frame(height: geo.size.height)
-                    }
-                }
-                // Objekt-laget: bilder/kort UNDER blekket — tegn oppå for å
-                // annotere. I objekt-modus rutes touch hit (canvas er av).
-                ForEach(objekter.filter { !erLagSkjult($0.type) }) { obj in
-                    ObjektView(objekt: obj,
-                               redigerbar: valgtErMin && objektModus,
-                               pdfDok: obj.dokId.flatMap { id in
-                                   dokumenter.first { $0.id == id }
-                               },
-                               liveInnhold: liveInnhold(obj),
-                               erValgt: valgte.contains(obj.id),
-                               onToggleValg: {
-                                   if valgte.contains(obj.id) { valgte.remove(obj.id) }
-                                   else { valgte.insert(obj.id) }
-                               },
-                               onFlyttFelles: { d in flyttValgte(d) },
-                               onEndre: { ny in
-                                   if let i = objekter.firstIndex(where: { $0.id == obj.id }) {
-                                       objekter[i] = ny
-                                   }
-                               },
-                               onSlett: {
-                                   objekter.removeAll { $0.id == obj.id }
-                               })
-                }
-                // Tankekart: koblingslinjene tegnes under nodene.
-                if !noder.isEmpty && !skjulteLag.contains(CanvasLag.noder.rawValue) {
-                    NodeKoblinger(noder: noder)
-                }
-                LeadgridPencilCanvas(drawing: $drawing,
-                             redigerbar: valgtErMin && !objektModus,
-                             kunPencil: kunPencil,
-                             onFormGjenkjent: { figur in
-                                 figurer.append(figur)
-                             },
-                             pennValg: pennValg)
-                ForEach(skjulteLag.contains(CanvasLag.stempler.rawValue) ? [] : stempler) { st in
-                    StempelView(stempel: st, redigerbar: valgtErMin,
-                                onFlytt: { ny in
-                                    if let i = stempler.firstIndex(where: { $0.id == st.id }) {
-                                        stempler[i] = ny
-                                    }
-                                },
-                                onSlett: {
-                                    stempler.removeAll { $0.id == st.id }
-                                })
-                }
-                ForEach(skjulteLag.contains(CanvasLag.former.rawValue) ? [] : figurer) { fig in
-                    FigurView(figur: fig, redigerbar: valgtErMin,
-                              onEndre: { ny in
-                                  if let i = figurer.firstIndex(where: { $0.id == fig.id }) {
-                                      figurer[i] = ny
-                                  }
-                              },
-                              onSlett: {
-                                  figurer.removeAll { $0.id == fig.id }
-                              })
-                }
-                ForEach(skjulteLag.contains(CanvasLag.noder.rawValue) ? [] : noder) { node in
-                    NodeView(node: node, redigerbar: valgtErMin,
-                             onEndre: { ny in
-                                 if let i = noder.firstIndex(where: { $0.id == node.id }) {
-                                     noder[i] = ny
-                                 }
-                             },
-                             onNyttBarn: {
-                                 let barn = CanvasNode(
-                                     parentId: node.id,
-                                     tekst: "",
-                                     x: node.x + Double.random(in: 120...190),
-                                     y: node.y + Double.random(in: -80...110))
-                                 noder.append(barn)
-                                 redigererNode = barn
-                             },
-                             onRediger: { redigererNode = node },
-                             onSlett: {
-                                 // Barn beholdes som frittstående lapper.
-                                 for i in noder.indices where noder[i].parentId == node.id {
-                                     noder[i].parentId = nil
-                                 }
-                                 noder.removeAll { $0.id == node.id }
-                             })
-                }
-                ForEach(skjulteLag.contains(CanvasLag.tekst.rawValue) ? [] : tekstbokser) { tb in
-                    TekstboksView(boks: tb, redigerbar: valgtErMin,
-                                  onFlytt: { ny in
-                                      if let i = tekstbokser.firstIndex(where: { $0.id == tb.id }) {
-                                          tekstbokser[i] = ny
-                                      }
-                                  },
-                                  onRediger: { redigererTekstboks = tb },
-                                  onSlett: {
-                                      tekstbokser.removeAll { $0.id == tb.id }
-                                  })
-                }
-            }
-            .frame(height: geo.size.height * CGFloat(sider))
-            .dropDestination(for: Data.self) { biter, plassering in
-                guard valgtErMin, kan(.canvasBilder), let data = biter.first,
-                      UIImage(data: data) != nil else { return false }
-                leggTilBilde(data, ved: plassering)
-                return true
-            }
-            }
-            .onChange(of: sokTreffIndeks) { _, _ in
-                withAnimation(.easeInOut(duration: 0.4)) {
-                    scrollProxy.scrollTo("sokTreffAnker", anchor: .center)
-                }
-            }
-            .onChange(of: sokTreff) { _, ny in
-                guard !ny.isEmpty else { return }
-                withAnimation(.easeInOut(duration: 0.4)) {
-                    scrollProxy.scrollTo("sokTreffAnker", anchor: .center)
-                }
-            }
-            }
-            }
+            canvasArbeidsflate
             .alert("Lagre som element", isPresented: $lagrerElementNavn) {
                 TextField("Navn på elementet", text: $elementNavn)
                 Button("Lagre") { lagreValgteSomElement() }
@@ -1164,31 +1209,46 @@ struct CanvasView: View {
                 }
             }
         }
+    }
+
+    private var editorMedAnalyse: some View {
+        editorKjerne
         .sheet(isPresented: $visAnalyse) {
-            CanvasAnalyseSheet(drawing: drawing,
-                               selskap: kobletSelskap ?? tittel,
-                               leadId: kobletLeadId,
-                               romligTillegg: romligBeskrivelse(),
+            let context = analyseKontekst
+            CanvasAnalyseSheet(
+                               drawing: context.flatMap {
+                                   try? PKDrawing(data: $0.drawingData)
+                               } ?? PKDrawing(),
+                               selskap: context?.selskap ?? tittel,
+                               leadId: context?.leadID,
+                               romligTillegg: context?.romligBeskrivelse ?? "",
                                onFestIMinne: kan(.canvasKundeminne) ? { resultat in
+                                   guard erGjeldende(context),
+                                         kanRedigereValgtNotat else { return }
                                    visAnalyse = false
                                    festIMinne(resultat,
-                                              selskap: kobletSelskap ?? tittel,
-                                              leadId: kobletLeadId)
+                                              selskap: context?.selskap ?? tittel,
+                                              leadId: context?.leadID)
                                } : nil)
         }
         .sheet(isPresented: $visPdfAnalyse) {
+            let context = pdfAnalyseKontekst
             PdfAnalyseSheet(
                 tekst: pdfAnalyseTekst ?? "",
                 dokumentNavn: pdfAnalyseNavn,
                 sammenlignetMed: pdfAnalyseSammenlign,
-                selskap: kobletSelskap ?? tittel,
-                leadId: kobletLeadId,
+                selskap: context?.selskap ?? tittel,
+                leadId: context?.leadID,
                 onFestPaaFlata: { oppsummering in
+                    guard erGjeldende(context),
+                          kanRedigereValgtNotat else { return }
                     // Oppsummeringen som tekstboks ved siden av dokumentet.
                     tekstbokser.append(CanvasTekstboks(
                         tekst: "📄 " + oppsummering, x: 60, y: 140))
                 },
                 onLagPunktObjekter: { punkter in
+                    guard erGjeldende(context),
+                          kanRedigereValgtNotat else { return }
                     // Punktene som kort på flata — synlige der du annoterer.
                     var y: Double = 160
                     for p in punkter {
@@ -1203,23 +1263,40 @@ struct CanvasView: View {
         .sheet(item: $lesDokument) { dok in
             PdfLeserSheet(dokument: dok)
         }
-        .sheet(item: $sendDokument) { dok in
-            if let url = eksporterDokument(dok),
-               let epost = kontaktEpost {
+    }
+
+    private var editorMedDokumentflyt: some View {
+        editorMedAnalyse
+        .sheet(item: $sendDokument, onDismiss: {
+            sendKontekst = nil
+        }) { dok in
+            let context = sendKontekst
+            if erGjeldende(context),
+               let url = eksporterDokument(dok),
+               let epost = context?.kontaktEpost {
                 MailComposerView(
                     til: epost,
-                    emne: "\(dok.navn) — \(kobletSelskap ?? "")",
+                    emne: "\(dok.navn) — \(context?.selskap ?? "")",
                     brodtekst: "Hei!\n\nVedlagt ligger «\(dok.navn)» med kommentarene fra møtet.\n\nMvh",
                     vedleggURL: url,
                     vedleggNavn: "\(dok.navn).pdf") { sendte in
                     sendDokument = nil
-                    guard sendte, !isDemo, let api = appState.api else { return }
+                    guard sendte, !isDemo, let api = appState.api,
+                          let organizationId = activeCanvasOrganizationId else { return }
                     let logg = CanvasAnalyseDTO(
                         oppsummering: "Sendte annotert «\(dok.navn)» til \(epost)",
                         oppgaver: [], lofter: [])
-                    Task { try? await api.persisterCanvasAnalyse(
-                        selskap: kobletSelskap, leadId: kobletLeadId,
-                        resultat: logg) }
+                    Task { @MainActor in
+                        do {
+                            try await api.persisterCanvasAnalyse(
+                                organizationId: organizationId,
+                                selskap: context?.selskap,
+                                leadId: context?.leadID,
+                                resultat: logg)
+                        } catch {
+                            _ = handterCanvasAPIError(error)
+                        }
+                    }
                 }
             }
         }
@@ -1240,33 +1317,81 @@ struct CanvasView: View {
         }
         .onChange(of: bildeValg) { _, valg in
             guard let valg else { return }
-            Task {
-                if let data = try? await valg.loadTransferable(type: Data.self) {
-                    leggTilBilde(data)
-                }
+            guard let noteID = valgtId else {
                 bildeValg = nil
+                return
+            }
+            let generation = editorGeneration
+            // Tøm valget med en gang. En sen Photos-respons skal verken bli
+            // hengende i velgeren eller havne i notatet brukeren byttet til.
+            bildeValg = nil
+            Task { @MainActor in
+                guard let data = try? await valg.loadTransferable(type: Data.self),
+                      valgtId == noteID, editorGeneration == generation else { return }
+                leggTilBilde(data)
             }
         }
-        .sheet(isPresented: $visTidsreise) {
-            if let id = valgtId {
-                TidsreiseSheet(notatId: id, naavaerende: drawing) { gjenopprettet in
-                    taSnapshot()
-                    drawing = gjenopprettet
+    }
+
+    private var editorMedTidsreise: some View {
+        editorMedDokumentflyt
+        .sheet(isPresented: $visTidsreise, onDismiss: {
+            tidsreiseKontekst = nil
+        }) {
+            if let context = tidsreiseKontekst {
+                let id = context.noteID
+                TidsreiseSheet(
+                    notatId: id,
+                    revision: context.revision,
+                    naavaerende: (try? PKDrawing(
+                        data: context.drawingData)) ?? PKDrawing()
+                ) { dto in
+                    let gjenopprettet = Self.fraDTO(dto)
+                    let skalHydrere = erGjeldende(
+                        context, krevSammeEditGeneration: true)
+                    saveCoordinator.cancel(noteID: id)
+                    dirtyNoteIDs.remove(id)
+                    editGeneration[id, default: 0] += 1
+                    saveStatus[id] = .saved
+                    fjernLokalKladd(noteID: id, scope: canvasDraftScope)
+                    if let indeks = notater.firstIndex(where: { $0.id == id }) {
+                        notater[indeks] = gjenopprettet
+                    }
+                    if skalHydrere {
+                        hydrate(gjenopprettet)
+                    }
                     visTidsreise = false
                 }
             }
         }
+    }
+
+    private var editorMedSamarbeid: some View {
+        editorMedTidsreise
         // Live collab v1: delte notater poller etter kollega-endringer.
         .task(id: valgtId) {
             guard let id = valgtId,
                   let notat = notater.first(where: { $0.id == id }),
                   !notat.erMin || notat.delt,
-                  !isDemo else { return }
+                  !isDemo,
+                  let organizationId = activeCanvasOrganizationId else { return }
+            let generation = editorGeneration
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 6_000_000_000)
-                guard valgtId == id, let api = appState.api,
-                      let ferske = try? await api.hentCanvasNotater(),
-                      let fersk = ferske.first(where: { $0.id == id }) else { continue }
+                guard !Task.isCancelled, valgtId == id,
+                      editorGeneration == generation,
+                      let api = appState.api else { return }
+                let ferske: [CanvasNotatDTO]
+                do {
+                    ferske = try await api.hentCanvasNotater(
+                        organizationId: organizationId)
+                } catch {
+                    if handterCanvasAPIError(error) { return }
+                    continue
+                }
+                guard !Task.isCancelled, valgtId == id,
+                      editorGeneration == generation else { return }
+                guard let fersk = ferske.first(where: { $0.id == id }) else { continue }
                 let lokalOppdatert = notater.first(where: { $0.id == id })?.oppdatert
                 let fjernTid = ISO8601DateFormatter().date(from: fersk.oppdatert ?? "")
                 if let ft = fjernTid, let lt = lokalOppdatert,
@@ -1275,6 +1400,28 @@ struct CanvasView: View {
                 }
             }
         }
+    }
+
+    private var editorMedEndringssporing: some View {
+        editorMedSamarbeid
+        .onChange(of: kategori) { _, _ in markerUlagret() }
+        .onChange(of: kobletLeadId) { _, _ in markerUlagret() }
+        .onChange(of: kobletSelskap) { _, _ in markerUlagret() }
+        .onChange(of: deltMedTeam) { _, _ in markerUlagret() }
+        .onChange(of: stempler) { _, _ in markerUlagret() }
+        .onChange(of: tekstbokser) { _, _ in markerUlagret() }
+        .onChange(of: figurer) { _, _ in markerUlagret() }
+        .onChange(of: papir) { _, _ in markerUlagret() }
+        .onChange(of: noder) { _, _ in markerUlagret() }
+        .onChange(of: sider) { _, _ in markerUlagret() }
+        .onChange(of: objekter) { _, _ in markerUlagret() }
+        .onChange(of: dokumenter) { _, _ in markerUlagret() }
+        .onChange(of: notatLat) { _, _ in markerUlagret() }
+        .onChange(of: notatLon) { _, _ in markerUlagret() }
+    }
+
+    private var editor: some View {
+        editorMedEndringssporing
         .sheet(isPresented: $visTypeVelger) {
             CanvasTypeVelger { valgt in
                 visTypeVelger = false
@@ -1297,6 +1444,40 @@ struct CanvasView: View {
                     case .tegn: tegnVerktoy
                     case .settInn: settInnVerktoy
                     case .ordne: ordneVerktoy
+                    case .panorer:
+                        HStack(spacing: 4) {
+                            Label("Dra for å panorere",
+                                  systemImage: "hand.draw.fill")
+                                .font(.appScaled(size: 11, weight: .semibold))
+                                .foregroundStyle(CvBrand.purpleLight)
+                            Button {
+                                justerDokumentZoom(-0.15)
+                            } label: {
+                                Image(systemName: "minus")
+                                    .frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(.plain)
+                            .keyboardShortcut("-", modifiers: .command)
+                            .accessibilityLabel("Zoom ut")
+                            Button {
+                                tilpassDokumentbredde()
+                            } label: {
+                                Text("\(Int(effektivDokumentZoom * 100)) %")
+                                    .font(.appScaled(size: 10, weight: .bold))
+                                    .frame(minWidth: 58, minHeight: 44)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Tilpass dokumentbredden")
+                            Button {
+                                justerDokumentZoom(0.15)
+                            } label: {
+                                Image(systemName: "plus")
+                                    .frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(.plain)
+                            .keyboardShortcut("+", modifiers: .command)
+                            .accessibilityLabel("Zoom inn")
+                        }
                     }
                 }
             }
@@ -1318,6 +1499,9 @@ struct CanvasView: View {
                             .font(.appScaled(size: 10, weight: .bold))
                         Text(m.etikett)
                             .font(.appScaled(size: 11, weight: .bold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     .foregroundStyle(verktoyModus == m ? .white : CvBrand.textSecondary)
                     .padding(.horizontal, 10).padding(.vertical, 6)
@@ -1340,12 +1524,30 @@ struct CanvasView: View {
         }
     }
 
+    private func justerDokumentZoom(_ delta: CGFloat) {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            dokumentZoom = min(
+                2.5,
+                max(Self.minimumDokumentZoom, dokumentZoom + delta))
+        }
+    }
+
+    private func tilpassDokumentbredde() {
+        withAnimation(.easeInOut(duration: 0.22)) {
+            dokumentZoom = min(
+                2.5,
+                max(Self.minimumDokumentZoom,
+                    (canvasViewportWidth - 24) / Self.logiskSidebredde))
+        }
+    }
+
     /// Tegn: penn-galleriet, papir-malen og tankekart-noder.
     @ViewBuilder private var tegnVerktoy: some View {
         Menu {
             ForEach(PennValg.allCases) { valg in
                 Button {
                     pennValg = valg
+                    pennSelectionRevision &+= 1
                 } label: {
                     Label(valg.etikett
                           + (valg == .laser ? " (toner bort)" : "")
@@ -1468,7 +1670,7 @@ struct CanvasView: View {
                 Label("Neste møte (live)", systemImage: "calendar")
             }
             Button {
-                Task { await settInnKartUtsnitt() }
+                startKartUtsnitt()
             } label: {
                 Label("Kart-utsnitt", systemImage: "map")
             }
@@ -1570,7 +1772,7 @@ struct CanvasView: View {
                     Image(systemName: form.ikon)
                         .font(.appScaled(size: 15, weight: .semibold))
                         .foregroundStyle(Color(formFarge))
-                        .frame(width: 30, height: 30)
+                        .frame(width: 44, height: 44)
                         .background(CvBrand.cardHi, in: RoundedRectangle(cornerRadius: 7))
                 }
                 .buttonStyle(.plain)
@@ -1585,6 +1787,7 @@ struct CanvasView: View {
                         .overlay(Circle().stroke(
                             formFarge == f ? Color.white : CvBrand.stroke,
                             lineWidth: formFarge == f ? 2 : 1))
+                        .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
             }
@@ -1613,8 +1816,17 @@ struct CanvasView: View {
                             Button(role: .destructive) {
                                 bibliotek.removeAll { $0.id == el.id }
                                 BibliotekElement.lagreAlle(bibliotek)
-                                if !isDemo, let api = appState.api {
-                                    Task { try? await api.slettCanvasBibliotekElement(id: el.id) }
+                                if !isDemo, let api = appState.api,
+                                   let organizationId = activeCanvasOrganizationId {
+                                    Task { @MainActor in
+                                        do {
+                                            try await api.slettCanvasBibliotekElement(
+                                                organizationId: organizationId,
+                                                id: el.id)
+                                        } catch {
+                                            _ = handterCanvasAPIError(error)
+                                        }
+                                    }
                                 }
                             } label: {
                                 Label("Slett fra biblioteket", systemImage: "trash")
@@ -1654,7 +1866,7 @@ struct CanvasView: View {
                 Image(systemName: "trash")
                     .font(.appScaled(size: 11, weight: .bold))
                     .foregroundStyle(CvBrand.red)
-                    .frame(width: 26, height: 26)
+                    .frame(width: 44, height: 44)
                     .background(CvBrand.red.opacity(0.15), in: Circle())
             }
             .buttonStyle(.plain)
@@ -1689,7 +1901,7 @@ struct CanvasView: View {
             Image(systemName: "magnifyingglass.circle\(visEditorSok ? ".fill" : "")")
                 .font(.appScaled(size: 13, weight: .bold))
                 .foregroundStyle(visEditorSok ? CvBrand.purpleLight : CvBrand.textSecondary)
-                .frame(width: 28, height: 26)
+                .frame(width: 44, height: 44)
                 .background(CvBrand.cardHi, in: Capsule())
         }
         .buttonStyle(.plain)
@@ -1700,7 +1912,17 @@ struct CanvasView: View {
         Menu {
             if valgtId != nil, !isDemo, kan(.canvasTidsreise) {
                 Button {
-                    visTidsreise = true
+                    guard let noteID = valgtId else { return }
+                    Task { @MainActor in
+                        if dirtyNoteIDs.contains(noteID) {
+                            _ = leggGjeldendeLagringIKo(stille: true)
+                        }
+                        await saveCoordinator.wait(for: noteID)
+                        guard valgtId == noteID,
+                              saveStatus[noteID] != .conflict else { return }
+                        tidsreiseKontekst = gjeldendeEditorKontekst()
+                        visTidsreise = true
+                    }
                 } label: {
                     Label("Tidsreise", systemImage: "clock.arrow.2.circlepath")
                 }
@@ -1770,17 +1992,27 @@ struct CanvasView: View {
                 Label(sider > 1 ? "Ny side (nå \(sider))" : "Ny side",
                       systemImage: "plus.rectangle.on.rectangle")
             }
-            Button {
-                kunPencil.toggle()
+            Menu {
+                ForEach(CanvasInputMode.allCases) { mode in
+                    Button {
+                        canvasInputModeRaw = mode.rawValue
+                    } label: {
+                        Label(
+                            mode.etikett
+                                + (canvasInputMode == mode ? " ✓" : ""),
+                            systemImage: mode == .pencilOnly
+                                ? "applepencil.tip" : "hand.draw")
+                    }
+                }
             } label: {
-                Label(kunPencil ? "Kun Pencil tegner ✓" : "Kun Pencil tegner",
-                      systemImage: kunPencil ? "applepencil.tip" : "hand.draw")
+                Label("Tegneinput: \(canvasInputMode.etikett)",
+                      systemImage: "applepencil.and.scribble")
             }
         } label: {
             Image(systemName: "ellipsis.circle")
                 .font(.appScaled(size: 13, weight: .bold))
                 .foregroundStyle(CvBrand.textSecondary)
-                .frame(width: 28, height: 26)
+                .frame(width: 44, height: 44)
                 .background(CvBrand.cardHi, in: Capsule())
         }
     }
@@ -1837,10 +2069,24 @@ struct CanvasView: View {
 
     // MARK: Handlinger
 
+    private struct CanvasSaveRequest {
+        var notat: CanvasNotat
+        let editGeneration: Int
+        let tenant: CanvasTenantSnapshot
+
+        var scope: String? { tenant.scope }
+        var organizationId: String { tenant.organizationId }
+    }
+
+    private struct DecodedCanvasDraft: Sendable {
+        let note: CanvasNotat
+        let generation: Int
+        let savedAt: Date
+    }
+
     private func nyttNotat(type: CanvasKategori = .mote) {
-        papir = CanvasPapir.standardFor(type)
-        // Lagre det som står i editoren først (best effort, uten å vente).
-        if valgtId != nil { Task { await lagre(stille: true) } }
+        guard rolleKanSkriveCanvas else { return }
+        _ = leggGjeldendeLagringIKo(stille: true)
         let pos = KartLocationManager.shared.currentCoordinate
         var n = CanvasNotat(
             id: UUID().uuidString.lowercased(),
@@ -1858,14 +2104,25 @@ struct CanvasView: View {
             n.leadId = notaterIMappe(mappe).compactMap(\.leadId).first
         }
         notater.insert(n, at: 0)
-        velg(n)
+        hydrate(n)
     }
 
     private func velg(_ n: CanvasNotat) {
-        // Bytte av notat = lagre det forrige stille (tegninger skal ikke dø).
-        if let gjeldende = valgtId, gjeldende != n.id {
-            Task { await lagre(stille: true) }
+        guard valgtId != n.id else {
+            visNotatlisteSheet = false
+            return
         }
+        // Payloaden kopieres synkront før valgtId/editor-state endres.
+        _ = leggGjeldendeLagringIKo(stille: true)
+        hydrate(notater.first(where: { $0.id == n.id }) ?? n)
+    }
+
+    private func hydrate(_ n: CanvasNotat) {
+        underHydrering = true
+        autoTittelTask?.cancel()
+        markeringsTask?.cancel()
+        let hydrateGeneration = UUID()
+        editorGeneration = hydrateGeneration
         valgtId = n.id
         if !aapneFaner.contains(n.id) {
             aapneFaner.append(n.id)
@@ -1884,7 +2141,7 @@ struct CanvasView: View {
         sider = max(1, n.sider)
         objekter = n.objekter
         dokumenter = n.dokumenter
-        hentManglendeDokumenter()
+        hentManglendeDokumenter(noteID: n.id, generation: editorGeneration)
         objektModus = false
         verktoyModus = .tegn
         markeringForslag = nil
@@ -1892,31 +2149,122 @@ struct CanvasView: View {
         notatLon = n.lon
         drawing = (try? PKDrawing(data: n.drawingData)) ?? PKDrawing()
         // Multi-penn: delte notater kobles til live-rommet — resten ikke.
-        if n.delt, !n.erNy, !isDemo, let token = appState.authToken {
+        if n.delt, !n.erNy, !isDemo,
+           let token = appState.authToken,
+           let organizationId = activeCanvasOrganizationId {
             realtime.koble(notatId: n.id, token: token,
+                           organizationId: organizationId,
                            strokAntall: drawing.strokes.count)
         } else {
             realtime.koblFra()
         }
-        lagretToast = false
+        saveStatus[n.id] = saveStatus[n.id] ?? .idle
         valgte.removeAll()
+        visNotatlisteSheet = false
         taSnapshot()
+        DispatchQueue.main.async {
+            if valgtId == n.id, editorGeneration == hydrateGeneration {
+                underHydrering = false
+            }
+        }
     }
 
     private func slett(_ n: CanvasNotat) {
-        notater.removeAll { $0.id == n.id }
-        aapneFaner.removeAll { $0 == n.id }
-        if valgtId == n.id { valgtId = aapneFaner.last }
-        guard !isDemo, !n.erNy, let api = appState.api else { return }
-        Task { try? await api.slettCanvasNotat(id: n.id) }
+        guard n.erMin, rolleKanSkriveCanvas else { return }
+        let scope = canvasDraftScope
+        let organizationId = activeCanvasOrganizationId
+        Task { @MainActor in
+            guard scope == canvasDraftScope else { return }
+            guard !deletingNoteIDs.contains(n.id) else { return }
+            // Ta et immutable sluttsnapshot før slettelåsen settes. Etter
+            // låsen kan lifecycle-callbacks ikke legge en sen PUT bak DELETE.
+            let sisteLagring: Task<Void, Never>?
+            if valgtId == n.id {
+                autosaveTask?.cancel()
+                sisteLagring = leggGjeldendeLagringIKo(stille: true)
+            } else {
+                sisteLagring = nil
+            }
+            deletingNoteIDs.insert(n.id)
+            defer { deletingNoteIDs.remove(n.id) }
+            if let sisteLagring { await sisteLagring.value }
+            // En delete må stå etter alle create/update-operasjoner for samme
+            // UUID. Å kansellere en URLSession-task kan ikke trekke tilbake en
+            // POST som allerede er committet på serveren.
+            await saveCoordinator.wait(for: n.id)
+            guard scope == canvasDraftScope else { return }
+            let siste = notater.first(where: { $0.id == n.id }) ?? n
+            do {
+                if !isDemo, let api = appState.api,
+                   let organizationId {
+                    do {
+                        try await api.slettCanvasNotat(
+                            organizationId: organizationId,
+                            id: siste.id,
+                            revision: siste.revision)
+                    } catch let error as APIError where error.isNotFound {
+                        // Et helt lokalt notat har ingen serverrad; 404 er da
+                        // den ønskede slutt-tilstanden.
+                    }
+                }
+                guard scope == canvasDraftScope else { return }
+                fjernNotatLokalt(siste.id, scope: scope)
+            } catch {
+                _ = handterCanvasAPIError(error)
+                saveStatus[n.id] = erRevisjonskonflikt(error)
+                    ? .conflict : .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    @MainActor
+    private func fjernNotatLokalt(_ noteID: String, scope: String?) {
+        fjernLokalKladd(noteID: noteID, scope: scope)
+        notater.removeAll { $0.id == noteID }
+        aapneFaner.removeAll { $0 == noteID }
+        dirtyNoteIDs.remove(noteID)
+        editGeneration.removeValue(forKey: noteID)
+        saveStatus.removeValue(forKey: noteID)
+        guard valgtId == noteID else { return }
+        if let nesteId = aapneFaner.last ?? notater.first?.id,
+           let neste = notater.first(where: { $0.id == nesteId }) {
+            hydrate(neste)
+        } else {
+            valgtId = nil
+            realtime.koblFra()
+            drawing = PKDrawing()
+        }
     }
 
     @MainActor
     private func lagre(stille: Bool = false) async {
+        guard let task = leggGjeldendeLagringIKo(stille: stille) else { return }
+        if !stille { await task.value }
+    }
+
+    /// Lager hele payloaden uten `await`, oppdaterer den lokale modellen og
+    /// legger deretter den immutable kopien i en per-note serialisert kø.
+    @MainActor
+    @discardableResult
+    private func leggGjeldendeLagringIKo(stille: Bool) -> Task<Void, Never>? {
+        guard let request = snapshotAvGjeldendeNotat() else { return nil }
+        let noteID = request.notat.id
+        saveStatus[noteID] = .queued
+        lagreLokalKladd(request)
+        return saveCoordinator.enqueue(noteID: noteID) {
+            await persister(request, stille: stille)
+        }
+    }
+
+    @MainActor
+    private func snapshotAvGjeldendeNotat() -> CanvasSaveRequest? {
         guard let id = valgtId,
-              let idx = notater.firstIndex(where: { $0.id == id }) else { return }
+              !deletingNoteIDs.contains(id),
+              let idx = notater.firstIndex(where: { $0.id == id }),
+              let organizationId = activeCanvasOrganizationId else { return nil }
         var n = notater[idx]
-        guard n.erMin else { return }   // andres delte notater lagres aldri
+        guard n.erMin, rolleKanSkriveCanvas,
+              realtime.canWrite != false else { return nil }
         taSnapshot()
         n.tittel = tittel
         n.kategori = kategori
@@ -1930,51 +2278,121 @@ struct CanvasView: View {
         n.noder = noder
         n.sider = sider
         n.objekter = objekter
-        // Dokumenter uten gjenlevende side-objekter ryddes bort (og
-        // slettes fra backend-tabellen, best effort).
-        let fjernede = dokumenter.filter { d in
-            !objekter.contains { $0.dokId == d.id }
-        }
-        dokumenter.removeAll { d in fjernede.contains { $0.id == d.id } }
-        if !isDemo, let api = appState.api {
-            for d in fjernede where d.opplastet == true {
-                Task { try? await api.slettCanvasDokument(dokId: d.id) }
-            }
-        }
-        // Lazy-arkitekturen: bytes bor i egen tabell — last opp nye
-        // dokumenter og lagre kun metadata i notatet (rask liste).
-        if !isDemo, !n.erNy, let api = appState.api {
-            for (i, d) in dokumenter.enumerated()
-            where d.opplastet != true && !d.base64.isEmpty {
-                if (try? await api.lastOppCanvasDokument(
-                    notatId: n.id, dokId: d.id,
-                    navn: d.navn, base64: d.base64)) != nil {
-                    dokumenter[i].opplastet = true
-                }
-            }
-        }
-        n.dokumenter = dokumenter.map { d in
-            var kopi = d
-            if kopi.opplastet == true { kopi.base64 = "" }
-            return kopi
-        }
+        // Dokumenter uten gjenlevende side-objekter fjernes fra metadata.
+        // Fjern bare metadatareferansen. Blobben er immutable og beholdes
+        // server-side til permanent note-delete/GC; save skal aldri hard-slette.
+        dokumenter.removeAll { d in !objekter.contains { $0.dokId == d.id } }
+        n.dokumenter = dokumenter
         n.lat = notatLat
         n.lon = notatLon
-        n.sokbarTekst = await byggSokbarTekst()
         n.drawingData = drawing.dataRepresentation()
         n.oppdatert = Date()
+        notater[idx] = n
         oppdaterThumb(n)
+        return CanvasSaveRequest(
+            notat: n,
+            editGeneration: editGeneration[id, default: 0],
+            tenant: CanvasTenantSnapshot(
+                scope: canvasDraftScope,
+                organizationId: organizationId))
+    }
 
+    /// Encoding og fil-I/O skjer utenfor MainActor. Store-actoren beholder
+    /// bare høyeste generation, så Task-rekkefølge kan ikke rulle kladden
+    /// bakover.
+    private func lagreLokalKladd(
+        _ request: CanvasSaveRequest, scope overrideScope: String? = nil
+    ) {
+        guard let scope = overrideScope ?? request.scope else { return }
+        let note = request.notat
+        let generation = request.editGeneration
+        Task.detached(priority: .utility) {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .millisecondsSince1970
+            guard let data = try? encoder.encode(note) else { return }
+            try? await CanvasDraftStore.shared.save(
+                noteID: note.id,
+                generation: generation,
+                encodedNote: data,
+                scope: scope)
+        }
+    }
+
+    private func fjernLokalKladd(
+        noteID: String, scope: String?, upToGeneration: Int? = nil
+    ) {
+        guard let scope else { return }
+        Task {
+            await CanvasDraftStore.shared.remove(
+                noteID: noteID,
+                scope: scope,
+                upToGeneration: upToGeneration)
+        }
+    }
+
+    private func lesLokaleKladder(scope: String?) async -> [DecodedCanvasDraft] {
+        guard let scope else { return [] }
+        let records = await CanvasDraftStore.shared.load(scope: scope)
+        return await Task.detached(priority: .utility) {
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .millisecondsSince1970
+            return records.compactMap { record in
+                guard let note = try? decoder.decode(
+                    CanvasNotat.self, from: record.encodedNote),
+                      note.id == record.noteID,
+                      note.erMin else { return nil }
+                return DecodedCanvasDraft(
+                    note: note,
+                    generation: record.generation,
+                    savedAt: record.savedAt)
+            }
+        }.value
+    }
+
+    @MainActor
+    private func persister(_ request: CanvasSaveRequest, stille _: Bool) async {
+        guard request.tenant.canSend(currentScope: canvasDraftScope) else { return }
+        var n = request.notat
+        let noteID = n.id
+        // En tidligere queued POST kan ha fullført mens denne payloaden ventet.
+        // Rebase bare server-state; innholdet forblir snapshotet.
+        if let aktuell = notater.first(where: { $0.id == noteID }) {
+            n.erNy = aktuell.erNy
+            n.revision = aktuell.revision
+        }
+        saveStatus[noteID] = .saving
         if isDemo {
-            n.erNy = false
-            notater[idx] = n
-            if !stille { visLagret() }
+            fullforLagring(
+                request: request,
+                revision: max(1, n.revision),
+                dokumenter: n.dokumenter)
             return
         }
-        guard let api = appState.api else { return }
-        if !stille { lagrer = true }
-        defer { if !stille { lagrer = false } }
+        guard let api = appState.api else {
+            saveStatus[noteID] = .failed("Ingen aktiv tilkobling. Prøv igjen.")
+            return
+        }
         do {
+            if !n.erNy {
+                for i in n.dokumenter.indices
+                where n.dokumenter[i].opplastet != true
+                    && !n.dokumenter[i].base64.isEmpty {
+                    let d = n.dokumenter[i]
+                    try await api.lastOppCanvasDokument(
+                        organizationId: request.organizationId,
+                        notatId: n.id, dokId: d.id,
+                        navn: d.navn, base64: d.base64)
+                    guard request.scope == canvasDraftScope else { return }
+                    n.dokumenter[i].opplastet = true
+                }
+            }
+            n.sokbarTekst = await byggSokbarTekst(for: n)
+            guard request.scope == canvasDraftScope else { return }
+            let persistenteDokumenter = n.dokumenter.map { d in
+                var kopi = d
+                kopi.base64 = ""
+                return kopi
+            }
             let stemplerJSON = (try? JSONEncoder().encode(n.stempler))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             let tekstbokserJSON = (try? JSONEncoder().encode(n.tekstbokser))
@@ -1985,23 +2403,29 @@ struct CanvasView: View {
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
             let objekterJSON = (try? JSONEncoder().encode(n.objekter))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
-            let dokumenterJSON = (try? JSONEncoder().encode(n.dokumenter))
+            let dokumenterJSON = (try? JSONEncoder().encode(persistenteDokumenter))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
-            if n.erNy {
-                let nyId = try await api.opprettCanvasNotat(
-                    tittel: n.tittel, kategori: n.kategori.rawValue,
+            func revisionertPut(_ revision: Int,
+                                dokumenterJSON: String) async throws -> Int {
+                guard request.scope == canvasDraftScope else {
+                    throw CancellationError()
+                }
+                return try await api.oppdaterCanvasNotat(
+                    organizationId: request.organizationId,
+                    id: n.id, tittel: n.tittel, kategori: n.kategori.rawValue,
                     selskap: n.selskap, leadId: n.leadId,
                     drawingBase64: n.drawingData.base64EncodedString(),
                     delt: n.delt, lat: n.lat, lon: n.lon,
                     stempler: stemplerJSON, tekstbokser: tekstbokserJSON,
                     figurer: figurerJSON, papir: n.papir.rawValue,
                     noder: noderJSON, sider: n.sider, objekter: objekterJSON,
-                    sokbarTekst: n.sokbarTekst, dokumenter: dokumenterJSON)
-                n.id = nyId
-                n.erNy = false
-                if valgtId == id { valgtId = nyId }
-            } else {
-                try await api.oppdaterCanvasNotat(
+                    sokbarTekst: n.sokbarTekst, dokumenter: dokumenterJSON,
+                    revision: revision)
+            }
+            let nyRevision: Int
+            if n.erNy {
+                let resultat = try await api.opprettCanvasNotat(
+                    organizationId: request.organizationId,
                     id: n.id, tittel: n.tittel, kategori: n.kategori.rawValue,
                     selskap: n.selskap, leadId: n.leadId,
                     drawingBase64: n.drawingData.base64EncodedString(),
@@ -2010,56 +2434,422 @@ struct CanvasView: View {
                     figurer: figurerJSON, papir: n.papir.rawValue,
                     noder: noderJSON, sider: n.sider, objekter: objekterJSON,
                     sokbarTekst: n.sokbarTekst, dokumenter: dokumenterJSON)
+                guard request.scope == canvasDraftScope else { return }
+                guard resultat.id == noteID else {
+                    saveStatus[noteID] = .failed("Tjeneren returnerte feil notat-ID.")
+                    return
+                }
+                n.erNy = false
+                n.revision = resultat.revision
+                oppdaterRevisjonLokalt(noteID: noteID,
+                                       revision: resultat.revision)
+                var lastetOppDokument = false
+                for i in n.dokumenter.indices
+                where n.dokumenter[i].opplastet != true
+                    && !n.dokumenter[i].base64.isEmpty {
+                    let d = n.dokumenter[i]
+                    try await api.lastOppCanvasDokument(
+                        organizationId: request.organizationId,
+                        notatId: n.id, dokId: d.id,
+                        navn: d.navn, base64: d.base64)
+                    guard request.scope == canvasDraftScope else { return }
+                    n.dokumenter[i].opplastet = true
+                    lastetOppDokument = true
+                }
+                if lastetOppDokument || !resultat.created {
+                    let oppdatertDokumentJSON = (try? JSONEncoder().encode(
+                        n.dokumenter.map { dokument in
+                            var metadata = dokument
+                            metadata.base64 = ""
+                            return metadata
+                        }))
+                        .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+                    nyRevision = try await revisionertPut(
+                        resultat.revision,
+                        dokumenterJSON: oppdatertDokumentJSON)
+                } else {
+                    nyRevision = resultat.revision
+                }
+            } else {
+                nyRevision = try await revisionertPut(
+                    n.revision, dokumenterJSON: dokumenterJSON)
             }
-            notater[idx] = n
-            if !stille { visLagret() }
+            fullforLagring(
+                request: request,
+                revision: nyRevision,
+                dokumenter: n.dokumenter,
+                sokbarTekst: n.sokbarTekst)
         } catch {
+            guard request.scope == canvasDraftScope else { return }
+            // Requesten ble allerede skrevet til CanvasDraftStore før den
+            // gikk i kø. Skriv den igjen før re-login for å gjøre
+            // bevaringsgarantien eksplisitt ved 401 midt i en opplasting.
+            if handterCanvasAPIError(error) {
+                lagreLokalKladd(request)
+            }
+            saveStatus[noteID] = erRevisjonskonflikt(error)
+                ? .conflict : .failed(error.localizedDescription)
             print("[Canvas] lagring feilet: \(error)")
         }
     }
 
-    private func visLagret() {
-        lagretToast = true
+    @MainActor
+    private func fullforLagring(request: CanvasSaveRequest, revision: Int,
+                                dokumenter lagredeDokumenter: [CanvasDokument],
+                                sokbarTekst: String? = nil) {
+        guard request.scope == canvasDraftScope else { return }
+        let noteID = request.notat.id
+        if let idx = notater.firstIndex(where: { $0.id == noteID }) {
+            notater[idx].erNy = false
+            notater[idx].revision = revision
+            if let sokbarTekst { notater[idx].sokbarTekst = sokbarTekst }
+            for lagret in lagredeDokumenter where lagret.opplastet == true {
+                if let dokumentIndex = notater[idx].dokumenter.firstIndex(
+                    where: { $0.id == lagret.id }) {
+                    notater[idx].dokumenter[dokumentIndex].opplastet = true
+                }
+                if valgtId == noteID,
+                   let editorIndex = dokumenter.firstIndex(where: { $0.id == lagret.id }) {
+                    dokumenter[editorIndex].opplastet = true
+                }
+            }
+        }
+        if editGeneration[noteID, default: 0] == request.editGeneration {
+            dirtyNoteIDs.remove(noteID)
+            saveStatus[noteID] = .saved
+            fjernLokalKladd(
+                noteID: noteID,
+                scope: request.scope,
+                upToGeneration: request.editGeneration)
+        } else {
+            // Et nyere editor-snapshot finnes. Resultatet er gyldig som
+            // server-revision, men må aldri presenteres som «alt lagret».
+            saveStatus[noteID] = .queued
+        }
+    }
+
+    @MainActor
+    private func oppdaterRevisjonLokalt(noteID: String, revision: Int) {
+        guard let idx = notater.firstIndex(where: { $0.id == noteID }) else { return }
+        notater[idx].erNy = false
+        notater[idx].revision = revision
+    }
+
+    private func erRevisjonskonflikt(_ error: Error) -> Bool {
+        guard let apiError = error as? APIError else { return false }
+        switch apiError {
+        case .statusCode(412), .statusCode(428),
+             .serverError(412, _), .serverError(428, _):
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func markerUlagret() {
+        guard !underHydrering, let noteID = valgtId,
+              !deletingNoteIDs.contains(noteID),
+              kanRedigereValgtNotat else { return }
+        editGeneration[noteID, default: 0] += 1
+        let generation = editGeneration[noteID, default: 0]
+        dirtyNoteIDs.insert(noteID)
+        if saveStatus[noteID] != .conflict {
+            saveStatus[noteID] = .queued
+        }
+        autosaveTask?.cancel()
+        autosaveTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard !Task.isCancelled,
+                  valgtId == noteID,
+                  editGeneration[noteID] == generation,
+                  dirtyNoteIDs.contains(noteID),
+                  saveStatus[noteID] != .conflict else { return }
+            _ = leggGjeldendeLagringIKo(stille: true)
+        }
+        draftTask?.cancel()
+        draftTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled,
+                  valgtId == noteID,
+                  editGeneration[noteID] == generation,
+                  dirtyNoteIDs.contains(noteID),
+                  let request = snapshotAvGjeldendeNotat() else { return }
+            lagreLokalKladd(request)
+        }
+    }
+
+    private func startLastInnValgtFraServer() {
+        guard let noteID = valgtId else { return }
+        let generation = editorGeneration
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_800_000_000)
-            lagretToast = false
+            await lastInnValgtFraServer(noteID: noteID, generation: generation)
+        }
+    }
+
+    private func handterSamarbeidsReload() {
+        guard let noteID = valgtId else { return }
+        if dirtyNoteIDs.contains(noteID)
+            || saveCoordinator.pendingNoteIDs.contains(noteID) {
+            saveStatus[noteID] = .conflict
+            return
+        }
+        startLastInnValgtFraServer()
+    }
+
+    @MainActor
+    private func lastInnValgtFraServer(noteID: String, generation: UUID) async {
+        guard valgtId == noteID, editorGeneration == generation,
+              let api = appState.api,
+              let organizationId = activeCanvasOrganizationId else { return }
+        do {
+            let dtoer = try await api.hentCanvasNotater(
+                organizationId: organizationId)
+            guard !Task.isCancelled, valgtId == noteID,
+                  editorGeneration == generation else { return }
+            guard let dto = dtoer.first(where: { $0.id == noteID }) else {
+                saveStatus[noteID] = .failed("Notatet finnes ikke lenger på serveren.")
+                return
+            }
+            saveCoordinator.cancel(noteID: noteID)
+            fjernLokalKladd(noteID: noteID, scope: canvasDraftScope)
+            let ferskt = Self.fraDTO(dto)
+            if let idx = notater.firstIndex(where: { $0.id == noteID }) {
+                notater[idx] = ferskt
+            } else {
+                notater.insert(ferskt, at: 0)
+            }
+            saveStatus[noteID] = .idle
+            hydrate(ferskt)
+        } catch {
+            if !Task.isCancelled, valgtId == noteID,
+               editorGeneration == generation {
+                _ = handterCanvasAPIError(error)
+                saveStatus[noteID] = .failed(error.localizedDescription)
+            }
         }
     }
 
     @MainActor
     private func lastInn() async {
-        defer { lastet = true }
+        let scope = canvasDraftScope
+        let scopeToken = scope ?? "__no_authenticated_scope__"
+        if loadedCanvasScope != scopeToken {
+            nullstillCanvasForNyttScope(scopeToken)
+        }
+        defer {
+            if canvasDraftScope == scope {
+                lastet = true
+            }
+        }
         if isDemo {
             if notater.isEmpty { notater = Self.demoNotater() }
             return
         }
-        guard let api = appState.api else { return }
-        guard let dtoer = try? await api.hentCanvasNotater() else { return }
-        notater = dtoer.map { Self.fraDTO($0) }
+        let lokaleKladder = await lesLokaleKladder(scope: scope)
+        guard !Task.isCancelled, canvasDraftScope == scope else { return }
+        guard let api = appState.api,
+              let organizationId = activeCanvasOrganizationId else {
+            gjenopprettKladderUtenServer(lokaleKladder)
+            return
+        }
+        let dtoer: [CanvasNotatDTO]
+        do {
+            dtoer = try await api.hentCanvasNotater(
+                organizationId: organizationId)
+        } catch {
+            guard !Task.isCancelled, canvasDraftScope == scope else { return }
+            gjenopprettKladderUtenServer(lokaleKladder)
+            if handterCanvasAPIError(error) { return }
+            return
+        }
+        guard !Task.isCancelled, canvasDraftScope == scope else { return }
+        let eksisterende = Dictionary(uniqueKeysWithValues: notater.map { ($0.id, $0) })
+        let lokaltBeskyttet = dirtyNoteIDs.union(saveCoordinator.pendingNoteIDs)
+        let serverRevisjoner = Dictionary(uniqueKeysWithValues: dtoer.map {
+            ($0.id, $0.revision ?? 0)
+        })
+        var innlastede = dtoer.map { dto -> CanvasNotat in
+            let ferskt = Self.fraDTO(dto)
+            // Automatisk refresh skal aldri erstatte editorens eget aktive
+            // snapshot. Konflikt/reload håndteres eksplisitt i statusbanneret.
+            if (dto.id == valgtId || lokaltBeskyttet.contains(dto.id)),
+               let lokalt = eksisterende[dto.id], lokalt.erMin {
+                return lokalt
+            }
+            return ferskt
+        }
+        let bareLokale = eksisterende.values.filter { lokalt in
+            lokalt.erNy && !innlastede.contains(where: { $0.id == lokalt.id })
+        }
+        innlastede.append(contentsOf: bareLokale)
+        let gjenopptak = flettInnLokaleKladder(
+            lokaleKladder,
+            i: &innlastede,
+            eksisterende: eksisterende,
+            lokaltBeskyttet: lokaltBeskyttet,
+            serverRevisjoner: serverRevisjoner,
+            scope: scope,
+            organizationId: organizationId)
+        notater = innlastede
         genererThumbs()
+        for request in gjenopptak {
+            _ = saveCoordinator.enqueue(noteID: request.notat.id) {
+                await persister(request, stille: true)
+            }
+        }
         if let api = appState.api {
-            oppgaverCache = (try? await api.hentMoteOppgaver()) ?? []
-            if let p = try? await api.hentCanvasRollePolicy() { rollePolicy = p }
+            do {
+                oppgaverCache = try await api.hentMoteOppgaver(
+                    organizationId: organizationId)
+            } catch {
+                if handterCanvasAPIError(error) { return }
+                oppgaverCache = []
+            }
+            guard !Task.isCancelled, canvasDraftScope == scope else { return }
+            do {
+                let p = try await api.hentCanvasRollePolicy(
+                    organizationId: organizationId)
+                guard !Task.isCancelled, canvasDraftScope == scope else { return }
+                rollePolicy = p
+            } catch {
+                if handterCanvasAPIError(error) { return }
+            }
             // Org-delt bibliotek: backend er sannheten — lokale elementer
             // som ikke finnes der lastes opp én gang (migrering fra
             // UserDefaults-æraen).
-            if let dtos = try? await api.hentCanvasBibliotek() {
+            do {
+                let dtos = try await api.hentCanvasBibliotek(
+                    organizationId: organizationId)
+                guard !Task.isCancelled, canvasDraftScope == scope else { return }
                 var synket = dtos.compactMap { BibliotekElement.fraDTO($0) }
                 let lokale = bibliotek.filter { l in
                     (l.erMin ?? true) && !synket.contains { $0.id == l.id }
                 }
                 for var l in lokale {
                     l.erMin = true
-                    if (try? await api.lagreCanvasBibliotekElement(
-                        id: l.id, navn: l.navn,
-                        innhold: l.innholdJSON, delt: false)) != nil {
+                    do {
+                        _ = try await api.lagreCanvasBibliotekElement(
+                            organizationId: organizationId,
+                            id: l.id, navn: l.navn,
+                            innhold: l.innholdJSON, delt: false)
+                        guard !Task.isCancelled, canvasDraftScope == scope else { return }
                         synket.append(l)
+                    } catch {
+                        if handterCanvasAPIError(error) { return }
                     }
                 }
+                guard !Task.isCancelled, canvasDraftScope == scope else { return }
                 bibliotek = synket
                 BibliotekElement.lagreAlle(bibliotek)
+            } catch {
+                if handterCanvasAPIError(error) { return }
             }
         }
+    }
+
+    @MainActor
+    private func nullstillCanvasForNyttScope(_ scopeToken: String) {
+        saveCoordinator.cancelAll()
+        autosaveTask?.cancel()
+        draftTask?.cancel()
+        autoTittelTask?.cancel()
+        markeringsTask?.cancel()
+        realtime.koblFra()
+        loadedCanvasScope = scopeToken
+        lastet = false
+        notater.removeAll()
+        papirkurvNotater.removeAll()
+        aapneFaner.removeAll()
+        valgtId = nil
+        saveStatus.removeAll()
+        editGeneration.removeAll()
+        dirtyNoteIDs.removeAll()
+        deletingNoteIDs.removeAll()
+        drawing = PKDrawing()
+        stempler.removeAll()
+        tekstbokser.removeAll()
+        figurer.removeAll()
+        noder.removeAll()
+        objekter.removeAll()
+        dokumenter.removeAll()
+        sokTreff.removeAll()
+        kollegaOppdatering = nil
+        bibliotek.removeAll()
+        oppgaverCache.removeAll()
+        rollePolicy = OversiktPolicyDTO()
+    }
+
+    @MainActor
+    private func gjenopprettKladderUtenServer(
+        _ kladder: [DecodedCanvasDraft]
+    ) {
+        var perID = Dictionary(uniqueKeysWithValues: notater.map { ($0.id, $0) })
+        for kladd in kladder {
+            if dirtyNoteIDs.contains(kladd.note.id)
+                || saveCoordinator.pendingNoteIDs.contains(kladd.note.id) {
+                continue
+            }
+            perID[kladd.note.id] = kladd.note
+            editGeneration[kladd.note.id] = max(
+                editGeneration[kladd.note.id, default: 0],
+                kladd.generation)
+            dirtyNoteIDs.insert(kladd.note.id)
+            saveStatus[kladd.note.id] = .failed(
+                "Lagret lokalt – koble til nettet og prøv igjen.")
+        }
+        notater = perID.values.sorted { $0.oppdatert > $1.oppdatert }
+        genererThumbs()
+    }
+
+    /// Returnerer bare kladder som kan gjenopptas automatisk uten å krysse
+    /// en serverrevisjon. Ved avvik beholdes det lokale innholdet synlig,
+    /// men settes i konflikt i stedet for å bli overskrevet.
+    @MainActor
+    private func flettInnLokaleKladder(
+        _ kladder: [DecodedCanvasDraft],
+        i innlastede: inout [CanvasNotat],
+        eksisterende: [String: CanvasNotat],
+        lokaltBeskyttet: Set<String>,
+        serverRevisjoner: [String: Int],
+        scope: String?,
+        organizationId: String
+    ) -> [CanvasSaveRequest] {
+        var requests: [CanvasSaveRequest] = []
+        let pending = saveCoordinator.pendingNoteIDs
+        for kladd in kladder {
+            let id = kladd.note.id
+            // Minneversjonen er nyere enn en disk-kladd når brukeren allerede
+            // redigerer eller lagrer dette notatet i samme prosess.
+            if lokaltBeskyttet.contains(id), eksisterende[id] != nil { continue }
+
+            if let index = innlastede.firstIndex(where: { $0.id == id }) {
+                innlastede[index] = kladd.note
+            } else {
+                innlastede.append(kladd.note)
+            }
+            editGeneration[id] = max(
+                editGeneration[id, default: 0], kladd.generation)
+            dirtyNoteIDs.insert(id)
+
+            let kanGjenopptas: Bool
+            if let serverRevision = serverRevisjoner[id] {
+                kanGjenopptas = serverRevision == kladd.note.revision
+            } else {
+                kanGjenopptas = kladd.note.erNy
+            }
+            if kanGjenopptas, !pending.contains(id) {
+                saveStatus[id] = .queued
+                requests.append(CanvasSaveRequest(
+                    notat: kladd.note,
+                    editGeneration: kladd.generation,
+                    tenant: CanvasTenantSnapshot(
+                        scope: scope,
+                        organizationId: organizationId)))
+            } else if !pending.contains(id) {
+                saveStatus[id] = .conflict
+            }
+        }
+        return requests
     }
 
     // MARK: Markering → møtepunkt
@@ -2185,14 +2975,24 @@ struct CanvasView: View {
             tittel: "📌 \(String(forslag.tekst.prefix(60)))",
             detalj: "Ta opp på møtet"))
         withAnimation(.easeInOut(duration: 0.12)) { markeringForslag = nil }
-        guard !isDemo, let api = appState.api else { return }
+        guard !isDemo, let api = appState.api,
+              let organizationId = activeCanvasOrganizationId else { return }
+        let selskap = kobletSelskap
+        let leadID = kobletLeadId
         let dto = CanvasAnalyseDTO(
             oppsummering: "Markert i «\(forslag.dokNavn)»: \(forslag.tekst)",
             oppgaver: [CanvasAnalyseOppgaveDTO(
                 tittel: String(forslag.tekst.prefix(80)), frist: nil)],
             lofter: [])
-        Task { try? await api.persisterCanvasAnalyse(
-            selskap: kobletSelskap, leadId: kobletLeadId, resultat: dto) }
+        Task { @MainActor in
+            do {
+                try await api.persisterCanvasAnalyse(
+                    organizationId: organizationId,
+                    selskap: selskap, leadId: leadID, resultat: dto)
+            } catch {
+                _ = handterCanvasAPIError(error)
+            }
+        }
     }
 
     // MARK: Tilbuds-diff
@@ -2217,8 +3017,15 @@ struct CanvasView: View {
             if let cachet = Self.dokumentByteCache[dok.id] {
                 dok.base64 = cachet
             } else if !isDemo, let api = appState.api,
-                      let hentet = try? await api.hentCanvasDokument(dokId: dok.id) {
-                dok.base64 = hentet.base64
+                      let organizationId = activeCanvasOrganizationId {
+                do {
+                    let hentet = try await api.hentCanvasDokument(
+                        organizationId: organizationId,
+                        dokId: dok.id)
+                    dok.base64 = hentet.base64
+                } catch {
+                    _ = handterCanvasAPIError(error)
+                }
             }
         }
         guard let data = Data(base64Encoded: dok.base64),
@@ -2236,7 +3043,7 @@ struct CanvasView: View {
     /// først når notatet åpnes, og caches i minnet per dokId.
     private static var dokumentByteCache: [String: String] = [:]
 
-    private func hentManglendeDokumenter() {
+    private func hentManglendeDokumenter(noteID: String, generation: UUID) {
         // Allerede hentet i denne økta? Fyll fra minnecachen.
         for (i, d) in dokumenter.enumerated()
         where d.base64.isEmpty {
@@ -2246,11 +3053,21 @@ struct CanvasView: View {
             }
         }
         let manglende = dokumenter.filter { $0.base64.isEmpty }
-        guard !manglende.isEmpty, !isDemo, let api = appState.api else { return }
+        guard !manglende.isEmpty, !isDemo, let api = appState.api,
+              let organizationId = activeCanvasOrganizationId else { return }
         Task { @MainActor in
             for d in manglende {
-                guard let hentet = try? await api.hentCanvasDokument(dokId: d.id)
-                else { continue }
+                guard valgtId == noteID, editorGeneration == generation else { return }
+                let hentet: (navn: String, base64: String)
+                do {
+                    hentet = try await api.hentCanvasDokument(
+                        organizationId: organizationId,
+                        dokId: d.id)
+                } catch {
+                    if handterCanvasAPIError(error) { return }
+                    continue
+                }
+                guard valgtId == noteID, editorGeneration == generation else { return }
                 Self.dokumentByteCache[d.id] = hentet.base64
                 if let i = dokumenter.firstIndex(where: { $0.id == d.id }) {
                     dokumenter[i].base64 = hentet.base64
@@ -2297,14 +3114,16 @@ struct CanvasView: View {
             sokbarTekst: dto.sokbarTekst ?? "",
             dokumenter: (dto.dokumenter?.data(using: .utf8))
                 .flatMap { try? JSONDecoder().decode([CanvasDokument].self, from: $0) } ?? [],
-            slettetAt: Self.isoDato(dto.slettetAt))
+            slettetAt: Self.isoDato(dto.slettetAt),
+            revision: dto.revision ?? 0)
     }
 
     /// Auto-tittel: øverste gjenkjente håndskrift-linje blir tittelen.
     @MainActor
-    private func foreslaTittelFraBlekk() async {
-        guard tittel.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        let kopi = drawing
+    private func foreslaTittelFraBlekk(noteID: String, generation: UUID,
+                                       drawing kopi: PKDrawing) async {
+        guard valgtId == noteID, editorGeneration == generation,
+              tittel.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         guard !kopi.strokes.isEmpty, !kopi.bounds.isEmpty else { return }
         // Mørk modus: strøkene er lagret i lys-referanse — render på hvitt.
         let bilde = kopi.image(from: kopi.bounds, scale: 2)
@@ -2322,7 +3141,8 @@ struct CanvasView: View {
         guard let ren = kandidat?.trimmingCharacters(in: .whitespacesAndNewlines),
               ren.count >= 3 else { return }
         // Ikke overskriv noe brukeren har rukket å skrive selv.
-        if tittel.trimmingCharacters(in: .whitespaces).isEmpty {
+        if valgtId == noteID, editorGeneration == generation,
+           tittel.trimmingCharacters(in: .whitespaces).isEmpty {
             tittel = String(ren.prefix(60))
         }
     }
@@ -2605,14 +3425,16 @@ struct CanvasView: View {
 
     /// Universalsøk-indeksen: alt tekstlig i notatet + rask OCR av blekket.
     /// Kjøres ved lagring (.fast-nivå — indeksering, ikke presisjon).
-    private func byggSokbarTekst() async -> String {
+    private func byggSokbarTekst(for notat: CanvasNotat) async -> String {
         var deler: [String] = []
-        deler.append(contentsOf: tekstbokser.map(\.tekst))
-        deler.append(contentsOf: noder.map(\.tekst))
-        deler.append(contentsOf: objekter.compactMap(\.tittel))
-        deler.append(contentsOf: objekter.compactMap(\.detalj))
-        if !drawing.bounds.isEmpty, let cg = drawing
-            .image(from: drawing.bounds, scale: 1.5).cgImage {
+        deler.append(contentsOf: notat.tekstbokser.map(\.tekst))
+        deler.append(contentsOf: notat.noder.map(\.tekst))
+        deler.append(contentsOf: notat.objekter.compactMap(\.tittel))
+        deler.append(contentsOf: notat.objekter.compactMap(\.detalj))
+        let snapshotDrawing = try? PKDrawing(data: notat.drawingData)
+        if let snapshotDrawing, !snapshotDrawing.bounds.isEmpty,
+           let cg = snapshotDrawing
+            .image(from: snapshotDrawing.bounds, scale: 1.5).cgImage {
             let tekst: String = await withCheckedContinuation { cont in
                 let req = VNRecognizeTextRequest { r, _ in
                     let linjer = (r.results as? [VNRecognizedTextObservation] ?? [])
@@ -2683,8 +3505,12 @@ struct CanvasView: View {
         if kan(.canvasAnalyse), renTekst.count > 40 {
             let nyTekst = String(renTekst.prefix(12_000))
             let dokId = dokument.id
+            let noteID = valgtId
+            let generation = editorGeneration
             Task { @MainActor in
-                if let forrige = await forrigeDokumentTekst(unntattDokId: dokId) {
+                let forrige = await forrigeDokumentTekst(unntattDokId: dokId)
+                guard valgtId == noteID, editorGeneration == generation else { return }
+                if let forrige {
                     pdfAnalyseTekst = "NY VERSJON:\n" + nyTekst
                         + "\n\nFORRIGE VERSJON («\(forrige.navn)») — sammenlign "
                         + "versjonene og fremhev endringer i pris, frister og "
@@ -2695,6 +3521,7 @@ struct CanvasView: View {
                     pdfAnalyseSammenlign = nil
                 }
                 pdfAnalyseNavn = navn
+                pdfAnalyseKontekst = gjeldendeEditorKontekst()
                 // QA-moduser 2-4 verifiserer andre flater — hold arket lukket.
                 let qa = ProcessInfo.processInfo.environment["QA_PDF"] ?? ""
                 visPdfAnalyse = !["2", "3", "4"].contains(qa)
@@ -2722,6 +3549,8 @@ struct CanvasView: View {
         }
         guard let jpeg = bilde.jpegData(compressionQuality: 0.7) else { return }
         let objektId = UUID().uuidString
+        let noteID = valgtId
+        let generation = editorGeneration
         objekter.append(CanvasObjekt(
             id: objektId,
             type: "bilde",
@@ -2742,6 +3571,8 @@ struct CanvasView: View {
                     .joined(separator: " ")
                 guard !tekst.isEmpty else { return }
                 await MainActor.run {
+                    guard valgtId == noteID,
+                          editorGeneration == generation else { return }
                     if let i = objekter.firstIndex(where: { $0.id == objektId }) {
                         objekter[i].detalj = String(tekst.prefix(2000))
                     }
@@ -2826,10 +3657,29 @@ struct CanvasView: View {
     }
 
     /// Kart-utsnitt: MKMapSnapshotter av notatets posisjon (eller Oslo).
+    private func startKartUtsnitt() {
+        guard let noteID = valgtId else { return }
+        let generation = editorGeneration
+        let latitude = notatLat ?? 59.913
+        let longitude = notatLon ?? 10.753
+        let selskap = kobletSelskap
+        Task { @MainActor in
+            await settInnKartUtsnitt(
+                noteID: noteID,
+                generation: generation,
+                latitude: latitude,
+                longitude: longitude,
+                selskap: selskap)
+        }
+    }
+
     @MainActor
-    private func settInnKartUtsnitt() async {
+    private func settInnKartUtsnitt(noteID: String, generation: UUID,
+                                    latitude: Double, longitude: Double,
+                                    selskap: String?) async {
+        guard valgtId == noteID, editorGeneration == generation else { return }
         let senter = CLLocationCoordinate2D(
-            latitude: notatLat ?? 59.913, longitude: notatLon ?? 10.753)
+            latitude: latitude, longitude: longitude)
         let opts = MKMapSnapshotter.Options()
         opts.region = MKCoordinateRegion(
             center: senter,
@@ -2838,10 +3688,11 @@ struct CanvasView: View {
         opts.traitCollection = UITraitCollection(userInterfaceStyle: .dark)
         guard let snap = try? await MKMapSnapshotter(options: opts).start(),
               let jpeg = snap.image.jpegData(compressionQuality: 0.75) else { return }
+        guard valgtId == noteID, editorGeneration == generation else { return }
         objekter.append(CanvasObjekt(
             type: "kart", x: 430, y: 300,
             bildeBase64: jpeg.base64EncodedString(),
-            tittel: kobletSelskap))
+            tittel: selskap))
         objektModus = true
     }
 
@@ -2853,10 +3704,16 @@ struct CanvasView: View {
                         .font(.appScaled(size: 17, weight: .bold))
                         .foregroundStyle(.white)
                         .textFieldStyle(.plain)
+                        .disabled(!kanRedigereValgtNotat)
+                        .onChange(of: tittel) { _, _ in markerUlagret() }
                     Spacer()
                     // Fase 3: håndskrift → tekst → AI (oppgaver + møtelogg).
                     if kan(.canvasAnalyse) {
-                    Button { visAnalyse = true } label: {
+                    Button {
+                        guard kanRedigereValgtNotat else { return }
+                        analyseKontekst = gjeldendeEditorKontekst()
+                        visAnalyse = true
+                    } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "sparkles")
                                 .font(.appScaled(size: 12, weight: .bold))
@@ -2870,41 +3727,73 @@ struct CanvasView: View {
                             .stroke(CvBrand.purple.opacity(0.5), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
+                    .disabled(!kanRedigereValgtNotat)
                     }
                     Button { Task { await lagre() } } label: {
                         HStack(spacing: 6) {
-                            if lagrer {
+                            if valgtSaveStatus.isBusy {
                                 ProgressView().controlSize(.small).tint(.white)
                             } else {
-                                Image(systemName: lagretToast
-                                      ? "checkmark" : "square.and.arrow.down.fill")
+                                Image(systemName: saveKnappPresentasjon.ikon)
                                     .font(.appScaled(size: 12, weight: .bold))
                             }
-                            Text(lagretToast ? "Lagret" : "Lagre")
+                            Text(saveKnappPresentasjon.tekst)
                                 .font(.appScaled(size: 13, weight: .bold))
                         }
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 14).padding(.vertical, 9)
-                        .background(lagretToast
-                                    ? CvBrand.green.opacity(0.4)
-                                    : CvBrand.purple,
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 44)
+                        .background(saveKnappPresentasjon.farge,
                                     in: RoundedRectangle(cornerRadius: 10))
                     }
                     .buttonStyle(.plain)
-                    .disabled(lagrer)
+                    .disabled(!kanRedigereValgtNotat
+                              || valgtSaveStatus.isBusy
+                              || valgtSaveStatus == .conflict)
+                    .accessibilityLabel(saveKnappPresentasjon.tekst)
+                    .accessibilityHint("Lagrer bare det åpne notatet")
                 }
-                if !valgtErMin {
+                if !kanRedigereValgtNotat {
                     HStack(spacing: 6) {
                         Image(systemName: "eye.fill")
                             .font(.appScaled(size: 10, weight: .bold))
-                        Text("Delt av \(notater.first(where: { $0.id == valgtId })?.eierNavn ?? "kollega") — kun visning")
+                        Text(skrivebeskyttetForklaring)
                             .font(.appScaled(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(CvBrand.blue)
                 }
+                switch valgtSaveStatus {
+                case .failed(let melding):
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                        Text(melding).lineLimit(2)
+                        Spacer(minLength: 8)
+                        Button("Prøv igjen") { Task { await lagre() } }
+                            .buttonStyle(.bordered)
+                            .frame(minHeight: 44)
+                    }
+                    .font(.appScaled(size: 11, weight: .semibold))
+                    .foregroundStyle(CvBrand.red)
+                    .accessibilityElement(children: .contain)
+                case .conflict:
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                        Text("En nyere versjon finnes på serveren. Lokale endringer er beholdt.")
+                        Spacer(minLength: 8)
+                        Button("Last inn serverversjon") {
+                            startLastInnValgtFraServer()
+                        }
+                        .buttonStyle(.bordered)
+                        .frame(minHeight: 44)
+                    }
+                    .font(.appScaled(size: 11, weight: .semibold))
+                    .foregroundStyle(CvBrand.orange)
+                default:
+                    EmptyView()
+                }
                 HStack(spacing: 8) {
                     // Del med teamet (kun egne notater, RBAC-gated)
-                    if valgtErMin && kan(.canvasDeling) {
+                    if kanRedigereValgtNotat && kan(.canvasDeling) {
                         Button {
                             deltMedTeam.toggle()
                         } label: {
@@ -2947,6 +3836,7 @@ struct CanvasView: View {
                             }
                         }
                     }
+                    .disabled(!kanRedigereValgtNotat)
                     Spacer(minLength: 8)
                     // Stedfestet: forhåndsvis posisjonen på Kart-fanen.
                     if let lat = notatLat, let lon = notatLon {
@@ -2977,6 +3867,7 @@ struct CanvasView: View {
                                     }
                                     if let epost = kontaktEpost {
                                         Button {
+                                            sendKontekst = gjeldendeEditorKontekst()
                                             sendDokument = dok
                                         } label: {
                                             Label("Send til \(epost)",
@@ -3001,7 +3892,7 @@ struct CanvasView: View {
                             Image(systemName: "doc.text")
                                 .font(.appScaled(size: 13, weight: .bold))
                                 .foregroundStyle(CvBrand.purpleLight)
-                                .frame(width: 30, height: 30)
+                                .frame(width: 44, height: 44)
                                 .background(CvBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
                         }
                     }
@@ -3035,11 +3926,12 @@ struct CanvasView: View {
                             Image(systemName: "square.and.arrow.up")
                                 .font(.appScaled(size: 13, weight: .bold))
                                 .foregroundStyle(CvBrand.textSecondary)
-                                .frame(width: 30, height: 30)
+                                .frame(width: 44, height: 44)
                                 .background(CvBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
                         }
                     }
                     leadKobling
+                        .disabled(!kanRedigereValgtNotat)
                 }
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
@@ -3063,30 +3955,52 @@ struct CanvasView: View {
 
     private func faneChip(_ fid: String, notat: CanvasNotat) -> some View {
         let aktiv = fid == valgtId
-        return HStack(spacing: 6) {
-            Circle()
-                .fill(notat.kategori.farge)
-                .frame(width: 7, height: 7)
-            Text(notat.tittel.isEmpty ? "Uten tittel" : notat.tittel)
-                .font(.appScaled(size: 11, weight: aktiv ? .bold : .semibold))
-                .foregroundStyle(aktiv ? Color.white : CvBrand.textSecondary)
-                .lineLimit(1)
+        let visningstittel = notat.tittel.isEmpty ? "Uten tittel" : notat.tittel
+        return HStack(spacing: 2) {
             Button {
+                if !aktiv, let n = notater.first(where: { $0.id == fid }) {
+                    velg(n)
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(notat.kategori.farge)
+                        .frame(width: 7, height: 7)
+                    Text(visningstittel)
+                        .font(.appScaled(size: 11, weight: aktiv ? .bold : .semibold))
+                        .foregroundStyle(aktiv ? Color.white : CvBrand.textSecondary)
+                        .lineLimit(1)
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Åpne \(visningstittel)")
+            .accessibilityValue(aktiv ? "Valgt" : "")
+            .accessibilityAddTraits(aktiv ? .isSelected : [])
+            Button {
+                let lukkerAktivtNotat = valgtId == fid
+                if lukkerAktivtNotat {
+                    _ = leggGjeldendeLagringIKo(stille: true)
+                }
                 aapneFaner.removeAll { $0 == fid }
-                if valgtId == fid {
+                if lukkerAktivtNotat {
                     if let neste = aapneFaner.last,
                        let n = notater.first(where: { $0.id == neste }) {
-                        velg(n)
+                        hydrate(n)
                     } else {
                         valgtId = nil
+                        realtime.koblFra()
                     }
                 }
             } label: {
                 Image(systemName: "xmark")
                     .font(.appScaled(size: 8, weight: .bold))
                     .foregroundStyle(CvBrand.textTertiary)
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Lukk \(visningstittel)")
         }
         .padding(.horizontal, 11).padding(.vertical, 7)
         .frame(maxWidth: 190)
@@ -3097,12 +4011,7 @@ struct CanvasView: View {
         .overlay(Rectangle()
             .fill(aktiv ? CvBrand.purple : Color.clear)
             .frame(height: 2), alignment: .bottom)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if !aktiv, let n = notater.first(where: { $0.id == fid }) {
-                velg(n)
-            }
-        }
+        .accessibilityElement(children: .contain)
     }
 
     /// Spatial Memory: hvor ligger objektene/nodene på flata? Ni soner
@@ -3204,10 +4113,20 @@ struct CanvasView: View {
 
     /// Spatial Search: finn treff i tekstbokser/noder/objekter — og i
     /// HÅNDSKRIFTEN (on-demand OCR m/ posisjon) → flata scroller dit.
+    private func startCanvasSok() {
+        let query = editorSok.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty, let noteID = valgtId else { return }
+        let generation = editorGeneration
+        Task { @MainActor in
+            await finnTreffIEditor(
+                query: query, noteID: noteID, generation: generation)
+        }
+    }
+
     @MainActor
-    private func finnTreffIEditor() async {
-        let q = editorSok.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else { return }
+    private func finnTreffIEditor(query q: String, noteID: String,
+                                  generation: UUID) async {
+        guard valgtId == noteID, editorGeneration == generation else { return }
         var treff: [CGPoint] = []
         for tb in tekstbokser where tb.tekst.localizedCaseInsensitiveContains(q) {
             treff.append(CGPoint(x: tb.x, y: tb.y))
@@ -3255,6 +4174,7 @@ struct CanvasView: View {
                 }
             }
         }
+        guard valgtId == noteID, editorGeneration == generation else { return }
         sokTreffIndeks = 0
         sokTreff = treff
     }
@@ -3355,6 +4275,360 @@ struct CanvasView: View {
 
     // MARK: Multi-select + bibliotek
 
+    private var editorToppMedTegneobservasjon: some View {
+        editorTopp
+            .task {
+                // Multi-penn: kollegaens strøk legges rett i tegningen.
+                realtime.onNyeStrok = { delta, _, noteID in
+                    guard valgtId == noteID else { return }
+                    realtime.registrerMottatte(antall: delta.strokes.count)
+                    var nyTegning = drawing
+                    nyTegning.append(delta)
+                    drawing = nyTegning
+                }
+                realtime.onAuthenticationRequired = {
+                    _ = handterCanvasAPIError(APIError.unauthorized)
+                }
+            }
+            .onChange(of: drawing.strokes.count) { _, _ in
+                handterTegningEndret()
+            }
+            .onChange(of: drawing.strokes.count) { gammelt, nytt in
+                planleggMarkeringsforslag(fra: gammelt, til: nytt)
+            }
+            .onChange(of: drawing.strokes.count) {
+                planleggAutoTittel()
+            }
+    }
+
+    private var editorSokRad: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.appScaled(size: 11))
+                .foregroundStyle(CvBrand.textTertiary)
+            TextField("Søk i notatet — også håndskrift …", text: $editorSok)
+                .font(.appScaled(size: 12))
+                .foregroundStyle(.white)
+                .textFieldStyle(.plain)
+                .onSubmit { startCanvasSok() }
+            if !sokTreff.isEmpty {
+                Text("\(sokTreffIndeks + 1)/\(sokTreff.count)")
+                    .font(.appScaled(size: 10, weight: .bold))
+                    .foregroundStyle(CvBrand.purpleLight)
+                Button {
+                    sokTreffIndeks = (sokTreffIndeks + 1) % sokTreff.count
+                } label: {
+                    Image(systemName: "chevron.down.circle.fill")
+                        .font(.appScaled(size: 14))
+                        .frame(width: 44, height: 44)
+                        .foregroundStyle(CvBrand.purpleLight)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Neste søkeresultat")
+            }
+            Button { startCanvasSok() } label: {
+                Text("Finn")
+                    .font(.appScaled(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .padding(.horizontal, 6)
+                    .background(CvBrand.purple, in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 2)
+        .background(CvBrand.card.opacity(0.8))
+    }
+
+    private var canvasArbeidsflate: some View {
+        GeometryReader { canvasGeo in
+            ScrollViewReader { scrollProxy in
+                ScrollView([.horizontal, .vertical], showsIndicators: true) {
+                    canvasDokumentLag
+                        .allowsHitTesting(verktoyModus != .panorer)
+                        .frame(
+                            width: Self.logiskSidebredde,
+                            height: Self.logiskSidehoyde * CGFloat(sider),
+                            alignment: .topLeading)
+                        .scaleEffect(effektivDokumentZoom, anchor: .topLeading)
+                        .frame(
+                            width: Self.logiskSidebredde * effektivDokumentZoom,
+                            height: Self.logiskSidehoyde * CGFloat(sider)
+                                * effektivDokumentZoom,
+                            alignment: .topLeading)
+                        .dropDestination(for: Data.self, action: handterBildeDrop)
+                }
+                .scrollDisabled(verktoyModus != .panorer)
+                .simultaneousGesture(dokumentZoomGesture)
+                .onChange(of: sokTreffIndeks) { _, _ in
+                    scrollTilAktivtSokTreff(scrollProxy)
+                }
+                .onChange(of: sokTreff) { _, nyeTreff in
+                    guard !nyeTreff.isEmpty else { return }
+                    scrollTilAktivtSokTreff(scrollProxy)
+                }
+                .onAppear { canvasViewportWidth = canvasGeo.size.width }
+                .onChange(of: canvasGeo.size.width) { _, nyBredde in
+                    canvasViewportWidth = nyBredde
+                }
+            }
+        }
+    }
+
+    private var canvasDokumentLag: some View {
+        ZStack(alignment: .topLeading) {
+            CvBrand.bg
+            if let forslag = markeringForslag {
+                markeringsKort(forslag)
+                    .position(forslag.punkt)
+                    .zIndex(60)
+            }
+            if sokTreffIndeks < sokTreff.count {
+                Circle()
+                    .stroke(CvBrand.yellow, lineWidth: 3)
+                    .frame(width: 90, height: 90)
+                    .position(sokTreff[sokTreffIndeks])
+                    .id("sokTreffAnker")
+                    .allowsHitTesting(false)
+                    .shadow(color: CvBrand.yellow.opacity(0.7), radius: 10)
+            }
+            VStack(spacing: 0) {
+                ForEach(0..<sider, id: \.self) { _ in
+                    PapirView(papir: papir)
+                        .frame(width: Self.logiskSidebredde,
+                               height: Self.logiskSidehoyde)
+                }
+            }
+            canvasObjektLag
+            canvasTankekartKoblinger
+            canvasPencilLag
+            canvasStempelLag
+            canvasFigurLag
+            canvasNodeLag
+            canvasTekstLag
+        }
+    }
+
+    private func handterBildeDrop(_ biter: [Data], _ plassering: CGPoint) -> Bool {
+        guard kanRedigereValgtNotat,
+              kan(.canvasBilder),
+              let data = biter.first,
+              UIImage(data: data) != nil else { return false }
+        leggTilBilde(data, ved: CGPoint(
+            x: plassering.x / effektivDokumentZoom,
+            y: plassering.y / effektivDokumentZoom))
+        return true
+    }
+
+    private func scrollTilAktivtSokTreff(_ scrollProxy: ScrollViewProxy) {
+        withAnimation(.easeInOut(duration: 0.4)) {
+            scrollProxy.scrollTo("sokTreffAnker", anchor: .center)
+        }
+    }
+
+    private func handterTegningEndret() {
+        markerUlagret()
+        realtime.sendNyeStrok(fra: drawing)
+    }
+
+    private func planleggMarkeringsforslag(fra gammeltAntall: Int,
+                                           til nyttAntall: Int) {
+        // Tusj-strøk over en PDF-side foreslås som møtepunkt.
+        guard nyttAntall > gammeltAntall,
+              pennValg == .marker,
+              kanRedigereValgtNotat,
+              let sisteStrok = drawing.strokes.last else { return }
+        let boks = sisteStrok.renderBounds
+        let noteID = valgtId
+        let generation = editorGeneration
+        markeringsTask?.cancel()
+        markeringsTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard !Task.isCancelled,
+                  valgtId == noteID,
+                  editorGeneration == generation else { return }
+            foreslaaMarkering(boks: boks)
+        }
+    }
+
+    private func planleggAutoTittel() {
+        // Tittelen skriver seg selv etter siste strøk, men resultatet er
+        // bundet til editor-generasjonen som startet analysen.
+        guard kanRedigereValgtNotat,
+              tittel.trimmingCharacters(in: .whitespaces).isEmpty,
+              let noteID = valgtId else { return }
+        let generation = editorGeneration
+        let drawingSnapshot = drawing
+        autoTittelTask?.cancel()
+        autoTittelTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard !Task.isCancelled else { return }
+            await foreslaTittelFraBlekk(
+                noteID: noteID,
+                generation: generation,
+                drawing: drawingSnapshot)
+        }
+    }
+
+    @ViewBuilder private var canvasObjektLag: some View {
+        ForEach(objekter.filter { !erLagSkjult($0.type) }) { objekt in
+            ObjektView(
+                objekt: objekt,
+                redigerbar: kanRedigereValgtNotat && objektModus,
+                pdfDok: dokument(for: objekt),
+                liveInnhold: liveInnhold(objekt),
+                erValgt: valgte.contains(objekt.id),
+                onToggleValg: { toggleValgtObjekt(objekt.id) },
+                onFlyttFelles: flyttValgte,
+                onEndre: { oppdaterObjekt($0, id: objekt.id) },
+                onSlett: { slettObjekt(objekt.id) })
+        }
+    }
+
+    @ViewBuilder private var canvasTankekartKoblinger: some View {
+        if !noder.isEmpty && !skjulteLag.contains(CanvasLag.noder.rawValue) {
+            NodeKoblinger(noder: noder)
+        }
+    }
+
+    private var canvasPencilLag: some View {
+        LeadgridPencilCanvas(
+            drawing: $drawing,
+            pennValg: $pennValg,
+            noteID: valgtId,
+            redigerbar: kanRedigereValgtNotat
+                && !objektModus && verktoyModus != .panorer,
+            inputMode: canvasInputMode,
+            toolSelectionRevision: pennSelectionRevision,
+            onFormGjenkjent: { figurer.append($0) })
+    }
+
+    @ViewBuilder private var canvasStempelLag: some View {
+        let synligeStempler = skjulteLag.contains(CanvasLag.stempler.rawValue)
+            ? [] : stempler
+        ForEach(synligeStempler) { stempel in
+            StempelView(
+                stempel: stempel,
+                redigerbar: kanRedigereValgtNotat,
+                onFlytt: { oppdaterStempel($0, id: stempel.id) },
+                onSlett: { stempler.removeAll { $0.id == stempel.id } })
+        }
+    }
+
+    @ViewBuilder private var canvasFigurLag: some View {
+        let synligeFigurer = skjulteLag.contains(CanvasLag.former.rawValue)
+            ? [] : figurer
+        ForEach(synligeFigurer) { figur in
+            FigurView(
+                figur: figur,
+                redigerbar: kanRedigereValgtNotat,
+                onEndre: { oppdaterFigur($0, id: figur.id) },
+                onSlett: { figurer.removeAll { $0.id == figur.id } })
+        }
+    }
+
+    @ViewBuilder private var canvasNodeLag: some View {
+        let synligeNoder = skjulteLag.contains(CanvasLag.noder.rawValue) ? [] : noder
+        ForEach(synligeNoder) { node in
+            NodeView(
+                node: node,
+                redigerbar: kanRedigereValgtNotat,
+                onEndre: { oppdaterNode($0, id: node.id) },
+                onNyttBarn: { leggTilBarnNode(til: node) },
+                onRediger: { redigererNode = node },
+                onSlett: { slettNode(node.id) })
+        }
+    }
+
+    @ViewBuilder private var canvasTekstLag: some View {
+        let synligeTekstbokser = skjulteLag.contains(CanvasLag.tekst.rawValue)
+            ? [] : tekstbokser
+        ForEach(synligeTekstbokser) { tekstboks in
+            TekstboksView(
+                boks: tekstboks,
+                redigerbar: kanRedigereValgtNotat,
+                onFlytt: { oppdaterTekstboks($0, id: tekstboks.id) },
+                onRediger: { redigererTekstboks = tekstboks },
+                onSlett: { tekstbokser.removeAll { $0.id == tekstboks.id } })
+        }
+    }
+
+    private var dokumentZoomGesture: some Gesture {
+        MagnifyGesture()
+            .updating($pinchZoom) { verdi, tilstand, _ in
+                guard verktoyModus == .panorer else { return }
+                tilstand = verdi.magnification
+            }
+            .onEnded { verdi in
+                guard verktoyModus == .panorer else { return }
+                let nyZoom = dokumentZoom * verdi.magnification
+                dokumentZoom = min(
+                    2.5,
+                    max(Self.minimumDokumentZoom, nyZoom))
+            }
+    }
+
+    private func dokument(for objekt: CanvasObjekt) -> CanvasDokument? {
+        guard let dokumentID = objekt.dokId else { return nil }
+        return dokumenter.first { $0.id == dokumentID }
+    }
+
+    private func toggleValgtObjekt(_ id: String) {
+        if valgte.contains(id) {
+            valgte.remove(id)
+        } else {
+            valgte.insert(id)
+        }
+    }
+
+    private func oppdaterObjekt(_ nyttObjekt: CanvasObjekt, id: String) {
+        guard let indeks = objekter.firstIndex(where: { $0.id == id }) else { return }
+        objekter[indeks] = nyttObjekt
+    }
+
+    private func oppdaterStempel(_ nyttStempel: CanvasStempel, id: String) {
+        guard let indeks = stempler.firstIndex(where: { $0.id == id }) else { return }
+        stempler[indeks] = nyttStempel
+    }
+
+    private func oppdaterFigur(_ nyFigur: CanvasFigur, id: String) {
+        guard let indeks = figurer.firstIndex(where: { $0.id == id }) else { return }
+        figurer[indeks] = nyFigur
+    }
+
+    private func oppdaterNode(_ nyNode: CanvasNode, id: String) {
+        guard let indeks = noder.firstIndex(where: { $0.id == id }) else { return }
+        noder[indeks] = nyNode
+    }
+
+    private func leggTilBarnNode(til node: CanvasNode) {
+        let barn = CanvasNode(
+            parentId: node.id,
+            tekst: "",
+            x: node.x + Double.random(in: 120...190),
+            y: node.y + Double.random(in: -80...110))
+        noder.append(barn)
+        redigererNode = barn
+    }
+
+    private func slettNode(_ id: String) {
+        // Barn beholdes som frittstående lapper.
+        for indeks in noder.indices where noder[indeks].parentId == id {
+            noder[indeks].parentId = nil
+        }
+        noder.removeAll { $0.id == id }
+    }
+
+    private func oppdaterTekstboks(_ nyTekstboks: CanvasTekstboks, id: String) {
+        guard let indeks = tekstbokser.firstIndex(where: { $0.id == id }) else { return }
+        tekstbokser[indeks] = nyTekstboks
+    }
+
+    private func slettObjekt(_ id: String) {
+        objekter.removeAll { $0.id == id }
+        valgte.remove(id)
+    }
+
     /// Dra ETT valgt element → alle valgte følger.
     private func flyttValgte(_ d: CGSize) {
         for i in figurer.indices where valgte.contains(figurer[i].id) {
@@ -3403,11 +4677,19 @@ struct CanvasView: View {
         if bibliotek.count > 30 { bibliotek.removeFirst() }
         BibliotekElement.lagreAlle(bibliotek)
         // Synk til org-biblioteket (privat til man deler det).
-        if !isDemo, let api = appState.api {
+        if !isDemo, let api = appState.api,
+           let organizationId = activeCanvasOrganizationId {
             let kopi = el
-            Task { try? await api.lagreCanvasBibliotekElement(
-                id: kopi.id, navn: kopi.navn,
-                innhold: kopi.innholdJSON, delt: false) }
+            Task { @MainActor in
+                do {
+                    _ = try await api.lagreCanvasBibliotekElement(
+                        organizationId: organizationId,
+                        id: kopi.id, navn: kopi.navn,
+                        innhold: kopi.innholdJSON, delt: false)
+                } catch {
+                    _ = handterCanvasAPIError(error)
+                }
+            }
         }
     }
 
@@ -3416,11 +4698,19 @@ struct CanvasView: View {
         guard let i = bibliotek.firstIndex(where: { $0.id == el.id }) else { return }
         bibliotek[i].delt = delt
         BibliotekElement.lagreAlle(bibliotek)
-        guard !isDemo, let api = appState.api else { return }
+        guard !isDemo, let api = appState.api,
+              let organizationId = activeCanvasOrganizationId else { return }
         let kopi = bibliotek[i]
-        Task { try? await api.lagreCanvasBibliotekElement(
-            id: kopi.id, navn: kopi.navn,
-            innhold: kopi.innholdJSON, delt: delt) }
+        Task { @MainActor in
+            do {
+                _ = try await api.lagreCanvasBibliotekElement(
+                    organizationId: organizationId,
+                    id: kopi.id, navn: kopi.navn,
+                    innhold: kopi.innholdJSON, delt: delt)
+            } catch {
+                _ = handterCanvasAPIError(error)
+            }
+        }
     }
 
     /// Sett inn et bibliotek-element (nye id-er, sentrert på flata).

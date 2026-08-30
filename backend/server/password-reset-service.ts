@@ -24,7 +24,10 @@
 import crypto from "node:crypto";
 import nodemailer from "nodemailer";
 import type { Pool } from "pg";
-import { deletePersistedAuthSessionsByUserId } from "./auth-session-store.js";
+import {
+  deletePersistedAuthSessionsByUserIdStrict,
+  ensureAuthSessionTableStrict,
+} from "./auth-session-store.js";
 
 const TOKEN_TTL_MINUTES = 60;
 
@@ -229,6 +232,10 @@ export async function consumeResetToken(
   }
 
   try {
+    // Establish the session table outside the password transaction. The actual
+    // revocation below still uses `client`, so it commits or rolls back together
+    // with the password and one-time-token changes.
+    await ensureAuthSessionTableStrict(pool);
     const bcrypt = await import("bcrypt");
     const hashed = await bcrypt.default.hash(newPassword, 10);
     const client = await pool.connect();
@@ -249,9 +256,12 @@ export async function consumeResetToken(
       }
       const email = claimResult.rows[0].email as string;
       const updateResult = await client.query(
-        `UPDATE users SET password = $1, updated_at = NOW()
+        `UPDATE users
+            SET password = $1,
+                auth_session_version = auth_session_version + 1,
+                updated_at = NOW()
           WHERE LOWER(email) = LOWER($2)
-          RETURNING id`,
+          RETURNING id, auth_session_version::text AS auth_session_version`,
         [hashed, email],
       );
       if ((updateResult.rowCount ?? 0) === 0) {
@@ -260,7 +270,10 @@ export async function consumeResetToken(
       }
       // Invalider persisted auth-sessions så gamle tokens ikke gjenopplives
       // ved server-restart (bruker JSONB-søk i creatorhub_auth_sessions).
-      await deletePersistedAuthSessionsByUserId(pool, String(updateResult.rows[0].id));
+      await deletePersistedAuthSessionsByUserIdStrict(
+        client,
+        String(updateResult.rows[0].id),
+      );
       await client.query("COMMIT");
       return { ok: true, userId: String(updateResult.rows[0].id), message: "Passordet er oppdatert. Du kan nå logge inn med det nye passordet." };
     } catch (err) {

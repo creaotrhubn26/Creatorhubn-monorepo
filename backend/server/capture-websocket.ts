@@ -7,6 +7,10 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { and, eq } from 'drizzle-orm';
 import { captureSessions } from '../migrations/capture-schema.js';
 import { loadPersistedAuthSession } from './auth-session-store.js';
+import {
+  matchCaptureWebSocketSessionPath,
+  parseWebSocketRequestUrl,
+} from './websocket-path-policy.js';
 
 interface SessionData {
   userId: string;
@@ -16,8 +20,6 @@ interface SessionData {
   loginAt: string;
   [key: string]: unknown;
 }
-
-const SESSION_PATH_RE = /^\/api\/capture\/ws\/sessions\/([0-9a-f-]{36})$/;
 
 const sessionClients = new Map<string, Set<WebSocket>>();
 
@@ -121,30 +123,10 @@ export function attachCaptureWebSocket(
 ): void {
   const wss = new WebSocketServer({ noServer: true });
 
-  // RT-2: 30s heartbeat sweep. node-ws v8 har ingen innebygd liveness-
-  // sjekk (en halv-åpen TCP-socket rapporterer fortsatt OPEN, så
-  // broadcastCaptureEvent forblir uvitende om at klienten er borte).
-  // Vi markerer hver socket m/ isAlive ved register + pong; sweep'er
-  // terminerer dem som ikke svarte siste tick. terminate() fyrer
-  // 'close' → eksisterende cleanup tar over.
-  const heartbeatInterval = setInterval(() => {
-    for (const set of sessionClients.values()) {
-      for (const ws of set) {
-        const tagged = ws as WebSocket & { isAlive?: boolean };
-        if (tagged.isAlive === false) {
-          try { ws.terminate(); } catch { /* noop */ }
-          continue;
-        }
-        tagged.isAlive = false;
-        try { ws.ping(); } catch { /* noop */ }
-      }
-    }
-  }, 30_000);
-  wss.on('close', () => clearInterval(heartbeatInterval));
-
   server.on('upgrade', (req: IncomingMessage, socket: Duplex, head) => {
-    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-    const match = url.pathname.match(SESSION_PATH_RE);
+    const url = parseWebSocketRequestUrl(req.url);
+    if (!url) return;
+    const match = matchCaptureWebSocketSessionPath(url.pathname);
     if (!match) return;
 
     const sessionId = match[1];
@@ -208,10 +190,6 @@ function registerClient(sessionId: string, ws: WebSocket): void {
   set.add(ws);
   sessionClients.set(sessionId, set);
   (ws as LiveWebSocket).isAlive = true;
-
-  // RT-2: marker som alive ved connect — heartbeat sweep oppdaterer
-  // dette pr pong.
-  (ws as WebSocket & { isAlive?: boolean }).isAlive = true;
 
   ws.send(
     JSON.stringify({

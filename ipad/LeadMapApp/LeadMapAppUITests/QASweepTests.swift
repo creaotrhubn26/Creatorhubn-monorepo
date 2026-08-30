@@ -97,6 +97,44 @@ final class QASweepTests: XCTestCase {
         app.terminate()
     }
 
+    // MARK: - Canvas: editor + adaptiv rotasjon
+
+    func testCanvasAdaptiveEditorSmoke() throws {
+        #if !targetEnvironment(macCatalyst)
+        XCUIDevice.shared.orientation = .portrait
+        #endif
+        let app = XCUIApplication()
+        // QA_TOUR gir en prosesslokal testidentitet uten å opprette sesjon;
+        // QA_DEMO gjør at Canvas bruker deterministiske, lokale notater.
+        app.launchEnvironment["QA_TOUR"] = "canvas"
+        app.launchEnvironment["QA_DEMO"] = "1"
+        app.launchEnvironment["QA_TAB"] = "10"
+        app.launchEnvironment["QA_CAPTURE"] = "1"
+        app.launch()
+
+        let note = button(in: app, containing: "Ruteplan")
+        XCTAssertTrue(note.waitForExistence(timeout: 12))
+        note.tap()
+
+        let panorer = button(in: app, containing: "Panorer")
+        XCTAssertTrue(panorer.waitForExistence(timeout: 5))
+        panorer.tap()
+        let fit = app.buttons["Tilpass dokumentbredden"].firstMatch
+        XCTAssertTrue(fit.waitForExistence(timeout: 5))
+        XCTAssertTrue(fit.isHittable)
+        fit.tap()
+        snap(app, "canvas-editor-portrett")
+
+        #if !targetEnvironment(macCatalyst)
+        XCUIDevice.shared.orientation = .landscapeLeft
+        XCTAssertTrue(fit.waitForExistence(timeout: 5))
+        XCTAssertTrue(fit.isHittable)
+        snap(app, "canvas-editor-landskap")
+        XCUIDevice.shared.orientation = .portrait
+        #endif
+        app.terminate()
+    }
+
     // MARK: - Leadbook: dyp-sveip over under-faner + header-modaler
 
     /// Leadbook har 6 under-faner + 3 header-CTAer med egne modaler —

@@ -30,8 +30,8 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { randomUUID } from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
-import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
-import { assertAnyEntitled, MOTE_BRIEF_FEATURE_KEYS, CANVAS_ANALYSE_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
+import { MOTE_BRIEF_FEATURE_KEYS, CANVAS_ANALYSE_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
+import { resolveCanonicalOrgAccess } from "./org-status-enforcement.js";
 import { withAIQuota } from "./leadgrid-ai-queue.js";
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -291,6 +291,75 @@ async function flettInnBehov(pool: Pool, orgId: string, selskap: string,
 const briefCache = new Map<string, { ts: number; body: unknown }>();
 const CACHE_TTL_MS = 6 * 3600 * 1000;
 
+function selectedOrganizationHeader(req: Request): string {
+  const raw = req.headers["x-organization-id"];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export async function resolveMotebriefSelectedOrganization(
+  pool: Pool,
+  req: Request,
+  res: Response,
+  userId: string,
+  write: boolean,
+): Promise<string | null> {
+  const organizationId = selectedOrganizationHeader(req);
+  if (!organizationId || organizationId.length > 200) {
+    res.status(400).json({ error: "organization_context_required" });
+    return null;
+  }
+  try {
+    const access = await resolveCanonicalOrgAccess(pool, userId, organizationId);
+    if (!access?.canRead) {
+      res.status(403).json({ error: "org_access_denied" });
+      return null;
+    }
+    if (write && !access.canWrite) {
+      res.status(423).json({ error: "org_read_only" });
+      return null;
+    }
+    return organizationId;
+  } catch (error) {
+    console.error("[motebrief] organization authority failed:", error);
+    res.status(503).json({ error: "organization_authority_unavailable" });
+    return null;
+  }
+}
+
+export async function assertMotebriefSelectedOrgEntitled(
+  pool: Pool,
+  organizationId: string,
+  featureKeys: string[],
+  res: Response,
+): Promise<boolean> {
+  try {
+    const result = await pool.query<{ state: string }>(
+      `SELECT state
+         FROM leadgrid_org_entitlements
+        WHERE organization_id = $1
+          AND feature_key = ANY($2::text[])`,
+      [organizationId, featureKeys],
+    );
+    if (
+      result.rows.length > 0 &&
+      result.rows.every((row) => row.state === "locked")
+    ) {
+      res.status(403).json({
+        error: "entitlement_locked",
+        features: featureKeys,
+        message: "Organisasjonen har ikke tilgang til denne funksjonen.",
+      });
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error("[motebrief] entitlement authority failed:", error);
+    res.status(503).json({ error: "entitlement_authority_unavailable" });
+    return false;
+  }
+}
+
 export function registerLeadgridMotebriefRoutes(deps: {
   app: Express;
   pool: Pool;
@@ -302,12 +371,24 @@ export function registerLeadgridMotebriefRoutes(deps: {
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
-      if (!(await assertAnyEntitled(pool, session.userId, MOTE_BRIEF_FEATURE_KEYS, res))) return;
+      const orgId = await resolveMotebriefSelectedOrganization(
+        pool,
+        req,
+        res,
+        session.userId,
+        true,
+      );
+      if (!orgId) return;
+      if (!(await assertMotebriefSelectedOrgEntitled(
+        pool,
+        orgId,
+        MOTE_BRIEF_FEATURE_KEYS,
+        res,
+      ))) return;
       if (!ANTHROPIC_API_KEY) {
         res.status(503).json({ error: "ai_unavailable" });
         return;
       }
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
       const b = (req.body ?? {}) as Record<string, unknown>;
       const selskap = String(b.selskap ?? "").trim().slice(0, 200);
       if (selskap.length < 2) {
@@ -444,9 +525,16 @@ ${JSON.stringify(fakta)}`;
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      const orgId = await resolveMotebriefSelectedOrganization(
+        pool,
+        req,
+        res,
+        session.userId,
+        false,
+      );
+      if (!orgId) return;
       const selskap = String(req.query.selskap ?? "").trim().slice(0, 200);
-      if (!orgId || selskap.length < 2) { res.json({ maal: "", behov: [] }); return; }
+      if (selskap.length < 2) { res.json({ maal: "", behov: [] }); return; }
       const mb = await hentMaalBehov(pool, orgId, selskap);
       res.json({ maal: mb?.maal ?? "", behov: mb?.behov ?? [] });
     } catch (e) {
@@ -459,8 +547,14 @@ ${JSON.stringify(fakta)}`;
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.status(400).json({ error: "no_org" }); return; }
+      const orgId = await resolveMotebriefSelectedOrganization(
+        pool,
+        req,
+        res,
+        session.userId,
+        true,
+      );
+      if (!orgId) return;
       const b = (req.body ?? {}) as Record<string, unknown>;
       const selskap = String(b.selskap ?? "").trim().slice(0, 200);
       if (selskap.length < 2) {
@@ -502,9 +596,21 @@ ${JSON.stringify(fakta)}`;
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
-      if (!(await assertAnyEntitled(pool, session.userId, MOTE_BRIEF_FEATURE_KEYS, res))) return;
+      const orgId = await resolveMotebriefSelectedOrganization(
+        pool,
+        req,
+        res,
+        session.userId,
+        true,
+      );
+      if (!orgId) return;
+      if (!(await assertMotebriefSelectedOrgEntitled(
+        pool,
+        orgId,
+        MOTE_BRIEF_FEATURE_KEYS,
+        res,
+      ))) return;
       if (!ANTHROPIC_API_KEY) { res.status(503).json({ error: "ai_unavailable" }); return; }
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
       const b = (req.body ?? {}) as Record<string, unknown>;
       const selskap = String(b.selskap ?? "").trim().slice(0, 200);
       const tekst = String(b.tekst ?? "").trim().slice(0, 20_000);
@@ -630,7 +736,14 @@ ${tekst}`;
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      const orgId = await resolveMotebriefSelectedOrganization(
+        pool,
+        req,
+        res,
+        session.userId,
+        true,
+      );
+      if (!orgId) return;
       const b = (req.body ?? {}) as Record<string, unknown>;
       const selskap = String(b.selskap ?? "").trim().slice(0, 200);
       const tekst = String(b.tekst ?? "").trim().slice(0, 10_000);
@@ -641,7 +754,12 @@ ${tekst}`;
         ? b.ferdig_resultat as { oppsummering?: unknown; oppgaver?: unknown; lofter?: unknown }
         : null;
       if (!ferdig) {
-        if (!(await assertAnyEntitled(pool, session.userId, CANVAS_ANALYSE_FEATURE_KEYS, res))) return;
+        if (!(await assertMotebriefSelectedOrgEntitled(
+          pool,
+          orgId,
+          CANVAS_ANALYSE_FEATURE_KEYS,
+          res,
+        ))) return;
         if (!ANTHROPIC_API_KEY) { res.status(503).json({ error: "ai_unavailable" }); return; }
         if (tekst.length < 10) {
           res.status(400).json({ error: "bad_request", message: "For lite gjenkjent tekst å analysere." });
@@ -763,8 +881,14 @@ ${tekst}`;
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.json({ oppgaver: [] }); return; }
+      const orgId = await resolveMotebriefSelectedOrganization(
+        pool,
+        req,
+        res,
+        session.userId,
+        false,
+      );
+      if (!orgId) return;
       await ensureOppgaveSchema(pool);
       const status = req.query.status === "done" ? "done" : "open";
       const r = await pool.query(
@@ -796,13 +920,21 @@ ${tekst}`;
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
+      const orgId = await resolveMotebriefSelectedOrganization(
+        pool,
+        req,
+        res,
+        session.userId,
+        true,
+      );
+      if (!orgId) return;
       const status = (req.body ?? {}).status === "done" ? "done" : "open";
       await ensureOppgaveSchema(pool);
       const r = await pool.query(
         `UPDATE leadgrid_oppgaver
             SET status = $1, done_at = CASE WHEN $1 = 'done' THEN now() ELSE NULL END
-          WHERE id = $2 AND user_id = $3`,
-        [status, req.params.id, session.userId]);
+          WHERE id = $2 AND user_id = $3 AND organization_id = $4`,
+        [status, req.params.id, session.userId, orgId]);
       if (r.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
       res.json({ ok: true, status });
     } catch (e) {

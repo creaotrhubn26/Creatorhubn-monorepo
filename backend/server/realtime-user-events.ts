@@ -5,6 +5,10 @@ import { WebSocket, WebSocketServer } from "ws";
 import type { Pool } from "pg";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
 import {
+  parseWebSocketRequestUrl,
+  resolveWebSocketPathOwner,
+} from "./websocket-path-policy.js";
+import {
   USER_EVENTS_PROTOCOL_VERSION,
   type UserEvent,
   type UserEventsFrame,
@@ -249,11 +253,10 @@ export function attachUserEventsWebSocket(
   const wss = new WebSocketServer({ noServer: true });
 
   server.on("upgrade", (req: IncomingMessage, socket: Duplex, head) => {
-    const url = new URL(
-      req.url ?? "/",
-      `http://${req.headers.host ?? "localhost"}`,
-    );
-    if (url.pathname !== USER_EVENTS_WS_PATH) return;
+    const url = parseWebSocketRequestUrl(req.url);
+    if (!url || resolveWebSocketPathOwner(url.pathname) !== "user-events") {
+      return;
+    }
 
     const ticket = (url.searchParams.get("ticket") ?? "").trim();
     const token = isLegacyUserEventsTokenAllowed()

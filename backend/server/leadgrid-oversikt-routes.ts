@@ -13,6 +13,7 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
+import { resolveCanvasRouteOrganization } from "./leadgrid-canvas-routes.js";
 
 const GYLDIGE_KORT = new Set(["kpi", "dorsalg", "neste_handling", "oppgaver", "leads"]);
 // Canvas-funksjonene org-en kan rolle-styre (samme hierarki som kortene).
@@ -49,14 +50,15 @@ async function ensureSchema(pool: Pool): Promise<void> {
   schemaReady = true;
 }
 
-async function hentRoller(pool: Pool, userId: string): Promise<{
+async function hentRoller(pool: Pool, userId: string, orgId: string): Promise<{
   globalRole: string | null; orgRole: string | null;
 }> {
   const u = await pool.query<{ role: string | null }>(
     `SELECT role FROM users WHERE id = $1`, [userId]);
   const m = await pool.query<{ role: string }>(
     `SELECT role FROM organization_members
-      WHERE user_id = $1 ORDER BY role = 'owner' DESC LIMIT 1`, [userId]);
+      WHERE user_id::text = $1 AND organization_id::text = $2
+      LIMIT 1`, [userId, orgId]);
   return {
     globalRole: u.rows[0]?.role ?? null,
     orgRole: m.rows[0]?.role ?? null,
@@ -120,7 +122,7 @@ export function registerLeadgridOversiktRoutes(deps: {
         .map(String).filter((k) => GYLDIGE_KORT.has(k)).slice(0, 10);
       const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
       if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }
-      const roller = await hentRoller(pool, session.userId);
+      const roller = await hentRoller(pool, session.userId, orgId);
       const krav = malgruppe === "leder" ? ADMIN_ROLLER : LEDER_ROLLER;
       if (!harRolle(roller, krav)) {
         res.status(403).json({ error: "forbidden" });
@@ -148,8 +150,12 @@ export function registerLeadgridOversiktRoutes(deps: {
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.json({ selger: [], leder: [] }); return; }
+      const orgId = await resolveCanvasRouteOrganization(
+        pool,
+        session.userId,
+        req.headers["x-organization-id"],
+        false,
+      );
       await ensureSchema(pool);
       const r = await pool.query<{ malgruppe: string; skjulte_funksjoner: unknown }>(
         `SELECT malgruppe, skjulte_funksjoner FROM leadgrid_canvas_policy
@@ -164,6 +170,11 @@ export function registerLeadgridOversiktRoutes(deps: {
       res.json(ut);
     } catch (e) {
       console.error("[canvas-policy] GET failed:", e);
+      const typed = e as { status?: unknown; code?: unknown };
+      if (typeof typed.status === "number" && typeof typed.code === "string") {
+        res.status(typed.status).json({ error: typed.code });
+        return;
+      }
       res.status(500).json({ error: "internal_error" });
     }
   });
@@ -182,9 +193,13 @@ export function registerLeadgridOversiktRoutes(deps: {
       }
       const skjulte = (Array.isArray(b.skjulte_funksjoner) ? b.skjulte_funksjoner : [])
         .map(String).filter((k) => GYLDIGE_CANVAS_FUNKSJONER.has(k)).slice(0, 12);
-      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
-      if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }
-      const roller = await hentRoller(pool, session.userId);
+      const orgId = await resolveCanvasRouteOrganization(
+        pool,
+        session.userId,
+        req.headers["x-organization-id"],
+        true,
+      );
+      const roller = await hentRoller(pool, session.userId, orgId);
       const krav = malgruppe === "leder" ? ADMIN_ROLLER : LEDER_ROLLER;
       if (!harRolle(roller, krav)) { res.status(403).json({ error: "forbidden" }); return; }
       await ensureSchema(pool);
@@ -200,6 +215,11 @@ export function registerLeadgridOversiktRoutes(deps: {
       res.json({ ok: true, malgruppe, skjulte_funksjoner: skjulte });
     } catch (e) {
       console.error("[canvas-policy] PUT failed:", e);
+      const typed = e as { status?: unknown; code?: unknown };
+      if (typeof typed.status === "number" && typeof typed.code === "string") {
+        res.status(typed.status).json({ error: typed.code });
+        return;
+      }
       res.status(500).json({ error: "internal_error" });
     }
   });
