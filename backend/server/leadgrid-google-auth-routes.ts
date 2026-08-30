@@ -23,6 +23,11 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
 import { persistAuthSession } from "./auth-session-store";
+import {
+  consumeOauthState,
+  loadOauthState,
+  persistOauthState,
+} from "./role-room-oauth-store";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -40,8 +45,16 @@ const GOOGLE_CLIENT_SECRET = process.env.CREATORHUB_GOOGLE_CLIENT_SECRET
                           ?? "";
 const PUBLIC_BASE = process.env.ROLE_ROOM_PUBLIC_URL ?? "https://theroleroom.com";
 
-// State-cache for OAuth flow. Holdes i memory siden flowen er <5min.
-const stateCache = new Map<string, { platform: string; createdAt: number }>();
+type LeadgridGoogleState = { platform: string; createdAt: number };
+const GOOGLE_STATE_RE = /^[a-f0-9]{32}$/;
+const GOOGLE_PLATFORMS = new Set(["web", "ios", "ios-storyboard"]);
+
+function requestString(value: unknown, maxLength: number): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (!normalized || normalized.length > maxLength) return null;
+  return normalized;
+}
 
 // Decode JWT (id_token) uten signatur-validering. For full sikkerhet bør
 // vi cache + validere mot Google's JWK, men for MVP — Google's egne
@@ -80,16 +93,24 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
 
   // ---------- Start ----------
   app.get("/api/leadgrid/auth/google/start", async (req, res) => {
-    const platform = (req.query.platform as string) ?? "web";
+    const platform = requestString(req.query.platform, 32) ?? "web";
+    if (!GOOGLE_PLATFORMS.has(platform)) {
+      return res.status(400).json({ error: "Ugyldig platform" });
+    }
     if (!GOOGLE_CLIENT_ID) {
       return res.status(500).json({ error: "Google client_id ikke konfigurert" });
     }
 
     const state = crypto.randomBytes(16).toString("hex");
-    stateCache.set(state, { platform, createdAt: Date.now() });
-    // Cleanup gamle states
-    for (const [k, v] of stateCache.entries()) {
-      if (Date.now() - v.createdAt > 10 * 60 * 1000) stateCache.delete(k);
+    const statePayload: LeadgridGoogleState = { platform, createdAt: Date.now() };
+    const persisted = await persistOauthState(
+      pool,
+      state,
+      statePayload,
+      new Date(Date.now() + 10 * 60 * 1000),
+    );
+    if (!persisted) {
+      return res.status(503).json({ error: "OAuth state-lager er utilgjengelig" });
     }
 
     // Redirect-URI bestemmes av platform:
@@ -112,15 +133,30 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
   // ---------- Web callback (GET via Google redirect) ----------
   // For iOS: vi redirecter videre til leadgrid:// scheme m/ samme code+state.
   app.get("/api/leadgrid/auth/google/web-callback", async (req, res) => {
-    const { code, state, error } = req.query as Record<string, string>;
-    if (error) {
-      return res.redirect(`leadgrid://oauth?error=${encodeURIComponent(error)}`);
+    const code = requestString(req.query.code, 8_192);
+    const state = requestString(req.query.state, 64);
+    const error = requestString(req.query.error, 256);
+    if (!state || !GOOGLE_STATE_RE.test(state)) {
+      return res.status(400).send("Ugyldig state");
     }
-    if (!code || !state) {
+    const cached = error
+      ? await consumeOauthState<LeadgridGoogleState>(pool, state)
+      : await loadOauthState<LeadgridGoogleState>(pool, state);
+    if (!cached || !GOOGLE_PLATFORMS.has(cached.platform)) {
+      return res.status(400).send("Ugyldig state");
+    }
+    if (error) {
+      if (cached.platform === "ios" || cached.platform === "ios-storyboard") {
+        const scheme = cached.platform === "ios-storyboard" ? "storyboardstudio" : "leadgrid";
+        return res.redirect(`${scheme}://oauth?error=${encodeURIComponent(error)}`);
+      }
+      return res.redirect(
+        `${PUBLIC_BASE}/leadgrid/welcome?google_error=${encodeURIComponent(error)}`,
+      );
+    }
+    if (!code) {
       return res.status(400).send("Mangler code eller state");
     }
-    const cached = stateCache.get(state);
-    if (!cached) return res.status(400).send("Ugyldig state");
 
     // iOS: redirect tilbake til app via app-scheme. Storyboard Studio bruker
     // samme flyt med platform=ios-storyboard → storyboardstudio://oauth.
@@ -134,11 +170,16 @@ export function registerLeadgridGoogleAuthRoutes({ app, pool, activeSessions }: 
 
   // ---------- Bytte code mot id_token (server-side flow) ----------
   app.post("/api/leadgrid/auth/google/callback", async (req, res) => {
-    const { code, state } = req.body ?? {};
+    const code = requestString(req.body?.code, 8_192);
+    const state = requestString(req.body?.state, 64);
     if (!code || !state) return res.status(400).json({ error: "code og state påkrevd" });
-    const cached = stateCache.get(state);
-    if (!cached) return res.status(400).json({ error: "Ugyldig state" });
-    stateCache.delete(state);
+    if (!GOOGLE_STATE_RE.test(state)) {
+      return res.status(400).json({ error: "Ugyldig state" });
+    }
+    const cached = await consumeOauthState<LeadgridGoogleState>(pool, state);
+    if (!cached || !GOOGLE_PLATFORMS.has(cached.platform)) {
+      return res.status(400).json({ error: "Ugyldig state" });
+    }
 
     if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
       return res.status(500).json({ error: "Google credentials ikke konfigurert" });
