@@ -11,7 +11,11 @@ const openDrawingEditor = async (page: Page, url: string) => {
   await expect(page.getByTestId('drawing-editor-harness-ready')).toBeVisible({
     timeout: EDITOR_HYDRATION_TIMEOUT_MS,
   });
-  await expect(page.getByTestId('frame-editor-shell')).toBeVisible({
+  const scenario = new URL(url, 'http://storyboard-e2e.local').searchParams.get('scenario');
+  const editorSurface = scenario === 'selection'
+    ? page.getByTestId('pencil-canvas-pro')
+    : page.getByTestId('frame-editor-shell');
+  await expect(editorSurface).toBeVisible({
     timeout: EDITOR_HYDRATION_TIMEOUT_MS,
   });
 };
