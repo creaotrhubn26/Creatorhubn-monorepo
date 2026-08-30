@@ -228,7 +228,9 @@
   status = 200
 [[redirects]]
   from = "/terms-and-conditions"
-  to = "/theroleroom-terms.html"
+  # live/leadgrid: This route is also the public OAuth terms URL. Serve the
+  # host-aware React document instead of the static Role Room terms file.
+  to = "/index.html"
   status = 200
 [[redirects]]
   from = "/terms"
