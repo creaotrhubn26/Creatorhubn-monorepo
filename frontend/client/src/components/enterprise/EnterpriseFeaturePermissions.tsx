@@ -56,12 +56,12 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { getAllProfessionFeatures } from '@shared/profession-feature-matrix';
-
-interface FeaturePermission {
-  featureId: string;
-  permissionLevel: 'all' | 'admin_only' | 'admin_member' | 'disabled';
-  allowedRoles: string[];
-}
+import {
+  getConfigurableEnterpriseFeatures,
+  transitionEnterpriseFeaturePermission,
+  type EnterpriseFeaturePermission,
+  type EnterpriseFeaturePermissionLevel,
+} from './enterpriseFeaturePermissionsModel';
 
 interface PermissionPreset {
   id: string;
@@ -100,7 +100,7 @@ export default function EnterpriseFeaturePermissions({
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [adminOnlyFeatures, setAdminOnlyFeatures] = useState<string[]>([]);
   const [disabledFeatures, setDisabledFeatures] = useState<string[]>([]);
-  const [customPermissions, setCustomPermissions] = useState<Record<string, FeaturePermission>>({});
+  const [customPermissions, setCustomPermissions] = useState<Record<string, EnterpriseFeaturePermission>>({});
   const [hasChanges, setHasChanges] = useState(false);
   const [expandedCategory, setExpandedCategory] = useState<string | false>('core');
 
@@ -121,7 +121,7 @@ export default function EnterpriseFeaturePermissions({
   const allFeatures = useMemo(() => {
     const features = getAllProfessionFeatures(profession);
     if (!features || !Array.isArray(features)) return [];
-    return features.filter((f: any) => f.enabled !== false);
+    return getConfigurableEnterpriseFeatures(features);
   }, [profession]);
 
   // Group features by category
@@ -211,23 +211,16 @@ export default function EnterpriseFeaturePermissions({
     return 'all';
   };
 
-  const setFeaturePermission = (featureId: string, level: 'all' | 'admin_only' | 'admin_member' | 'disabled') => {
+  const setFeaturePermission = (featureId: string, level: EnterpriseFeaturePermissionLevel) => {
     setHasChanges(true);
-
-    // Remove from all lists first
-    setAdminOnlyFeatures(prev => prev.filter(f => f !== featureId));
-    setDisabledFeatures(prev => prev.filter(f => f !== featureId));
-
-    if (level === 'admin_only') {
-      setAdminOnlyFeatures(prev => [...prev, featureId]);
-    } else if (level === 'disabled') {
-      setDisabledFeatures(prev => [...prev, featureId]);
-    } else if (level === 'admin_member') {
-      setCustomPermissions(prev => ({
-        ...prev,
-        [featureId]: { featureId, permissionLevel: 'admin_member', allowedRoles: ['admin', 'member'] },
-      }));
-    }
+    const next = transitionEnterpriseFeaturePermission(
+      { adminOnlyFeatures, disabledFeatures, customPermissions },
+      featureId,
+      level,
+    );
+    setAdminOnlyFeatures(next.adminOnlyFeatures);
+    setDisabledFeatures(next.disabledFeatures);
+    setCustomPermissions(next.customPermissions);
   };
 
   const applyPreset = (presetId: string) => {
@@ -253,6 +246,7 @@ export default function EnterpriseFeaturePermissions({
 
     setAdminOnlyFeatures(newAdminOnly);
     setDisabledFeatures(newDisabled);
+    setCustomPermissions({});
   };
 
   if (presetsLoading || permissionsLoading) {
@@ -435,4 +429,3 @@ export default function EnterpriseFeaturePermissions({
     </Card>
   );
 }
-

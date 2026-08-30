@@ -10,7 +10,11 @@ import {
   buildErrorLogMiddleware,
   installProcessErrorHandlers,
 } from "./error-log-routes.js";
-import { hydrateSessionsFromDb, persistSession } from "./persistent-session-store.js";
+import {
+  hydrateSessionsFromDb,
+  invalidateSession,
+  persistSession,
+} from "./persistent-session-store.js";
 
 import express from "express";
 import helmet from "helmet";
@@ -875,6 +879,7 @@ import { setupVendorTypesRoutes } from "./vendor-types-routes";
 import { setupEditingJobsRoutes } from "./editing-jobs-routes";
 import { setupEditingPartnerApplicationsAdminRoutes } from "./editing-partner-applications-admin-routes";
 import { setupSuperadminImpersonationRoutes } from "./superadmin-impersonation-routes";
+import { createImpersonationSessionGuard } from "./impersonation-session-guard.js";
 import { setupSuperadminDebugRoutes } from "./superadmin-debug-routes";
 import { setupMeetingNotesRoutes } from "./meeting-notes-routes";
 import { setupDavinciResolveRoutes } from "./davinci-resolve-routes";
@@ -993,6 +998,19 @@ import { setupBackupRoutes } from "./backup-routes";
 import { setupMaintenanceRoutes } from "./maintenance-routes";
 import { setupSplitSheetsRoutes } from "./split-sheets-routes";
 import { setupSplitSheetSigningRoutes } from "./split-sheet-signing-routes";
+import {
+  setupWorkspaceProjectParticipantsRoutes,
+  type AuthoritativeSessionResolution,
+} from "./workspace-project-participants-routes";
+import { parseWorkspaceParticipantAuthoritativeSession } from "./workspace-participant-authoritative-session";
+import {
+  setupWorkspaceParticipantDocumentBodyParserBoundary,
+  setupWorkspaceParticipantDocumentRoutes,
+} from "./workspace-participant-documents-routes";
+import { createWorkspaceParticipantDocumentEmailDeliveryAdapter } from "./workspace-participant-document-delivery";
+import { setupWorkspaceParticipantCompensationRoutes } from "./workspace-participant-compensation-routes";
+import { setupWorkspaceParticipantClearanceRoutes } from "./workspace-participant-clearance-routes";
+import { isWorkspaceParticipantCompensationMetadata } from "../../frontend/shared/workspace-participant-compensation.ts";
 import { setupEquipmentValueRoutes } from "./equipment-value-routes";
 import { setupSoftwareExpensesRoutes } from "./software-expenses-routes";
 import { setupMicrosoftOauthRoutes } from "./microsoft-oauth-routes";
@@ -2082,6 +2100,14 @@ app.use(cors({
   credentials: true,
   exposedHeaders: ['Content-Disposition'],
 }));
+app.use((req, _res, next) => {
+  const normalizedUrl = normalizeIncomingApiUrl(req.url);
+  if (normalizedUrl !== req.url) {
+    req.url = normalizedUrl;
+  }
+  next();
+});
+setupWorkspaceParticipantDocumentBodyParserBoundary(app);
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
@@ -2127,14 +2153,6 @@ function normalizeIncomingApiUrl(rawUrl: string): string {
   const query = sanitizedParams.toString();
   return query ? `${normalizedPath}?${query}` : normalizedPath;
 }
-
-app.use((req, _res, next) => {
-  const normalizedUrl = normalizeIncomingApiUrl(req.url);
-  if (normalizedUrl !== req.url) {
-    req.url = normalizedUrl;
-  }
-  next();
-});
 
 // ── Role Room API (x-api-key or Bearer session token) ────
 type ActiveSessionData = {
@@ -2331,6 +2349,74 @@ async function resolveActiveSessionFromRequest(
   return null;
 }
 
+async function resolveAuthoritativeSessionFromRequest(
+  req: express.Request,
+): Promise<AuthoritativeSessionResolution> {
+  const sessionToken = readActiveSessionToken(req);
+  if (!sessionToken || sessionToken.length > 512) {
+    return { status: "unauthenticated" };
+  }
+
+  if (sessionToken === DEV_LOCAL_ADMIN_SESSION_TOKEN) {
+    const remoteAddress = String(req.socket.remoteAddress || "").toLowerCase();
+    const isLoopback = remoteAddress === "127.0.0.1"
+      || remoteAddress === "::1"
+      || remoteAddress.startsWith("::ffff:127.");
+    if (process.env.NODE_ENV !== "development" || !isLoopback) {
+      return { status: "unauthenticated" };
+    }
+    const localDevelopmentSession = getLocalDevelopmentSession(sessionToken);
+    return localDevelopmentSession
+      ? { status: "authenticated", session: localDevelopmentSession }
+      : { status: "unauthenticated" };
+  }
+
+  try {
+    const result = await pool.query<{ session_data: unknown }>(
+      `SELECT session_data
+         FROM creatorhub_auth_sessions
+        WHERE token = $1
+          AND (expires_at IS NULL OR expires_at > NOW())
+        LIMIT 1`,
+      [sessionToken],
+    );
+    const session = parseWorkspaceParticipantAuthoritativeSession(
+      result.rows[0]?.session_data,
+    );
+    if (
+      session?.impersonatedByAdmin &&
+      session.impersonatorId &&
+      !activeSessions.has(sessionToken) &&
+      ["POST", "PUT", "PATCH", "DELETE"].includes(req.method.toUpperCase())
+    ) {
+      await pool.query(
+        `INSERT INTO superadmin_impersonation_audit
+           (super_admin_id, action, target_user_id, details)
+         VALUES ($1, 'write', $2, $3::jsonb)`,
+        [
+          session.impersonatorId,
+          session.userId,
+          JSON.stringify({
+            method: req.method.toUpperCase(),
+            path: String(req.path).slice(0, 200),
+            source: "workspace_participant_persisted_session",
+          }),
+        ],
+      );
+    }
+    return session
+      ? { status: "authenticated", session }
+      : { status: "unauthenticated" };
+  } catch (error) {
+    const errorCode = error && typeof error === "object"
+      && typeof (error as { code?: unknown }).code === "string"
+      ? (error as { code: string }).code
+      : "unknown";
+    console.error("[workspace-participants] session authority unavailable", errorCode);
+    return { status: "unavailable" };
+  }
+}
+
 function requireAdminSession(
   req: express.Request,
   res: express.Response,
@@ -2352,41 +2438,27 @@ function requireAdminSession(
 
 // ─── GET /api/admin/presence/online ──────────────────────────────────────
 // Admin-guardet oversikt over hvilke brukere som er pålogget akkurat nå.
-// Skriv-audit under impersonation: logg alle mutasjoner utført mens en super_admin
-// «ser som» en bruker (impersonator ansvarlig). Registrert her — FØR rutene — så
-// den fanger så godt som alle endepunkter. Fire-and-forget, blokkerer aldri.
-app.use((req, _res, next) => {
-  try {
-    const token = readActiveSessionToken(req);
-    const s = token ? activeSessions.get(token) : null;
-    if (s?.impersonatedByAdmin) {
-      // Håndhev 30-min TTL på HVER request. Uten dette utløper impersonasjonen
-      // kun når frontend poller /impersonation-status — bruker man token-en
-      // direkte (eller slutter å polle) beholder super_adminen målbrukerens
-      // sesjon med skrivetilgang i det uendelige. Gjenopprett fra snapshot.
-      if (s.impersonationExpiresAt && Date.now() > s.impersonationExpiresAt) {
-        const snap = s.impersonatorSnapshot || {};
-        Object.assign(s, snap);
-        s.impersonatedByAdmin = false;
-        delete s.impersonatorId; delete s.impersonatorEmail;
-        delete s.impersonatorSnapshot; delete s.impersonationExpiresAt;
-        activeSessions.set(token as string, s);
-        void persistAuthSession(pool, token as string, s);
-      } else {
-        const m = req.method.toUpperCase();
-        if ((m === "POST" || m === "PUT" || m === "PATCH" || m === "DELETE")
-            && !req.path.includes("/impersonat")) {
-          void pool.query(
-            `INSERT INTO superadmin_impersonation_audit (super_admin_id, action, target_user_id, details)
-             VALUES ($1,'write',$2,$3::jsonb)`,
-            [s.impersonatorId || null, s.userId, JSON.stringify({ method: m, path: String(req.path).slice(0, 200) })],
-          ).catch(() => { /* audit skal aldri blokkere */ });
-        }
-      }
-    }
-  } catch { /* aldri blokkér requesten */ }
-  next();
-});
+// Håndhev impersonation-TTL før alle applikasjonsruter. Standalone target-
+// tokens kan ikke gjenopprettes uten et verifiserbart admin-snapshot og blir
+// derfor revokert fail-closed ved utløp eller ugyldige markører.
+app.use(createImpersonationSessionGuard({
+  activeSessions,
+  readSessionToken: readActiveSessionToken,
+  persistSession: (token, session) => persistAuthSession(pool, token, session),
+  revokeSession: async (token) => {
+    await Promise.all([
+      deletePersistedAuthSession(pool, token),
+      invalidateSession(pool, token),
+    ]);
+  },
+  auditWrite: async (impersonatorId, targetUserId, details) => {
+    await pool.query(
+      `INSERT INTO superadmin_impersonation_audit (super_admin_id, action, target_user_id, details)
+       VALUES ($1,'write',$2,$3::jsonb)`,
+      [impersonatorId, targetUserId, JSON.stringify(details)],
+    );
+  },
+}));
 
 // Presence er personvern-sensitivt → kun admin. Online = user_presence
 // last_seen_at innen 90 sek og ikke idle (samme vindu som Admin Room /
@@ -66957,7 +67029,13 @@ setupEditingPartnerApplicationsAdminRoutes({ app, pool, activeSessions });
 setupSuperadminImpersonationRoutes({
   app, pool, activeSessions,
   readSessionToken: readActiveSessionToken,
-  persistSession: (token, session) => persistSession(pool, { token, session }),
+  persistSession: (token, session) => persistAuthSession(pool, token, session),
+  revokeSession: async (token) => {
+    await Promise.all([
+      deletePersistedAuthSession(pool, token),
+      invalidateSession(pool, token),
+    ]);
+  },
 });
 setupSuperadminDebugRoutes({ app, pool, activeSessions, readSessionToken: readActiveSessionToken });
 
@@ -67599,6 +67677,29 @@ setupPhotographerProjectsRoutes({
 });
 // Team Workspace deling/medlemskap (Fase 1) — project_team_members + canAccessProject.
 setupProjectTeamRoutes({ app, pool, requireUserSession, escapeHtml });
+// External project participants are tenant-bound Enterprise records. Their
+// routes use persisted server sessions, never client-supplied user IDs.
+setupWorkspaceProjectParticipantsRoutes({
+  app,
+  pool,
+  resolveAuthoritativeSessionFromRequest,
+});
+setupWorkspaceParticipantDocumentRoutes({
+  app,
+  pool,
+  resolveAuthoritativeSessionFromRequest,
+  deliveryAdapter: createWorkspaceParticipantDocumentEmailDeliveryAdapter({}),
+});
+setupWorkspaceParticipantCompensationRoutes({
+  app,
+  pool,
+  resolveAuthoritativeSessionFromRequest,
+});
+setupWorkspaceParticipantClearanceRoutes({
+  app,
+  pool,
+  resolveAuthoritativeSessionFromRequest,
+});
 // Team Workspace egne panel-data (board-tasks/checklist/deliverables/shot-list GET)
 // — project_id-scopet, UAVHENGIG av Role Room.
 setupProjectWorkspaceRoutes({ app, pool, requireUserSession });
@@ -70674,6 +70775,7 @@ const listSplitSheetEaseVerseLinksHandler = async (req: any, res: any) => {
         INNER JOIN split_sheets s ON s.id = l.split_sheet_id
         WHERE l.split_sheet_id = $1
           AND s.user_id = $2
+          AND COALESCE(s.metadata->>'source', '') <> 'workspace-participant-compensation'
         ORDER BY linked_at DESC
       `,
       [id, userId],
@@ -70708,13 +70810,19 @@ const linkSplitSheetEaseVerseHandler = async (req: any, res: any) => {
     }
 
     const splitSheet = await pool.query(
-      `SELECT id FROM split_sheets WHERE id = $1 AND user_id = $2`,
+      `SELECT id, metadata FROM split_sheets WHERE id = $1 AND user_id = $2`,
       [id, userId],
     );
     if (splitSheet.rows.length === 0) {
       return res
         .status(404)
         .json({ success: false, error: "Split sheet not found" });
+    }
+    if (isWorkspaceParticipantCompensationMetadata(splitSheet.rows[0].metadata)) {
+      return res.status(409).json({
+        success: false,
+        error: "managed_compensation_uses_participant_contract",
+      });
     }
 
     const duplicate = await pool.query(
@@ -70800,13 +70908,19 @@ const unlinkSplitSheetEaseVerseHandler = async (req: any, res: any) => {
     );
 
     const splitSheet = await pool.query(
-      `SELECT id FROM split_sheets WHERE id = $1 AND user_id = $2`,
+      `SELECT id, metadata FROM split_sheets WHERE id = $1 AND user_id = $2`,
       [id, userId],
     );
     if (splitSheet.rows.length === 0) {
       return res
         .status(404)
         .json({ success: false, error: "Split sheet not found" });
+    }
+    if (isWorkspaceParticipantCompensationMetadata(splitSheet.rows[0].metadata)) {
+      return res.status(409).json({
+        success: false,
+        error: "managed_compensation_uses_participant_contract",
+      });
     }
 
     let query = `

@@ -261,6 +261,17 @@ const ChatActionsGuidePage = React.lazy(() => import('@/pages/chat-actions-guide
 const AdminDashboardWrapper = (props: any) => <AdminDashboard {...props} />;
 const CompleteDeploymentManagerWrapper = (props: any) => <CompleteDeploymentManager {...props} />;
 
+// A client-side navigation into the private legal portal must leave the full
+// application tree. The next document load is selected by the minimal bootstrap
+// in main.tsx, before account providers or telemetry can initialize.
+const ParticipantDocumentBootstrapHandoff = () => {
+  React.useEffect(() => {
+    window.location.reload();
+  }, []);
+
+  return null;
+};
+
 type AcademyRouteQueryContext = {
   courseId?: string;
   lessonId?: string;
@@ -944,6 +955,7 @@ function App() {
                   <Route path="/audio-review/invite/:token" component={AudioReviewInvitePage as React.ComponentType<any>} />
                   <Route path="/audio-review/shared/:token" component={AudioReviewSharedPage as React.ComponentType<any>} />
                   <Route path="/mockup-review/:token" component={MockupReviewPage as React.ComponentType<any>} />
+                  <Route path="/participant-document/:documentId" component={ParticipantDocumentBootstrapHandoff} />
                   <Route path="/guide/oppvarming" component={WarmupGuidePage as React.ComponentType<any>} />
                   <Route path="/guide/chat" component={ChatGuidePage as React.ComponentType<any>} />
                   <Route path="/guide/actions" component={ChatActionsGuidePage as React.ComponentType<any>} />

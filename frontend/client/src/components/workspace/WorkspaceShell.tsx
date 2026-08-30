@@ -28,6 +28,7 @@ import PermMedia from '@mui/icons-material/PermMedia';
 import LocalShipping from '@mui/icons-material/LocalShipping';
 import CheckCircleOutline from '@mui/icons-material/CheckCircleOutline';
 import Group from '@mui/icons-material/Group';
+import Groups2 from '@mui/icons-material/Groups2';
 import ChatBubbleOutline from '@mui/icons-material/ChatBubbleOutline';
 import PhotoCamera from '@mui/icons-material/PhotoCamera';
 import Videocam from '@mui/icons-material/Videocam';
@@ -75,7 +76,7 @@ const SHELL_T = {
 
 const ICONS: Record<string, React.ElementType> = {
   Dashboard, AccountTree, Map, PhotoCameraBack, GridView, PermMedia, LocalShipping,
-  CheckCircleOutline, Group, ChatBubbleOutline, PhotoCamera, Videocam, Movie, GraphicEq,
+  CheckCircleOutline, Group, Groups2, ChatBubbleOutline, PhotoCamera, Videocam, Movie, GraphicEq,
   Visibility, EventNote, Album, LibraryMusic, School, MoveToInbox, Forum, Inventory2,
   WorkOutline, EventAvailable,
 };
@@ -128,6 +129,7 @@ function NavItem({ item, active, onClick }: any) {
   return (
     <Box
       onClick={onClick}
+      title={item.lockReason || undefined}
       sx={{
         display: 'flex', alignItems: 'center', gap: 1.25, px: 1.5, py: 1, mx: 1,
         borderRadius: `${ws.radiusSm}px`, cursor: 'pointer', userSelect: 'none',
@@ -142,6 +144,11 @@ function NavItem({ item, active, onClick }: any) {
       <Typography sx={{ fontSize: 14, fontWeight: active ? 700 : 500, flex: 1 }}>{item.label}</Typography>
       {item.online && (
         <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: ws.green }} />
+      )}
+      {item.locked && (
+        <Tooltip title={item.lockReason || 'Enterprise'}>
+          <Lock sx={{ color: ws.textFaint, fontSize: 14 }} />
+        </Tooltip>
       )}
       {item.badge ? (
         <Box sx={{

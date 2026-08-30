@@ -39,6 +39,10 @@
 import type express from "express";
 import type { Pool } from "pg";
 import { randomUUID } from "crypto";
+import {
+  isWorkspaceParticipantCompensationMetadata,
+  WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE,
+} from "../../frontend/shared/workspace-participant-compensation.ts";
 
 export interface SplitSheetsRoutesDeps {
   app: express.Application;
@@ -68,6 +72,7 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
         FROM split_sheets ss
         LEFT JOIN split_sheet_contributors ssc ON ss.id = ssc.split_sheet_id
         WHERE ss.user_id = $1
+          AND COALESCE(ss.metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'
       `;
       const params: any[] = [userId];
       let idx = 2;
@@ -111,24 +116,29 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       if (!userId) return res.status(401).json({ error: "unauthorized" });
 
       const totalResult = await pool.query(
-        "SELECT COUNT(*) as count FROM split_sheets WHERE user_id = $1",
+        `SELECT COUNT(*) as count FROM split_sheets
+          WHERE user_id = $1
+            AND COALESCE(metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'`,
         [userId],
       );
       const pendingResult = await pool.query(
         `SELECT COUNT(*) as count FROM split_sheets ss
          JOIN split_sheet_contributors ssc ON ssc.split_sheet_id = ss.id
-         WHERE ss.user_id = $1 AND ssc.signed_at IS NULL`,
+         WHERE ss.user_id = $1 AND ssc.signed_at IS NULL
+           AND COALESCE(ss.metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'`,
         [userId],
       );
       const completedResult = await pool.query(
         `SELECT COUNT(*) as count FROM split_sheets ss
-         WHERE ss.user_id = $1 AND ss.status = 'completed'`,
+         WHERE ss.user_id = $1 AND ss.status = 'completed'
+           AND COALESCE(ss.metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'`,
         [userId],
       );
       const revenueResult = await pool.query(
         `SELECT COALESCE(SUM(ssc.percentage), 0) as total FROM split_sheet_contributors ssc
          JOIN split_sheets ss ON ss.id = ssc.split_sheet_id
-         WHERE ss.user_id = $1`,
+         WHERE ss.user_id = $1
+           AND COALESCE(ss.metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'`,
         [userId],
       );
 
@@ -161,6 +171,7 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
            COUNT(ss.id) AS sheet_count,
            SUM(ss.total_percentage) AS total_percentage
          FROM split_sheets ss
+         WHERE COALESCE(ss.metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'
          GROUP BY DATE_TRUNC('month', ss.created_at)
          ORDER BY month ASC`,
       );
@@ -183,6 +194,7 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
                 COUNT(ssc.id) AS contributor_count
          FROM split_sheets ss
          LEFT JOIN split_sheet_contributors ssc ON ssc.split_sheet_id = ss.id
+         WHERE COALESCE(ss.metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'
          GROUP BY ss.id, ss.title, ss.total_percentage, ss.status
          ORDER BY ss.created_at DESC
          LIMIT 10`,
@@ -216,6 +228,7 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       const statusResult = await pool.query(
         `SELECT status, COUNT(*) AS count
          FROM split_sheets
+         WHERE COALESCE(metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'
          GROUP BY status
          ORDER BY count DESC`,
       );
@@ -233,7 +246,8 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
            MIN(EXTRACT(EPOCH FROM (completed_at - created_at)) / 86400) AS min_days,
            MAX(EXTRACT(EPOCH FROM (completed_at - created_at)) / 86400) AS max_days
          FROM split_sheets
-         WHERE completed_at IS NOT NULL`,
+         WHERE completed_at IS NOT NULL
+           AND COALESCE(metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'`,
       );
 
       const proc = processingResult.rows[0];
@@ -262,7 +276,9 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
            MAX(ssc.percentage) AS max_percentage,
            COUNT(ssc.id) AS count
          FROM split_sheet_contributors ssc
+         JOIN split_sheets ss ON ss.id = ssc.split_sheet_id
          WHERE ssc.role IS NOT NULL AND ssc.role != ''
+           AND COALESCE(ss.metadata->>'source', '') <> '${WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE}'
          GROUP BY ssc.role
          ORDER BY avg_percentage DESC`,
       );
@@ -334,6 +350,12 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
           .status(404)
           .json({ success: false, error: "Split sheet not found" });
       }
+      if (isWorkspaceParticipantCompensationMetadata(ssResult.rows[0].metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_uses_participant_contract",
+        });
+      }
       const contribs = await pool.query(
         "SELECT * FROM split_sheet_contributors WHERE split_sheet_id = $1 ORDER BY order_index ASC, created_at ASC",
         [id],
@@ -355,6 +377,12 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
     try {
       const userId = getSplitSheetUserId(req);
       if (!userId) return res.status(401).json({ error: "unauthorized" });
+      if (isWorkspaceParticipantCompensationMetadata(req.body?.metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_source_reserved",
+        });
+      }
       const {
         project_id,
         track_id,
@@ -428,16 +456,28 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
     if (!_ssUserId) return res.status(401).json({ error: "unauthorized" });
     try {
       const { id } = req.params;
+      if (isWorkspaceParticipantCompensationMetadata(req.body?.metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_source_reserved",
+        });
+      }
       // Ownership scope: only the owner may mutate the sheet. Return 404 (not
       // 403) so non-owners cannot enumerate which sheet ids exist (IDOR).
       const _own = await pool.query(
-        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
+        "SELECT metadata FROM split_sheets WHERE id = $1 AND user_id = $2",
         [id, _ssUserId],
       );
       if (_own.rowCount === 0) {
         return res
           .status(404)
           .json({ success: false, error: "Split sheet not found" });
+      }
+      if (isWorkspaceParticipantCompensationMetadata(_own.rows[0].metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_uses_participant_contract",
+        });
       }
       const { title, description, status, project_id, track_id, contributors } =
         req.body;
@@ -539,13 +579,19 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       // Ownership scope: only the owner may delete the sheet + its children.
       // Return 404 (not 403) to prevent id enumeration (IDOR).
       const _own = await pool.query(
-        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
+        "SELECT metadata FROM split_sheets WHERE id = $1 AND user_id = $2",
         [id, _ssUserId2],
       );
       if (_own.rowCount === 0) {
         return res
           .status(404)
           .json({ success: false, error: "Split sheet not found" });
+      }
+      if (isWorkspaceParticipantCompensationMetadata(_own.rows[0].metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_uses_participant_contract",
+        });
       }
       await pool.query(
         "DELETE FROM split_sheet_contributors WHERE split_sheet_id = $1",
@@ -593,13 +639,19 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       if (!userId)
         return res.status(401).json({ success: false, error: "unauthorized" });
       const own = await pool.query(
-        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
+        "SELECT metadata FROM split_sheets WHERE id = $1 AND user_id = $2",
         [id, userId],
       );
       if (own.rowCount === 0)
         return res
           .status(404)
           .json({ success: false, error: "Split sheet not found" });
+      if (isWorkspaceParticipantCompensationMetadata(own.rows[0].metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_uses_participant_contract",
+        });
+      }
       const { contributor_id, signature_data } = req.body;
 
       await pool.query(
@@ -645,13 +697,19 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       // Ownership scope: only the owner may (re)send invitations for their sheet.
       // 404 to prevent id enumeration.
       const _own = await pool.query(
-        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
+        "SELECT metadata FROM split_sheets WHERE id = $1 AND user_id = $2",
         [id, userId],
       );
       if (_own.rowCount === 0) {
         return res
           .status(404)
           .json({ success: false, error: "Split sheet not found" });
+      }
+      if (isWorkspaceParticipantCompensationMetadata(_own.rows[0].metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_uses_participant_contract",
+        });
       }
       const { contributor_ids, message } = req.body;
 
@@ -688,6 +746,14 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       // PDF-eksporten hele sheetet + kontributor-PII/økonomi for enhver :id.
       const userId = getSplitSheetUserId(req);
       const isOwner = userId && sheet.user_id === userId;
+      if (isWorkspaceParticipantCompensationMetadata(sheet.metadata)) {
+        return isOwner
+          ? res.status(409).json({
+              success: false,
+              error: "managed_compensation_uses_participant_contract",
+            })
+          : res.status(404).json({ success: false, error: "Not found" });
+      }
       const code = String(req.query.access_code || req.query.token || "")
         .trim()
         .toUpperCase();
@@ -725,11 +791,17 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       if (!userId)
         return res.status(401).json({ success: false, error: "unauthorized" });
       const owner = await pool.query(
-        "SELECT user_id FROM split_sheets WHERE id = $1",
+        "SELECT user_id, metadata FROM split_sheets WHERE id = $1",
         [id],
       );
       if (owner.rows.length === 0 || owner.rows[0].user_id !== userId)
         return res.status(404).json({ success: false, error: "Not found" });
+      if (isWorkspaceParticipantCompensationMetadata(owner.rows[0].metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_uses_participant_contract",
+        });
+      }
       const result = await pool.query(
         "SELECT * FROM split_sheet_versions WHERE split_sheet_id = $1 ORDER BY created_at DESC",
         [id],
@@ -760,6 +832,12 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
         return res.status(404).json({ success: false, error: "Not found" });
 
       const ss = original.rows[0];
+      if (isWorkspaceParticipantCompensationMetadata(ss.metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_uses_participant_contract",
+        });
+      }
       const newId = crypto.randomUUID();
 
       await pool.query(
@@ -830,13 +908,19 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       // other user's split sheet (financial data tampering). 404 to prevent
       // id enumeration.
       const _own = await pool.query(
-        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
+        "SELECT metadata FROM split_sheets WHERE id = $1 AND user_id = $2",
         [id, userId],
       );
       if (_own.rowCount === 0) {
         return res
           .status(404)
           .json({ success: false, error: "Split sheet not found" });
+      }
+      if (isWorkspaceParticipantCompensationMetadata(_own.rows[0].metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_uses_participant_contract",
+        });
       }
       const {
         amount,
@@ -896,13 +980,19 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       const userId = getSplitSheetUserId(req);
       if (!userId) return res.status(401).json({ error: "unauthorized" });
       const own = await pool.query(
-        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
+        "SELECT metadata FROM split_sheets WHERE id = $1 AND user_id = $2",
         [id, userId],
       );
       if (own.rowCount === 0)
         return res
           .status(404)
           .json({ success: false, error: "Split sheet not found" });
+      if (isWorkspaceParticipantCompensationMetadata(own.rows[0].metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_uses_participant_contract",
+        });
+      }
       const result = await pool.query(
         "SELECT * FROM split_sheet_revenue WHERE split_sheet_id = $1 ORDER BY created_at DESC",
         [id],
@@ -923,13 +1013,19 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
       if (!userId)
         return res.status(401).json({ success: false, error: "unauthorized" });
       const owns = await pool.query(
-        "SELECT 1 FROM split_sheets WHERE id = $1 AND user_id = $2",
+        "SELECT metadata FROM split_sheets WHERE id = $1 AND user_id = $2",
         [id, userId],
       );
       if (owns.rowCount === 0)
         return res
           .status(404)
           .json({ success: false, error: "Split sheet not found" });
+      if (isWorkspaceParticipantCompensationMetadata(owns.rows[0].metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_uses_participant_contract",
+        });
+      }
       const { contributor_id, status: payStatus } = req.query;
 
       let query = "SELECT * FROM split_sheet_payments WHERE split_sheet_id = $1";
@@ -959,6 +1055,25 @@ export function setupSplitSheetsRoutes(deps: SplitSheetsRoutesDeps): void {
     if (!_ssUserId3) return res.status(401).json({ error: "unauthorized" });
     try {
       const { paymentId } = req.params;
+      const paymentParent = await pool.query(
+        `SELECT ss.metadata
+           FROM split_sheet_payments payment
+           JOIN split_sheets ss ON ss.id = payment.split_sheet_id
+          WHERE payment.id = $1 AND ss.user_id = $2
+          LIMIT 1`,
+        [paymentId, _ssUserId3],
+      );
+      if (paymentParent.rowCount === 0) {
+        return res
+          .status(404)
+          .json({ success: false, error: "Payment not found" });
+      }
+      if (isWorkspaceParticipantCompensationMetadata(paymentParent.rows[0].metadata)) {
+        return res.status(409).json({
+          success: false,
+          error: "managed_compensation_uses_participant_contract",
+        });
+      }
       const {
         payment_status,
         payment_date,

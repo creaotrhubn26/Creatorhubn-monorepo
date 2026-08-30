@@ -15,6 +15,11 @@
 
 import type express from "express";
 import type { Pool } from "pg";
+import {
+  inspectImpersonationSession,
+  restoreImpersonatorSnapshot,
+  type ValidImpersonatorSnapshot,
+} from "./impersonation-session-policy.js";
 
 // Løs kobling til den faktiske ActiveSessionData i index.ts.
 type Sess = {
@@ -33,11 +38,19 @@ interface Deps {
   activeSessions: Map<string, any>;
   readSessionToken: (req: express.Request) => string | null | undefined;
   persistSession: (token: string, session: any) => void | Promise<void>;
+  revokeSession: (token: string) => void | Promise<void>;
 }
 
 const TTL_MS = 30 * 60 * 1000; // 30 min auto-utløp
 
-export function setupSuperadminImpersonationRoutes({ app, pool, activeSessions, readSessionToken, persistSession }: Deps): void {
+export function setupSuperadminImpersonationRoutes({
+  app,
+  pool,
+  activeSessions,
+  readSessionToken,
+  persistSession,
+  revokeSession,
+}: Deps): void {
   void pool.query(
     `CREATE TABLE IF NOT EXISTS superadmin_impersonation_audit (
        id bigserial PRIMARY KEY,
@@ -61,23 +74,19 @@ export function setupSuperadminImpersonationRoutes({ app, pool, activeSessions, 
     return { token, session: token ? activeSessions.get(token) || null : null };
   };
 
-  const restore = (token: string, session: Sess): void => {
-    const snap = session.impersonatorSnapshot || {};
-    Object.assign(session, snap);
-    session.impersonatedByAdmin = false;
-    delete session.impersonatorId; delete session.impersonatorEmail;
-    delete session.impersonatorSnapshot; delete session.impersonationExpiresAt;
+  const restore = async (
+    token: string,
+    session: Sess,
+    snapshot: ValidImpersonatorSnapshot,
+  ): Promise<void> => {
+    restoreImpersonatorSnapshot(session, snapshot);
     activeSessions.set(token, session);
-    void persistSession(token, session);
+    await persistSession(token, session);
   };
 
-  // Håndhev utløp: gjenopprett hvis impersonasjonen har gått ut på tid.
-  const expiredThenRestore = (token: string, session: Sess): boolean => {
-    if (session.impersonatedByAdmin && session.impersonationExpiresAt && Date.now() > session.impersonationExpiresAt) {
-      restore(token, session);
-      return true;
-    }
-    return false;
+  const revoke = async (token: string): Promise<void> => {
+    activeSessions.delete(token);
+    await revokeSession(token);
   };
 
   const isRealSuperAdmin = (s: Sess | null): boolean =>
@@ -124,8 +133,12 @@ export function setupSuperadminImpersonationRoutes({ app, pool, activeSessions, 
       session.userId = t.id; session.email = t.email; session.name = t.name; session.role = t.role; session.profession = t.profession || undefined;
       session.impersonatedByAdmin = true;
       session.impersonationExpiresAt = Date.now() + TTL_MS;
+      if (inspectImpersonationSession(session).kind !== "active_restorable") {
+        await revoke(token);
+        return res.status(401).json({ error: "impersonation_session_invalid" });
+      }
       activeSessions.set(token, session);
-      void persistSession(token, session);
+      await persistSession(token, session);
       audit(session.impersonatorId, "start", t.id, { targetEmail: t.email, targetRole: t.role });
       res.json({ ok: true, target: { id: t.id, name: t.name, role: t.role, profession: t.profession } });
     } catch (err) {
@@ -138,26 +151,49 @@ export function setupSuperadminImpersonationRoutes({ app, pool, activeSessions, 
   app.post("/api/superadmin/end-impersonation-user", async (req, res) => {
     const { token, session } = ctx(req);
     if (!token || !session) return res.status(401).json({ error: "auth_required" });
-    if (!session.impersonatedByAdmin) return res.json({ ok: true, wasActive: false });
+    const inspection = inspectImpersonationSession(session);
+    if (inspection.kind === "ordinary") {
+      return res.json({ ok: true, wasActive: false });
+    }
+    if (
+      inspection.kind !== "active_restorable" &&
+      inspection.kind !== "expired_restorable"
+    ) {
+      await revoke(token);
+      return res.status(401).json({ error: "impersonation_session_invalid" });
+    }
     const impersonatorId = session.impersonatorId;
     const targetId = session.userId;
-    restore(token, session);
+    await restore(token, session, inspection.snapshot);
     audit(impersonatorId, "end", targetId, {});
     res.json({ ok: true, wasActive: true });
   });
 
   // Status (frontend-banner) — håndhever også utløp.
-  app.get("/api/superadmin/impersonation-status", (req, res) => {
+  app.get("/api/superadmin/impersonation-status", async (req, res) => {
     const { token, session } = ctx(req);
     if (!token || !session) return res.json({ active: false });
-    if (expiredThenRestore(token, session)) return res.json({ active: false, expired: true });
-    if (session.impersonatedByAdmin) {
+    const inspection = inspectImpersonationSession(session);
+    if (inspection.kind === "expired_restorable") {
+      await restore(token, session, inspection.snapshot);
+      return res.json({ active: false, expired: true });
+    }
+    if (
+      inspection.kind === "expired_standalone" ||
+      inspection.kind === "invalid"
+    ) {
+      await revoke(token);
+      return res.status(401).json({ error: "impersonation_session_expired" });
+    }
+    if (inspection.kind === "active_restorable") {
       return res.json({
         active: true, targetName: session.name, targetEmail: session.email,
         targetRole: session.role, impersonatorEmail: session.impersonatorEmail,
         expiresAt: session.impersonationExpiresAt,
       });
     }
+    // A standalone admin-issued target token is valid for ordinary app routes,
+    // but it cannot participate in this same-token restore flow.
     res.json({ active: false });
   });
   // Merk: skriv-audit + utløps-håndhevelse på hver request registreres TIDLIG i

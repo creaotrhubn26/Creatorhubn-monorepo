@@ -28,6 +28,7 @@ import OppgaverTab from './tabs/OppgaverTab';
 import AvtalerTab from './tabs/AvtalerTab';
 import KundevisningTab from './tabs/KundevisningTab';
 import TeamTab from './tabs/TeamTab';
+import WorkspaceParticipantsTab from './tabs/WorkspaceParticipantsTab';
 import SoundRoomTab from './tabs/SoundRoomTab';
 import VideoRoomTab from './tabs/VideoRoomTab';
 import PhotoRoomTab from './tabs/PhotoRoomTab';
@@ -48,6 +49,9 @@ import { getProfessionDisplayName } from '@shared/profession-types';
 import { WsLocaleProvider, type WsLocale } from './wsLocale';
 import { localeForVendor } from '../universal/editing-marketplace/editingMarketplaceStrings';
 import { WorkspaceProvider, useWorkspaceBootstrap, useWorkspaceUpdate } from './WorkspaceContext';
+import { WORKSPACE_PROJECT_PARTICIPANTS_FEATURE_ID } from '@shared/workspace-project-participants';
+import { canUseWorkspaceParticipantsCapability } from './participants/workspaceParticipantsModel';
+import { useWorkspaceParticipantsAccess } from './participants/useWorkspaceParticipantsAccess';
 
 // Prøveprosjekt (Sara & Amir) — byttes med ekte prosjekt-fetch i wire-fasen.
 const SAMPLE_PROJECT = {
@@ -195,6 +199,12 @@ const TeamWorkspacePage: React.FC = () => {
   const workspaceCategory = projectId === 'sample'
     ? workspaceCategoryFor(user?.profession)
     : (bootstrap?.workspaceCategory || 'service');
+  const participantAccessState = useWorkspaceParticipantsAccess(projectId, workspaceCategory === 'visual');
+  const participantCapabilityAllowed = canUseWorkspaceParticipantsCapability({
+    workspaceCategory,
+    accessLoading: participantAccessState.loading,
+    canViewProjectParticipants: !!participantAccessState.access?.canView,
+  });
   const workspaceAccess = bootstrap?.access || (projectId === 'sample'
     ? { canRead: true, canEdit: true, isOwner: true }
     : { canRead: true, canEdit: false, isOwner: false });
@@ -286,10 +296,24 @@ const TeamWorkspacePage: React.FC = () => {
     return () => { live = false; };
   }, []);
 
-  const nav = useMemo(
-    () => applyNavOverrides(localizeNav(navForCategory(workspaceCategory, { isMentor }), wsLocale), navOv),
-    [workspaceCategory, isMentor, wsLocale, navOv],
-  );
+  const nav = useMemo(() => {
+    const categoryNav = localizeNav(navForCategory(workspaceCategory, { isMentor }), wsLocale).map((item) =>
+      item.capability === WORKSPACE_PROJECT_PARTICIPANTS_FEATURE_ID
+        ? {
+            ...item,
+            locked: !participantCapabilityAllowed,
+            lockReason: participantCapabilityAllowed
+              ? undefined
+              : participantAccessState.loading
+                ? 'Kontrollerer prosjekttilgang'
+                : participantAccessState.error?.code === 'enterprise_required'
+                  ? 'Krever Enterprise-tilgang'
+                  : participantAccessState.error?.message || 'Krever tilgang til prosjektets medvirkende',
+          }
+        : item,
+    );
+    return applyNavOverrides(categoryNav, navOv);
+  }, [workspaceCategory, isMentor, wsLocale, navOv, participantCapabilityAllowed, participantAccessState.loading, participantAccessState.error?.code, participantAccessState.error?.message]);
   // Hvis aktiv fane ikke finnes i profesjonens nav (f.eks. delt lenke til
   // 'shotlist' for en musikkprodusent), fall tilbake til Oversikt.
   useEffect(() => {
@@ -325,6 +349,7 @@ const TeamWorkspacePage: React.FC = () => {
       case 'foresporsler':    return <ForesporslerTab projectId={projectId} profession={projectProfession} userId={user?.id} userName={user?.firstName || (user as any)?.name || user?.email} />;
       case 'kundevisning':    return <KundevisningTab projectId={projectId} />;
       case 'team':            return <TeamTab projectId={projectId} profession={projectProfession} userId={user?.id} projectName={(project as any)?.title || (project as any)?.name} lastUpdated={(realProject as any)?.updatedAt || null} />;
+      case 'medvirkende':     return <WorkspaceParticipantsTab projectId={projectId} accessState={participantAccessState} />;
       case 'sound-room':      return <SoundRoomTab projectId={projectId} />;
       case 'video-room':      return <VideoRoomTab projectId={projectId} />;
       case 'photo-room':      return <PhotoRoomTab projectId={projectId} />;
@@ -332,7 +357,7 @@ const TeamWorkspacePage: React.FC = () => {
       default:                return <ComingTab label={navItem?.label || tab} />;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, projectId, user?.id, user?.email, user?.profession, user?.firstName, projectProfession, workspaceCategory, (project as any)?.title, (project as any)?.name, (realProject as any)?.updatedAt, navItem?.label]);
+  }, [tab, projectId, user?.id, user?.email, user?.profession, user?.firstName, projectProfession, workspaceCategory, (project as any)?.title, (project as any)?.name, (realProject as any)?.updatedAt, navItem?.label, participantAccessState]);
 
   return (
     <WorkspaceProvider

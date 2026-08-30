@@ -63,6 +63,7 @@ import {
   reconcilePaypalPayout,
   verifyPaypalWebhook,
 } from "./editing-payments-service";
+import { isWorkspaceParticipantCompensationMetadata } from "../../frontend/shared/workspace-participant-compensation.ts";
 
 export interface EditingJobsRoutesDeps {
   app: express.Application;
@@ -640,6 +641,24 @@ export function setupEditingJobsRoutes(deps: EditingJobsRoutesDeps): void {
           ? Number(b.revenueSharePct)
           : null;
       const splitSheetId: string | null = b.splitSheetId || null;
+
+      if (splitSheetId) {
+        const splitSheet = await pool.query(
+          `SELECT metadata
+             FROM split_sheets
+            WHERE id = $1::uuid AND user_id = $2
+            LIMIT 1`,
+          [splitSheetId, session.userId],
+        );
+        if (splitSheet.rowCount === 0) {
+          return res.status(404).json({ error: "split_sheet_ikke_funnet" });
+        }
+        if (isWorkspaceParticipantCompensationMetadata(splitSheet.rows[0].metadata)) {
+          return res.status(409).json({
+            error: "managed_compensation_uses_participant_contract",
+          });
+        }
+      }
 
       // MVA + fee: slå opp vendorens utenlandsk-status + partner-type/fee-config.
       let vendorIsForeign = false;

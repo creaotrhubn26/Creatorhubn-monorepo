@@ -1,4 +1,8 @@
 import type { Pool } from "pg";
+import {
+  isUsablePersistedAuthSession,
+  persistedAuthSessionExpiryBound,
+} from "./impersonation-session-policy.js";
 
 type PersistableAuthSession = {
   userId: string;
@@ -15,8 +19,9 @@ const AUTH_SESSION_TABLE_NAME = "creatorhub_auth_sessions";
 // now carry a sliding 30-day window (renewed on each successful load). The
 // renewal write is throttled: it only fires when the remaining lifetime has
 // dropped below RENEW_THRESHOLD, i.e. at most ~once/day per active session.
-// Impersonation sessions keep their own, shorter, per-request TTL enforced in
-// index.ts — this outer bound is always >= that check, so it never loosens it.
+// Impersonation sessions keep their own shorter TTL. Their database expiry is
+// capped to the same absolute deadline so a restart cannot revive a target
+// identity after the per-request guard would have rejected it.
 const SESSION_TTL_INTERVAL = "30 days";
 const SESSION_RENEW_THRESHOLD_INTERVAL = "29 days";
 
@@ -102,18 +107,31 @@ export async function persistAuthSession<T extends PersistableAuthSession>(
     return;
   }
 
+  const expiryBoundMs = persistedAuthSessionExpiryBound(session);
+  const expiryBound = expiryBoundMs === null
+    ? null
+    : new Date(expiryBoundMs).toISOString();
+
   try {
     await pool.query(
       `
         INSERT INTO ${AUTH_SESSION_TABLE_NAME} (token, session_data, updated_at, expires_at)
-        VALUES ($1, $2::jsonb, NOW(), NOW() + INTERVAL '${SESSION_TTL_INTERVAL}')
+        VALUES (
+          $1,
+          $2::jsonb,
+          NOW(),
+          CASE
+            WHEN $3::timestamptz IS NULL THEN NOW() + INTERVAL '${SESSION_TTL_INTERVAL}'
+            ELSE LEAST(NOW() + INTERVAL '${SESSION_TTL_INTERVAL}', $3::timestamptz)
+          END
+        )
         ON CONFLICT (token)
         DO UPDATE SET
           session_data = EXCLUDED.session_data,
           updated_at = NOW(),
-          expires_at = NOW() + INTERVAL '${SESSION_TTL_INTERVAL}'
+          expires_at = EXCLUDED.expires_at
       `,
-      [normalizedToken, JSON.stringify(session)],
+      [normalizedToken, JSON.stringify(session), expiryBound],
     );
   } catch (error) {
     console.warn("Failed to persist auth session:", error);
@@ -186,20 +204,38 @@ export async function loadPersistedAuthSession<T extends PersistableAuthSession>
     const session = normalizePersistedSession<T>(
       result.rows[0]?.session_data,
     );
+    if (session && !isUsablePersistedAuthSession(session)) {
+      await pool
+        .query(`DELETE FROM ${AUTH_SESSION_TABLE_NAME} WHERE token = $1`, [
+          normalizedToken,
+        ])
+        .catch((error) => {
+          console.warn("Failed to prune invalid persisted auth session:", error);
+        });
+      return null;
+    }
     if (session) {
+      const renewalExpiryBoundMs = persistedAuthSessionExpiryBound(session);
+      const renewalExpiryBound = renewalExpiryBoundMs === null
+        ? null
+        : new Date(renewalExpiryBoundMs).toISOString();
       // Sliding renewal, throttled by the WHERE guard so it only writes once the
       // remaining lifetime has dropped below the renew threshold (~once/day per
-      // active session). Fire-and-forget — never block the auth hot path on it.
+      // active ordinary session). Impersonation stays capped to its fixed
+      // absolute deadline. Fire-and-forget — never block the auth hot path.
       void pool
         .query(
           `
             UPDATE ${AUTH_SESSION_TABLE_NAME}
-            SET expires_at = NOW() + INTERVAL '${SESSION_TTL_INTERVAL}'
+            SET expires_at = CASE
+              WHEN $2::timestamptz IS NULL THEN NOW() + INTERVAL '${SESSION_TTL_INTERVAL}'
+              ELSE LEAST(NOW() + INTERVAL '${SESSION_TTL_INTERVAL}', $2::timestamptz)
+            END
             WHERE token = $1
               AND (expires_at IS NULL OR expires_at > NOW())
               AND (expires_at IS NULL OR expires_at < NOW() + INTERVAL '${SESSION_RENEW_THRESHOLD_INTERVAL}')
           `,
-          [normalizedToken],
+          [normalizedToken, renewalExpiryBound],
         )
         .catch((error) => {
           console.warn("Failed to renew persisted auth session:", error);
@@ -230,14 +266,31 @@ export async function hydratePersistedAuthSessions<
     );
 
     let hydratedCount = 0;
+    const rejectedTokens: string[] = [];
     for (const row of result.rows) {
       const session = normalizePersistedSession<T>(row.session_data);
       if (!session || !isNonEmptyString(row.token)) {
         continue;
       }
 
+      if (!isUsablePersistedAuthSession(session)) {
+        rejectedTokens.push(row.token.trim());
+        continue;
+      }
+
       target.set(row.token.trim(), session);
       hydratedCount += 1;
+    }
+
+    if (rejectedTokens.length > 0) {
+      await pool
+        .query(
+          `DELETE FROM ${AUTH_SESSION_TABLE_NAME} WHERE token = ANY($1::text[])`,
+          [rejectedTokens],
+        )
+        .catch((error) => {
+          console.warn("Failed to prune invalid persisted auth sessions:", error);
+        });
     }
 
     return hydratedCount;

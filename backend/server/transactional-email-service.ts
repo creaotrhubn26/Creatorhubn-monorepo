@@ -55,6 +55,11 @@ export interface TransactionalEmailOptions {
   fromLabel?: string | null;
   /** Override fra-adresse. Default: RESEND_FROM_EMAIL eller GMAIL_USER. */
   fromAddress?: string | null;
+  /**
+   * Avgrenser hvilke Resend-nøkler som kan brukes. CreatorHub-scope bruker
+   * aldri ROLE_ROOM_RESEND_API_KEY, heller ikke som fallback.
+   */
+  credentialScope?: 'default' | 'creatorhub';
   /** For logging — type sending (client_invite, talent_invite, ...). */
   kind?: string | null;
   /** For logging — knyttet prosjekt-ID, hvis aktuelt. */
@@ -79,13 +84,19 @@ function defaultResendFromAddress(): string {
 /** Leser Resend API-key med Role Room-spesifikk var som førsteprioritet
  *  + generelt RESEND_API_KEY-fallback. Tillater flere keys per Render-
  *  instans (én per app som sender via Resend). */
-function resolveResendApiKey(): string | null {
+export function resolveTransactionalEmailResendApiKey(
+  credentialScope: TransactionalEmailOptions['credentialScope'] = 'default',
+): string | null {
+  if (credentialScope === 'creatorhub') {
+    return readEnvString(process.env.CREATORHUB_RESEND_API_KEY)
+      ?? readEnvString(process.env.RESEND_API_KEY);
+  }
   return readEnvString(process.env.ROLE_ROOM_RESEND_API_KEY)
     ?? readEnvString(process.env.RESEND_API_KEY);
 }
 
 async function sendViaResend(opts: TransactionalEmailOptions): Promise<TransactionalEmailResult> {
-  const apiKey = resolveResendApiKey();
+  const apiKey = resolveTransactionalEmailResendApiKey(opts.credentialScope);
   if (!apiKey) {
     return {
       sent: false,
@@ -168,13 +179,29 @@ async function sendViaResend(opts: TransactionalEmailOptions): Promise<Transacti
   }
 }
 
+function resolveGmailCredentials(
+  credentialScope: TransactionalEmailOptions['credentialScope'] = 'default',
+): { user: string | null; password: string | null } {
+  if (credentialScope === 'creatorhub') {
+    return {
+      user: readEnvString(process.env.CREATORHUB_GMAIL_USER),
+      password: readEnvString(process.env.CREATORHUB_GMAIL_APP_PASSWORD)
+        ?.replace(/\s+/g, '') ?? null,
+    };
+  }
+  return {
+    user: readEnvString(
+      process.env.GMAIL_USER
+      ?? process.env.GOOGLE_WORKSPACE_EMAIL
+      ?? process.env.GOOGLE_ADMIN_EMAIL,
+    ),
+    password: readEnvString(process.env.GMAIL_APP_PASSWORD)
+      ?.replace(/\s+/g, '') ?? null,
+  };
+}
+
 async function sendViaGmailSmtp(opts: TransactionalEmailOptions): Promise<TransactionalEmailResult> {
-  const user = readEnvString(
-    process.env.GMAIL_USER
-    ?? process.env.GOOGLE_WORKSPACE_EMAIL
-    ?? process.env.GOOGLE_ADMIN_EMAIL,
-  );
-  const password = readEnvString(process.env.GMAIL_APP_PASSWORD)?.replace(/\s+/g, '') ?? null;
+  const { user, password } = resolveGmailCredentials(opts.credentialScope);
 
   if (!user || !password) {
     return {
@@ -282,7 +309,8 @@ async function logTransactionalEmail(
 export async function sendTransactionalEmail(
   opts: TransactionalEmailOptions,
 ): Promise<TransactionalEmailResult> {
-  const resendAvailable = resolveResendApiKey() !== null;
+  const resendAvailable =
+    resolveTransactionalEmailResendApiKey(opts.credentialScope) !== null;
   let result: TransactionalEmailResult;
 
   if (resendAvailable) {
@@ -307,13 +335,10 @@ export async function sendTransactionalEmail(
 }
 
 /** Returnerer true hvis enten Resend ELLER Gmail er konfigurert. */
-export function isTransactionalEmailConfigured(): boolean {
-  if (resolveResendApiKey()) return true;
-  const user = readEnvString(
-    process.env.GMAIL_USER
-    ?? process.env.GOOGLE_WORKSPACE_EMAIL
-    ?? process.env.GOOGLE_ADMIN_EMAIL,
-  );
-  const password = readEnvString(process.env.GMAIL_APP_PASSWORD);
+export function isTransactionalEmailConfigured(
+  credentialScope: TransactionalEmailOptions['credentialScope'] = 'default',
+): boolean {
+  if (resolveTransactionalEmailResendApiKey(credentialScope)) return true;
+  const { user, password } = resolveGmailCredentials(credentialScope);
   return Boolean(user && password);
 }

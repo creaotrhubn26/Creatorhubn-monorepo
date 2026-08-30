@@ -199,6 +199,17 @@ services:
       # Brukes som fallback hvis GOOGLE_ADMIN_EMAIL ikke er satt.
       - key: GMAIL_USER
         sync: false
+      # CreatorHub project-document delivery is isolated from Role Room mail.
+      - key: CREATORHUB_RESEND_API_KEY
+        sync: false
+      - key: CREATORHUB_RESEND_FROM_EMAIL
+        sync: false
+      - key: WORKSPACE_PARTICIPANT_DOCUMENT_TOKEN_SECRET
+        sync: false
+      - key: CREATORHUB_GMAIL_USER
+        sync: false
+      - key: CREATORHUB_GMAIL_APP_PASSWORD
+        sync: false
       # ── NextRole ────────────────────────────────────────────────
       # Custom from-adresse for transaksjonelle NextRole-e-poster.
       # Default = "NextRole <{GMAIL_USER}>" hvis ikke satt.

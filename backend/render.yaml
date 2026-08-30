@@ -132,6 +132,17 @@ services:
         sync: false
       - key: GMAIL_APP_PASSWORD
         sync: false
+      # CreatorHub project-document delivery is isolated from Role Room mail.
+      - key: CREATORHUB_RESEND_API_KEY
+        sync: false
+      - key: CREATORHUB_RESEND_FROM_EMAIL
+        sync: false
+      - key: WORKSPACE_PARTICIPANT_DOCUMENT_TOKEN_SECRET
+        sync: false
+      - key: CREATORHUB_GMAIL_USER
+        sync: false
+      - key: CREATORHUB_GMAIL_APP_PASSWORD
+        sync: false
       - key: ROLE_ROOM_LINKEDIN_CLIENT_ID
         sync: false
       - key: ROLE_ROOM_LINKEDIN_CLIENT_SECRET

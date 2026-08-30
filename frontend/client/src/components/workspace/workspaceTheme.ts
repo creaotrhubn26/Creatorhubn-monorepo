@@ -71,6 +71,7 @@ export type WorkspaceTab =
   | 'leveranser'
   | 'oppgaver'
   | 'team'
+  | 'medvirkende'
   | 'chat';
 
 /**
@@ -87,6 +88,7 @@ export type WorkspaceTab =
  */
 export type { WorkspaceCategory } from '@shared/profession-types';
 import { type WorkspaceCategory } from '@shared/profession-types';
+import { WORKSPACE_PROJECT_PARTICIPANTS_FEATURE_ID } from '@shared/workspace-project-participants';
 
 export interface WsNavItem {
   key: WorkspaceTab | string;
@@ -115,6 +117,11 @@ export interface WsNavItem {
   labelEn?: string;
   /** Kun synlig for mentorer/instruktører (uavhengig av profesjon). */
   mentorOnly?: boolean;
+  /** Optional product capability used to fail-close access in TeamWorkspacePage. */
+  capability?: string;
+  /** Discovery state: the tab opens an upgrade/permission panel when locked. */
+  locked?: boolean;
+  lockReason?: string;
 }
 
 // Venstre-nav — eksakt rekkefølge fra Daniels design. Items er tagget med
@@ -135,6 +142,16 @@ export const WS_NAV: WsNavItem[] = [
   { key: 'leveranser', label: 'Leveranser', labelEn: 'Deliverables', icon: 'LocalShipping', group: 'hoved', route: true },
   { key: 'oppgaver', label: 'Oppgaver', labelEn: 'Tasks', icon: 'CheckCircleOutline', group: 'hoved', route: true },
   { key: 'team', label: 'Team', labelEn: 'Team', icon: 'Group', group: 'hoved', route: true },
+  {
+    key: 'medvirkende',
+    label: 'Statister & medvirkende',
+    labelEn: 'Extras & participants',
+    icon: 'Groups2',
+    group: 'hoved',
+    route: true,
+    categories: ['visual'],
+    capability: WORKSPACE_PROJECT_PARTICIPANTS_FEATURE_ID,
+  },
   { key: 'chat', label: 'Chat', labelEn: 'Chat', icon: 'ChatBubbleOutline', group: 'hoved', route: true },
   // Academy-administrasjon — kun mentorer/instruktører (uavhengig av profesjon)
   { key: 'academy', label: 'Academy', icon: 'School', group: 'hoved', route: true, mentorOnly: true },

@@ -1,5 +1,6 @@
 // CreatorHub Norge Feature Configuration System
 // Comprehensive feature definitions for professional categorization
+import { WORKSPACE_PROJECT_PARTICIPANTS_FEATURE_ID } from './workspace-project-participants';
 
 export interface CreatorHubFeature {
   id: string;
@@ -35,6 +36,15 @@ export const CREATORHUB_FEATURES: CreatorHubFeature[] = [
     category: 'Prosjekt Management',
     professions: ['photographer', 'videographer', 'musicproducer'],
     requiredPlan: 'pro',
+    isCore: false,
+  },
+  {
+    id: WORKSPACE_PROJECT_PARTICIPANTS_FEATURE_ID,
+    name: 'Statister & medvirkende i Workspace',
+    description: 'Prosjektavgrenset roster, kravstatus og readiness for eksterne medvirkende uten teamsete',
+    category: 'Prosjekt Management',
+    professions: ['photographer', 'videographer'],
+    requiredPlan: 'enterprise',
     isCore: false,
   },
 

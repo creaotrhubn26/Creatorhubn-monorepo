@@ -2,6 +2,61 @@
 <html lang="nb">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Participant signing links are bearer credentials. Consume and redact the
+      // token before analytics, pixels, fonts, or other subresources can see
+      // the page URL. The React portal reads this non-enumerable in-memory value.
+      (function consumeParticipantDocumentTokenFromUrl() {
+        try {
+          var participantMatch = /^\/participant-document\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i.exec(window.location.pathname);
+          if (participantMatch) {
+            var privateRouteKey = Symbol.for('creatorhub.workspace-participant-document.private-route.v1');
+            var participantReferrer = document.createElement('meta');
+            participantReferrer.name = 'referrer';
+            participantReferrer.content = 'no-referrer';
+            document.head.appendChild(participantReferrer);
+
+            Object.defineProperty(window, privateRouteKey, {
+              value: true,
+              configurable: false,
+              enumerable: false,
+              writable: false,
+            });
+
+            var participantUrl = new URL(window.location.href);
+            var participantHash = new URLSearchParams(participantUrl.hash.replace(/^#/, ''));
+            var participantToken = participantHash.get('token') || '';
+            participantUrl.searchParams.delete('token');
+            participantUrl.hash = '';
+            window.history.replaceState(
+              window.history.state,
+              '',
+              participantUrl.pathname + participantUrl.search,
+            );
+
+            if (/^[A-Za-z0-9_-]{43}$/.test(participantToken)) {
+              var credentialBridgeKey = Symbol.for('creatorhub.workspace-participant-document.credential.v1');
+              var participantCredential = Object.freeze({
+                documentId: participantMatch[1].toLowerCase(),
+                token: participantToken,
+              });
+              participantToken = '';
+              Object.defineProperty(window, credentialBridgeKey, {
+                value: function takeParticipantDocumentCredentialOnce() {
+                  var credential = participantCredential;
+                  participantCredential = null;
+                  return credential;
+                },
+                configurable: true,
+                enumerable: false,
+                writable: false,
+              });
+            }
+            return;
+          }
+        } catch (_) { /* portalen validerer manglende token server-side */ }
+      })();
+    </script>
     <meta name="google-site-verification" content="FH16rVFnGmHRYKc_8u3tyarrRAVh_3N0Si_Xqnuv2T0" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
@@ -25,6 +80,20 @@
     <meta name="googlebot" content="index,follow" />
     <meta name="theme-color" content="#17120f" />
     <link rel="canonical" href="https://creatorhubn.com/" />
+    <script>
+      (function applyPrivateDocumentIndexingPolicy() {
+        try {
+          if (!window[Symbol.for('creatorhub.workspace-participant-document.private-route.v1')]) return;
+          var robots = document.querySelector('meta[name="robots"]');
+          var googlebot = document.querySelector('meta[name="googlebot"]');
+          var canonical = document.querySelector('link[rel="canonical"]');
+          if (robots) robots.setAttribute('content', 'noindex,nofollow,noarchive');
+          if (googlebot) googlebot.setAttribute('content', 'noindex,nofollow,noarchive');
+          if (canonical) canonical.setAttribute('href', window.location.origin + '/participant-document');
+          document.title = 'CreatorHub · personlig prosjektdokument';
+        } catch (_) { /* fail closed at the HTTP X-Robots-Tag layer where configured */ }
+      })();
+    </script>
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="CreatorHub Norge" />
     <meta property="og:title" content="CreatorHub Norge | Plattform for skapere, team og Academy" />
@@ -385,6 +454,8 @@
     </script>
 
     <script>
+      (function bootstrapThirdPartyServicesUnlessPrivateDocument() {
+      if (window[Symbol.for('creatorhub.workspace-participant-document.private-route.v1')]) return;
       window.dataLayer = window.dataLayer || [];
       window.gtag = window.gtag || function () {
         window.dataLayer.push(arguments);
@@ -784,19 +855,32 @@
           });
         }
       })();
+      })();
     </script>
 
     <!-- Google Fonts - Optimized: Only Roboto with essential weights -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap"
-      rel="stylesheet"
-    />
+    <script>
+      (function loadCreatorHubFontsUnlessPrivateDocument() {
+        if (window[Symbol.for('creatorhub.workspace-participant-document.private-route.v1')]) return;
+        var origins = ['https://fonts.googleapis.com', 'https://fonts.gstatic.com'];
+        origins.forEach(function (href, index) {
+          var preconnect = document.createElement('link');
+          preconnect.rel = 'preconnect';
+          preconnect.href = href;
+          if (index === 1) preconnect.crossOrigin = 'anonymous';
+          document.head.appendChild(preconnect);
+        });
+        var stylesheet = document.createElement('link');
+        stylesheet.rel = 'stylesheet';
+        stylesheet.href = 'https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap';
+        document.head.appendChild(stylesheet);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
     <script>
+      if (!window[Symbol.for('creatorhub.workspace-participant-document.private-route.v1')]) {
       // Catch module loading errors
       window.addEventListener('error', function(e) {
         console.error('[MODULE ERROR]', e.message, e.filename, e.lineno);
@@ -821,6 +905,7 @@
           window.location.reload();
         }
       });
+      }
     </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>

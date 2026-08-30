@@ -30,6 +30,18 @@
   NPM_FLAGS = "--legacy-peer-deps"   # matcher Vercel installCommand
   NODE_VERSION = "20"                # Vite 5 — juster ved behov
 
+# Personlige dokumentlenker må aldri caches, indekseres, rammes inn eller
+# lekke URL-en via Referer. CSP-en tillater fortsatt samme-origin SPA/API,
+# Vite-assets og den eksplisitte Render-backenden som appen bruker.
+[[headers]]
+  for = "/participant-document/*"
+  [headers.values]
+    Cache-Control = "no-store, max-age=0, must-revalidate"
+    X-Robots-Tag = "noindex, nofollow, noarchive"
+    Referrer-Policy = "no-referrer"
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://creatorhub-backend-rtbl.onrender.com; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'"
+
 # ─────────────────────────── REDIRECTS (301) ───────────────────────────
 # Vercel kjører redirects FØR rewrites → de må stå først (Netlify = første-treff).
 

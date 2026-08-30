@@ -21,6 +21,11 @@ import SplitSheetRoleWizard from '../universal/split-sheets/SplitSheetRoleWizard
 import { ws } from './workspaceTheme';
 import { wsIcon } from './crewIcons';
 import { WsCard, WsTag, wsAlert } from './ui';
+import {
+  initializeWorkspaceSplitSheetCache,
+  persistWorkspaceSplitSheetCache,
+  workspaceSplitSheetCacheKey,
+} from './workspaceSplitSheetCachePolicy';
 
 const isMusic = (p?: string) => ['music_producer', 'music-producer', 'musician', 'music'].includes(String(p || '').toLowerCase());
 // split_sheet_contributors.role har CHECK-constraint (kun disse slug-ene). Wizardens
@@ -31,17 +36,32 @@ const toRoleSlug = (roleId?: string) => (roleId && ROLE_SLUGS.has(roleId) ? role
 
 const WorkspaceSplitSheet: React.FC<{ projectId: string; profession?: string; userId?: string; projectName?: string }> = ({ projectId, profession, userId, projectName }) => {
   const music = isMusic(profession);
-  const storeKey = `split-sheet-entries-${projectId}`;
+  const storeKey = useMemo(() => workspaceSplitSheetCacheKey({ projectId, userId }), [projectId, userId]);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<'stats' | 'team'>('stats');
   const [wizard, setWizard] = useState(false);
   const [entries, setEntries] = useState<any[]>([]);
 
   useEffect(() => {
-    try { const raw = localStorage.getItem(storeKey); setEntries(raw ? JSON.parse(raw) : []); } catch { setEntries([]); }
-  }, [storeKey]);
+    try {
+      const { entries: cachedEntries } = initializeWorkspaceSplitSheetCache<any>(localStorage, {
+        projectId,
+        userId,
+      });
+      setEntries(cachedEntries);
+    } catch {
+      setEntries([]);
+    }
+  }, [projectId, userId]);
 
-  const persist = (next: any[]) => { setEntries(next); try { localStorage.setItem(storeKey, JSON.stringify(next)); } catch { /* */ } };
+  const persist = (next: any[]) => {
+    setEntries(next);
+    try {
+      persistWorkspaceSplitSheetCache(localStorage, storeKey, next);
+    } catch {
+      /* cache er valgfri */
+    }
+  };
 
   const [share, setShare] = useState<any | null>(null); // { shareUrl, accessCode, sheetId }
   const [copied, setCopied] = useState(false);

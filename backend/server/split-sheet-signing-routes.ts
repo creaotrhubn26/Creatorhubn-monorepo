@@ -9,6 +9,10 @@
 import crypto from "crypto";
 import type express from "express";
 import type { Pool } from "pg";
+import {
+  isWorkspaceParticipantCompensationMetadata,
+  WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE,
+} from "../../frontend/shared/workspace-participant-compensation.ts";
 import { sendTransactionalEmail } from "./transactional-email-service";
 
 const APP_URL = (process.env.PUBLIC_APP_URL || "https://creatorhubn.com").replace(/\/+$/, "");
@@ -55,8 +59,13 @@ export function setupSplitSheetSigningRoutes(deps: SplitSheetSigningDeps): void 
   app.post("/api/split-sheets/:id/enable-signing", async (req, res) => {
     try {
       const userId = getSplitSheetUserId(req);
-      const own = await pool.query(`SELECT id, access_code FROM split_sheets WHERE id = $1::uuid AND user_id = $2 LIMIT 1`, [req.params.id, userId]).catch(() => ({ rows: [] as any[] }));
+      const own = await pool.query(`SELECT id, access_code, metadata FROM split_sheets WHERE id = $1::uuid AND user_id = $2 LIMIT 1`, [req.params.id, userId]).catch(() => ({ rows: [] as any[] }));
       if (!own.rows.length) return res.status(404).json({ error: "not_found" });
+      if (isWorkspaceParticipantCompensationMetadata(own.rows[0].metadata)) {
+        return res.status(409).json({
+          error: "managed_compensation_uses_participant_contract",
+        });
+      }
       let code = own.rows[0].access_code;
       if (!code) {
         code = genCode();
@@ -73,8 +82,13 @@ export function setupSplitSheetSigningRoutes(deps: SplitSheetSigningDeps): void 
   app.post("/api/split-sheets/:id/send-invites", async (req, res) => {
     try {
       const userId = getSplitSheetUserId(req);
-      const own = await pool.query(`SELECT id, title, access_code FROM split_sheets WHERE id = $1::uuid AND user_id = $2 LIMIT 1`, [req.params.id, userId]).catch(() => ({ rows: [] as any[] }));
+      const own = await pool.query(`SELECT id, title, access_code, metadata FROM split_sheets WHERE id = $1::uuid AND user_id = $2 LIMIT 1`, [req.params.id, userId]).catch(() => ({ rows: [] as any[] }));
       if (!own.rows.length) return res.status(404).json({ error: "not_found" });
+      if (isWorkspaceParticipantCompensationMetadata(own.rows[0].metadata)) {
+        return res.status(409).json({
+          error: "managed_compensation_uses_participant_contract",
+        });
+      }
       let code = own.rows[0].access_code;
       if (!code) { code = genCode(); await pool.query(`UPDATE split_sheets SET access_code = $1, status = 'pending_signatures', updated_at = NOW() WHERE id = $2::uuid`, [code, req.params.id]); }
       const link = `${APP_URL}/signer/${code}`;
@@ -96,9 +110,14 @@ export function setupSplitSheetSigningRoutes(deps: SplitSheetSigningDeps): void 
   app.get("/api/split-sheets/:id/signing-status", async (req, res) => {
     try {
       const userId = getSplitSheetUserId(req);
-      const own = await pool.query(`SELECT id, title, access_code, status, description FROM split_sheets WHERE id = $1::uuid AND user_id = $2 LIMIT 1`, [req.params.id, userId]).catch(() => ({ rows: [] as any[] }));
+      const own = await pool.query(`SELECT id, title, access_code, status, description, metadata FROM split_sheets WHERE id = $1::uuid AND user_id = $2 LIMIT 1`, [req.params.id, userId]).catch(() => ({ rows: [] as any[] }));
       if (!own.rows.length) return res.status(404).json({ error: "not_found" });
       const s = own.rows[0];
+      if (isWorkspaceParticipantCompensationMetadata(s.metadata)) {
+        return res.status(409).json({
+          error: "managed_compensation_uses_participant_contract",
+        });
+      }
       const c = await pool.query(`SELECT id, name, email, role, percentage, signed_at, custom_fields FROM split_sheet_contributors WHERE split_sheet_id = $1::uuid ORDER BY order_index`, [req.params.id]).catch(() => ({ rows: [] as any[] }));
       const contributors = c.rows.map((x: any) => ({ id: x.id, name: x.name, email: x.email, role: (x.custom_fields && x.custom_fields.roleLabel) || x.role, percentage: Number(x.percentage) || 0, signed: !!x.signed_at, signedAt: x.signed_at }));
       await ensureAudit();
@@ -116,9 +135,12 @@ export function setupSplitSheetSigningRoutes(deps: SplitSheetSigningDeps): void 
   app.get("/api/public/split-sheet/:code", async (req, res) => {
     try {
       const code = String(req.params.code || "").trim().toUpperCase();
-      const s = await pool.query(`SELECT id, title, description, status FROM split_sheets WHERE UPPER(access_code) = $1 LIMIT 1`, [code]).catch(() => ({ rows: [] as any[] }));
+      const s = await pool.query(`SELECT id, title, description, metadata, status FROM split_sheets WHERE UPPER(access_code) = $1 LIMIT 1`, [code]).catch(() => ({ rows: [] as any[] }));
       if (!s.rows.length) return res.status(404).json({ error: "not_found" });
       const sheet = s.rows[0];
+      if (isWorkspaceParticipantCompensationMetadata(sheet.metadata)) {
+        return res.status(404).json({ error: "not_found" });
+      }
       const c = await pool.query(`SELECT id, name, email, role, percentage, signed_at, custom_fields FROM split_sheet_contributors WHERE split_sheet_id = $1::uuid ORDER BY order_index`, [sheet.id]).catch(() => ({ rows: [] as any[] }));
       const amount = parseAmount(sheet.description);
       const contributors = c.rows.map((x: any) => ({
@@ -144,8 +166,11 @@ export function setupSplitSheetSigningRoutes(deps: SplitSheetSigningDeps): void 
       const signatureImage = typeof req.body?.signatureImage === "string" && req.body.signatureImage.startsWith("data:image") ? req.body.signatureImage.slice(0, 200000) : null;
       const method = signatureImage ? "drawn" : "typed";
       if (!contributorId || !signerName) return res.status(400).json({ error: "missing_fields" });
-      const s = await pool.query(`SELECT id FROM split_sheets WHERE UPPER(access_code) = $1 LIMIT 1`, [code]).catch(() => ({ rows: [] as any[] }));
+      const s = await pool.query(`SELECT id, metadata FROM split_sheets WHERE UPPER(access_code) = $1 LIMIT 1`, [code]).catch(() => ({ rows: [] as any[] }));
       if (!s.rows.length) return res.status(404).json({ error: "not_found" });
+      if (isWorkspaceParticipantCompensationMetadata(s.rows[0].metadata)) {
+        return res.status(404).json({ error: "not_found" });
+      }
       const sheetId = s.rows[0].id;
       const upd = await pool.query(
         `UPDATE split_sheet_contributors SET signed_at = NOW(),
@@ -199,8 +224,9 @@ export function setupSplitSheetSigningRoutes(deps: SplitSheetSigningDeps): void 
            FROM split_sheets ss
            JOIN split_sheet_contributors c ON c.split_sheet_id = ss.id
           WHERE LOWER(c.email) = ANY($1::text[])
+            AND COALESCE(ss.metadata->>'source', '') <> $2
           ORDER BY ss.created_at DESC LIMIT 100`,
-        [emails],
+        [emails, WORKSPACE_PARTICIPANT_COMPENSATION_SOURCE],
       ).catch(() => ({ rows: [] as any[] }));
       const agreements = r.rows.map((x: any) => ({
         id: x.id, title: x.title, status: x.status, accessCode: x.access_code,
