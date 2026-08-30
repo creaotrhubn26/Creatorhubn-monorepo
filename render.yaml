@@ -163,6 +163,15 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      # Dedicated Leadgrid OAuth. Leave both credentials unset to retain the
+      # shared fallback. Set ID + secret together; partial configuration fails
+      # closed. Set LEADGRID_PUBLIC_URL to https://leadgrid.no at cutover.
+      - key: LEADGRID_GOOGLE_CLIENT_ID
+        sync: false
+      - key: LEADGRID_GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: LEADGRID_PUBLIC_URL
+        sync: false
       - key: GOOGLE_REDIRECT_URI
         sync: false
       - key: ROLE_ROOM_GOOGLE_REDIRECT_URI

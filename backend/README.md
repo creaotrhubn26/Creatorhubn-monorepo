@@ -66,6 +66,12 @@ ROLE_ROOM_GOOGLE_TOKEN_ENCRYPTION_KEY=your-role-room-google-token-secret
 GOOGLE_PROJECT_ID=creatorhubn-com
 GOOGLE_CLOUD_QUOTA_PROJECT=creatorhubn-com
 
+# Dedicated Leadgrid web OAuth. Set ID + secret together; leaving both blank
+# keeps the existing CreatorHub/Google fallback during migration.
+LEADGRID_GOOGLE_CLIENT_ID=
+LEADGRID_GOOGLE_CLIENT_SECRET=
+LEADGRID_PUBLIC_URL=http://localhost:5050
+
 # Legacy shared Google OAuth envs are deprecated and should not be used in production.
 # Keep them only if an older local helper script still requires them during transition.
 GOOGLE_CLIENT_ID=
