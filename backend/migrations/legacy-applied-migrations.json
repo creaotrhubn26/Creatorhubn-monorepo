@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "baselineId": "creatorhub-production-ledger-2026-08-31",
+  "legacyAppliedFilenames": [
+    "0000b_missing_columns.sql",
+    "0000c_missing_tables.sql",
+    "0000_missing_enum_types.sql",
+    "0448_leadgrid_blog_posts.sql",
+    "0450_admin_workspace_projects.sql",
+    "0451_admin_workspace_projects_leadgrid_links.sql",
+    "0452_admin_workspace_documents.sql",
+    "0453_admin_workspace_tasks.sql",
+    "0454_admin_workspace_calendar.sql",
+    "0455_admin_workspace_funding_opportunities.sql",
+    "0456_admin_workspace_document_review.sql",
+    "0457_admin_document_context.sql",
+    "0458_admin_workspace_project_files.sql",
+    "0459_admin_workspace_cv_profiles.sql",
+    "0460_leadgrid_workflow_event_ingress_security.sql",
+    "0461_leadgrid_public_self_onboard_rate_limits.sql",
+    "0462_org_setup_template_plan_integrity.sql",
+    "0463_casting_reminder_delivery_claims.sql",
+    "0464_users_auth_session_version.sql",
+    "0465_leadgrid_canvas_integrity.sql",
+    "0470_role_room_linkedin_publish_queue.sql",
+    "0471_project_pricing_and_time_tracking.sql",
+    "0472_workspace_project_bookings.sql",
+    "0473_workspace_project_equipment.sql"
+  ]
+}
