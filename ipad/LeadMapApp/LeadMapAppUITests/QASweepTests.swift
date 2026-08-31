@@ -19,7 +19,10 @@ final class QASweepTests: XCTestCase {
 
     // MARK: - Hjelpere
 
-    private func launchApp(tab: Int) -> XCUIApplication {
+    private func launchApp(
+        tab: Int,
+        environment: [String: String] = [:]
+    ) -> XCUIApplication {
         // Portrett-lås på iOS-enheter — rotert/opp-ned sim gir speilvendte
         // tap-koordinater og letterbox-artefakter i skjermbildene.
         // (Setteren finnes ikke på Mac Catalyst og feller testen der.)
@@ -30,10 +33,53 @@ final class QASweepTests: XCTestCase {
         app.launchEnvironment["QA_BEARER_TOKEN"] =
             ProcessInfo.processInfo.environment["QA_BEARER_TOKEN"] ?? ""
         app.launchEnvironment["QA_TAB"] = "\(tab)"
+        for (key, value) in environment {
+            app.launchEnvironment[key] = value
+        }
         app.launch()
         // La bootstrap + refresh lande før snapshot (kald Render kan bruke tid).
         sleep(10)
         return app
+    }
+
+    // MARK: - Add lead: responsiv iPhone-layout
+
+    func testAddLeadMobileLayout() throws {
+        let app = launchApp(
+            tab: 2,
+            environment: ["QA_TOUR": "add-lead", "QA_DEMO": "1"]
+        )
+
+        let addLead = button(in: app, containing: "Nytt lead")
+        XCTAssertTrue(addLead.waitForExistence(timeout: 5))
+        addLead.tap()
+
+        XCTAssertTrue(app.navigationBars["Legg til lead"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons.matching(
+            NSPredicate(format: "label == 'Avbryt'")
+        ).count, 1, "iPhone skal bare ha Avbryt i navigasjonslinjen")
+
+        let form = app.scrollViews["add-lead.form"]
+        XCTAssertTrue(form.waitForExistence(timeout: 3))
+        form.swipeUp()
+        form.swipeUp()
+
+        let statusIDs = ["hot", "warm", "new", "customer", "meeting", "followup"]
+        for statusID in statusIDs {
+            let chip = app.buttons["add-lead.status.\(statusID)"]
+            XCTAssertTrue(chip.waitForExistence(timeout: 3))
+            XCTAssertGreaterThanOrEqual(chip.frame.width, 96)
+            XCTAssertGreaterThanOrEqual(chip.frame.height, 40)
+            XCTAssertLessThanOrEqual(chip.frame.height, 52, "Statusnavn skal ikke brytes over flere linjer")
+        }
+
+        let nameField = app.textFields["add-lead.field.navn"]
+        let roleField = app.textFields["add-lead.field.rolle"]
+        XCTAssertGreaterThan(roleField.frame.minY, nameField.frame.maxY,
+                             "Kontaktfeltene skal stables på iPhone")
+
+        snap(app, "leads-add-lead-mobile-responsive")
+        app.terminate()
     }
 
     private func snap(_ app: XCUIApplication, _ name: String) {

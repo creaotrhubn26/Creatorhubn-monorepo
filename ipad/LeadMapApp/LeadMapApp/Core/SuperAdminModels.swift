@@ -51,6 +51,9 @@ struct OrgEntitlementsEnvelope: Codable {
     let organizationId: String?
     let plan: String?
     let entitlements: [OrgEntitlementRowDTO]
+    /// Discovery is cost-bearing and therefore fail-closed for older servers.
+    let leadgridDiscoveryEnabled: Bool?
+    var isLeadgridDiscoveryEnabled: Bool { leadgridDiscoveryEnabled ?? false }
 }
 
 /// Rad fra `GET /api/superadmin/audit-log?organization_id=…`.

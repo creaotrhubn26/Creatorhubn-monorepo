@@ -47,9 +47,14 @@ struct DiscoveryProgressView: View {
     let onImportMore: () -> Void
     /// "Lukk"-callback (vises i success-hero).
     let onClose: () -> Void
+    /// Retry med eksplisitt kundetype når prosjektet mangler nok kontekst til
+    /// å utlede en søkbar Places-query automatisk.
+    var onRetryWithIndustryQuery: ((String) -> Void)? = nil
     /// "Søk anbud i stedet"-callback — vises i failed-kortet når backend
     /// foreslo CPV-koder (brede B2B-selgere uten søkbar Places-kundetype).
     var onSearchAnbud: (([String]) -> Void)? = nil
+
+    @State private var industryQuery = ""
 
     private static let brandPurple = Color(red: 0.58, green: 0.20, blue: 0.92)
 
@@ -73,8 +78,8 @@ struct DiscoveryProgressView: View {
                 stage3Card
             case .success(let summary):
                 stage4Card(summary: summary)
-            case .failed(let message, let cpvSuggestion):
-                failedCard(message: message, cpvSuggestion: cpvSuggestion)
+            case .failed(let message, let cpvSuggestion, let requiresIndustryQuery):
+                failedCard(message: message, cpvSuggestion: cpvSuggestion, requiresIndustryQuery: requiresIndustryQuery)
             }
         }
         .task(id: state.startedAt) {
@@ -412,42 +417,109 @@ struct DiscoveryProgressView: View {
     // MARK: - Failed
 
     @ViewBuilder
-    private func failedCard(message: String, cpvSuggestion: [String]) -> some View {
-        VStack(spacing: 14) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.appScaled(size: 44))
-                .foregroundStyle(.red)
-            Text("Discovery feilet")
-                .font(.headline)
-            Text(message)
-                .font(.callout)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-            if !cpvSuggestion.isEmpty, let onSearchAnbud {
-                Button {
-                    onSearchAnbud(cpvSuggestion)
-                } label: {
-                    Label("Søk anbud i stedet", systemImage: "doc.text.magnifyingglass")
-                        .frame(maxWidth: .infinity, minHeight: 44)
+    private func failedCard(
+        message: String,
+        cpvSuggestion: [String],
+        requiresIndustryQuery: Bool
+    ) -> some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                Image(systemName: requiresIndustryQuery
+                    ? "magnifyingglass.circle.fill"
+                    : "exclamationmark.triangle.fill")
+                    .font(.appScaled(size: 44))
+                    .foregroundStyle(requiresIndustryQuery ? Self.brandPurple : .red)
+                    .accessibilityHidden(true)
+                Text(requiresIndustryQuery ? "Hvem vil du finne?" : "Discovery feilet")
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                Text(message)
+                    .font(.callout)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+
+                if requiresIndustryQuery, onRetryWithIndustryQuery != nil {
+                    industryQueryInput
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Self.brandPurple)
+
+                if !cpvSuggestion.isEmpty, let onSearchAnbud {
+                    Button {
+                        onSearchAnbud(cpvSuggestion)
+                    } label: {
+                        Label("Søk anbud i stedet", systemImage: "doc.text.magnifyingglass")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Self.brandPurple)
+                }
+
+                Button {
+                    onClose()
+                } label: {
+                    Text("Lukk").frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
             }
-            Button {
-                onClose()
-            } label: {
-                Text("Lukk").frame(maxWidth: .infinity, minHeight: 44)
-            }
-            .buttonStyle(.bordered)
+            .padding(18)
+            .frame(maxWidth: .infinity)
         }
-        .padding(18)
+        .scrollDismissesKeyboard(.interactively)
         .frame(maxWidth: .infinity)
-        .background(Color.red.opacity(0.06),
+        .background((requiresIndustryQuery ? Self.brandPurple : Color.red)
+                        .opacity(0.06),
                      in: RoundedRectangle(cornerRadius: 14))
         .overlay(
             RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.red.opacity(0.30), lineWidth: 1)
+                .stroke((requiresIndustryQuery ? Self.brandPurple : Color.red).opacity(0.30), lineWidth: 1)
         )
+    }
+
+    private var industryQueryInput: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Hvilke bedrifter vil du finne?")
+                .font(.subheadline.weight(.semibold))
+            Text("Beskriv kundene du ønsker å kontakte – ikke din egen bransje.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            TextField(
+                "F.eks. restauranter, regnskapsbyråer eller byggfirma",
+                text: $industryQuery
+            )
+            .textFieldStyle(.roundedBorder)
+            .textInputAutocapitalization(.words)
+            .submitLabel(.search)
+            .onSubmit(submitIndustryQuery)
+            .accessibilityLabel("Kundetype for Discovery")
+            .accessibilityHint("Skriv hvilken type bedrifter du ønsker å finne i kartområdet")
+            .accessibilityIdentifier("discovery.industryQuery")
+
+            Button(action: submitIndustryQuery) {
+                Label("Søk etter denne kundetypen", systemImage: "magnifyingglass")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Self.brandPurple)
+            .disabled(normalizedIndustryQuery.count < 2)
+            .accessibilityIdentifier("discovery.retryWithIndustryQuery")
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Color(.secondarySystemBackground),
+            in: RoundedRectangle(cornerRadius: 12)
+        )
+    }
+
+    private var normalizedIndustryQuery: String {
+        industryQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func submitIndustryQuery() {
+        let query = String(normalizedIndustryQuery.prefix(120))
+        guard query.count >= 2 else { return }
+        onRetryWithIndustryQuery?(query)
     }
 
     // MARK: - Shared sub-views

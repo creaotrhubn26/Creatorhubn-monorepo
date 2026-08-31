@@ -72,6 +72,17 @@ LEADGRID_GOOGLE_CLIENT_ID=
 LEADGRID_GOOGLE_CLIENT_SECRET=
 LEADGRID_PUBLIC_URL=http://localhost:5050
 
+# Discovery production rollout gate. Production defaults to disabled when the
+# variable is missing. Phase 1 must remain false while every old worker is
+# replaced with the queue-compatible release; enable it in a separate deploy.
+# Preview, profile and review reads remain available while disabled, but any
+# operation that would enqueue/start/confirm a run returns
+# 503 discovery_not_enabled.
+LEADGRID_DISCOVERY_ENABLED=false
+# Organization-wide safeguards for automatic Discovery work.
+LEADGRID_DISCOVERY_MAX_AUTO_PROFILES_PER_ORG=5
+LEADGRID_DISCOVERY_ORG_MONTHLY_CANDIDATE_BUDGET=500
+
 # Legacy shared Google OAuth envs are deprecated and should not be used in production.
 # Keep them only if an older local helper script still requires them during transition.
 GOOGLE_CLIENT_ID=
@@ -115,6 +126,33 @@ For Google in production:
 - verify `creatorhubn.com` and `theroleroom.com` in Search Console
 - keep production OAuth origins and redirects limited to live domains only
 - use a server-side Google Places key for backend enrichment; browser/referrer keys will be rejected by backend requests
+
+### Leadgrid Discovery data policy
+
+Discovery v2 searches and scores only official Norwegian sources: BRREG Open
+Data for company identity, SSB Klass for industry classification, and
+Kartverket/Geonorge for location verification. Candidates stay outside CRM
+until a user approves them. Runs use a fenced database queue, single-use
+WebSocket tickets, per-organization monthly capacity, a maximum of five active
+automatic profiles, and schedules no more frequent than once daily.
+
+Google Places is not part of v2 search, radius filtering, scoring, candidate
+persistence, or CRM promotion. A future adapter may be enabled only as a
+user-initiated, transient detail view. Its response must not be cached in the
+candidate/CRM model or shown as a score signal, and it must remain visually
+separate from Apple Map.
+
+Discovery must be rolled out in two phases:
+
+1. Apply `migrations/0473_leadgrid_discovery_platform.sql` before deploying
+   this code. The shared worker queue reads `background_jobs.lease_token`
+   independently of the Discovery feature flag.
+2. Deploy every web and worker instance with
+   `LEADGRID_DISCOVERY_ENABLED=false`.
+3. Verify the migration, application health, queue heartbeats and that all old
+   worker instances have been replaced.
+4. Enable `LEADGRID_DISCOVERY_ENABLED=true` in a separate deploy. Roll back by
+   disabling the flag; do not roll back the additive migration.
 
 ## Project Structure
 
