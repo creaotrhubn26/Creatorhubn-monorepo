@@ -20,6 +20,7 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
+import { isLeadgridDiscoveryEnabled } from "./leadgrid-discovery-service.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -329,7 +330,12 @@ export function registerSuperadminRoutes({
         [session.userId, isUUID(rawOrg) ? rawOrg : null],
       );
       if (orgR.rows.length === 0) {
-        return res.json({ organization_id: null, plan: null, entitlements: [] });
+        return res.json({
+          organization_id: null,
+          plan: null,
+          entitlements: [],
+          leadgrid_discovery_enabled: false,
+        });
       }
       const orgId = orgR.rows[0].organization_id;
       const r = await pool.query(
@@ -343,6 +349,7 @@ export function registerSuperadminRoutes({
         organization_id: orgId,
         plan: orgR.rows[0].plan,
         entitlements: r.rows,
+        leadgrid_discovery_enabled: isLeadgridDiscoveryEnabled(),
       });
     } catch (e) {
       console.error("[leadgrid] me/entitlements failed", e);

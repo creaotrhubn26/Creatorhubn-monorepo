@@ -127,6 +127,14 @@ interface ProjectContext {
   sellerNaceCode: string | null;
 }
 
+interface LeadgridProjectRef {
+  id: string;
+  name: string;
+  description: string | null;
+  industry: string | null;
+  organization_id: string | null;
+}
+
 // =====================================================================
 // Session-helpers (matches leadgrid-url-research-routes.ts)
 // =====================================================================
@@ -161,7 +169,15 @@ async function resolveOrgId(
 ): Promise<string | null> {
   const r = await pool.query<{ organization_id: string }>(
     `SELECT organization_id::text FROM organization_members
-      WHERE user_id = $1 ORDER BY joined_at ASC LIMIT 1`,
+      WHERE user_id = $1
+      ORDER BY
+        CASE role
+          WHEN 'admin' THEN 1
+          WHEN 'salgssjef' THEN 2
+          ELSE 3
+        END,
+        joined_at ASC
+      LIMIT 1`,
     [userId],
   );
   return r.rows[0]?.organization_id ?? null;
@@ -171,22 +187,87 @@ async function resolveOrgId(
 // Prosjekt-kontekst — bygger query-strengen for Google Places
 // =====================================================================
 
+/**
+ * Load a Leadgrid project only when the current user can access its tenant.
+ *
+ * `requireLeadMapPermission` protects the HTTP route, while this row-level
+ * check keeps the data helper safe when it is reused outside that middleware.
+ * Organization projects are shared with current members of that organization.
+ * Legacy projects without an organization are scoped strictly to their creator;
+ * mutable child rows must never grant project authority.
+ */
+async function loadAccessibleLeadgridProject(
+  pool: Pool,
+  projectId: string,
+  userId: string,
+): Promise<LeadgridProjectRef | null> {
+  const result = await pool.query<LeadgridProjectRef>(
+    `SELECT p.id::text, p.name, p.description, p.industry,
+            p.organization_id::text
+       FROM leadgrid_projects p
+      WHERE p.id = $1
+        AND (p.status IS NULL OR p.status NOT IN ('archived', 'deleted'))
+        AND (p.project_type IS NULL OR p.project_type NOT IN (
+          'feature_film', 'documentary', 'film', 'short_film',
+          'tv_series', 'commercial', 'music_video', 'casting'
+        ))
+        AND (
+          (
+            p.organization_id IS NOT NULL
+            AND EXISTS (
+              SELECT 1
+                FROM organization_members om
+               WHERE om.organization_id = p.organization_id
+                 AND om.user_id = $2
+            )
+          )
+          OR (p.organization_id IS NULL AND p.created_by = $2)
+        )
+      LIMIT 1`,
+    [projectId, userId],
+  );
+  return result.rows[0] ?? null;
+}
+
+interface LeadgridDiscoveryBatchRef {
+  id: string;
+  organization_id: string | null;
+  discovery_meta: Record<string, unknown>;
+}
+
+/**
+ * Bind a discovery result to its creator, organization and exact project.
+ * The path project is never trusted on its own: RBAC resolves from that path,
+ * so the persisted batch metadata must agree before any items are returned.
+ */
+async function loadAccessibleDiscoveryBatch(
+  pool: Pool,
+  batchId: string,
+  projectId: string,
+  userId: string,
+  organizationId: string | null,
+): Promise<LeadgridDiscoveryBatchRef | null> {
+  const result = await pool.query<LeadgridDiscoveryBatchRef>(
+    `SELECT b.id::text, b.organization_id::text, b.discovery_meta
+       FROM leadgrid_url_research_batches b
+      WHERE b.id = $1::uuid
+        AND b.created_by::text = $3
+        AND b.organization_id IS NOT DISTINCT FROM $4::uuid
+        AND b.category = 'lead_discovery'
+        AND b.discovery_meta->>'project_id' = $2
+      LIMIT 1`,
+    [batchId, projectId, userId, organizationId],
+  );
+  return result.rows[0] ?? null;
+}
+
 async function loadProjectContext(
   pool: Pool,
   projectId: string,
   userId: string,
 ): Promise<ProjectContext | null> {
-  const pr = await pool.query<{
-    id: string;
-    name: string;
-    organization_id: string | null;
-  }>(
-    `SELECT id::text, name, NULL::text AS organization_id
-       FROM casting_projects WHERE id = $1 LIMIT 1`,
-    [projectId],
-  );
-  if (pr.rows.length === 0) return null;
-  const project = pr.rows[0];
+  const project = await loadAccessibleLeadgridProject(pool, projectId, userId);
+  if (!project) return null;
 
   // Brand-kit gir oss positioning + valgfri industry-hint
   const bk = await pool.query<{
@@ -231,21 +312,23 @@ async function loadProjectContext(
       ? (bp.target_audience as string)
       : null);
   const brandDescriptionHint =
-    typeof bp.description === "string" ? (bp.description as string) : null;
+    (typeof bp.description === "string" ? (bp.description as string) : null) ??
+    project.description;
   const industryCategoryRaw =
     typeof bp.industry === "string" ? (bp.industry as string) : null;
 
   // `industryHint` er rådata for fallback når ICP-mapping ikke gir noe;
-  // sett til market_scan.industry hvis brand_profile mangler.
-  const industryHint = industryCategoryRaw ?? ms.rows[0]?.industry ?? null;
+  // bruk eksplisitt prosjektverdi før market_scan hvis brand_profile mangler.
+  const industryHint =
+    industryCategoryRaw ?? project.industry ?? ms.rows[0]?.industry ?? null;
   const cityHint =
     (typeof bp.region === "string" ? (bp.region as string) : null) ??
     ms.rows[0]?.region ??
     null;
 
-  // 2026-08-19: selgerorgens egen NACE (Brreg) — `casting_projects` har
-  // ingen ekte organization_id-kobling (query over hardkoder NULL), så vi
-  // slår opp den innloggede brukerens org separat via organization_members.
+  // 2026-08-19: selgerorgens egen NACE (Brreg). Bruk prosjektets faktiske
+  // Leadgrid-organisasjon; bare legacy-prosjekter uten org faller tilbake til
+  // den innloggede brukerens standardorganisasjon.
   // Lazy: skriver til DB når nace_code er NULL (aldri forsøkt) og
   // org_number finnes. `leadgrid-backfill-cron.ts` dekker eksisterende
   // orger i tillegg — begge skriver `nace_code = ''` (ikke NULL) når
@@ -254,7 +337,8 @@ async function loadProjectContext(
   let sellerNaceDescription: string | null = null;
   let sellerNaceCode: string | null = null;
   try {
-    const realOrgId = await resolveOrgId(pool, userId);
+    const realOrgId =
+      project.organization_id ?? (await resolveOrgId(pool, userId));
     if (realOrgId) {
       const orgR = await pool.query<{
         org_number: string | null;
@@ -277,13 +361,20 @@ async function loadProjectContext(
           sellerNaceCode = looked.company.naceCode;
           await pool.query(
             `UPDATE organizations SET nace_code = $1, nace_description = $2 WHERE id = $3`,
-            [looked.company.naceCode, looked.company.naceDescription, realOrgId],
+            [
+              looked.company.naceCode,
+              looked.company.naceDescription,
+              realOrgId,
+            ],
           );
         }
       }
     }
   } catch (err) {
-    console.warn("[discover-leads] seller-nace-oppslag feilet:", (err as Error).message);
+    console.warn(
+      "[discover-leads] seller-nace-oppslag feilet:",
+      (err as Error).message,
+    );
   }
 
   return {
@@ -327,54 +418,180 @@ interface ICPRule {
 
 const ICP_RULES: ICPRule[] = [
   // Helse — leger, tannleger, helsesentre
-  { pattern: /(?<![\p{L}])(leger|lege(r)?|helsepersonell|allmennlege)(?![\p{L}])/iu, placesQuery: "legekontor" },
-  { pattern: /(?<![\p{L}])(tannlege(r)?|tannklinikk(er)?|tannhelse)(?![\p{L}])/iu, placesQuery: "tannklinikk" },
-  { pattern: /(?<![\p{L}])(fysioterapeut(er)?|kiropraktor(er)?)(?![\p{L}])/iu, placesQuery: "fysioterapi" },
-  { pattern: /(?<![\p{L}])(psykolog(er)?|terapeut(er)?|mental.helse)(?![\p{L}])/iu, placesQuery: "psykolog" },
+  {
+    pattern:
+      /(?<![\p{L}])(leger|lege(r)?|helsepersonell|allmennlege)(?![\p{L}])/iu,
+    placesQuery: "legekontor",
+  },
+  {
+    pattern:
+      /(?<![\p{L}])(tannlege(r)?|tannklinikk(er)?|tannhelse)(?![\p{L}])/iu,
+    placesQuery: "tannklinikk",
+  },
+  {
+    pattern: /(?<![\p{L}])(fysioterapeut(er)?|kiropraktor(er)?)(?![\p{L}])/iu,
+    placesQuery: "fysioterapi",
+  },
+  {
+    pattern:
+      /(?<![\p{L}])(psykolog(er)?|terapeut(er)?|mental.helse)(?![\p{L}])/iu,
+    placesQuery: "psykolog",
+  },
   // Finans / regnskap / advokat
-  { pattern: /(?<![\p{L}])(regnskapsbyr(å|aer)|regnskap|bokf(ø|oe)ring)(?![\p{L}])/iu, placesQuery: "regnskapsbyrå" },
-  { pattern: /(?<![\p{L}])(advokat(er)?|jurist(er)?|advokatkontor)(?![\p{L}])/iu, placesQuery: "advokatkontor" },
+  {
+    pattern:
+      /(?<![\p{L}])(regnskapsbyr(å|aer)|regnskap|bokf(ø|oe)ring)(?![\p{L}])/iu,
+    placesQuery: "regnskapsbyrå",
+  },
+  {
+    pattern:
+      /(?<![\p{L}])(advokat(er)?|jurist(er)?|advokatkontor)(?![\p{L}])/iu,
+    placesQuery: "advokatkontor",
+  },
   // Eiendom / bygg
-  { pattern: /(?<![\p{L}])(eiendomsmegler(e)?|meglerhus)(?![\p{L}])/iu, placesQuery: "eiendomsmegler" },
-  { pattern: /(?<![\p{L}])(arkitekt(er)?|byggmester)(?![\p{L}])/iu, placesQuery: "arkitekt" },
+  {
+    pattern: /(?<![\p{L}])(eiendomsmegler(e)?|meglerhus)(?![\p{L}])/iu,
+    placesQuery: "eiendomsmegler",
+  },
+  {
+    pattern: /(?<![\p{L}])(arkitekt(er)?|byggmester)(?![\p{L}])/iu,
+    placesQuery: "arkitekt",
+  },
   // Kreative / kultur
-  { pattern: /(?<![\p{L}])(fotograf(er)?|videoproduksjon|filmskaper)(?![\p{L}])/iu, placesQuery: "fotograf" },
-  { pattern: /(?<![\p{L}])(byråer|reklamebyr(å|aer)|markedsf(ø|oer)ringsbyr)(?![\p{L}])/iu, placesQuery: "reklamebyrå" },
+  {
+    pattern:
+      /(?<![\p{L}])(fotograf(er)?|videoproduksjon|filmskaper)(?![\p{L}])/iu,
+    placesQuery: "fotograf",
+  },
+  {
+    pattern:
+      /(?<![\p{L}])(byråer|reklamebyr(å|aer)|markedsf(ø|oer)ringsbyr)(?![\p{L}])/iu,
+    placesQuery: "reklamebyrå",
+  },
   // Mat / utelivet
-  { pattern: /(?<![\p{L}])(restaurant(er)?|spisesteder|matsted)(?![\p{L}])/iu, placesQuery: "restaurant" },
-  { pattern: /(?<![\p{L}])(kaf(e|é)(er)?|coffee.shop)(?![\p{L}])/iu, placesQuery: "kafé" },
-  { pattern: /(?<![\p{L}])(frisør(er)?|salong(er)?)(?![\p{L}])/iu, placesQuery: "frisør" },
-  { pattern: /(?<![\p{L}])(butikk(er)?|nettbutikk|retail)(?![\p{L}])/iu, placesQuery: "butikk" },
+  {
+    pattern: /(?<![\p{L}])(restaurant(er)?|spisesteder|matsted)(?![\p{L}])/iu,
+    placesQuery: "restaurant",
+  },
+  {
+    pattern: /(?<![\p{L}])(kaf(e|é)(er)?|coffee.shop)(?![\p{L}])/iu,
+    placesQuery: "kafé",
+  },
+  {
+    pattern: /(?<![\p{L}])(frisør(er)?|salong(er)?)(?![\p{L}])/iu,
+    placesQuery: "frisør",
+  },
+  {
+    pattern: /(?<![\p{L}])(butikk(er)?|nettbutikk|retail)(?![\p{L}])/iu,
+    placesQuery: "butikk",
+  },
   // Utvidelse (uke 2, produktrevisjonen 2026-07-03): felt-salg-vertikaler —
   // inkludert Leadgrids EGEN ICP (solenergi/alarm/bemanning/telecom) som
   // manglet helt i lista over.
-  { pattern: /(?<![\p{L}])(solenergi|solcell(er|epanel)?|solkraft)(?![\p{L}])/iu, placesQuery: "solcelleinstallatør" },
-  { pattern: /(?<![\p{L}])(alarm(selskap|system)?|boligalarm|innbruddsalarm|vaktselskap|sikkerhetsselskap)(?![\p{L}])/iu, placesQuery: "alarmselskap" },
-  { pattern: /(?<![\p{L}])(bemanning(sbyrå)?|rekruttering(sbyrå)?|vikarbyrå|headhunt)(?![\p{L}])/iu, placesQuery: "bemanningsbyrå" },
-  { pattern: /(?<![\p{L}])(telekom|teleselskap|mobilabonnement|bredbånd|fiber(leverandør)?)(?![\p{L}])/iu, placesQuery: "teleselskap" },
+  {
+    pattern:
+      /(?<![\p{L}])(solenergi|solcell(er|epanel)?|solkraft)(?![\p{L}])/iu,
+    placesQuery: "solcelleinstallatør",
+  },
+  {
+    pattern:
+      /(?<![\p{L}])(alarm(selskap|system)?|boligalarm|innbruddsalarm|vaktselskap|sikkerhetsselskap)(?![\p{L}])/iu,
+    placesQuery: "alarmselskap",
+  },
+  {
+    pattern:
+      /(?<![\p{L}])(bemanning(sbyrå)?|rekruttering(sbyrå)?|vikarbyrå|headhunt)(?![\p{L}])/iu,
+    placesQuery: "bemanningsbyrå",
+  },
+  {
+    pattern:
+      /(?<![\p{L}])(telekom|teleselskap|mobilabonnement|bredbånd|fiber(leverandør)?)(?![\p{L}])/iu,
+    placesQuery: "teleselskap",
+  },
   // Håndverk / bygg-fag
-  { pattern: /(?<![\p{L}])(elektriker(e)?|elektroinstallat(ø|oe)r|elinstallasjon)(?![\p{L}])/iu, placesQuery: "elektriker" },
-  { pattern: /(?<![\p{L}])(rørlegger(e)?|vvs)(?![\p{L}])/iu, placesQuery: "rørlegger" },
-  { pattern: /(?<![\p{L}])(taktekk(er|ing)|takarbeid|blikkenslager)(?![\p{L}])/iu, placesQuery: "taktekker" },
-  { pattern: /(?<![\p{L}])(maler(firma|mester)?|malingsarbeid)(?![\p{L}])/iu, placesQuery: "malerfirma" },
-  { pattern: /(?<![\p{L}])(snekker(e)?|tømrer(e)?)(?![\p{L}])/iu, placesQuery: "snekker" },
+  {
+    pattern:
+      /(?<![\p{L}])(elektriker(e)?|elektroinstallat(ø|oe)r|elinstallasjon)(?![\p{L}])/iu,
+    placesQuery: "elektriker",
+  },
+  {
+    pattern: /(?<![\p{L}])(rørlegger(e)?|vvs)(?![\p{L}])/iu,
+    placesQuery: "rørlegger",
+  },
+  {
+    pattern:
+      /(?<![\p{L}])(taktekk(er|ing)|takarbeid|blikkenslager)(?![\p{L}])/iu,
+    placesQuery: "taktekker",
+  },
+  {
+    pattern: /(?<![\p{L}])(maler(firma|mester)?|malingsarbeid)(?![\p{L}])/iu,
+    placesQuery: "malerfirma",
+  },
+  {
+    pattern: /(?<![\p{L}])(snekker(e)?|tømrer(e)?)(?![\p{L}])/iu,
+    placesQuery: "snekker",
+  },
   // Bil / transport / logistikk
-  { pattern: /(?<![\p{L}])(bilverksted|bilservice|mekaniker(e)?)(?![\p{L}])/iu, placesQuery: "bilverksted" },
-  { pattern: /(?<![\p{L}])(transport(selskap|firma)?|logistikk|spedisjon|budbil)(?![\p{L}])/iu, placesQuery: "transportselskap" },
+  {
+    pattern: /(?<![\p{L}])(bilverksted|bilservice|mekaniker(e)?)(?![\p{L}])/iu,
+    placesQuery: "bilverksted",
+  },
+  {
+    pattern:
+      /(?<![\p{L}])(transport(selskap|firma)?|logistikk|spedisjon|budbil)(?![\p{L}])/iu,
+    placesQuery: "transportselskap",
+  },
   // Helse / velvære (utvidelse)
-  { pattern: /(?<![\p{L}])(veterinær(er)?|dyreklinikk(er)?|dyrlege(r)?)(?![\p{L}])/iu, placesQuery: "veterinær" },
-  { pattern: /(?<![\p{L}])(optiker(e)?|synsundersøkelse)(?![\p{L}])/iu, placesQuery: "optiker" },
+  {
+    pattern:
+      /(?<![\p{L}])(veterinær(er)?|dyreklinikk(er)?|dyrlege(r)?)(?![\p{L}])/iu,
+    placesQuery: "veterinær",
+  },
+  {
+    pattern: /(?<![\p{L}])(optiker(e)?|synsundersøkelse)(?![\p{L}])/iu,
+    placesQuery: "optiker",
+  },
   { pattern: /(?<![\p{L}])(apotek(er)?)(?![\p{L}])/iu, placesQuery: "apotek" },
-  { pattern: /(?<![\p{L}])(hudpleie|kosmetolog(er)?|skjønnhetsklinikk)(?![\p{L}])/iu, placesQuery: "hudpleieklinikk" },
-  { pattern: /(?<![\p{L}])(treningssenter|gym|treningsstudio)(?![\p{L}])/iu, placesQuery: "treningssenter" },
+  {
+    pattern:
+      /(?<![\p{L}])(hudpleie|kosmetolog(er)?|skjønnhetsklinikk)(?![\p{L}])/iu,
+    placesQuery: "hudpleieklinikk",
+  },
+  {
+    pattern: /(?<![\p{L}])(treningssenter|gym|treningsstudio)(?![\p{L}])/iu,
+    placesQuery: "treningssenter",
+  },
   // Tjenester / institusjoner
-  { pattern: /(?<![\p{L}])(renhold(sbyrå)?|vaskehjelp|rengjøring)(?![\p{L}])/iu, placesQuery: "renholdsbyrå" },
-  { pattern: /(?<![\p{L}])(catering|kantine(drift)?)(?![\p{L}])/iu, placesQuery: "catering" },
-  { pattern: /(?<![\p{L}])(dagligvare(butikk(er)?)?|matbutikk(er)?|kolonial)(?![\p{L}])/iu, placesQuery: "dagligvarebutikk" },
-  { pattern: /(?<![\p{L}])(idrettslag|fotballklubb(er)?|sportsklubb(er)?|idrettsforening)(?![\p{L}])/iu, placesQuery: "idrettslag" },
-  { pattern: /(?<![\p{L}])(barnehage(r)?)(?![\p{L}])/iu, placesQuery: "barnehage" },
-  { pattern: /(?<![\p{L}])(hotell(er)?|overnatting(ssted)?)(?![\p{L}])/iu, placesQuery: "hotell" },
-  { pattern: /(?<![\p{L}])(forsikring(sselskap)?)(?![\p{L}])/iu, placesQuery: "forsikringsselskap" },
+  {
+    pattern: /(?<![\p{L}])(renhold(sbyrå)?|vaskehjelp|rengjøring)(?![\p{L}])/iu,
+    placesQuery: "renholdsbyrå",
+  },
+  {
+    pattern: /(?<![\p{L}])(catering|kantine(drift)?)(?![\p{L}])/iu,
+    placesQuery: "catering",
+  },
+  {
+    pattern:
+      /(?<![\p{L}])(dagligvare(butikk(er)?)?|matbutikk(er)?|kolonial)(?![\p{L}])/iu,
+    placesQuery: "dagligvarebutikk",
+  },
+  {
+    pattern:
+      /(?<![\p{L}])(idrettslag|fotballklubb(er)?|sportsklubb(er)?|idrettsforening)(?![\p{L}])/iu,
+    placesQuery: "idrettslag",
+  },
+  {
+    pattern: /(?<![\p{L}])(barnehage(r)?)(?![\p{L}])/iu,
+    placesQuery: "barnehage",
+  },
+  {
+    pattern: /(?<![\p{L}])(hotell(er)?|overnatting(ssted)?)(?![\p{L}])/iu,
+    placesQuery: "hotell",
+  },
+  {
+    pattern: /(?<![\p{L}])(forsikring(sselskap)?)(?![\p{L}])/iu,
+    placesQuery: "forsikringsselskap",
+  },
 ];
 
 const GENERIC_INDUSTRY_CATEGORIES = new Set([
@@ -488,7 +705,10 @@ async function deriveICPWithClaude(
     if (icpClaudeCache.size >= ICP_CLAUDE_CACHE_MAX) icpClaudeCache.clear();
     icpClaudeCache.set(cacheKey, result);
   } catch (err) {
-    console.warn("[discover-leads] Claude ICP-fallback feilet:", (err as Error).message);
+    console.warn(
+      "[discover-leads] Claude ICP-fallback feilet:",
+      (err as Error).message,
+    );
   }
   return result;
 }
@@ -521,6 +741,21 @@ interface ResolvedDiscoveryQuery {
   query: string;
   industry: string;
   city: string;
+}
+
+function hasValidDiscoveryGeo(
+  geo: DiscoverBody["geo"],
+): geo is { lat: number; lng: number; radius_km?: number } {
+  return (
+    typeof geo?.lat === "number" &&
+    Number.isFinite(geo.lat) &&
+    geo.lat >= -90 &&
+    geo.lat <= 90 &&
+    typeof geo.lng === "number" &&
+    Number.isFinite(geo.lng) &&
+    geo.lng >= -180 &&
+    geo.lng <= 180
+  );
 }
 
 async function buildDiscoveryQuery(
@@ -573,13 +808,20 @@ async function buildDiscoveryQuery(
     }
   }
 
-  const city = (body.city && body.city.trim()) || ctx.cityHint || "";
+  const hasGeo = hasValidDiscoveryGeo(body.geo);
+  const explicitCity = body.city?.trim() ?? "";
+  const city = explicitCity || (hasGeo ? "" : ctx.cityHint || "");
   if (!industry) {
     return null;
   }
   // Lag en naturlig Google-Places-tekst.
-  // Eksempel: "tannlege i Bergen" eller "regnskapsbyrå i Norge"
-  const query = city ? `${industry} i ${city}` : `${industry} i Norge`;
+  // Med geo-bias lar vi koordinatene styre området og unngår en motstridende
+  // prosjekt-by / nasjonal tekstfilter i Places-queryen.
+  const query = city
+    ? `${industry} i ${city}`
+    : hasGeo
+      ? industry
+      : `${industry} i Norge`;
   return { query, industry, city };
 }
 
@@ -628,9 +870,7 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
         // skal aldri gjette industri blindt — feil ICP gir feil leads
         // (f.eks. tannklinikker når MedSide faktisk selger til leger).
         const needsAutoScan =
-          !ctx.targetAudienceHint &&
-          !ctx.industryHint &&
-          !body.industry_query;
+          !ctx.targetAudienceHint && !ctx.industryHint && !body.industry_query;
         const scanUrl = body.website_url?.trim() || ctx.websiteUrl;
         if (needsAutoScan && scanUrl) {
           try {
@@ -640,7 +880,9 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
               url: scanUrl,
             });
             // Last context på nytt — brand_profile er nå populert.
-            ctx = (await loadProjectContext(pool, projectId, session.userId)) ?? ctx;
+            ctx =
+              (await loadProjectContext(pool, projectId, session.userId)) ??
+              ctx;
           } catch (scanErr) {
             console.warn(
               "[discover-leads] auto-brand-scan failed",
@@ -681,16 +923,23 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
         }
 
         // 3. Spør Google Places. Geo-bias hvis brukeren sendte koordinater.
+        const discoveryGeo = hasValidDiscoveryGeo(body.geo)
+          ? body.geo
+          : null;
         const radiusM = (() => {
-          const km = body.geo?.radius_km ?? body.radius_km ?? 25;
+          const requestedKm = body.geo?.radius_km ?? body.radius_km ?? 25;
+          const km =
+            typeof requestedKm === "number" && Number.isFinite(requestedKm)
+              ? requestedKm
+              : 25;
           return Math.max(1000, Math.min(km * 1000, 100_000));
         })();
         const places = await searchPlaces(pool, {
           ownerUserId: session.userId,
           query: resolved.query,
-          latitude: body.geo?.lat,
-          longitude: body.geo?.lng,
-          radiusMeters: body.geo?.lat && body.geo?.lng ? radiusM : undefined,
+          latitude: discoveryGeo?.lat,
+          longitude: discoveryGeo?.lng,
+          radiusMeters: discoveryGeo ? radiusM : undefined,
         });
         if (!places.ok) {
           return res.status(502).json({
@@ -703,7 +952,8 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
         //    Organisasjonen er stabil selv om owner_user_id ble remappet ved
         //    migrering. SearchPlaces sitt owner-flagg kan være feil på tvers
         //    av prosjekter, så denne scope-kontrollen er autoritativ.
-        const orgId = await resolveOrgId(pool, session.userId);
+        const orgId =
+          ctx.organizationId ?? (await resolveOrgId(pool, session.userId));
         const existingPlaceIds = await fetchExistingDiscoveryPlaceIds(pool, {
           ownerUserId: session.userId,
           organizationId: orgId,
@@ -741,113 +991,110 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
           discoveryQuery: resolved.query,
         }).catch(() => null);
 
-        await pool.query(
-          `INSERT INTO leadgrid_url_research_batches (
-              id, organization_id, created_by, total_urls, status
-            ) VALUES ($1::uuid, $2::uuid, $3, $4, 'pending')`,
-          [batchId, orgId, session.userId, candidates.length],
-        );
+        const discoveryMeta = {
+          project_id: ctx.id,
+          project_name: ctx.name,
+          discovery_query: resolved.query,
+          industry: resolved.industry,
+          city: resolved.city,
+          requested_count: requestedCount,
+          geo: discoveryGeo,
+          auto_assigned_industry: autoIndustry
+            ? {
+                industry_id: autoIndustry.industryId,
+                source: autoIndustry.source,
+                matched_code: autoIndustry.matchedCode,
+                matched_name: autoIndustry.matchedName,
+              }
+            : null,
+        };
 
-        // For hvert kandidat-sted: lag en draft-rad + item-rad.
-        // - URL = websiteUrl hvis tilgjengelig, ellers en best-effort
-        //   placeholder som processor-en kan tolke (vi prefiller draft
-        //   med Google Places data så research starter "warm").
-        for (let i = 0; i < candidates.length; i++) {
-          const p = candidates[i];
-          const placeholderUrl =
-            p.websiteUrl ?? `https://maps.google.com/?cid=${p.placeId}`;
-
-          // Pre-fyller draft med Places-data (lat/lng + place_id) slik at
-          // selv om Brreg/website-skraping feiler, har vi et solid pin.
-          // industry_id settes fra autoIndustry (Fix 4).
-          const draftRes = await pool.query<{ id: string }>(
-            `INSERT INTO crm_customers (
-                id, name, status, source,
-                owner_user_id, organization_id, project_id,
-                website_url,
-                latitude, longitude, location_confidence,
-                google_place_id, google_rating,
-                address, phone,
-                lead_status, lead_source,
-                draft_status,
-                industry_id,
-                import_source, import_batch_id,
-                created_at, updated_at
-              ) VALUES (
-                gen_random_uuid(), $1, 'lead', 'lead_discovery',
-                $2, $3::uuid, $4,
-                $5,
-                $6, $7, 'exact',
-                $8, $9,
-                $10, $11,
-                'unvisited', 'lead_discovery',
-                'draft',
-                $12::uuid,
-                'lead_discovery', $13::uuid,
-                NOW(), NOW()
-              ) RETURNING id::text`,
-            [
-              p.name,
-              session.userId,
-              orgId,
-              projectId,
-              placeholderUrl,
-              p.latitude || null,
-              p.longitude || null,
-              p.placeId,
-              p.rating,
-              p.address,
-              p.phone,
-              autoIndustry?.industryId ?? null,
-              batchId,
-            ],
-          );
-          const draftId = draftRes.rows[0].id;
-
-          await pool.query(
-            `INSERT INTO leadgrid_url_research_items (
-                batch_id, url, order_index, draft_lead_id, status
-              ) VALUES ($1::uuid, $2, $3, $4::uuid, 'pending')`,
-            [batchId, placeholderUrl, i, draftId],
-          );
-        }
-
-        // 6. Lagre discovery-meta så GET /result kan vise hvilken query
-        //    som ble brukt, og hvilken kategori batchen er.
-        //    Vi bruker samme batches-tabell — lagrer som JSON i ny kolonne
-        //    hvis den finnes, ellers stille no-op (tabellen ble seedet
-        //    uten metadata-kolonne i mig 0351).
+        // Batch, drafts og items er én atomisk enhet. Da kan verken en
+        // constraint-feil eller en kandidatfeil etterlate en foreldreløs
+        // pending-batch som aldri kan fullføres.
+        const client = await pool.connect();
         try {
-          await pool.query(
-            `UPDATE leadgrid_url_research_batches
-                SET category = 'lead_discovery',
-                    discovery_meta = $2::jsonb
-              WHERE id = $1::uuid`,
+          await client.query("BEGIN");
+          await client.query(
+            `INSERT INTO leadgrid_url_research_batches (
+                id, organization_id, created_by, total_urls, status,
+                category, discovery_meta
+              ) VALUES (
+                $1::uuid, $2::uuid, $3, $4, 'pending',
+                'lead_discovery', $5::jsonb
+              )`,
             [
               batchId,
-              JSON.stringify({
-                project_id: ctx.id,
-                project_name: ctx.name,
-                discovery_query: resolved.query,
-                industry: resolved.industry,
-                city: resolved.city,
-                requested_count: requestedCount,
-                geo: body.geo ?? null,
-                auto_assigned_industry: autoIndustry
-                  ? {
-                      industry_id: autoIndustry.industryId,
-                      source: autoIndustry.source,
-                      matched_code: autoIndustry.matchedCode,
-                      matched_name: autoIndustry.matchedName,
-                    }
-                  : null,
-              }),
+              orgId,
+              session.userId,
+              candidates.length,
+              JSON.stringify(discoveryMeta),
             ],
           );
-        } catch {
-          // Kolonnene `category` + `discovery_meta` kan mangle i eldre
-          // miljøer som ikke har kjørt mig 0352. Det er greit — batchen
-          // fungerer uten dem; UI får tilbake det vi sender i /start-responsen.
+
+          // For hvert kandidat-sted: lag en draft-rad + item-rad.
+          for (let i = 0; i < candidates.length; i++) {
+            const p = candidates[i];
+            const placeholderUrl =
+              p.websiteUrl ?? `https://maps.google.com/?cid=${p.placeId}`;
+
+            const draftRes = await client.query<{ id: string }>(
+              `INSERT INTO crm_customers (
+                  id, name, status, source,
+                  owner_user_id, organization_id, project_id,
+                  website_url,
+                  latitude, longitude, location_confidence,
+                  google_place_id, google_rating,
+                  address, phone,
+                  lead_status, lead_source,
+                  draft_status,
+                  industry_id,
+                  import_source, import_batch_id,
+                  created_at, updated_at
+                ) VALUES (
+                  gen_random_uuid(), $1, 'lead', 'lead_discovery',
+                  $2, $3::uuid, $4,
+                  $5,
+                  $6, $7, 'exact',
+                  $8, $9,
+                  $10, $11,
+                  'unvisited', 'lead_discovery',
+                  'draft',
+                  $12::uuid,
+                  'lead_discovery', $13::uuid,
+                  NOW(), NOW()
+                ) RETURNING id::text`,
+              [
+                p.name,
+                session.userId,
+                orgId,
+                projectId,
+                placeholderUrl,
+                p.latitude ?? null,
+                p.longitude ?? null,
+                p.placeId,
+                p.rating,
+                p.address,
+                p.phone,
+                autoIndustry?.industryId ?? null,
+                batchId,
+              ],
+            );
+            const draftId = draftRes.rows[0].id;
+
+            await client.query(
+              `INSERT INTO leadgrid_url_research_items (
+                  batch_id, url, order_index, draft_lead_id, status
+                ) VALUES ($1::uuid, $2, $3, $4::uuid, 'pending')`,
+              [batchId, placeholderUrl, i, draftId],
+            );
+          }
+          await client.query("COMMIT");
+        } catch (transactionError) {
+          await client.query("ROLLBACK").catch(() => undefined);
+          throw transactionError;
+        } finally {
+          client.release();
         }
 
         // 7. Trigger processor i bakgrunnen — ikke await.
@@ -879,10 +1126,7 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
           estimated_completion_seconds: etaSeconds,
         });
       } catch (err) {
-        console.error(
-          "[leadgrid-project-lead-discovery] discover failed",
-          err,
-        );
+        console.error("[leadgrid-project-lead-discovery] discover failed", err);
         return res.status(500).json({
           error: "discover_failed",
           detail: (err as Error).message,
@@ -905,17 +1149,28 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
       const projectId = req.params.projectId;
       const batchId = req.params.batchId;
       try {
-        const own = await pool.query<{ created_by: string }>(
-          `SELECT created_by::text FROM leadgrid_url_research_batches
-            WHERE id = $1::uuid`,
-          [batchId],
+        const project = await loadAccessibleLeadgridProject(
+          pool,
+          projectId,
+          session.userId,
         );
-        if (!own.rows[0]) {
+        if (!project) {
+          return res.status(404).json({ error: "project_not_found" });
+        }
+
+        const organizationId =
+          project.organization_id ?? (await resolveOrgId(pool, session.userId));
+        const batch = await loadAccessibleDiscoveryBatch(
+          pool,
+          batchId,
+          projectId,
+          session.userId,
+          organizationId,
+        );
+        if (!batch) {
           return res.status(404).json({ error: "batch_not_found" });
         }
-        if (own.rows[0].created_by !== session.userId) {
-          return res.status(403).json({ error: "forbidden" });
-        }
+
         const progress = await readBatchProgress(pool, batchId);
         if (!progress) {
           return res.status(404).json({ error: "batch_not_found" });
@@ -946,7 +1201,11 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
           .filter((x): x is string => !!x);
         let leadInfoById = new Map<
           string,
-          { name: string | null; city: string | null; industry_id: string | null }
+          {
+            name: string | null;
+            city: string | null;
+            industry_id: string | null;
+          }
         >();
         if (leadIds.length > 0) {
           const li = await pool.query<{
@@ -995,7 +1254,8 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
           }
           if (item.draft_lead_id) {
             const li = leadInfoById.get(item.draft_lead_id);
-            if (li?.city) byCityMap.set(li.city, (byCityMap.get(li.city) ?? 0) + 1);
+            if (li?.city)
+              byCityMap.set(li.city, (byCityMap.get(li.city) ?? 0) + 1);
             if (li?.industry_id) {
               byIndustryMap.set(
                 li.industry_id,
@@ -1005,32 +1265,8 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
           }
         }
 
-        // Discovery-meta (hvis kolonnen finnes)
-        let discoveryMeta: Record<string, unknown> | null = null;
-        let projectName: string | null = null;
-        try {
-          const mr = await pool.query<{
-            discovery_meta: Record<string, unknown> | null;
-          }>(
-            `SELECT discovery_meta
-               FROM leadgrid_url_research_batches
-              WHERE id = $1::uuid`,
-            [batchId],
-          );
-          discoveryMeta = mr.rows[0]?.discovery_meta ?? null;
-          if (discoveryMeta && typeof discoveryMeta.project_name === "string") {
-            projectName = discoveryMeta.project_name;
-          }
-        } catch {
-          // discovery_meta-kolonne mangler — hopp.
-        }
-        if (!projectName) {
-          const pn = await pool.query<{ name: string }>(
-            `SELECT name FROM casting_projects WHERE id = $1 LIMIT 1`,
-            [projectId],
-          );
-          projectName = pn.rows[0]?.name ?? null;
-        }
+        const discoveryMeta = batch.discovery_meta;
+        const projectName = project.name;
 
         return res.json({
           batch: {
@@ -1085,5 +1321,8 @@ export function registerLeadgridProjectLeadDiscoveryRoutes(deps: Deps): void {
 export const __test = {
   buildDiscoveryQuery,
   fetchExistingPlaceIds: fetchExistingDiscoveryPlaceIds,
+  hasValidDiscoveryGeo,
+  loadAccessibleDiscoveryBatch,
+  loadAccessibleLeadgridProject,
   loadProjectContext,
 };

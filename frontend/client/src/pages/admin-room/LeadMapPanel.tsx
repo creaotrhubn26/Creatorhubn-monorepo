@@ -503,6 +503,7 @@ export default function LeadMapPanel() {
   // Prosjekt-kontekst: hvilken bedrift jobber jeg for akkurat nå?
   type ProjectListItem = {
     id: string;
+    organizationId: string;
     name: string;
     description: string | null;
     status: string | null;
@@ -881,7 +882,13 @@ export default function LeadMapPanel() {
   // Hent prosjekt-liste
   const fetchProjects = useCallback(async () => {
     try {
-      const r = await fetch('/api/admin-room/lead-map/projects', {
+      const organizationId = typeof window !== 'undefined'
+        ? localStorage.getItem('rr_lead_map_active_org')
+        : null;
+      const query = organizationId
+        ? `?organization_id=${encodeURIComponent(organizationId)}`
+        : '';
+      const r = await fetch(`/api/admin-room/lead-map/projects${query}`, {
         credentials: 'include', headers: authHeaders(),
       });
       if (r.ok) {
@@ -1472,6 +1479,9 @@ export default function LeadMapPanel() {
         body: JSON.stringify({
           leadIds: Array.from(selectedLeadIds),
           projectId: bulkAssignTarget || null,
+          organization_id: typeof window !== 'undefined'
+            ? localStorage.getItem('rr_lead_map_active_org')
+            : null,
         }),
       });
       if (r.ok) {
