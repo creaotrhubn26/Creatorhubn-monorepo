@@ -6,12 +6,7 @@ const EXPECTED_DATABASE_OWNER_ADMIN_ROLE = "neondb_owner";
 const EXPECTED_DATABASE_MIGRATION_LOGIN_ROLE = "creatorhub_migration_login";
 const EXPECTED_DATABASE_STATEMENT_TIMEOUT = "30s";
 
-type DatabaseRoleEnvironment = Partial<
-  Record<
-    "DATABASE_LOGIN_ROLE" | "DATABASE_OWNER_ROLE" | "NODE_ENV" | "RENDER",
-    string | undefined
-  >
->;
+type DatabaseRoleEnvironment = NodeJS.ProcessEnv;
 
 type DatabaseIdentityRow = {
   session_user: string;
