@@ -260,7 +260,10 @@ import {
   getRealtimeUserEventFanoutHealth,
   initializeRealtimeUserEventFanout,
 } from "./realtime-user-event-fanout.js";
-import { leadgridRealtime } from "./leadgrid-realtime.js";
+import {
+  leadgridRealtime,
+  setupLeadgridRealtimeTicketRoute,
+} from "./leadgrid-realtime.js";
 import {
   ensureProjectChangeLogSchema,
   listProjectChangeLog,
@@ -606,8 +609,8 @@ import { registerLeadgridForecastingRoutes } from "./leadgrid-forecasting-routes
 import { registerLeadgridMomentumRoutes } from "./leadgrid-momentum-routes.js";
 import { registerLeadgridImportRoutes } from "./leadgrid-import-routes.js";
 import { registerLeadgridUrlResearchRoutes } from "./leadgrid-url-research-routes.js";
-import { registerLeadgridProjectLeadDiscoveryRoutes } from "./leadgrid-project-lead-discovery-routes.js";
 import { registerLeadgridContinuousDiscoveryCron } from "./leadgrid-continuous-discovery.js";
+import { registerLeadgridDiscoveryRoutes } from "./leadgrid-discovery-routes.js";
 import { registerUrlResearchResumeCron } from "./leadgrid-url-batch-processor.js";
 import { registerLeadgridDiscoveryConfigRoutes } from "./leadgrid-discovery-config-routes.js";
 import { registerLeadgridIndustriesRoutes } from "./leadgrid-industries-routes.js";
@@ -25523,13 +25526,22 @@ registerLeadgridImportRoutes({ app, pool, activeSessions });
 //     POST /api/leadgrid/url-research/batches/:id/cancel
 // Gated på leads.import_url.
 registerLeadgridUrlResearchRoutes({ app, pool, activeSessions });
-// AI lead-discovery for valgt prosjekt (mig 0352). "Finn leads for MedSide"
-// → Places Text Search + filter eksisterende → batch-research via samme
-// processor som bulk-URL. Endpoints:
-//   POST /api/leadgrid/projects/:projectId/discover-leads
-//   GET  /api/leadgrid/projects/:projectId/discover-leads/:batchId/result
-// Gated på lead_research.run.
-registerLeadgridProjectLeadDiscoveryRoutes({ app, pool, activeSessions });
+// Legacy Google-based Discovery is permanently fail-closed. Historical code
+// is intentionally not imported into the production graph; all new work uses
+// the review-first, BRREG-backed v2 contract below.
+app.post(
+  "/api/leadgrid/projects/:projectId/discover-leads",
+  (req, res) => {
+    if (!requireUserSession(req, res)) return;
+    res.status(410).json({
+      error: "legacy_discovery_retired",
+      message: "Denne Discovery-flyten er erstattet av Discovery v2.",
+      replacement: `/api/leadgrid/projects/${encodeURIComponent(req.params.projectId)}/discovery/runs`,
+    });
+  },
+);
+// Discovery v2 — varige runs, kandidater, beslutninger og profiler.
+registerLeadgridDiscoveryRoutes({ app, pool, activeSessions });
 // Mig 0353 — Continuous Lead Discovery (workflow-action + cron-poller).
 // CRUD for per-prosjekt-config + 5-min poller som kjører discovery
 // for auto_discover_enabled prosjekter.
@@ -67728,6 +67740,7 @@ setupUserEventsTicketRoute({
   requireUserSession,
   requireAdminSession,
 });
+setupLeadgridRealtimeTicketRoute({ app, pool, requireUserSession });
 // Pro Tools Companion (native desktop-agent) + EaseVerse/Sound Room-kobling.
 setupProToolsCompanionRoutes({ app, pool, requireUserSession });
 setupPhotographerMiscRoutes({

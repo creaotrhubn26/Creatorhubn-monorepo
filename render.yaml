@@ -172,6 +172,8 @@ services:
         sync: false
       - key: LEADGRID_PUBLIC_URL
         sync: false
+      - key: LEADGRID_DISCOVERY_ENABLED
+        value: "false"
       - key: GOOGLE_REDIRECT_URI
         sync: false
       - key: ROLE_ROOM_GOOGLE_REDIRECT_URI

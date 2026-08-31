@@ -25,12 +25,20 @@ export interface BackgroundJob {
   payload: Record<string, unknown>;
   attempts: number;
   max_attempts: number;
+  created_at: string | Date;
+  lease_token: string;
+}
+
+export interface JobExecutionContext {
+  /** Aborted as soon as this worker can no longer prove ownership of the job. */
+  signal: AbortSignal;
 }
 
 export type JobHandler = (
   pool: Pool,
   payload: Record<string, unknown>,
   job: BackgroundJob,
+  context: JobExecutionContext,
 ) => Promise<Record<string, unknown> | void>;
 
 const handlers = new Map<string, JobHandler>();
@@ -64,6 +72,31 @@ export function transitionForFailure(
 ): { status: "queued" | "dead"; delayMs: number } {
   if (attempts >= maxAttempts) return { status: "dead", delayMs: 0 };
   return { status: "queued", delayMs: computeBackoffMs(attempts) };
+}
+
+/**
+ * A worker from the previous release can see a newly-enqueued job type while
+ * pods overlap during a rolling deploy. Treating that as an ordinary handler
+ * failure can exhaust all attempts before a new worker becomes ready.
+ *
+ * Missing handlers are therefore deferred without consuming an execution
+ * attempt for a bounded window. Truly unknown job types still become `dead`
+ * after the window, so operational mistakes remain visible and finite.
+ */
+export const MISSING_HANDLER_DEFER_MS = 60_000;
+export const MISSING_HANDLER_MAX_AGE_MS = 30 * 60_000;
+
+export function transitionForMissingHandler(
+  createdAt: string | Date,
+  now = new Date(),
+): { status: "queued" | "dead"; delayMs: number } {
+  const createdAtMs =
+    createdAt instanceof Date ? createdAt.valueOf() : Date.parse(createdAt);
+  const ageMs = now.valueOf() - createdAtMs;
+  if (!Number.isFinite(ageMs) || ageMs >= MISSING_HANDLER_MAX_AGE_MS) {
+    return { status: "dead", delayMs: 0 };
+  }
+  return { status: "queued", delayMs: MISSING_HANDLER_DEFER_MS };
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -111,6 +144,8 @@ export async function reclaimStaleJobs(
   const r = await pool.query(
     `UPDATE background_jobs
         SET status = 'queued', updated_at = now(),
+            lease_token = NULL,
+            heartbeat_at = NULL,
             last_error = COALESCE(last_error, '') || ' [re-køet etter død heartbeat]'
       WHERE status = 'running'
         AND heartbeat_at < now() - ($1 || ' milliseconds')::interval`,
@@ -125,10 +160,14 @@ export async function reclaimStaleJobs(
  */
 export async function processNextJob(
   pool: Pool,
-): Promise<"idle" | "completed" | "requeued" | "dead" | "no_handler"> {
+  opts: { heartbeatMs?: number } = {},
+): Promise<
+  "idle" | "completed" | "requeued" | "dead" | "no_handler" | "lease_lost"
+> {
   const claimed = await pool.query<BackgroundJob & { payload: Record<string, unknown> }>(
     `UPDATE background_jobs
         SET status = 'running', started_at = now(), heartbeat_at = now(),
+            lease_token = gen_random_uuid(),
             attempts = attempts + 1, updated_at = now()
       WHERE id = (
         SELECT id FROM background_jobs
@@ -137,55 +176,120 @@ export async function processNextJob(
          LIMIT 1
          FOR UPDATE SKIP LOCKED
       )
-      RETURNING id::text, job_type, payload, attempts, max_attempts`,
+      RETURNING id::text, job_type, payload, attempts, max_attempts,
+                created_at, lease_token::text`,
   );
   const job = claimed.rows[0];
   if (!job) return "idle";
 
   const handler = handlers.get(job.job_type);
   if (!handler) {
-    // Ukjent type (f.eks. gammel instans etter rollback) — dead m/ forklaring.
-    await pool.query(
+    const transition = transitionForMissingHandler(job.created_at);
+    const message =
+      transition.status === "queued"
+        ? `Ingen handler registrert for '${job.job_type}'. Utsatt for rolling deploy.`
+        : `Ingen handler registrert for '${job.job_type}' innen defer-vinduet.`;
+    const updated = await pool.query(
       `UPDATE background_jobs
-          SET status = 'dead', last_error = $2, completed_at = now(), updated_at = now()
-        WHERE id = $1::uuid`,
-      [job.id, `Ingen handler registrert for '${job.job_type}'.`],
+          SET status = $2,
+              attempts = CASE
+                WHEN $2 = 'queued' THEN GREATEST(attempts - 1, 0)
+                ELSE attempts
+              END,
+              run_after = now() + ($3 || ' milliseconds')::interval,
+              last_error = $4,
+              completed_at = CASE WHEN $2 = 'dead' THEN now() ELSE NULL END,
+              heartbeat_at = NULL,
+              lease_token = NULL,
+              updated_at = now()
+        WHERE id = $1::uuid
+          AND status = 'running'
+          AND lease_token = $5::uuid`,
+      [
+        job.id,
+        transition.status,
+        String(transition.delayMs),
+        message,
+        job.lease_token,
+      ],
     );
-    return "no_handler";
+    return (updated.rowCount ?? 0) > 0 ? "no_handler" : "lease_lost";
   }
 
   // Heartbeat mens handleren kjører — det er denne som gjør at en drept
   // instans oppdages av reclaimStaleJobs.
+  const controller = new AbortController();
+  let heartbeatInFlight = false;
   const heartbeat = setInterval(() => {
+    if (heartbeatInFlight || controller.signal.aborted) return;
+    heartbeatInFlight = true;
     void pool
-      .query(`UPDATE background_jobs SET heartbeat_at = now() WHERE id = $1::uuid`, [job.id])
-      .catch(() => undefined);
-  }, 30_000);
+      .query(
+        `UPDATE background_jobs
+            SET heartbeat_at = now(), updated_at = now()
+          WHERE id = $1::uuid
+            AND status = 'running'
+            AND lease_token = $2::uuid`,
+        [job.id, job.lease_token],
+      )
+      .then((renewed) => {
+        if ((renewed.rowCount ?? 0) !== 1) {
+          controller.abort(new Error("job_lease_lost"));
+        }
+      })
+      .catch(() => {
+        // A DB error means ownership cannot be proven. Stop side effects until
+        // a later claimant resumes the idempotent job.
+        controller.abort(new Error("job_lease_unverified"));
+      })
+      .finally(() => {
+        heartbeatInFlight = false;
+      });
+  }, opts.heartbeatMs ?? 30_000);
 
   try {
-    const result = await handler(pool, job.payload ?? {}, job);
-    await pool.query(
+    const result = await handler(pool, job.payload ?? {}, job, {
+      signal: controller.signal,
+    });
+    const completed = await pool.query(
       `UPDATE background_jobs
           SET status = 'completed', completed_at = now(), updated_at = now(),
-              result = $2::jsonb, last_error = NULL
-        WHERE id = $1::uuid`,
-      [job.id, JSON.stringify(result ?? {})],
+              result = $2::jsonb, last_error = NULL,
+              heartbeat_at = NULL, lease_token = NULL
+        WHERE id = $1::uuid
+          AND status = 'running'
+          AND lease_token = $3::uuid`,
+      [job.id, JSON.stringify(result ?? {}), job.lease_token],
     );
-    return "completed";
+    return (completed.rowCount ?? 0) === 1 ? "completed" : "lease_lost";
   } catch (err) {
     const t = transitionForFailure(job.attempts, job.max_attempts);
-    await pool.query(
+    const failed = await pool.query(
       `UPDATE background_jobs
           SET status = $2, updated_at = now(),
               run_after = now() + ($3 || ' milliseconds')::interval,
               completed_at = CASE WHEN $2 = 'dead' THEN now() ELSE NULL END,
-              last_error = $4
-        WHERE id = $1::uuid`,
-      [job.id, t.status, String(t.delayMs), String(err).slice(0, 800)],
+              last_error = $4,
+              heartbeat_at = NULL,
+              lease_token = NULL
+        WHERE id = $1::uuid
+          AND status = 'running'
+          AND lease_token = $5::uuid`,
+      [
+        job.id,
+        t.status,
+        String(t.delayMs),
+        String(err).slice(0, 800),
+        job.lease_token,
+      ],
     );
+    if ((failed.rowCount ?? 0) !== 1) return "lease_lost";
     return t.status === "dead" ? "dead" : "requeued";
   } finally {
     clearInterval(heartbeat);
+    if (!controller.signal.aborted) {
+      controller.abort(new Error("job_execution_finished"));
+    }
   }
 }
 

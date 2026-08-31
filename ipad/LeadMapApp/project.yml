@@ -341,6 +341,11 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_VERSION: "6"
         IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        # Keep native unit tests runnable on the supported Catalyst host.
+        # Otherwise Xcode inherits the SDK patch version (for example 26.5)
+        # and refuses to run on a 26.4 CI/developer Mac.
+        SUPPORTS_MACCATALYST: YES
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
 
 # Eksplisitt scheme så UI-test-target-et er koblet til test-action.
 # archive-config beholdt for TestFlight-CI (fastlane bruker samme scheme).

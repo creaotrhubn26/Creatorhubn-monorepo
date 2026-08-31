@@ -208,6 +208,7 @@ export async function listLeadsInBounds(
   // bare se aktive leads. Brukere som vil se arkivert har egen view.
   const conditions: string[] = [
     ...tenantConds,
+    "(draft_status IS NULL OR draft_status = 'lead')",
     'latitude IS NOT NULL',
     'longitude IS NOT NULL',
     'archived_at IS NULL',
@@ -253,6 +254,7 @@ export async function getLeadById(
 ): Promise<MapLead | null> {
   const params: unknown[] = [leadId];
   const tenantConds = buildTenantConditions(scope, params);
+  tenantConds.push("(draft_status IS NULL OR draft_status = 'lead')");
   const r = await pool.query(
     `SELECT c.id, c.name, c.company, c.lead_category, c.lead_status, c.address, c.postal_code,
             c.city, c.country, c.latitude, c.longitude, c.phone, c.email, c.website_url,
@@ -879,7 +881,7 @@ export async function searchPlaces(
   const body: Record<string, unknown> = {
     textQuery: opts.query,
     languageCode: 'no',
-    maxResultCount: 20,
+    pageSize: 20,
   };
   const { latitude, longitude, radiusMeters } = opts;
   if (

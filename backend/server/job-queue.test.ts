@@ -3,9 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearJobHandlers,
   computeBackoffMs,
+  MISSING_HANDLER_DEFER_MS,
+  MISSING_HANDLER_MAX_AGE_MS,
   processNextJob,
   registerJobHandler,
   transitionForFailure,
+  transitionForMissingHandler,
 } from "./job-queue.js";
 
 afterEach(() => clearJobHandlers());
@@ -22,6 +25,23 @@ describe("computeBackoffMs / transitionForFailure", () => {
     expect(transitionForFailure(1, 3)).toEqual({ status: "queued", delayMs: 30_000 });
     expect(transitionForFailure(2, 3)).toEqual({ status: "queued", delayMs: 120_000 });
     expect(transitionForFailure(3, 3)).toEqual({ status: "dead", delayMs: 0 });
+  });
+
+  it("defers missing handlers during a bounded rolling-deploy window", () => {
+    const now = new Date("2026-08-30T12:00:00.000Z");
+    expect(
+      transitionForMissingHandler("2026-08-30T11:59:00.000Z", now),
+    ).toEqual({ status: "queued", delayMs: MISSING_HANDLER_DEFER_MS });
+    expect(
+      transitionForMissingHandler(
+        new Date(now.valueOf() - MISSING_HANDLER_MAX_AGE_MS),
+        now,
+      ),
+    ).toEqual({ status: "dead", delayMs: 0 });
+    expect(transitionForMissingHandler("not-a-date", now)).toEqual({
+      status: "dead",
+      delayMs: 0,
+    });
   });
 });
 
@@ -46,6 +66,8 @@ const JOB = {
   payload: { x: 1 },
   attempts: 1,
   max_attempts: 3,
+  created_at: new Date().toISOString(),
+  lease_token: "11111111-1111-4111-8111-111111111111",
 };
 
 describe("processNextJob", () => {
@@ -80,14 +102,66 @@ describe("processNextJob", () => {
     expect(last.calls[last.calls.length - 1].params[1]).toBe("dead");
   });
 
-  it("ukjent jobbtype → dead m/ forklaring (aldri stille)", async () => {
+  it("fresh unknown job type is deferred without consuming an attempt", async () => {
     const { pool, calls } = fakePool({ ...JOB, job_type: "finnes_ikke" });
     expect(await processNextJob(pool)).toBe("no_handler");
-    expect(String(calls[calls.length - 1].params[1])).toContain("Ingen handler");
+    const update = calls[calls.length - 1];
+    expect(update.params[1]).toBe("queued");
+    expect(update.params[2]).toBe(String(MISSING_HANDLER_DEFER_MS));
+    expect(String(update.params[3])).toContain("Ingen handler");
+    expect(update.sql).toContain("GREATEST(attempts - 1, 0)");
+  });
+
+  it("old unknown job type becomes dead instead of being stranded forever", async () => {
+    const { pool, calls } = fakePool({
+      ...JOB,
+      job_type: "finnes_ikke",
+      created_at: new Date(
+        Date.now() - MISSING_HANDLER_MAX_AGE_MS - 1_000,
+      ).toISOString(),
+    });
+    expect(await processNextJob(pool)).toBe("no_handler");
+    const update = calls[calls.length - 1];
+    expect(update.params[1]).toBe("dead");
+    expect(update.params[2]).toBe("0");
+    expect(String(update.params[3])).toContain("defer-vinduet");
   });
 
   it("dobbelt-registrering av handler kaster", () => {
     registerJobHandler("test_job", async () => undefined);
     expect(() => registerJobHandler("test_job", async () => undefined)).toThrow();
+  });
+
+  it("aborts the handler and cannot finalize after its lease is lost", async () => {
+    let signal: AbortSignal | undefined;
+    registerJobHandler("test_job", async (_pool, _payload, _job, context) => {
+      signal = context.signal;
+      await new Promise<never>((_resolve, reject) => {
+        context.signal.addEventListener(
+          "abort",
+          () => reject(context.signal.reason),
+          { once: true },
+        );
+      });
+    });
+    let call = 0;
+    const query = vi.fn(async (sql: string) => {
+      call += 1;
+      if (call === 1) return { rows: [JOB], rowCount: 1 };
+      if (sql.includes("SET heartbeat_at = now()")) {
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    await expect(
+      processNextJob({ query } as never, { heartbeatMs: 1 }),
+    ).resolves.toBe("lease_lost");
+    expect(signal?.aborted).toBe(true);
+    expect(
+      query.mock.calls.some(([sql]) =>
+        String(sql).includes("AND lease_token = $5::uuid"),
+      ),
+    ).toBe(true);
   });
 });

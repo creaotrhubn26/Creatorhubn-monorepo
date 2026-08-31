@@ -930,16 +930,7 @@ struct KartView: View {
     @State private var measureDriveMinutes: Int?
     @State private var measureRouteTask: Task<Void, Never>?
 
-    // «Finn leads her» — Continuous Discovery (2026-08-19).
-    @State private var discoveryState = DiscoveryRunState()
-    @State private var discoverySheetOpen = false
-    @State private var discoveryPollTask: Task<Void, Never>?
-    @State private var discoveryRadiusKmUsed: Int?
-    @State private var discoveryIndustryQueryUsed: String?
-    /// 2026-08-19: "Søk anbud i stedet"-veien for brede B2B-selgere uten
-    /// søkbar Places-kundetype — se LeadDiscoveryError.industryRequired.
-    @State private var anbudSheetOpen = false
-    @State private var anbudCpvOverride: [String] = []
+    // Discovery v2 state is owned by AppState.discoveryCoordinator.
 
     // MARK: - Dørsalg-modus (2026-07-18)
     // Husstandsadresser fra Kartverket som EGEN kartflate for dørsalg-org-er.
@@ -1349,38 +1340,12 @@ struct KartView: View {
         .onReceive(NotificationCenter.default.publisher(for: .leadgridFocusSearch)) { _ in
             searchFieldFocused = true
         }
-        // «Finn leads her» — progress-sheet for Continuous Discovery.
-        .sheet(isPresented: $discoverySheetOpen) {
-            DiscoveryProgressView(
-                state: discoveryState,
-                discoveryQueryHint: discoveryIndustryQueryUsed,
-                radiusKmHint: discoveryRadiusKmUsed,
-                onCancel: {
-                    discoveryPollTask?.cancel()
-                    discoverySheetOpen = false
-                },
-                onShowOnMap: {
-                    discoverySheetOpen = false
-                    Task { await appState.refreshLeads() }
-                },
-                onImportMore: {
-                    discoverySheetOpen = false
-                    runLeadDiscovery(industryQuery: discoveryIndustryQueryUsed)
-                },
-                onClose: { discoverySheetOpen = false },
-                onRetryWithIndustryQuery: { query in
-                    runLeadDiscovery(industryQuery: query)
-                },
-                onSearchAnbud: { cpvCodes in
-                    discoverySheetOpen = false
-                    anbudCpvOverride = cpvCodes
-                    anbudSheetOpen = true
-                }
-            )
-            .presentationDetents([.medium, .large])
-        }
-        .sheet(isPresented: $anbudSheetOpen) {
-            AnbudView(initialCpvOverride: anbudCpvOverride)
+        // Discovery v2 is app-global: closing this workspace does not cancel
+        // its durable backend run. Unapproved registry candidates stay in a
+        // dedicated review workspace, so it fully obscures the map on every
+        // iPad window size.
+        .fullScreenCover(isPresented: discoveryV2PresentedBinding) {
+            DiscoveryWorkspaceView(coordinator: appState.discoveryCoordinator)
         }
         // Canvas-laget: hent stedfestede notater når laget slås på.
         .task(id: activeOverlays.contains(.canvasNotater)) {
@@ -2567,6 +2532,20 @@ struct KartView: View {
                     }
                 }
 
+                // Unapproved Discovery candidates are reviewed off-map. This
+                // layer only renders the user's search area; approved companies
+                // return through the normal CRM lead flow.
+                if appState.leadgridDiscoveryEnabled,
+                   (appState.discoveryCoordinator.isPresented || appState.discoveryCoordinator.showsRunBanner),
+                   let geo = appState.discoveryCoordinator.brief.geo {
+                    MapCircle(
+                        center: CLLocationCoordinate2D(latitude: geo.latitude, longitude: geo.longitude),
+                        radius: geo.radiusKm * 1_000
+                    )
+                    .foregroundStyle(LeadgridDiscoveryTheme.accent.opacity(0.08))
+                    .stroke(LeadgridDiscoveryTheme.accent.opacity(0.60), lineWidth: 2)
+                }
+
                 // 2026-07-18 dørsalg: husstandsadresse-pins (Kartverket) i
                 // systemets pin-design. Farge = utfall (vunnet/avslått).
                 // Tom liste utenfor modusen — adressene lagres aldri som CRM.
@@ -2761,13 +2740,14 @@ struct KartView: View {
                         .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
                 }
 
-                // «Finn leads her» — Continuous Discovery (mig 0352/0353,
-                // 2026-08-19 Daniel-feedback): hele kjeden (API + state-
-                // maskin + DiscoveryProgressView) var ferdig bygd men uten
-                // noen trigger noe sted. Søker bedrifter i synlig kart-
-                // område (Google Places + Claude), pinner dem som leads.
-                if !dorsalgModus {
-                    mapFABButton(icon: "sparkle.magnifyingglass", action: discoverLeadsHere)
+                // «Finn leads her» åpner en eksplisitt søkeplan for det
+                // synlige området. Provider-kandidater vurderes i en egen
+                // liste og blir ikke kartpinner; kun godkjente kandidater
+                // importeres til CRM.
+                if !dorsalgModus && appState.leadgridDiscoveryEnabled {
+                    mapFABButton(icon: "sparkle.magnifyingglass", action: openDiscoveryV2)
+                        .accessibilityLabel("Finn nye leads i kartområdet")
+                        .accessibilityHint("Åpner en søkeplan. Ingen leads opprettes før du godkjenner kandidater.")
                         .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
                         .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
                 }
@@ -2809,6 +2789,17 @@ struct KartView: View {
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .allowsHitTesting(true)
+            }
+
+            if appState.leadgridDiscoveryEnabled
+                && appState.discoveryCoordinator.showsRunBanner && !navModeActive && !dorsalgModus {
+                DiscoveryRunBanner(coordinator: appState.discoveryCoordinator) {
+                    appState.discoveryCoordinator.showWorkspace()
+                }
+                .frame(maxWidth: 430)
+                .padding(14)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .allowsHitTesting(true)
             }
 
             // Navigasjons-banner øverst når live-nav er aktiv
@@ -3668,96 +3659,35 @@ struct KartView: View {
         showToast("Pin droppet — fyller ut lead...")
     }
 
-    /// «Finn leads her» (2026-08-19) — søker bedrifter i synlig kart-
-    /// område via /discover-leads (Google Places + Claude), pinner dem
-    /// som leads. Radius fra kartets span (halv-diagonal, klampet 1-25 km
-    /// — Places-søket blir upresist utenfor det). Poller den eksisterende
-    /// bulk-URL-research-batchen (samme motor discover-leads bygger på)
-    /// hvert 2. sek til status ikke lenger er active.
-    private func discoverLeadsHere() {
-        runLeadDiscovery(industryQuery: nil)
+    private var discoveryV2PresentedBinding: Binding<Bool> {
+        Binding(
+            get: { appState.leadgridDiscoveryEnabled && appState.discoveryCoordinator.isPresented },
+            set: { presented in
+                if presented && appState.leadgridDiscoveryEnabled { appState.discoveryCoordinator.showWorkspace() }
+                else { appState.discoveryCoordinator.dismissWorkspace() }
+            }
+        )
     }
 
-    private func runLeadDiscovery(industryQuery: String?) {
+    private func openDiscoveryV2() {
+        guard appState.leadgridDiscoveryEnabled else {
+            showToast("Discovery er ikke aktivert for organisasjonen")
+            return
+        }
         guard !DemoModeManager.isActiveNonisolated else {
-            showToast("Demo-modus — Finn leads er ikke tilgjengelig")
+            showToast("Demo-modus – Discovery krever et ekte prosjekt")
             return
         }
-        guard let api = appState.api, let projectId = appState.activeProjectId else {
-            showToast("Ingen aktivt prosjekt")
+        guard appState.activeProjectId != nil else {
+            showToast("Velg et prosjekt først")
             return
         }
-        discoveryPollTask?.cancel()
         let center = currentRegion.center
-        let normalizedIndustryQuery = industryQuery?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .prefix(120)
-        let query = normalizedIndustryQuery.map(String.init).flatMap { $0.isEmpty ? nil : $0 }
-        let radiusKm = min(25, max(1, Int((currentRegion.span.latitudeDelta * 111 / 2).rounded())))
-        discoveryRadiusKmUsed = radiusKm
-        discoveryIndustryQueryUsed = query
-        discoveryState.begin(projectName: nil)
-        discoverySheetOpen = true
-        discoveryPollTask = Task {
-            do {
-                let start = try await api.discoverLeadsForProject(
-                    projectId: projectId,
-                    request: LeadDiscoveryRequest(
-                        industryQuery: query,
-                        geo: LeadDiscoveryGeo(lat: center.latitude, lng: center.longitude, radiusKm: radiusKm)
-                    )
-                )
-                guard !Task.isCancelled else { return }
-                guard let batchId = start.batchId, start.foundCount > 0 else {
-                    discoveryState.stage = .failed(start.message ?? "Fant ingen nye bedrifter i dette området.")
-                    return
-                }
-                discoveryState.batchId = batchId
-                discoveryState.projectName = start.projectName
-                discoveryState.total = start.foundCount
-                discoveryState.stage = .foundCandidates(start.foundCount)
-                while !Task.isCancelled {
-                    let detail = try await api.fetchBulkUrlResearchBatch(batchId: batchId)
-                    guard !Task.isCancelled else { return }
-                    discoveryState.items = detail.items
-                    discoveryState.completed = detail.summary.completed
-                    discoveryState.failed = detail.summary.failed
-                    discoveryState.pinned = detail.summary.pinned
-                    discoveryState.total = detail.summary.total
-                    if detail.batch.status.isActive {
-                        discoveryState.stage = detail.summary.completed + detail.summary.failed > 0 ? .processing : .foundCandidates(detail.summary.total)
-                        try await Task.sleep(nanoseconds: 2_000_000_000)
-                        continue
-                    }
-                    discoveryState.stage = .finalizing
-                    let result = try await api.fetchLeadDiscoveryResult(projectId: projectId, batchId: batchId)
-                    guard !Task.isCancelled else { return }
-                    discoveryState.stage = .success(DiscoverySuccessSummary(
-                        totalPinned: result.breakdown.exact + result.breakdown.geocoded + result.breakdown.approximate + result.breakdown.unknown,
-                        totalAttempted: result.summary.total,
-                        breakdown: DiscoveryConfidenceBreakdown(
-                            exact: result.breakdown.exact, geocoded: result.breakdown.geocoded,
-                            approximate: result.breakdown.approximate, unknown: result.breakdown.unknown,
-                            failed: result.breakdown.failed
-                        ),
-                        totalDurationSeconds: discoveryState.elapsedSeconds,
-                        projectName: result.project.name
-                    ))
-                    break
-                }
-            } catch LeadDiscoveryError.industryRequired(let cpvSuggestion, let reason) {
-                guard !Task.isCancelled else { return }
-                discoveryState.stage = .failed(
-                    reason ?? "Vi trenger å vite hvilke bedrifter du vil finne. " +
-                        "Skriv inn kundetype nedenfor.",
-                    cpvSuggestion: cpvSuggestion,
-                    requiresIndustryQuery: true
-                )
-            } catch {
-                guard !Task.isCancelled else { return }
-                discoveryState.stage = .failed("Kunne ikke søke — prøv igjen.")
-            }
-        }
+        let latitudeKm = currentRegion.span.latitudeDelta * 111 / 2
+        let longitudeKm = currentRegion.span.longitudeDelta
+            * 111 * max(0.2, cos(center.latitude * .pi / 180)) / 2
+        let radiusKm = min(50, max(1, hypot(latitudeKm, longitudeKm)))
+        appState.discoveryCoordinator.openBrief(center: center, radiusKm: radiusKm)
     }
 
     /// Drabart håndtak for mål-verktøyets punkt A/B.

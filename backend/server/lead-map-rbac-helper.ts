@@ -21,26 +21,16 @@
 import type { Request, Response, NextFunction } from "express";
 import type { Pool } from "pg";
 import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
-
-type SessionData = { userId: string; role?: string; email?: string };
+import {
+  getLeadgridSession,
+  type LeadgridSession,
+} from "./leadgrid-project-access.js";
 
 interface PermissionOptions {
   pool: Pool;
-  activeSessions: Map<string, SessionData>;
+  activeSessions: Map<string, LeadgridSession>;
   /** Egendefinert resolve hvis org-id ikke ligger i body/query/params */
   resolveOrgId?: (req: Request, pool: Pool, userId: string) => Promise<string | null>;
-}
-
-function getUser(
-  req: Request,
-  activeSessions: Map<string, SessionData>,
-): SessionData | null {
-  const auth = req.headers.authorization;
-  if (auth?.startsWith("Bearer ")) {
-    const s = activeSessions.get(auth.slice(7));
-    if (s) return s;
-  }
-  return null;
 }
 
 /** Default org-resolve: body > query > params > prosjekt-FK > brukerens default-org */
@@ -123,7 +113,7 @@ export function requireLeadMapPermission(
 ): (req: Request, res: Response, next: NextFunction) => Promise<void> {
   const resolver = opts.resolveOrgId ?? defaultResolveOrgId;
   return async (req, res, next) => {
-    const session = getUser(req, opts.activeSessions);
+    const session = getLeadgridSession(req, opts.activeSessions);
     if (!session?.userId) {
       res.status(401).json({ error: "Innlogging kreves" });
       return;
@@ -164,12 +154,12 @@ export function requireLeadMapPermission(
 export function registerMePermissionsRoute(
   app: import("express").Express,
   pool: Pool,
-  activeSessions: Map<string, SessionData>,
+  activeSessions: Map<string, LeadgridSession>,
 ): void {
   app.get(
     "/api/admin-room/lead-map/me/permissions",
     async (req: Request, res: Response) => {
-      const session = getUser(req, activeSessions);
+      const session = getLeadgridSession(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       const orgId =
         (typeof req.query.organization_id === "string" && req.query.organization_id)

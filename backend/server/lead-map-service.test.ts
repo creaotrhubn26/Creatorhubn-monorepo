@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Pool } from 'pg';
 
-import { searchPlaces } from './lead-map-service.js';
+import {
+  getLeadById,
+  listLeadsInBounds,
+  searchPlaces,
+} from './lead-map-service.js';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -37,6 +41,7 @@ describe('searchPlaces', () => {
     const body = JSON.parse(String(request?.body)) as Record<string, unknown>;
     expect(body).toMatchObject({
       textQuery: 'restauranter',
+      pageSize: 20,
       locationBias: {
         circle: {
           center: { latitude: 0, longitude: 0 },
@@ -44,5 +49,23 @@ describe('searchPlaces', () => {
         },
       },
     });
+    expect(body).not.toHaveProperty('maxResultCount');
+  });
+});
+
+describe('normal lead reads', () => {
+  it('keeps Discovery drafts out of the map and lead-detail queries', async () => {
+    const query = vi.fn(async () => ({ rows: [], rowCount: 0 }));
+    const pool = { query } as unknown as Pool;
+
+    await listLeadsInBounds(pool, { ownerUserId: 'user-1' });
+    await getLeadById(pool, { ownerUserId: 'user-1' }, 'lead-1');
+
+    expect(query).toHaveBeenCalledTimes(2);
+    for (const [sql] of query.mock.calls) {
+      expect(sql).toContain(
+        "(draft_status IS NULL OR draft_status = 'lead')",
+      );
+    }
   });
 });
