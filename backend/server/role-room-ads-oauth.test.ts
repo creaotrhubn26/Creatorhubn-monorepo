@@ -7,6 +7,9 @@ import {
   refreshGoogleAdsAccessToken,
   ensureFreshAdsToken,
   buildAdsAuthUrl,
+  buildLinkedInAdsOauthScopes,
+  isLinkedInMatchedAudiencesEnabled,
+  adsOauthClientCreds,
   exchangeAdsCodeForToken,
   ADS_OAUTH_SCOPES,
   __setAdsOauthFetch,
@@ -20,7 +23,10 @@ import {
 beforeAll(() => {
   process.env.ROLE_ROOM_TOKEN_ENCRYPTION_KEY = "test-encryption-key-for-ads-oauth";
 });
-afterEach(() => __resetAdsOauthFetch());
+afterEach(() => {
+  __resetAdsOauthFetch();
+  vi.unstubAllEnvs();
+});
 
 function fakeFetch(payload: unknown, ok = true, status = 200) {
   return vi.fn(async () => ({
@@ -172,5 +178,29 @@ describe("OAuth code flow helpers", () => {
     expect(ADS_OAUTH_SCOPES.linkedin).toContain("r_ads");
     expect(ADS_OAUTH_SCOPES.linkedin).toContain("r_ads_reporting");
     expect(ADS_OAUTH_SCOPES.linkedin).toContain("r_organization_admin");
+    expect(buildLinkedInAdsOauthScopes(false)).not.toContain("rw_dmp_segments");
+    expect(buildLinkedInAdsOauthScopes(true)).toContain("rw_dmp_segments");
+  });
+
+  it("keeps Matched Audiences disabled unless explicitly enabled", () => {
+    vi.stubEnv("LINKEDIN_MATCHED_AUDIENCES_ENABLED", "");
+    expect(isLinkedInMatchedAudiencesEnabled()).toBe(false);
+    expect(buildLinkedInAdsOauthScopes()).not.toContain("rw_dmp_segments");
+
+    vi.stubEnv("LINKEDIN_MATCHED_AUDIENCES_ENABLED", "true");
+    expect(isLinkedInMatchedAudiencesEnabled()).toBe(true);
+    expect(buildLinkedInAdsOauthScopes()).toContain("rw_dmp_segments");
+  });
+
+  it("reuses a complete global LinkedIn app credential pair for Ads OAuth", () => {
+    vi.stubEnv("LINKEDIN_ADS_OAUTH_CLIENT_ID", "");
+    vi.stubEnv("LINKEDIN_ADS_OAUTH_CLIENT_SECRET", "");
+    vi.stubEnv("LINKEDIN_CLIENT_ID", " global-client-id ");
+    vi.stubEnv("LINKEDIN_CLIENT_SECRET", " global-client-secret ");
+
+    expect(adsOauthClientCreds("linkedin")).toEqual({
+      clientId: "global-client-id",
+      clientSecret: "global-client-secret",
+    });
   });
 });

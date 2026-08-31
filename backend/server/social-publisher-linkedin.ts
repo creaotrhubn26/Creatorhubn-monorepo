@@ -28,8 +28,8 @@ import type {
   SocialPublisher,
 } from './social-publisher.js';
 import { registerPublisher } from './social-publisher.js';
+import { LINKEDIN_API_VERSION } from './linkedin-api-version.js';
 
-const LINKEDIN_API_VERSION = '202404'; // bumpe når Meta deprecates
 const LINKEDIN_UGC_ENDPOINT = 'https://api.linkedin.com/v2/ugcPosts';
 const LINKEDIN_ASSETS_REGISTER_ENDPOINT = 'https://api.linkedin.com/v2/assets?action=registerUpload';
 const LINKEDIN_ASSETS_BASE = 'https://api.linkedin.com/v2/assets';
