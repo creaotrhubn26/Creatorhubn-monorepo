@@ -18,7 +18,7 @@ jobs:
   deploy:
     name: Deploy exact main commit to Render
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Resolve and validate current main HEAD
         id: target
@@ -42,52 +42,21 @@ jobs:
           echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"
           echo "Validated main commit: $target_sha"
 
-      - name: Trigger exact Render deploy
+      - name: Checkout exact deploy commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.target.outputs.target_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Deploy exact commit and verify production
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           TARGET_SHA: ${{ steps.target.outputs.target_sha }}
-        run: |
-          set -euo pipefail
-          if [ -z "$RENDER_API_KEY" ]; then
-            echo "::error::RENDER_API_KEY secret is not configured"
-            exit 1
-          fi
-          payload=$(printf '{"commitId":"%s","clearCache":"do_not_clear"}' "$TARGET_SHA")
-          set +e
-          http_code=$(curl -sS --connect-timeout 5 -m 30 \
-            -o /tmp/render-deploy-response.json \
-            -w "%{http_code}" \
-            -X POST \
-            -H "Authorization: Bearer $RENDER_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d "$payload" \
-            "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys")
-          curl_exit=$?
-          set -e
-          echo "Render trigger: curlExit=$curl_exit HTTP=${http_code:-<none>}"
-          if [ "$curl_exit" != "0" ] || { [ "$http_code" != "200" ] && [ "$http_code" != "201" ] && [ "$http_code" != "202" ]; }; then
-            python3 -c 'import json; print(json.load(open("/tmp/render-deploy-response.json")).get("message", "Render deploy request failed"))' 2>/dev/null || true
-            exit 1
-          fi
-          deploy_id=$(python3 -c 'import json; print(json.load(open("/tmp/render-deploy-response.json")).get("id", ""))' 2>/dev/null || true)
-          echo "Render accepted deploy ${deploy_id:-<unknown>} for $TARGET_SHA"
-
-      - name: Wait for exact commit and verify health
-        env:
-          TARGET_SHA: ${{ steps.target.outputs.target_sha }}
-        run: |
-          set -euo pipefail
-          for i in $(seq 1 80); do
-            version_json=$(curl -sS --connect-timeout 3 -m 10 "$BACKEND_URL/api/version" || true)
-            deployed=$(printf '%s' "$version_json" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("commit", ""))' 2>/dev/null || true)
-            echo "[$i] deployed=${deployed:-<unknown>}"
-            if [ "$deployed" = "$TARGET_SHA" ]; then
-              curl -fsS --connect-timeout 3 -m 15 "$BACKEND_URL/api/health"
-              echo
-              echo "Render backend is live and healthy at $TARGET_SHA"
-              exit 0
-            fi
-            sleep 15
-          done
-          echo "::error::Render did not expose $TARGET_SHA within 20 minutes"
-          exit 1
+        run: node scripts/deploy/render-backend.mjs deploy-and-verify "$TARGET_SHA"
