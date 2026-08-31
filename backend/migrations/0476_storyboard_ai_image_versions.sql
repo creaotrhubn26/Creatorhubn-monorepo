@@ -1,3 +1,4 @@
+-- migration-role: creatorhub_migrator
 -- Immutable source and candidate versions for the native Storyboard Room
 -- Pencil -> AI Color -> AI Atmosphere -> Animation workflow.
 

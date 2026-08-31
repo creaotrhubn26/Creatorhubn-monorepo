@@ -1,3 +1,4 @@
+-- migration-role: creatorhub_migrator
 -- Durable exactly-once guard for paid Storyboard Room image generations.
 
 BEGIN;

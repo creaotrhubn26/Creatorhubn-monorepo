@@ -1,3 +1,4 @@
+-- migration-role: creatorhub_migrator
 -- Durable financial intents for Storyboard Room image generations.
 --
 -- No historical usage row is backfilled. Only reservations explicitly written

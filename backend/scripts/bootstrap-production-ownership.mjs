@@ -1,13 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
-import {
-  createHash,
-  createHmac,
-  pbkdf2Sync,
-  randomBytes,
-  randomUUID,
-} from "node:crypto";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -23,6 +17,7 @@ const LOCK_NAME = "production-migrations";
 const MIN_POSTGRES_18 = 180000;
 const MAX_POSTGRES_18 = 190000;
 const STATEMENT_BATCH_SIZE = 100;
+const RUNTIME_STATEMENT_TIMEOUT = "30s";
 const ALLOWED_POSTGRES_TLS_MODES = new Set([
   "require",
   "verify-ca",
@@ -41,6 +36,7 @@ const SESSION_IDENTITY_SQL = `
     session_user::text AS session_user,
     current_user::text AS current_user,
     current_database()::text AS database_name,
+    current_setting('statement_timeout')::text AS statement_timeout,
     current_setting('server_version_num')::integer AS server_version_num,
     current_setting('server_version')::text AS server_version
 `;
@@ -94,7 +90,17 @@ const TARGET_MEMBERS_SQL = `
     bool_or(membership.admin_option) AS admin_option,
     bool_or(membership.inherit_option) AS inherit_option,
     bool_or(membership.set_option) AS set_option,
-    COUNT(*)::integer AS grant_count
+    COUNT(*)::integer AS grant_count,
+    COUNT(*) FILTER (
+      WHERE membership.admin_option = TRUE
+        AND membership.inherit_option = FALSE
+        AND membership.set_option = FALSE
+    )::integer AS admin_only_grant_count,
+    COUNT(*) FILTER (
+      WHERE membership.admin_option = FALSE
+        AND membership.inherit_option = FALSE
+        AND membership.set_option = TRUE
+    )::integer AS set_only_grant_count
   FROM pg_catalog.pg_auth_members AS membership
   JOIN pg_catalog.pg_roles AS granted_role
     ON granted_role.oid = membership.roleid
@@ -710,7 +716,10 @@ const DATABASE_ROLE_SETTING_SQL = `
   CROSS JOIN LATERAL unnest(role_setting.setconfig) AS configured(setting)
   WHERE role_entry.rolname = $1::text
     AND database_entry.datname = $2::text
-    AND configured.setting LIKE 'role=%'
+    AND (
+      configured.setting LIKE 'role=%'
+      OR configured.setting LIKE 'statement_timeout=%'
+    )
   ORDER BY configured.setting
 `;
 
@@ -802,6 +811,17 @@ function normalizeNeonEndpoint(hostname) {
     labels[0] = labels[0].slice(0, -"-pooler".length);
   }
   return labels.join(".");
+}
+
+function directNeonConnectionString(pooledUrl) {
+  const parsed = new URL(pooledUrl);
+  const labels = parsed.hostname.split(".");
+  if (!labels[0]?.endsWith("-pooler")) {
+    throw new Error("Expected a Neon pooled endpoint");
+  }
+  labels[0] = labels[0].slice(0, -"-pooler".length);
+  parsed.hostname = labels.join(".");
+  return parsed.toString();
 }
 
 function parseDatabaseUrl(
@@ -996,46 +1016,6 @@ function quoteLiteral(value) {
   return "'" + String(value).replaceAll("'", "''") + "'";
 }
 
-function createScramVerifier(
-  password,
-  { salt = randomBytes(16), iterations = 4096 } = {},
-) {
-  if (!/^[A-Za-z0-9_-]{32,256}$/.test(String(password || ""))) {
-    throw new Error("SCRAM password must be 32-256 base64url characters");
-  }
-  if (!Buffer.isBuffer(salt) || salt.length < 16) {
-    throw new Error("SCRAM salt must contain at least 16 random bytes");
-  }
-  if (!Number.isInteger(iterations) || iterations < 4096) {
-    throw new Error("SCRAM iteration count must be at least 4096");
-  }
-
-  const saltedPassword = pbkdf2Sync(
-    Buffer.from(password, "utf8"),
-    salt,
-    iterations,
-    32,
-    "sha256",
-  );
-  const clientKey = createHmac("sha256", saltedPassword)
-    .update("Client Key")
-    .digest();
-  const storedKey = createHash("sha256").update(clientKey).digest();
-  const serverKey = createHmac("sha256", saltedPassword)
-    .update("Server Key")
-    .digest();
-  return (
-    "SCRAM-SHA-256$" +
-    iterations +
-    ":" +
-    salt.toString("base64") +
-    "$" +
-    storedKey.toString("base64") +
-    ":" +
-    serverKey.toString("base64")
-  );
-}
-
 function configurationSecrets(configuration) {
   const secrets = [];
   for (const databaseConfig of Object.values(configuration || {})) {
@@ -1193,18 +1173,38 @@ function expectedMemberships() {
   return new Map([
     [
       OWNER_LOGIN_ROLE,
-      // PostgreSQL 18 automatically gives the role creator an ADMIN-only
-      // grant. The explicit self-grant below must not try to grant ADMIN back
-      // to its own grantor; only effective INHERIT/SET are audited here.
-      Object.freeze({ admin: null, inherit: false, set: true }),
+      // Neon/PostgreSQL 18 records the creator's automatic ADMIN-only grant
+      // separately from the explicit self-grant that enables SET ROLE.
+      Object.freeze({
+        grantCount: 2,
+        adminOnlyGrantCount: 1,
+        setOnlyGrantCount: 1,
+        admin: true,
+        inherit: false,
+        set: true,
+      }),
     ],
     [
       MIGRATION_LOGIN_ROLE,
-      Object.freeze({ admin: false, inherit: false, set: true }),
+      Object.freeze({
+        grantCount: 1,
+        adminOnlyGrantCount: 0,
+        setOnlyGrantCount: 1,
+        admin: false,
+        inherit: false,
+        set: true,
+      }),
     ],
     [
       RUNTIME_LOGIN_ROLE,
-      Object.freeze({ admin: false, inherit: false, set: true }),
+      Object.freeze({
+        grantCount: 1,
+        adminOnlyGrantCount: 0,
+        setOnlyGrantCount: 1,
+        admin: false,
+        inherit: false,
+        set: true,
+      }),
     ],
   ]);
 }
@@ -1322,20 +1322,25 @@ async function createLoginRoleIfMissing(client, roleName, password) {
     return false;
   }
 
-  const verifier = createScramVerifier(password);
   try {
+    // Neon requires SQL-created role passwords in plain text and stores them
+    // encrypted. The caller forces SCRAM inside the same TLS/channel-bound
+    // transaction, and all outer error paths redact the supplied credential.
     await client.query(
       "CREATE ROLE " +
         quoteIdentifier(roleName) +
         " LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE" +
         " NOREPLICATION NOBYPASSRLS PASSWORD " +
-        quoteLiteral(verifier),
+        quoteLiteral(password),
     );
-  } catch {
+  } catch (error) {
     throw new Error(
       "Failed to create least-privilege login role " +
         JSON.stringify(roleName) +
-        "; no existing password was changed",
+        "; no existing password was changed (" +
+        safeErrorMessage(error, [password]) +
+        ")",
+      { cause: error },
     );
   }
   return true;
@@ -1385,8 +1390,10 @@ function topologyProblems(topology) {
       continue;
     }
     if (
-      Number(row.grant_count) !== 1 ||
-      (options.admin !== null && row.admin_option !== options.admin) ||
+      Number(row.grant_count) !== options.grantCount ||
+      Number(row.admin_only_grant_count) !== options.adminOnlyGrantCount ||
+      Number(row.set_only_grant_count) !== options.setOnlyGrantCount ||
+      row.admin_option !== options.admin ||
       row.inherit_option !== options.inherit ||
       row.set_option !== options.set
     ) {
@@ -1394,9 +1401,7 @@ function topologyProblems(topology) {
         "membership options differ for " +
           memberName +
           " (expected ADMIN " +
-          (options.admin === null
-            ? "UNCHANGED"
-            : String(options.admin).toUpperCase()) +
+          String(options.admin).toUpperCase() +
           ", INHERIT " +
           String(options.inherit).toUpperCase() +
           ", SET " +
@@ -1521,6 +1526,31 @@ async function ensureRoleTopology(
       "Least-privilege login topology did not converge: " +
         loginProblems.join("; "),
     );
+  }
+}
+
+async function applyRoleTopologyAtomically(
+  ownerClient,
+  credentials,
+  converge = ensureRoleTopology,
+) {
+  let transactionStarted = false;
+  try {
+    await ownerClient.query("BEGIN");
+    transactionStarted = true;
+    await ownerClient.query("SET LOCAL password_encryption = 'scram-sha-256'");
+    await converge(ownerClient, credentials);
+    await ownerClient.query("COMMIT");
+    transactionStarted = false;
+  } catch (error) {
+    if (transactionStarted) {
+      try {
+        await ownerClient.query("ROLLBACK");
+      } catch {
+        // Closing the owner connection is the final rollback fallback.
+      }
+    }
+    throw error;
   }
 }
 
@@ -1912,6 +1942,14 @@ async function grantRuntimeAccess(ownerClient, databaseName) {
         quoteLiteral(SCHEMA_OWNER_ROLE),
     );
   }
+  await ownerClient.query(
+    "ALTER ROLE " +
+      quoteIdentifier(RUNTIME_LOGIN_ROLE) +
+      " IN DATABASE " +
+      quoteIdentifier(databaseName) +
+      " SET statement_timeout TO " +
+      quoteLiteral(RUNTIME_STATEMENT_TIMEOUT),
+  );
 }
 
 function defaultAclProblems(rows) {
@@ -1933,6 +1971,15 @@ function defaultAclProblems(rows) {
     }
   }
   return problems;
+}
+
+function runtimeSettingsReady(rows) {
+  const settings = (rows || []).map((row) => String(row.setting)).sort();
+  return (
+    settings.length === 2 &&
+    settings[0] === "role=" + SCHEMA_OWNER_ROLE &&
+    settings[1] === "statement_timeout=" + RUNTIME_STATEMENT_TIMEOUT
+  );
 }
 
 async function collectAudit(ownerClient, databaseName) {
@@ -1977,9 +2024,7 @@ async function collectAudit(ownerClient, databaseName) {
     (row) => String(row.owner_name || "") !== SCHEMA_OWNER_ROLE,
   );
   const settingRows = roleSetting.rows || [];
-  const roleSettingReady =
-    settingRows.length === 1 &&
-    String(settingRows[0].setting) === "role=" + SCHEMA_OWNER_ROLE;
+  const roleSettingReady = runtimeSettingsReady(settingRows);
   return Object.freeze({
     topology,
     migrationTopology,
@@ -2016,7 +2061,10 @@ function auditProblems(audit) {
   problems.push(...audit.defaultAclProblems);
   if (!audit.roleSettingReady) {
     problems.push(
-      "database-bound role setting is not role=" + SCHEMA_OWNER_ROLE,
+      "database-bound runtime settings are not exactly role=" +
+        SCHEMA_OWNER_ROLE +
+        " and statement_timeout=" +
+        RUNTIME_STATEMENT_TIMEOUT,
     );
   }
   if (
@@ -2100,7 +2148,12 @@ async function verifyRuntimePool(Client, runtimeConfig, log) {
   await client.connect();
   let transactionStarted = false;
   try {
-    await configureSession(client);
+    await client.query("BEGIN");
+    transactionStarted = true;
+    await client.query("SET LOCAL lock_timeout = '5s'");
+    await client.query(
+      "SET LOCAL idle_in_transaction_session_timeout = '2min'",
+    );
     const identity = await client.query(SESSION_IDENTITY_SQL);
     const row = identity.rows?.[0];
     if (
@@ -2119,13 +2172,17 @@ async function verifyRuntimePool(Client, runtimeConfig, log) {
       throw new Error("Pooled runtime connected to an unexpected database");
     }
     assertPostgres18(row.server_version_num);
+    if (String(row.statement_timeout || "") !== RUNTIME_STATEMENT_TIMEOUT) {
+      throw new Error(
+        "Pooled runtime statement_timeout must be " + RUNTIME_STATEMENT_TIMEOUT,
+      );
+    }
+    await client.query("SET LOCAL statement_timeout = '2min'");
 
     const canaryName =
       "__creatorhub_ownership_canary_" + randomUUID().replaceAll("-", "");
     const qualifiedCanary =
       quoteIdentifier(APPLICATION_SCHEMA) + "." + quoteIdentifier(canaryName);
-    await client.query("BEGIN");
-    transactionStarted = true;
     await client.query(
       "CREATE TABLE " +
         qualifiedCanary +
@@ -2266,8 +2323,11 @@ async function verifyRuntimeLogin(
   expectedServerVersionNumber,
   log,
 ) {
+  // Do not seed Neon's transaction pool before ALTER ROLE ... SET role is
+  // installed. A direct auth canary proves the credential and SET membership;
+  // the final canary is the first pooled connection for this new login.
   const client = new Client({
-    connectionString: runtimeConfig.raw,
+    connectionString: directNeonConnectionString(runtimeConfig.raw),
     enableChannelBinding: true,
     application_name: "creatorhub-ownership-new-runtime-auth-canary",
     connectionTimeoutMillis: 15_000,
@@ -2287,13 +2347,13 @@ async function verifyRuntimeLogin(
       String(row.current_user || "") !== RUNTIME_LOGIN_ROLE
     ) {
       throw new Error(
-        "Pooled runtime authentication must use session_user=current_user=" +
+        "Direct runtime authentication must use session_user=current_user=" +
           RUNTIME_LOGIN_ROLE,
       );
     }
     if (String(row.database_name || "") !== runtimeConfig.database) {
       throw new Error(
-        "Pooled runtime authentication connected to an unexpected database",
+        "Direct runtime authentication connected to an unexpected database",
       );
     }
     const serverVersionNumber = assertPostgres18(row.server_version_num);
@@ -2316,12 +2376,12 @@ async function verifyRuntimeLogin(
       RUNTIME_LOGIN_ROLE,
       "new runtime login reset",
     );
-    log("Pooled least-privilege runtime credential and SET ROLE passed.");
+    log("Direct least-privilege runtime credential and SET ROLE passed.");
   } finally {
     try {
       await client.query("RESET ROLE");
     } catch {
-      // Closing the pooled client clears role state.
+      // Closing the direct client clears role state.
     }
     await client.end().catch(() => {});
   }
@@ -2398,7 +2458,7 @@ async function runBootstrap({ apply, env = process.env, log = console.log }) {
     assertOnlyTransferableOwners(inventory.rows || []);
 
     if (apply) {
-      await ensureRoleTopology(ownerClient, {
+      await applyRoleTopologyAtomically(ownerClient, {
         migrationPassword: configuration.migration.password,
         runtimePassword: configuration.runtime.password,
       });
@@ -2537,6 +2597,17 @@ async function runSelfTest() {
   assertSameDatabaseTarget(owner, migration);
   assertSameDatabaseTarget(owner, runtime, { allowPoolerDifference: true });
   assert.equal(runtime.normalizedEndpoint, owner.hostname);
+  const directRuntimeUrl = new URL(directNeonConnectionString(runtimeUrl));
+  assert.equal(directRuntimeUrl.hostname, owner.hostname);
+  assert.equal(
+    decodeURIComponent(directRuntimeUrl.username),
+    RUNTIME_LOGIN_ROLE,
+  );
+  assert.equal(decodeURIComponent(directRuntimeUrl.password), runtimePassword);
+  assert.throws(
+    () => directNeonConnectionString(migrationUrl),
+    /Expected a Neon pooled endpoint/,
+  );
   const assertSecureRuntimeUrlRejection = (candidate, expectedError) => {
     assert.throws(
       () =>
@@ -2686,12 +2757,24 @@ async function runSelfTest() {
     /32-256 character base64url password/,
   );
   assert.equal(quoteLiteral("a'b"), "'a''b'");
-  const verifier = createScramVerifier(migrationPassword, {
-    salt: Buffer.alloc(16, 7),
-    iterations: 4096,
-  });
-  assert.match(verifier, /^SCRAM-SHA-256\$4096:[A-Za-z0-9+/=]+\$/);
-  assert.doesNotMatch(verifier, new RegExp(migrationPassword));
+  assert.equal(
+    runtimeSettingsReady([
+      { setting: "statement_timeout=30s" },
+      { setting: "role=creatorhub_schema_owner" },
+    ]),
+    true,
+  );
+  assert.equal(
+    runtimeSettingsReady([{ setting: "role=creatorhub_schema_owner" }]),
+    false,
+  );
+  assert.equal(
+    runtimeSettingsReady([
+      { setting: "statement_timeout=0" },
+      { setting: "role=creatorhub_schema_owner" },
+    ]),
+    false,
+  );
   const redacted = redactSecrets(
     "failed " + ownerUrl + " password=another-secret",
     [ownerUrl],
@@ -2733,8 +2816,77 @@ async function runSelfTest() {
   );
   assert.equal(createdRole, true);
   assert.equal(createQueries.length, 1);
-  assert.match(createQueries[0], /PASSWORD 'SCRAM-SHA-256\$/);
-  assert.doesNotMatch(createQueries[0], new RegExp(migrationPassword));
+  assert.ok(
+    createQueries[0].includes("PASSWORD " + quoteLiteral(migrationPassword)),
+  );
+  assert.doesNotMatch(createQueries[0], /PASSWORD 'SCRAM-SHA-256\$/);
+
+  await assert.rejects(
+    createLoginRoleIfMissing(
+      {
+        async query(sql) {
+          if (sql === TARGET_ROLE_SQL) return { rows: [] };
+          if (sql === LOGIN_MEMBERSHIPS_SQL) return { rows: [] };
+          const error = new Error("Neon rejected password=" + runtimePassword);
+          error.code = "42501";
+          throw error;
+        },
+      },
+      RUNTIME_LOGIN_ROLE,
+      runtimePassword,
+    ),
+    (error) => {
+      assert.match(error.message, /42501/);
+      assert.match(error.message, /Neon rejected/);
+      assert.doesNotMatch(error.message, new RegExp(runtimePassword));
+      return true;
+    },
+  );
+
+  const atomicQueries = [];
+  await applyRoleTopologyAtomically(
+    {
+      async query(sql) {
+        atomicQueries.push(String(sql));
+        return { rows: [] };
+      },
+    },
+    { migrationPassword, runtimePassword },
+    async (_client, credentials) => {
+      assert.deepEqual(credentials, { migrationPassword, runtimePassword });
+      atomicQueries.push("CONVERGE");
+    },
+  );
+  assert.deepEqual(atomicQueries, [
+    "BEGIN",
+    "SET LOCAL password_encryption = 'scram-sha-256'",
+    "CONVERGE",
+    "COMMIT",
+  ]);
+
+  const rollbackQueries = [];
+  await assert.rejects(
+    applyRoleTopologyAtomically(
+      {
+        async query(sql) {
+          rollbackQueries.push(String(sql));
+          return { rows: [] };
+        },
+      },
+      { migrationPassword, runtimePassword },
+      async () => {
+        rollbackQueries.push("CONVERGE");
+        throw new Error("topology failure");
+      },
+    ),
+    /topology failure/,
+  );
+  assert.deepEqual(rollbackQueries, [
+    "BEGIN",
+    "SET LOCAL password_encryption = 'scram-sha-256'",
+    "CONVERGE",
+    "ROLLBACK",
+  ]);
   const exactLoginMembership = {
     granted_role: SCHEMA_OWNER_ROLE,
     grantor_role: OWNER_LOGIN_ROLE,
@@ -2872,7 +3024,9 @@ async function runSelfTest() {
     members: [
       {
         member_name: OWNER_LOGIN_ROLE,
-        grant_count: 1,
+        grant_count: 2,
+        admin_only_grant_count: 1,
+        set_only_grant_count: 1,
         admin_option: true,
         inherit_option: false,
         set_option: true,
@@ -2880,6 +3034,8 @@ async function runSelfTest() {
       {
         member_name: MIGRATION_LOGIN_ROLE,
         grant_count: 1,
+        admin_only_grant_count: 0,
+        set_only_grant_count: 1,
         admin_option: false,
         inherit_option: false,
         set_option: true,
@@ -2887,6 +3043,8 @@ async function runSelfTest() {
       {
         member_name: RUNTIME_LOGIN_ROLE,
         grant_count: 1,
+        admin_only_grant_count: 0,
+        set_only_grant_count: 1,
         admin_option: false,
         inherit_option: false,
         set_option: true,
@@ -3000,8 +3158,16 @@ async function runSelfTest() {
   );
   assert.match(TARGET_MEMBERS_SQL, /inherit_option/);
   assert.match(TARGET_MEMBERS_SQL, /set_option/);
+  assert.match(TARGET_MEMBERS_SQL, /admin_only_grant_count/);
+  assert.match(TARGET_MEMBERS_SQL, /set_only_grant_count/);
   assert.match(createDirectClient.toString(), /enableChannelBinding: true/);
-  assert.match(verifyRuntimePool.toString(), /enableChannelBinding: true/);
+  const runtimePoolSource = verifyRuntimePool.toString();
+  assert.match(runtimePoolSource, /enableChannelBinding: true/);
+  assert.doesNotMatch(runtimePoolSource, /configureSession/);
+  assert.ok(
+    runtimePoolSource.indexOf('client.query("BEGIN")') <
+      runtimePoolSource.indexOf("SESSION_IDENTITY_SQL"),
+  );
   assert.match(verifyRuntimeLogin.toString(), /enableChannelBinding: true/);
   const bootstrapSource = runBootstrap.toString();
   const runtimeCanaryIndex = bootstrapSource.indexOf(

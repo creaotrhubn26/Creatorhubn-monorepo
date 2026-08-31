@@ -7,62 +7,93 @@ const migrationDirectory = fileURLToPath(
   new URL("../migrations/", import.meta.url),
 );
 
-const migrationBasenames = [
-  "0475_storyboard_schema_owner_boundary.sql",
-  "0476_storyboard_ai_image_versions.sql",
-  "0477_storyboard_ai_image_idempotency.sql",
-  "0478_storyboard_ai_video_provider_lifecycle.sql",
-  "0479_legacy_generative_ai_billing_due_index.sql",
-  "0480_storyboard_ai_image_billing_outbox.sql",
-  "0481_storyboard_mentions_identity_scope.sql",
-  "0482_project_video_direct_upload_registration.sql",
-  "0483_storyboard_tenant_parent_identity.sql",
-  "0484_storyboard_tenant_identity.sql",
-] as const;
+const appliedMigrationChecksums = {
+  "0474_contract_signature_delivery.sql":
+    "09e9513078b330d71a6cf5e740aef4357e8f37561a70326817207441f355f957",
+  "0475_storyboard_migrator_reference_privileges.sql":
+    "9dc934a03a182f4fd14f074981a8e1a347f8e23ed888ab7430a3c2fcbdecc6b0",
+  "0476_storyboard_ai_image_versions.sql":
+    "78b1205c1979346d75c5e963423c3785d2e654aea6cf661b5ccee0f9c214915a",
+  "0477_storyboard_ai_image_idempotency.sql":
+    "6256a04c778cbb8297f96026ebb3e548d2edc68272dc64ae5fa5b3d5d25cc966",
+  "0478_storyboard_ai_video_provider_lifecycle.sql":
+    "9ae1e4a9ba4e35e5951f3bacdd16e23839ac3cf1ada1df7e79da07506b511335",
+  "0479_legacy_generative_ai_billing_due_index.sql":
+    "027e06cc93529b82011146665cde0d5bbabb8b07d72b22f080f925482666e480",
+  "0480_storyboard_ai_image_billing_outbox.sql":
+    "cb5feb0a420ba2d329b9b5da6aa84ba370de86df3752476081075804db79a031",
+  "0481_storyboard_mentions_identity_scope.sql":
+    "6cdb1236a33fc8cc456ef520d2b8778de29dc6456e8a9c6b38a3b9ce99cc7c36",
+  "0482_project_video_direct_upload_registration.sql":
+    "ba426732bdce5e436cd49f45ed5a183a9a592ead044aec16a484cb6c83644c46",
+  "0483_storyboard_tenant_parent_identity.sql":
+    "e803c9dc2a68f615d2e7cbaf10c16cd960d281a9425e342c21bc63a0b7bfb69f",
+  "0484_storyboard_tenant_identity.sql":
+    "ccff79ee1e4f3af557d259e0d8c3c4367c5c7577baa0ae8116ebdd5039e1cab2",
+  "0485_leadgrid_add_lead_profile_fields.sql":
+    "8b70aa32b9f986a73363f3004e1004fd29a6178cef357d904053095d9ec7b1b3",
+  "0486_workspace_project_bookings.sql":
+    "8e73c07f5cb74aad2cba424e668899b230cd1dcde51fcdfbe250e661cbd114f8",
+  "0487_workspace_project_equipment.sql":
+    "d959324092f0cf1c79d9ff12e7614faac99f153e7bfe7fd73f17e066bcd2958e",
+} as const;
 
 const occupiedMigrationBasenames = [
   "0472_leadgrid_project_soft_references.sql",
   "0473_leadgrid_discovery_platform.sql",
-  "0474_contract_signature_delivery.sql",
-  ...migrationBasenames,
-  "0485_leadgrid_add_lead_profile_fields.sql",
+  ...Object.keys(appliedMigrationChecksums),
+  "0488_storyboard_schema_owner_boundary.sql",
+  "0489_storyboard_project_identity_search_path.sql",
 ] as const;
 
-const migrations = Object.fromEntries(
-  migrationBasenames.map((basename) => [
-    basename,
-    readFileSync(new URL(`../migrations/${basename}`, import.meta.url), "utf8"),
-  ]),
-) as Record<(typeof migrationBasenames)[number], string>;
+const readMigration = (basename: string): string =>
+  readFileSync(new URL(`../migrations/${basename}`, import.meta.url), "utf8");
 
 const compactSQL = (value: string): string => value.replace(/\s+/g, " ").trim();
 
-const contractDeliveryBytes = readFileSync(
-  new URL(
-    "../migrations/0474_contract_signature_delivery.sql",
-    import.meta.url,
-  ),
+const roleBoundary = compactSQL(
+  readMigration("0488_storyboard_schema_owner_boundary.sql"),
 );
-const roleBoundary = compactSQL(migrations[migrationBasenames[0]]);
-const versions = compactSQL(migrations[migrationBasenames[1]]);
-const operations = compactSQL(migrations[migrationBasenames[2]]);
-const videoLifecycle = compactSQL(migrations[migrationBasenames[3]]);
-const legacyBilling = compactSQL(migrations[migrationBasenames[4]]);
-const imageBilling = compactSQL(migrations[migrationBasenames[5]]);
-const mentionIdentity = compactSQL(migrations[migrationBasenames[6]]);
-const projectVideoUpload = compactSQL(migrations[migrationBasenames[7]]);
-const tenantParentIdentity = compactSQL(migrations[migrationBasenames[8]]);
-const tenantIdentity = compactSQL(migrations[migrationBasenames[9]]);
+const versions = compactSQL(
+  readMigration("0476_storyboard_ai_image_versions.sql"),
+);
+const operations = compactSQL(
+  readMigration("0477_storyboard_ai_image_idempotency.sql"),
+);
+const videoLifecycle = compactSQL(
+  readMigration("0478_storyboard_ai_video_provider_lifecycle.sql"),
+);
+const legacyBilling = compactSQL(
+  readMigration("0479_legacy_generative_ai_billing_due_index.sql"),
+);
+const imageBilling = compactSQL(
+  readMigration("0480_storyboard_ai_image_billing_outbox.sql"),
+);
+const mentionIdentity = compactSQL(
+  readMigration("0481_storyboard_mentions_identity_scope.sql"),
+);
+const projectVideoUpload = compactSQL(
+  readMigration("0482_project_video_direct_upload_registration.sql"),
+);
+const tenantParentIdentity = compactSQL(
+  readMigration("0483_storyboard_tenant_parent_identity.sql"),
+);
+const tenantIdentity = compactSQL(
+  readMigration("0484_storyboard_tenant_identity.sql"),
+);
+const tenantIdentityHardening = compactSQL(
+  readMigration("0489_storyboard_project_identity_search_path.sql"),
+);
 
 describe("Storyboard Room migration integrity", () => {
-  it("uses one unique, contiguous migration filename for 0472 through 0485", () => {
+  it("uses one unique, contiguous migration filename for 0472 through 0489", () => {
     const files = readdirSync(migrationDirectory)
-      .filter((filename) => /^(?:047[2-9]|048[0-5])_.*\.sql$/.test(filename))
+      .filter((filename) => /^(?:047[2-9]|048[0-9])_.*\.sql$/.test(filename))
       .sort();
 
     expect(files).toEqual([...occupiedMigrationBasenames]);
     expect(new Set(files.map((filename) => filename.slice(0, 4))).size).toBe(
-      14,
+      18,
     );
 
     const obsoleteBasenames = [
@@ -71,6 +102,7 @@ describe("Storyboard Room migration integrity", () => {
       "0456_storyboard_ai_video_provider_lifecycle.sql",
       "0457_legacy_generative_ai_billing_due_index.sql",
       "0458_storyboard_ai_image_billing_outbox.sql",
+      "0475_storyboard_schema_owner_boundary.sql",
     ];
     for (const basename of obsoleteBasenames) {
       expect(
@@ -79,22 +111,30 @@ describe("Storyboard Room migration integrity", () => {
     }
   });
 
-  it("pins the recovered applied contract migration byte for byte", () => {
-    expect(
-      createHash("sha256").update(contractDeliveryBytes).digest("hex"),
-    ).toBe("09e9513078b330d71a6cf5e740aef4357e8f37561a70326817207441f355f957");
+  it("pins every externally applied migration byte for byte", () => {
+    for (const [basename, expectedChecksum] of Object.entries(
+      appliedMigrationChecksums,
+    )) {
+      const bytes = readFileSync(
+        new URL(`../migrations/${basename}`, import.meta.url),
+      );
+      expect(createHash("sha256").update(bytes).digest("hex"), basename).toBe(
+        expectedChecksum,
+      );
+    }
   });
 
-  it("keeps every pending migration on the canonical schema-owner path", () => {
+  it("keeps forward migrations on the canonical schema-owner path", () => {
     expect(roleBoundary).toContain(
       "session_user <> 'creatorhub_migration_login'",
     );
     expect(roleBoundary).toContain("current_user <> 'creatorhub_schema_owner'");
-    expect(roleBoundary).not.toContain("GRANT ");
-    expect(Object.values(migrations).join("\n")).not.toContain(
-      "creatorhub_migrator",
+    expect(roleBoundary).toContain(
+      "REVOKE REFERENCES ON TABLE public.casting_storyboards FROM creatorhub_migrator",
     );
-    expect(Object.values(migrations).join("\n")).not.toMatch(
+    expect(roleBoundary).not.toContain("GRANT REFERENCES");
+    expect(tenantIdentityHardening).not.toContain("creatorhub_migrator");
+    expect(`${roleBoundary}\n${tenantIdentityHardening}`).not.toMatch(
       /^-- migration-role:/m,
     );
 
@@ -107,7 +147,6 @@ describe("Storyboard Room migration integrity", () => {
     expect(runner).not.toContain("psql ");
     expect(runner).not.toContain("drizzle-kit");
     expect(runner).not.toContain("_migrations_applied");
-    expect(tenantParentIdentity).toContain("canonical schema owner");
   });
 
   it("converges a runtime-created image-version table to named constraints", () => {
@@ -296,40 +335,28 @@ describe("Storyboard Room migration integrity", () => {
     );
   });
 
-  it("guards new durable image usage and video jobs without cascading history", () => {
+  it("keeps durable guards and hardens their function forward", () => {
     const lastTrigger = tenantIdentity.indexOf(
       "CREATE TRIGGER storyboard_ai_video_jobs_tenant_identity",
     );
     const durableAudit = tenantIdentity.indexOf(
       "DO $storyboard_durable_tenant_identity$",
     );
+
     expect(tenantIdentity).toContain(
-      "CREATE OR REPLACE FUNCTION public.enforce_storyboard_project_identity() RETURNS TRIGGER LANGUAGE plpgsql SET search_path TO pg_catalog, pg_temp",
+      "CREATE OR REPLACE FUNCTION enforce_storyboard_project_identity() RETURNS TRIGGER LANGUAGE plpgsql",
     );
-    expect(tenantIdentity).toContain(
-      "PERFORM 1 FROM public.casting_storyboards WHERE id = NEW.storyboard_id AND project_id = NEW.project_id FOR KEY SHARE",
-    );
-    expect(tenantIdentity).toContain("DETAIL = pg_catalog.format(");
     expect(tenantIdentity).not.toContain(
-      "PERFORM 1 FROM casting_storyboards WHERE id = NEW.storyboard_id",
+      "SET search_path TO pg_catalog, pg_temp",
+    );
+    expect(tenantIdentity).toContain(
+      "PERFORM 1 FROM casting_storyboards WHERE id = NEW.storyboard_id AND project_id = NEW.project_id FOR KEY SHARE",
     );
     expect(
       tenantIdentity.match(
-        /EXECUTE FUNCTION public\.enforce_storyboard_project_identity\(/g,
+        /EXECUTE FUNCTION enforce_storyboard_project_identity\(/g,
       ),
     ).toHaveLength(2);
-    expect(tenantIdentity).not.toMatch(
-      /EXECUTE FUNCTION enforce_storyboard_project_identity\(/,
-    );
-    expect(tenantIdentity).toContain(
-      "BEFORE INSERT OR UPDATE OF storyboard_id, project_id ON storyboard_ai_image_usage",
-    );
-    expect(tenantIdentity).toContain(
-      "BEFORE INSERT OR UPDATE OF storyboard_id, project_id ON storyboard_ai_video_jobs",
-    );
-    expect(tenantIdentity).not.toContain(
-      "ALTER TABLE storyboard_ai_video_jobs ADD CONSTRAINT",
-    );
     expect(lastTrigger).toBeGreaterThanOrEqual(0);
     expect(durableAudit).toBeGreaterThan(lastTrigger);
     expect(tenantIdentity).toContain(
@@ -340,6 +367,18 @@ describe("Storyboard Room migration integrity", () => {
     );
     expect(tenantIdentity).not.toContain("UPDATE storyboard_ai_image_usage AS");
     expect(tenantIdentity).not.toContain("UPDATE storyboard_ai_video_jobs AS");
+
+    expect(tenantIdentityHardening).toContain(
+      "CREATE OR REPLACE FUNCTION public.enforce_storyboard_project_identity() RETURNS TRIGGER LANGUAGE plpgsql SET search_path TO pg_catalog, pg_temp",
+    );
+    expect(tenantIdentityHardening).toContain(
+      "PERFORM 1 FROM public.casting_storyboards WHERE id = NEW.storyboard_id AND project_id = NEW.project_id FOR KEY SHARE",
+    );
+    expect(tenantIdentityHardening).toContain("DETAIL = pg_catalog.format(");
+    expect(tenantIdentityHardening).not.toContain(
+      "PERFORM 1 FROM casting_storyboards WHERE id = NEW.storyboard_id",
+    );
+    expect(tenantIdentityHardening).not.toContain("CREATE TRIGGER");
   });
 
   it("keeps optional legacy indexing replay-safe and references renumbered files", () => {

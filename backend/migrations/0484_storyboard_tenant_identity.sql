@@ -1,3 +1,4 @@
+-- migration-role: creatorhub_migrator
 -- Enforce that every live Storyboard Room AI row belongs to the same project
 -- as its storyboard. Durable usage/video history deliberately survives a
 -- deleted storyboard, so those tables use write-time guards instead of
@@ -113,16 +114,15 @@ ALTER TABLE storyboard_ai_image_usage
 ALTER TABLE storyboard_ai_image_usage
   VALIDATE CONSTRAINT storyboard_ai_image_usage_operation_identity_fkey;
 
-CREATE OR REPLACE FUNCTION public.enforce_storyboard_project_identity()
+CREATE OR REPLACE FUNCTION enforce_storyboard_project_identity()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-SET search_path TO pg_catalog, pg_temp
 AS $$
 BEGIN
   -- Match PostgreSQL foreign-key concurrency semantics while retaining durable
   -- history when a storyboard is deleted later.
   PERFORM 1
-    FROM public.casting_storyboards
+    FROM casting_storyboards
    WHERE id = NEW.storyboard_id
      AND project_id = NEW.project_id
    FOR KEY SHARE;
@@ -131,7 +131,7 @@ BEGIN
     RAISE EXCEPTION USING
       ERRCODE = '23503',
       MESSAGE = 'storyboard and project identity do not match',
-      DETAIL = pg_catalog.format(
+      DETAIL = format(
         '%I requires an existing casting_storyboards(id, project_id) identity',
         TG_TABLE_NAME
       ),
@@ -147,7 +147,7 @@ DROP TRIGGER IF EXISTS storyboard_ai_image_usage_tenant_identity
 CREATE TRIGGER storyboard_ai_image_usage_tenant_identity
 BEFORE INSERT OR UPDATE OF storyboard_id, project_id
 ON storyboard_ai_image_usage
-FOR EACH ROW EXECUTE FUNCTION public.enforce_storyboard_project_identity(
+FOR EACH ROW EXECUTE FUNCTION enforce_storyboard_project_identity(
   'storyboard_ai_image_usage_storyboard_project_guard'
 );
 
@@ -156,7 +156,7 @@ DROP TRIGGER IF EXISTS storyboard_ai_video_jobs_tenant_identity
 CREATE TRIGGER storyboard_ai_video_jobs_tenant_identity
 BEFORE INSERT OR UPDATE OF storyboard_id, project_id
 ON storyboard_ai_video_jobs
-FOR EACH ROW EXECUTE FUNCTION public.enforce_storyboard_project_identity(
+FOR EACH ROW EXECUTE FUNCTION enforce_storyboard_project_identity(
   'storyboard_ai_video_jobs_storyboard_project_guard'
 );
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   mkdir,
   mkdtemp,
@@ -19,12 +20,15 @@ const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const SCRIPT_DIR = path.dirname(SCRIPT_PATH);
 const DEFAULT_MIGRATIONS_DIR = path.resolve(SCRIPT_DIR, "..", "migrations");
 const MIGRATION_FILENAME = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]*\.sql$/;
+const MIGRATION_CHECKSUM = /^[a-f0-9]{64}$/;
+const STRICT_MIGRATION_INTEGRITY_FLOOR = 474;
 const LEGACY_LEDGER_MANIFEST_FILENAME = "legacy-applied-migrations.json";
-const LEGACY_LEDGER_MANIFEST_FORMAT_VERSION = 1;
-const LEGACY_LEDGER_BASELINE_ID = "creatorhub-production-ledger-2026-08-31";
+const LEGACY_LEDGER_MANIFEST_FORMAT_VERSION = 2;
+const LEGACY_LEDGER_BASELINE_ID = "creatorhub-production-ledger-2026-08-31-v2";
 const LEGACY_LEDGER_MANIFEST_KEYS = Object.freeze([
   "baselineId",
   "formatVersion",
+  "legacyAppliedChecksums",
   "legacyAppliedFilenames",
 ]);
 const LEGACY_REPOSITORY_MIGRATION_FILENAMES = Object.freeze([
@@ -114,6 +118,30 @@ const ROLE_MEMBERSHIP_SQL = `
         ON granted_role.oid = membership.roleid
       WHERE member_role.rolname = $3::text
         AND granted_role.rolname = $2::text
+    ) AS owner_admin_grant_count,
+    (
+      SELECT COUNT(*)::integer
+      FROM pg_catalog.pg_auth_members AS membership
+      JOIN pg_catalog.pg_roles AS member_role
+        ON member_role.oid = membership.member
+      JOIN pg_catalog.pg_roles AS granted_role
+        ON granted_role.oid = membership.roleid
+      WHERE member_role.rolname = $3::text
+        AND granted_role.rolname = $2::text
+        AND membership.admin_option = TRUE
+        AND membership.inherit_option = FALSE
+        AND membership.set_option = FALSE
+    ) AS owner_admin_creator_grant_count,
+    (
+      SELECT COUNT(*)::integer
+      FROM pg_catalog.pg_auth_members AS membership
+      JOIN pg_catalog.pg_roles AS member_role
+        ON member_role.oid = membership.member
+      JOIN pg_catalog.pg_roles AS granted_role
+        ON granted_role.oid = membership.roleid
+      WHERE member_role.rolname = $3::text
+        AND granted_role.rolname = $2::text
+        AND membership.admin_option = FALSE
         AND membership.inherit_option = FALSE
         AND membership.set_option = TRUE
     ) AS owner_admin_member_count,
@@ -276,8 +304,8 @@ const MIGRATION_TRACKER_EXPECTED_COLUMNS = Object.freeze([
   }),
 ]);
 
-const MIGRATION_LEDGER_FILENAMES_SQL = `
-  SELECT filename
+const MIGRATION_LEDGER_ROWS_SQL = `
+  SELECT filename, checksum_sha256
   FROM public._migrations_applied
   ORDER BY filename
 `;
@@ -789,7 +817,9 @@ export async function runMigrationPreflight(
     );
   }
   if (
-    Number(membership.owner_direct_member_count) !== 3 ||
+    Number(membership.owner_direct_member_count) !== 4 ||
+    Number(membership.owner_admin_grant_count) !== 2 ||
+    Number(membership.owner_admin_creator_grant_count) !== 1 ||
     Number(membership.owner_admin_member_count) !== 1 ||
     Number(membership.owner_migration_member_count) !== 1 ||
     Number(membership.owner_runtime_member_count) !== 1
@@ -886,6 +916,58 @@ function assertUniqueMigrationFilenames(filenames, sourceLabel) {
   }
 }
 
+function numericMigrationVersion(filename) {
+  const match = /^(\d+)/.exec(filename);
+  if (!match) return null;
+  const version = Number.parseInt(match[1], 10);
+  return Number.isSafeInteger(version) ? version : null;
+}
+
+function assertStrictMigrationVersionsUnique(versionedMigrationFiles) {
+  const filesByVersion = new Map();
+  for (const filename of versionedMigrationFiles) {
+    const version = numericMigrationVersion(filename);
+    if (version === null || version < STRICT_MIGRATION_INTEGRITY_FLOOR) {
+      continue;
+    }
+    const siblings = filesByVersion.get(version) || [];
+    siblings.push(filename);
+    filesByVersion.set(version, siblings);
+  }
+
+  const collisions = [...filesByVersion.entries()].filter(
+    ([, filenames]) => filenames.length > 1,
+  );
+  if (collisions.length > 0) {
+    throw new Error(
+      "Repository migrations reuse protected numeric version(s) at or after " +
+        STRICT_MIGRATION_INTEGRITY_FLOOR +
+        ": " +
+        collisions
+          .map(
+            ([version, filenames]) =>
+              version + " => " + summarizeFilenames(filenames),
+          )
+          .join("; "),
+    );
+  }
+}
+
+function sha256MigrationBytes(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function requireSha256OrNull(value, sourceLabel) {
+  if (value === null) return null;
+  if (typeof value === "string" && MIGRATION_CHECKSUM.test(value)) {
+    return value;
+  }
+  throw new Error(
+    sourceLabel +
+      " must be NULL or exactly 64 lowercase hexadecimal characters",
+  );
+}
+
 export function validateLegacyLedgerManifest(
   manifest,
   sourceLabel = LEGACY_LEDGER_MANIFEST_FILENAME,
@@ -943,10 +1025,43 @@ export function validateLegacyLedgerManifest(
     );
   }
 
+  const rawChecksums = manifest.legacyAppliedChecksums;
+  if (
+    rawChecksums === null ||
+    typeof rawChecksums !== "object" ||
+    Array.isArray(rawChecksums) ||
+    Object.getPrototypeOf(rawChecksums) !== Object.prototype
+  ) {
+    throw new Error(
+      sourceLabel + " legacyAppliedChecksums must contain one JSON object",
+    );
+  }
+  const checksumFilenames = Object.keys(rawChecksums);
+  if (
+    checksumFilenames.length !== legacyAppliedFilenames.length ||
+    checksumFilenames.some(
+      (filename, index) => filename !== legacyAppliedFilenames[index],
+    )
+  ) {
+    throw new Error(
+      sourceLabel +
+        " legacyAppliedChecksums keys must exactly match " +
+        "legacyAppliedFilenames in version-sort order",
+    );
+  }
+  const legacyAppliedChecksums = {};
+  for (const filename of legacyAppliedFilenames) {
+    legacyAppliedChecksums[filename] = requireSha256OrNull(
+      rawChecksums[filename],
+      sourceLabel + " checksum for " + JSON.stringify(filename),
+    );
+  }
+
   return Object.freeze({
     formatVersion: manifest.formatVersion,
     baselineId: manifest.baselineId,
     legacyAppliedFilenames: Object.freeze([...legacyAppliedFilenames]),
+    legacyAppliedChecksums: Object.freeze(legacyAppliedChecksums),
   });
 }
 
@@ -1008,6 +1123,7 @@ async function loadMigrationInventory(migrationsDir) {
   const versionedMigrationFiles = migrationFiles.filter((filename) =>
     /^\d/.test(filename),
   );
+  assertStrictMigrationVersionsUnique(versionedMigrationFiles);
   const legacyRepositoryMigrationFiles = migrationFiles.filter(
     (filename) => !/^\d/.test(filename),
   );
@@ -1051,6 +1167,24 @@ async function loadMigrationInventory(migrationsDir) {
     );
   }
 
+  const repositoryChecksums = new Map();
+  for (const filename of migrationFiles) {
+    const migrationPath = path.join(migrationsDir, filename);
+    let bytes;
+    try {
+      bytes = await readFile(migrationPath);
+    } catch (error) {
+      throw new Error(
+        "Could not hash repository migration " +
+          JSON.stringify(filename) +
+          ": " +
+          safeErrorMessage(error),
+        { cause: error },
+      );
+    }
+    repositoryChecksums.set(filename, sha256MigrationBytes(bytes));
+  }
+
   return Object.freeze({
     migrationFiles: Object.freeze([...migrationFiles]),
     versionedMigrationFiles: Object.freeze([...versionedMigrationFiles]),
@@ -1058,7 +1192,11 @@ async function loadMigrationInventory(migrationsDir) {
       ...legacyRepositoryMigrationFiles,
     ]),
     repositoryFilenames,
+    repositoryChecksums,
     legacyAppliedFilenames: new Set(manifest.legacyAppliedFilenames),
+    legacyAppliedChecksums: new Map(
+      Object.entries(manifest.legacyAppliedChecksums),
+    ),
   });
 }
 function trackerDefaultMatches(defaultKind, expression) {
@@ -1173,16 +1311,32 @@ async function auditMigrationTracker(client, ownerRole) {
   return Object.freeze({ relationOid });
 }
 
+function normalizeLedgerChecksum(value, filename) {
+  return requireSha256OrNull(
+    value,
+    "public._migrations_applied checksum_sha256 for " +
+      JSON.stringify(filename),
+  );
+}
+
 function validateAppliedLedgerRows(rows, inventory) {
   if (!Array.isArray(rows)) {
     throw new Error("Migration ledger query did not return a row array");
   }
-  const appliedFilenames = rows.map((row) =>
-    requireSafeMigrationFilename(
+  const normalizedRows = rows.map((row) => {
+    const filename = requireSafeMigrationFilename(
       row && typeof row === "object" ? row.filename : undefined,
       "public._migrations_applied",
-    ),
-  );
+    );
+    return Object.freeze({
+      filename,
+      checksum: normalizeLedgerChecksum(
+        row && typeof row === "object" ? row.checksum_sha256 : undefined,
+        filename,
+      ),
+    });
+  });
+  const appliedFilenames = normalizedRows.map((row) => row.filename);
   assertUniqueMigrationFilenames(
     appliedFilenames,
     "public._migrations_applied",
@@ -1204,6 +1358,56 @@ function validateAppliedLedgerRows(rows, inventory) {
         "explicit legacy manifest entry.",
     );
   }
+
+  for (const row of normalizedRows) {
+    const expectedChecksum = inventory.repositoryChecksums.get(row.filename);
+    if (expectedChecksum) {
+      const version = numericMigrationVersion(row.filename);
+      if (
+        row.checksum === null &&
+        version !== null &&
+        version >= STRICT_MIGRATION_INTEGRITY_FLOOR
+      ) {
+        throw new Error(
+          "public._migrations_applied requires a checksum_sha256 for " +
+            JSON.stringify(row.filename) +
+            " at or after protected migration version " +
+            STRICT_MIGRATION_INTEGRITY_FLOOR,
+        );
+      }
+      if (row.checksum !== null && row.checksum !== expectedChecksum) {
+        throw new Error(
+          "public._migrations_applied checksum mismatch for " +
+            JSON.stringify(row.filename) +
+            ": expected " +
+            expectedChecksum +
+            ", received " +
+            row.checksum,
+        );
+      }
+      continue;
+    }
+    if (!inventory.legacyAppliedChecksums.has(row.filename)) {
+      throw new Error(
+        "Legacy migration manifest is missing a checksum contract for " +
+          JSON.stringify(row.filename),
+      );
+    }
+    const expectedLegacyChecksum = inventory.legacyAppliedChecksums.get(
+      row.filename,
+    );
+    if (row.checksum !== expectedLegacyChecksum) {
+      throw new Error(
+        "public._migrations_applied legacy checksum mismatch for " +
+          JSON.stringify(row.filename) +
+          ": expected " +
+          JSON.stringify(expectedLegacyChecksum) +
+          ", received " +
+          JSON.stringify(row.checksum),
+      );
+    }
+  }
+
   const applied = new Set(appliedFilenames);
   const missingLegacyFilenames = [...inventory.legacyAppliedFilenames].filter(
     (filename) => !applied.has(filename),
@@ -1256,7 +1460,7 @@ async function inspectMigrationLedger(client, migrationsDir, ownerRole) {
   const inventory = await loadMigrationInventory(migrationsDir);
   const tracker = await auditMigrationTracker(client, ownerRole);
   const appliedFilenames = validateAppliedLedgerRows(
-    (await client.query(MIGRATION_LEDGER_FILENAMES_SQL)).rows,
+    (await client.query(MIGRATION_LEDGER_ROWS_SQL)).rows,
     inventory,
   );
 
@@ -1275,9 +1479,9 @@ async function preloadPendingMigrations(migrationsDir, migrationState) {
   const preloadedMigrations = [];
   for (const filename of pendingFilenames) {
     const migrationPath = path.join(migrationsDir, filename);
-    let sql;
+    let bytes;
     try {
-      sql = await readFile(migrationPath, "utf8");
+      bytes = await readFile(migrationPath);
     } catch (error) {
       throw new Error(
         "Could not preload migration " +
@@ -1287,6 +1491,16 @@ async function preloadPendingMigrations(migrationsDir, migrationState) {
         { cause: error },
       );
     }
+    const checksum = sha256MigrationBytes(bytes);
+    const inventoriedChecksum =
+      migrationState.inventory.repositoryChecksums.get(filename);
+    if (checksum !== inventoriedChecksum) {
+      throw new Error(
+        "Repository migration changed while being preloaded: " +
+          JSON.stringify(filename),
+      );
+    }
+    const sql = bytes.toString("utf8");
     if (sql.includes("\0")) {
       throw new Error(
         "Migration " + filename + " contains an unsupported NUL byte",
@@ -1297,7 +1511,7 @@ async function preloadPendingMigrations(migrationsDir, migrationState) {
         "Migration " + filename + " contains unsupported psql meta-commands",
       );
     }
-    preloadedMigrations.push(Object.freeze({ filename, sql }));
+    preloadedMigrations.push(Object.freeze({ filename, sql, checksum }));
   }
   return Object.freeze(preloadedMigrations);
 }
@@ -1400,7 +1614,7 @@ export async function applyPendingMigrations(
   }
 
   const appliedNowFilenames = [];
-  for (const { filename, sql } of preloadedMigrations) {
+  for (const { filename, sql, checksum } of preloadedMigrations) {
     log("APPLY " + filename);
     try {
       await client.query(sql);
@@ -1410,8 +1624,9 @@ export async function applyPendingMigrations(
         "after migration " + filename,
       );
       const insertResult = await client.query(
-        "INSERT INTO public._migrations_applied (filename) VALUES ($1)",
-        [filename],
+        "INSERT INTO public._migrations_applied " +
+          "(filename, checksum_sha256) VALUES ($1, $2)",
+        [filename, checksum],
       );
       if (insertResult.rowCount !== 1) {
         throw new Error(
@@ -1648,9 +1863,13 @@ async function runPreflightSelfTest(testDir, manifestText) {
     path.join(gatedDir, "001_preflight_sentinel.sql"),
     "SELECT preflight_sentinel;",
   );
+  const parsedManifest = JSON.parse(manifestText);
   const legacyBaselineFilenames = Object.freeze([
-    ...JSON.parse(manifestText).legacyAppliedFilenames,
+    ...parsedManifest.legacyAppliedFilenames,
   ]);
+  const legacyBaselineChecksums = Object.freeze({
+    ...parsedManifest.legacyAppliedChecksums,
+  });
 
   function makeRole(name, canLogin, attributes = {}) {
     return {
@@ -1679,6 +1898,12 @@ async function runPreflightSelfTest(testDir, manifestText) {
         ...(overrides.appliedFilenames ?? []),
       ]),
     ];
+    const appliedChecksums = new Map(
+      Object.entries({
+        ...legacyBaselineChecksums,
+        ...(overrides.appliedChecksums ?? {}),
+      }),
+    );
     const defaultRoleRows = [
       makeRole(roleConfig.loginRole, true),
       makeRole(roleConfig.ownerRole, false),
@@ -1768,7 +1993,10 @@ async function runPreflightSelfTest(testDir, manifestText) {
                     overrides.exactOwnerMembershipCount ?? 1,
                   owner_membership_count: overrides.ownerMembershipCount ?? 0,
                   owner_direct_member_count:
-                    overrides.ownerDirectMemberCount ?? 3,
+                    overrides.ownerDirectMemberCount ?? 4,
+                  owner_admin_grant_count: overrides.ownerAdminGrantCount ?? 2,
+                  owner_admin_creator_grant_count:
+                    overrides.ownerAdminCreatorGrantCount ?? 1,
                   owner_admin_member_count:
                     overrides.ownerAdminMemberCount ?? 1,
                   owner_migration_member_count:
@@ -1841,9 +2069,12 @@ async function runPreflightSelfTest(testDir, manifestText) {
               ],
             };
           }
-          if (sql === MIGRATION_LEDGER_FILENAMES_SQL) {
+          if (sql === MIGRATION_LEDGER_ROWS_SQL) {
             return {
-              rows: appliedFilenames.map((filename) => ({ filename })),
+              rows: appliedFilenames.map((filename) => ({
+                filename,
+                checksum_sha256: appliedChecksums.get(filename) ?? null,
+              })),
             };
           }
           if (sql === "SELECT preflight_sentinel;") {
@@ -1853,12 +2084,21 @@ async function runPreflightSelfTest(testDir, manifestText) {
             }
             if (overrides.ledgerFilenameAfterMigration) {
               appliedFilenames.push(overrides.ledgerFilenameAfterMigration);
+              if (overrides.ledgerChecksumAfterMigration !== undefined) {
+                appliedChecksums.set(
+                  overrides.ledgerFilenameAfterMigration,
+                  overrides.ledgerChecksumAfterMigration,
+                );
+              }
             }
             if (overrides.deleteLedgerFilenameAfterMigration) {
               const index = appliedFilenames.indexOf(
                 overrides.deleteLedgerFilenameAfterMigration,
               );
               if (index >= 0) appliedFilenames.splice(index, 1);
+              appliedChecksums.delete(
+                overrides.deleteLedgerFilenameAfterMigration,
+              );
             }
             return { rows: [] };
           }
@@ -1869,6 +2109,7 @@ async function runPreflightSelfTest(testDir, manifestText) {
               overrides.insertRowCount ?? (alreadyExists ? 0 : 1);
             if (rowCount === 1 && !alreadyExists) {
               appliedFilenames.push(filename);
+              appliedChecksums.set(filename, String(values?.[1]));
             }
             return { rows: [], rowCount };
           }
@@ -1945,7 +2186,7 @@ async function runPreflightSelfTest(testDir, manifestText) {
   const trackerIndex = passingSql.indexOf(MIGRATION_TRACKER_RELATION_SQL);
   const trackerColumnsIndex = passingSql.indexOf(MIGRATION_TRACKER_COLUMNS_SQL);
   const trackerIndexesIndex = passingSql.indexOf(MIGRATION_TRACKER_INDEXES_SQL);
-  const ledgerIndex = passingSql.indexOf(MIGRATION_LEDGER_FILENAMES_SQL);
+  const ledgerIndex = passingSql.indexOf(MIGRATION_LEDGER_ROWS_SQL);
   assert.ok(setRoleIndex >= 0);
   assert.ok(searchPathIndex > setRoleIndex);
   assert.ok(ownershipIndex > searchPathIndex);
@@ -1959,6 +2200,13 @@ async function runPreflightSelfTest(testDir, manifestText) {
     false,
     "production runner must never create an implicit tracker",
   );
+  const passingInsert = passingFixture.calls.find((call) =>
+    call.text.startsWith("INSERT INTO public._migrations_applied"),
+  );
+  assert.deepEqual(passingInsert?.values, [
+    "001_preflight_sentinel.sql",
+    sha256MigrationBytes("SELECT preflight_sentinel;"),
+  ]);
   assertCleanupOrder(passingFixture.calls);
 
   const postAuditFixture = createPreflightClient({
@@ -2131,6 +2379,71 @@ async function runPreflightSelfTest(testDir, manifestText) {
   assertNoMigrationMutation(prefixGapFixture.calls);
   assertCleanupOrder(prefixGapFixture.calls);
 
+  const checksumDir = path.join(testDir, "checksum-floor");
+  await mkdir(checksumDir);
+  await writeSelfTestMigrationBaseline(checksumDir, manifestText);
+  const checksumFilename = "0474_checksum_floor.sql";
+  const checksumSql = "SELECT 474;";
+  const checksum = sha256MigrationBytes(checksumSql);
+  await writeFile(path.join(checksumDir, checksumFilename), checksumSql);
+
+  const matchingChecksumFixture = createPreflightClient({
+    appliedFilenames: [checksumFilename],
+    appliedChecksums: { [checksumFilename]: checksum },
+  });
+  const matchingChecksumResult = await runWithAdvisoryLock(
+    matchingChecksumFixture.client,
+    {
+      migrationsDir: checksumDir,
+      log: () => undefined,
+      roleConfig,
+      preflightOnly: true,
+    },
+  );
+  assert.equal(matchingChecksumResult.preflightOnly, true);
+  assertNoMigrationMutation(matchingChecksumFixture.calls);
+  assertCleanupOrder(matchingChecksumFixture.calls);
+
+  for (const [appliedChecksum, expectedError] of [
+    [undefined, /requires a checksum_sha256.*0474_checksum_floor\.sql/],
+    ["0".repeat(64), /checksum mismatch.*0474_checksum_floor\.sql/],
+    ["NOT-A-SHA256", /must be NULL or exactly 64 lowercase hexadecimal/],
+  ]) {
+    const checksumFixture = createPreflightClient({
+      appliedFilenames: [checksumFilename],
+      appliedChecksums:
+        appliedChecksum === undefined
+          ? {}
+          : { [checksumFilename]: appliedChecksum },
+    });
+    await assert.rejects(
+      runWithAdvisoryLock(checksumFixture.client, {
+        migrationsDir: checksumDir,
+        log: () => undefined,
+        roleConfig,
+        preflightOnly: true,
+      }),
+      expectedError,
+    );
+    assertNoMigrationMutation(checksumFixture.calls);
+    assertCleanupOrder(checksumFixture.calls);
+  }
+
+  const legacyChecksumMismatchFixture = createPreflightClient({
+    appliedChecksums: { [legacyBaselineFilenames[0]]: "0".repeat(64) },
+  });
+  await assert.rejects(
+    runWithAdvisoryLock(legacyChecksumMismatchFixture.client, {
+      migrationsDir: gatedDir,
+      log: () => undefined,
+      roleConfig,
+      preflightOnly: true,
+    }),
+    /legacy checksum mismatch.*0000b_missing_columns\.sql/,
+  );
+  assertNoMigrationMutation(legacyChecksumMismatchFixture.calls);
+  assertCleanupOrder(legacyChecksumMismatchFixture.calls);
+
   for (const mode of [{ preflightOnly: true }, { expectZero: true }, {}]) {
     const unknownLedgerFixture = createPreflightClient({
       appliedFilenames: ["0999_unreviewed_side_branch.sql"],
@@ -2166,7 +2479,7 @@ async function runPreflightSelfTest(testDir, manifestText) {
     );
     assert.equal(
       trackerShapeFixture.calls.some(
-        (call) => call.text === MIGRATION_LEDGER_FILENAMES_SQL,
+        (call) => call.text === MIGRATION_LEDGER_ROWS_SQL,
       ),
       false,
       "tracker shape and owner must be trusted before ledger rows are read",
@@ -2423,7 +2736,15 @@ async function runPreflightSelfTest(testDir, manifestText) {
     ],
     [{ ownerMembershipCount: 1 }, /must not be a member of another role/],
     [
-      { ownerDirectMemberCount: 4 },
+      { ownerDirectMemberCount: 5 },
+      /unexpected direct members or membership options/,
+    ],
+    [
+      { ownerAdminGrantCount: 1 },
+      /unexpected direct members or membership options/,
+    ],
+    [
+      { ownerAdminCreatorGrantCount: 0 },
       /unexpected direct members or membership options/,
     ],
     [
@@ -2584,8 +2905,6 @@ async function runSelfTest() {
     "0465_leadgrid_canvas_integrity.sql",
     "0470_role_room_linkedin_publish_queue.sql",
     "0471_project_pricing_and_time_tracking.sql",
-    "0472_workspace_project_bookings.sql",
-    "0473_workspace_project_equipment.sql",
   ];
   const productionManifest = await loadLegacyLedgerManifest(
     DEFAULT_MIGRATIONS_DIR,
@@ -2593,12 +2912,12 @@ async function runSelfTest() {
   assert.deepEqual(
     [...productionManifest.legacyAppliedFilenames],
     expectedLegacyAppliedFilenames,
-    "the versioned production baseline must contain exactly the 24 reviewed ledger-only tombstones",
+    "the versioned production baseline must contain exactly the 22 checksum-pinned ledger-only tombstones",
   );
   const productionInventory = await loadMigrationInventory(
     DEFAULT_MIGRATIONS_DIR,
   );
-  assert.equal(productionInventory.legacyAppliedFilenames.size, 24);
+  assert.equal(productionInventory.legacyAppliedFilenames.size, 22);
   assert.deepEqual(
     productionInventory.legacyRepositoryMigrationFiles,
     LEGACY_REPOSITORY_MIGRATION_FILENAMES,
@@ -2613,6 +2932,7 @@ async function runSelfTest() {
     formatVersion: LEGACY_LEDGER_MANIFEST_FORMAT_VERSION,
     baselineId: LEGACY_LEDGER_BASELINE_ID,
     legacyAppliedFilenames: [...expectedLegacyAppliedFilenames],
+    legacyAppliedChecksums: { ...productionManifest.legacyAppliedChecksums },
   };
   assert.throws(
     () => validateLegacyLedgerManifest({ ...validManifest, extra: true }),
@@ -2622,9 +2942,9 @@ async function runSelfTest() {
     () =>
       validateLegacyLedgerManifest({
         ...validManifest,
-        formatVersion: 2,
+        formatVersion: 3,
       }),
-    /formatVersion must be 1/,
+    /formatVersion must be 2/,
   );
   assert.throws(
     () =>
@@ -2664,6 +2984,35 @@ async function runSelfTest() {
       }),
     /version-sort order/,
   );
+  const incompleteLegacyChecksums = {
+    ...validManifest.legacyAppliedChecksums,
+  };
+  delete incompleteLegacyChecksums[expectedLegacyAppliedFilenames[0]];
+  assert.throws(
+    () =>
+      validateLegacyLedgerManifest({
+        ...validManifest,
+        legacyAppliedChecksums: incompleteLegacyChecksums,
+      }),
+    /keys must exactly match legacyAppliedFilenames/,
+  );
+  assert.throws(
+    () =>
+      validateLegacyLedgerManifest({
+        ...validManifest,
+        legacyAppliedChecksums: {
+          ...validManifest.legacyAppliedChecksums,
+          [expectedLegacyAppliedFilenames[0]]: "NOT-A-SHA256",
+        },
+      }),
+    /checksum.*must be NULL or exactly 64 lowercase hexadecimal/,
+  );
+  assert.equal(
+    productionManifest.legacyAppliedChecksums[
+      "0464_users_auth_session_version.sql"
+    ],
+    null,
+  );
   assert.throws(
     () => versionSortMigrationFiles(["unsafe..migration.sql"]),
     /Unsafe migration filename/,
@@ -2678,6 +3027,41 @@ async function runSelfTest() {
     await writeFile(path.join(testDir, "002_fail.sql"), "SELECT broken;");
     await writeFile(path.join(testDir, "003_never.sql"), "SELECT 3;");
 
+    const modernCollisionDir = path.join(testDir, "modern-collision");
+    await mkdir(modernCollisionDir);
+    await writeSelfTestMigrationBaseline(modernCollisionDir, manifestText);
+    await writeFile(
+      path.join(modernCollisionDir, "0474_first.sql"),
+      "SELECT 1;",
+    );
+    await writeFile(
+      path.join(modernCollisionDir, "0474_second.sql"),
+      "SELECT 2;",
+    );
+    await assert.rejects(
+      loadMigrationInventory(modernCollisionDir),
+      /reuse protected numeric version.*474.*0474_first\.sql.*0474_second\.sql/,
+    );
+
+    const historicalCollisionDir = path.join(testDir, "historical-collision");
+    await mkdir(historicalCollisionDir);
+    await writeSelfTestMigrationBaseline(historicalCollisionDir, manifestText);
+    await writeFile(
+      path.join(historicalCollisionDir, "0473_first.sql"),
+      "SELECT 1;",
+    );
+    await writeFile(
+      path.join(historicalCollisionDir, "0473_second.sql"),
+      "SELECT 2;",
+    );
+    const historicalCollisionInventory = await loadMigrationInventory(
+      historicalCollisionDir,
+    );
+    assert.equal(
+      historicalCollisionInventory.versionedMigrationFiles.length,
+      2,
+    );
+
     const standaloneRoleConfig = {
       loginRole: "creatorhub_migration_login",
       ownerRole: "creatorhub_schema_owner",
@@ -2687,6 +3071,9 @@ async function runSelfTest() {
       ...expectedLegacyAppliedFilenames,
       ...LEGACY_REPOSITORY_MIGRATION_FILENAMES,
     ];
+    const standaloneAppliedChecksums = new Map(
+      Object.entries(productionManifest.legacyAppliedChecksums),
+    );
     const executed = [];
     const fakeClient = {
       async query(text, values) {
@@ -2747,9 +3134,12 @@ async function runSelfTest() {
             ],
           };
         }
-        if (text === MIGRATION_LEDGER_FILENAMES_SQL) {
+        if (text === MIGRATION_LEDGER_ROWS_SQL) {
           return {
-            rows: standaloneAppliedFilenames.map((filename) => ({ filename })),
+            rows: standaloneAppliedFilenames.map((filename) => ({
+              filename,
+              checksum_sha256: standaloneAppliedChecksums.get(filename) ?? null,
+            })),
           };
         }
         if (text === SESSION_IDENTITY_SQL) {
@@ -2766,7 +3156,9 @@ async function runSelfTest() {
           return { rows: [{ search_path: MIGRATION_SEARCH_PATH }] };
         }
         if (String(text).startsWith("INSERT INTO public._migrations_applied")) {
-          standaloneAppliedFilenames.push(String(values?.[0]));
+          const filename = String(values?.[0]);
+          standaloneAppliedFilenames.push(filename);
+          standaloneAppliedChecksums.set(filename, String(values?.[1]));
           return { rows: [], rowCount: 1 };
         }
         if (text === "SELECT broken;") {

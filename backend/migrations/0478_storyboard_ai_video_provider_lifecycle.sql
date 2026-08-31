@@ -1,3 +1,4 @@
+-- migration-role: creatorhub_migrator
 -- Durable provider lifecycle for Storyboard Room video generation.
 --
 -- Higgsfield generation POSTs have no documented idempotency key. Exact
