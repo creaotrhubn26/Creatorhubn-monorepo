@@ -271,6 +271,7 @@ extension DiscoveryV2RunStatus: Codable {
 struct DiscoveryV2Run: Codable, Hashable, Sendable, Identifiable {
     var id: String
     var projectId: String?
+    var profileId: String?
     var status: DiscoveryV2RunStatus
     var briefSnapshot: DiscoveryV2Brief?
     var searchPlan: DiscoveryV2SearchPlan?
@@ -297,6 +298,7 @@ struct DiscoveryV2Run: Codable, Hashable, Sendable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id, status
         case projectId = "project_id"
+        case profileId = "profile_id"
         case briefSnapshot = "brief_snapshot"
         case searchPlan = "search_plan"
         case planHash = "plan_hash"
@@ -477,10 +479,12 @@ struct DiscoveryV2Profile: Codable, Hashable, Sendable, Identifiable {
     var isDefault: Bool
     var version: Int
     var brief: DiscoveryV2Brief
+    var placesDetailsEnabled: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id, name, version, brief
         case isDefault = "is_default"
+        case placesDetailsEnabled = "places_details_enabled"
     }
 }
 
@@ -489,11 +493,13 @@ struct DiscoveryV2ProfileWrite: Codable, Hashable, Sendable {
     var isDefault: Bool
     var expectedVersion: Int?
     var brief: DiscoveryV2Brief
+    var placesDetailsEnabled: Bool
 
     enum CodingKeys: String, CodingKey {
         case name, brief
         case isDefault = "is_default"
         case expectedVersion = "expected_version"
+        case placesDetailsEnabled = "places_details_enabled"
     }
 }
 

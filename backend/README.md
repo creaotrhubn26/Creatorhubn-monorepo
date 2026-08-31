@@ -137,10 +137,27 @@ WebSocket tickets, per-organization monthly capacity, a maximum of five active
 automatic profiles, and schedules no more frequent than once daily.
 
 Google Places is not part of v2 search, radius filtering, scoring, candidate
-persistence, or CRM promotion. A future adapter may be enabled only as a
-user-initiated, transient detail view. Its response must not be cached in the
-candidate/CRM model or shown as a score signal, and it must remain visually
-separate from Apple Map.
+persistence, or CRM promotion. The optional adapter is available only as a
+user-initiated, transient detail view:
+
+- the Discovery profile must explicitly set `places_details_enabled=true`;
+  existing and profile-less runs fail closed
+- the iOS client calls
+  `POST /api/leadgrid/projects/:projectId/discovery/runs/:runId/candidates/:candidateId/place-details`
+  only after the user opens Google Maps details for one candidate
+- the backend sends a bounded Text Search (New) request with a server-side
+  `GOOGLE_PLACES_API_KEY`; the client cannot provide a query, URL, field mask,
+  key, radius or result count
+- the response is capped at three matches, carries `Cache-Control: no-store`,
+  is not written to Discovery or CRM, and never contributes to a score
+- Google Maps and third-party attribution are rendered in a separate detail
+  sheet, never on Apple Map
+- set `LEADGRID_DISCOVERY_PLACES_DETAILS_ENABLED=false` as an immediate kill
+  switch without changing profile data
+
+Restrict the Google Cloud key to Places API (New). When the production host has
+stable outbound addresses, also apply server-IP restrictions. Never ship this
+key in the iOS app or configure it as a browser-referrer key.
 
 Discovery must be rolled out in two phases:
 

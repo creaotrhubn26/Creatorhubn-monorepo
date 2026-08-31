@@ -9,6 +9,7 @@ struct DiscoveryWorkspaceView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var rejectingCandidate: DiscoveryV2Candidate?
     @State private var rejectionReason: DiscoveryV2ReasonCode = .notRelevant
+    @State private var placeDetailsCandidate: DiscoveryV2Candidate?
 
     var body: some View {
         NavigationStack {
@@ -68,7 +69,17 @@ struct DiscoveryWorkspaceView: View {
                 })
             .presentationDetents([.medium])
         }
+        .sheet(item: $placeDetailsCandidate) { candidate in
+            DiscoveryPlaceDetailsSheet(
+                candidate: candidate,
+                load: {
+                    try await coordinator.fetchTransientPlaceDetails(
+                        candidateId: candidate.id)
+                })
+            .presentationDetents([.medium, .large])
+        }
     }
+
 
     private var navigationTitle: String {
         switch coordinator.phase {
@@ -180,6 +191,19 @@ struct DiscoveryWorkspaceView: View {
                 detail: "Foretaksinfo og dokumentert match",
                 value: enrichmentCountBinding,
                 range: 1...coordinator.brief.targetCount)
+            Divider().overlay(LeadgridDiscoveryTheme.stroke)
+            Toggle(isOn: placesDetailsBinding) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Google Maps-detaljer")
+                        .font(.subheadline.bold())
+                    Text("Kun ved trykk på en kandidat. Opplysningene lagres ikke og påvirker ikke score.")
+                        .font(.caption)
+                        .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                }
+            }
+            .tint(LeadgridDiscoveryTheme.accent)
+            .disabled(coordinator.isBusy)
+            .accessibilityIdentifier("discovery.profile.places-details")
         }
         .discoverySurface()
     }
@@ -339,6 +363,8 @@ struct DiscoveryWorkspaceView: View {
                             candidate: candidate,
                             selected: coordinator.selectedCandidateIds.contains(candidate.id),
                             busy: coordinator.busyCandidateIds.contains(candidate.id),
+                            canShowPlaceDetails: coordinator.placesDetailsEnabled,
+                            onShowPlaceDetails: { placeDetailsCandidate = candidate },
                             onToggleSelection: {
                                 if coordinator.selectedCandidateIds.contains(candidate.id) {
                                     coordinator.selectedCandidateIds.remove(candidate.id)
@@ -516,6 +542,14 @@ struct DiscoveryWorkspaceView: View {
             set: { coordinator.brief.enrichmentCount = min(coordinator.brief.targetCount, $0) })
     }
 
+    private var placesDetailsBinding: Binding<Bool> {
+        Binding(
+            get: { coordinator.placesDetailsEnabled },
+            set: { enabled in
+                Task { await coordinator.setPlacesDetailsEnabled(enabled) }
+            })
+    }
+
     private func optionalTextBinding(_ keyPath: WritableKeyPath<DiscoveryV2Brief, String?>) -> Binding<String> {
         Binding(
             get: { coordinator.brief[keyPath: keyPath] ?? "" },
@@ -527,6 +561,8 @@ struct DiscoveryCandidateRow: View {
     let candidate: DiscoveryV2Candidate
     let selected: Bool
     let busy: Bool
+    let canShowPlaceDetails: Bool
+    let onShowPlaceDetails: () -> Void
     let onToggleSelection: () -> Void
     let onApprove: () -> Void
     let onReject: () -> Void
@@ -561,18 +597,37 @@ struct DiscoveryCandidateRow: View {
                 Label("Ikke nok dokumentasjon til å beregne match", systemImage: "questionmark.circle")
                     .font(.caption).foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
             }
-            HStack {
-                Spacer()
-                Button("Avvis", role: .destructive, action: onReject).buttonStyle(.bordered)
-                Button("Godkjenn", action: onApprove)
-                    .buttonStyle(.borderedProminent)
-                    .tint(LeadgridDiscoveryTheme.success)
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    Spacer()
+                    candidateActions
+                }
+                VStack(alignment: .trailing, spacing: 8) {
+                    candidateActions
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .trailing)
             .disabled(busy)
         }
         .discoverySurface()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("discovery.candidate.\(candidate.id)")
+    }
+
+    @ViewBuilder
+    private var candidateActions: some View {
+        if canShowPlaceDetails {
+            Button(action: onShowPlaceDetails) {
+                Label("Google Maps", systemImage: "building.2.crop.circle")
+            }
+            .buttonStyle(.bordered)
+            .accessibilityHint("Henter midlertidige detaljer som ikke lagres")
+        }
+        Button("Avvis", role: .destructive, action: onReject)
+            .buttonStyle(.bordered)
+        Button("Godkjenn", action: onApprove)
+            .buttonStyle(.borderedProminent)
+            .tint(LeadgridDiscoveryTheme.success)
     }
 
 private var selectionButton: some View {

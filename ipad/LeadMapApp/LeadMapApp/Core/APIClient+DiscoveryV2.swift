@@ -142,6 +142,20 @@ extension APIClient {
         let envelope = try discoveryDecode(Envelope.self, from: data)
         return (envelope.items, envelope.nextCursor)
     }
+    func fetchDiscoveryPlaceDetails(
+        projectId: String,
+        runId: String,
+        candidateId: String
+    ) async throws -> DiscoveryV2PlaceDetailsResponse {
+        let data = try await executeRaw(
+            method: "POST",
+            path: discoveryBase(projectId)
+                + "/runs/\(runId)/candidates/\(candidateId)/place-details",
+            body: Data("{}".utf8),
+            headers: ["Cache-Control": "no-store"])
+        return try discoveryDecode(DiscoveryV2PlaceDetailsResponse.self, from: data)
+    }
+
 
     func decideDiscoveryCandidate(
         projectId: String,
