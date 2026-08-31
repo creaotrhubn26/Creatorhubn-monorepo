@@ -11,6 +11,7 @@
 
 import type { Pool } from "pg";
 import Anthropic from "@anthropic-ai/sdk";
+import type { LeadCreationBody } from "./lead-map-create-contract.js";
 import {
   userHasTerritory,
   isPointInUserGrid,
@@ -92,6 +93,11 @@ export interface MapLead {
   phone: string | null;
   email: string | null;
   websiteUrl: string | null;
+  organizationNumber: string | null;
+  contactName: string | null;
+  contactRole: string | null;
+  employeeCountEstimate: number | null;
+  annualRevenueNokEstimate: number | null;
   instagramUrl: string | null;
   linkedinUrl: string | null;
   googleRating: number | null;
@@ -103,6 +109,8 @@ export interface MapLead {
   lastVisitAt: string | null;
   nextFollowUpAt: string | null;
   nextAction: string | null;
+  leadTemperature: string | null;
+  pipelineStage: string | null;
   tags: string[] | null;
   notes: string | null;
   createdAt: string;
@@ -163,6 +171,15 @@ function rowToLead(row: any): MapLead {
     phone: row.phone,
     email: row.email,
     websiteUrl: row.website_url,
+    organizationNumber: row.enrichment_org_nr ?? null,
+    contactName: row.contact_name ?? null,
+    contactRole: row.contact_role ?? null,
+    employeeCountEstimate: row.employee_count_estimate === null || row.employee_count_estimate === undefined
+      ? null
+      : Number(row.employee_count_estimate),
+    annualRevenueNokEstimate: row.annual_revenue_nok_estimate === null || row.annual_revenue_nok_estimate === undefined
+      ? null
+      : Number(row.annual_revenue_nok_estimate),
     instagramUrl: row.instagram_url,
     linkedinUrl: row.linkedin_url,
     googleRating: row.google_rating ? Number(row.google_rating) : null,
@@ -177,6 +194,8 @@ function rowToLead(row: any): MapLead {
     lastVisitAt: row.last_visit_at?.toISOString() ?? null,
     nextFollowUpAt: row.next_follow_up_at?.toISOString() ?? null,
     nextAction: row.next_action,
+    leadTemperature: row.lead_temperature ?? null,
+    pipelineStage: row.pipeline_stage ?? null,
     tags: row.tags ?? null,
     notes: row.notes,
     createdAt: row.created_at.toISOString(),
@@ -231,9 +250,12 @@ export async function listLeadsInBounds(
   const r = await pool.query(
     `SELECT c.id, c.name, c.company, c.lead_category, c.lead_status, c.address, c.postal_code,
             c.city, c.country, c.latitude, c.longitude, c.phone, c.email, c.website_url,
+            c.enrichment_org_nr, c.contact_name, c.contact_role,
+            c.employee_count_estimate, c.annual_revenue_nok_estimate,
             c.instagram_url, c.linkedin_url, c.google_rating, c.google_place_id,
             c.ai_opportunity_score, c.estimated_value, c.lead_source, c.owner_user_id,
-            c.last_visit_at, c.next_follow_up_at, c.next_action, c.tags, c.notes,
+            c.last_visit_at, c.next_follow_up_at, c.next_action,
+            c.lead_temperature, c.pipeline_stage, c.tags, c.notes,
             c.created_at, c.updated_at,
             NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS assigned_user_name, u.email AS assigned_user_email,
             c.project_id,
@@ -258,9 +280,12 @@ export async function getLeadById(
   const r = await pool.query(
     `SELECT c.id, c.name, c.company, c.lead_category, c.lead_status, c.address, c.postal_code,
             c.city, c.country, c.latitude, c.longitude, c.phone, c.email, c.website_url,
+            c.enrichment_org_nr, c.contact_name, c.contact_role,
+            c.employee_count_estimate, c.annual_revenue_nok_estimate,
             c.instagram_url, c.linkedin_url, c.google_rating, c.google_place_id,
             c.ai_opportunity_score, c.estimated_value, c.lead_source, c.owner_user_id,
-            c.last_visit_at, c.next_follow_up_at, c.next_action, c.tags, c.notes,
+            c.last_visit_at, c.next_follow_up_at, c.next_action,
+            c.lead_temperature, c.pipeline_stage, c.tags, c.notes,
             c.created_at, c.updated_at,
             NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS assigned_user_name, u.email AS assigned_user_email,
             c.project_id,
@@ -272,6 +297,71 @@ export async function getLeadById(
     params,
   );
   return r.rowCount && r.rowCount > 0 ? rowToLead(r.rows[0]) : null;
+}
+
+export async function createLeadFromPin(
+  pool: Pool,
+  input: LeadCreationBody & {
+    ownerUserId: string;
+    organizationId: string;
+  },
+): Promise<string> {
+  const result = await pool.query<{ id: string }>(
+    `INSERT INTO crm_customers (
+       id, name, company, contact_name, contact_role,
+       phone, email, latitude, longitude, address, postal_code, city,
+       website_url, enrichment_org_nr, lead_category, industry_id,
+       employee_count_estimate, annual_revenue_nok_estimate, notes,
+       lead_temperature, lead_status, pipeline_stage,
+       next_follow_up_at, next_action, location_confidence,
+       lead_source, status, source,
+       owner_user_id, organization_id, assigned_user_id,
+       assigned_at, assigned_by_user_id, project_id,
+       created_at, updated_at
+     ) VALUES (
+       gen_random_uuid(), $1, $2, $3, $4,
+       $5, $6, $7, $8, $9, $10, $11,
+       $12, $13, $14, $15::uuid,
+       $16, $17, $18,
+       $19, $20, $21,
+       $22::timestamptz, $23, $24,
+       $25, 'lead', $25,
+       $26, $27::uuid, $26,
+       NOW(), $26, $28,
+       NOW(), NOW()
+     ) RETURNING id::text`,
+    [
+      input.name,
+      input.company,
+      input.contactName,
+      input.contactRole,
+      input.phone,
+      input.email,
+      input.latitude,
+      input.longitude,
+      input.address,
+      input.postalCode,
+      input.city,
+      input.websiteUrl,
+      input.organizationNumber,
+      input.industryLabel,
+      input.industryId,
+      input.employeeCountEstimate,
+      input.annualRevenueNokEstimate,
+      input.notes,
+      input.leadTemperature,
+      input.leadStatus,
+      input.pipelineStage,
+      input.nextFollowUpAt,
+      input.nextAction,
+      input.locationConfidence,
+      input.leadSource,
+      input.ownerUserId,
+      input.organizationId,
+      input.projectId,
+    ],
+  );
+  return result.rows[0].id;
 }
 
 /**

@@ -450,29 +450,17 @@ struct LeadsView: View {
             LogActivitySheet(lead: selectedLead)
         }
         .sheet(isPresented: $addLeadOpen) {
-            // Samme modal som "+ Legg til lead" i Kart-fanen.
-            // Gjenbrukt fra _AddLeadSheet.swift for konsistens.
+            // Samme transaksjonelle modal som Kart-fanen: sheetet lukkes
+            // først når backend har bekreftet opprettelsen.
             LeadsAddLeadSheet { newLead in
-                addLeadOpen = false
-                // 2026-08-16: kallet manglet helt — se KartView.swift for samme fiks.
-                guard let api = appState.api, !DemoModeManager.isActiveNonisolated else {
-                    addLeadToast = DemoModeManager.isActiveNonisolated ? "Demo-modus — ikke lagret" : "Ikke innlogget"
-                    return
+                guard !DemoModeManager.isActiveNonisolated else {
+                    throw AddLeadSaveError(message: "Demo-modus — leaden blir ikke lagret")
                 }
-                Task {
-                    do {
-                        _ = try await api.createLeadAtPin(
-                            name: newLead.companyName, company: newLead.companyName,
-                            phone: newLead.phone, email: newLead.email,
-                            industryId: nil, leadTemperature: nil,
-                            latitude: newLead.coord.latitude, longitude: newLead.coord.longitude,
-                            address: newLead.address
-                        )
-                        addLeadToast = "«\(newLead.companyName)» lagt til"
-                    } catch {
-                        addLeadToast = "Kunne ikke lagre lead — prøv igjen"
-                    }
+                guard let api = appState.api else {
+                    throw AddLeadSaveError(message: "Du må være innlogget for å lagre leaden")
                 }
+                _ = try await api.createLeadAtPin(newLead.makeCreateRequest())
+                addLeadToast = "«\(newLead.companyName)» lagt til"
             }
         }
         .overlay(alignment: .top) {
