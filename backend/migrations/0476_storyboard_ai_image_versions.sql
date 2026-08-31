@@ -1,5 +1,8 @@
 -- Immutable source and candidate versions for the native Storyboard Room
 -- Pencil -> AI Color -> AI Atmosphere -> Animation workflow.
+
+BEGIN;
+
 CREATE TABLE IF NOT EXISTS storyboard_ai_image_versions (
   id UUID PRIMARY KEY,
   project_id VARCHAR(255) NOT NULL,
@@ -48,3 +51,5 @@ CREATE INDEX IF NOT EXISTS storyboard_ai_image_versions_parent_idx
 CREATE UNIQUE INDEX IF NOT EXISTS storyboard_ai_image_versions_approved_idx
   ON storyboard_ai_image_versions (storyboard_id, stage)
   WHERE status = 'approved';
+
+COMMIT;

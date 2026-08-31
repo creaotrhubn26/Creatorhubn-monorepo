@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -7,20 +8,24 @@ const migrationDirectory = fileURLToPath(
 );
 
 const migrationBasenames = [
-  "0474_storyboard_ai_image_versions.sql",
-  "0475_storyboard_ai_image_idempotency.sql",
-  "0476_storyboard_ai_video_provider_lifecycle.sql",
-  "0477_legacy_generative_ai_billing_due_index.sql",
-  "0478_storyboard_ai_image_billing_outbox.sql",
-  "0479_storyboard_mentions_identity_scope.sql",
-  "0480_project_video_direct_upload_registration.sql",
-  "0481_storyboard_tenant_identity.sql",
+  "0475_storyboard_schema_owner_boundary.sql",
+  "0476_storyboard_ai_image_versions.sql",
+  "0477_storyboard_ai_image_idempotency.sql",
+  "0478_storyboard_ai_video_provider_lifecycle.sql",
+  "0479_legacy_generative_ai_billing_due_index.sql",
+  "0480_storyboard_ai_image_billing_outbox.sql",
+  "0481_storyboard_mentions_identity_scope.sql",
+  "0482_project_video_direct_upload_registration.sql",
+  "0483_storyboard_tenant_parent_identity.sql",
+  "0484_storyboard_tenant_identity.sql",
 ] as const;
 
 const occupiedMigrationBasenames = [
   "0472_leadgrid_project_soft_references.sql",
   "0473_leadgrid_discovery_platform.sql",
+  "0474_contract_signature_delivery.sql",
   ...migrationBasenames,
+  "0485_leadgrid_add_lead_profile_fields.sql",
 ] as const;
 
 const migrations = Object.fromEntries(
@@ -32,23 +37,33 @@ const migrations = Object.fromEntries(
 
 const compactSQL = (value: string): string => value.replace(/\s+/g, " ").trim();
 
-const versions = compactSQL(migrations[migrationBasenames[0]]);
-const operations = compactSQL(migrations[migrationBasenames[1]]);
-const videoLifecycle = compactSQL(migrations[migrationBasenames[2]]);
-const legacyBilling = compactSQL(migrations[migrationBasenames[3]]);
-const imageBilling = compactSQL(migrations[migrationBasenames[4]]);
-const mentionIdentity = compactSQL(migrations[migrationBasenames[5]]);
-const projectVideoUpload = compactSQL(migrations[migrationBasenames[6]]);
-const tenantIdentity = compactSQL(migrations[migrationBasenames[7]]);
+const contractDeliveryBytes = readFileSync(
+  new URL(
+    "../migrations/0474_contract_signature_delivery.sql",
+    import.meta.url,
+  ),
+);
+const roleBoundary = compactSQL(migrations[migrationBasenames[0]]);
+const versions = compactSQL(migrations[migrationBasenames[1]]);
+const operations = compactSQL(migrations[migrationBasenames[2]]);
+const videoLifecycle = compactSQL(migrations[migrationBasenames[3]]);
+const legacyBilling = compactSQL(migrations[migrationBasenames[4]]);
+const imageBilling = compactSQL(migrations[migrationBasenames[5]]);
+const mentionIdentity = compactSQL(migrations[migrationBasenames[6]]);
+const projectVideoUpload = compactSQL(migrations[migrationBasenames[7]]);
+const tenantParentIdentity = compactSQL(migrations[migrationBasenames[8]]);
+const tenantIdentity = compactSQL(migrations[migrationBasenames[9]]);
 
 describe("Storyboard Room migration integrity", () => {
-  it("uses one unique, contiguous migration filename for 0472 through 0481", () => {
+  it("uses one unique, contiguous migration filename for 0472 through 0485", () => {
     const files = readdirSync(migrationDirectory)
-      .filter((filename) => /^(?:047[2-9]|048[01])_.*\.sql$/.test(filename))
+      .filter((filename) => /^(?:047[2-9]|048[0-5])_.*\.sql$/.test(filename))
       .sort();
 
     expect(files).toEqual([...occupiedMigrationBasenames]);
-    expect(new Set(files.map((filename) => filename.slice(0, 4))).size).toBe(10);
+    expect(new Set(files.map((filename) => filename.slice(0, 4))).size).toBe(
+      14,
+    );
 
     const obsoleteBasenames = [
       "0454_storyboard_ai_image_versions.sql",
@@ -58,8 +73,41 @@ describe("Storyboard Room migration integrity", () => {
       "0458_storyboard_ai_image_billing_outbox.sql",
     ];
     for (const basename of obsoleteBasenames) {
-      expect(existsSync(new URL(`../migrations/${basename}`, import.meta.url))).toBe(false);
+      expect(
+        existsSync(new URL(`../migrations/${basename}`, import.meta.url)),
+      ).toBe(false);
     }
+  });
+
+  it("pins the recovered applied contract migration byte for byte", () => {
+    expect(
+      createHash("sha256").update(contractDeliveryBytes).digest("hex"),
+    ).toBe("09e9513078b330d71a6cf5e740aef4357e8f37561a70326817207441f355f957");
+  });
+
+  it("keeps every pending migration on the canonical schema-owner path", () => {
+    expect(roleBoundary).toContain(
+      "session_user <> 'creatorhub_migration_login'",
+    );
+    expect(roleBoundary).toContain("current_user <> 'creatorhub_schema_owner'");
+    expect(roleBoundary).not.toContain("GRANT ");
+    expect(Object.values(migrations).join("\n")).not.toContain(
+      "creatorhub_migrator",
+    );
+    expect(Object.values(migrations).join("\n")).not.toMatch(
+      /^-- migration-role:/m,
+    );
+
+    const runner = readFileSync(
+      new URL("../migrate.sh", import.meta.url),
+      "utf8",
+    );
+    expect(runner).toContain("exec node scripts/run-production-migrations.mjs");
+    expect(runner).not.toContain("CREATORHUB_MIGRATOR_DATABASE_URL");
+    expect(runner).not.toContain("psql ");
+    expect(runner).not.toContain("drizzle-kit");
+    expect(runner).not.toContain("_migrations_applied");
+    expect(tenantParentIdentity).toContain("canonical schema owner");
   });
 
   it("converges a runtime-created image-version table to named constraints", () => {
@@ -215,6 +263,9 @@ describe("Storyboard Room migration integrity", () => {
     );
 
     expect(tenantIdentity).toContain(
+      "FOREIGN KEY (storyboard_id, project_id) REFERENCES casting_storyboards (id, project_id) ON DELETE CASCADE NOT VALID",
+    );
+    expect(tenantParentIdentity).toContain(
       "CREATE UNIQUE INDEX IF NOT EXISTS casting_storyboards_id_project_uidx ON casting_storyboards (id, project_id)",
     );
     expect(tenantIdentity).toContain(
@@ -249,12 +300,26 @@ describe("Storyboard Room migration integrity", () => {
     const lastTrigger = tenantIdentity.indexOf(
       "CREATE TRIGGER storyboard_ai_video_jobs_tenant_identity",
     );
-    const durableAudit = tenantIdentity.indexOf("DO $storyboard_durable_tenant_identity$");
-    expect(tenantIdentity).toContain(
-      "CREATE OR REPLACE FUNCTION enforce_storyboard_project_identity() RETURNS TRIGGER",
+    const durableAudit = tenantIdentity.indexOf(
+      "DO $storyboard_durable_tenant_identity$",
     );
     expect(tenantIdentity).toContain(
-      "WHERE id = NEW.storyboard_id AND project_id = NEW.project_id FOR KEY SHARE",
+      "CREATE OR REPLACE FUNCTION public.enforce_storyboard_project_identity() RETURNS TRIGGER LANGUAGE plpgsql SET search_path TO pg_catalog, pg_temp",
+    );
+    expect(tenantIdentity).toContain(
+      "PERFORM 1 FROM public.casting_storyboards WHERE id = NEW.storyboard_id AND project_id = NEW.project_id FOR KEY SHARE",
+    );
+    expect(tenantIdentity).toContain("DETAIL = pg_catalog.format(");
+    expect(tenantIdentity).not.toContain(
+      "PERFORM 1 FROM casting_storyboards WHERE id = NEW.storyboard_id",
+    );
+    expect(
+      tenantIdentity.match(
+        /EXECUTE FUNCTION public\.enforce_storyboard_project_identity\(/g,
+      ),
+    ).toHaveLength(2);
+    expect(tenantIdentity).not.toMatch(
+      /EXECUTE FUNCTION enforce_storyboard_project_identity\(/,
     );
     expect(tenantIdentity).toContain(
       "BEFORE INSERT OR UPDATE OF storyboard_id, project_id ON storyboard_ai_image_usage",
@@ -286,7 +351,10 @@ describe("Storyboard Room migration integrity", () => {
     );
 
     const evidence = readFileSync(
-      new URL("../../docs/evidence/2026-08-higgsfield-generation-retry.yaml", import.meta.url),
+      new URL(
+        "../../docs/evidence/2026-08-higgsfield-generation-retry.yaml",
+        import.meta.url,
+      ),
       "utf8",
     );
     const reconciler = readFileSync(
@@ -298,9 +366,9 @@ describe("Storyboard Room migration integrity", () => {
       "utf8",
     );
 
-    expect(evidence).toContain("Migration 0474");
-    expect(reconciler).toContain("after migration 0474 has run");
-    expect(workspaceRoutes).toContain("Migration 0475 intentionally skips");
+    expect(evidence).toContain("Migration 0478");
+    expect(reconciler).toContain("after migration 0478 has run");
+    expect(workspaceRoutes).toContain("Migration 0479 intentionally skips");
     expect(`${evidence}\n${reconciler}\n${workspaceRoutes}`).not.toMatch(
       /(?:Migration|migration) 045[6-7]/,
     );

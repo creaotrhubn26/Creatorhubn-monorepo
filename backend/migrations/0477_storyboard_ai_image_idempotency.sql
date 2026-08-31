@@ -1,4 +1,7 @@
 -- Durable exactly-once guard for paid Storyboard Room image generations.
+
+BEGIN;
+
 CREATE TABLE IF NOT EXISTS storyboard_ai_image_operations (
   id UUID PRIMARY KEY,
   project_id VARCHAR(255) NOT NULL,
@@ -61,3 +64,5 @@ ALTER TABLE storyboard_ai_image_usage
 CREATE UNIQUE INDEX IF NOT EXISTS storyboard_ai_image_usage_operation_idx
   ON storyboard_ai_image_usage (operation_id)
   WHERE operation_id IS NOT NULL;
+
+COMMIT;
