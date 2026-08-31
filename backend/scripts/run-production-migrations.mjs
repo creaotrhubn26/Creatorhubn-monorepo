@@ -43,6 +43,11 @@ const EXPECTED_MIGRATION_OWNER_ROLE = "creatorhub_schema_owner";
 const EXPECTED_OWNER_ADMIN_MEMBER_ROLE = "neondb_owner";
 const EXPECTED_RUNTIME_LOGIN_ROLE = "creatorhub_runtime_login";
 const SCHEMA_IDENTIFIER = /^[a-z_][a-z0-9_]{0,62}$/;
+const ALLOWED_POSTGRES_TLS_MODES = new Set([
+  "require",
+  "verify-ca",
+  "verify-full",
+]);
 
 const SESSION_IDENTITY_SQL = `
   SELECT
@@ -396,6 +401,22 @@ export function requireDatabaseUrl(value = process.env.DATABASE_URL) {
   if (parsed.hostname.toLowerCase().includes("-pooler.")) {
     throw new Error(
       "DATABASE_URL must use a direct PostgreSQL endpoint, not a pooled endpoint",
+    );
+  }
+  const connectionParameterValues = (parameterName) =>
+    [...parsed.searchParams.entries()]
+      .filter(([name]) => name.toLowerCase() === parameterName)
+      .map(([, parameterValue]) => String(parameterValue).toLowerCase());
+  const sslModes = connectionParameterValues("sslmode");
+  if (sslModes.length !== 1 || !ALLOWED_POSTGRES_TLS_MODES.has(sslModes[0])) {
+    throw new Error(
+      "DATABASE_URL must set exactly one sslmode=require, verify-ca, or verify-full",
+    );
+  }
+  const channelBindings = connectionParameterValues("channel_binding");
+  if (channelBindings.length !== 1 || channelBindings[0] !== "require") {
+    throw new Error(
+      "DATABASE_URL must set exactly one channel_binding=require",
     );
   }
   return candidate;
@@ -2496,13 +2517,29 @@ async function runSelfTest() {
   assert.throws(
     () =>
       requireDatabaseUrl(
-        "postgresql://user:password@db-pooler.example.test/app",
+        "postgresql://user:password@db-pooler.example.test/app?sslmode=require&channel_binding=require",
       ),
     /direct PostgreSQL endpoint/,
   );
+  assert.throws(
+    () =>
+      requireDatabaseUrl(
+        "postgresql://user:password@db.example.test/app?sslmode=require",
+      ),
+    /exactly one channel_binding=require/,
+  );
+  assert.throws(
+    () =>
+      requireDatabaseUrl(
+        "postgresql://user:password@db.example.test/app?sslmode=disable&channel_binding=require",
+      ),
+    /exactly one sslmode/,
+  );
   assert.equal(
-    requireDatabaseUrl("postgresql://user:password@db.example.test/app"),
-    "postgresql://user:password@db.example.test/app",
+    requireDatabaseUrl(
+      "postgresql://user:password@db.example.test/app?sslmode=verify-full&channel_binding=require",
+    ),
+    "postgresql://user:password@db.example.test/app?sslmode=verify-full&channel_binding=require",
   );
   assert.deepEqual(parseCliOptions(["--expect-zero"]), {
     selfTest: false,
@@ -2798,6 +2835,7 @@ async function main() {
   const { Client } = await import("pg");
   const client = new Client({
     connectionString,
+    enableChannelBinding: true,
     application_name: "creatorhub-production-migrations",
     connectionTimeoutMillis: 15_000,
     keepAlive: true,

@@ -215,10 +215,15 @@ function postgresDatabaseTarget(value) {
   if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
     return null;
   }
-  const sslModes = parsed.searchParams
-    .getAll('sslmode')
-    .map((mode) => String(mode).toLowerCase());
+  const connectionParameterValues = (parameterName) =>
+    [...parsed.searchParams.entries()]
+      .filter(([name]) => name.toLowerCase() === parameterName)
+      .map(([, parameterValue]) => String(parameterValue).toLowerCase());
+  const sslModes = connectionParameterValues('sslmode');
   if (sslModes.length !== 1 || !ALLOWED_POSTGRES_TLS_MODES.has(sslModes[0]))
+    return null;
+  const channelBindings = connectionParameterValues('channel_binding');
+  if (channelBindings.length !== 1 || channelBindings[0] !== 'require')
     return null;
   const encodedDatabase = parsed.pathname.slice(1);
   if (!encodedDatabase || encodedDatabase.includes('/')) return null;
@@ -478,6 +483,10 @@ export async function deployAndVerify({
   deployTimeoutMs = DEFAULT_DEPLOY_TIMEOUT_MS,
   publicTimeoutMs = DEFAULT_PUBLIC_TIMEOUT_MS,
 }) {
+  // A long migration separates workflow preflight from this mutation.
+  // Re-read Render immediately before triggering the exact deploy.
+  await assertAutoDeployDisabled({ fetchImpl, apiKey, serviceId });
+
   const created = await renderRequest(
     fetchImpl,
     apiKey,
@@ -505,6 +514,9 @@ export async function deployAndVerify({
     pollIntervalMs,
     timeoutMs: publicTimeoutMs,
   });
+  // Fail the release gate if service configuration drifted during rollout.
+  // The exact public commit has already been verified at this point.
+  await assertAutoDeployDisabled({ fetchImpl, apiKey, serviceId });
 }
 
 async function runSelfTest() {
@@ -572,6 +584,7 @@ async function runSelfTest() {
   await assert.rejects(
     deployAndVerify({
       fetchImpl: async (_url, options = {}) => {
+        if (options.method !== 'POST') return responseFor({ autoDeploy: 'no' });
         if (options.method === 'POST') {
           ambiguousDeployPostCount += 1;
           throw new Error('ambiguous deploy transport failure');
@@ -592,6 +605,7 @@ async function runSelfTest() {
   await assert.rejects(
     deployAndVerify({
       fetchImpl: async (_url, options = {}) => {
+        if (options.method !== 'POST') return responseFor({ autoDeploy: 'no' });
         if (options.method === 'POST') {
           ambiguousDeployServerErrorCount += 1;
           return {
@@ -616,6 +630,7 @@ async function runSelfTest() {
   await assert.rejects(
     deployAndVerify({
       fetchImpl: async (url, options = {}) => {
+        if (options.method !== 'POST') return responseFor({ autoDeploy: 'no' });
         if (options.method === 'POST') return responseFor({});
         if (String(url).includes('/deploys?limit=')) {
           staleSameCommitLookupCalled = true;
@@ -642,12 +657,72 @@ async function runSelfTest() {
     /deploy identity/,
   );
   assert.equal(staleSameCommitLookupCalled, false);
+  const successfulCommit = 'b'.repeat(40);
+  const successfulServiceId = 'srv-' + 'b'.repeat(20);
+  let successfulServiceStateReads = 0;
+  await assert.doesNotReject(
+    deployAndVerify({
+      fetchImpl: async (url, options = {}) => {
+        const target = String(url);
+        if (
+          target === RENDER_API_BASE + '/services/' + successfulServiceId &&
+          options.method !== 'POST'
+        ) {
+          successfulServiceStateReads += 1;
+          return responseFor({ autoDeploy: 'no' });
+        }
+        if (target.endsWith('/deploys') && options.method === 'POST') {
+          return responseFor({ id: 'dep-new' });
+        }
+        if (target.endsWith('/deploys/dep-new')) {
+          return responseFor({
+            id: 'dep-new',
+            status: 'live',
+            commitId: successfulCommit,
+          });
+        }
+        if (target.startsWith('https://example.test/api/version')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ commit: successfulCommit }),
+          };
+        }
+        if (target === 'https://example.test/api/health') {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ status: 'ok' }),
+          };
+        }
+        if (
+          target === 'https://example.test/api/admin-room/migrations/run' &&
+          options.method === 'POST'
+        ) {
+          return { status: 404 };
+        }
+        throw new Error('unexpected successful Render self-test request');
+      },
+      apiKey: 'test-key',
+      serviceId: successfulServiceId,
+      backendUrl: 'https://example.test',
+      commit: successfulCommit,
+      pollIntervalMs: 0,
+      deployTimeoutMs: 100,
+      publicTimeoutMs: 100,
+    }),
+  );
+  assert.equal(
+    successfulServiceStateReads,
+    2,
+    'deploy must re-read auto-deploy state immediately before and after rollout',
+  );
   const runtimeDatabaseUrl =
     'postgresql://creatorhub_runtime_login:secret@' +
-    'ep-example-pooler.eu.neon.tech/neondb?sslmode=require';
+    'ep-example-pooler.eu.neon.tech/neondb?sslmode=require&channel_binding=require';
   const migrationDatabaseUrl =
     'postgresql://creatorhub_migration_login:secret@' +
-    'ep-example.eu.neon.tech/neondb?sslmode=require';
+    'ep-example.eu.neon.tech/neondb?sslmode=require&channel_binding=require';
   const roleEnvironment = new Map([
     ['DATABASE_URL', runtimeDatabaseUrl],
     ['DATABASE_LOGIN_ROLE', 'creatorhub_runtime_login'],
@@ -705,6 +780,12 @@ async function runSelfTest() {
     false,
   );
   assert.equal(
+    isLeastPrivilegeRuntimeDatabaseUrl(
+      runtimeDatabaseUrl.replace('&channel_binding=require', ''),
+    ),
+    false,
+  );
+  assert.equal(
     databaseTargetsMatch(runtimeDatabaseUrl, migrationDatabaseUrl),
     true,
   );
@@ -717,6 +798,7 @@ async function runSelfTest() {
   );
   for (const invalidMigrationDatabaseUrl of [
     migrationDatabaseUrl.replace('sslmode=require', 'sslmode=disable'),
+    migrationDatabaseUrl.replace('&channel_binding=require', ''),
     migrationDatabaseUrl.replace(
       'creatorhub_migration_login',
       'creatorhub_migrator',
