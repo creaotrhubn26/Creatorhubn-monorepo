@@ -1454,7 +1454,7 @@ struct NativeBoardView: View {
         })
     }
 
-    private var frameObservedBoardView: AnyView {
+    private var frameSelectionObservedBoardView: AnyView {
         AnyView(loadedBoardView
         .onChange(of: board.activeFrameIndex) { loadActiveFrameIntoCanvas() }
         .onChange(of: board.selectedSceneIndex) {
@@ -1463,39 +1463,46 @@ struct NativeBoardView: View {
         }
         .onChange(of: board.scenes.count) { loadActiveFrameIntoCanvas() }
         .onChange(of: canvasState.revision) { scheduleAutosync() }
-        .onChange(of: canvasState.shotFraming) {
-            guard canvasState.shotFraming != lastObservedShotFraming else { return }
-            // A persisted camera edit invalidates any transient evaluated
-            // presentation tick. Static editing immediately falls back to the
-            // same canonical t=0 pose until the next frozen snapshot is made.
-            canvasState.presentationFraming = nil
-            lastObservedShotFraming = canvasState.shotFraming
-            invalidateAnimationPreflightForCameraHistoryChange()
-            board.applyShotFramingLocally(canvasState.shotFraming)
-            updateAIRasterEditingMode()
-            refreshFramingDependentBackground()
-            if CameraMotionHistorySyncPolicy.requiresMotionRebind(
-                framingChanged: true,
-                currentTrack: canvasState.cameraMotionTrack,
-                authoritativeTrack: loadedFrameCameraMotionTrack,
-                readState: board.frame?.cameraMotionReadState
-                    ?? .upgradeRequired
-            ) {
-                scheduleCameraMotionAutosync()
-            }
-        }
-        .onChange(of: canvasState.cameraMotionTrack) {
-            guard canvasState.cameraMotionTrack != lastObservedCameraMotionTrack
-            else { return }
-            lastObservedCameraMotionTrack = canvasState.cameraMotionTrack
-            invalidateAnimationPreflightForCameraHistoryChange()
-            board.applyCameraMotionLocally(canvasState.cameraMotionTrack)
-            scheduleCameraMotionAutosync()
-        }
+        )
+    }
+
+    private var frameObservedBoardView: AnyView {
+        AnyView(frameSelectionObservedBoardView
+        .onChange(of: canvasState.shotFraming) { handleShotFramingChange() }
+        .onChange(of: canvasState.cameraMotionTrack) { handleCameraMotionTrackChange() }
         .onChange(of: board.frame?.durationRevision) {
             reconcileDurationCameraMotion()
         }
         )
+    }
+
+    private func handleShotFramingChange() {
+        guard canvasState.shotFraming != lastObservedShotFraming else { return }
+        // A persisted camera edit invalidates any transient evaluated
+        // presentation tick. Static editing immediately falls back to the
+        // same canonical t=0 pose until the next frozen snapshot is made.
+        canvasState.presentationFraming = nil
+        lastObservedShotFraming = canvasState.shotFraming
+        invalidateAnimationPreflightForCameraHistoryChange()
+        board.applyShotFramingLocally(canvasState.shotFraming)
+        updateAIRasterEditingMode()
+        refreshFramingDependentBackground()
+        if CameraMotionHistorySyncPolicy.requiresMotionRebind(
+            framingChanged: true,
+            currentTrack: canvasState.cameraMotionTrack,
+            authoritativeTrack: loadedFrameCameraMotionTrack,
+            readState: board.frame?.cameraMotionReadState ?? .upgradeRequired
+        ) {
+            scheduleCameraMotionAutosync()
+        }
+    }
+
+    private func handleCameraMotionTrackChange() {
+        guard canvasState.cameraMotionTrack != lastObservedCameraMotionTrack else { return }
+        lastObservedCameraMotionTrack = canvasState.cameraMotionTrack
+        invalidateAnimationPreflightForCameraHistoryChange()
+        board.applyCameraMotionLocally(canvasState.cameraMotionTrack)
+        scheduleCameraMotionAutosync()
     }
 
     private var backgroundObservedBoardView: AnyView {
@@ -10964,13 +10971,20 @@ enum BoardPDFExporter {
         var rows = ["Scene;Shot;Beskrivelse;Type;Lens;Bevegelse;Varighet (s);Beat;Status;Tags"]
         for scene in scenes {
             for frame in scene.frames {
-                let cells = [
+                let lensText: String = frame.lensMm.map { "\($0)mm" } ?? ""
+                let durationText: String = String(
+                    format: "%.1f",
+                    frame.effectiveShotDuration.seconds)
+                let rawCells: [String] = [
                     scene.heading, frame.shotNumber, frame.description,
-                    frame.shotType ?? "", frame.lensMm.map { "\($0)mm" } ?? "",
-                    frame.movement ?? "", String(format: "%.1f", frame.effectiveShotDuration.seconds),
+                    frame.shotType ?? "", lensText,
+                    frame.movement ?? "", durationText,
                     frame.beatTag ?? "", frame.frameStatus ?? "",
                     frame.tags.joined(separator: ", "),
-                ].map { $0.replacingOccurrences(of: ";", with: ",") }
+                ]
+                let cells = rawCells.map { cell -> String in
+                    cell.replacingOccurrences(of: ";", with: ",")
+                }
                 rows.append(cells.joined(separator: ";"))
             }
         }
