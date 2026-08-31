@@ -46,3 +46,27 @@ final class LeadDiscoveryRequestTests: XCTestCase {
         XCTAssertTrue(requiresIndustryQuery)
     }
 }
+
+final class AddLeadResponsiveLayoutTests: XCTestCase {
+
+    func testPhoneWidthUsesCompactSingleColumnForm() {
+        XCTAssertTrue(AddLeadResponsiveLayout.usesCompactForm(
+            containerWidth: 430,
+            isAccessibilityText: false
+        ))
+    }
+
+    func testRegularIPadWidthKeepsWideForm() {
+        XCTAssertFalse(AddLeadResponsiveLayout.usesCompactForm(
+            containerWidth: 768,
+            isAccessibilityText: false
+        ))
+    }
+
+    func testAccessibilityTextForcesReadableStackAtWideWidth() {
+        XCTAssertTrue(AddLeadResponsiveLayout.usesCompactForm(
+            containerWidth: 820,
+            isAccessibilityText: true
+        ))
+    }
+}
