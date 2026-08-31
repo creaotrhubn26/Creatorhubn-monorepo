@@ -3626,6 +3626,44 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch { /* best-effort — aldri la varsling velte skriveoperasjonen */ }
   }
 
+  // Alle skrivere som reserverer et versjonsnummer eller bytter prosjektets
+  // aktive review-versjon må dele denne låsen. Radlåser alene er ikke nok når
+  // to nye rader opprettes samtidig, siden ingen av dem finnes ved MAX()+1.
+  async function withProjectVideoVersionWrite<T>(
+    projectId: string,
+    write: (client: any) => Promise<T>,
+  ): Promise<T> {
+    const client = await pool.connect();
+    let transactionStarted = false;
+    let releaseError: Error | undefined;
+    try {
+      await client.query("BEGIN");
+      transactionStarted = true;
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        [`project-video-review:${projectId}`],
+      );
+      const result = await write(client);
+      await client.query("COMMIT");
+      transactionStarted = false;
+      return result;
+    } catch (error) {
+      releaseError = error instanceof Error ? error : new Error(String(error));
+      if (transactionStarted) {
+        await client.query("ROLLBACK").catch(() => undefined);
+      }
+      throw error;
+    } finally {
+      // node-postgres kaster en klient som har hatt en transaksjonsfeil ut av
+      // poolen når feilen sendes til release, i stedet for å gjenbruke den.
+      client.release(releaseError);
+    }
+  }
+
+  class VideoUploadStateChangedError extends Error {
+    constructor() { super("upload_state_changed"); }
+  }
+
   // Direkte klient→B2-opplasting. Serveren velger nøkkelen og registrerer en
   // prosjektbundet pending-rad FØR URL-en gis til klienten. Klienten kan derfor
   // aldri velge namespace eller få en vilkårlig bucket-key registrert.
@@ -3645,24 +3683,27 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       }
       const key = buildProjectVideoVersionB2Key(pid, fileName);
       if (!key) return res.status(400).json({ error: "invalid_project_id" });
-      const n = await pool.query(
-        `SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_video_versions WHERE project_id = $1`,
-        [pid],
-      );
-      const vn = Number(n.rows[0]?.n || 1);
       const uploadUrl = await presignRoleRoomB2Upload(key, contentType, 3600, sizeBytes);
       if (!uploadUrl) return res.status(503).json({ error: "b2_not_configured" });
       const id = crypto.randomUUID();
-      const label = String(req.body?.versionLabel || `V${vn}`).slice(0, 80);
-      await pool.query(
-        `INSERT INTO project_video_versions
-           (id, project_id, version_label, version_number, b2_key, content_type, size_bytes, upload_expires_at, status, uploaded_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,NOW() + INTERVAL '1 hour','upload_pending',$8)`,
-        [id, pid, label, vn, key, contentType, sizeBytes, uid],
-      );
+      const registration = await withProjectVideoVersionWrite(pid, async (client) => {
+        const n = await client.query(
+          `SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_video_versions WHERE project_id = $1`,
+          [pid],
+        );
+        const versionNumber = Number(n.rows[0]?.n || 1);
+        const label = String(req.body?.versionLabel || `V${versionNumber}`).slice(0, 80);
+        await client.query(
+          `INSERT INTO project_video_versions
+             (id, project_id, version_label, version_number, b2_key, content_type, size_bytes, upload_expires_at, status, uploaded_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,NOW() + INTERVAL '1 hour','upload_pending',$8)`,
+          [id, pid, label, versionNumber, key, contentType, sizeBytes, uid],
+        );
+        return { versionNumber };
+      });
       res.status(201).json({
         id,
-        versionNumber: vn,
+        versionNumber: registration.versionNumber,
         uploadUrl,
         expiresInSeconds: 3600,
         maxBytes: videoDirectUploadMaxBytes,
@@ -3715,25 +3756,62 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       if (!object.versionId) {
         return res.status(409).json({ error: "upload_version_unavailable" });
       }
-      await pool.query(
-        `UPDATE project_video_versions
-            SET status='superseded'
-          WHERE project_id=$1 AND status='under_review'`,
-        [pid],
-      ).catch(() => {});
-      const updated = await pool.query(
-        `UPDATE project_video_versions
-            SET status='under_review', upload_expires_at=NULL, storage_version_id=$3
-          WHERE id=$1 AND project_id=$2 AND status='upload_pending'
-          RETURNING id, version_number, status`,
-        [version.id, pid, object.versionId],
-      );
-      if (!updated.rows.length) return res.status(409).json({ error: "upload_state_changed" });
+      // HEAD skjer utenfor transaksjonen fordi B2-kallet kan ta tid. Selve
+      // state-overgangen deler prosjektlåsen med alle andre versjonsskrivere.
+      const transition = await withProjectVideoVersionWrite(pid, async (client) => {
+        const locked = await client.query(
+          `SELECT id, version_number, status
+             FROM project_video_versions
+            WHERE id=$1 AND project_id=$2
+            FOR UPDATE`,
+          [version.id, pid],
+        );
+        const lockedVersion = locked.rows[0];
+        if (!lockedVersion) {
+          return { kind: "not_found" as const };
+        }
+        if (lockedVersion.status !== "upload_pending") {
+          return { kind: "existing" as const, row: lockedVersion };
+        }
+        await client.query(
+          `UPDATE project_video_versions
+              SET status='superseded'
+            WHERE project_id=$1 AND status='under_review' AND id<>$2`,
+          [pid, version.id],
+        );
+        const updated = await client.query(
+          `UPDATE project_video_versions
+              SET status='under_review', upload_expires_at=NULL, storage_version_id=$3
+            WHERE id=$1 AND project_id=$2 AND status='upload_pending'
+            RETURNING id, version_number, status`,
+          [version.id, pid, object.versionId],
+        );
+        if (!updated.rows.length) {
+          throw new VideoUploadStateChangedError();
+        }
+        return { kind: "promoted" as const, row: updated.rows[0] };
+      }).catch((error) => {
+        if (error instanceof VideoUploadStateChangedError) return { kind: "state_changed" as const };
+        throw error;
+      });
+      if (transition.kind === "not_found") {
+        return res.status(404).json({ error: "version_not_found" });
+      }
+      if (transition.kind === "state_changed") {
+        return res.status(409).json({ error: "upload_state_changed" });
+      }
+      if (transition.kind === "existing") {
+        return res.json({
+          id: transition.row.id,
+          versionNumber: Number(transition.row.version_number),
+          status: transition.row.status,
+        });
+      }
       notifyVideoRoomUpdated(pid, uid, "version");
       res.json({
-        id: updated.rows[0].id,
-        versionNumber: Number(updated.rows[0].version_number),
-        status: updated.rows[0].status,
+        id: transition.row.id,
+        versionNumber: Number(transition.row.version_number),
+        status: transition.row.status,
       });
     } catch (e) {
       console.error("POST video confirm-upload", e);
@@ -3756,20 +3834,31 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         });
       }
       if (!b.fileUrl && !b.streamUid) return res.status(400).json({ error: "fileUrl_or_streamUid_required" });
-      const n = await pool.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_video_versions WHERE project_id = $1`, [pid]);
-      const vn = n.rows[0].n;
-      // Eldre versjoner går fra under_review → superseded.
-      await pool.query(`UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND status='under_review'`, [pid]).catch(() => {});
       const id = crypto.randomUUID();
-      await pool.query(
-        `INSERT INTO project_video_versions (id, project_id, version_label, version_number, file_url, b2_key, stream_uid, thumbnail_url, duration, chapters, status, uploaded_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'under_review',$11)`,
-        [id, pid, String(b.versionLabel || `V${vn}`).slice(0, 80), vn, b.fileUrl || null, null, b.streamUid || null,
-         b.thumbnailUrl || null, b.duration != null ? Number(b.duration) : null,
-         b.chapters ? JSON.stringify(b.chapters) : null, uid],
-      );
+      const created = await withProjectVideoVersionWrite(pid, async (client) => {
+        const n = await client.query(
+          `SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_video_versions WHERE project_id = $1`,
+          [pid],
+        );
+        const versionNumber = Number(n.rows[0]?.n || 1);
+        // Eldre versjoner går fra under_review → superseded i samme transaksjon
+        // som den nye review-versjonen opprettes.
+        await client.query(
+          `UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND status='under_review'`,
+          [pid],
+        );
+        await client.query(
+          `INSERT INTO project_video_versions (id, project_id, version_label, version_number, file_url, b2_key, stream_uid, thumbnail_url, duration, chapters, status, uploaded_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'under_review',$11)`,
+          [id, pid, String(b.versionLabel || `V${versionNumber}`).slice(0, 80), versionNumber,
+           b.fileUrl || null, null, b.streamUid || null, b.thumbnailUrl || null,
+           b.duration != null ? Number(b.duration) : null,
+           b.chapters ? JSON.stringify(b.chapters) : null, uid],
+        );
+        return { versionNumber };
+      });
       notifyVideoRoomUpdated(pid, uid, "version");
-      res.status(201).json({ id, versionNumber: vn });
+      res.status(201).json({ id, versionNumber: created.versionNumber });
     } catch (e) { console.error("POST video-versions", e); res.status(500).json({ error: "failed" }); }
   });
 
@@ -3793,18 +3882,27 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       if (!key) return res.status(400).json({ error: "invalid_project_id" });
       const stored = await archiveToRoleRoomB2(key, file.buffer, file.mimetype);
       if (!stored) return res.status(503).json({ error: "b2_not_configured" });
-      const n = await pool.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_video_versions WHERE project_id = $1`, [pid]);
-      const vn = n.rows[0].n;
-      await pool.query(`UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND status='under_review'`, [pid]).catch(() => {});
       const id = crypto.randomUUID();
-      const label = String(req.body?.versionLabel || `V${vn}`).slice(0, 80);
-      await pool.query(
-        `INSERT INTO project_video_versions (id, project_id, version_label, version_number, b2_key, storage_version_id, status, uploaded_by)
-         VALUES ($1,$2,$3,$4,$5,$6,'under_review',$7)`,
-        [id, pid, label, vn, key, stored.versionId || null, uid],
-      );
+      const created = await withProjectVideoVersionWrite(pid, async (client) => {
+        const n = await client.query(
+          `SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_video_versions WHERE project_id = $1`,
+          [pid],
+        );
+        const versionNumber = Number(n.rows[0]?.n || 1);
+        await client.query(
+          `UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND status='under_review'`,
+          [pid],
+        );
+        const label = String(req.body?.versionLabel || `V${versionNumber}`).slice(0, 80);
+        await client.query(
+          `INSERT INTO project_video_versions (id, project_id, version_label, version_number, b2_key, storage_version_id, status, uploaded_by)
+           VALUES ($1,$2,$3,$4,$5,$6,'under_review',$7)`,
+          [id, pid, label, versionNumber, key, stored.versionId || null, uid],
+        );
+        return { versionNumber };
+      });
       notifyVideoRoomUpdated(pid, uid, "version");
-      res.status(201).json({ id, versionNumber: vn });
+      res.status(201).json({ id, versionNumber: created.versionNumber });
     } catch (e) { console.error("POST video upload", e); res.status(500).json({ error: "failed" }); }
     },
   );

@@ -93,12 +93,17 @@ async function hydrateStoredUserFromToken(token: string): Promise<Record<string,
 // Mange eldre komponenter sendte `Authorization: Bearer ${user.id}` — en
 // bruker-ID er ikke et session-token, så backend resolvet dem til "guest".
 // Denne gir det faktiske lagrede tokenet (sync, til raw fetch-kall).
-export function getStoredAuthToken(): string {
+export interface AuthTokenStorage {
+  getItem(key: string): string | null;
+}
+
+export function getStoredAuthToken(storage?: AuthTokenStorage): string {
   try {
+    const tokenStorage = storage ?? localStorage;
     return (
-      localStorage.getItem('creatorhub_auth_token') ||
-      localStorage.getItem('role_room_auth_token') ||
-      localStorage.getItem('token') ||
+      tokenStorage.getItem('creatorhub_auth_token') ||
+      tokenStorage.getItem('role_room_auth_token') ||
+      tokenStorage.getItem('token') ||
       ''
     ).trim();
   } catch {
@@ -115,11 +120,7 @@ export async function getAuthHeader(): Promise<Record<string, string>> {
     // Uten denne fallback-en sender apiRequest fetch UTEN Bearer-token
     // når brukeren kom inn via Role Room-flowen → 401-flom på alle
     // /api/casting/projects + /api/settings-kall.
-    const token =
-      localStorage.getItem('creatorhub_auth_token') ||
-      localStorage.getItem('role_room_auth_token') ||
-      localStorage.getItem('token') ||
-      '';
+    const token = getStoredAuthToken();
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
