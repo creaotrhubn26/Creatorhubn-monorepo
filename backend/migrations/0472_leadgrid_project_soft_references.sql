@@ -9,10 +9,32 @@ BEGIN;
 SET LOCAL lock_timeout = '10s';
 SET LOCAL statement_timeout = '120s';
 
-ALTER TABLE IF EXISTS crm_customers
-  DROP CONSTRAINT IF EXISTS crm_customers_project_id_fkey;
+-- PostgreSQL checks table ownership before it checks IF EXISTS. The production
+-- migration role does not own every legacy table, so avoid ALTER TABLE when
+-- migration 284 never created the constraint (the common case when project_id
+-- already existed).
+DO $migration$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = to_regclass('crm_customers')
+      AND conname = 'crm_customers_project_id_fkey'
+  ) THEN
+    ALTER TABLE crm_customers
+      DROP CONSTRAINT IF EXISTS crm_customers_project_id_fkey;
+  END IF;
 
-ALTER TABLE IF EXISTS market_scan_competitors
-  DROP CONSTRAINT IF EXISTS market_scan_competitors_project_id_fkey;
+  IF EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = to_regclass('market_scan_competitors')
+      AND conname = 'market_scan_competitors_project_id_fkey'
+  ) THEN
+    ALTER TABLE market_scan_competitors
+      DROP CONSTRAINT IF EXISTS market_scan_competitors_project_id_fkey;
+  END IF;
+END;
+$migration$;
 
 COMMIT;
