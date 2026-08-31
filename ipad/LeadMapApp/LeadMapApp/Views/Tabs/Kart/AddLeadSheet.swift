@@ -4,15 +4,16 @@
 //
 // To inn-veier:
 //   1. AI auto-fyll — lim inn URL eller bedriftsnavn → Leadgrid scanner
-//      nettsiden + Brønnøysund + Google Places → fyller automatisk navn,
+//      nettsiden + Brønnøysund → fyller automatisk navn,
 //      adresse, kontakt, bransje, ansatt-antall, omsetning, kart-pin.
 //   2. Manuell — fyll selv (for når du har visittkort, telefon-tips etc.)
 //
-// Inkluderer status-velger (Hot/Varm/Ny/Kunde/Møte/Oppfølging), pin-
-// preview på mini-kart, og "Legg til på kartet"-CTA.
+// Temperatur og pipelinefase er separate begreper. Oppfølging har egen
+// dato og handling. Mini-kartet viser bare et utkast frem til lagring.
 
 import SwiftUI
 import MapKit
+import UIKit
 
 private enum AlBrand {
     static let bg = Color(red: 0.05, green: 0.04, blue: 0.10)
@@ -44,8 +45,175 @@ enum AddLeadResponsiveLayout {
     }
 }
 
+/// Holder kartets midlertidige lead-utkast adskilt fra lagrede CRM-pins.
+/// Kartet viser kun `visiblePinCoordinate` mens skjemaet faktisk er åpent;
+/// `end()` rydder både vanlig avbryt, swipe-dismiss og vellykket lagring.
+struct AddLeadDraftFlow {
+    struct Session {
+        let coordinate: CLLocationCoordinate2D?
+    }
+
+    private(set) var activeSession: Session?
+
+    var isPresented: Bool { activeSession != nil }
+    var visiblePinCoordinate: CLLocationCoordinate2D? { activeSession?.coordinate }
+
+    mutating func begin(at coordinate: CLLocationCoordinate2D? = nil) {
+        activeSession = Session(coordinate: coordinate)
+    }
+
+    mutating func end() {
+        activeSession = nil
+    }
+}
+
+struct AddLeadSaveError: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
+/// Ren, testbar normalisering før data sendes til API-et. Skjemaet viser
+/// konkrete feil i stedet for å miste eller gjette på strukturerte tall.
+enum AddLeadFieldParser {
+    static func organizationNumber(_ raw: String) throws -> String? {
+        var value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !value.isEmpty else { return nil }
+        if value.hasPrefix("no") { value.removeFirst(2) }
+        if value.hasSuffix("mva") { value.removeLast(3) }
+        value = value
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "\u{00a0}", with: "")
+            .replacingOccurrences(of: ".", with: "")
+        guard value.count == 9, value.allSatisfy(\.isNumber) else {
+            throw AddLeadSaveError(message: "Organisasjonsnummer må bestå av 9 siffer.")
+        }
+        return value
+    }
+
+    static func employeeCount(_ raw: String) throws -> Int? {
+        let value = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "\u{00a0}", with: "")
+        guard !value.isEmpty else { return nil }
+        guard value.allSatisfy(\.isNumber), let count = Int(value), count >= 0 else {
+            throw AddLeadSaveError(message: "Ansatte må være ett helt antall, for eksempel 25.")
+        }
+        return count
+    }
+
+    static func annualRevenueNok(_ raw: String) throws -> Double? {
+        var value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !value.isEmpty else { return nil }
+
+        let multiplier: Double
+        if value.contains("mrd") || value.contains("milliard") {
+            multiplier = 1_000_000_000
+        } else if value.contains("mill") || value.contains("million") {
+            multiplier = 1_000_000
+        } else if value.contains("tusen") || value.hasSuffix("k") {
+            multiplier = 1_000
+        } else {
+            multiplier = 1
+        }
+
+        for token in ["milliarder", "milliard", "millioner", "million", "mill.", "mill", "mrd.", "mrd", "tusen", "nok", "kr"] {
+            value = value.replacingOccurrences(of: token, with: "")
+        }
+        if multiplier == 1_000, value.hasSuffix("k") { value.removeLast() }
+        value = value
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "\u{00a0}", with: "")
+
+        if value.contains(",") {
+            value = value.replacingOccurrences(of: ".", with: "")
+            value = value.replacingOccurrences(of: ",", with: ".")
+        } else if value.filter({ $0 == "." }).count > 1 {
+            value = value.replacingOccurrences(of: ".", with: "")
+        } else if multiplier == 1,
+                  let dot = value.firstIndex(of: "."),
+                  value.distance(from: value.index(after: dot), to: value.endIndex) == 3 {
+            value.remove(at: dot)
+        }
+
+        guard value.filter({ $0 == "." }).count <= 1,
+              value.allSatisfy({ $0.isNumber || $0 == "." }),
+              let amount = Double(value), amount >= 0 else {
+            throw AddLeadSaveError(message: "Omsetning må være et beløp, for eksempel 10 000 000 eller 10 mill.")
+        }
+        return amount * multiplier
+    }
+}
+
+private extension LeadStatus {
+    static let creationStages: [LeadStatus] = [
+        .unvisited, .visited, .interested, .meetingBooked, .proposalSent, .won,
+    ]
+
+    var creationLabel: String {
+        switch self {
+        case .unvisited: return "Ny"
+        case .visited: return "Kontaktet"
+        case .interested: return "Interessert"
+        case .meetingBooked: return "Møte booket"
+        case .proposalSent: return "Tilbud sendt"
+        case .won: return "Vunnet"
+        default: return label
+        }
+    }
+
+    var creationIcon: String {
+        switch self {
+        case .unvisited: return "sparkles"
+        case .visited: return "phone.fill"
+        case .interested: return "hand.thumbsup.fill"
+        case .meetingBooked: return "calendar.badge.checkmark"
+        case .proposalSent: return "paperplane.fill"
+        case .won: return "trophy.fill"
+        default: return "circle.fill"
+        }
+    }
+
+    var creationColor: Color {
+        switch self {
+        case .unvisited: return AlBrand.blue
+        case .visited: return AlBrand.purpleLight
+        case .interested: return AlBrand.green
+        case .meetingBooked: return AlBrand.yellow
+        case .proposalSent: return AlBrand.orange
+        case .won: return AlBrand.green
+        default: return AlBrand.textSecondary
+        }
+    }
+}
+
+struct AddLeadSubmissionState: Equatable {
+    enum Phase: Equatable {
+        case idle
+        case saving
+        case failed(String)
+        case saved
+    }
+
+    private(set) var phase: Phase = .idle
+
+    var isSaving: Bool { phase == .saving }
+    var didSave: Bool { phase == .saved }
+    var errorMessage: String? {
+        guard case .failed(let message) = phase else { return nil }
+        return message
+    }
+
+    mutating func begin() { phase = .saving }
+    mutating func fail(_ message: String) { phase = .failed(message) }
+    mutating func succeed() { phase = .saved }
+}
+
+@MainActor
 struct AddLeadSheet: View {
-    let onSave: (NewLeadData) -> Void
+    let initialCoordinate: CLLocationCoordinate2D?
+    let onCancel: @MainActor () -> Void
+    let onSave: @MainActor (NewLeadData) async throws -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -72,7 +240,7 @@ struct AddLeadSheet: View {
     @State private var orgNumber: String = ""
     @State private var address: String = ""
     @State private var postalCode: String = ""
-    @State private var city: String = "Oslo"
+    @State private var city: String = ""
     @State private var website: String = ""
     @State private var phone: String = ""
     @State private var email: String = ""
@@ -85,24 +253,86 @@ struct AddLeadSheet: View {
     @State private var contactName: String = ""
     @State private var contactRole: String = ""
 
-    @State private var status: MapLeadMock.PinStatus = .new
+    @State private var temperature: LeadTemperature = .warm
+    @State private var leadStatus: LeadStatus = .unvisited
+    @State private var includeFollowUp = false
+    @State private var nextFollowUpAt = Date().addingTimeInterval(24 * 60 * 60)
+    @State private var nextAction: String = ""
     // Selv-tildeling er default — «Lars Kristensen» var hardkodet mock-navn.
     @State private var assignTo: String = "Meg"
 
-    @State private var pinCoord = CLLocationCoordinate2D(latitude: 59.9139, longitude: 10.7522)
+    @State private var pinCoord: CLLocationCoordinate2D?
+    @State private var resolvingCoordinate = false
+    @State private var locationConfidence: String
+    @State private var submissionState = AddLeadSubmissionState()
+    @State private var didNotifyCancel = false
+
+    private var saving: Bool { submissionState.isSaving }
+    private var saveError: String? { submissionState.errorMessage }
+    private var didSave: Bool { submissionState.didSave }
+
+    init(
+        initialCoordinate: CLLocationCoordinate2D? = nil,
+        onCancel: @escaping @MainActor () -> Void = {},
+        onSave: @escaping @MainActor (NewLeadData) async throws -> Void
+    ) {
+        self.initialCoordinate = initialCoordinate
+        self.onCancel = onCancel
+        self.onSave = onSave
+        _pinCoord = State(initialValue: initialCoordinate)
+        _locationConfidence = State(initialValue: initialCoordinate == nil ? "unknown" : "exact")
+    }
 
     struct NewLeadData {
         let companyName: String
+        let organizationNumber: String?
+        let websiteURL: String?
+        let contactName: String?
+        let contactRole: String?
+        let phone: String?
+        let email: String?
+        let industryLabel: String?
+        let employeeCountEstimate: Int?
+        let annualRevenueNokEstimate: Double?
+        let notes: String?
+        let leadTemperature: LeadTemperature
+        let leadStatus: LeadStatus
+        let nextFollowUpAt: Date?
+        let nextAction: String?
         let address: String
-        let status: MapLeadMock.PinStatus
+        let postalCode: String?
+        let city: String?
         let coord: CLLocationCoordinate2D
-        // 2026-08-16: phone/email persisteres nå reelt (from-pin støtter
-        // dem). org.nr/nettside/kontaktperson/notat/ansatte/omsetning
-        // samles fortsatt i skjemaet men har intet lagringssted i
-        // crm_customers via dette endepunktet ennå — kjent gap, ikke et
-        // stille datatap (se runScan()-kommentaren over).
-        let phone: String
-        let email: String
+        let locationConfidence: String
+        let leadSource: String
+
+        func makeCreateRequest(projectID: String? = nil) -> APIClient.CreateLeadAtPinRequest {
+            APIClient.CreateLeadAtPinRequest(
+                companyName: companyName,
+                latitude: coord.latitude,
+                longitude: coord.longitude,
+                contactName: contactName,
+                contactRole: contactRole,
+                organizationNumber: organizationNumber,
+                websiteURL: websiteURL,
+                phone: phone,
+                email: email,
+                industryLabel: industryLabel,
+                employeeCountEstimate: employeeCountEstimate,
+                annualRevenueNokEstimate: annualRevenueNokEstimate,
+                notes: notes,
+                leadTemperature: leadTemperature.rawValue,
+                leadStatus: leadStatus.rawValue,
+                nextFollowUpAt: nextFollowUpAt,
+                nextAction: nextAction,
+                address: address,
+                postalCode: postalCode,
+                city: city,
+                locationConfidence: locationConfidence,
+                leadSource: leadSource,
+                projectID: projectID
+            )
+        }
     }
 
     var body: some View {
@@ -114,8 +344,9 @@ struct AddLeadSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Avbryt") { dismiss() }
+                    Button("Avbryt") { cancel() }
                         .foregroundStyle(AlBrand.purpleLight)
+                        .disabled(saving)
                 }
             }
             .toolbarBackground(AlBrand.bg, for: .navigationBar)
@@ -123,6 +354,13 @@ struct AddLeadSheet: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .macCatalystSheetSize(minWidth: 820, minHeight: 720)
+        .interactiveDismissDisabled(saving)
+        .task {
+            await resolveInitialAddressIfNeeded()
+        }
+        .onDisappear {
+            notifyCancelIfNeeded()
+        }
     }
 
     private func formContent(containerWidth: CGFloat) -> some View {
@@ -334,6 +572,7 @@ struct AddLeadSheet: View {
                 // faktisk hører hjemme.
                 if let lat = c.latitude, let lon = c.longitude {
                     pinCoord = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                    locationConfidence = "geocoded"
                 }
                 scanComplete = true
             } catch {
@@ -405,14 +644,27 @@ struct AddLeadSheet: View {
         sectionCard(title: "Klassifisering", icon: "tag.fill") {
             VStack(spacing: 14) {
                 VStack(alignment: .leading, spacing: 8) {
-                    fieldLabel("Status")
+                    fieldLabel("Temperatur")
                     LazyVGrid(
                         columns: [GridItem(.adaptive(minimum: 104, maximum: 160), spacing: 8)],
                         alignment: .leading,
                         spacing: 8
                     ) {
-                        ForEach(MapLeadMock.PinStatus.allCases, id: \.self) { st in
-                            statusChip(st)
+                        ForEach(LeadTemperature.allCases, id: \.self) { value in
+                            temperatureChip(value)
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    fieldLabel("Pipelinefase")
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 118, maximum: 180), spacing: 8)],
+                        alignment: .leading,
+                        spacing: 8
+                    ) {
+                        ForEach(LeadStatus.creationStages) { value in
+                            pipelineChip(value)
                         }
                     }
                 }
@@ -420,14 +672,48 @@ struct AddLeadSheet: View {
                 if compact {
                     VStack(spacing: 12) {
                         field(label: "Bransje", placeholder: "Elektro", text: $industry)
-                        field(label: "Ansatte", placeholder: "25–50", text: $employees)
-                        field(label: "Omsetning", placeholder: "10–20 mill.", text: $revenue)
+                        field(label: "Ansatte", placeholder: "25", text: $employees, keyboard: .numberPad)
+                        field(label: "Omsetning (NOK)", placeholder: "10 000 000", text: $revenue, keyboard: .decimalPad)
                     }
                 } else {
                     HStack(spacing: 10) {
                         field(label: "Bransje", placeholder: "Elektro", text: $industry)
-                        field(label: "Ansatte", placeholder: "25–50", text: $employees)
-                        field(label: "Omsetning", placeholder: "10–20 mill.", text: $revenue)
+                        field(label: "Ansatte", placeholder: "25", text: $employees, keyboard: .numberPad)
+                        field(label: "Omsetning (NOK)", placeholder: "10 000 000", text: $revenue, keyboard: .decimalPad)
+                    }
+                }
+
+                Divider().overlay(AlBrand.stroke)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle(isOn: $includeFollowUp.animation(.easeInOut(duration: 0.2))) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Planlegg neste oppfølging")
+                                .font(.appScaled(size: 12, weight: .semibold))
+                                .foregroundStyle(.white)
+                            Text("Dato og handling lagres sammen med leaden")
+                                .font(.appScaled(size: 10))
+                                .foregroundStyle(AlBrand.textTertiary)
+                        }
+                    }
+                    .tint(AlBrand.purple)
+
+                    if includeFollowUp {
+                        DatePicker(
+                            "Tidspunkt",
+                            selection: $nextFollowUpAt,
+                            in: Date()...,
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+                        .font(.appScaled(size: 12, weight: .medium))
+                        .foregroundStyle(.white)
+                        .tint(AlBrand.purpleLight)
+
+                        field(
+                            label: "Neste handling",
+                            placeholder: "F.eks. ring daglig leder",
+                            text: $nextAction
+                        )
                     }
                 }
 
@@ -480,31 +766,54 @@ struct AddLeadSheet: View {
         }
     }
 
-    private func statusChip(_ st: MapLeadMock.PinStatus) -> some View {
-        let isSelected = status == st
-        return Button { status = st } label: {
+    private func temperatureChip(_ value: LeadTemperature) -> some View {
+        let isSelected = temperature == value
+        return choiceChip(
+            label: value.label,
+            icon: value.icon,
+            color: value.background,
+            isSelected: isSelected,
+            identifier: "add-lead.temperature.\(value.rawValue)"
+        ) { temperature = value }
+    }
+
+    private func pipelineChip(_ value: LeadStatus) -> some View {
+        let isSelected = leadStatus == value
+        return choiceChip(
+            label: value.creationLabel,
+            icon: value.creationIcon,
+            color: value.creationColor,
+            isSelected: isSelected,
+            identifier: "add-lead.pipeline.\(value.rawValue)"
+        ) { leadStatus = value }
+    }
+
+    private func choiceChip(
+        label: String,
+        icon: String,
+        color: Color,
+        isSelected: Bool,
+        identifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
             HStack(spacing: 5) {
-                Image(systemName: st.icon)
+                Image(systemName: icon)
                     .font(.appScaled(size: 10, weight: .semibold))
-                Text(st.label)
+                Text(label)
                     .font(.appScaled(size: 11, weight: .semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
             }
-            .foregroundStyle(isSelected ? .white : st.color)
+            .foregroundStyle(isSelected ? .white : color)
             .padding(.horizontal, 8)
             .frame(maxWidth: .infinity, minHeight: 44)
-            .background(
-                isSelected ? st.color : st.color.opacity(0.15),
-                in: Capsule()
-            )
-            .overlay(
-                Capsule().stroke(isSelected ? Color.clear : st.color.opacity(0.4), lineWidth: 1)
-            )
+            .background(isSelected ? color : color.opacity(0.15), in: Capsule())
+            .overlay(Capsule().stroke(isSelected ? Color.clear : color.opacity(0.4), lineWidth: 1))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(st.label)
-        .accessibilityIdentifier("add-lead.status.\(st.rawValue)")
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(identifier)
         .accessibilityValue(isSelected ? "Valgt" : "Ikke valgt")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
@@ -515,35 +824,62 @@ struct AddLeadSheet: View {
         sectionCard(title: "Pin på kartet", icon: "mappin.and.ellipse") {
             VStack(spacing: 10) {
                 ZStack {
-                    Map(position: .constant(.region(MKCoordinateRegion(
-                        center: pinCoord,
-                        span: MKCoordinateSpan(latitudeDelta: 0.008, longitudeDelta: 0.012)
-                    ))), interactionModes: []) {
-                        Annotation("", coordinate: pinCoord) {
-                            ZStack {
-                                if status == .hot {
-                                    Circle().fill(RadialGradient(colors: [AlBrand.red.opacity(0.4), AlBrand.red.opacity(0)], center: .center, startRadius: 8, endRadius: 28))
+                    if let pinCoord {
+                        Map(position: .constant(.region(MKCoordinateRegion(
+                            center: pinCoord,
+                            span: MKCoordinateSpan(latitudeDelta: 0.008, longitudeDelta: 0.012)
+                        ))), interactionModes: []) {
+                            Annotation("", coordinate: pinCoord) {
+                                ZStack {
+                                    if temperature == .hot {
+                                        Circle().fill(RadialGradient(
+                                            colors: [AlBrand.red.opacity(0.4), AlBrand.red.opacity(0)],
+                                            center: .center, startRadius: 8, endRadius: 28
+                                        ))
                                         .frame(width: 60, height: 60)
                                         .blur(radius: 4)
+                                    }
+                                    Circle()
+                                        .fill(temperature.background)
+                                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                                        .frame(width: 28, height: 28)
+                                        .shadow(color: temperature.background.opacity(0.7), radius: 6, x: 0, y: 2)
+                                    Image(systemName: "building.2.fill")
+                                        .font(.appScaled(size: 10, weight: .bold))
+                                        .foregroundStyle(.white)
                                 }
-                                Circle()
-                                    .fill(status.color)
-                                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                                    .frame(width: 28, height: 28)
-                                    .shadow(color: status.color.opacity(0.7), radius: 6, x: 0, y: 2)
-                                Image(systemName: "building.2.fill")
-                                    .font(.appScaled(size: 10, weight: .bold))
-                                    .foregroundStyle(.white)
                             }
                         }
+                        .mapStyle(.standard(
+                            elevation: .flat,
+                            emphasis: .muted,
+                            pointsOfInterest: .excludingAll
+                        ))
+                        .mapControls { }
+                        .environment(\.colorScheme, .dark)
+                    } else {
+                        VStack(spacing: 10) {
+                            if resolvingCoordinate {
+                                ProgressView()
+                                    .tint(AlBrand.purpleLight)
+                                Text("Finner riktig kartposisjon …")
+                            } else {
+                                Image(systemName: "mappin.slash")
+                                    .font(.appScaled(size: 28, weight: .semibold))
+                                    .foregroundStyle(AlBrand.textTertiary)
+                                Text("Kartposisjonen beregnes fra adressen når du lagrer")
+                            }
+                        }
+                        .font(.appScaled(size: 12, weight: .medium))
+                        .foregroundStyle(AlBrand.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(AlBrand.cardHi)
                     }
-                    .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll))
-                    .mapControls { }
-                    .environment(\.colorScheme, .dark)
-                    .frame(height: 160)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .allowsHitTesting(false)
                 }
+                .frame(height: 160)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .allowsHitTesting(false)
                 .overlay(
                     RoundedRectangle(cornerRadius: 10).stroke(AlBrand.stroke, lineWidth: 1)
                 )
@@ -552,7 +888,9 @@ struct AddLeadSheet: View {
                     Image(systemName: "location.fill")
                         .font(.appScaled(size: 11))
                         .foregroundStyle(AlBrand.purpleLight)
-                    Text("Pinnen plasseres automatisk fra adressen. Du kan flytte den manuelt etter at leaden er lagret.")
+                    Text(pinCoord == nil
+                         ? "Ingen standardpin brukes. Fyll inn en adresse, eller start fra pin-knappen på kartet."
+                         : "Dette er en midlertidig forhåndsvisning. Leaden blir først lagt til etter bekreftet lagring.")
                         .font(.appScaled(size: 11))
                         .foregroundStyle(AlBrand.textSecondary)
                     Spacer()
@@ -564,53 +902,72 @@ struct AddLeadSheet: View {
     // MARK: Bottom-bar
 
     private func bottomBar(compact: Bool) -> some View {
-        HStack(spacing: 10) {
-            if !compact {
-                Button { dismiss() } label: {
-                    Text("Avbryt")
-                        .font(.appScaled(size: 14, weight: .semibold))
+        VStack(spacing: 10) {
+            if let saveError {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(AlBrand.orange)
+                    Text(saveError)
+                        .font(.appScaled(size: 12, weight: .medium))
                         .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: 48)
-                        .background(AlBrand.cardHi, in: RoundedRectangle(cornerRadius: 11))
-                        .overlay(RoundedRectangle(cornerRadius: 11).stroke(AlBrand.stroke, lineWidth: 1))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .buttonStyle(.plain)
+                .padding(10)
+                .background(AlBrand.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10)
+                    .stroke(AlBrand.orange.opacity(0.35), lineWidth: 1))
+                .accessibilityIdentifier("add-lead.save-error")
             }
 
-            Button {
-                onSave(NewLeadData(
-                    companyName: companyName.isEmpty ? "Ny lead" : companyName,
-                    address: "\(address), \(postalCode) \(city)",
-                    status: status,
-                    coord: pinCoord,
-                    phone: phone,
-                    email: email
-                ))
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.appScaled(size: 13, weight: .bold))
-                    Text("Legg til på kartet")
-                        .font(.appScaled(size: 14, weight: .bold))
+            HStack(spacing: 10) {
+                if !compact {
+                    Button { cancel() } label: {
+                        Text("Avbryt")
+                            .font(.appScaled(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: 48)
+                            .background(AlBrand.cardHi, in: RoundedRectangle(cornerRadius: 11))
+                            .overlay(RoundedRectangle(cornerRadius: 11)
+                                .stroke(AlBrand.stroke, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(saving)
                 }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 48)
-                .background(
-                    LinearGradient(
-                        colors: [AlBrand.purple, AlBrand.purpleLight],
-                        startPoint: .leading, endPoint: .trailing
-                    ),
-                    in: RoundedRectangle(cornerRadius: 11)
-                )
+
+                Button {
+                    Task { await saveLead() }
+                } label: {
+                    HStack(spacing: 7) {
+                        if saving {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.appScaled(size: 13, weight: .bold))
+                        }
+                        Text(saving ? "Lagrer …" : "Legg til på kartet")
+                            .font(.appScaled(size: 14, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 48)
+                    .background(
+                        LinearGradient(
+                            colors: [AlBrand.purple, AlBrand.purpleLight],
+                            startPoint: .leading, endPoint: .trailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 11)
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(companyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving)
+                .opacity(companyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.55 : 1)
+                .accessibilityIdentifier("add-lead.save")
+                .accessibilityHint(companyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? "Fyll inn bedriftsnavn først"
+                    : "Lagrer leaden og plasserer den på kartet")
             }
-            .buttonStyle(.plain)
-            .disabled(companyName.isEmpty)
-            .opacity(companyName.isEmpty ? 0.55 : 1)
-            .accessibilityHint(companyName.isEmpty
-                ? "Fyll inn bedriftsnavn først"
-                : "Lagrer leaden og plasserer den på kartet")
         }
         .padding(.horizontal, compact ? 16 : 20)
         .padding(.vertical, 12)
@@ -622,6 +979,142 @@ struct AddLeadSheet: View {
     }
 
     // MARK: Helpers
+
+    private func cancel() {
+        notifyCancelIfNeeded()
+        dismiss()
+    }
+
+    private func notifyCancelIfNeeded() {
+        guard !didSave, !didNotifyCancel else { return }
+        didNotifyCancel = true
+        onCancel()
+    }
+
+    private func resolveInitialAddressIfNeeded() async {
+        guard let initialCoordinate else { return }
+        resolvingCoordinate = true
+        defer { resolvingCoordinate = false }
+        guard let hit = await KartverketService.shared.reverseGeocode(
+            lat: initialCoordinate.latitude,
+            lon: initialCoordinate.longitude,
+            using: appState.api
+        ) else { return }
+        if address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            address = hit.address
+        }
+        if postalCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            postalCode = hit.postalCode
+        }
+        if city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            city = hit.city
+        }
+    }
+
+    private func saveLead() async {
+        guard !saving else { return }
+        let trimmedName = companyName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+
+        submissionState.begin()
+
+        let parsedOrganizationNumber: String?
+        let parsedEmployeeCount: Int?
+        let parsedRevenue: Double?
+        do {
+            parsedOrganizationNumber = try AddLeadFieldParser.organizationNumber(orgNumber)
+            parsedEmployeeCount = try AddLeadFieldParser.employeeCount(employees)
+            parsedRevenue = try AddLeadFieldParser.annualRevenueNok(revenue)
+        } catch {
+            submissionState.fail(error.localizedDescription)
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+
+        let trimmedNextAction = nextAction.trimmingCharacters(in: .whitespacesAndNewlines)
+        if includeFollowUp && trimmedNextAction.isEmpty {
+            submissionState.fail("Beskriv neste handling når oppfølging er aktivert.")
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+
+        let fullAddress = formattedAddress
+        var resolvedCoordinate = pinCoord
+        if resolvedCoordinate == nil {
+            guard !fullAddress.isEmpty else {
+                submissionState.fail("Legg inn en adresse, eller start opprettelsen fra pin-knappen på kartet.")
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                return
+            }
+            resolvingCoordinate = true
+            do {
+                let placemarks = try await CLGeocoder().geocodeAddressString(fullAddress)
+                resolvedCoordinate = placemarks.first?.location?.coordinate
+                if resolvedCoordinate != nil { locationConfidence = "geocoded" }
+            } catch {
+                resolvedCoordinate = nil
+            }
+            resolvingCoordinate = false
+        }
+
+        guard let resolvedCoordinate else {
+            submissionState.fail("Fant ikke kartposisjonen for adressen. Kontroller adressen og prøv igjen.")
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+        pinCoord = resolvedCoordinate
+
+        do {
+            try await onSave(NewLeadData(
+                companyName: trimmedName,
+                organizationNumber: parsedOrganizationNumber,
+                websiteURL: optionalField(website),
+                contactName: optionalField(contactName),
+                contactRole: optionalField(contactRole),
+                phone: optionalField(phone),
+                email: optionalField(email),
+                industryLabel: optionalField(industry),
+                employeeCountEstimate: parsedEmployeeCount,
+                annualRevenueNokEstimate: parsedRevenue,
+                notes: optionalField(notat),
+                leadTemperature: temperature,
+                leadStatus: leadStatus,
+                nextFollowUpAt: includeFollowUp ? nextFollowUpAt : nil,
+                nextAction: includeFollowUp ? trimmedNextAction : nil,
+                address: fullAddress,
+                postalCode: optionalField(postalCode),
+                city: optionalField(city),
+                coord: resolvedCoordinate,
+                locationConfidence: locationConfidence,
+                leadSource: scanComplete ? "brreg_lookup" : (initialCoordinate == nil ? "manual_form" : "manual_pin_drop")
+            ))
+            submissionState.succeed()
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            dismiss()
+        } catch {
+            submissionState.fail(
+                (error as? AddLeadSaveError)?.message
+                    ?? "Kunne ikke lagre leaden. Kontroller forbindelsen og prøv igjen."
+            )
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
+    }
+
+    private func optionalField(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private var formattedAddress: String {
+        let street = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        let locality = [
+            postalCode.trimmingCharacters(in: .whitespacesAndNewlines),
+            city.trimmingCharacters(in: .whitespacesAndNewlines),
+        ]
+        .filter { !$0.isEmpty }
+        .joined(separator: " ")
+        return [street, locality].filter { !$0.isEmpty }.joined(separator: ", ")
+    }
 
     @ViewBuilder
     private func sectionCard<Content: View>(title: String, icon: String,

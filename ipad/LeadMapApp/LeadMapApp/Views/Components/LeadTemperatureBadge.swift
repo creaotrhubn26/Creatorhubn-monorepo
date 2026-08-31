@@ -1,7 +1,7 @@
 // LeadTemperatureBadge.swift
 //
 // Konsistent pill-badge for lead-temperatur. Brukes overalt der vi viser
-// «hot/warm/lukewarm/cold» — list-views, oversikt-tabell, lead-detail,
+// «cold/warm/hot/ready» — list-views, oversikt-tabell, lead-detail,
 // lead-cards. Speiler det visuelle systemet i marketing-mocken (lilla
 // brand-palett + tilbehør-farger).
 //
@@ -16,46 +16,47 @@ import SwiftUI
 /// farge + ikon + label på ett sted så vi ikke har 7 forskjellige varianter
 /// spredt i view-koden.
 enum LeadTemperature: String, Hashable, CaseIterable {
-    case hot
-    case warm
-    case lukewarm   // mappes til "ready" eller andre milde varianter
     case cold
+    case warm
+    case hot
+    case ready
 
-    /// Parse fra backend-string. Ukjente verdier → .cold (tryggeste default).
+    /// Parse fra backend-string. Eldre `lukewarm`/`cool` beholdes som
+    /// bakoverkompatible alias for den nye, eksplisitte «klar»-verdien.
     static func parse(_ raw: String?) -> LeadTemperature? {
         guard let raw = raw?.lowercased(), !raw.isEmpty else { return nil }
         switch raw {
-        case "hot", "ready": return .hot
-        case "warm":         return .warm
-        case "lukewarm", "cool": return .lukewarm
-        case "cold":         return .cold
-        default:             return nil
+        case "cold": return .cold
+        case "warm": return .warm
+        case "hot": return .hot
+        case "ready", "lukewarm", "cool": return .ready
+        default: return nil
         }
     }
 
     var label: String {
         switch self {
-        case .hot:      return "Hot lead"
-        case .warm:     return "Varm lead"
-        case .lukewarm: return "Lunken lead"
-        case .cold:     return "Kald lead"
+        case .cold: return "Kald"
+        case .warm: return "Varm"
+        case .hot: return "Hot"
+        case .ready: return "Klar"
         }
     }
 
     /// Bakgrunns-farge for pill. Matcher Leadgrid brand-palett.
     var background: Color {
         switch self {
-        case .hot:      return Color(red: 0.66, green: 0.32, blue: 0.99)  // brand-lilla
-        case .warm:     return Color(red: 0.98, green: 0.75, blue: 0.14)  // varm gul
-        case .lukewarm: return Color(red: 0.38, green: 0.55, blue: 0.98)  // kjølig blå
-        case .cold:     return Color(red: 0.55, green: 0.60, blue: 0.68)  // nøytral grå
+        case .cold: return Color(red: 0.38, green: 0.55, blue: 0.98)  // kjølig blå
+        case .warm: return Color(red: 0.98, green: 0.55, blue: 0.10)  // varm oransje
+        case .hot: return Color(red: 0.94, green: 0.20, blue: 0.25)  // høy prioritet
+        case .ready: return Color(red: 0.20, green: 0.75, blue: 0.52)  // klar for handling
         }
     }
 
     /// Tekst-farge på pillen — gul trenger mørk tekst for kontrast (WCAG).
     var foreground: Color {
         switch self {
-        case .warm: return Color(red: 0.20, green: 0.13, blue: 0.02)
+        case .warm: return Color(red: 0.20, green: 0.10, blue: 0.01)
         default:    return .white
         }
     }
@@ -63,10 +64,10 @@ enum LeadTemperature: String, Hashable, CaseIterable {
     /// SF Symbol for ikon-varianten.
     var icon: String {
         switch self {
-        case .hot:      return "flame.fill"
-        case .warm:     return "sun.max.fill"
-        case .lukewarm: return "cloud.sun.fill"
-        case .cold:     return "snowflake"
+        case .cold: return "snowflake"
+        case .warm: return "sun.max.fill"
+        case .hot: return "flame.fill"
+        case .ready: return "checkmark.seal.fill"
         }
     }
 }
