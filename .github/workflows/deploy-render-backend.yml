@@ -1,93 +1,38 @@
 name: Deploy shared Render backend
 
+# Manual releases must pass through the same migration, ownership, concurrency,
+# exact-SHA and smoke-test gates as automatic main releases. This workflow does
+# not contain a second Render deploy path.
+
 on:
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: deploy-shared-render-backend
-  cancel-in-progress: false
-
-env:
-  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
-  RENDER_SERVICE_ID: srv-d76ob60ule4c73dv2p60
-
 jobs:
-  deploy:
-    name: Deploy exact main commit to Render
+  guard:
+    name: Require current main workflow ref
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     steps:
-      - name: Resolve and validate current main HEAD
-        id: target
+      - name: Reject non-main dispatches
         env:
-          GH_TOKEN: ${{ github.token }}
+          SELECTED_REF: ${{ github.ref }}
         run: |
-          set -euo pipefail
-          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-            echo "::error::This production workflow must be dispatched from main"
+          if [ "$SELECTED_REF" != "refs/heads/main" ]; then
+            echo "::error::Production releases must be dispatched from the current main branch"
             exit 1
           fi
-          main_json=$(curl -fsS --connect-timeout 3 -m 15 \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/ref/heads/main")
-          target_sha=$(printf '%s' "$main_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["object"]["sha"])')
-          if [ "$GITHUB_SHA" != "$target_sha" ]; then
-            echo "::error::Selected workflow ref is stale: selected=$GITHUB_SHA currentMain=$target_sha"
-            exit 1
-          fi
-          echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"
-          echo "Validated main commit: $target_sha"
 
-      - name: Trigger exact Render deploy
-        env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          TARGET_SHA: ${{ steps.target.outputs.target_sha }}
-        run: |
-          set -euo pipefail
-          if [ -z "$RENDER_API_KEY" ]; then
-            echo "::error::RENDER_API_KEY secret is not configured"
-            exit 1
-          fi
-          payload=$(printf '{"commitId":"%s","clearCache":"do_not_clear"}' "$TARGET_SHA")
-          set +e
-          http_code=$(curl -sS --connect-timeout 5 -m 30 \
-            -o /tmp/render-deploy-response.json \
-            -w "%{http_code}" \
-            -X POST \
-            -H "Authorization: Bearer $RENDER_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d "$payload" \
-            "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys")
-          curl_exit=$?
-          set -e
-          echo "Render trigger: curlExit=$curl_exit HTTP=${http_code:-<none>}"
-          if [ "$curl_exit" != "0" ] || { [ "$http_code" != "200" ] && [ "$http_code" != "201" ] && [ "$http_code" != "202" ]; }; then
-            python3 -c 'import json; print(json.load(open("/tmp/render-deploy-response.json")).get("message", "Render deploy request failed"))' 2>/dev/null || true
-            exit 1
-          fi
-          deploy_id=$(python3 -c 'import json; print(json.load(open("/tmp/render-deploy-response.json")).get("id", ""))' 2>/dev/null || true)
-          echo "Render accepted deploy ${deploy_id:-<unknown>} for $TARGET_SHA"
-
-      - name: Wait for exact commit and verify health
-        env:
-          TARGET_SHA: ${{ steps.target.outputs.target_sha }}
-        run: |
-          set -euo pipefail
-          for i in $(seq 1 80); do
-            version_json=$(curl -sS --connect-timeout 3 -m 10 "$BACKEND_URL/api/version" || true)
-            deployed=$(printf '%s' "$version_json" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("commit", ""))' 2>/dev/null || true)
-            echo "[$i] deployed=${deployed:-<unknown>}"
-            if [ "$deployed" = "$TARGET_SHA" ]; then
-              curl -fsS --connect-timeout 3 -m 15 "$BACKEND_URL/api/health"
-              echo
-              echo "Render backend is live and healthy at $TARGET_SHA"
-              exit 0
-            fi
-            sleep 15
-          done
-          echo "::error::Render did not expose $TARGET_SHA within 20 minutes"
-          exit 1
+  release:
+    name: Run the production migration and backend release gate
+    needs: guard
+    permissions:
+      contents: write
+    uses: ./.github/workflows/auto-migrate-on-push.yml
+    with:
+      commit: ${{ github.sha }}
+    # Deliberately forward no caller secrets. The reusable workflow's only
+    # secret-consuming job binds `environment: Production`, so GitHub resolves
+    # only PRODUCTION_MIGRATION_DATABASE_URL and RENDER_API_KEY from that
+    # protected environment at execution time.
