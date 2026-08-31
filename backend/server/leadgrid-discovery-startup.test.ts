@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import type { Pool } from "pg";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +11,28 @@ beforeEach(() => clearJobHandlers());
 afterEach(() => clearJobHandlers());
 
 describe("Leadgrid Discovery startup wiring", () => {
+  it("uses cron-parser through its Node ESM-compatible CommonJS default", () => {
+    const source = readFileSync(
+      new URL("./leadgrid-continuous-discovery.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).toContain('import cronParser from "cron-parser";');
+    expect(source).not.toContain(
+      'import { parseExpression } from "cron-parser";',
+    );
+
+    const probe = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "--eval",
+        'import cronParser from "cron-parser"; const { parseExpression } = cronParser; if (typeof parseExpression !== "function") process.exit(2);',
+      ],
+      { cwd: process.cwd(), encoding: "utf8" },
+    );
+    expect(probe.status, probe.stderr).toBe(0);
+  });
+
   it("registers the canonical HTTP routes from backend startup", () => {
     const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
     const service = readFileSync(

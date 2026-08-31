@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { parseExpression } from "cron-parser";
+import cronParser from "cron-parser";
 import type { Pool, PoolClient } from "pg";
 
 import {
@@ -13,6 +13,8 @@ import {
   type DiscoveryTriggerKind,
 } from "./leadgrid-discovery-service.js";
 import type { LeadgridAccessibleProject } from "./leadgrid-project-access.js";
+
+const { parseExpression } = cronParser;
 
 export interface RunDiscoveryOpts {
   projectId: string;
