@@ -1,4 +1,5 @@
 import XCTest
+import CoreLocation
 @testable import LeadMapApp
 
 final class LeadDiscoveryRequestTests: XCTestCase {
@@ -44,6 +45,57 @@ final class LeadDiscoveryRequestTests: XCTestCase {
         XCTAssertEqual(message, "Mangler kundetype")
         XCTAssertEqual(cpvSuggestion, ["45000000"])
         XCTAssertTrue(requiresIndustryQuery)
+    }
+}
+
+final class AddLeadDraftFlowTests: XCTestCase {
+
+    func testCancelRemovesTemporaryMapPinAndSession() {
+        var flow = AddLeadDraftFlow()
+        let coordinate = CLLocationCoordinate2D(latitude: 59.9139, longitude: 10.7522)
+
+        flow.begin(at: coordinate)
+        XCTAssertTrue(flow.isPresented)
+        XCTAssertEqual(flow.visiblePinCoordinate?.latitude, coordinate.latitude)
+        XCTAssertEqual(flow.visiblePinCoordinate?.longitude, coordinate.longitude)
+
+        flow.end()
+        XCTAssertFalse(flow.isPresented)
+        XCTAssertNil(flow.visiblePinCoordinate)
+    }
+
+    func testMenuCreatedDraftHasNoSyntheticOsloPin() {
+        var flow = AddLeadDraftFlow()
+
+        flow.begin()
+
+        XCTAssertTrue(flow.isPresented)
+        XCTAssertNil(flow.visiblePinCoordinate)
+    }
+}
+
+final class AddLeadSubmissionStateTests: XCTestCase {
+
+    func testFailureStopsSavingAndKeepsUserFacingError() {
+        var state = AddLeadSubmissionState()
+        state.begin()
+        XCTAssertTrue(state.isSaving)
+
+        state.fail("Kunne ikke lagre")
+
+        XCTAssertFalse(state.isSaving)
+        XCTAssertFalse(state.didSave)
+        XCTAssertEqual(state.errorMessage, "Kunne ikke lagre")
+    }
+
+    func testSuccessMarksSubmissionCompletedWithoutError() {
+        var state = AddLeadSubmissionState()
+        state.begin()
+        state.succeed()
+
+        XCTAssertFalse(state.isSaving)
+        XCTAssertTrue(state.didSave)
+        XCTAssertNil(state.errorMessage)
     }
 }
 

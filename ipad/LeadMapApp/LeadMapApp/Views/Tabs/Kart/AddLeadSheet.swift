@@ -13,6 +13,7 @@
 
 import SwiftUI
 import MapKit
+import UIKit
 
 private enum AlBrand {
     static let bg = Color(red: 0.05, green: 0.04, blue: 0.10)
@@ -44,8 +45,60 @@ enum AddLeadResponsiveLayout {
     }
 }
 
+/// Holder kartets midlertidige lead-utkast adskilt fra lagrede CRM-pins.
+/// Kartet viser kun `visiblePinCoordinate` mens skjemaet faktisk er åpent;
+/// `end()` rydder både vanlig avbryt, swipe-dismiss og vellykket lagring.
+struct AddLeadDraftFlow {
+    struct Session {
+        let coordinate: CLLocationCoordinate2D?
+    }
+
+    private(set) var activeSession: Session?
+
+    var isPresented: Bool { activeSession != nil }
+    var visiblePinCoordinate: CLLocationCoordinate2D? { activeSession?.coordinate }
+
+    mutating func begin(at coordinate: CLLocationCoordinate2D? = nil) {
+        activeSession = Session(coordinate: coordinate)
+    }
+
+    mutating func end() {
+        activeSession = nil
+    }
+}
+
+struct AddLeadSaveError: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
+struct AddLeadSubmissionState: Equatable {
+    enum Phase: Equatable {
+        case idle
+        case saving
+        case failed(String)
+        case saved
+    }
+
+    private(set) var phase: Phase = .idle
+
+    var isSaving: Bool { phase == .saving }
+    var didSave: Bool { phase == .saved }
+    var errorMessage: String? {
+        guard case .failed(let message) = phase else { return nil }
+        return message
+    }
+
+    mutating func begin() { phase = .saving }
+    mutating func fail(_ message: String) { phase = .failed(message) }
+    mutating func succeed() { phase = .saved }
+}
+
+@MainActor
 struct AddLeadSheet: View {
-    let onSave: (NewLeadData) -> Void
+    let initialCoordinate: CLLocationCoordinate2D?
+    let onCancel: @MainActor () -> Void
+    let onSave: @MainActor (NewLeadData) async throws -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -72,7 +125,7 @@ struct AddLeadSheet: View {
     @State private var orgNumber: String = ""
     @State private var address: String = ""
     @State private var postalCode: String = ""
-    @State private var city: String = "Oslo"
+    @State private var city: String = ""
     @State private var website: String = ""
     @State private var phone: String = ""
     @State private var email: String = ""
@@ -89,7 +142,25 @@ struct AddLeadSheet: View {
     // Selv-tildeling er default — «Lars Kristensen» var hardkodet mock-navn.
     @State private var assignTo: String = "Meg"
 
-    @State private var pinCoord = CLLocationCoordinate2D(latitude: 59.9139, longitude: 10.7522)
+    @State private var pinCoord: CLLocationCoordinate2D?
+    @State private var resolvingCoordinate = false
+    @State private var submissionState = AddLeadSubmissionState()
+    @State private var didNotifyCancel = false
+
+    private var saving: Bool { submissionState.isSaving }
+    private var saveError: String? { submissionState.errorMessage }
+    private var didSave: Bool { submissionState.didSave }
+
+    init(
+        initialCoordinate: CLLocationCoordinate2D? = nil,
+        onCancel: @escaping @MainActor () -> Void = {},
+        onSave: @escaping @MainActor (NewLeadData) async throws -> Void
+    ) {
+        self.initialCoordinate = initialCoordinate
+        self.onCancel = onCancel
+        self.onSave = onSave
+        _pinCoord = State(initialValue: initialCoordinate)
+    }
 
     struct NewLeadData {
         let companyName: String
@@ -114,8 +185,9 @@ struct AddLeadSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Avbryt") { dismiss() }
+                    Button("Avbryt") { cancel() }
                         .foregroundStyle(AlBrand.purpleLight)
+                        .disabled(saving)
                 }
             }
             .toolbarBackground(AlBrand.bg, for: .navigationBar)
@@ -123,6 +195,13 @@ struct AddLeadSheet: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .macCatalystSheetSize(minWidth: 820, minHeight: 720)
+        .interactiveDismissDisabled(saving)
+        .task {
+            await resolveInitialAddressIfNeeded()
+        }
+        .onDisappear {
+            notifyCancelIfNeeded()
+        }
     }
 
     private func formContent(containerWidth: CGFloat) -> some View {
@@ -515,35 +594,62 @@ struct AddLeadSheet: View {
         sectionCard(title: "Pin på kartet", icon: "mappin.and.ellipse") {
             VStack(spacing: 10) {
                 ZStack {
-                    Map(position: .constant(.region(MKCoordinateRegion(
-                        center: pinCoord,
-                        span: MKCoordinateSpan(latitudeDelta: 0.008, longitudeDelta: 0.012)
-                    ))), interactionModes: []) {
-                        Annotation("", coordinate: pinCoord) {
-                            ZStack {
-                                if status == .hot {
-                                    Circle().fill(RadialGradient(colors: [AlBrand.red.opacity(0.4), AlBrand.red.opacity(0)], center: .center, startRadius: 8, endRadius: 28))
+                    if let pinCoord {
+                        Map(position: .constant(.region(MKCoordinateRegion(
+                            center: pinCoord,
+                            span: MKCoordinateSpan(latitudeDelta: 0.008, longitudeDelta: 0.012)
+                        ))), interactionModes: []) {
+                            Annotation("", coordinate: pinCoord) {
+                                ZStack {
+                                    if status == .hot {
+                                        Circle().fill(RadialGradient(
+                                            colors: [AlBrand.red.opacity(0.4), AlBrand.red.opacity(0)],
+                                            center: .center, startRadius: 8, endRadius: 28
+                                        ))
                                         .frame(width: 60, height: 60)
                                         .blur(radius: 4)
+                                    }
+                                    Circle()
+                                        .fill(status.color)
+                                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                                        .frame(width: 28, height: 28)
+                                        .shadow(color: status.color.opacity(0.7), radius: 6, x: 0, y: 2)
+                                    Image(systemName: "building.2.fill")
+                                        .font(.appScaled(size: 10, weight: .bold))
+                                        .foregroundStyle(.white)
                                 }
-                                Circle()
-                                    .fill(status.color)
-                                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                                    .frame(width: 28, height: 28)
-                                    .shadow(color: status.color.opacity(0.7), radius: 6, x: 0, y: 2)
-                                Image(systemName: "building.2.fill")
-                                    .font(.appScaled(size: 10, weight: .bold))
-                                    .foregroundStyle(.white)
                             }
                         }
+                        .mapStyle(.standard(
+                            elevation: .flat,
+                            emphasis: .muted,
+                            pointsOfInterest: .excludingAll
+                        ))
+                        .mapControls { }
+                        .environment(\.colorScheme, .dark)
+                    } else {
+                        VStack(spacing: 10) {
+                            if resolvingCoordinate {
+                                ProgressView()
+                                    .tint(AlBrand.purpleLight)
+                                Text("Finner riktig kartposisjon …")
+                            } else {
+                                Image(systemName: "mappin.slash")
+                                    .font(.appScaled(size: 28, weight: .semibold))
+                                    .foregroundStyle(AlBrand.textTertiary)
+                                Text("Kartposisjonen beregnes fra adressen når du lagrer")
+                            }
+                        }
+                        .font(.appScaled(size: 12, weight: .medium))
+                        .foregroundStyle(AlBrand.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(AlBrand.cardHi)
                     }
-                    .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll))
-                    .mapControls { }
-                    .environment(\.colorScheme, .dark)
-                    .frame(height: 160)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .allowsHitTesting(false)
                 }
+                .frame(height: 160)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .allowsHitTesting(false)
                 .overlay(
                     RoundedRectangle(cornerRadius: 10).stroke(AlBrand.stroke, lineWidth: 1)
                 )
@@ -552,7 +658,9 @@ struct AddLeadSheet: View {
                     Image(systemName: "location.fill")
                         .font(.appScaled(size: 11))
                         .foregroundStyle(AlBrand.purpleLight)
-                    Text("Pinnen plasseres automatisk fra adressen. Du kan flytte den manuelt etter at leaden er lagret.")
+                    Text(pinCoord == nil
+                         ? "Ingen standardpin brukes. Fyll inn en adresse, eller start fra pin-knappen på kartet."
+                         : "Dette er en midlertidig forhåndsvisning. Leaden blir først lagt til etter bekreftet lagring.")
                         .font(.appScaled(size: 11))
                         .foregroundStyle(AlBrand.textSecondary)
                     Spacer()
@@ -564,53 +672,72 @@ struct AddLeadSheet: View {
     // MARK: Bottom-bar
 
     private func bottomBar(compact: Bool) -> some View {
-        HStack(spacing: 10) {
-            if !compact {
-                Button { dismiss() } label: {
-                    Text("Avbryt")
-                        .font(.appScaled(size: 14, weight: .semibold))
+        VStack(spacing: 10) {
+            if let saveError {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(AlBrand.orange)
+                    Text(saveError)
+                        .font(.appScaled(size: 12, weight: .medium))
                         .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: 48)
-                        .background(AlBrand.cardHi, in: RoundedRectangle(cornerRadius: 11))
-                        .overlay(RoundedRectangle(cornerRadius: 11).stroke(AlBrand.stroke, lineWidth: 1))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .buttonStyle(.plain)
+                .padding(10)
+                .background(AlBrand.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10)
+                    .stroke(AlBrand.orange.opacity(0.35), lineWidth: 1))
+                .accessibilityIdentifier("add-lead.save-error")
             }
 
-            Button {
-                onSave(NewLeadData(
-                    companyName: companyName.isEmpty ? "Ny lead" : companyName,
-                    address: "\(address), \(postalCode) \(city)",
-                    status: status,
-                    coord: pinCoord,
-                    phone: phone,
-                    email: email
-                ))
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.appScaled(size: 13, weight: .bold))
-                    Text("Legg til på kartet")
-                        .font(.appScaled(size: 14, weight: .bold))
+            HStack(spacing: 10) {
+                if !compact {
+                    Button { cancel() } label: {
+                        Text("Avbryt")
+                            .font(.appScaled(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: 48)
+                            .background(AlBrand.cardHi, in: RoundedRectangle(cornerRadius: 11))
+                            .overlay(RoundedRectangle(cornerRadius: 11)
+                                .stroke(AlBrand.stroke, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(saving)
                 }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 48)
-                .background(
-                    LinearGradient(
-                        colors: [AlBrand.purple, AlBrand.purpleLight],
-                        startPoint: .leading, endPoint: .trailing
-                    ),
-                    in: RoundedRectangle(cornerRadius: 11)
-                )
+
+                Button {
+                    Task { await saveLead() }
+                } label: {
+                    HStack(spacing: 7) {
+                        if saving {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.appScaled(size: 13, weight: .bold))
+                        }
+                        Text(saving ? "Lagrer …" : "Legg til på kartet")
+                            .font(.appScaled(size: 14, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 48)
+                    .background(
+                        LinearGradient(
+                            colors: [AlBrand.purple, AlBrand.purpleLight],
+                            startPoint: .leading, endPoint: .trailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 11)
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(companyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving)
+                .opacity(companyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.55 : 1)
+                .accessibilityIdentifier("add-lead.save")
+                .accessibilityHint(companyName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? "Fyll inn bedriftsnavn først"
+                    : "Lagrer leaden og plasserer den på kartet")
             }
-            .buttonStyle(.plain)
-            .disabled(companyName.isEmpty)
-            .opacity(companyName.isEmpty ? 0.55 : 1)
-            .accessibilityHint(companyName.isEmpty
-                ? "Fyll inn bedriftsnavn først"
-                : "Lagrer leaden og plasserer den på kartet")
         }
         .padding(.horizontal, compact ? 16 : 20)
         .padding(.vertical, 12)
@@ -622,6 +749,101 @@ struct AddLeadSheet: View {
     }
 
     // MARK: Helpers
+
+    private func cancel() {
+        notifyCancelIfNeeded()
+        dismiss()
+    }
+
+    private func notifyCancelIfNeeded() {
+        guard !didSave, !didNotifyCancel else { return }
+        didNotifyCancel = true
+        onCancel()
+    }
+
+    private func resolveInitialAddressIfNeeded() async {
+        guard let initialCoordinate else { return }
+        resolvingCoordinate = true
+        defer { resolvingCoordinate = false }
+        guard let hit = await KartverketService.shared.reverseGeocode(
+            lat: initialCoordinate.latitude,
+            lon: initialCoordinate.longitude,
+            using: appState.api
+        ) else { return }
+        if address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            address = hit.address
+        }
+        if postalCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            postalCode = hit.postalCode
+        }
+        if city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            city = hit.city
+        }
+    }
+
+    private func saveLead() async {
+        guard !saving else { return }
+        let trimmedName = companyName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+
+        submissionState.begin()
+
+        let fullAddress = formattedAddress
+        var resolvedCoordinate = pinCoord
+        if resolvedCoordinate == nil {
+            guard !fullAddress.isEmpty else {
+                submissionState.fail("Legg inn en adresse, eller start opprettelsen fra pin-knappen på kartet.")
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                return
+            }
+            resolvingCoordinate = true
+            do {
+                let placemarks = try await CLGeocoder().geocodeAddressString(fullAddress)
+                resolvedCoordinate = placemarks.first?.location?.coordinate
+            } catch {
+                resolvedCoordinate = nil
+            }
+            resolvingCoordinate = false
+        }
+
+        guard let resolvedCoordinate else {
+            submissionState.fail("Fant ikke kartposisjonen for adressen. Kontroller adressen og prøv igjen.")
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+        pinCoord = resolvedCoordinate
+
+        do {
+            try await onSave(NewLeadData(
+                companyName: trimmedName,
+                address: fullAddress,
+                status: status,
+                coord: resolvedCoordinate,
+                phone: phone.trimmingCharacters(in: .whitespacesAndNewlines),
+                email: email.trimmingCharacters(in: .whitespacesAndNewlines)
+            ))
+            submissionState.succeed()
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            dismiss()
+        } catch {
+            submissionState.fail(
+                (error as? AddLeadSaveError)?.message
+                    ?? "Kunne ikke lagre leaden. Kontroller forbindelsen og prøv igjen."
+            )
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
+    }
+
+    private var formattedAddress: String {
+        let street = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        let locality = [
+            postalCode.trimmingCharacters(in: .whitespacesAndNewlines),
+            city.trimmingCharacters(in: .whitespacesAndNewlines),
+        ]
+        .filter { !$0.isEmpty }
+        .joined(separator: " ")
+        return [street, locality].filter { !$0.isEmpty }.joined(separator: ", ")
+    }
 
     @ViewBuilder
     private func sectionCard<Content: View>(title: String, icon: String,

@@ -489,7 +489,7 @@ struct KartView: View {
         span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.13)
     )
     @State private var selectedTab: DetailTab = .info
-    @State private var addLeadOpen: Bool = false
+    @State private var addLeadDraft = AddLeadDraftFlow()
     @State private var openLeadFullSheet: Bool = false
     @State private var scheduleMeetingOpen: Bool = false
 
@@ -916,9 +916,8 @@ struct KartView: View {
         let lon: Double
     }
 
-    // Long-press → drop pin
-    @State private var droppedPin: CLLocationCoordinate2D?
-    @State private var addLeadFromPin: Bool = false
+    // Midlertidig kart-pin eies av AddLeadDraftFlow og eksisterer bare
+    // mens opprettingsskjemaet er presentert.
 
     // Mål-verktøy
     @State private var measureMode: Bool = false
@@ -1303,7 +1302,7 @@ struct KartView: View {
         // Mac Catalyst Cmd+N → åpne AddLeadSheet. NotificationCenter-broadcast
         // fra GlobalKeyboardShortcuts. No-op på iOS/iPadOS.
         .onReceive(NotificationCenter.default.publisher(for: .leadgridNewLead)) { _ in
-            addLeadOpen = true
+            presentAddLead()
         }
         // Nyopprettet lead (fra ethvert av de 4 «Legg til lead»-
         // inngangspunktene) — zoom dit + velg pinnen, så man faktisk ser
@@ -1382,33 +1381,32 @@ struct KartView: View {
                 try? await Task.sleep(nanoseconds: 250_000_000)
             }
         }
-        .sheet(isPresented: $addLeadOpen) {
-            AddLeadSheet { newLead in
-                addLeadOpen = false
-                // 2026-08-16: kallet manglet helt — leaden ble aldri lagret
-                // noe sted (kun lukket sheeten). Ekte create-kall nå.
-                guard let api = appState.api, !DemoModeManager.isActiveNonisolated else {
-                    showToast(DemoModeManager.isActiveNonisolated ? "Demo-modus — ikke lagret" : "Ikke innlogget")
-                    return
-                }
-                Task {
-                    do {
-                        let newId = try await api.createLeadAtPin(
-                            name: newLead.companyName, company: newLead.companyName,
-                            phone: newLead.phone, email: newLead.email,
-                            industryId: nil, leadTemperature: nil,
-                            latitude: newLead.coord.latitude, longitude: newLead.coord.longitude,
-                            address: newLead.address
-                        )
-                        showToast("«\(newLead.companyName)» lagt til")
-                        // Vis hvor den faktisk havnet, ikke bare en toast (2026-08-19).
-                        appState.pendingMapFocus = AppState.PendingMapFocus(
-                            id: newId, name: newLead.companyName, address: newLead.address,
-                            lat: newLead.coord.latitude, lon: newLead.coord.longitude
-                        )
-                    } catch {
-                        showToast("Kunne ikke lagre lead — prøv igjen")
+        .sheet(isPresented: addLeadPresented) {
+            if let session = addLeadDraft.activeSession {
+                AddLeadSheet(
+                    initialCoordinate: session.coordinate,
+                    onCancel: { addLeadDraft.end() }
+                ) { newLead in
+                    guard !DemoModeManager.isActiveNonisolated else {
+                        throw AddLeadSaveError(message: "Demo-modus — leaden blir ikke lagret")
                     }
+                    guard let api = appState.api else {
+                        throw AddLeadSaveError(message: "Du må være innlogget for å lagre leaden")
+                    }
+                    let newId = try await api.createLeadAtPin(
+                        name: newLead.companyName, company: newLead.companyName,
+                        phone: newLead.phone, email: newLead.email,
+                        industryId: nil, leadTemperature: nil,
+                        latitude: newLead.coord.latitude, longitude: newLead.coord.longitude,
+                        address: newLead.address
+                    )
+                    showToast("«\(newLead.companyName)» lagt til")
+                    // Først etter bekreftet backend-lagring blir utkastet til
+                    // en ekte CRM-pin og kartet fokuserer den nye leaden.
+                    appState.pendingMapFocus = AppState.PendingMapFocus(
+                        id: newId, name: newLead.companyName, address: newLead.address,
+                        lat: newLead.coord.latitude, lon: newLead.coord.longitude
+                    )
                 }
             }
         }
@@ -2397,7 +2395,7 @@ struct KartView: View {
             Menu {
                 // Dørsalg: husstander skal aldri inn i CRM — skjul lead-oppretting.
                 if !dorsalgModus {
-                    Button { addLeadOpen = true } label: {
+                    Button { presentAddLead() } label: {
                         Label("Legg til lead", systemImage: "person.crop.circle.badge.plus")
                     }
                 }
@@ -2578,9 +2576,12 @@ struct KartView: View {
                 }
 
                 // Dropped pin fra long-press
-                if let dropped = droppedPin {
+                if let dropped = addLeadDraft.visiblePinCoordinate {
                     Annotation("", coordinate: dropped) {
                         DroppedPin()
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("Midlertidig lead-pin")
+                            .accessibilityIdentifier("kart.draft-pin")
                     }
                 }
 
@@ -2736,6 +2737,8 @@ struct KartView: View {
                 // Skjult i dørsalg — husstander skal aldri inn i CRM.
                 if !dorsalgModus {
                     mapFABButton(icon: "mappin.and.ellipse", action: dropPinAtCenter)
+                        .accessibilityLabel("Opprett lead fra kartposisjon")
+                        .accessibilityIdentifier("kart.drop-pin")
                         .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
                         .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
                 }
@@ -3652,11 +3655,22 @@ struct KartView: View {
 
     /// Drop pin på kart-sentrum + åpner AddLeadSheet forhåndsutfylt.
     /// I prod: reverse-geocode koordinaten via CLGeocoder for adresse.
+    private var addLeadPresented: Binding<Bool> {
+        Binding(
+            get: { addLeadDraft.isPresented },
+            set: { presented in
+                if !presented { addLeadDraft.end() }
+            }
+        )
+    }
+
+    private func presentAddLead() {
+        addLeadDraft.begin()
+    }
+
     private func dropPinAtCenter() {
-        droppedPin = currentRegion.center
-        addLeadFromPin = true
-        addLeadOpen = true
-        showToast("Pin droppet — fyller ut lead...")
+        addLeadDraft.begin(at: currentRegion.center)
+        showToast("Midlertidig pin plassert — lagre for å opprette lead")
     }
 
     private var discoveryV2PresentedBinding: Binding<Bool> {

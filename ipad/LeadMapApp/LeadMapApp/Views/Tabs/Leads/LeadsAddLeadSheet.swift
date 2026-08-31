@@ -9,7 +9,7 @@ import SwiftUI
 import MapKit
 
 struct LeadsAddLeadSheet: View {
-    let onSave: (NewLeadData) -> Void
+    let onSave: @MainActor (NewLeadData) async throws -> Void
 
     struct NewLeadData {
         let companyName: String
@@ -22,7 +22,7 @@ struct LeadsAddLeadSheet: View {
 
     var body: some View {
         AddLeadSheet { lead in
-            onSave(NewLeadData(
+            try await onSave(NewLeadData(
                 companyName: lead.companyName,
                 address: lead.address,
                 status: lead.status,
