@@ -54,7 +54,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import { Pool, type PoolConfig } from "pg";
 import * as schema from "../migrations/schema.js";
 import { verifyDatabaseOwnerSession } from "./database-owner-role.js";
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
@@ -1177,14 +1177,18 @@ validateEnvOrExit();
 // Database connection
 // PERF (skalering nivå 2): tunet pool for å håndtere cron-batches (100 leads
 // samtidig) + concurrent web requests. Default pg.Pool max=10 var for lavt.
-const pool = new Pool({
+const databasePoolConfig: PoolConfig & { enableChannelBinding: boolean } = {
   connectionString: process.env.DATABASE_URL,
+  // node-postgres does not map channel_binding from a connection URI.
+  // Enable SCRAM-SHA-256-PLUS explicitly for every production connection.
+  enableChannelBinding: true,
   max: parseInt(process.env.PG_POOL_MAX ?? "30", 10),
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
   // Statement timeout per query — beskytter mot runaway queries (30s)
   statement_timeout: 30_000,
-});
+};
+const pool = new Pool(databasePoolConfig);
 
 await verifyDatabaseOwnerSession(pool);
 
