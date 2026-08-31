@@ -1,6 +1,6 @@
 {
-  "formatVersion": 1,
-  "baselineId": "creatorhub-production-ledger-2026-08-31",
+  "formatVersion": 2,
+  "baselineId": "creatorhub-production-ledger-2026-08-31-v2",
   "legacyAppliedFilenames": [
     "0000b_missing_columns.sql",
     "0000c_missing_tables.sql",
@@ -23,8 +23,30 @@
     "0464_users_auth_session_version.sql",
     "0465_leadgrid_canvas_integrity.sql",
     "0470_role_room_linkedin_publish_queue.sql",
-    "0471_project_pricing_and_time_tracking.sql",
-    "0472_workspace_project_bookings.sql",
-    "0473_workspace_project_equipment.sql"
-  ]
+    "0471_project_pricing_and_time_tracking.sql"
+  ],
+  "legacyAppliedChecksums": {
+    "0000b_missing_columns.sql": "22fc5b363ad5d0c4949c92b195031435c6a683b846489ac2e65b492ceac17714",
+    "0000c_missing_tables.sql": "04b9bb93c36fe119744692b3b649064fef14f670969889dbb9b51260e217b14b",
+    "0000_missing_enum_types.sql": "42e4c4af4244f325a71f6d2b72d055ade0a2a3a79d1a84c73321e7f5a3d3c0a9",
+    "0448_leadgrid_blog_posts.sql": "ac8c1696bddcb19df58dc72802d71ec8b56516a9e0c699cae79bc8e59e74d6c9",
+    "0450_admin_workspace_projects.sql": "af628c5b851f89026db163d15287dad20599c36a562023f413e0826f484e2b57",
+    "0451_admin_workspace_projects_leadgrid_links.sql": "cc91fa562f1e851db0690871c15948c54a3970eacc6f7c00e80f74ceafaf513c",
+    "0452_admin_workspace_documents.sql": "e2d3bd98face691eef3599be6a47f09d665f791e371bbd962bbbaac46965b4b5",
+    "0453_admin_workspace_tasks.sql": "89103090dcaeab5d7fd28c62b767405932801092658d4861066f65bd06f3cfa0",
+    "0454_admin_workspace_calendar.sql": "f6f6c10b76d7276ce9450af5e398e6ccd3113c2a984e5a9c11e930c3c33b5f95",
+    "0455_admin_workspace_funding_opportunities.sql": "32827d725a0b64aa5983b6d5a68a00862d4a653cd12db31575386a2f24318225",
+    "0456_admin_workspace_document_review.sql": "509d1fa21bf5b781919db475c4228d1795913377fcf6d9e88f846a79ea4431cf",
+    "0457_admin_document_context.sql": "164aad57f42830a3fdde40139ac263fd9d043b399f3bd5dc5845d72d3790bbfe",
+    "0458_admin_workspace_project_files.sql": "3dd0a2b8a07f58768206a67c0a72e15171cd350d7316e1f592dedf1670ddcbee",
+    "0459_admin_workspace_cv_profiles.sql": "ef1b29105a1700e673cc631480c18dbfc05ce5e98b802d791b5912924f5a1704",
+    "0460_leadgrid_workflow_event_ingress_security.sql": "bb0059f303d228f9af9ebb66597e173053d9ca62c4bcd9eaa4107cf3608265b0",
+    "0461_leadgrid_public_self_onboard_rate_limits.sql": "638670ba7d92ab6a7b202a507dd4c2346c2c1122fc7b4b9cc649b46cd2c1023d",
+    "0462_org_setup_template_plan_integrity.sql": "b20fc11ffb593139f124d6463e8d96c2af8d9aa3a5d982ebc74255c1094fc022",
+    "0463_casting_reminder_delivery_claims.sql": "60b4af7165f3482aff768c834a96200b4b2999047f36eb8920b5022973565fd6",
+    "0464_users_auth_session_version.sql": null,
+    "0465_leadgrid_canvas_integrity.sql": "450083790b10381abbab386eae63fd56ec48c0ac011d2a82dc5e87362b322d45",
+    "0470_role_room_linkedin_publish_queue.sql": "d36e7aa5cafed8df4e1909061a6842ff6fa3616562464728d5c1c09350e9907a",
+    "0471_project_pricing_and_time_tracking.sql": "981ea9e0b70850a05abe7c90ddba30eb246c15cf1cd6e1bf62450f5b9a614649"
+  }
 }

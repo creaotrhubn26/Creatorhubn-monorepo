@@ -16,6 +16,11 @@ function identity(overrides: Record<string, unknown> = {}) {
   return {
     session_user: EXPECTED_DATABASE_LOGIN_ROLE,
     current_user: EXPECTED_DATABASE_OWNER_ROLE,
+    statement_timeout: "30s",
+    runtime_role_setting_count: 1,
+    exact_runtime_role_setting_count: 1,
+    runtime_timeout_setting_count: 1,
+    exact_runtime_timeout_setting_count: 1,
     login_can_login: true,
     login_inherits: false,
     login_is_superuser: false,
@@ -33,7 +38,9 @@ function identity(overrides: Record<string, unknown> = {}) {
     login_membership_count: 1,
     exact_owner_membership_count: 1,
     owner_membership_count: 0,
-    owner_direct_member_count: 3,
+    owner_direct_member_count: 4,
+    owner_admin_grant_count: 2,
+    owner_admin_creator_grant_count: 1,
     owner_admin_member_count: 1,
     owner_migration_member_count: 1,
     owner_runtime_member_count: 1,
@@ -85,6 +92,7 @@ describe("database owner role boot verification", () => {
         "neondb_owner",
         "creatorhub_migration_login",
         EXPECTED_DATABASE_LOGIN_ROLE,
+        "30s",
       ],
     );
   });
@@ -98,6 +106,22 @@ describe("database owner role boot verification", () => {
   it.each([
     ["wrong login", { session_user: "creatorhub_migrator" }, /session_user/],
     ["owner not active", { current_user: "neondb_owner" }, /default role/],
+    ["timeout not active", { statement_timeout: "0" }, /statement_timeout/],
+    [
+      "extra role setting",
+      { runtime_role_setting_count: 2 },
+      /runtime settings/,
+    ],
+    [
+      "wrong role setting",
+      { exact_runtime_role_setting_count: 0 },
+      /runtime settings/,
+    ],
+    [
+      "wrong timeout setting",
+      { exact_runtime_timeout_setting_count: 0 },
+      /runtime settings/,
+    ],
     ["login is NOLOGIN", { login_can_login: false }, /login role has unsafe/],
     ["login inherits", { login_inherits: true }, /login role has unsafe/],
     [
@@ -169,11 +193,21 @@ describe("database owner role boot verification", () => {
     ],
     [
       "owner has an unexpected member",
-      { owner_direct_member_count: 4 },
+      { owner_direct_member_count: 5 },
       /unexpected direct members/,
     ],
     [
-      "owner admin membership options differ",
+      "owner admin grant count differs",
+      { owner_admin_grant_count: 1 },
+      /unexpected direct members/,
+    ],
+    [
+      "owner automatic creator grant options differ",
+      { owner_admin_creator_grant_count: 0 },
+      /unexpected direct members/,
+    ],
+    [
+      "owner SET membership options differ",
       { owner_admin_member_count: 0 },
       /unexpected direct members/,
     ],

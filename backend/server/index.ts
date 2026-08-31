@@ -1185,8 +1185,9 @@ const databasePoolConfig: PoolConfig & { enableChannelBinding: boolean } = {
   max: parseInt(process.env.PG_POOL_MAX ?? "30", 10),
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
-  // Statement timeout per query — beskytter mot runaway queries (30s)
-  statement_timeout: 30_000,
+  // The ownership bootstrap persists statement_timeout=30s on the runtime
+  // role. Neon transaction pooling can ignore unsupported startup parameters,
+  // so the boot audit below verifies the active server-side value instead.
 };
 const pool = new Pool(databasePoolConfig);
 

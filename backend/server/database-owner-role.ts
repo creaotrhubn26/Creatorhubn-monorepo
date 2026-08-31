@@ -4,6 +4,7 @@ export const EXPECTED_DATABASE_LOGIN_ROLE = "creatorhub_runtime_login";
 export const EXPECTED_DATABASE_OWNER_ROLE = "creatorhub_schema_owner";
 const EXPECTED_DATABASE_OWNER_ADMIN_ROLE = "neondb_owner";
 const EXPECTED_DATABASE_MIGRATION_LOGIN_ROLE = "creatorhub_migration_login";
+const EXPECTED_DATABASE_STATEMENT_TIMEOUT = "30s";
 
 type DatabaseRoleEnvironment = Partial<
   Record<
@@ -15,6 +16,11 @@ type DatabaseRoleEnvironment = Partial<
 type DatabaseIdentityRow = {
   session_user: string;
   current_user: string;
+  statement_timeout: string;
+  runtime_role_setting_count: number;
+  exact_runtime_role_setting_count: number;
+  runtime_timeout_setting_count: number;
+  exact_runtime_timeout_setting_count: number;
   login_can_login: boolean;
   login_inherits: boolean;
   login_is_superuser: boolean;
@@ -33,6 +39,8 @@ type DatabaseIdentityRow = {
   exact_owner_membership_count: number;
   owner_membership_count: number;
   owner_direct_member_count: number;
+  owner_admin_grant_count: number;
+  owner_admin_creator_grant_count: number;
   owner_admin_member_count: number;
   owner_migration_member_count: number;
   owner_runtime_member_count: number;
@@ -84,6 +92,11 @@ export async function verifyDatabaseOwnerSession(
     `SELECT
        session_user::text AS session_user,
        current_user::text AS current_user,
+       current_setting('statement_timeout')::text AS statement_timeout,
+       runtime_settings.role_setting_count AS runtime_role_setting_count,
+       runtime_settings.exact_role_setting_count AS exact_runtime_role_setting_count,
+       runtime_settings.timeout_setting_count AS runtime_timeout_setting_count,
+       runtime_settings.exact_timeout_setting_count AS exact_runtime_timeout_setting_count,
        login.rolcanlogin AS login_can_login,
        login.rolinherit AS login_inherits,
        login.rolsuper AS login_is_superuser,
@@ -118,6 +131,8 @@ export async function verifyDatabaseOwnerSession(
          WHERE membership.member = owner.oid
        ) AS owner_membership_count,
        owner_members.owner_direct_member_count,
+       owner_members.owner_admin_grant_count,
+       owner_members.owner_admin_creator_grant_count,
        owner_members.owner_admin_member_count,
        owner_members.owner_migration_member_count,
        owner_members.owner_runtime_member_count
@@ -128,6 +143,16 @@ export async function verifyDatabaseOwnerSession(
          COUNT(*)::integer AS owner_direct_member_count,
          COUNT(*) FILTER (
            WHERE member_role.rolname = $3
+         )::integer AS owner_admin_grant_count,
+         COUNT(*) FILTER (
+           WHERE member_role.rolname = $3
+             AND membership.admin_option = TRUE
+             AND membership.inherit_option = FALSE
+             AND membership.set_option = FALSE
+         )::integer AS owner_admin_creator_grant_count,
+         COUNT(*) FILTER (
+           WHERE member_role.rolname = $3
+             AND membership.admin_option = FALSE
              AND membership.inherit_option = FALSE
              AND membership.set_option = TRUE
          )::integer AS owner_admin_member_count,
@@ -148,6 +173,27 @@ export async function verifyDatabaseOwnerSession(
          ON member_role.oid = membership.member
        WHERE membership.roleid = owner.oid
      ) AS owner_members
+     CROSS JOIN LATERAL (
+       SELECT
+         COUNT(*) FILTER (
+           WHERE configured.setting LIKE 'role=%'
+         )::integer AS role_setting_count,
+         COUNT(*) FILTER (
+           WHERE configured.setting = 'role=' || $2::text
+         )::integer AS exact_role_setting_count,
+         COUNT(*) FILTER (
+           WHERE configured.setting LIKE 'statement_timeout=%'
+         )::integer AS timeout_setting_count,
+         COUNT(*) FILTER (
+           WHERE configured.setting = 'statement_timeout=' || $6::text
+         )::integer AS exact_timeout_setting_count
+       FROM pg_catalog.pg_db_role_setting AS role_setting
+       JOIN pg_catalog.pg_database AS database_entry
+         ON database_entry.oid = role_setting.setdatabase
+       CROSS JOIN LATERAL unnest(role_setting.setconfig) AS configured(setting)
+       WHERE role_setting.setrole = login.oid
+         AND database_entry.datname = current_database()
+     ) AS runtime_settings
      WHERE login.rolname = $1
        AND owner.rolname = $2`,
     [
@@ -156,6 +202,7 @@ export async function verifyDatabaseOwnerSession(
       EXPECTED_DATABASE_OWNER_ADMIN_ROLE,
       EXPECTED_DATABASE_MIGRATION_LOGIN_ROLE,
       EXPECTED_DATABASE_LOGIN_ROLE,
+      EXPECTED_DATABASE_STATEMENT_TIMEOUT,
     ],
   );
   const identity = result.rows[0];
@@ -169,6 +216,17 @@ export async function verifyDatabaseOwnerSession(
     throw new Error(
       "Database default role is not active; ownership-safe boot refused",
     );
+  }
+  if (identity.statement_timeout !== EXPECTED_DATABASE_STATEMENT_TIMEOUT) {
+    throw new Error("Database statement_timeout is not active");
+  }
+  if (
+    identity.runtime_role_setting_count !== 1 ||
+    identity.exact_runtime_role_setting_count !== 1 ||
+    identity.runtime_timeout_setting_count !== 1 ||
+    identity.exact_runtime_timeout_setting_count !== 1
+  ) {
+    throw new Error("Database-bound runtime settings are not exact");
   }
   if (
     !identity.login_can_login ||
@@ -204,7 +262,9 @@ export async function verifyDatabaseOwnerSession(
     throw new Error("Database owner role must not be a member of another role");
   }
   if (
-    identity.owner_direct_member_count !== 3 ||
+    identity.owner_direct_member_count !== 4 ||
+    identity.owner_admin_grant_count !== 2 ||
+    identity.owner_admin_creator_grant_count !== 1 ||
     identity.owner_admin_member_count !== 1 ||
     identity.owner_migration_member_count !== 1 ||
     identity.owner_runtime_member_count !== 1
