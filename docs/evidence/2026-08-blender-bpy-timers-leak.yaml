@@ -1,0 +1,57 @@
+claim: >
+  Blender 5.2.1 (LTS maintenance release, 2026-08-25) fixes a resource leak
+  in the return value of bpy.app.timers — the exact registration/unregister
+  pattern apps/blender-bridge/extension/server.py uses to drain its command
+  queue on Blender's main thread as a long-lived, persistent timer
+  (persistent=True). No new API surface in 5.2.1 — bugfix-only point release
+  (VSE prefetch/cache fixes, Geometry Nodes empty-bundle-list crash, Grease
+  Pencil fill-stroke regression, armature edit-mode crash).
+source_type: release_notes
+source: >
+  Blender 5.2 LTS release notes (developer.blender.org/docs/release_notes/5.2/,
+  blocked by this session's egress proxy — fetched via WebSearch corroboration:
+  steamdb.info/patchnotes/24921459/ "Blender 5.2.1 LTS Maintenance Release",
+  2026-08-25) + blender.org/releases/5-2/ (Tier 1, named in
+  sources/vendors.yaml but not directly fetchable this run).
+authority_tier: 2
+vendor: Blender Foundation
+product: Blender (bpy, headless)
+version_scope: "5.2.0 → 5.2.1"
+publication_date: "2026-08-31"
+evidence_summary: >
+  repo-intelligence (grep-symbols.sh blender) surfaced apps/blender-bridge
+  (new since the 2026-08-09 baseline, per docs/specs/2026-08-10-blender-bridge-
+  fase1-design.md) as the highest-relevance consumer: extension/server.py
+  registers _drain_commands via bpy.app.timers.register(..., persistent=True)
+  and keeps it alive for the lifetime of the Blender session (Claude×Blender
+  MCP bridge, blender_version_min = 4.2.0 in blender_manifest.toml). A
+  bpy.app.timers return-value leak in a long-running, persistently-registered
+  timer is a slow-accumulating memory/resource issue exactly in this pattern.
+  mockup-studio's Blender cinematic export (mockupCinematicExport.ts,
+  src-tauri/src/blender.rs) spawns Blender per-job rather than persistently,
+  so is lower risk from this specific leak.
+interpretation: >
+  Strong evidence, not Verified — Freshness Rule requires a live Tier 1/2
+  fetch for Verified; developer.blender.org and docs.blender.org were both
+  blocked by network egress policy this run, so this rests on WebSearch
+  corroboration of the official 5.2 LTS notes rather than a direct fetch.
+project_impact: >
+  apps/blender-bridge is unreleased/early (fase 1, no version pin recorded
+  in CI yet). Low urgency, but the fix targets the bridge's core persistence
+  mechanism directly.
+confidence: strong_evidence
+decision: >
+  GO_WITH_TESTS — bump to Blender 5.2.1 before/alongside blender-bridge's
+  first real deployment. Validation: run
+  `blender --background --python apps/blender-bridge/tests/headless_selftest.py`
+  and the long-running HTTP bridge (run_headless_server.py) for an extended
+  session to confirm no regression from the timers fix; no code change
+  required in server.py.
+affected:
+  - apps/blender-bridge (extension/server.py bpy.app.timers persistent drain loop)
+  - apps/resolve-script-manager/src-tauri/src/blender.rs (mockup-studio, lower risk)
+lesson: >
+  A "bugfix-only" point release is not automatically zero product relevance —
+  cross-check the fix list against any newly-added integration (blender-bridge
+  postdates the 2026-08-09 baseline) before dismissing a maintenance release
+  as noise.
