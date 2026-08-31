@@ -31,9 +31,11 @@ npm run lint
 
 ## Deployment
 
-Production is hosted on Netlify. CreatorHub deploys automatically from
-`main` to the Netlify site `creatorhub-frontend-mig`; the other brand sites
-are promoted independently through the `Promoter merke` workflow.
+Production is hosted on Netlify. CreatorHub deploys from `live/creatorhub` to
+the site `creatorhub-frontend-mig`. The canonical production workflow moves
+that branch only after migrations and the exact same backend commit are live
+and healthy. The other brand sites are promoted independently through the
+`Promoter merke` workflow.
 
 Configure build environment variables in the Netlify dashboard:
 

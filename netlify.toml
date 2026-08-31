@@ -14,19 +14,26 @@
   # Derfor: base = repo-rot (install hoister alt), bygg workspacet, publiser dets dist.
   command = "npm run build --workspace creatorhub-frontend"
   publish = "frontend/client/dist"
-  # Hopp over bygg som ikke rører frontend/. Produksjonsgrenene (main for
-  # creatorhubn.com, live/* for de andre merkene) bygger alltid.
+  # Hopp over bygg som ikke rører frontend/. Alle live/*-produksjonsgrener
+  # bygger alltid.
   #
-  # Merke-isolasjon: creatorhubn.com deployer fra main, mens leadgrid.no og
-  # theroleroom.com deployer fra hver sin live/*-gren (flyttes av workflowen
-  # «Promoter merke»). Dermed bygger én push til main KUN CreatorHub, og en
-  # regresjon på main når aldri de andre merkene før du promoterer.
+  # Merke-isolasjon: creatorhubn.com deployer fra live/creatorhub først etter
+  # grønn migrering + eksakt backend-deploy. Leadgrid og Role Room bruker sine
+  # egne live/*-grener via «Promoter merke». main er dermed ikke en direkte
+  # frontend-produksjonsgren.
   # Netlify: exit 0 = hopp over, non-zero = bygg.
   ignore = "case \"$BRANCH\" in main|live/*) exit 1 ;; esac; git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- frontend"
 
 [build.environment]
   NPM_FLAGS = "--legacy-peer-deps"   # kreves av dagens dependency-graf
   NODE_VERSION = "20"                # hold synkronisert med Vite/CI-runtime
+
+# Canonical release-workflow polls this generated Vite asset until Netlify has
+# published the exact live/creatorhub commit. It must never be served stale.
+[[headers]]
+  for = "/build-info.json"
+  [headers.values]
+    Cache-Control = "no-store, max-age=0, must-revalidate"
 
 # Personlige dokumentlenker må aldri caches, indekseres, rammes inn eller
 # lekke URL-en via Referer. CSP-en tillater fortsatt samme-origin SPA/API,

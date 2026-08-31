@@ -44,7 +44,7 @@ project_impact: >
   status GET. The callback ingress is mounted before the global parser with a
   256 KB limit, high-entropy job token, bounded rate limit, and catch-all 404.
   The legacy workspace route blocks new Higgsfield submissions and now scopes
-  every AI asset lookup to its project. Migration 0474, the reconciler, and the
+  every AI asset lookup to its project. Migration 0478, the reconciler, and the
   durability worker provide poll/archive leases, verified provider-event
   promotion, bounded media downloads, B2 archive retry, and an idempotent
   billing/refund outbox. Stripe meter retries stop inside its documented

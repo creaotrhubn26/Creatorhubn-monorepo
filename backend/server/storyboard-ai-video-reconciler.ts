@@ -107,7 +107,7 @@ function pollErrorMessage(error: unknown): string {
 
 /**
  * Close the rolling-deploy gap where an older server instance writes only the
- * legacy fal_request_id/response_url columns after migration 0474 has run.
+ * legacy fal_request_id/response_url columns after migration 0478 has run.
  *
  * Every update is idempotent. Prepared rows are deliberately excluded: that
  * state means no generation POST has been claimed yet and the normal submit
