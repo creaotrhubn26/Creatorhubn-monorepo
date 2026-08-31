@@ -1855,13 +1855,7 @@ private struct LeadsInAreaCard: View {
                 guard let api = appState.api else {
                     throw AddLeadSaveError(message: "Du må være innlogget for å lagre leaden")
                 }
-                _ = try await api.createLeadAtPin(
-                    name: newLead.companyName, company: newLead.companyName,
-                    phone: newLead.phone, email: newLead.email,
-                    industryId: nil, leadTemperature: nil,
-                    latitude: newLead.coord.latitude, longitude: newLead.coord.longitude,
-                    address: newLead.address
-                )
+                _ = try await api.createLeadAtPin(newLead.makeCreateRequest())
                 miniShowToast("«\(newLead.companyName)» lagt til")
             }
         }

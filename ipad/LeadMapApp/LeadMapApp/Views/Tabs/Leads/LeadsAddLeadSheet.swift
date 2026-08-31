@@ -11,25 +11,11 @@ import MapKit
 struct LeadsAddLeadSheet: View {
     let onSave: @MainActor (NewLeadData) async throws -> Void
 
-    struct NewLeadData {
-        let companyName: String
-        let address: String
-        let status: MapLeadMock.PinStatus
-        let coord: CLLocationCoordinate2D
-        let phone: String
-        let email: String
-    }
+    typealias NewLeadData = AddLeadSheet.NewLeadData
 
     var body: some View {
         AddLeadSheet { lead in
-            try await onSave(NewLeadData(
-                companyName: lead.companyName,
-                address: lead.address,
-                status: lead.status,
-                coord: lead.coord,
-                phone: lead.phone,
-                email: lead.email
-            ))
+            try await onSave(lead)
         }
     }
 }

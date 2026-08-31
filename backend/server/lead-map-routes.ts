@@ -25,6 +25,7 @@ import {
 import { autoPopulateLeadMap } from "./lead-map-discovery-populate.js";
 import Stripe from "stripe";
 import {
+  createLeadFromPin,
   generateLeadPitch,
   getLeadById,
   getLeadMapMetrics,
@@ -41,6 +42,11 @@ import {
 } from "./lead-map-service.js";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 import { resolveLeadMapSession } from "./lead-map-session-helper.js";
+import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
+import {
+  LeadCreationValidationError,
+  parseLeadCreationBody,
+} from "./lead-map-create-contract.js";
 
 /** Bygger notes-feltet for crm_customers fra visittkort-payload */
 function buildNotes(body: {
@@ -630,104 +636,51 @@ export function setupLeadMapRoutes(deps: Deps): void {
     },
   );
 
-  // POST /leads/from-pin — manuell pin-drop fra kart (iPad #drop-pin)
+  // POST /leads/from-pin — fullstendig manuell/posisjonsbasert opprettelse
   //
-  // Brukes når salgsrep long-press'er på iPad-kartet og fyller inn et nytt
-  // lead direkte ("standard maps-UX": Apple Maps / Google Maps). I motsetning
-  // til /from-card setter dette lat/lng + (valgfri) industry_id og
-  // lead_temperature, og markerer lead_source='manual_pin_drop' for å
-  // skille det fra OCR-skannede visittkort i analytics.
+  // Kontrakten persisterer hele Add Lead-skjemaet. Temperatur og pipeline er
+  // separate felter, og nye leads får både owner- og organization-scope.
   app.post("/api/admin-room/lead-map/leads/from-pin",
     requireLeadMapPermission("leads.create", { pool, activeSessions }),
     async (req: Request, res: Response) => {
       const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
-      const body = (req.body ?? {}) as {
-        name?: string;
-        company?: string;
-        email?: string;
-        phone?: string;
-        industry_id?: string | null;
-        lead_temperature?: string | null;
-        latitude?: number;
-        longitude?: number;
-        address?: string | null;
-        location_confidence?: string | null;
-        lead_source?: string | null;
-        project_id?: string | null;
-      };
-      if (!body.name?.trim()) {
-        return res.status(400).json({ error: "mangler_navn" });
+      let body: ReturnType<typeof parseLeadCreationBody>;
+      try {
+        body = parseLeadCreationBody(req.body ?? {});
+      } catch (err) {
+        if (err instanceof LeadCreationValidationError) {
+          return res.status(400).json({ error: err.code });
+        }
+        return res.status(400).json({ error: "ugyldig_payload" });
       }
-      if (typeof body.latitude !== 'number' || typeof body.longitude !== 'number') {
-        return res.status(400).json({ error: "mangler_koordinat" });
-      }
-      // Whitelist speiler crm_customers_lead_temperature_check — alt utenfor
-      // constrainten (lukewarm/cool fra eldre klienter) mappes til 'warm'.
-      const validTemps = new Set(['hot', 'warm', 'cold', 'ready']);
-      const temperature = body.lead_temperature && validTemps.has(body.lead_temperature)
-        ? body.lead_temperature
-        : 'warm';
-      const validConfidences = new Set(['exact', 'geocoded', 'approximate', 'unknown']);
-      const locationConfidence = body.location_confidence && validConfidences.has(body.location_confidence)
-        ? body.location_confidence
-        : 'exact';
-      const leadSource = body.lead_source?.trim() || 'manual_pin_drop';
 
       try {
-        const r = await pool.query<{ id: string }>(
-          `INSERT INTO crm_customers (
-             id, name, company,
-             phone, email,
-             latitude, longitude, address,
-             industry_id, lead_temperature, location_confidence,
-             lead_status, lead_source,
-             owner_user_id, assigned_user_id,
-             assigned_at, assigned_by_user_id,
-             project_id,
-             created_at, updated_at
-           ) VALUES (
-             gen_random_uuid(), $1, $2, $3, $4,
-             $5, $6, $7,
-             $8::uuid, $9, $10,
-             'unvisited', $11,
-             $12::text, $12::text, NOW(), $12::text,
-             $13,
-             NOW(), NOW()
-           ) RETURNING id::text`,
-          [
-            body.name.trim(),
-            body.company?.trim() ?? null,
-            body.phone?.trim() ?? null,
-            body.email?.trim() ?? null,
-            body.latitude,
-            body.longitude,
-            body.address?.trim() ?? null,
-            body.industry_id?.trim() ? body.industry_id.trim() : null,
-            temperature,
-            locationConfidence,
-            leadSource,
-            session.userId,
-            body.project_id ?? null,
-          ],
-        );
-        // Workflow-event (2026-07-04): manuelt opprettede leads skal også
-        // fyre lead.created (welcome-workflows). Org via felles resolver,
-        // dynamic import unngår import-sykel. Fire-and-forget.
-        const newLeadId = r.rows[0].id;
+        const organizationId = await resolveOrgIdForUser(pool, session.userId);
+        const newLeadId = await createLeadFromPin(pool, {
+          ...body,
+          ownerUserId: session.userId,
+          organizationId,
+        });
+
+        // Workflow-event er best-effort. Selve CRM-raden er allerede lagret,
+        // og eventet bruker samme organizationId som INSERT-en.
         void (async () => {
           try {
-            const { resolveOrgIdForUser } = await import("./leadgrid-org-resolver.js");
             const { publishEvent } = await import("./leadgrid-workflow-engine.js");
-            const orgId = await resolveOrgIdForUser(pool, session.userId);
             await publishEvent({
               pool,
-              organizationId: orgId,
+              organizationId,
               type: "lead.created",
               leadId: newLeadId,
               actorUserId: session.userId,
-              data: { source: leadSource, occurred_at: new Date().toISOString() },
+              data: {
+                source: body.leadSource,
+                lead_status: body.leadStatus,
+                lead_temperature: body.leadTemperature,
+                occurred_at: new Date().toISOString(),
+              },
             });
           } catch (err) {
             console.warn("[lead-map] lead.created-event feilet:", (err as Error).message);
@@ -735,6 +688,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
         })();
         return res.json({ ok: true, id: newLeadId });
       } catch (err) {
+        console.error("[lead-map] from-pin create failed:", (err as Error).message);
         return res.status(500).json({ error: "create_failed", detail: "internal_error" });
       }
     },

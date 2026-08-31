@@ -56,6 +56,13 @@ struct LeadModel: Identifiable, Codable, Hashable {
     let phone: String?
     let email: String?
     let websiteUrl: String?
+    // ── Strukturert bedrifts- og kontaktprofil (mig 474) ─────────────
+    // Default nil holder eksplisitte test-/preview-initializers kompatible.
+    var organizationNumber: String? = nil
+    var contactName: String? = nil
+    var contactRole: String? = nil
+    var employeeCountEstimate: Int? = nil
+    var annualRevenueNokEstimate: Double? = nil
     let instagramUrl: String?
     let linkedinUrl: String?
     let googleRating: Double?

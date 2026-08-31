@@ -1393,13 +1393,7 @@ struct KartView: View {
                     guard let api = appState.api else {
                         throw AddLeadSaveError(message: "Du må være innlogget for å lagre leaden")
                     }
-                    let newId = try await api.createLeadAtPin(
-                        name: newLead.companyName, company: newLead.companyName,
-                        phone: newLead.phone, email: newLead.email,
-                        industryId: nil, leadTemperature: nil,
-                        latitude: newLead.coord.latitude, longitude: newLead.coord.longitude,
-                        address: newLead.address
-                    )
+                    let newId = try await api.createLeadAtPin(newLead.makeCreateRequest())
                     showToast("«\(newLead.companyName)» lagt til")
                     // Først etter bekreftet backend-lagring blir utkastet til
                     // en ekte CRM-pin og kartet fokuserer den nye leaden.
