@@ -13,7 +13,7 @@ source: >
   steamdb.info/patchnotes/24921459/ "Blender 5.2.1 LTS Maintenance Release",
   2026-08-25) + blender.org/releases/5-2/ (Tier 1, named in
   sources/vendors.yaml but not directly fetchable this run).
-authority_tier: 2
+authority_tier: 3
 vendor: Blender Foundation
 product: Blender (bpy, headless)
 version_scope: "5.2.0 → 5.2.1"
@@ -31,22 +31,39 @@ evidence_summary: >
   src-tauri/src/blender.rs) spawns Blender per-job rather than persistently,
   so is lower risk from this specific leak.
 interpretation: >
-  Strong evidence, not Verified — Freshness Rule requires a live Tier 1/2
-  fetch for Verified; developer.blender.org and docs.blender.org were both
-  blocked by network egress policy this run, so this rests on WebSearch
-  corroboration of the official 5.2 LTS notes rather than a direct fetch.
+  Probable, not Strong/Verified. Per shared/SOURCE_POLICY.md, steamdb.info is
+  a Tier 3 third-party database and a WebSearch snippet is a discovery aid,
+  not final evidence — neither is corroboration from a Tier 1/2 first-party
+  source. developer.blender.org and docs.blender.org (the pinned Tier 1
+  sources in sources/vendors.yaml) were both blocked by network egress
+  policy this run and were never actually fetched, so this claim rests
+  entirely on a Tier 3 mirror. Downstream (decision below) should not be
+  over-trusted on this basis alone; re-verify against
+  blender.org/releases/5-2/ or developer.blender.org/docs/release_notes/5.2/
+  directly once egress allows, before treating the leak-fix claim as settled.
 project_impact: >
   apps/blender-bridge is unreleased/early (fase 1, no version pin recorded
   in CI yet). Low urgency, but the fix targets the bridge's core persistence
-  mechanism directly.
-confidence: strong_evidence
+  mechanism directly — if the claim holds up on re-verification.
+confidence: probable
 decision: >
-  GO_WITH_TESTS — bump to Blender 5.2.1 before/alongside blender-bridge's
-  first real deployment. Validation: run
-  `blender --background --python apps/blender-bridge/tests/headless_selftest.py`
-  and the long-running HTTP bridge (run_headless_server.py) for an extended
-  session to confirm no regression from the timers fix; no code change
-  required in server.py.
+  GO_WITH_TESTS, conditional on re-verifying the claim against a Tier 1/2
+  source (see interpretation) before treating it as settled — bump to
+  Blender 5.2.1 before/alongside blender-bridge's first real deployment.
+  Validation gap (flagged in PR review, confirmed against the actual test
+  files): neither existing test exercises the fixed code path.
+  `headless_selftest.py` only imports `core` and never touches
+  `extension.server`'s timer registration. `run_headless_server.py` runs
+  under `blender --background`, which has no `bpy.app.timers` event loop —
+  the script says so in its own header comment and calls
+  `server._drain_commands()` directly from the script thread, bypassing
+  the timer dispatcher entirely. Neither test can detect a regression in,
+  or confirm the fix of, a bpy.app.timers return-value leak. Real
+  validation needs a foreground/GUI Blender session with the extension
+  installed and `bpy.app.timers.register(..., persistent=True)` actually
+  dispatching — not present in this repo today. Until that harness exists,
+  treat "no regression" as unverified even after bumping; do not claim the
+  leak fix was confirmed by CI.
 affected:
   - apps/blender-bridge (extension/server.py bpy.app.timers persistent drain loop)
   - apps/resolve-script-manager/src-tauri/src/blender.rs (mockup-studio, lower risk)
@@ -54,4 +71,10 @@ lesson: >
   A "bugfix-only" point release is not automatically zero product relevance —
   cross-check the fix list against any newly-added integration (blender-bridge
   postdates the 2026-08-09 baseline) before dismissing a maintenance release
-  as noise.
+  as noise. Also: writing "GO_WITH_TESTS — run X and Y to validate" requires
+  actually reading X and Y first. Both proposed test scripts here explicitly
+  document (in their own header comments) that they bypass the exact
+  mechanism under test; caught in PR review (Codex), not before. Applies
+  the SOURCE_POLICY.md Tier discipline to test evidence too, not just
+  external claims: a validation step that doesn't exercise the changed
+  code path is not evidence of anything.
