@@ -42,6 +42,7 @@ final class DiscoveryRunCoordinator {
     private(set) var isOfflinePaused = false
     private(set) var errorMessage: String?
     private(set) var errorIsRetryable = false
+    private(set) var placesDetailsEnabled = false
 
     var brief = DiscoveryV2Brief.mapArea(
         center: CLLocationCoordinate2D(latitude: 59.9139, longitude: 10.7522))
@@ -394,6 +395,7 @@ final class DiscoveryRunCoordinator {
                     ?? localSnapshot
             }
             guard isCurrent(binding) else { return }
+            alignSelectedProfileWithRun()
             isOfflinePaused = false
             errorMessage = nil
             if run?.status.needsReview == true {
@@ -551,7 +553,8 @@ final class DiscoveryRunCoordinator {
                 name: name,
                 isDefault: true,
                 expectedVersion: selectedProfile?.version,
-                brief: brief.normalized)
+                brief: brief.normalized,
+                placesDetailsEnabled: placesDetailsEnabled)
             let saved: DiscoveryV2Profile
             if let selectedProfile {
                 saved = try await api.updateDiscoveryProfile(
@@ -561,6 +564,7 @@ final class DiscoveryRunCoordinator {
             }
             guard isCurrent(binding) else { return }
             selectedProfile = saved
+            placesDetailsEnabled = saved.placesDetailsEnabled == true
             if let index = profiles.firstIndex(where: { $0.id == saved.id }) {
                 profiles[index] = saved
             } else { profiles.append(saved) }
@@ -570,6 +574,84 @@ final class DiscoveryRunCoordinator {
             guard isCurrent(binding) else { return }
             handle(error)
         }
+    }
+
+    func setPlacesDetailsEnabled(_ enabled: Bool) async {
+        guard let binding = currentBinding(), let api, let projectId else { return }
+        let previousValue = placesDetailsEnabled
+        placesDetailsEnabled = enabled
+        isBusy = true
+        defer {
+            if isCurrent(binding) {
+                isBusy = false
+            }
+        }
+        do {
+            let request = DiscoveryV2ProfileWrite(
+                name: selectedProfile?.name ?? "Standard",
+                isDefault: selectedProfile?.isDefault ?? true,
+                expectedVersion: selectedProfile?.version,
+                brief: brief.normalized,
+                placesDetailsEnabled: enabled)
+            let saved: DiscoveryV2Profile
+            if let selectedProfile {
+                saved = try await api.updateDiscoveryProfile(
+                    projectId: projectId,
+                    profileId: selectedProfile.id,
+                    request: request)
+            } else {
+                saved = try await api.createDiscoveryProfile(
+                    projectId: projectId,
+                    request: request)
+            }
+            guard isCurrent(binding) else { return }
+            selectedProfile = saved
+            placesDetailsEnabled = saved.placesDetailsEnabled == true
+            if let index = profiles.firstIndex(where: { $0.id == saved.id }) {
+                profiles[index] = saved
+            } else { profiles.append(saved) }
+            await persist()
+            guard isCurrent(binding) else { return }
+        } catch {
+            guard isCurrent(binding) else { return }
+            placesDetailsEnabled = previousValue
+            handle(error)
+        }
+    }
+
+    func fetchTransientPlaceDetails(
+        candidateId: String
+    ) async throws -> DiscoveryV2PlaceDetailsResponse {
+        guard placesDetailsEnabled else {
+            throw DiscoveryV2ServiceError(
+                code: "places_details_disabled",
+                message: "Aktiver Google Maps-detaljer for Discovery-profilen først.",
+                retryable: false,
+                field: nil,
+                statusCode: 409)
+        }
+        guard let binding = currentBinding(), let api, let projectId, let run else {
+            throw DiscoveryV2ServiceError(
+                code: "discovery_not_ready",
+                message: "Discovery-kjøringen er ikke klar.",
+                retryable: false,
+                field: nil,
+                statusCode: 409)
+        }
+        guard networkMonitor.isOnline else {
+            throw DiscoveryV2ServiceError(
+                code: "offline",
+                message: "Google Maps-detaljer krever nettforbindelse.",
+                retryable: true,
+                field: nil,
+                statusCode: 503)
+        }
+        let details = try await api.fetchDiscoveryPlaceDetails(
+            projectId: projectId,
+            runId: run.id,
+            candidateId: candidateId)
+        guard isCurrent(binding) else { throw CancellationError() }
+        return details
     }
 
     func beginAnotherSearch() {
@@ -613,12 +695,27 @@ final class DiscoveryRunCoordinator {
             guard isCurrent(binding) else { return }
             profiles = loadedProfiles
             selectedProfile = profiles.first(where: \.isDefault) ?? profiles.first
+            placesDetailsEnabled = selectedProfile?.placesDetailsEnabled == true
             if useDefaultWhenDraftIsEmpty, let selectedProfile {
                 brief = selectedProfile.brief
             }
         } catch {
             // Profiles improve repeat runs but never block an ad-hoc brief.
         }
+    }
+
+    private func alignSelectedProfileWithRun() {
+        guard let run else { return }
+        guard let profileId = run.profileId else {
+            placesDetailsEnabled = false
+            return
+        }
+        guard let matchingProfile = profiles.first(where: { $0.id == profileId }) else {
+            placesDetailsEnabled = false
+            return
+        }
+        selectedProfile = matchingProfile
+        placesDetailsEnabled = matchingProfile.placesDetailsEnabled == true
     }
 
     private func startPollingIfNeeded() {
@@ -658,6 +755,7 @@ final class DiscoveryRunCoordinator {
         run = cached.run
         nextCursor = cached.nextCursor
         selectedProfile = cached.selectedProfile
+        placesDetailsEnabled = cached.selectedProfile?.placesDetailsEnabled == true
         pendingRunIdempotencyKey = cached.pendingRunIdempotencyKey
     }
 
@@ -718,6 +816,7 @@ final class DiscoveryRunCoordinator {
         profiles = []
         selectedProfile = nil
         selectedCandidateIds = []
+        placesDetailsEnabled = false
         pendingRunIdempotencyKey = nil
         errorMessage = nil
         isOfflinePaused = false

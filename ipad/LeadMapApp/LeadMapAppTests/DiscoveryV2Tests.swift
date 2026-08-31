@@ -244,4 +244,79 @@ final class DiscoveryV2Tests: XCTestCase {
         XCTAssertEqual(object["decision"] as? String, "reject")
         XCTAssertEqual(object["reason_code"] as? String, "wrong_customer_type")
     }
+
+    func testTransientGoogleMapsDetailsDecodeWithoutChangingCandidateContract() throws {
+        let data = Data(#"""
+        {
+          "candidate_id":"candidate-1",
+          "mode":"transient_details_only",
+          "fetched_at":"2026-08-31T12:00:00.000Z",
+          "provider":{
+            "id":"google_places",
+            "name":"Google Maps",
+            "policy_uri":"https://developers.google.com/maps/documentation/places/web-service/policies"
+          },
+          "notice":"Hentet på forespørsel og ikke lagret.",
+          "ranking_notice":"Påvirker ikke Discovery-score.",
+          "matches":[{
+            "place_id":"places/leadgrid",
+            "display_name":"Leadgrid AS",
+            "formatted_address":"Storgata 1, Oslo",
+            "latitude":59.91,
+            "longitude":10.75,
+            "primary_type":"corporate_office",
+            "primary_type_label":"Bedriftskontor",
+            "business_status":"OPERATIONAL",
+            "website_uri":"https://leadgrid.no/",
+            "national_phone_number":"979 59 294",
+            "international_phone_number":"+47 979 59 294",
+            "google_maps_uri":"https://maps.google.com/?cid=123",
+            "attributions":[{
+              "provider":"Example data",
+              "provider_uri":"https://example.com/source"
+            }],
+            "match_quality":"strong",
+            "match_reasons":["Navnet samsvarer nøyaktig"]
+          }]
+        }
+        """#.utf8)
+
+        let response = try JSONDecoder().decode(
+            DiscoveryV2PlaceDetailsResponse.self,
+            from: data)
+
+        XCTAssertEqual(response.mode, "transient_details_only")
+        XCTAssertEqual(response.provider.name, "Google Maps")
+        XCTAssertEqual(response.matches.count, 1)
+        XCTAssertEqual(response.matches.first?.matchQualityTitle, "Sterkt identitetstreff")
+        XCTAssertEqual(response.matches.first?.businessStatusTitle, "I drift")
+        XCTAssertEqual(response.matches.first?.phoneNumber, "+47 979 59 294")
+        XCTAssertEqual(response.matches.first?.attributions.first?.provider, "Example data")
+    }
+
+    func testProfilePlacesOptInIsBackwardCompatibleAndExplicitlyEncoded() throws {
+        let legacy = Data(#"{"id":"profile-1","name":"Standard","is_default":true,"version":2,"brief":{"industry_queries":["regnskap"],"exclusion_terms":[],"city":"Oslo","target_count":20,"enrichment_count":10}}"#.utf8)
+        let legacyProfile = try JSONDecoder().decode(DiscoveryV2Profile.self, from: legacy)
+        XCTAssertNil(legacyProfile.placesDetailsEnabled)
+
+        let request = DiscoveryV2ProfileWrite(
+            name: "Standard",
+            isDefault: true,
+            expectedVersion: 2,
+            brief: legacyProfile.brief,
+            placesDetailsEnabled: true)
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any])
+
+        XCTAssertEqual(object["places_details_enabled"] as? Bool, true)
+        XCTAssertEqual(object["expected_version"] as? Int, 2)
+    }
+
+    func testRunCarriesTheProfileThatControlsTransientDetails() throws {
+        let data = Data(#"{"id":"run-1","profile_id":"profile-1","status":"review_ready"}"#.utf8)
+        let run = try JSONDecoder().decode(DiscoveryV2Run.self, from: data)
+
+        XCTAssertEqual(run.profileId, "profile-1")
+        XCTAssertEqual(run.status, .reviewReady)
+    }
 }

@@ -17,7 +17,7 @@
 //   • Telefon
 //   • E-post
 //   • Bransje       (Picker, hentet via APIClient.fetchIndustries)
-//   • Lead-temp     (segmented: hot/warm/lukewarm/cold, default lukewarm)
+//   • Lead-temp     (segmented: kald/varm/hot/klar, default varm)
 //
 // Vises som .medium/.large detents.
 
@@ -42,7 +42,7 @@ struct LeadgridDropPinSheet: View {
     @State private var phone: String = ""
     @State private var email: String = ""
     @State private var industryId: String? = nil
-    @State private var temperature: LeadTemperature = .lukewarm
+    @State private var temperature: LeadTemperature = .warm
 
     // Async-state
     @State private var industries: [Industry] = []
@@ -269,19 +269,21 @@ struct LeadgridDropPinSheet: View {
         createError = nil
         defer { creating = false }
         do {
-            let newId = try await api.createLeadAtPin(
-                name: trimmedName,
-                company: company,
-                phone: phone,
-                email: email,
-                industryId: industryId,
-                leadTemperature: temperature.rawValue,
+            let trimmedCompany = company.trimmingCharacters(in: .whitespacesAndNewlines)
+            let newId = try await api.createLeadAtPin(.init(
+                companyName: trimmedCompany.isEmpty ? trimmedName : trimmedCompany,
                 latitude: coordinate.latitude,
                 longitude: coordinate.longitude,
+                contactName: trimmedCompany.isEmpty ? nil : trimmedName,
+                phone: phone,
+                email: email,
+                industryID: industryId,
+                leadTemperature: temperature.rawValue,
+                leadStatus: LeadStatus.unvisited.rawValue,
                 address: resolvedAddress,
                 locationConfidence: "exact",
                 leadSource: "manual_pin_drop"
-            )
+            ))
             // Success-haptic
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             // Fetch det ferskt opprettede leadet og append til AppState så

@@ -1176,46 +1176,140 @@ actor APIClient {
         return try await get("/api/admin-room/lead-map/company-lookup?q=\(enc)")
     }
 
-    // MARK: - Drop-pin lead-create (PR feat/leadmap-ipad-center-fab-droppin)
+    // MARK: - Strukturert lead-opprettelse
 
-    /// Payload for /leads/from-pin. Tilsvarer manuell pin-drop på iPad-kartet.
-    /// Bruker eksisterende `leads.create`-RBAC + crm_customers-kolonner
-    /// (lat/lng, industry_id, lead_temperature, location_confidence,
-    /// lead_source). Backend defaulter til lead_status='unvisited' og
-    /// kobler eierskap til innlogget user.
-    func createLeadAtPin(
-        name: String,
-        company: String?,
-        phone: String?,
-        email: String?,
-        industryId: String?,
-        leadTemperature: String?,
-        latitude: Double,
-        longitude: Double,
-        address: String?,
-        locationConfidence: String = "exact",
-        leadSource: String = "manual_pin_drop"
-    ) async throws -> String {
-        var body: [String: Any] = [
-            "name": name,
-            "latitude": latitude,
-            "longitude": longitude,
-            "location_confidence": locationConfidence,
-            "lead_source": leadSource,
-        ]
-        if let v = company?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty { body["company"] = v }
-        if let v = phone?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty { body["phone"] = v }
-        if let v = email?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty { body["email"] = v }
-        if let v = industryId?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty { body["industry_id"] = v }
-        if let v = leadTemperature?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty { body["lead_temperature"] = v }
-        if let v = address?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty { body["address"] = v }
+    struct CreateLeadAtPinRequest: Sendable {
+        let companyName: String
+        let latitude: Double
+        let longitude: Double
+        let contactName: String?
+        let contactRole: String?
+        let organizationNumber: String?
+        let websiteURL: String?
+        let phone: String?
+        let email: String?
+        let industryID: String?
+        let industryLabel: String?
+        let employeeCountEstimate: Int?
+        let annualRevenueNokEstimate: Double?
+        let notes: String?
+        let leadTemperature: String
+        let leadStatus: String
+        let nextFollowUpAt: Date?
+        let nextAction: String?
+        let address: String?
+        let postalCode: String?
+        let city: String?
+        let locationConfidence: String
+        let leadSource: String
+        let projectID: String?
 
+        init(
+            companyName: String,
+            latitude: Double,
+            longitude: Double,
+            contactName: String? = nil,
+            contactRole: String? = nil,
+            organizationNumber: String? = nil,
+            websiteURL: String? = nil,
+            phone: String? = nil,
+            email: String? = nil,
+            industryID: String? = nil,
+            industryLabel: String? = nil,
+            employeeCountEstimate: Int? = nil,
+            annualRevenueNokEstimate: Double? = nil,
+            notes: String? = nil,
+            leadTemperature: String = "warm",
+            leadStatus: String = "unvisited",
+            nextFollowUpAt: Date? = nil,
+            nextAction: String? = nil,
+            address: String? = nil,
+            postalCode: String? = nil,
+            city: String? = nil,
+            locationConfidence: String = "exact",
+            leadSource: String = "manual_pin_drop",
+            projectID: String? = nil
+        ) {
+            self.companyName = companyName
+            self.latitude = latitude
+            self.longitude = longitude
+            self.contactName = contactName
+            self.contactRole = contactRole
+            self.organizationNumber = organizationNumber
+            self.websiteURL = websiteURL
+            self.phone = phone
+            self.email = email
+            self.industryID = industryID
+            self.industryLabel = industryLabel
+            self.employeeCountEstimate = employeeCountEstimate
+            self.annualRevenueNokEstimate = annualRevenueNokEstimate
+            self.notes = notes
+            self.leadTemperature = leadTemperature
+            self.leadStatus = leadStatus
+            self.nextFollowUpAt = nextFollowUpAt
+            self.nextAction = nextAction
+            self.address = address
+            self.postalCode = postalCode
+            self.city = city
+            self.locationConfidence = locationConfidence
+            self.leadSource = leadSource
+            self.projectID = projectID
+        }
+
+        func makeBody() -> [String: Any] {
+            var body: [String: Any] = [
+                "name": companyName,
+                "company": companyName,
+                "latitude": latitude,
+                "longitude": longitude,
+                "lead_temperature": leadTemperature,
+                "lead_status": leadStatus,
+                "location_confidence": locationConfidence,
+                "lead_source": leadSource,
+            ]
+            func put(_ key: String, _ value: String?) {
+                guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !value.isEmpty else { return }
+                body[key] = value
+            }
+            put("contact_name", contactName)
+            put("contact_role", contactRole)
+            put("organization_number", organizationNumber)
+            put("website_url", websiteURL)
+            put("phone", phone)
+            put("email", email)
+            put("industry_id", industryID)
+            put("industry_label", industryLabel)
+            put("notes", notes)
+            put("next_action", nextAction)
+            put("address", address)
+            put("postal_code", postalCode)
+            put("city", city)
+            put("project_id", projectID)
+            if let employeeCountEstimate {
+                body["employee_count_estimate"] = employeeCountEstimate
+            }
+            if let annualRevenueNokEstimate {
+                body["annual_revenue_nok_estimate"] = annualRevenueNokEstimate
+            }
+            if let nextFollowUpAt {
+                body["next_follow_up_at"] = ISO8601DateFormatter().string(from: nextFollowUpAt)
+            }
+            return body
+        }
+    }
+
+    /// Fullfelt-kontrakt for manuell, BRREG-beriket og kartbasert lead.
+    func createLeadAtPin(_ request: CreateLeadAtPinRequest) async throws -> String {
         struct CreateResponse: Decodable, Sendable {
             let ok: Bool
             let id: String
         }
-        let resp: CreateResponse = try await post("/api/admin-room/lead-map/leads/from-pin", body: body)
-        return resp.id
+        let response: CreateResponse = try await post(
+            "/api/admin-room/lead-map/leads/from-pin",
+            body: request.makeBody()
+        )
+        return response.id
     }
 
     // MARK: - Varsler (PR #622)
