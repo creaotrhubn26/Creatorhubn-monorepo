@@ -1505,41 +1505,56 @@ struct NativeBoardView: View {
         scheduleCameraMotionAutosync()
     }
 
-    private var backgroundObservedBoardView: AnyView {
+    private var rasterObservedBoardView: AnyView {
         AnyView(frameObservedBoardView
-        .onChange(of: board.frame?.imageUrl) {
-            // Et godkjent AI Color/Atmosphere-bilde er en ny rasterbase, ikke
-            // et nytt tegnedokument. Behold stroke-historikken mens den nye
-            // basen lastes av activeRasterTaskKey.
-            applyUnderlay(to: renderer)
-            updateAIRasterEditingMode()
-            canvasState.backgroundRevision += 1
-        }
-        .onChange(of: board.frame?.aiOutputStale) {
-            updateAIRasterEditingMode()
-            applyUnderlay(to: renderer)
-        }
-        .onChange(of: board.frame?.aiOutputStaleReason) {
-            updateAIRasterEditingMode()
-            applyUnderlay(to: renderer)
-        }
+        .onChange(of: board.frame?.imageUrl) { handleAIImageURLChange() }
+        .onChange(of: board.frame?.aiOutputStale) { refreshAIRasterUnderlay() }
+        .onChange(of: board.frame?.aiOutputStaleReason) { refreshAIRasterUnderlay() }
+        )
+    }
+
+    private var underlayObservedBoardView: AnyView {
+        AnyView(rasterObservedBoardView
         .onChange(of: board.frame?.aiSourceFramingFingerprint) {
-            updateAIRasterEditingMode()
-            applyUnderlay(to: renderer)
+            refreshAIRasterUnderlay()
         }
         .onChange(of: onionMode) { applyUnderlay(to: renderer) }
         .onChange(of: board.frame?.underlayDataURL) { applyUnderlay(to: renderer) }
+        )
+    }
+
+    private var backgroundObservedBoardView: AnyView {
+        AnyView(underlayObservedBoardView
         .onChange(of: board.frame?.underlayOpacity) { applyUnderlay(to: renderer) }
         )
     }
 
-    private var serviceObservedBoardView: AnyView {
+    private func handleAIImageURLChange() {
+        // Et godkjent AI Color/Atmosphere-bilde er en ny rasterbase, ikke
+        // et nytt tegnedokument. Behold stroke-historikken mens den nye
+        // basen lastes av activeRasterTaskKey.
+        applyUnderlay(to: renderer)
+        updateAIRasterEditingMode()
+        canvasState.backgroundRevision += 1
+    }
+
+    private func refreshAIRasterUnderlay() {
+        updateAIRasterEditingMode()
+        applyUnderlay(to: renderer)
+    }
+
+    private var serviceTaskBoardView: AnyView {
         AnyView(backgroundObservedBoardView
         .onChange(of: perspectiveMode) { handlePerspectiveModeChange() }
         .onChange(of: perspectiveSnap) { updateSnapState() }
         .task {
             await retryPendingDocumentsLoop()
         }
+        )
+    }
+
+    private var serviceObservedBoardView: AnyView {
+        AnyView(serviceTaskBoardView
         .task {
             await liveSyncLoop()
         }
