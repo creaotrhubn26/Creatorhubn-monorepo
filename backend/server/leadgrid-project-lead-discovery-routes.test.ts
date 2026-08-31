@@ -185,6 +185,10 @@ describe("Leadgrid project discovery context", () => {
     expect(softReferenceMigration).toContain(
       "DROP CONSTRAINT IF EXISTS market_scan_competitors_project_id_fkey",
     );
+    expect(softReferenceMigration).toContain("FROM pg_constraint");
+    expect(softReferenceMigration).toContain(
+      "to_regclass('crm_customers')",
+    );
     expect(softReferenceMigration).not.toContain("UPDATE leadgrid_projects");
     expect(softReferenceMigration).not.toContain("FROM brand_kits");
     expect(softReferenceMigration).not.toContain("FROM crm_customers");
