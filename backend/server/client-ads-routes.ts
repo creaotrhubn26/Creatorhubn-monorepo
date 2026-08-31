@@ -119,11 +119,16 @@ import {
   getScopePermissionsState,
 } from "./client-scope-permissions-service.js";
 import {
+  ADS_OAUTH_SCOPES,
   buildAdsAuthUrl,
   exchangeAdsCodeForToken,
   upsertAdsOauthConnection,
   adsOauthClientCreds,
 } from "./role-room-ads-oauth.js";
+import {
+  consumeOauthState,
+  persistOauthState,
+} from "./role-room-oauth-store.js";
 import crypto from "node:crypto";
 
 // Role Room-casting-prosjekter har slug-IDer (f.eks. `medside-1784364797337`),
@@ -133,37 +138,57 @@ import crypto from "node:crypto";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function _adsOauthStateKey(): string {
-  return process.env.SESSION_SECRET || process.env.JWT_SECRET || process.env.AUTH_SECRET || "";
+const CLIENT_ADS_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const CLIENT_ADS_OAUTH_STATE_RE = /^[A-Za-z0-9_-]{32}$/;
+
+type ClientAdsOauthFlow = "client_ads_linkedin" | "client_ads_tiktok";
+
+type ClientAdsOauthState = {
+  flow: ClientAdsOauthFlow;
+  userId: string;
+  configId: string;
+  redirectUri: string;
+  createdAt: number;
+};
+
+async function _buildAdsOauthState(
+  pool: Pool,
+  payload: Omit<ClientAdsOauthState, "createdAt">,
+): Promise<string | null> {
+  const stateId = crypto.randomBytes(24).toString("base64url");
+  const persisted = await persistOauthState(
+    pool,
+    stateId,
+    { ...payload, createdAt: Date.now() },
+    new Date(Date.now() + CLIENT_ADS_OAUTH_STATE_TTL_MS),
+  );
+  return persisted ? stateId : null;
 }
-function _signAdsOauthState(payload: string): string {
-  return crypto.createHmac("sha256", _adsOauthStateKey()).update(payload).digest("hex").slice(0, 16);
-}
-function _buildAdsOauthState(userId: string, configId: string): string {
-  // Fail closed: with an empty HMAC key the signed state is trivially forgeable
-  // (an attacker computes HMAC("", payload) themselves), enabling ad-account
-  // linking CSRF. Refuse to mint a state rather than emit an insecure one.
-  if (!_adsOauthStateKey()) {
-    throw new Error("ads_oauth_state_secret_missing");
+
+async function _consumeAdsOauthState(
+  pool: Pool,
+  stateId: string,
+  expectedFlow: ClientAdsOauthFlow,
+): Promise<Omit<ClientAdsOauthState, "flow" | "createdAt"> | null> {
+  if (!CLIENT_ADS_OAUTH_STATE_RE.test(stateId)) return null;
+  const state = await consumeOauthState<ClientAdsOauthState>(pool, stateId);
+  if (
+    !state ||
+    state.flow !== expectedFlow ||
+    typeof state.userId !== "string" ||
+    !state.userId.trim() ||
+    typeof state.configId !== "string" ||
+    typeof state.redirectUri !== "string" ||
+    !state.redirectUri.startsWith("https://") ||
+    typeof state.createdAt !== "number"
+  ) {
+    return null;
   }
-  const nonce = crypto.randomBytes(12).toString("hex");
-  const payload = `${userId}|${configId}|${nonce}`;
-  const sig = _signAdsOauthState(payload);
-  return `${payload}|${sig}`;
-}
-function _verifyAdsOauthState(state: string): { userId: string; configId: string } | null {
-  // Fail closed: never accept a state when the signing key is absent — otherwise
-  // a forged HMAC over an empty key would validate.
-  if (!_adsOauthStateKey()) return null;
-  const parts = state.split("|");
-  if (parts.length !== 4) return null;
-  const [userId, configId, nonce, sig] = parts;
-  const payload = `${userId}|${configId}|${nonce}`;
-  const expected = _signAdsOauthState(payload);
-  const a = Buffer.from(sig ?? "");
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
-  return { userId, configId };
+  return {
+    userId: state.userId,
+    configId: state.configId,
+    redirectUri: state.redirectUri,
+  };
 }
 
 interface SessionLike {
@@ -1094,7 +1119,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
   // ════════════════════════════════════════════════════════════════════
 
   // OAuth-start: returnerer authUrl
-  app.get("/api/admin-room/agent/ads/oauth/linkedin/start", (req, res) => {
+  app.get("/api/admin-room/agent/ads/oauth/linkedin/start", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     const creds = adsOauthClientCreds("linkedin");
@@ -1103,7 +1128,15 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     const baseUrl = (process.env.PUBLIC_BACKEND_URL || `https://${req.get("host") ?? "creatorhub-backend-rtbl.onrender.com"}`).replace(/\/+$/, "");
     const redirectUri = `${baseUrl}/api/admin-room/agent/ads/oauth/linkedin/callback`;
     const configId = typeof req.query.configId === "string" ? req.query.configId : "";
-    const state = _buildAdsOauthState(session.userId, configId);
+    const state = await _buildAdsOauthState(pool, {
+      flow: "client_ads_linkedin",
+      userId: session.userId,
+      configId,
+      redirectUri,
+    });
+    if (!state) {
+      return res.status(503).json({ error: "OAuth state-lager er utilgjengelig" });
+    }
     const authUrl = buildAdsAuthUrl("linkedin", { clientId: creds.clientId, redirectUri, state });
     if (!authUrl) return res.status(503).json({ error: "Klarte ikke å bygge LinkedIn-auth-URL" });
     return res.json({ authUrl });
@@ -1113,16 +1146,21 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
   app.get("/api/admin-room/agent/ads/oauth/linkedin/callback", async (req, res) => {
     const code = typeof req.query.code === "string" ? req.query.code : null;
     const state = typeof req.query.state === "string" ? req.query.state : null;
-    if (!code || !state) return res.status(400).send("Missing code/state");
+    if (!state) return res.status(400).send("Missing state");
 
-    const stateParts = _verifyAdsOauthState(state);
-    if (!stateParts) return res.status(400).send("Invalid or tampered state");
-    const { userId, configId } = stateParts;
+    // Consume before inspecting code/error so consent denial cannot leave a
+    // replayable state behind.
+    const stateParts = await _consumeAdsOauthState(
+      pool,
+      state,
+      "client_ads_linkedin",
+    );
+    if (!stateParts) return res.status(400).send("Invalid or expired state");
+    if (!code) return res.status(400).send("Missing code");
+    const { userId, configId, redirectUri } = stateParts;
 
     const creds = adsOauthClientCreds("linkedin");
     if (!creds) return res.status(503).send("LinkedIn creds mangler");
-    const baseUrl = (process.env.PUBLIC_BACKEND_URL || `https://${req.get("host") ?? "creatorhub-backend-rtbl.onrender.com"}`).replace(/\/+$/, "");
-    const redirectUri = `${baseUrl}/api/admin-room/agent/ads/oauth/linkedin/callback`;
 
     try {
       const tokenResult = await exchangeAdsCodeForToken("linkedin", { ...creds, code, redirectUri });
@@ -1135,7 +1173,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
         refreshToken: tokenResult.refreshToken,
         accessToken: tokenResult.accessToken,
         expiresInSec: tokenResult.expiresInSec,
-        scopes: ["r_ads", "r_ads_reporting", "rw_ads", "r_organization_admin"],
+        scopes: [...(ADS_OAUTH_SCOPES.linkedin ?? [])],
       });
       const cfgParam = configId ? `&config=${encodeURIComponent(configId)}` : "";
       return res.redirect(`/role-room/agent/ads?oauth_success=linkedin${cfgParam}`);
@@ -1446,13 +1484,21 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
   // Tokens lagres i role_room_ads_oauth_connections m/ platform='tiktok'.
   // ════════════════════════════════════════════════════════════════════
 
-  app.get("/api/admin-room/agent/ads/oauth/tiktok/start", (req, res) => {
+  app.get("/api/admin-room/agent/ads/oauth/tiktok/start", async (req, res) => {
     const session = getActiveSession(req);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     const baseUrl = (process.env.PUBLIC_BACKEND_URL || `https://${req.get("host") ?? ""}`).replace(/\/+$/, "");
     const redirectUri = `${baseUrl}/api/admin-room/agent/ads/oauth/tiktok/callback`;
     const configId = typeof req.query.configId === "string" ? req.query.configId : "";
-    const state = _buildAdsOauthState(session.userId, configId);
+    const state = await _buildAdsOauthState(pool, {
+      flow: "client_ads_tiktok",
+      userId: session.userId,
+      configId,
+      redirectUri,
+    });
+    if (!state) {
+      return res.status(503).json({ error: "OAuth state-lager er utilgjengelig" });
+    }
     const authUrl = buildTiktokAuthUrl({ state, redirectUri });
     if (!authUrl) return res.status(503).json({ error: "TIKTOK_BUSINESS_APP_ID/SECRET ikke satt." });
     return res.json({ authUrl });
@@ -1461,10 +1507,15 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
   app.get("/api/admin-room/agent/ads/oauth/tiktok/callback", async (req, res) => {
     const authCode = typeof req.query.auth_code === "string" ? req.query.auth_code : typeof req.query.code === "string" ? req.query.code : null;
     const state = typeof req.query.state === "string" ? req.query.state : null;
-    if (!authCode || !state) return res.status(400).send("Missing auth_code/state");
+    if (!state) return res.status(400).send("Missing state");
 
-    const stateParts = _verifyAdsOauthState(state);
-    if (!stateParts) return res.status(400).send("Invalid or tampered state");
+    const stateParts = await _consumeAdsOauthState(
+      pool,
+      state,
+      "client_ads_tiktok",
+    );
+    if (!stateParts) return res.status(400).send("Invalid or expired state");
+    if (!authCode) return res.status(400).send("Missing auth_code");
     const { userId, configId } = stateParts;
 
     try {
@@ -2487,7 +2538,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
         identifiers: body.identifiers,
         configId: req.params.id !== "self" ? req.params.id : null,
       });
-      if (!r.ok) return res.status(503).json({ error: r.error });
+      if (!r.ok) return res.status(503).json(r);
       return res.json(r);
     } catch (err) {
       return res.status(500).json({ error: "LinkedIn-audience-opprettelse feilet", detail: "internal_error" });
