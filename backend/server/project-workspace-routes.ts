@@ -2654,6 +2654,24 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       fal_request_id varchar, response_url text, input jsonb, source_asset_id uuid,
       output_b2_key text, output_url_temp text, est_cost_usd numeric DEFAULT 0,
       error text, created_at timestamptz DEFAULT now(), completed_at timestamptz)`).catch(() => {});
+    // Migration 0479 intentionally skips clean databases where this legacy
+    // compatibility table does not exist yet. Replay its partial due index
+    // immediately after lazy table creation so a recorded migration cannot
+    // leave later sweeps doing a JSON full-table scan.
+    await pool.query(`CREATE INDEX IF NOT EXISTS
+      generative_ai_jobs_legacy_billing_due_idx
+      ON public.generative_ai_jobs (
+        ((input #>> '{legacyBilling,status}')),
+        ((input #>> '{legacyBilling,nextAttemptAt}')),
+        ((input #>> '{legacyBilling,leaseExpiresAt}')),
+        ((input #>> '{legacyBilling,deadlineAt}')),
+        completed_at,
+        id
+      )
+      WHERE status = 'completed'
+        AND (input #>> '{legacyBilling,mode}') IN ('metered','credits')
+        AND (input #>> '{legacyBilling,status}')
+          IN ('pending','retry_wait','delivering')`).catch(() => {});
     await pool.query(`CREATE TABLE IF NOT EXISTS project_ai_consent (
       project_id varchar PRIMARY KEY, consented boolean DEFAULT false,
       consented_by varchar, consented_at timestamptz)`).catch(() => {});

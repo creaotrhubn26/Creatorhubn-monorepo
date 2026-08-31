@@ -56,6 +56,7 @@ import {
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as schema from "../migrations/schema.js";
+import { verifyDatabaseOwnerSession } from "./database-owner-role.js";
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { createRoleRoomRouter } from "./role-room-routes.js";
 import { registerRoleRoomProfileRoutes } from "./role-room-profile-routes.js";
@@ -1182,6 +1183,8 @@ const pool = new Pool({
   // Statement timeout per query — beskytter mot runaway queries (30s)
   statement_timeout: 30_000,
 });
+
+await verifyDatabaseOwnerSession(pool);
 
 // Logger pool-health hvert 5. min for observability (Render-logs)
 setInterval(() => {

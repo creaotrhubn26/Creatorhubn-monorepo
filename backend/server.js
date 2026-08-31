@@ -89,7 +89,10 @@ async function run() {
   // separat Render Job.
   try {
     const { spawnSync } = await import('node:child_process');
-    const skipBootMigrate = process.env.SKIP_BOOT_MIGRATE === '1' || process.env.SKIP_BOOT_MIGRATE === 'true';
+    const skipBootMigrate =
+      isRenderRuntime ||
+      process.env.SKIP_BOOT_MIGRATE === '1' ||
+      process.env.SKIP_BOOT_MIGRATE === 'true';
     if (existsSync(migrateScript) && !skipBootMigrate) {
       console.log('🔄 Running migrate.sh before start...');
       const res = spawnSync('bash', [migrateScript], { stdio: 'inherit', env: process.env });
@@ -99,7 +102,11 @@ async function run() {
         console.log('✅ Migration step complete');
       }
     } else if (skipBootMigrate) {
-      console.log('⏭️  Skipping migrate.sh at boot (SKIP_BOOT_MIGRATE=1)');
+      console.log(
+        isRenderRuntime
+          ? '⏭️  Skipping migrate.sh at Render boot; the canonical GitHub release gate owns migrations'
+          : '⏭️  Skipping migrate.sh at boot (SKIP_BOOT_MIGRATE=1)',
+      );
     }
 
     if (isRenderRuntime && !shouldRunRenderBootSeed) {
