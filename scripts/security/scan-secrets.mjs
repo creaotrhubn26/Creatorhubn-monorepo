@@ -17,6 +17,8 @@ const PLACEHOLDER_VALUES = new Set([
   'secret',
   'test',
   'testpass',
+  'test-encryption-key-for-ads-oauth',
+  'test-secret-32-bytes-aaaaaaaaaaaa',
 ]);
 
 const PLACEHOLDER_MARKERS = ['<', '${', '{{', '***'];
@@ -80,8 +82,31 @@ const RULES = [
     regex: /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,})\b/g,
   },
   {
+    id: 'render-api-key',
+    regex: /(?<![A-Za-z0-9_-])rnd_[A-Za-z0-9_-]{20,}(?![A-Za-z0-9_-])/g,
+  },
+  {
+    id: 'literal-render-env-backup-key',
+    regex: /(?<![A-Z0-9_])["']?RENDER_ENV_BACKUP_KEY["']?\s*(?:=|:)\s*["']?([0-9a-f]{64})["']?/gi,
+  },
+  {
+    id: 'anthropic-api-key',
+    regex: /\bsk-ant-[A-Za-z0-9_-]{20,}\b/g,
+  },
+  {
+    id: 'literal-sensitive-credential-assignment',
+    regex: /\b(?:TOKEN|SUBKEY|[A-Z0-9_]*(?:CRON_TOKEN|CRON_SECRET|MIGRATE_TRIGGER_TOKEN|EMERGENCY_TOKEN|ENCRYPTION_KEY))\s*(?:=|:)\s*["']([A-Za-z0-9_+/=-]{32,})["']/gi,
+    shouldReport(match) {
+      return !isPlaceholder(match[1]);
+    },
+  },
+  {
+    id: 'literal-poweroffice-key',
+    regex: /\b(?:(?:const|let|var)\s+APPKEY\s*=|POWEROFFICE_(?:APPLICATION|SUBSCRIPTION|CLIENT)_KEY\s*(?:=|:)|client_key\s*={2,3})\s*["'](?:[0-9a-f]{32,}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})["']/gi,
+  },
+  {
     id: 'stripe-live-secret',
-    regex: /\bsk_live_[A-Za-z0-9]{20,}\b/g,
+    regex: /\b(?:sk|rk)_live_[A-Za-z0-9]{20,}\b/g,
   },
   {
     id: 'openai-api-key',
@@ -196,12 +221,53 @@ function runSelfTest() {
     '/app',
   ].join('');
   const githubToken = ['gh', 'p_', 'A'.repeat(36)].join('');
+  const renderApiKey = ['rnd', '_', 'A'.repeat(28)].join('');
+  const renderApiKeyTrailingDash = ['rnd', '_', 'A'.repeat(27), '-'].join('');
+  const renderBackupKey = ['RENDER_ENV_BACKUP_KEY=', 'a'.repeat(64)].join('');
+  const renderBackupJson = ['{"RENDER_ENV_BACKUP_KEY":"', 'b'.repeat(64), '"}'].join('');
+  const renderKeyPlaceholder = ['rnd', '_', 'short-placeholder'].join('');
+  const renderBackupPlaceholder = ['RENDER_ENV_BACKUP_KEY=', '${RENDER_ENV_BACKUP_KEY}'].join('');
+  const anthropicApiKey = ['sk', '-ant-api03-', 'A'.repeat(40)].join('');
+  const quote = String.fromCharCode(39);
+  const sensitiveHexToken = ['const TOKEN = ', quote, 'a'.repeat(64), quote, ';'].join('');
+  const testPrefixedToken = [
+    'const TOKEN = ', quote, 'test-', 'A'.repeat(40), quote, ';',
+  ].join('');
+  const testPrefixedRemoteDatabaseUrl = [
+    'postgresql://service_user:', 'test-', 'A'.repeat(40), '@db.internal.test/app',
+  ].join('');
+  const explicitAdsFixture = [
+    'ROLE_ROOM_TOKEN_ENCRYPTION_KEY=', quote,
+    'test-encryption-key-for-ads-oauth', quote,
+  ].join('');
+  const cronToken = ['LEADGRID_INTELLIGENCE_CRON_TOKEN=', quote, 'A'.repeat(40), quote].join('');
+  const powerOfficeAppKey = [
+    'const APPKEY = ', quote,
+    ['11111111', '2222', '4333', '8444', '555555555555'].join('-'),
+    quote, ';',
+  ].join('');
+  const publicIndexNowKey = ['const OWN_INDEXNOW_KEY = ', quote, 'a'.repeat(32), quote, ';'].join('');
   const literalPgPassword = ['PG', 'PASSWORD=', 'not-a-real-but-literal-value'].join('');
   const privateKeyHeader = ['-----BEGIN ', 'PRIVATE KEY-----'].join('');
   const cases = [
     { value: dangerousDatabaseUrl, expected: 'postgres-url-with-password' },
     { value: 'postgresql://postgres:postgres@localhost:5432/test', expected: null },
     { value: githubToken, expected: 'github-token' },
+    { value: renderApiKey, expected: 'render-api-key' },
+    { value: renderApiKeyTrailingDash, expected: 'render-api-key' },
+    { value: renderBackupKey, expected: 'literal-render-env-backup-key' },
+    { value: renderBackupJson, expected: 'literal-render-env-backup-key' },
+    { value: renderKeyPlaceholder, expected: null },
+    { value: renderBackupPlaceholder, expected: null },
+    { value: anthropicApiKey, expected: 'anthropic-api-key' },
+    { value: sensitiveHexToken, expected: 'literal-sensitive-credential-assignment' },
+    { value: testPrefixedToken, expected: 'literal-sensitive-credential-assignment' },
+    { value: testPrefixedRemoteDatabaseUrl, expected: 'postgres-url-with-password' },
+    { value: explicitAdsFixture, expected: null },
+    { value: cronToken, expected: 'literal-sensitive-credential-assignment' },
+    { value: powerOfficeAppKey, expected: 'literal-poweroffice-key' },
+    { value: publicIndexNowKey, expected: null },
+    { value: `TOKEN=${quote}test-secret-32-bytes-aaaaaaaaaaaa${quote}`, expected: null },
     { value: literalPgPassword, expected: 'literal-pgpassword' },
     { value: privateKeyHeader, expected: 'private-key' },
     { value: 'PGPASSWORD=$PGPASSWORD', expected: null },

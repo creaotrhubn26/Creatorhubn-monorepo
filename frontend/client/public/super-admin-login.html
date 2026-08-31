@@ -10,6 +10,8 @@
   button { background: #fbbf24; color: #0a0a0f; border: none; padding: 14px 28px; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 16px; }
   button:hover { background: #f59e0b; }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
+  label { display: block; margin-top: 14px; color: #cbd5e1; }
+  input { box-sizing: border-box; width: 100%; margin-top: 6px; padding: 12px; border-radius: 8px; border: 1px solid #475569; background: #0a0a0f; color: #fff; }
   pre { background: #0a0a0f; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 12px; color: #cbd5e1; max-height: 240px; }
   .ok { color: #34d399; }
   .err { color: #fda4af; }
@@ -18,20 +20,26 @@
 <body>
 <div class="card">
   <h1>Super Admin Emergency Login</h1>
-  <p>Kun for daniel@creatorhubn.com. Klikk knappen — vi henter en session-token, lagrer i localStorage, og sender deg til Admin Room.</p>
+  <p>Oppgi den konfigurerte emergency-identiteten og hemmeligheten. Verdiene lagres ikke i denne siden.</p>
+  <label>E-post<input id="email" type="email" autocomplete="username" required></label>
+  <label>Emergency-token<input id="token" type="password" autocomplete="off" required></label>
   <button id="loginBtn">Logg inn nå</button>
   <p id="status"></p>
   <pre id="output"></pre>
 </div>
 
 <script>
-const TOKEN = 'a2fd4a5c152df63ef3a6bfee2704147fc3d258df0a977b1c99ebcf539be6beb9';
-const EMAIL = 'daniel@creatorhubn.com';
-
 document.getElementById('loginBtn').addEventListener('click', async () => {
   const btn = document.getElementById('loginBtn');
   const status = document.getElementById('status');
   const output = document.getElementById('output');
+  const email = document.getElementById('email').value.trim();
+  const token = document.getElementById('token').value;
+  if (!email || !token) {
+    status.textContent = '✗ E-post og token må fylles ut';
+    status.className = 'err';
+    return;
+  }
   btn.disabled = true;
   status.textContent = 'Logger inn…';
   status.className = '';
@@ -39,10 +47,11 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     const r = await fetch('/api/super-admin/emergency-login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: EMAIL, token: TOKEN })
+      body: JSON.stringify({ email, token })
     });
+    document.getElementById('token').value = '';
     const b = await r.json();
-    output.textContent = JSON.stringify(b, null, 2);
+    output.textContent = b.error ? `Feil: ${b.error}` : '';
     if (!b.token) {
       status.textContent = '✗ Login feilet (HTTP ' + r.status + ')';
       status.className = 'err';

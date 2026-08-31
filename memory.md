@@ -63,7 +63,7 @@
    - Pipeline Kanban + Follow-up Queue (PR #857)
    - Market Scan UI (PR #854)
    - (Senere) WebSocket-subscriber (task #489)
-5. **Roter Render API-key** delt i tidligere chat (`rnd_xF2crLAXkxHRIxCkHLT1C3eviReK`).
+5. **Roter Render API-key** delt i tidligere chat (`[REDACTED - revoke and rotate before release]`).
 6. **Roter Neon-credential** hvis ikke gjort tidligere.
 
 ### 🟧 IKKE FERDIG — kjente begrensninger
