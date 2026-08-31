@@ -7,14 +7,20 @@ const migrationDirectory = fileURLToPath(
 );
 
 const migrationBasenames = [
-  "0472_storyboard_ai_image_versions.sql",
-  "0473_storyboard_ai_image_idempotency.sql",
-  "0474_storyboard_ai_video_provider_lifecycle.sql",
-  "0475_legacy_generative_ai_billing_due_index.sql",
-  "0476_storyboard_ai_image_billing_outbox.sql",
-  "0477_storyboard_mentions_identity_scope.sql",
-  "0478_project_video_direct_upload_registration.sql",
-  "0479_storyboard_tenant_identity.sql",
+  "0474_storyboard_ai_image_versions.sql",
+  "0475_storyboard_ai_image_idempotency.sql",
+  "0476_storyboard_ai_video_provider_lifecycle.sql",
+  "0477_legacy_generative_ai_billing_due_index.sql",
+  "0478_storyboard_ai_image_billing_outbox.sql",
+  "0479_storyboard_mentions_identity_scope.sql",
+  "0480_project_video_direct_upload_registration.sql",
+  "0481_storyboard_tenant_identity.sql",
+] as const;
+
+const occupiedMigrationBasenames = [
+  "0472_leadgrid_project_soft_references.sql",
+  "0473_leadgrid_discovery_platform.sql",
+  ...migrationBasenames,
 ] as const;
 
 const migrations = Object.fromEntries(
@@ -36,13 +42,13 @@ const projectVideoUpload = compactSQL(migrations[migrationBasenames[6]]);
 const tenantIdentity = compactSQL(migrations[migrationBasenames[7]]);
 
 describe("Storyboard Room migration integrity", () => {
-  it("uses one unique, contiguous migration filename for 0472 through 0479", () => {
+  it("uses one unique, contiguous migration filename for 0472 through 0481", () => {
     const files = readdirSync(migrationDirectory)
-      .filter((filename) => /^(047[2-9])_.*\.sql$/.test(filename))
+      .filter((filename) => /^(?:047[2-9]|048[01])_.*\.sql$/.test(filename))
       .sort();
 
-    expect(files).toEqual([...migrationBasenames]);
-    expect(new Set(files.map((filename) => filename.slice(0, 4))).size).toBe(8);
+    expect(files).toEqual([...occupiedMigrationBasenames]);
+    expect(new Set(files.map((filename) => filename.slice(0, 4))).size).toBe(10);
 
     const obsoleteBasenames = [
       "0454_storyboard_ai_image_versions.sql",
