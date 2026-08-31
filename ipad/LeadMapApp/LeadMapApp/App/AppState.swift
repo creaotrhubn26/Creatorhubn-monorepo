@@ -83,6 +83,10 @@ final class AppState {
     /// `ActivatePondusIntent` kan matche mot live data.
     let pondusStore: PondusStore = PondusStore()
 
+    /// Durable Discovery v2 state lives above every sheet/tab so a backend run
+    /// survives dismissal, rotation, Split View and scene recreation.
+    let discoveryCoordinator = DiscoveryRunCoordinator()
+
     /// Sett deep-link + tidsstempel. Kalles av AppStateBridge (og indirekte
     /// av App Intents). LeadbookView.onAppear/task/onChange plukker opp
     /// dette og switch-er til Pondus-fanen.
@@ -376,6 +380,7 @@ final class AppState {
             } else {
                 self.activeProjectSummary = nil
             }
+            Task { await configureDiscovery() }
         }
     }
 
@@ -413,6 +418,7 @@ final class AppState {
 
     // ── Org + RBAC (PR #611–#615) ───────────────────────────────
     var organizations: [OrganizationSummary] = []
+    @ObservationIgnored private var organizationSelectionGeneration: UInt64 = 0
     var activeOrganizationId: String? {
         didSet {
             if let id = activeOrganizationId {
@@ -426,10 +432,30 @@ final class AppState {
             // entitlements/gating må re-hentes for den nye aktive org-en
             // (før: kun ved bootstrap → gating frosset til primær-org).
             if oldValue != activeOrganizationId {
+                organizationSelectionGeneration &+= 1
+                let generation = organizationSelectionGeneration
+                let selectedOrganizationId = activeOrganizationId
+                leadgridDiscoveryEnabled = false
+                if api != nil {
+                    projects = projects.filter { $0.organizationId == selectedOrganizationId }
+                    if let activeProjectId,
+                       !projects.contains(where: { $0.id == activeProjectId }) {
+                        self.activeProjectId = nil
+                    }
+                    activeProjectSummary = nil
+                    projectsLoadState = .loading
+                }
                 Task {
                     await loadOrgContext()
+                    guard generation == organizationSelectionGeneration,
+                          selectedOrganizationId == activeOrganizationId else { return }
                     await loadMyEntitlements()
+                    guard generation == organizationSelectionGeneration,
+                          selectedOrganizationId == activeOrganizationId else { return }
                     await refreshAll()
+                    guard generation == organizationSelectionGeneration,
+                          selectedOrganizationId == activeOrganizationId else { return }
+                    await configureDiscovery()
                 }
             }
         }
@@ -437,6 +463,8 @@ final class AppState {
     /// Effective permissions for current user i active org.
     var permissions: Set<String> = []
     var roleInOrg: String?
+    /// Fail-closed server capability; never inferred from an entitlement plan.
+    var leadgridDiscoveryEnabled = false
     var locationConsentGranted: Bool = false
 
     // ── Varsel-tap (Notification-QA 2026-07-06) ─────────────────
@@ -667,6 +695,22 @@ final class AppState {
         permissions.contains(permissionKey)
     }
 
+/// Rebinds Discovery when auth, organization or project changes. Server
+/// state is authoritative; the coordinator restores its local draft first.
+func configureDiscovery() async {
+    let scopedProject = projects.first { project in
+        leadgridDiscoveryEnabled
+            && project.id == activeProjectId
+            && (project.organizationId == nil || project.organizationId == activeOrganizationId)
+    }
+    await discoveryCoordinator.configure(
+        api: api,
+        organizationId: activeOrganizationId,
+        projectId: scopedProject?.id,
+        projectName: scopedProject?.name
+    )
+}
+
     /// Klient-side filter for leads tilhørende ett spesifikt prosjekt.
     /// Brukes av multi-prosjekt-pageren på kartet for å vise per-kort-
     /// counter («X leads igjen»). Server-side filtreringen via
@@ -714,6 +758,9 @@ final class AppState {
             // super_admin så «Gjest/Salgssjef» til hele refreshen var
             // ferdig (kald backend = titalls sekunder).
             await loadUserRole()
+            // Resolve tenant before the first project fetch; project lists are org-scoped.
+            await loadOrganizations()
+            await loadOrgContext()
             // Entitlements fail-open og gater-viewene re-rendrer på @Published-
             // endringen → kjør samtidig med refreshAll i stedet for å blokkere
             // first paint på et kaldt backend (QA 2026-07-06).
@@ -723,8 +770,6 @@ final class AppState {
             if let id = activeProjectId {
                 await loadProjectSummary(id: id)
             }
-            await loadOrganizations()
-            await loadOrgContext()
             // (loadUserRole lå her en gang til — fjernet; rollen er alt
             //  hentet øverst, dobbeltkallet var bortkastet.)
             await startHeartbeatIfNeeded()
@@ -734,6 +779,7 @@ final class AppState {
             if let api = self.api {
                 ProximityMonitor.shared.configure(api: api)
             }
+            await configureDiscovery()
         }
     }
 
@@ -785,13 +831,23 @@ final class AppState {
     /// at .gated()-flatene speiler hva SuperAdmin har gitt organisasjonen.
     /// Feiler stille: ingen data = alt åpent (bakoverkompatibelt).
     func loadMyEntitlements() async {
-        guard let api else { return }
+        guard let api, let requestedOrganizationId = activeOrganizationId else {
+            leadgridDiscoveryEnabled = false
+            return
+        }
+        leadgridDiscoveryEnabled = false
         do {
-            let envelope = try await api.fetchMyEntitlements(organizationId: activeOrganizationId)
+            let envelope = try await api.fetchMyEntitlements(
+                organizationId: requestedOrganizationId)
+            guard requestedOrganizationId == activeOrganizationId else { return }
+            leadgridDiscoveryEnabled = envelope.isLeadgridDiscoveryEnabled
             EntitlementStore.shared.applyServer(envelope)
         } catch {
+            guard requestedOrganizationId == activeOrganizationId else { return }
+            leadgridDiscoveryEnabled = false
             print("[AppState] loadMyEntitlements failed: \(error)")
         }
+        await configureDiscovery()
     }
 
     /// Last permissions + location-consent + member-locations for active org.
@@ -951,7 +1007,9 @@ final class AppState {
         await loadOrganizations()
         await loadOrgContext()
         await loadUserRole()
+        await loadMyEntitlements()
         await refreshAll()
+        await configureDiscovery()
     }
 
     /// Brukes etter en vellykket pairing-kode-bytte eller Google Sign-In.
@@ -965,7 +1023,9 @@ final class AppState {
             await loadOrganizations()
             await loadOrgContext()
             await loadUserRole()
+            await loadMyEntitlements()
             await refreshAll()
+            await configureDiscovery()
         }
     }
 
@@ -991,15 +1051,24 @@ final class AppState {
         self.activeOrganizationId = nil
         self.permissions = []
         self.roleInOrg = nil
+        self.leadgridDiscoveryEnabled = false
         self.workloadLeads = []
         self.quota = nil
         self.memberLocations = []
         self.sessionExpired = false
+        discoveryCoordinator.resetForSignOut()
         Task { await OfflineCache.shared.clear() }
     }
 
     func refreshAll() async {
         guard let api else { return }
+        guard let refreshOrganizationId = activeOrganizationId else {
+            projects = []
+            projectsLoadState = .loaded
+            return
+        }
+        let refreshOrganizationGeneration = organizationSelectionGeneration
+
         // Marker prosjekter som «laster» FØR vi fyrer av kall. Hvis kortet
         // er i .idle vil det ellers ende på empty-state i 1-2 sek mens
         // fetchProjects pågår — bug fra PR #993 som denne fixen løser.
@@ -1017,7 +1086,7 @@ final class AppState {
         async let metricsTask = api.fetchMetrics(projectId: proj)
         async let calendarTask = api.fetchCalendar(projectId: proj)
         async let remindersTask = api.fetchReminders(projectId: proj)
-        async let projectsTask = api.fetchProjects()
+        async let projectsTask = api.fetchProjects(organizationId: refreshOrganizationId)
 
         // Vent FØRST på projects-listen så vi kan validere activeProjectId
         // og auto-clear hvis den peker på et arkivert/slettet prosjekt.
@@ -1025,7 +1094,12 @@ final class AppState {
         // → 404 fra leads/competitors/metrics → top-level catch → ErrorCard.
         var projectsLoaded = false
         do {
-            let newProjects = try await projectsTask
+            let fetchedProjects = try await projectsTask
+            guard refreshOrganizationGeneration == organizationSelectionGeneration,
+                  refreshOrganizationId == activeOrganizationId else { return }
+            let newProjects = fetchedProjects.filter {
+                $0.organizationId == nil || $0.organizationId == refreshOrganizationId
+            }
             self.projects = newProjects
             self.projectsLoadState = .loaded
             projectsLoaded = true
@@ -1061,6 +1135,8 @@ final class AppState {
                 return
             }
         } catch {
+            guard refreshOrganizationGeneration == organizationSelectionGeneration,
+                  refreshOrganizationId == activeOrganizationId else { return }
             print("[AppState] fetchProjects failed: \(error)")
             handleAPIError(error)
             let retryable = (error as? APIError)?.isRetryable ?? true
@@ -1103,6 +1179,8 @@ final class AppState {
                 newRemOpt = nil
             }
 
+            guard refreshOrganizationGeneration == organizationSelectionGeneration,
+                  refreshOrganizationId == activeOrganizationId else { return }
             self.leads = newLeads
             self.leadsLoadState = .loaded
             self.calendarLoadState = .loaded
@@ -1130,10 +1208,14 @@ final class AppState {
                 print("[AppState] Flushed \(result.succeeded) pending visits")
             }
             self.pendingVisitsCount = await OfflineCache.shared.pendingCount()
+            guard refreshOrganizationGeneration == organizationSelectionGeneration,
+                  refreshOrganizationId == activeOrganizationId else { return }
 
             // Skriv widget-snapshot til delt App Group container
             writeWidgetSnapshot()
         } catch {
+            guard refreshOrganizationGeneration == organizationSelectionGeneration,
+                  refreshOrganizationId == activeOrganizationId else { return }
             print("[AppState] refresh failed (using cache): \(error)")
             self.isUsingStaleCache = true
             handleAPIError(error)

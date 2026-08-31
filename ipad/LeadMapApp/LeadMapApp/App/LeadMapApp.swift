@@ -75,6 +75,7 @@ struct LeadMapApp: App {
                         if let api = appState.api {
                             CrashReporterService.shared.flush(api: api)
                         }
+                        Task { await appState.discoveryCoordinator.refreshAuthoritative(useServerListFallback: true) }
                     }
                 }
         }
@@ -300,6 +301,7 @@ struct RootView: View {
                     guard let api = appState.api else { return }
                     let result = await OfflineActionQueue.shared.drain(api: api)
                     print("[offline-queue] drained on reconnect: \(result.success) ok, \(result.failed) failed")
+                    await appState.discoveryCoordinator.refreshAuthoritative(useServerListFallback: true)
                 }
             }
             // Real-time WebSocket-subscriber (PR #874 backend).
@@ -307,11 +309,13 @@ struct RootView: View {
             // og followup.due dukker opp umiddelbart uten å vente på neste
             // polling-tick.
             if let token = appState.authToken,
-               let orgId = appState.activeOrganizationId {
+               let orgId = appState.activeOrganizationId,
+               let api = appState.api {
                 LeadgridRealtimeClient.shared.connect(
                     baseURL: APIClient.baseURL,
-                    token: token,
-                    channels: ["org:\(orgId)"]
+                    sessionIdentity: token,
+                    channels: ["org:\(orgId)"],
+                    api: api
                 )
             }
         }
@@ -319,11 +323,13 @@ struct RootView: View {
             if newValue != nil {
                 appState.startLeadgridPolling()
                 if let token = newValue,
-                   let orgId = appState.activeOrganizationId {
+                   let orgId = appState.activeOrganizationId,
+                   let api = appState.api {
                     LeadgridRealtimeClient.shared.connect(
                         baseURL: APIClient.baseURL,
-                        token: token,
-                        channels: ["org:\(orgId)"]
+                        sessionIdentity: token,
+                        channels: ["org:\(orgId)"],
+                        api: api
                     )
                 }
             } else {
@@ -331,24 +337,38 @@ struct RootView: View {
                 LeadgridRealtimeClient.shared.disconnect()
             }
         }
+        .onChange(of: appState.activeOrganizationId) { _, newOrgId in
+            guard let token = appState.authToken, let newOrgId, let api = appState.api else {
+                LeadgridRealtimeClient.shared.disconnect()
+                return
+            }
+            LeadgridRealtimeClient.shared.connect(
+                baseURL: APIClient.baseURL,
+                sessionIdentity: token,
+                channels: ["org:\(newOrgId)"],
+                api: api
+            )
+        }
         // Lytt på alle WebSocket-events globalt så vi kan trigge
         // pulse-animasjon på nye pins uavhengig av hvilken fane er åpen.
         .onReceive(NotificationCenter.default.publisher(for: .leadgridRealtimeEvent)) { notif in
-            guard let info = notif.userInfo as? [String: String],
-                  info["type"] == "lead.created" else { return }
+            guard let info = notif.userInfo as? [String: String] else { return }
             Task { @MainActor in
-                appState.handleLeadCreatedEvent(userInfo: info)
+                appState.discoveryCoordinator.handleRealtimeEvent(info)
+                if info["type"] == "lead.created" {
+                    appState.handleLeadCreatedEvent(userInfo: info)
+                }
             }
         }
-        // Mac Catalyst: Cmd+1..7 bytter hovedfane. Hidden buttons registrerer
-        // shortcut med systemet uten å ta plass i layout. No-op på iOS/iPadOS
+        // Mac Catalyst: Cmd+1..9 bytter de første hovedfanene. Hidden buttons
+        // registrerer shortcut uten å ta plass i layout. No-op på iOS/iPadOS
         // (macCatalystKeyboardShortcuts gater seg selv).
         .background { GlobalKeyboardShortcuts() }
     }
 }
 
 /// Hidden button-strip som registrerer keyboard shortcuts på Mac Catalyst.
-/// Cmd+1..7 = bytt sidebar-item (Oversikt/Kart/Leads/Møter/Team/Leadbook/Salgsledelse).
+/// Cmd+1..9 = bytt mellom de første ni sidebar-elementene.
 /// Cmd+, = Innstillinger (postes som NSNotification for at aktuell fane kan reagere).
 ///
 /// Alle buttons har frame(0) og opacity(0) — usynlig men reachable av
@@ -360,8 +380,9 @@ struct GlobalKeyboardShortcuts: View {
     var body: some View {
         #if targetEnvironment(macCatalyst)
         ZStack {
-            ForEach(SidebarItem.allCases.indices, id: \.self) { idx in
-                let item = SidebarItem.allCases[idx]
+            let shortcutItems = Array(SidebarItem.allCases.prefix(9))
+            ForEach(shortcutItems.indices, id: \.self) { idx in
+                let item = shortcutItems[idx]
                 let key = KeyEquivalent(Character("\(idx + 1)"))
                 Button {
                     appState.selectedSidebarItem = item

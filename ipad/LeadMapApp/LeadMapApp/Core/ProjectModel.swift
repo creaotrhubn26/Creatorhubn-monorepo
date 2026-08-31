@@ -4,6 +4,7 @@ import Foundation
 
 struct ProjectListItem: Identifiable, Codable, Hashable {
     let id: String
+    let organizationId: String?
     let name: String
     let description: String?
     let status: String?

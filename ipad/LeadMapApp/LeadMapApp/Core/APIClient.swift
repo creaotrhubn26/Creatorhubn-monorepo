@@ -63,16 +63,29 @@ actor APIClient {
     }
 
     /// Leadgrid-uavhengighet: opprett prosjekt UTEN Role Room.
-    func createLeadMapProject(name: String, description: String? = nil) async throws -> ProjectListItem {
+    func createLeadMapProject(
+        name: String,
+        description: String? = nil,
+        organizationId: String
+    ) async throws -> ProjectListItem {
         struct Resp: Codable { let project: ProjectListItem }
+        let body: [String: Any] = [
+            "name": name,
+            "description": description ?? "",
+            "organization_id": organizationId,
+        ]
         let resp: Resp = try await post(
             "/api/admin-room/lead-map/projects",
-            body: ["name": name, "description": description ?? ""])
+            body: body)
         return resp.project
     }
 
-    func fetchProjects() async throws -> [ProjectListItem] {
-        let resp: ProjectsResponse = try await get("/api/admin-room/lead-map/projects")
+    func fetchProjects(organizationId: String?) async throws -> [ProjectListItem] {
+        guard let organizationId, !organizationId.isEmpty else { return [] }
+        let encoded = organizationId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+            ?? organizationId
+        let resp: ProjectsResponse = try await get(
+            "/api/admin-room/lead-map/projects?organization_id=\(encoded)")
         return resp.projects
     }
 
@@ -2435,7 +2448,12 @@ actor APIClient {
     // actions. Returnerer body (kan være tom) ved 2xx, throws ellers.
 
     /// Raw execute for OfflineActionQueue. Returnerer Data ved 2xx, throws ellers.
-    func executeRaw(method: String, path: String, body: Data?) async throws -> Data {
+    func executeRaw(
+        method: String,
+        path: String,
+        body: Data?,
+        headers: [String: String] = [:]
+    ) async throws -> Data {
         do {
             // String-konkat i stedet for appendingPathComponent — se makeRequest.
             let baseString = baseURL.absoluteString.hasSuffix("/")
@@ -2447,6 +2465,9 @@ actor APIClient {
             req.httpMethod = method
             req.timeoutInterval = 30
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            for (name, value) in headers {
+                req.setValue(value, forHTTPHeaderField: name)
+            }
             if let body = body {
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 req.httpBody = body
@@ -2465,6 +2486,15 @@ actor APIClient {
             case 429:
                 throw APIError.tooManyRequests
             default:
+                if let envelope = try? Self.decoder.decode(DiscoveryV2APIErrorBody.self, from: data) {
+                    throw DiscoveryV2ServiceError(
+                        code: envelope.error.code,
+                        message: envelope.error.message,
+                        retryable: envelope.error.retryable,
+                        field: envelope.error.field,
+                        statusCode: http.statusCode
+                    )
+                }
                 throw APIError.serverError(http.statusCode, String(data: data, encoding: .utf8) ?? "")
             }
         } catch {

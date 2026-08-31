@@ -8,8 +8,17 @@
 import type { Pool } from "pg";
 import type { Express, Request, Response } from "express";
 import { enqueueJob, registerJobHandler, startJobQueueWorker } from "./job-queue.js";
+import {
+  discoveryRunJobHandler,
+  LEADGRID_DISCOVERY_JOB_TYPE,
+} from "./leadgrid-discovery-service.js";
 
 export function registerCoreJobHandlers(): void {
+  // Discovery-runs opprettes og køes atomisk av v2-tjenesten. Direkte
+  // registrering her gjør clearJobHandlers() + ny registrering testbar;
+  // en modulglobal "allerede registrert"-bool ville skjult en tom registry.
+  registerJobHandler(LEADGRID_DISCOVERY_JOB_TYPE, discoveryRunJobHandler);
+
   // Første konsument: BRREG-berikelse av leads (visittkort-skann m.fl.).
   // Var fire-and-forget-promise i from-card-ruten — døde ved redeploy.
   // Idempotent: enrichLeadWithBrreg gjenbruker enrichment_org_nr og

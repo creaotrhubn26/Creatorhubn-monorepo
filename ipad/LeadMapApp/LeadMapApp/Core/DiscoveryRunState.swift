@@ -31,11 +31,17 @@ enum DiscoveryStage: Equatable, Sendable {
     case processing
     case finalizing
     case success(DiscoverySuccessSummary)
-    /// 2026-08-19: cpvSuggestion er satt når backend svarer
+    /// `cpvSuggestion` er satt når backend svarer
     /// `industry_required` med `suggest_anbud_cpv` — brede B2B-selgere
     /// (kontorrekvisita, engros, renhold …) har ingen søkbar Places-
     /// kundetype, så UI tilbyr Anbud-fanen som alternativ i stedet.
-    case failed(String, cpvSuggestion: [String] = [])
+    /// `requiresIndustryQuery` viser et inline felt når prosjektet mangler
+    /// nok kontekst til å utlede hvilken kundetype Discovery skal lete etter.
+    case failed(
+        String,
+        cpvSuggestion: [String] = [],
+        requiresIndustryQuery: Bool = false
+    )
 
     /// Sant så lenge UI skal vise progress-kortet (ikke success/failed/idle).
     var isRunning: Bool {

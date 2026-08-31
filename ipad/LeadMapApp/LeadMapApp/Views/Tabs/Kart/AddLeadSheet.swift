@@ -30,10 +30,25 @@ private enum AlBrand {
     static let textTertiary = Color.white.opacity(0.45)
 }
 
+/// Én deterministisk breakpoint for hele skjemaet. Den bruker faktisk
+/// vindusbredde (ikke bare device idiom), slik at iPad Split View og Stage
+/// Manager får samme lesbare layout som en iPhone når vinduet blir smalt.
+enum AddLeadResponsiveLayout {
+    static let compactBreakpoint: CGFloat = 600
+
+    static func usesCompactForm(
+        containerWidth: CGFloat,
+        isAccessibilityText: Bool
+    ) -> Bool {
+        containerWidth < compactBreakpoint || isAccessibilityText
+    }
+}
+
 struct AddLeadSheet: View {
     let onSave: (NewLeadData) -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var mode: InputMode = .ai
     enum InputMode: String, CaseIterable {
@@ -92,21 +107,9 @@ struct AddLeadSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 18) {
-                    modeSwitch
-                    if mode == .ai {
-                        aiInputCard
-                    }
-                    companySection
-                    contactSection
-                    classificationSection
-                    pinPreviewCard
-                    Color.clear.frame(height: 80)  // plass for bottom-bar
-                }
-                .padding(20)
+            GeometryReader { geometry in
+                formContent(containerWidth: geometry.size.width)
             }
-            .background(AlBrand.bg.ignoresSafeArea())
             .navigationTitle("Legg til lead")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -118,9 +121,39 @@ struct AddLeadSheet: View {
             .toolbarBackground(AlBrand.bg, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
         }
         .macCatalystSheetSize(minWidth: 820, minHeight: 720)
+    }
+
+    private func formContent(containerWidth: CGFloat) -> some View {
+        let compact = AddLeadResponsiveLayout.usesCompactForm(
+            containerWidth: containerWidth,
+            isAccessibilityText: dynamicTypeSize.isAccessibilitySize
+        )
+
+        return ScrollView {
+            VStack(spacing: compact ? 14 : 18) {
+                modeSwitch
+                if mode == .ai {
+                    aiInputCard(compact: compact)
+                }
+                companySection(compact: compact)
+                contactSection(compact: compact)
+                classificationSection(compact: compact)
+                pinPreviewCard
+            }
+            .frame(maxWidth: 820)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, compact ? 16 : 20)
+            .padding(.top, compact ? 14 : 20)
+            .padding(.bottom, 16)
+        }
+        .accessibilityIdentifier("add-lead.form")
+        .scrollDismissesKeyboard(.interactively)
+        .background(AlBrand.bg.ignoresSafeArea())
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            bottomBar(compact: compact)
+        }
     }
 
     // MARK: Mode-veksler
@@ -134,10 +167,12 @@ struct AddLeadSheet: View {
                             .font(.appScaled(size: 12, weight: .semibold))
                         Text(m.rawValue)
                             .font(.appScaled(size: 13, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
                     }
                     .foregroundStyle(mode == m ? .white : AlBrand.textSecondary)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
+                    .frame(minHeight: 44)
                     .background(
                         mode == m ? AnyShapeStyle(LinearGradient(
                             colors: [AlBrand.purple, AlBrand.purpleLight],
@@ -156,7 +191,7 @@ struct AddLeadSheet: View {
 
     // MARK: AI auto-fyll-card
 
-    private var aiInputCard: some View {
+    private func aiInputCard(compact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 ZStack {
@@ -177,54 +212,21 @@ struct AddLeadSheet: View {
                 Spacer()
             }
 
-            HStack(spacing: 8) {
-                HStack(spacing: 8) {
-                    Image(systemName: "link")
-                        .font(.appScaled(size: 12))
-                        .foregroundStyle(AlBrand.textSecondary)
-                    TextField("", text: $urlOrSearch,
-                              prompt: Text("nordicelektro.no  •  Nordic Elektro AS  •  912 345 678")
-                                .foregroundColor(AlBrand.textTertiary))
-                        .textFieldStyle(.plain)
-                        .foregroundStyle(.white)
-                        .font(.appScaled(size: 13))
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                }
-                .padding(.horizontal, 12).padding(.vertical, 11)
-                .background(AlBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(AlBrand.stroke, lineWidth: 1))
-
-                Button { runScan() } label: {
-                    HStack(spacing: 5) {
-                        if scanning {
-                            ProgressView()
-                                .progressViewStyle(.circular)
-                                .tint(.white)
-                                .controlSize(.small)
-                        } else {
-                            Image(systemName: "sparkles.rectangle.stack")
-                                .font(.appScaled(size: 11, weight: .bold))
-                        }
-                        Text(scanning ? "Scanner…" : "Scan")
-                            .font(.appScaled(size: 13, weight: .bold))
+            Group {
+                if compact {
+                    VStack(spacing: 10) {
+                        scanInput
+                        scanButton(compact: true)
                     }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16).padding(.vertical, 11)
-                    .background(
-                        LinearGradient(
-                            colors: [AlBrand.purple, AlBrand.purpleLight],
-                            startPoint: .leading, endPoint: .trailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: 10)
-                    )
+                } else {
+                    HStack(spacing: 8) {
+                        scanInput
+                        scanButton(compact: false)
+                    }
                 }
-                .buttonStyle(.plain)
-                .disabled(urlOrSearch.isEmpty || scanning)
-                .opacity(urlOrSearch.isEmpty ? 0.5 : 1)
             }
 
-            HStack(spacing: 6) {
+            HStack(alignment: .top, spacing: 6) {
                 Image(systemName: scanError != nil ? "exclamationmark.triangle.fill" : (scanComplete ? "checkmark.seal.fill" : "info.circle"))
                     .font(.appScaled(size: 11))
                     .foregroundStyle(scanError != nil ? AlBrand.orange : (scanComplete ? AlBrand.green : AlBrand.textTertiary))
@@ -234,7 +236,8 @@ struct AddLeadSheet: View {
                          : "Slår opp org.nr, bedriftsnavn eller nettside-domene i Brønnøysundregisteret."))
                     .font(.appScaled(size: 11))
                     .foregroundStyle(scanError != nil ? AlBrand.orange : AlBrand.textSecondary)
-                Spacer()
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
             }
         }
         .padding(16)
@@ -243,6 +246,58 @@ struct AddLeadSheet: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(AlBrand.purple.opacity(0.3), lineWidth: 1)
         )
+    }
+
+    private var scanInput: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "link")
+                .font(.appScaled(size: 12))
+                .foregroundStyle(AlBrand.textSecondary)
+            TextField("", text: $urlOrSearch,
+                      prompt: Text("nordicelektro.no  •  Nordic Elektro AS  •  912 345 678")
+                        .foregroundColor(AlBrand.textTertiary))
+                .textFieldStyle(.plain)
+                .foregroundStyle(.white)
+                .font(.appScaled(size: 13))
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 44)
+        .background(AlBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(AlBrand.stroke, lineWidth: 1))
+    }
+
+    private func scanButton(compact: Bool) -> some View {
+        Button { runScan() } label: {
+            HStack(spacing: 5) {
+                if scanning {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(.white)
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "sparkles.rectangle.stack")
+                        .font(.appScaled(size: 11, weight: .bold))
+                }
+                Text(scanning ? "Scanner…" : "Scan")
+                    .font(.appScaled(size: 13, weight: .bold))
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: compact ? .infinity : nil)
+            .padding(.horizontal, 16)
+            .frame(minHeight: 44)
+            .background(
+                LinearGradient(
+                    colors: [AlBrand.purple, AlBrand.purpleLight],
+                    startPoint: .leading, endPoint: .trailing
+                ),
+                in: RoundedRectangle(cornerRadius: 10)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(urlOrSearch.isEmpty || scanning)
+        .opacity(urlOrSearch.isEmpty ? 0.5 : 1)
     }
 
     /// Ekte BRREG-oppslag (2026-08-16) — erstatter en mock som alltid fylte
@@ -289,18 +344,32 @@ struct AddLeadSheet: View {
 
     // MARK: Bedrift-seksjon
 
-    private var companySection: some View {
+    private func companySection(compact: Bool) -> some View {
         sectionCard(title: "Bedrift", icon: "building.2.fill") {
             VStack(spacing: 12) {
                 field(label: "Bedriftsnavn",  placeholder: "F.eks. Nordic Elektro AS", text: $companyName)
-                HStack(spacing: 10) {
-                    field(label: "Org.nr",   placeholder: "912 345 678",     text: $orgNumber)
-                    field(label: "Nettside", placeholder: "nordicelektro.no", text: $website)
+                if compact {
+                    VStack(spacing: 12) {
+                        field(label: "Org.nr", placeholder: "912 345 678", text: $orgNumber)
+                        field(label: "Nettside", placeholder: "nordicelektro.no", text: $website)
+                    }
+                } else {
+                    HStack(spacing: 10) {
+                        field(label: "Org.nr", placeholder: "912 345 678", text: $orgNumber)
+                        field(label: "Nettside", placeholder: "nordicelektro.no", text: $website)
+                    }
                 }
                 field(label: "Adresse", placeholder: "Storgata 12", text: $address)
-                HStack(spacing: 10) {
-                    field(label: "Postnr",   placeholder: "0184", text: $postalCode).frame(width: 100)
-                    field(label: "Sted",     placeholder: "Oslo", text: $city)
+                if compact {
+                    VStack(spacing: 12) {
+                        field(label: "Postnr", placeholder: "0184", text: $postalCode)
+                        field(label: "Sted", placeholder: "Oslo", text: $city)
+                    }
+                } else {
+                    HStack(spacing: 10) {
+                        field(label: "Postnr", placeholder: "0184", text: $postalCode).frame(width: 100)
+                        field(label: "Sted", placeholder: "Oslo", text: $city)
+                    }
                 }
             }
         }
@@ -308,16 +377,23 @@ struct AddLeadSheet: View {
 
     // MARK: Kontakt-seksjon
 
-    private var contactSection: some View {
+    private func contactSection(compact: Bool) -> some View {
         sectionCard(title: "Primær kontaktperson", icon: "person.crop.circle.fill") {
             VStack(spacing: 12) {
-                HStack(spacing: 10) {
+                if compact {
                     field(label: "Navn", placeholder: "Anders Johansen", text: $contactName)
-                    field(label: "Rolle", placeholder: "Daglig leder",   text: $contactRole)
-                }
-                HStack(spacing: 10) {
+                    field(label: "Rolle", placeholder: "Daglig leder", text: $contactRole)
                     field(label: "Telefon", placeholder: "+47 22 33 44 55", text: $phone, keyboard: .phonePad)
-                    field(label: "E-post",  placeholder: "post@…",          text: $email, keyboard: .emailAddress)
+                    field(label: "E-post", placeholder: "post@…", text: $email, keyboard: .emailAddress)
+                } else {
+                    HStack(spacing: 10) {
+                        field(label: "Navn", placeholder: "Anders Johansen", text: $contactName)
+                        field(label: "Rolle", placeholder: "Daglig leder", text: $contactRole)
+                    }
+                    HStack(spacing: 10) {
+                        field(label: "Telefon", placeholder: "+47 22 33 44 55", text: $phone, keyboard: .phonePad)
+                        field(label: "E-post",  placeholder: "post@…",          text: $email, keyboard: .emailAddress)
+                    }
                 }
             }
         }
@@ -325,22 +401,34 @@ struct AddLeadSheet: View {
 
     // MARK: Klassifisering-seksjon
 
-    private var classificationSection: some View {
+    private func classificationSection(compact: Bool) -> some View {
         sectionCard(title: "Klassifisering", icon: "tag.fill") {
             VStack(spacing: 14) {
                 VStack(alignment: .leading, spacing: 8) {
                     fieldLabel("Status")
-                    HStack(spacing: 6) {
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 104, maximum: 160), spacing: 8)],
+                        alignment: .leading,
+                        spacing: 8
+                    ) {
                         ForEach(MapLeadMock.PinStatus.allCases, id: \.self) { st in
                             statusChip(st)
                         }
                     }
                 }
 
-                HStack(spacing: 10) {
-                    field(label: "Bransje",   placeholder: "Elektro",      text: $industry)
-                    field(label: "Ansatt",    placeholder: "25-50",        text: $employees)
-                    field(label: "Omsetning", placeholder: "10-20 mill.",  text: $revenue)
+                if compact {
+                    VStack(spacing: 12) {
+                        field(label: "Bransje", placeholder: "Elektro", text: $industry)
+                        field(label: "Ansatte", placeholder: "25–50", text: $employees)
+                        field(label: "Omsetning", placeholder: "10–20 mill.", text: $revenue)
+                    }
+                } else {
+                    HStack(spacing: 10) {
+                        field(label: "Bransje", placeholder: "Elektro", text: $industry)
+                        field(label: "Ansatte", placeholder: "25–50", text: $employees)
+                        field(label: "Omsetning", placeholder: "10–20 mill.", text: $revenue)
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -369,7 +457,7 @@ struct AddLeadSheet: View {
                     HStack(spacing: 9) {
                         ZStack {
                             Circle().fill(AlBrand.purple.opacity(0.25))
-                            Text("LK")
+                            Text(assigneeInitials)
                                 .font(.appScaled(size: 11, weight: .bold))
                                 .foregroundStyle(AlBrand.purpleLight)
                         }
@@ -400,9 +488,12 @@ struct AddLeadSheet: View {
                     .font(.appScaled(size: 10, weight: .semibold))
                 Text(st.label)
                     .font(.appScaled(size: 11, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
             }
             .foregroundStyle(isSelected ? .white : st.color)
-            .padding(.horizontal, 10).padding(.vertical, 7)
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity, minHeight: 44)
             .background(
                 isSelected ? st.color : st.color.opacity(0.15),
                 in: Capsule()
@@ -412,6 +503,10 @@ struct AddLeadSheet: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(st.label)
+        .accessibilityIdentifier("add-lead.status.\(st.rawValue)")
+        .accessibilityValue(isSelected ? "Valgt" : "Ikke valgt")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     // MARK: Pin preview
@@ -468,18 +563,20 @@ struct AddLeadSheet: View {
 
     // MARK: Bottom-bar
 
-    private var bottomBar: some View {
+    private func bottomBar(compact: Bool) -> some View {
         HStack(spacing: 10) {
-            Button { dismiss() } label: {
-                Text("Avbryt")
-                    .font(.appScaled(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 13)
-                    .background(AlBrand.cardHi, in: RoundedRectangle(cornerRadius: 11))
-                    .overlay(RoundedRectangle(cornerRadius: 11).stroke(AlBrand.stroke, lineWidth: 1))
+            if !compact {
+                Button { dismiss() } label: {
+                    Text("Avbryt")
+                        .font(.appScaled(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 48)
+                        .background(AlBrand.cardHi, in: RoundedRectangle(cornerRadius: 11))
+                        .overlay(RoundedRectangle(cornerRadius: 11).stroke(AlBrand.stroke, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
 
             Button {
                 onSave(NewLeadData(
@@ -499,7 +596,7 @@ struct AddLeadSheet: View {
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 13)
+                .frame(minHeight: 48)
                 .background(
                     LinearGradient(
                         colors: [AlBrand.purple, AlBrand.purpleLight],
@@ -511,11 +608,16 @@ struct AddLeadSheet: View {
             .buttonStyle(.plain)
             .disabled(companyName.isEmpty)
             .opacity(companyName.isEmpty ? 0.55 : 1)
+            .accessibilityHint(companyName.isEmpty
+                ? "Fyll inn bedriftsnavn først"
+                : "Lagrer leaden og plasserer den på kartet")
         }
-        .padding(.horizontal, 20).padding(.vertical, 14)
+        .padding(.horizontal, compact ? 16 : 20)
+        .padding(.vertical, 12)
         .background(
-            AlBrand.bg.opacity(0.95)
+            AlBrand.bg
                 .overlay(Rectangle().fill(AlBrand.stroke).frame(height: 1), alignment: .top)
+                .ignoresSafeArea(edges: .bottom)
         )
     }
 
@@ -547,6 +649,17 @@ struct AddLeadSheet: View {
             .foregroundStyle(AlBrand.textSecondary)
     }
 
+    private var assigneeInitials: String {
+        let initials = appState.displayName
+            .split(whereSeparator: \.isWhitespace)
+            .prefix(2)
+            .compactMap(\.first)
+            .map(String.init)
+            .joined()
+            .uppercased()
+        return initials.isEmpty ? "ME" : initials
+    }
+
     @ViewBuilder
     private func field(label: String, placeholder: String, text: Binding<String>,
                        keyboard: UIKeyboardType = .default) -> some View {
@@ -554,12 +667,22 @@ struct AddLeadSheet: View {
             fieldLabel(label)
             TextField("", text: text, prompt: Text(placeholder).foregroundColor(AlBrand.textTertiary))
                 .textFieldStyle(.plain)
+                .accessibilityLabel(label)
+                .accessibilityIdentifier("add-lead.field.\(fieldIdentifier(label))")
                 .foregroundStyle(.white)
                 .font(.appScaled(size: 13))
                 .keyboardType(keyboard)
-                .padding(.horizontal, 12).padding(.vertical, 11)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
                 .background(AlBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(AlBrand.stroke, lineWidth: 1))
         }
+    }
+
+    private func fieldIdentifier(_ label: String) -> String {
+        label
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .replacingOccurrences(of: " ", with: "-")
+            .lowercased()
     }
 }

@@ -82,9 +82,11 @@ struct ProjectContextPill: View {
                 TextField("Prosjektnavn", text: $nyttProsjektNavn)
                 Button("Opprett") {
                     let navn = nyttProsjektNavn.trimmingCharacters(in: .whitespaces)
-                    guard navn.count >= 2, let api = appState.api else { return }
+                    guard navn.count >= 2, let api = appState.api,
+                          let organizationId = appState.activeOrganizationId else { return }
                     Task { @MainActor in
-                        if let prosjekt = try? await api.createLeadMapProject(name: navn) {
+                        if let prosjekt = try? await api.createLeadMapProject(
+                            name: navn, organizationId: organizationId) {
                             appState.projects.insert(prosjekt, at: 0)
                             appState.activeProjectId = prosjekt.id
                         }

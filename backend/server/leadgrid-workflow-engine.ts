@@ -1186,8 +1186,8 @@ async function runAction(
     case "leadgrid.discover_leads": {
       // Cron-triggered "continuous lead discovery" — project_id kommer
       // typisk fra trigger.project_id (cron-scheduler legger den i
-      // event.data). Vi kjører discovery via processUrlResearchBatch
-      // direkte (samme stack som /discover-leads-endpointet).
+      // event.data). Adapteren oppretter en varig v2 Discovery-run; selve
+      // søket utføres asynkront av den delte jobb-køen.
       const projectId =
         action.project_id ??
         (typeof event.data.project_id === "string"
@@ -1212,6 +1212,10 @@ async function runAction(
           count: action.count ?? 10,
           industryQueryOverride: action.industry_query,
           cityOverride: action.city,
+          idempotencyKey: executionId
+            ? `discovery-workflow:${workflowId}:${executionId}`
+            : `discovery-workflow:${workflowId}:${randomUUID()}`,
+          triggerKind: "workflow",
         });
         if (!result.ok) {
           return {
@@ -1221,9 +1225,11 @@ async function runAction(
         }
         return {
           status: "ok",
-          message: `discovered:${result.foundCount}`,
+          message: "discovery_queued",
           data: {
+            run_id: result.runId,
             batch_id: result.batchId,
+            status: result.status,
             found_count: result.foundCount,
             discovery_query: result.discoveryQuery,
           },
