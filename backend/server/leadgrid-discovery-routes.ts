@@ -46,6 +46,14 @@ import {
   DiscoveryGovernanceError,
   lockAutoDiscoveryProfileGovernance,
 } from "./leadgrid-discovery-governance.js";
+import {
+  DiscoveryPlacesDetailsError,
+  fetchTransientDiscoveryPlaceDetails,
+} from "./leadgrid-discovery-places-details.js";
+import {
+  checkEndpointRateLimit,
+  RateLimitExceededError,
+} from "./role-room-agent-ratelimit.js";
 
 interface DiscoveryRouteDeps {
   app: Express;
@@ -86,6 +94,7 @@ const profileMutableShape = {
   status: z.enum(["active", "paused"]),
   brief: discoveryBriefSchema,
   approval_mode: z.literal("manual"),
+  places_details_enabled: z.boolean(),
   auto_discover_enabled: z.boolean(),
   schedule_cron: z.string().trim().min(1).max(120),
   schedule_timezone: z.string().trim().min(1).max(80),
@@ -98,6 +107,8 @@ const profileCreateSchema = z
     is_default: profileMutableShape.is_default.default(false),
     status: profileMutableShape.status.default("active"),
     approval_mode: profileMutableShape.approval_mode.default("manual"),
+    places_details_enabled:
+      profileMutableShape.places_details_enabled.default(false),
     auto_discover_enabled:
       profileMutableShape.auto_discover_enabled.default(false),
     schedule_cron: profileMutableShape.schedule_cron.default("0 6 * * *"),
@@ -115,6 +126,8 @@ const profilePatchSchema = z
     brief: profileMutableShape.brief.optional(),
     approval_mode: profileMutableShape.approval_mode.optional(),
     auto_discover_enabled: profileMutableShape.auto_discover_enabled.optional(),
+    places_details_enabled:
+      profileMutableShape.places_details_enabled.optional(),
     schedule_cron: profileMutableShape.schedule_cron.optional(),
     schedule_timezone: profileMutableShape.schedule_timezone.optional(),
   })
@@ -141,6 +154,7 @@ interface ProfileRow {
   geography_lng: string | number | null;
   geography_radius_km: number;
   brief: Record<string, unknown>;
+  source_config: Record<string, unknown>;
   approval_mode: string;
   max_candidates_per_run: number;
   enrichment_count: number;
@@ -166,7 +180,7 @@ interface ProfileScheduleRow {
 const PROFILE_COLUMNS = `
   id::text, organization_id::text, project_id, name, is_default, status,
   target_customer_types, city_filters, geography_lat::text,
-  geography_lng::text, geography_radius_km, brief, approval_mode,
+  geography_lng::text, geography_radius_km, brief, source_config, approval_mode,
   max_candidates_per_run, enrichment_count,
   auto_discover_enabled, schedule_cron, schedule_timezone,
   last_run_at, next_run_at, version, created_at, updated_at`;
@@ -175,6 +189,17 @@ function iso(value: Date | string | null): string | null {
   if (value === null) return null;
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.valueOf()) ? null : date.toISOString();
+}
+function profilePlacesDetailsEnabled(value: unknown): boolean {
+  const config =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  const places =
+    config.google_places && typeof config.google_places === "object"
+      ? (config.google_places as Record<string, unknown>)
+      : {};
+  return places.enabled === true && places.mode === "transient_details_only";
 }
 
 function profileDto(row: ProfileRow) {
@@ -235,6 +260,7 @@ function profileDto(row: ProfileRow) {
     // Rules-based approval is deliberately not part of the public contract.
     // Existing rows are rendered fail-closed until a real rules engine ships.
     approval_mode: "manual" as const,
+    places_details_enabled: profilePlacesDetailsEnabled(row.source_config),
     auto_discover_enabled: row.auto_discover_enabled,
     schedule_cron: row.schedule_cron,
     schedule_timezone: row.schedule_timezone,
@@ -287,6 +313,10 @@ function handleRouteError(res: Response, error: unknown): void {
   }
   if (error instanceof DiscoveryGovernanceError) {
     sendError(res, error.status, error.code, error.message);
+    return;
+  }
+  if (error instanceof DiscoveryPlacesDetailsError) {
+    sendError(res, error.status, error.code, error.message, error.retryable);
     return;
   }
   if (error instanceof ZodError) {
@@ -634,6 +664,44 @@ export function registerLeadgridDiscoveryRoutes({
   );
 
   app.post(
+    `${base}/runs/:runId/candidates/:candidateId/place-details`,
+    permission,
+    wrapped(async (req, res) => {
+      res.setHeader("Cache-Control", "private, no-store, max-age=0");
+      res.setHeader("Pragma", "no-cache");
+      const context = await contextFor(req, res, pool, activeSessions);
+      if (!context) return;
+      try {
+        checkEndpointRateLimit(
+          context.userId,
+          "leadgrid_discovery_places_details",
+          10,
+        );
+      } catch (error) {
+        if (error instanceof RateLimitExceededError) {
+          res.setHeader("Retry-After", String(error.retryAfterSeconds));
+          sendError(
+            res,
+            429,
+            "places_details_rate_limited",
+            "Du har gjort mange detaljoppslag. Vent litt og prøv igjen.",
+            true,
+          );
+          return;
+        }
+        throw error;
+      }
+      res.json(
+        await fetchTransientDiscoveryPlaceDetails(pool, {
+          project: context.project,
+          runId: parseUuid(req.params.runId, "runId"),
+          candidateId: parseUuid(req.params.candidateId, "candidateId"),
+        }),
+      );
+    }),
+  );
+
+  app.post(
     `${base}/runs/:runId/candidates/:candidateId/decision`,
     permission,
     wrapped(async (req, res) => {
@@ -753,14 +821,14 @@ export function registerLeadgridDiscoveryRoutes({
              organization_id, project_id, name, is_default, status,
              target_customer_types, city_filters, geography_lat,
              geography_lng, geography_radius_km, brief, exclusion_rules,
-             approval_mode, approval_rules, max_candidates_per_run,
+             source_config, approval_mode, approval_rules, max_candidates_per_run,
              enrichment_count, auto_discover_enabled, schedule_cron,
              schedule_timezone, next_run_at, created_by, updated_by
            ) VALUES (
              $1::uuid, $2, $3, $4, $5, $6::text[], $7::text[],
              $8::numeric, $9::numeric, $10, $11::jsonb, $12::jsonb,
-             $13, $14::jsonb, $15, $16, $17, $18, $19,
-             $20::timestamptz, $21, $21
+             $13::jsonb, $14, $15::jsonb, $16, $17, $18, $19, $20,
+             $21::timestamptz, $22, $22
            ) RETURNING ${PROFILE_COLUMNS}`,
           [
             context.project.organizationId,
@@ -775,6 +843,13 @@ export function registerLeadgridDiscoveryRoutes({
             values.radiusKm,
             JSON.stringify(body.brief),
             JSON.stringify(values.exclusionRules),
+            JSON.stringify({
+              brreg_open_data: { enabled: true },
+              google_places: {
+                enabled: body.places_details_enabled,
+                mode: "transient_details_only",
+              },
+            }),
             body.approval_mode,
             JSON.stringify({}),
             values.targetCount,
@@ -896,6 +971,14 @@ export function registerLeadgridDiscoveryRoutes({
         if (body.approval_mode !== undefined) {
           set("approval_mode", body.approval_mode);
         }
+        if (body.places_details_enabled !== undefined) {
+          params.push(body.places_details_enabled);
+          const placesEnabledParam = params.length;
+          sets.push(
+            `source_config = jsonb_set(source_config, '{google_places}', jsonb_build_object('enabled', $${placesEnabledParam}::boolean, 'mode', 'transient_details_only'), true)`,
+          );
+        }
+
         if (body.auto_discover_enabled !== undefined) {
           set("auto_discover_enabled", body.auto_discover_enabled);
         }

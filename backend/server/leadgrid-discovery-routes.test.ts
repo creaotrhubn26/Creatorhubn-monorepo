@@ -13,6 +13,12 @@ const service = vi.hoisted(() => ({
   decideDiscoveryCandidate: vi.fn(),
   appendDiscoveryFeedback: vi.fn(),
 }));
+const placesDetails = vi.hoisted(() => ({
+  fetchTransientDiscoveryPlaceDetails: vi.fn(),
+}));
+const rateLimit = vi.hoisted(() => ({
+  checkEndpointRateLimit: vi.fn(),
+}));
 const access = vi.hoisted(() => ({
   getLeadgridSession: vi.fn(),
   loadAccessibleLeadgridProject: vi.fn(),
@@ -36,6 +42,35 @@ vi.mock("./leadgrid-discovery-service.js", () => ({
       this.status = status;
       this.retryable = false;
       this.field = field;
+    }
+  },
+}));
+vi.mock("./leadgrid-discovery-places-details.js", () => ({
+  ...placesDetails,
+  DiscoveryPlacesDetailsError: class DiscoveryPlacesDetailsError extends Error {
+    code: string;
+    status: number;
+    retryable: boolean;
+    constructor(
+      code: string,
+      status: number,
+      message: string,
+      retryable = false,
+    ) {
+      super(message);
+      this.code = code;
+      this.status = status;
+      this.retryable = retryable;
+    }
+  },
+}));
+vi.mock("./role-room-agent-ratelimit.js", () => ({
+  ...rateLimit,
+  RateLimitExceededError: class RateLimitExceededError extends Error {
+    retryAfterSeconds: number;
+    constructor(retryAfterSeconds: number) {
+      super("rate_limited");
+      this.retryAfterSeconds = retryAfterSeconds;
     }
   },
 }));
@@ -104,6 +139,7 @@ function makeHarness(pool: Pool) {
       } as unknown as Request;
       let status = 200;
       let body: unknown;
+      const responseHeaders: Record<string, string> = {};
       const res = {
         status(code: number) {
           status = code;
@@ -113,9 +149,13 @@ function makeHarness(pool: Pool) {
           body = payload;
           return this;
         },
+        setHeader(name: string, value: string | number) {
+          responseHeaders[name.toLowerCase()] = String(value);
+          return this;
+        },
       } as unknown as Response;
       await handler(req, res, vi.fn());
-      return { status, body };
+      return { status, body, headers: responseHeaders };
     },
   };
 }
@@ -154,6 +194,7 @@ describe("Leadgrid Discovery HTTP contract", () => {
       `POST ${base}/runs/:runId/confirm`,
       `POST ${base}/runs/:runId/cancel`,
       `GET ${base}/runs/:runId/candidates`,
+      `POST ${base}/runs/:runId/candidates/:candidateId/place-details`,
       `POST ${base}/runs/:runId/candidates/:candidateId/decision`,
       `POST ${base}/runs/:runId/candidates/:candidateId/feedback`,
       `GET ${base}/profiles`,
@@ -283,6 +324,49 @@ describe("Leadgrid Discovery HTTP contract", () => {
       project,
       statuses: ["active", "review_ready"],
       limit: 12,
+    });
+  });
+
+  it("serves an explicit no-store transient Google Maps detail request", async () => {
+    placesDetails.fetchTransientDiscoveryPlaceDetails.mockResolvedValue({
+      candidate_id: candidateId,
+      mode: "transient_details_only",
+      fetched_at: "2026-08-31T12:00:00.000Z",
+      provider: {
+        id: "google_places",
+        name: "Google Maps",
+        policy_uri:
+          "https://developers.google.com/maps/documentation/places/web-service/policies",
+      },
+      notice: "Hentet på forespørsel og ikke lagret.",
+      ranking_notice: "Påvirker ikke Discovery-score.",
+      matches: [],
+    });
+    const harness = makeHarness({ query: vi.fn() } as unknown as Pool);
+
+    const response = await harness.call(
+      "POST",
+      `${base}/runs/:runId/candidates/:candidateId/place-details`,
+      { params: { projectId: "project-a", runId, candidateId }, body: {} },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers).toMatchObject({
+      "cache-control": "private, no-store, max-age=0",
+      pragma: "no-cache",
+    });
+    expect(rateLimit.checkEndpointRateLimit).toHaveBeenCalledWith(
+      "user-a",
+      "leadgrid_discovery_places_details",
+      10,
+    );
+    expect(
+      placesDetails.fetchTransientDiscoveryPlaceDetails,
+    ).toHaveBeenCalledWith(expect.anything(), { project, runId, candidateId });
+    expect(response.body).toMatchObject({
+      candidate_id: candidateId,
+      mode: "transient_details_only",
+      matches: [],
     });
   });
 
@@ -423,6 +507,9 @@ describe("Leadgrid Discovery HTTP contract", () => {
           geography_lng: null,
           geography_radius_km: 25,
           brief: { migrated_from: "leadgrid_project_discovery_config" },
+          source_config: {
+            google_places: { enabled: false, mode: "transient_details_only" },
+          },
           approval_mode: "rules",
           max_candidates_per_run: 20,
           enrichment_count: 10,
@@ -448,6 +535,7 @@ describe("Leadgrid Discovery HTTP contract", () => {
       profiles: [
         expect.objectContaining({
           approval_mode: "manual",
+          places_details_enabled: false,
           brief: {
             industry_queries: ["regnskapsbyrå"],
             exclusion_terms: [],
@@ -527,6 +615,9 @@ describe("Leadgrid Discovery HTTP contract", () => {
       geography_lng: null,
       geography_radius_km: 25,
       brief: brief(),
+      source_config: {
+        google_places: { enabled: false, mode: "transient_details_only" },
+      },
       approval_mode: "manual",
       approval_rules: {},
       max_candidates_per_run: 20,
@@ -568,9 +659,16 @@ describe("Leadgrid Discovery HTTP contract", () => {
       sql.includes("INSERT INTO leadgrid_discovery_profiles"),
     );
     expect(insert?.[0]).toContain("schedule_timezone, next_run_at");
-    expect(insert?.[0]).toContain("$20::timestamptz");
-    expect(insert?.[1]?.[19]).toEqual(expect.any(String));
-    expect(Number.isNaN(Date.parse(String(insert?.[1]?.[19])))).toBe(false);
+    expect(JSON.parse(String(insert?.[1]?.[12]))).toEqual({
+      brreg_open_data: { enabled: true },
+      google_places: {
+        enabled: false,
+        mode: "transient_details_only",
+      },
+    });
+    expect(insert?.[0]).toContain("$21::timestamptz");
+    expect(insert?.[1]?.[20]).toEqual(expect.any(String));
+    expect(Number.isNaN(Date.parse(String(insert?.[1]?.[20])))).toBe(false);
   });
 
   it("uses OCC and all scope keys when patching a profile", async () => {
@@ -587,6 +685,9 @@ describe("Leadgrid Discovery HTTP contract", () => {
       geography_lng: null,
       geography_radius_km: 25,
       brief: brief(),
+      source_config: {
+        google_places: { enabled: true, mode: "transient_details_only" },
+      },
       approval_mode: "manual",
       approval_rules: {},
       max_candidates_per_run: 20,
@@ -628,7 +729,11 @@ describe("Leadgrid Discovery HTTP contract", () => {
       `${base}/profiles/:profileId`,
       {
         params: { projectId: "project-a", profileId },
-        body: { expected_version: 7, name: "Ny profil" },
+        body: {
+          expected_version: 7,
+          name: "Ny profil",
+          places_details_enabled: true,
+        },
       },
     );
     expect(response.status).toBe(200);
@@ -639,6 +744,12 @@ describe("Leadgrid Discovery HTTP contract", () => {
     expect(updateCall?.[0]).toContain("project_id = $2");
     expect(updateCall?.[0]).toContain("id = $3::uuid");
     expect(updateCall?.[0]).toContain("version = $4");
+    expect(updateCall?.[0]).toContain("source_config = jsonb_set");
+    expect(updateCall?.[0]).toContain("transient_details_only");
+    expect(updateCall?.[1]).toContain(true);
+    expect(response.body).toMatchObject({
+      profile: { places_details_enabled: true },
+    });
     expect(updateCall?.[1]?.slice(0, 5)).toEqual([
       organizationId,
       "project-a",
