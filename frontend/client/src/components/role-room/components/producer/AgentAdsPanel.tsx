@@ -183,7 +183,15 @@ export default function AgentAdsPanel({
     const success = url.searchParams.get('oauth_success');
     const errParam = url.searchParams.get('oauth_error');
     if (success) {
-      setOauthBanner({ kind: 'success', msg: 'Google Ads koblet — du kan nå sette klientens customer-ID og synke actions.' });
+      const msg = success === 'linkedin'
+        ? 'LinkedIn koblet på nytt — den nye tilgangen er lagret og klar til bruk.'
+        : success === 'tiktok'
+          ? 'TikTok Ads koblet — tilgangen er lagret og klar til bruk.'
+          : 'Google Ads koblet — du kan nå sette klientens customer-ID og synke actions.';
+      setOauthBanner({
+        kind: 'success',
+        msg,
+      });
       const cfg = url.searchParams.get('config');
       if (cfg) setSavedConfigId(cfg);
       // Rydd querystring så banneret ikke vises igjen ved refresh
