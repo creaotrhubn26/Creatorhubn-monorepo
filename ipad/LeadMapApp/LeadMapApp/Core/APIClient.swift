@@ -1186,6 +1186,7 @@ actor APIClient {
         let contactRole: String?
         let organizationNumber: String?
         let websiteURL: String?
+        let googlePlaceID: String?
         let phone: String?
         let email: String?
         let industryID: String?
@@ -1203,6 +1204,7 @@ actor APIClient {
         let locationConfidence: String
         let leadSource: String
         let projectID: String?
+        let idempotencyKey: UUID
 
         init(
             companyName: String,
@@ -1212,6 +1214,7 @@ actor APIClient {
             contactRole: String? = nil,
             organizationNumber: String? = nil,
             websiteURL: String? = nil,
+            googlePlaceID: String? = nil,
             phone: String? = nil,
             email: String? = nil,
             industryID: String? = nil,
@@ -1228,7 +1231,8 @@ actor APIClient {
             city: String? = nil,
             locationConfidence: String = "exact",
             leadSource: String = "manual_pin_drop",
-            projectID: String? = nil
+            projectID: String? = nil,
+            idempotencyKey: UUID = UUID()
         ) {
             self.companyName = companyName
             self.latitude = latitude
@@ -1237,6 +1241,7 @@ actor APIClient {
             self.contactRole = contactRole
             self.organizationNumber = organizationNumber
             self.websiteURL = websiteURL
+            self.googlePlaceID = googlePlaceID
             self.phone = phone
             self.email = email
             self.industryID = industryID
@@ -1254,6 +1259,7 @@ actor APIClient {
             self.locationConfidence = locationConfidence
             self.leadSource = leadSource
             self.projectID = projectID
+            self.idempotencyKey = idempotencyKey
         }
 
         func makeBody() -> [String: Any] {
@@ -1276,6 +1282,7 @@ actor APIClient {
             put("contact_role", contactRole)
             put("organization_number", organizationNumber)
             put("website_url", websiteURL)
+            put("google_place_id", googlePlaceID)
             put("phone", phone)
             put("email", email)
             put("industry_id", industryID)
@@ -1307,7 +1314,8 @@ actor APIClient {
         }
         let response: CreateResponse = try await post(
             "/api/admin-room/lead-map/leads/from-pin",
-            body: request.makeBody()
+            body: request.makeBody(),
+            headers: ["Idempotency-Key": request.idempotencyKey.uuidString.lowercased()]
         )
         return response.id
     }
@@ -2429,9 +2437,16 @@ actor APIClient {
         }
     }
 
-    private func post<T: Decodable>(_ path: String, body: [String: Any]? = nil) async throws -> T {
+    private func post<T: Decodable>(
+        _ path: String,
+        body: [String: Any]? = nil,
+        headers: [String: String] = [:]
+    ) async throws -> T {
         do {
             var req = makeRequest(path, method: "POST")
+            for (name, value) in headers {
+                req.setValue(value, forHTTPHeaderField: name)
+            }
             if let body {
                 req.httpBody = try JSONSerialization.data(withJSONObject: body)
             }
@@ -2502,6 +2517,18 @@ actor APIClient {
             throw APIError.unauthorized
         case 403:
             throw APIError.forbidden
+        case 409:
+            if let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let errorCode = payload["error"] as? String {
+                if errorCode == "duplicate_lead" {
+                    let fields = payload["matched_fields"] as? [String] ?? []
+                    throw APIError.duplicateLead(fields)
+                }
+                if errorCode == "idempotency_key_conflict" {
+                    throw APIError.idempotencyConflict
+                }
+            }
+            throw APIError.statusCode(409)
         case 429:
             throw APIError.tooManyRequests
         case 500..<600:
@@ -3746,6 +3773,10 @@ enum APIError: Error, LocalizedError {
     case unauthorized
     /// HTTP 403 — RBAC-mangel. Bruker mangler permission for endepunktet.
     case forbidden
+    /// En annen lead i samme workspace har samme virksomhetsidentitet.
+    case duplicateLead([String])
+    /// Samme skjemasesjon ble gjenbrukt med et endret payload.
+    case idempotencyConflict
     /// HTTP 429 — rate-limit. Bruker bør vente og prøve igjen.
     case tooManyRequests
 
@@ -3785,6 +3816,21 @@ enum APIError: Error, LocalizedError {
             return "Din økt er utløpt — logg inn på nytt"
         case .forbidden:
             return "Du har ikke tilgang til denne ressursen"
+        case .duplicateLead(let fields):
+            let labels = fields.compactMap { field -> String? in
+                switch field {
+                case "organization_number": return "organisasjonsnummer"
+                case "google_place_id": return "Google-sted"
+                case "website_domain": return "nettsidedomene"
+                default: return nil
+                }
+            }
+            let reason = labels.isEmpty
+                ? ""
+                : " (samme " + labels.joined(separator: ", ") + ")"
+            return "Leaden finnes allerede i dette arbeidsområdet\(reason)."
+        case .idempotencyConflict:
+            return "Skjemaet ble endret etter første lagringsforsøk. Avbryt og åpne et nytt skjema før du lagrer igjen."
         case .tooManyRequests:
             return "Du gjør for mange forespørsler — vent litt og prøv igjen"
         }
@@ -3797,7 +3843,8 @@ enum APIError: Error, LocalizedError {
         switch self {
         case .networkFailure, .statusCode, .serverError, .tooManyRequests, .invalidResponse:
             return true
-        case .unauthorized, .forbidden, .invalidURL, .decodingFailure:
+        case .unauthorized, .forbidden, .invalidURL, .decodingFailure,
+             .duplicateLead, .idempotencyConflict:
             return false
         }
     }

@@ -53,6 +53,172 @@ function cacheSet(key: string, body: unknown) {
   cache.set(key, { at: Date.now(), body });
 }
 
+// Dørsalg-adresser er nær-statiske. Egen stale-while-revalidate-cache gjør
+// kartpanorering og retur til et nabolag øyeblikkelig uten å gjøre den korte
+// reverse-geocode-cachen mindre presis.
+const ADRESSE_CACHE_FRESH_TTL_MS = 10 * 60 * 1000;
+const ADRESSE_CACHE_STALE_TTL_MS = 24 * 60 * 60 * 1000;
+const ADRESSE_CACHE_MAX = 300;
+const ADRESSE_UPSTREAM_TIMEOUT_MS = 7_000;
+
+type KartverketAdressePunkt = {
+  adressetekst: string;
+  postnummer: string;
+  poststed: string;
+  lat: number;
+  lon: number;
+};
+
+type KartverketAdressePage = {
+  total: number;
+  side: number;
+  page_size: number;
+  has_more: boolean;
+  adresser: KartverketAdressePunkt[];
+};
+
+type AdresseCacheState = "hit" | "miss" | "coalesced" | "stale";
+type AdresseCacheEntry = { at: number; body: KartverketAdressePage };
+
+const adresseCache = new Map<string, AdresseCacheEntry>();
+const adresseInFlight = new Map<string, Promise<KartverketAdressePage>>();
+
+function adresseCacheLookup(
+  key: string,
+): { body: KartverketAdressePage; fresh: boolean } | null {
+  const entry = adresseCache.get(key);
+  if (!entry) return null;
+  const age = Date.now() - entry.at;
+  if (age > ADRESSE_CACHE_STALE_TTL_MS) {
+    adresseCache.delete(key);
+    return null;
+  }
+  // Flytt nylig brukt nøkkel bakerst slik at Map faktisk oppfører seg som LRU.
+  adresseCache.delete(key);
+  adresseCache.set(key, entry);
+  return { body: entry.body, fresh: age <= ADRESSE_CACHE_FRESH_TTL_MS };
+}
+
+function adresseCacheSet(key: string, body: KartverketAdressePage): void {
+  if (adresseCache.has(key)) adresseCache.delete(key);
+  while (adresseCache.size >= ADRESSE_CACHE_MAX) {
+    const oldest = adresseCache.keys().next().value as string | undefined;
+    if (!oldest) break;
+    adresseCache.delete(oldest);
+  }
+  adresseCache.set(key, { at: Date.now(), body });
+}
+
+function setAdresseCacheHeaders(res: Response, state: AdresseCacheState): void {
+  // Responsen er ikke bruker-spesifikk, men endepunktet er autentisert.
+  // private lar URLSession gjenbruke siden lokalt uten delt proxy-cache.
+  res.setHeader(
+    "Cache-Control",
+    "private, max-age=300, stale-while-revalidate=3600",
+  );
+  res.setHeader("Vary", "Authorization");
+  res.setHeader("X-Leadgrid-Cache", state);
+}
+
+async function fetchKartverketAdressePage(input: {
+  lat: number;
+  lon: number;
+  radius: number;
+  side: number;
+  pageSize: number;
+}): Promise<KartverketAdressePage> {
+  const params = new URLSearchParams({
+    lat: input.lat.toFixed(6),
+    lon: input.lon.toFixed(6),
+    radius: String(input.radius),
+    koordsys: "4258",
+    utkoordsys: "4258",
+    treffPerSide: String(input.pageSize),
+    side: String(input.side),
+    asciiKompatibel: "false",
+    // Målt 2026-08-31: ca. 58 KB mot 216 KB for 350 Oslo-treff.
+    // Metadatafeltene må eksplisitt beholdes, ellers forsvinner totalen.
+    filtrer: [
+      "metadata.totaltAntallTreff",
+      "metadata.side",
+      "metadata.treffPerSide",
+      "adresser.adressetekst",
+      "adresser.postnummer",
+      "adresser.poststed",
+      "adresser.representasjonspunkt",
+    ].join(","),
+  });
+  const upstream = await fetch(
+    `https://ws.geonorge.no/adresser/v1/punktsok?${params.toString()}`,
+    {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(ADRESSE_UPSTREAM_TIMEOUT_MS),
+    },
+  );
+  if (!upstream.ok) {
+    throw new Error(`kartverket_http_${upstream.status}`);
+  }
+  const data = (await upstream.json()) as {
+    metadata?: {
+      totaltAntallTreff?: number;
+      side?: number;
+      treffPerSide?: number;
+    };
+    adresser?: Array<{
+      adressetekst?: string;
+      postnummer?: string;
+      poststed?: string;
+      representasjonspunkt?: { lat?: number; lon?: number };
+    }>;
+  };
+  const adresser = (data.adresser ?? [])
+    .map((address): KartverketAdressePunkt | null => {
+      const lat = Number(address.representasjonspunkt?.lat);
+      const lon = Number(address.representasjonspunkt?.lon);
+      const adressetekst = String(address.adressetekst ?? "").trim();
+      if (!adressetekst || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return null;
+      }
+      return {
+        adressetekst,
+        postnummer: String(address.postnummer ?? "").trim(),
+        poststed: String(address.poststed ?? "").trim(),
+        lat,
+        lon,
+      };
+    })
+    .filter((address): address is KartverketAdressePunkt => address !== null);
+  const totalRaw = Number(data.metadata?.totaltAntallTreff);
+  const total = Number.isFinite(totalRaw)
+    ? Math.max(0, Math.trunc(totalRaw))
+    : adresser.length;
+  return {
+    total,
+    side: input.side,
+    page_size: input.pageSize,
+    has_more: (input.side + 1) * input.pageSize < total,
+    adresser,
+  };
+}
+
+function loadAdressePage(
+  key: string,
+  input: Parameters<typeof fetchKartverketAdressePage>[0],
+): { promise: Promise<KartverketAdressePage>; coalesced: boolean } {
+  const existing = adresseInFlight.get(key);
+  if (existing) return { promise: existing, coalesced: true };
+  const promise = fetchKartverketAdressePage(input)
+    .then((body) => {
+      adresseCacheSet(key, body);
+      return body;
+    })
+    .finally(() => {
+      adresseInFlight.delete(key);
+    });
+  adresseInFlight.set(key, promise);
+  return { promise, coalesced: false };
+}
+
 // ─── DTOs som klienten (iPad KartverketService) forventer ───────────
 export interface KartverketReverseResult {
   address: string; // "Solgården 12"
@@ -359,57 +525,83 @@ export function registerLeadgridAdresseRoutes(deps: {
 }) {
   const { app, requireUserSession } = deps;
 
-  // GET /api/leadgrid/kartverket/adresser/punkt?lat&lon&radius&side
-  // Punktsøk: alle adresser innen radius (maks 2000 m), paginert.
+  // GET /api/leadgrid/kartverket/adresser/punkt
+  // Kartverkets punktsøk er avstandssortert og paginert. Nye klienter bruker
+  // page_size=350 for en rask første render; eldre klienter beholder 1000.
   app.get("/api/leadgrid/kartverket/adresser/punkt", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
+
     const lat = Number(req.query.lat);
     const lon = Number(req.query.lon);
-    const radius = Math.min(2000, Math.max(50, Number(req.query.radius) || 500));
-    const side = Math.max(0, Number(req.query.side) || 0);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)
-        || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+    const radius = Math.min(
+      2000,
+      Math.max(50, Math.trunc(Number(req.query.radius) || 500)),
+    );
+    const pageSizeRaw = Number(req.query.page_size);
+    const pageSize = Number.isFinite(pageSizeRaw)
+      ? Math.min(1000, Math.max(50, Math.trunc(pageSizeRaw)))
+      : 1000;
+    const sideRaw = Number(req.query.side);
+    const maxSide = Math.floor(9_999 / pageSize);
+    const side = Number.isFinite(sideRaw)
+      ? Math.min(maxSide, Math.max(0, Math.trunc(sideRaw)))
+      : 0;
+
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lon) ||
+      Math.abs(lat) > 90 ||
+      Math.abs(lon) > 180
+    ) {
       return res.status(400).json({ error: "ugyldig_koordinat" });
     }
-    const key = `adr:${lat.toFixed(4)}:${lon.toFixed(4)}:${radius}:${side}`;
-    const cached = cacheGet(key);
-    if (cached) return res.json(cached);
+
+    const key = [
+      "adr",
+      lat.toFixed(4),
+      lon.toFixed(4),
+      radius,
+      side,
+      pageSize,
+    ].join(":");
+    const cached = adresseCacheLookup(key);
+    if (cached?.fresh) {
+      setAdresseCacheHeaders(res, "hit");
+      return res.json(cached.body);
+    }
+
+    const input = { lat, lon, radius, side, pageSize };
+    if (cached) {
+      // Server stale-while-revalidate: feltarbeid får umiddelbart siste kjente
+      // adresser selv om Kartverket er tregt akkurat nå.
+      setAdresseCacheHeaders(res, "stale");
+      const refresh = loadAdressePage(key, input);
+      void refresh.promise.catch((error) => {
+        console.warn(
+          "[kartverket-adresser] bakgrunnsoppfriskning feilet:",
+          (error as Error).message,
+        );
+      });
+      return res.json(cached.body);
+    }
+
+    const load = loadAdressePage(key, input);
     try {
-      const upstream = await fetch(
-        "https://ws.geonorge.no/adresser/v1/punktsok" +
-        `?lat=${lat}&lon=${lon}&radius=${radius}` +
-        `&treffPerSide=1000&side=${side}&asciiKompatibel=true`,
-        { headers: { Accept: "application/json" } },
-      );
-      if (!upstream.ok) {
-        return res.status(502).json({ error: "kartverket_utilgjengelig" });
-      }
-      const data = (await upstream.json()) as {
-        metadata?: { totaltAntallTreff?: number };
-        adresser?: Array<{
-          adressetekst?: string;
-          postnummer?: string;
-          poststed?: string;
-          representasjonspunkt?: { lat?: number; lon?: number };
-        }>;
-      };
-      const body = {
-        total: data.metadata?.totaltAntallTreff ?? 0,
-        side,
-        adresser: (data.adresser ?? []).map((a) => ({
-          adressetekst: a.adressetekst ?? "",
-          postnummer: a.postnummer ?? "",
-          poststed: a.poststed ?? "",
-          lat: a.representasjonspunkt?.lat ?? null,
-          lon: a.representasjonspunkt?.lon ?? null,
-        })).filter((a) => a.lat != null && a.lon != null),
-      };
-      cacheSet(key, body);
+      const body = await load.promise;
+      setAdresseCacheHeaders(res, load.coalesced ? "coalesced" : "miss");
       return res.json(body);
-    } catch (err) {
-      console.warn("[kartverket-adresser] punktsok feilet:", (err as Error).message);
-      return res.status(500).json({ error: "adressesok_feilet" });
+    } catch (error) {
+      const isTimeout =
+        error instanceof Error &&
+        (error.name === "TimeoutError" || error.name === "AbortError");
+      console.warn(
+        "[kartverket-adresser] punktsok feilet:",
+        (error as Error).message,
+      );
+      return res.status(isTimeout ? 504 : 502).json({
+        error: isTimeout ? "kartverket_timeout" : "kartverket_utilgjengelig",
+      });
     }
   });
 }

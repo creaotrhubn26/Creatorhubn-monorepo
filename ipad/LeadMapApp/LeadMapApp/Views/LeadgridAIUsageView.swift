@@ -295,7 +295,8 @@ struct LeadgridAIUsageView: View {
                 return "Serverfeil (\(code))."
             // Nye cases fra APIError-rapporterings-fix: LocalizedError gir
             // konkrete brukermeldinger på norsk, så fall til den.
-            case .networkFailure, .decodingFailure, .unauthorized, .tooManyRequests:
+            case .networkFailure, .decodingFailure, .unauthorized, .tooManyRequests,
+                 .duplicateLead, .idempotencyConflict:
                 return api.errorDescription ?? error.localizedDescription
             }
         }

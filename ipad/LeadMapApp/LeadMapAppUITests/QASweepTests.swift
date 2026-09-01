@@ -64,9 +64,13 @@ final class QASweepTests: XCTestCase {
         form.swipeUp()
         form.swipeUp()
 
-        let statusIDs = ["hot", "warm", "new", "customer", "meeting", "followup"]
-        for statusID in statusIDs {
-            let chip = app.buttons["add-lead.status.\(statusID)"]
+        let classificationIDs = [
+            "temperature.cold", "temperature.warm", "temperature.hot", "temperature.ready",
+            "pipeline.unvisited", "pipeline.visited", "pipeline.interested",
+            "pipeline.meeting_booked", "pipeline.proposal_sent", "pipeline.won",
+        ]
+        for classificationID in classificationIDs {
+            let chip = app.buttons["add-lead.\(classificationID)"]
             XCTAssertTrue(chip.waitForExistence(timeout: 3))
             XCTAssertGreaterThanOrEqual(chip.frame.width, 96)
             XCTAssertGreaterThanOrEqual(chip.frame.height, 40)

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export const LEAD_TEMPERATURES = ["cold", "warm", "hot", "ready"] as const;
 export type LeadTemperature = (typeof LEAD_TEMPERATURES)[number];
 
@@ -18,6 +20,8 @@ export type LeadCreationBody = {
   contactRole: string | null;
   organizationNumber: string | null;
   websiteUrl: string | null;
+  websiteDomainNormalized: string | null;
+  googlePlaceId: string | null;
   phone: string | null;
   email: string | null;
   industryId: string | null;
@@ -45,6 +49,44 @@ export class LeadCreationValidationError extends Error {
     super(code);
     this.name = "LeadCreationValidationError";
   }
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Idempotens er opt-in for bakoverkompatibilitet med eldre app-builds.
+ * Når headeren finnes må den være en UUID, slik at vilkårlige/store nøkler
+ * aldri blir del av databaseindeksen.
+ */
+export function parseLeadCreationIdempotencyKey(raw: unknown): string | null {
+  if (raw === undefined || raw === null || raw === "") return null;
+  if (typeof raw !== "string" || !UUID_PATTERN.test(raw.trim())) {
+    throw new LeadCreationValidationError("ugyldig_idempotency_key");
+  }
+  return raw.trim().toLowerCase();
+}
+
+/** Normaliserer både `https://www.example.no/path` og `example.no`. */
+export function normalizeWebsiteDomain(raw: string | null): string | null {
+  const trimmed = raw?.trim();
+  if (!trimmed) return null;
+  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+  try {
+    const hostname = new URL(candidate).hostname
+      .toLowerCase()
+      .replace(/^www\./, "")
+      .replace(/\.$/, "");
+    return hostname || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Fast feltrekkefølge fra parseren gir en stabil hash av logisk payload. */
+export function hashLeadCreationBody(body: LeadCreationBody): string {
+  return createHash("sha256").update(JSON.stringify(body)).digest("hex");
 }
 
 function recordBody(raw: unknown): Record<string, unknown> {
@@ -134,10 +176,7 @@ export function parseLeadCreationBody(raw: unknown): LeadCreationBody {
   const leadStatus = statusRaw as CreationLeadStatus;
 
   const industryId = optionalText(body, "industry_id", 64);
-  if (
-    industryId &&
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(industryId)
-  ) {
+  if (industryId && !UUID_PATTERN.test(industryId)) {
     throw new LeadCreationValidationError("ugyldig_industry_id");
   }
 
@@ -167,13 +206,17 @@ export function parseLeadCreationBody(raw: unknown): LeadCreationBody {
     throw new LeadCreationValidationError("ugyldig_lokasjonskvalitet");
   }
 
+  const websiteUrl = optionalText(body, "website_url", 2048);
+
   return {
     name,
     company: optionalText(body, "company", 255) ?? name,
     contactName: optionalText(body, "contact_name", 200),
     contactRole: optionalText(body, "contact_role", 160),
     organizationNumber,
-    websiteUrl: optionalText(body, "website_url", 2048),
+    websiteUrl,
+    websiteDomainNormalized: normalizeWebsiteDomain(websiteUrl),
+    googlePlaceId: optionalText(body, "google_place_id", 255),
     phone: optionalText(body, "phone", 64),
     email: optionalText(body, "email", 320),
     industryId,

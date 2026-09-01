@@ -51,6 +51,15 @@ enum AddLeadResponsiveLayout {
 struct AddLeadDraftFlow {
     struct Session {
         let coordinate: CLLocationCoordinate2D?
+        let idempotencyKey: UUID
+
+        init(
+            coordinate: CLLocationCoordinate2D?,
+            idempotencyKey: UUID = UUID()
+        ) {
+            self.coordinate = coordinate
+            self.idempotencyKey = idempotencyKey
+        }
     }
 
     private(set) var activeSession: Session?
@@ -306,7 +315,10 @@ struct AddLeadSheet: View {
         let locationConfidence: String
         let leadSource: String
 
-        func makeCreateRequest(projectID: String? = nil) -> APIClient.CreateLeadAtPinRequest {
+        func makeCreateRequest(
+            projectID: String? = nil,
+            idempotencyKey: UUID = UUID()
+        ) -> APIClient.CreateLeadAtPinRequest {
             APIClient.CreateLeadAtPinRequest(
                 companyName: companyName,
                 latitude: coord.latitude,
@@ -330,7 +342,8 @@ struct AddLeadSheet: View {
                 city: city,
                 locationConfidence: locationConfidence,
                 leadSource: leadSource,
-                projectID: projectID
+                projectID: projectID,
+                idempotencyKey: idempotencyKey
             )
         }
     }
@@ -1092,10 +1105,15 @@ struct AddLeadSheet: View {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             dismiss()
         } catch {
-            submissionState.fail(
-                (error as? AddLeadSaveError)?.message
-                    ?? "Kunne ikke lagre leaden. Kontroller forbindelsen og prøv igjen."
-            )
+            let message: String
+            if let saveError = error as? AddLeadSaveError {
+                message = saveError.message
+            } else if let apiError = error as? APIError {
+                message = apiError.localizedDescription
+            } else {
+                message = "Kunne ikke lagre leaden. Kontroller forbindelsen og prøv igjen."
+            }
+            submissionState.fail(message)
             UINotificationFeedbackGenerator().notificationOccurred(.error)
         }
     }
