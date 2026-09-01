@@ -26,6 +26,8 @@ import { autoPopulateLeadMap } from "./lead-map-discovery-populate.js";
 import Stripe from "stripe";
 import {
   createLeadFromPin,
+  DuplicateLeadError,
+  LeadCreationIdempotencyConflictError,
   generateLeadPitch,
   getLeadById,
   getLeadMapMetrics,
@@ -44,8 +46,10 @@ import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 import { resolveLeadMapSession } from "./lead-map-session-helper.js";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import {
+  hashLeadCreationBody,
   LeadCreationValidationError,
   parseLeadCreationBody,
+  parseLeadCreationIdempotencyKey,
 } from "./lead-map-create-contract.js";
 
 /** Bygger notes-feltet for crm_customers fra visittkort-payload */
@@ -638,17 +642,24 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
   // POST /leads/from-pin — fullstendig manuell/posisjonsbasert opprettelse
   //
-  // Kontrakten persisterer hele Add Lead-skjemaet. Temperatur og pipeline er
-  // separate felter, og nye leads får både owner- og organization-scope.
-  app.post("/api/admin-room/lead-map/leads/from-pin",
+  // Idempotency-Key er valgfri kun for bakoverkompatibilitet med eldre builds.
+  // Nye klienter sender én stabil UUID per skjemasesjon. Selve service-laget
+  // beskytter både retry og naturlige identiteter atomisk per workspace.
+  app.post(
+    "/api/admin-room/lead-map/leads/from-pin",
     requireLeadMapPermission("leads.create", { pool, activeSessions }),
     async (req: Request, res: Response) => {
       const session = await getUser(req, pool, activeSessions);
-      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      if (!session?.userId)
+        return res.status(401).json({ error: "Innlogging kreves" });
 
       let body: ReturnType<typeof parseLeadCreationBody>;
+      let idempotencyKey: string | null;
       try {
         body = parseLeadCreationBody(req.body ?? {});
+        idempotencyKey = parseLeadCreationIdempotencyKey(
+          req.get("Idempotency-Key"),
+        );
       } catch (err) {
         if (err instanceof LeadCreationValidationError) {
           return res.status(400).json({ error: err.code });
@@ -658,38 +669,72 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
       try {
         const organizationId = await resolveOrgIdForUser(pool, session.userId);
-        const newLeadId = await createLeadFromPin(pool, {
+        const creation = await createLeadFromPin(pool, {
           ...body,
           ownerUserId: session.userId,
           organizationId,
+          idempotencyKey,
+          requestHash: idempotencyKey ? hashLeadCreationBody(body) : null,
         });
 
-        // Workflow-event er best-effort. Selve CRM-raden er allerede lagret,
-        // og eventet bruker samme organizationId som INSERT-en.
-        void (async () => {
-          try {
-            const { publishEvent } = await import("./leadgrid-workflow-engine.js");
-            await publishEvent({
-              pool,
-              organizationId,
-              type: "lead.created",
-              leadId: newLeadId,
-              actorUserId: session.userId,
-              data: {
-                source: body.leadSource,
-                lead_status: body.leadStatus,
-                lead_temperature: body.leadTemperature,
-                occurred_at: new Date().toISOString(),
-              },
-            });
-          } catch (err) {
-            console.warn("[lead-map] lead.created-event feilet:", (err as Error).message);
-          }
-        })();
-        return res.json({ ok: true, id: newLeadId });
+        if (creation.idempotentReplay) {
+          res.setHeader("Idempotent-Replayed", "true");
+        }
+
+        // Replay må ikke fyre lead.created på nytt.
+        if (creation.created) {
+          void (async () => {
+            try {
+              const { publishEvent } =
+                await import("./leadgrid-workflow-engine.js");
+              await publishEvent({
+                pool,
+                organizationId,
+                type: "lead.created",
+                leadId: creation.id,
+                actorUserId: session.userId,
+                data: {
+                  source: body.leadSource,
+                  lead_status: body.leadStatus,
+                  lead_temperature: body.leadTemperature,
+                  occurred_at: new Date().toISOString(),
+                },
+              });
+            } catch (err) {
+              console.warn(
+                "[lead-map] lead.created-event feilet:",
+                (err as Error).message,
+              );
+            }
+          })();
+        }
+
+        return res.json({
+          ok: true,
+          id: creation.id,
+          replayed: creation.idempotentReplay,
+        });
       } catch (err) {
-        console.error("[lead-map] from-pin create failed:", (err as Error).message);
-        return res.status(500).json({ error: "create_failed", detail: "internal_error" });
+        if (err instanceof DuplicateLeadError) {
+          return res.status(409).json({
+            error: "duplicate_lead",
+            existing_lead_id: err.existingLeadId,
+            matched_fields: err.matchedFields,
+          });
+        }
+        if (err instanceof LeadCreationIdempotencyConflictError) {
+          return res.status(409).json({
+            error: "idempotency_key_conflict",
+            existing_lead_id: err.existingLeadId || undefined,
+          });
+        }
+        console.error(
+          "[lead-map] from-pin create failed:",
+          (err as Error).message,
+        );
+        return res
+          .status(500)
+          .json({ error: "create_failed", detail: "internal_error" });
       }
     },
   );

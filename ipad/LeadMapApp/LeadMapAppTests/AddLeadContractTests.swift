@@ -56,7 +56,12 @@ final class AddLeadRequestContractTests: XCTestCase {
             leadSource: "brreg_lookup"
         )
 
-        let body = data.makeCreateRequest(projectID: "project-1").makeBody()
+        let idempotencyKey = UUID(uuidString: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")!
+        let request = data.makeCreateRequest(
+            projectID: "project-1",
+            idempotencyKey: idempotencyKey
+        )
+        let body = request.makeBody()
 
         XCTAssertEqual(body["name"] as? String, "Nordic Elektro AS")
         XCTAssertEqual(body["organization_number"] as? String, "912345678")
@@ -74,5 +79,6 @@ final class AddLeadRequestContractTests: XCTestCase {
         XCTAssertEqual(body["location_confidence"] as? String, "geocoded")
         XCTAssertEqual(body["lead_source"] as? String, "brreg_lookup")
         XCTAssertEqual(body["project_id"] as? String, "project-1")
+        XCTAssertEqual(request.idempotencyKey, idempotencyKey)
     }
 }

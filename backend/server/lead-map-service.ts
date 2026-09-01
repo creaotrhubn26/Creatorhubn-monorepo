@@ -9,7 +9,7 @@
  * crm_visits / crm_lead_activities (migrasjon 271).
  */
 
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import Anthropic from "@anthropic-ai/sdk";
 import type { LeadCreationBody } from "./lead-map-create-contract.js";
 import {
@@ -299,69 +299,277 @@ export async function getLeadById(
   return r.rowCount && r.rowCount > 0 ? rowToLead(r.rows[0]) : null;
 }
 
-export async function createLeadFromPin(
-  pool: Pool,
-  input: LeadCreationBody & {
-    ownerUserId: string;
-    organizationId: string;
-  },
-): Promise<string> {
-  const result = await pool.query<{ id: string }>(
-    `INSERT INTO crm_customers (
-       id, name, company, contact_name, contact_role,
-       phone, email, latitude, longitude, address, postal_code, city,
-       website_url, enrichment_org_nr, lead_category, industry_id,
-       employee_count_estimate, annual_revenue_nok_estimate, notes,
-       lead_temperature, lead_status, pipeline_stage,
-       next_follow_up_at, next_action, location_confidence,
-       lead_source, status, source,
-       owner_user_id, organization_id, assigned_user_id,
-       assigned_at, assigned_by_user_id, project_id,
-       created_at, updated_at
-     ) VALUES (
-       gen_random_uuid(), $1, $2, $3, $4,
-       $5, $6, $7, $8, $9, $10, $11,
-       $12, $13, $14, $15::uuid,
-       $16, $17, $18,
-       $19, $20, $21,
-       $22::timestamptz, $23, $24,
-       $25, 'lead', $25,
-       $26, $27::uuid, $26,
-       NOW(), $26, $28,
-       NOW(), NOW()
-     ) RETURNING id::text`,
+export type DuplicateLeadMatch =
+  | "organization_number"
+  | "google_place_id"
+  | "website_domain";
+
+export class DuplicateLeadError extends Error {
+  constructor(
+    public readonly existingLeadId: string,
+    public readonly matchedFields: DuplicateLeadMatch[],
+  ) {
+    super("duplicate_lead");
+    this.name = "DuplicateLeadError";
+  }
+}
+
+export class LeadCreationIdempotencyConflictError extends Error {
+  constructor(public readonly existingLeadId: string) {
+    super("idempotency_key_conflict");
+    this.name = "LeadCreationIdempotencyConflictError";
+  }
+}
+
+export type LeadCreationResult = {
+  id: string;
+  created: boolean;
+  idempotentReplay: boolean;
+};
+
+type LeadCreationInput = LeadCreationBody & {
+  ownerUserId: string;
+  organizationId: string;
+  idempotencyKey: string | null;
+  requestHash: string | null;
+};
+
+function leadIdentityLockKeys(input: LeadCreationInput): string[] {
+  return [
+    input.organizationNumber
+      ? `organization_number:${input.organizationNumber}`
+      : null,
+    input.googlePlaceId ? `google_place_id:${input.googlePlaceId}` : null,
+    input.websiteDomainNormalized
+      ? `website_domain:${input.websiteDomainNormalized}`
+      : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => `leadgrid:${input.organizationId}:${value}`)
+    .sort();
+}
+
+async function lockLeadIdentities(
+  client: PoolClient,
+  input: LeadCreationInput,
+): Promise<void> {
+  for (const lockKey of leadIdentityLockKeys(input)) {
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+      [lockKey],
+    );
+  }
+}
+
+async function findDuplicateLead(
+  client: PoolClient,
+  input: LeadCreationInput,
+): Promise<{ id: string; matchedFields: DuplicateLeadMatch[] } | null> {
+  if (
+    !input.organizationNumber &&
+    !input.googlePlaceId &&
+    !input.websiteDomainNormalized
+  ) {
+    return null;
+  }
+
+  const result = await client.query<{
+    id: string;
+    organization_number_match: boolean;
+    google_place_id_match: boolean;
+    website_domain_match: boolean;
+  }>(
+    `SELECT id::text,
+            ($2::text IS NOT NULL AND enrichment_org_nr = $2::text)
+              AS organization_number_match,
+            ($3::text IS NOT NULL AND google_place_id = $3::text)
+              AS google_place_id_match,
+            ($4::text IS NOT NULL AND website_domain_normalized = $4::text)
+              AS website_domain_match
+       FROM crm_customers
+      WHERE organization_id = $1::uuid
+        AND archived_at IS NULL
+        AND (
+          ($2::text IS NOT NULL AND enrichment_org_nr = $2::text)
+          OR ($3::text IS NOT NULL AND google_place_id = $3::text)
+          OR ($4::text IS NOT NULL AND website_domain_normalized = $4::text)
+        )
+      ORDER BY created_at ASC
+      LIMIT 1`,
     [
-      input.name,
-      input.company,
-      input.contactName,
-      input.contactRole,
-      input.phone,
-      input.email,
-      input.latitude,
-      input.longitude,
-      input.address,
-      input.postalCode,
-      input.city,
-      input.websiteUrl,
-      input.organizationNumber,
-      input.industryLabel,
-      input.industryId,
-      input.employeeCountEstimate,
-      input.annualRevenueNokEstimate,
-      input.notes,
-      input.leadTemperature,
-      input.leadStatus,
-      input.pipelineStage,
-      input.nextFollowUpAt,
-      input.nextAction,
-      input.locationConfidence,
-      input.leadSource,
-      input.ownerUserId,
       input.organizationId,
-      input.projectId,
+      input.organizationNumber,
+      input.googlePlaceId,
+      input.websiteDomainNormalized,
     ],
   );
-  return result.rows[0].id;
+
+  const row = result.rows[0];
+  if (!row) return null;
+  const matchedFields: DuplicateLeadMatch[] = [];
+  if (row.organization_number_match) matchedFields.push("organization_number");
+  if (row.google_place_id_match) matchedFields.push("google_place_id");
+  if (row.website_domain_match) matchedFields.push("website_domain");
+  return { id: row.id, matchedFields };
+}
+
+type ExistingIdempotentCreation = {
+  id: string;
+  creation_request_hash: string | null;
+};
+
+async function findIdempotentCreation(
+  client: PoolClient,
+  input: LeadCreationInput,
+): Promise<ExistingIdempotentCreation | null> {
+  if (!input.idempotencyKey) return null;
+  const existing = await client.query<ExistingIdempotentCreation>(
+    `SELECT id::text, creation_request_hash
+       FROM crm_customers
+      WHERE organization_id = $1::uuid
+        AND creation_idempotency_key = $2::uuid
+      LIMIT 1`,
+    [input.organizationId, input.idempotencyKey],
+  );
+  return existing.rows[0] ?? null;
+}
+
+function idempotentReplayResult(
+  existing: ExistingIdempotentCreation,
+  input: LeadCreationInput,
+): LeadCreationResult {
+  if (
+    !input.requestHash ||
+    existing.creation_request_hash !== input.requestHash
+  ) {
+    throw new LeadCreationIdempotencyConflictError(existing.id);
+  }
+  return { id: existing.id, created: false, idempotentReplay: true };
+}
+
+export async function createLeadFromPin(
+  pool: Pool,
+  input: LeadCreationInput,
+): Promise<LeadCreationResult> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const existing = await findIdempotentCreation(client, input);
+    if (existing) {
+      const replay = idempotentReplayResult(existing, input);
+      await client.query("COMMIT");
+      return replay;
+    }
+
+    // Lås kun de naturlige identitetene som finnes. Dette gjør
+    // kontroll+INSERT atomisk også ved samtidige trykk fra flere enheter.
+    await lockLeadIdentities(client, input);
+
+    // En parallell request kan ha fullført mens denne ventet på en naturlig
+    // identitetslås. Prioriter idempotent replay før duplikatrespons.
+    const existingAfterLock = await findIdempotentCreation(client, input);
+    if (existingAfterLock) {
+      const replay = idempotentReplayResult(existingAfterLock, input);
+      await client.query("COMMIT");
+      return replay;
+    }
+
+    const duplicate = await findDuplicateLead(client, input);
+    if (duplicate) {
+      throw new DuplicateLeadError(duplicate.id, duplicate.matchedFields);
+    }
+
+    const result = await client.query<{ id: string }>(
+      `INSERT INTO crm_customers (
+         id, name, company, contact_name, contact_role,
+         phone, email, latitude, longitude, address, postal_code, city,
+         website_url, website_domain_normalized, enrichment_org_nr,
+         google_place_id, lead_category, industry_id,
+         employee_count_estimate, annual_revenue_nok_estimate, notes,
+         lead_temperature, lead_status, pipeline_stage,
+         next_follow_up_at, next_action, location_confidence,
+         lead_source, status, source,
+         owner_user_id, organization_id, assigned_user_id,
+         assigned_at, assigned_by_user_id, project_id,
+         creation_idempotency_key, creation_request_hash,
+         created_at, updated_at
+       ) VALUES (
+         gen_random_uuid(), $1, $2, $3, $4,
+         $5, $6, $7, $8, $9, $10, $11,
+         $12, $13, $14,
+         $15, $16, $17::uuid,
+         $18, $19, $20,
+         $21, $22, $23,
+         $24::timestamptz, $25, $26,
+         $27, 'lead', $27,
+         $28, $29::uuid, $28,
+         NOW(), $28, $30,
+         $31::uuid, $32,
+         NOW(), NOW()
+       )
+       ON CONFLICT (organization_id, creation_idempotency_key)
+         WHERE organization_id IS NOT NULL
+           AND creation_idempotency_key IS NOT NULL
+       DO NOTHING
+       RETURNING id::text`,
+      [
+        input.name,
+        input.company,
+        input.contactName,
+        input.contactRole,
+        input.phone,
+        input.email,
+        input.latitude,
+        input.longitude,
+        input.address,
+        input.postalCode,
+        input.city,
+        input.websiteUrl,
+        input.websiteDomainNormalized,
+        input.organizationNumber,
+        input.googlePlaceId,
+        input.industryLabel,
+        input.industryId,
+        input.employeeCountEstimate,
+        input.annualRevenueNokEstimate,
+        input.notes,
+        input.leadTemperature,
+        input.leadStatus,
+        input.pipelineStage,
+        input.nextFollowUpAt,
+        input.nextAction,
+        input.locationConfidence,
+        input.leadSource,
+        input.ownerUserId,
+        input.organizationId,
+        input.projectId,
+        input.idempotencyKey,
+        input.idempotencyKey ? input.requestHash : null,
+      ],
+    );
+
+    const inserted = result.rows[0];
+    if (inserted) {
+      await client.query("COMMIT");
+      return { id: inserted.id, created: true, idempotentReplay: false };
+    }
+
+    // En parallell request med samme nøkkel vant unique-indexen mens denne
+    // ventet. Andre statement får nytt READ COMMITTED-snapshot.
+    const replayed = await findIdempotentCreation(client, input);
+    if (!replayed) {
+      throw new LeadCreationIdempotencyConflictError("");
+    }
+    const replay = idempotentReplayResult(replayed, input);
+    await client.query("COMMIT");
+    return replay;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 /**
