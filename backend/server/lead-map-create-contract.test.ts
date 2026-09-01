@@ -2,8 +2,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
+  hashLeadCreationBody,
   LeadCreationValidationError,
+  normalizeWebsiteDomain,
   parseLeadCreationBody,
+  parseLeadCreationIdempotencyKey,
   pipelineStageForLeadStatus,
 } from "./lead-map-create-contract.js";
 
@@ -25,7 +28,8 @@ describe("parseLeadCreationBody", () => {
       contact_name: " Anders Johansen ",
       contact_role: "Daglig leder",
       organization_number: "912 345 678",
-      website_url: "https://nordic.example",
+      website_url: "https://www.Nordic.example/kontakt",
+      google_place_id: "places/nordic",
       phone: "+47 22 33 44 55",
       email: "post@nordic.example",
       industry_id: "00112233-4455-4677-8899-aabbccddeeff",
@@ -52,6 +56,8 @@ describe("parseLeadCreationBody", () => {
       contactName: "Anders Johansen",
       contactRole: "Daglig leder",
       organizationNumber: "912345678",
+      websiteDomainNormalized: "nordic.example",
+      googlePlaceId: "places/nordic",
       employeeCountEstimate: 25,
       annualRevenueNokEstimate: 10_000_000,
       leadTemperature: "hot",
@@ -62,6 +68,34 @@ describe("parseLeadCreationBody", () => {
     });
     expect(body.nextFollowUpAt).toBe("2026-09-02T06:30:00.000Z");
   });
+
+it("normaliserer domener og hasher normalisert payload stabilt", () => {
+  expect(normalizeWebsiteDomain("HTTPS://WWW.Example.NO:443/path?q=1"))
+    .toBe("example.no");
+  expect(normalizeWebsiteDomain("example.no/kontakt")).toBe("example.no");
+  expect(normalizeWebsiteDomain("ikke en url")).toBeNull();
+
+  const first = parseLeadCreationBody({
+    name: "Test AS", latitude: 60, longitude: 10,
+    website_url: "https://www.example.no",
+  });
+  const second = parseLeadCreationBody({
+    longitude: 10, latitude: 60, name: "Test AS",
+    website_url: "https://www.example.no",
+  });
+  expect(hashLeadCreationBody(first)).toBe(hashLeadCreationBody(second));
+});
+
+it("validerer og kan utelate Idempotency-Key bakoverkompatibelt", () => {
+  expect(parseLeadCreationIdempotencyKey(
+    "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+  )).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+  expect(parseLeadCreationIdempotencyKey(undefined)).toBeNull();
+  expectValidationCode(
+    () => parseLeadCreationIdempotencyKey("ikke-uuid"),
+    "ugyldig_idempotency_key",
+  );
+});
 
   it.each([
     ["unvisited", "new"],
@@ -118,5 +152,29 @@ describe("migration 0485", () => {
       expect(sql).toContain(`ADD COLUMN IF NOT EXISTS ${column}`);
     }
     expect(sql).toContain("organization_id, enrichment_org_nr");
+  });
+});
+
+describe("migration 0489", () => {
+  it("oppretter workspace-scope-de idempotens- og duplikatindekser", () => {
+    const sql = readFileSync(
+      new URL("../migrations/0489_leadgrid_lead_creation_idempotency.sql", import.meta.url),
+      "utf8",
+    );
+
+    for (const column of [
+      "creation_idempotency_key",
+      "creation_request_hash",
+      "website_domain_normalized",
+    ]) {
+      expect(sql).toContain(`ADD COLUMN IF NOT EXISTS ${column}`);
+    }
+    expect(sql).toContain(
+      "ON crm_customers (organization_id, creation_idempotency_key)",
+    );
+    expect(sql).toContain("organization_id, google_place_id");
+    expect(sql).toContain("organization_id, website_domain_normalized");
+    expect(sql).toContain("crm_customers_creation_request_hash_format_check");
+    expect(sql).toContain("crm_customers_creation_idempotency_pair_check");
   });
 });

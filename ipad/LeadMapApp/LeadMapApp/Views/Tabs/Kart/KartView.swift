@@ -944,8 +944,13 @@ struct KartView: View {
     @State private var dorsalgFetchSenter: CLLocationCoordinate2D? = nil
     /// Valgt adresse-dot → kompakt callout nederst på kartet.
     @State private var dorsalgValgt: KartverketService.AdressePunkt? = nil
-    /// Debounce: pågående hente-task kanselleres ved ny kartbevegelse.
+    /// Kun én faktisk adressehenting og én viewport-beregning får være aktiv.
     @State private var dorsalgFetchTask: Task<Void, Never>? = nil
+    @State private var dorsalgViewportTask: Task<Void, Never>? = nil
+    @State private var dorsalgActiveFetchID: UUID? = nil
+    @State private var dorsalgLasterFlere = false
+    @State private var dorsalgAdresseFeil: String? = nil
+    @State private var dorsalgDekninger: [DorsalgAdresseDekning] = []
     /// Husstands-status per adresse-id ("vunnet"/"avslatt") — org-lagret via
     /// backend (mig 0397), optimistisk oppdatert lokalt. Demo = kun minne.
     @State private var dorsalgStatuser: [String: String] = [:]
@@ -991,50 +996,54 @@ struct KartView: View {
         EntitlementStore.shared.erRenDorsalgOrg
     }
 
-    /// Kartspenn-grense for adresse-henting (~3 km) — over dette vises
-    /// «Zoom inn»-chippen i stedet for å hente tusenvis av adresser.
+    /// Kartspenn-grense beregnes i meter i begge retninger. Dette hindrer at
+    /// et bredt landskapskart ber om en falskt liten radius.
     private var dorsalgZoomOK: Bool {
-        currentRegion.span.latitudeDelta < 0.03
+        DorsalgAddressFetchPolicy.isZoomSuitable(
+            latitudeDelta: currentRegion.span.latitudeDelta,
+            longitudeDelta: currentRegion.span.longitudeDelta,
+            centerLatitude: currentRegion.center.latitude
+        )
     }
 
-    /// Pins som faktisk renderes — CACHET (@State), IKKE computed: en
-    /// computed property her leses av Map-builderen ved HVER kamera-tick
-    /// under panorering, og distanse-sortering av 3000 adresser per frame
-    /// gjorde hele appen treg (Daniel 2026-07-18). Oppdateres kun etter
-    /// fetch + debounced kamerastopp via oppdaterDorsalgSynlige().
+    /// Pins som faktisk renderes er cachet state. Filter/sort kjøres i en
+    /// kansellerbar detached task etter at kameraet har stoppet, aldri per frame.
     @State private var dorsalgSynligeAdresser: [KartverketService.AdressePunkt] = []
 
-    /// Viewport-filter + cap: adresser innenfor synlig region (+30 % margin),
-    /// ved > 400 de 400 nærmeste senteret. O(n) filter først — sorterer kun
-    /// det som faktisk er i viewporten.
     private func oppdaterDorsalgSynlige() {
         guard dorsalgModus else {
+            dorsalgViewportTask?.cancel()
             if !dorsalgSynligeAdresser.isEmpty { dorsalgSynligeAdresser = [] }
             return
         }
-        let region = currentRegion
-        let c = region.center
-        let latMargin = region.span.latitudeDelta * 0.65
-        let lonMargin = region.span.longitudeDelta * 0.65
-        var iViewport = dorsalgAdresser.filter {
-            abs($0.lat - c.latitude) < latMargin &&
-            abs($0.lon - c.longitude) < lonMargin
-        }
-        if let f = dorsalgFilter {
-            iViewport = iViewport.filter {
-                let s = dorsalgStatuser[$0.id]
-                return f == "ubesokt" ? s == nil : s == f
+        let addresses = dorsalgAdresser
+        let statuses = dorsalgStatuser
+        let statusFilter = dorsalgFilter
+        let centerLatitude = currentRegion.center.latitude
+        let centerLongitude = currentRegion.center.longitude
+        let latitudeDelta = currentRegion.span.latitudeDelta
+        let longitudeDelta = currentRegion.span.longitudeDelta
+
+        dorsalgViewportTask?.cancel()
+        dorsalgViewportTask = Task {
+            let visible = await Task.detached(priority: .userInitiated) {
+                DorsalgAddressFetchPolicy.visible(
+                    addresses: addresses,
+                    centerLatitude: centerLatitude,
+                    centerLongitude: centerLongitude,
+                    latitudeDelta: latitudeDelta,
+                    longitudeDelta: longitudeDelta,
+                    statuses: statuses,
+                    statusFilter: statusFilter
+                )
+            }.value
+            guard !Task.isCancelled, dorsalgModus else { return }
+            // Unngå å rekonstruere opptil 240 Map-annotations når resultatet
+            // faktisk er identisk med forrige viewport.
+            if visible.map(\.id) != dorsalgSynligeAdresser.map(\.id) {
+                dorsalgSynligeAdresser = visible
             }
         }
-        if iViewport.count > 400 {
-            func d2(_ a: KartverketService.AdressePunkt) -> Double {
-                let dLat = a.lat - c.latitude
-                let dLon = (a.lon - c.longitude) * cos(c.latitude * .pi / 180)
-                return dLat * dLat + dLon * dLon
-            }
-            iViewport = Array(iViewport.sorted { d2($0) < d2($1) }.prefix(400))
-        }
-        dorsalgSynligeAdresser = iViewport
     }
 
     enum MapStyleChoice: String, CaseIterable, Hashable {
@@ -1393,7 +1402,9 @@ struct KartView: View {
                     guard let api = appState.api else {
                         throw AddLeadSaveError(message: "Du må være innlogget for å lagre leaden")
                     }
-                    let newId = try await api.createLeadAtPin(newLead.makeCreateRequest())
+                    let newId = try await api.createLeadAtPin(
+                        newLead.makeCreateRequest(idempotencyKey: session.idempotencyKey)
+                    )
                     showToast("«\(newLead.companyName)» lagt til")
                     // Først etter bekreftet backend-lagring blir utkastet til
                     // en ekte CRM-pin og kartet fokuserer den nye leaden.
@@ -2658,10 +2669,11 @@ struct KartView: View {
                         .transition(.opacity)
                 }
             }
-            .onMapCameraChange(frequency: .continuous) { ctx in
+            // onEnd er bevisst: kontinuerlig state-skriving bygget hele
+            // KartView + lead-/adressefiltrene på nytt for hvert kameraframe.
+            .onMapCameraChange(frequency: .onEnd) { ctx in
                 currentRegion = ctx.region
-                // 2026-07-18 dørsalg: hent adresser når senteret har flyttet
-                // seg > 300 m (debounced m/ Task-cancel — billig no-op ellers).
+                oppdaterDorsalgSynlige()
                 dorsalgMaybeFetch()
             }
             .environment(\.colorScheme, .dark)
@@ -3067,22 +3079,24 @@ struct KartView: View {
             // (territorier + team-på-kartet beholdes).
             activeOverlays.subtract([.heatmap, .aiLeads, .travelHistory, .dataOverlay])
             oppdaterDorsalgSynlige()   // vis alt cachet umiddelbart
-            // Prefetch HELE nabolaget (Kartverkets 2000 m-maks) med én gang —
-            // pin-til-pin og «Neste dør» skal aldri vente på nett (Daniels
-            // UX-funn: treg flytting mellom pins ved zoom-styrt liten radius).
-            let senter = currentRegion.center
-            dorsalgFetchTask?.cancel()
-            dorsalgFetchTask = Task {
-                await dorsalgFetch(senter: senter, radius: 2000)
-                oppdaterDorsalgSynlige()
-            }
+            // Prefetch nabolaget, men vis side 0 før bakgrunnssidene er ferdige.
+            startDorsalgFetch(
+                senter: currentRegion.center,
+                radius: DorsalgAddressFetchPolicy.maximumRequestRadius,
+                delayNanoseconds: 0
+            )
             dorsalgLastStatuser()
             dorsalgLastProdukter()
             dorsalgLastDagsmal()
         } else {
             dorsalgFetchTask?.cancel()
+            dorsalgViewportTask?.cancel()
             dorsalgFetchTask = nil
+            dorsalgViewportTask = nil
+            dorsalgActiveFetchID = nil
             dorsalgLaster = false
+            dorsalgLasterFlere = false
+            dorsalgAdresseFeil = nil
             dorsalgSynligeAdresser = []
         }
     }
@@ -3175,16 +3189,34 @@ struct KartView: View {
         VStack(spacing: 8) {
             if !dorsalgZoomOK {
                 dorsalgChip(icon: "plus.magnifyingglass", text: "Zoom inn for å se adresser")
-            } else if dorsalgLaster {
-                dorsalgChip(icon: "antenna.radiowaves.left.and.right",
-                            text: "Henter adresser fra Kartverket…")
-            } else if dorsalgAdresser.count > 400 {
-                // Ærlig cap-chip: vi rendrer kun de 400 nærmeste senteret.
-                dorsalgChip(icon: "circle.grid.2x2.fill",
-                            text: "Viser 400 av \(max(dorsalgTotal, dorsalgAdresser.count)) adresser")
-            } else if !dorsalgAdresser.isEmpty {
-                dorsalgChip(icon: "house.fill",
-                            text: "\(dorsalgAdresser.count) adresser i området")
+            } else if dorsalgLaster && dorsalgSynligeAdresser.isEmpty {
+                dorsalgChip(
+                    icon: "antenna.radiowaves.left.and.right",
+                    text: "Henter nærmeste adresser…"
+                )
+            } else if let feil = dorsalgAdresseFeil {
+                Button {
+                    dorsalgMaybeFetch(force: true)
+                } label: {
+                    dorsalgChip(icon: "arrow.clockwise", text: feil)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Prøv adressehentingen på nytt")
+            } else if dorsalgLasterFlere {
+                dorsalgChip(
+                    icon: "house.fill",
+                    text: "Viser \(dorsalgSynligeAdresser.count) · henter flere i bakgrunnen"
+                )
+            } else if dorsalgSynligeAdresser.count >= DorsalgAddressFetchPolicy.renderLimit {
+                dorsalgChip(
+                    icon: "circle.grid.2x2.fill",
+                    text: "Viser de \(DorsalgAddressFetchPolicy.renderLimit) nærmeste"
+                )
+            } else if !dorsalgSynligeAdresser.isEmpty {
+                dorsalgChip(
+                    icon: "house.fill",
+                    text: "\(dorsalgSynligeAdresser.count) adresser i kartutsnittet"
+                )
             }
             if let adr = dorsalgValgt {
                 dorsalgCallout(adr)
@@ -3391,94 +3423,250 @@ struct KartView: View {
         dorsalgNavAutoPOV = true
     }
 
-    /// Debounced henting: no-op utenfor modusen, ved for stort kartspenn
-    /// (chip sier «Zoom inn») eller når senteret er nær forrige hent
-    /// (terskel = radius/3 — panorering innen samme nabolag re-fetcher ikke).
-    private func dorsalgMaybeFetch(force: Bool = false) {
-        guard dorsalgModus else { return }
-        let senter = currentRegion.center
-        // Synlig radius i meter (halve lat-spennet), klampet til Kartverkets
-        // 2000 m-maks og et 800 m-gulv: husnivå-zoom skal ikke gi bittesmå
-        // hyppige hentinger — nabolaget er alt prefetchet (setDorsalgModus).
-        let radius = min(2000, max(800, Int(currentRegion.span.latitudeDelta * 111_000 / 2)))
-        dorsalgFetchTask?.cancel()
-        dorsalgFetchTask = Task {
-            // Kort debounce — kanselleres av neste kamera-tick. Viktig:
-            // synlig-lista oppdateres KUN her (etter at kartet har roet seg),
-            // aldri per frame — det er hele ytelses-poenget.
-            try? await Task.sleep(nanoseconds: 250_000_000)
-            guard !Task.isCancelled else { return }
-            oppdaterDorsalgSynlige()
-            guard dorsalgZoomOK else { return }
-            if !force, let forrige = dorsalgFetchSenter,
-               metersBetween(forrige, senter) < max(150, Double(radius) / 3) { return }
-            await dorsalgFetch(senter: senter, radius: radius)
+    private struct DorsalgAdresseDekning: Sendable {
+        let latitude: Double
+        let longitude: Double
+        let radius: Double
+    }
+
+    private func dorsalgVisibleRadius() -> Double {
+        DorsalgAddressFetchPolicy.visibleRadiusMeters(
+            latitudeDelta: currentRegion.span.latitudeDelta,
+            longitudeDelta: currentRegion.span.longitudeDelta,
+            centerLatitude: currentRegion.center.latitude
+        )
+    }
+
+    private func dorsalgHarDekning(
+        for senter: CLLocationCoordinate2D,
+        visibleRadius: Double
+    ) -> Bool {
+        dorsalgDekninger.contains {
+            DorsalgAddressFetchPolicy.isCovered(
+                requestLatitude: senter.latitude,
+                requestLongitude: senter.longitude,
+                visibleRadius: visibleRadius,
+                coverageLatitude: $0.latitude,
+                coverageLongitude: $0.longitude,
+                coverageRadius: $0.radius
+            )
         }
     }
 
-    /// Hent side 0 (1000 per side — Kartverkets maks) + inntil 2 ekstra
-    /// sider PARALLELT når total > 1000. Nye adresser AKKUMULERES inn i
-    /// eksisterende liste (panorering blanker ikke naboområdet); ved > 3000
-    /// beholdes de 3000 nærmeste senteret.
-    private func dorsalgFetch(senter: CLLocationCoordinate2D, radius: Int) async {
+    private func registrerDorsalgDekning(
+        senter: CLLocationCoordinate2D,
+        radius: Double
+    ) {
+        guard radius > 0 else { return }
+        dorsalgDekninger.removeAll {
+            metersBetween(
+                CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude),
+                senter
+            ) < 25
+        }
+        dorsalgDekninger.append(.init(
+            latitude: senter.latitude,
+            longitude: senter.longitude,
+            radius: radius
+        ))
+        if dorsalgDekninger.count > 8 {
+            dorsalgDekninger.removeFirst(dorsalgDekninger.count - 8)
+        }
+    }
+
+    private func startDorsalgFetch(
+        senter: CLLocationCoordinate2D,
+        radius: Int,
+        delayNanoseconds: UInt64
+    ) {
+        dorsalgFetchTask?.cancel()
+        let requestID = UUID()
+        dorsalgActiveFetchID = requestID
+        dorsalgFetchTask = Task {
+            if delayNanoseconds > 0 {
+                do {
+                    try await Task.sleep(nanoseconds: delayNanoseconds)
+                } catch {
+                    return
+                }
+            }
+            guard !Task.isCancelled, dorsalgActiveFetchID == requestID else { return }
+            await dorsalgFetch(senter: senter, radius: radius, requestID: requestID)
+        }
+    }
+
+    /// Kalles kun når kameraet har stoppet. Tidligere ble en Task kansellert
+    /// og opprettet for hvert frame under panorering.
+    private func dorsalgMaybeFetch(force: Bool = false) {
+        guard dorsalgModus else { return }
+        let senter = currentRegion.center
+        oppdaterDorsalgSynlige()
+
+        guard dorsalgZoomOK else {
+            dorsalgFetchTask?.cancel()
+            dorsalgActiveFetchID = nil
+            dorsalgLaster = false
+            dorsalgLasterFlere = false
+            return
+        }
+
+        let visibleRadius = dorsalgVisibleRadius()
+        if !force, dorsalgHarDekning(for: senter, visibleRadius: visibleRadius) {
+            return
+        }
+        let radius = DorsalgAddressFetchPolicy.requestRadius(
+            latitudeDelta: currentRegion.span.latitudeDelta,
+            longitudeDelta: currentRegion.span.longitudeDelta,
+            centerLatitude: senter.latitude
+        )
+        if !force,
+           let forrige = dorsalgFetchSenter,
+           metersBetween(forrige, senter) < max(150, Double(radius) / 3) {
+            return
+        }
+        startDorsalgFetch(
+            senter: senter,
+            radius: radius,
+            delayNanoseconds: DorsalgAddressFetchPolicy.cameraSettleDelayNanoseconds
+        )
+    }
+
+    /// Første side gir rask first paint. Inntil tre ekstra sider hentes
+    /// parallelt og flettes inn etterpå uten å blokkere eksisterende pins.
+    private func dorsalgFetch(
+        senter: CLLocationCoordinate2D,
+        radius: Int,
+        requestID: UUID
+    ) async {
         guard let api = appState.api else {
-            // Demo uten backend: 25 statiske adresser rundt Oslo sentrum så
-            // pitchen kan vises uten innlogget API.
-            if DemoModeManager.isActiveNonisolated {
+            if DemoModeManager.isActiveNonisolated,
+               dorsalgActiveFetchID == requestID {
                 dorsalgAdresser = Self.dorsalgDemoAdresser
                 dorsalgTotal = Self.dorsalgDemoAdresser.count
                 dorsalgFetchSenter = senter
-                // Et par forhåndssatte utfall så pin-fargene vises i demo.
+                dorsalgLaster = false
+                dorsalgLasterFlere = false
+                dorsalgAdresseFeil = nil
                 if dorsalgStatuser.isEmpty {
-                    dorsalgStatuser = ["Storgata 8|0155": "vunnet",
-                                       "Torggata 15|0181": "vunnet",
-                                       "Grensen 5|0159": "avslatt",
-                                       "Møllergata 24|0179": "ikke_hjemme"]
+                    dorsalgStatuser = [
+                        "Storgata 8|0155": "vunnet",
+                        "Torggata 15|0181": "vunnet",
+                        "Grensen 5|0159": "avslatt",
+                        "Møllergata 24|0179": "ikke_hjemme",
+                    ]
                 }
                 oppdaterDorsalgSynlige()
             }
             return
         }
+
         dorsalgLaster = true
-        let (side0, total) = await KartverketService.shared.fetchAdresser(
-            lat: senter.latitude, lon: senter.longitude,
-            radius: radius, side: 0, using: api)
-        guard !Task.isCancelled else { dorsalgLaster = false; return }
-        var alle = side0
-        if total > 1000 {
-            let sisteSide = min(2, (total - 1) / 1000)
-            // Parallelt — sidene er uavhengige backend-cachede kall.
-            await withTaskGroup(of: [KartverketService.AdressePunkt].self) { group in
-                for side in 1...sisteSide {
-                    group.addTask {
-                        let (mer, _) = await KartverketService.shared.fetchAdresser(
-                            lat: senter.latitude, lon: senter.longitude,
-                            radius: radius, side: side, using: api)
-                        return mer
-                    }
-                }
-                for await mer in group { alle += mer }
-            }
-            guard !Task.isCancelled else { dorsalgLaster = false; return }
+        dorsalgLasterFlere = false
+        dorsalgAdresseFeil = nil
+
+        let firstPage: KartverketService.AdressePage
+        do {
+            firstPage = try await KartverketService.shared.fetchAdresser(
+                lat: senter.latitude,
+                lon: senter.longitude,
+                radius: radius,
+                side: 0,
+                pageSize: DorsalgAddressFetchPolicy.pageSize,
+                using: api
+            )
+        } catch {
+            guard dorsalgActiveFetchID == requestID else { return }
+            dorsalgLaster = false
+            dorsalgLasterFlere = false
+            dorsalgAdresseFeil = "Kartverket svarte ikke · Prøv igjen"
+            return
         }
-        // Akkumuler: behold det vi alt har + nye (dedup på id) — panorering
-        // føles da som at kartet «fylles på» i stedet for å blinke.
-        var byId = Dictionary(dorsalgAdresser.map { ($0.id, $0) },
-                              uniquingKeysWith: { a, _ in a })
-        for adr in alle { byId[adr.id] = adr }
-        var samlet = Array(byId.values)
-        if samlet.count > 3000 {
-            func d2(_ a: KartverketService.AdressePunkt) -> Double {
-                let dLat = a.lat - senter.latitude
-                let dLon = (a.lon - senter.longitude) * cos(senter.latitude * .pi / 180)
-                return dLat * dLat + dLon * dLon
-            }
-            samlet = Array(samlet.sorted { d2($0) < d2($1) }.prefix(3000))
-        }
-        dorsalgAdresser = samlet
-        dorsalgTotal = max(total, samlet.count)
-        dorsalgFetchSenter = senter
+
+        guard !Task.isCancelled, dorsalgActiveFetchID == requestID else { return }
+        await applyDorsalgAddressBatch(
+            incoming: firstPage.adresser,
+            queryAddresses: firstPage.adresser,
+            reportedTotal: firstPage.total,
+            senter: senter,
+            requestedRadius: radius,
+            requestID: requestID
+        )
+        guard !Task.isCancelled, dorsalgActiveFetchID == requestID else { return }
         dorsalgLaster = false
+
+        let extraPages = DorsalgAddressFetchPolicy.additionalPages(
+            total: firstPage.total,
+            pageSize: firstPage.pageSize
+        )
+        guard !extraPages.isEmpty else { return }
+
+        dorsalgLasterFlere = true
+        var extraAddresses: [KartverketService.AdressePunkt] = []
+        await withTaskGroup(of: KartverketService.AdressePage?.self) { group in
+            for side in extraPages {
+                group.addTask {
+                    try? await KartverketService.shared.fetchAdresser(
+                        lat: senter.latitude,
+                        lon: senter.longitude,
+                        radius: radius,
+                        side: side,
+                        pageSize: firstPage.pageSize,
+                        using: api
+                    )
+                }
+            }
+            for await page in group {
+                if let page { extraAddresses += page.adresser }
+            }
+        }
+
+        guard !Task.isCancelled, dorsalgActiveFetchID == requestID else { return }
+        if !extraAddresses.isEmpty {
+            await applyDorsalgAddressBatch(
+                incoming: extraAddresses,
+                queryAddresses: firstPage.adresser + extraAddresses,
+                reportedTotal: firstPage.total,
+                senter: senter,
+                requestedRadius: radius,
+                requestID: requestID
+            )
+        }
+        guard dorsalgActiveFetchID == requestID else { return }
+        dorsalgLasterFlere = false
+    }
+
+    private func applyDorsalgAddressBatch(
+        incoming: [KartverketService.AdressePunkt],
+        queryAddresses: [KartverketService.AdressePunkt],
+        reportedTotal: Int,
+        senter: CLLocationCoordinate2D,
+        requestedRadius: Int,
+        requestID: UUID
+    ) async {
+        let existing = dorsalgAdresser
+        let centerLatitude = senter.latitude
+        let centerLongitude = senter.longitude
+        let result = await Task.detached(priority: .userInitiated) {
+            let merged = DorsalgAddressFetchPolicy.merged(
+                existing: existing,
+                incoming: incoming,
+                centerLatitude: centerLatitude,
+                centerLongitude: centerLongitude
+            )
+            let coverage = DorsalgAddressFetchPolicy.coverageRadius(
+                loadedAddresses: queryAddresses,
+                reportedTotal: reportedTotal,
+                requestedRadius: requestedRadius,
+                centerLatitude: centerLatitude,
+                centerLongitude: centerLongitude
+            )
+            return (merged, coverage)
+        }.value
+        guard !Task.isCancelled, dorsalgActiveFetchID == requestID else { return }
+        dorsalgAdresser = result.0
+        dorsalgTotal = max(reportedTotal, result.0.count)
+        dorsalgFetchSenter = senter
+        registrerDorsalgDekning(senter: senter, radius: result.1)
         oppdaterDorsalgSynlige()
     }
 

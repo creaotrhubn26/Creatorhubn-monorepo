@@ -24,6 +24,207 @@ import Foundation
 import CoreLocation
 import MapKit
 
+/// Ren, testbar policy for dørsalgskartets nettverks- og renderbudsjett.
+/// Beregningene er ikke MainActor-isolert og kan kjøres utenfor UI-tråden.
+enum DorsalgAddressFetchPolicy {
+    static let pageSize = 350
+    static let maxPages = 4
+    static let renderLimit = 240
+    static let minimumRequestRadius = 800
+    static let maximumRequestRadius = 2_000
+    static let maximumStoredAddresses = 3_000
+    static let cameraSettleDelayNanoseconds: UInt64 = 120_000_000
+
+    static func visibleRadiusMeters(
+        latitudeDelta: Double,
+        longitudeDelta: Double,
+        centerLatitude: Double
+    ) -> Double {
+        let latitudeMeters = abs(latitudeDelta) * 111_000 / 2
+        let longitudeMeters = abs(longitudeDelta) * 111_000
+            * max(0.2, cos(centerLatitude * .pi / 180)) / 2
+        return max(latitudeMeters, longitudeMeters)
+    }
+
+    static func requestRadius(
+        latitudeDelta: Double,
+        longitudeDelta: Double,
+        centerLatitude: Double
+    ) -> Int {
+        min(
+            maximumRequestRadius,
+            max(
+                minimumRequestRadius,
+                Int(ceil(visibleRadiusMeters(
+                    latitudeDelta: latitudeDelta,
+                    longitudeDelta: longitudeDelta,
+                    centerLatitude: centerLatitude
+                )))
+            )
+        )
+    }
+
+    static func isZoomSuitable(
+        latitudeDelta: Double,
+        longitudeDelta: Double,
+        centerLatitude: Double
+    ) -> Bool {
+        visibleRadiusMeters(
+            latitudeDelta: latitudeDelta,
+            longitudeDelta: longitudeDelta,
+            centerLatitude: centerLatitude
+        ) <= Double(maximumRequestRadius)
+    }
+
+    static func additionalPages(total: Int, pageSize: Int = pageSize) -> [Int] {
+        guard total > pageSize, pageSize > 0 else { return [] }
+        let totalPages = Int(ceil(Double(total) / Double(pageSize)))
+        let pagesToLoad = min(maxPages, totalPages)
+        guard pagesToLoad > 1 else { return [] }
+        return Array(1..<pagesToLoad)
+    }
+
+    static func merged(
+        existing: [KartverketService.AdressePunkt],
+        incoming: [KartverketService.AdressePunkt],
+        centerLatitude: Double,
+        centerLongitude: Double
+    ) -> [KartverketService.AdressePunkt] {
+        var byID = Dictionary(
+            existing.map { ($0.id, $0) },
+            uniquingKeysWith: { current, _ in current }
+        )
+        for address in incoming { byID[address.id] = address }
+        var result = Array(byID.values)
+        if result.count > maximumStoredAddresses {
+            result.sort {
+                distanceSquared(
+                    $0,
+                    centerLatitude: centerLatitude,
+                    centerLongitude: centerLongitude
+                ) < distanceSquared(
+                    $1,
+                    centerLatitude: centerLatitude,
+                    centerLongitude: centerLongitude
+                )
+            }
+            result = Array(result.prefix(maximumStoredAddresses))
+        }
+        return result
+    }
+
+    static func visible(
+        addresses: [KartverketService.AdressePunkt],
+        centerLatitude: Double,
+        centerLongitude: Double,
+        latitudeDelta: Double,
+        longitudeDelta: Double,
+        statuses: [String: String],
+        statusFilter: String?,
+        limit: Int = renderLimit
+    ) -> [KartverketService.AdressePunkt] {
+        let latitudeMargin = abs(latitudeDelta) * 0.65
+        let longitudeMargin = abs(longitudeDelta) * 0.65
+        var result = addresses.filter {
+            abs($0.lat - centerLatitude) < latitudeMargin &&
+            abs($0.lon - centerLongitude) < longitudeMargin
+        }
+        if let statusFilter {
+            result = result.filter {
+                let status = statuses[$0.id]
+                return statusFilter == "ubesokt"
+                    ? status == nil
+                    : status == statusFilter
+            }
+        }
+        if result.count > limit {
+            result.sort {
+                distanceSquared(
+                    $0,
+                    centerLatitude: centerLatitude,
+                    centerLongitude: centerLongitude
+                ) < distanceSquared(
+                    $1,
+                    centerLatitude: centerLatitude,
+                    centerLongitude: centerLongitude
+                )
+            }
+            result = Array(result.prefix(limit))
+        }
+        return result
+    }
+
+    static func coverageRadius(
+        loadedAddresses: [KartverketService.AdressePunkt],
+        reportedTotal: Int,
+        requestedRadius: Int,
+        centerLatitude: Double,
+        centerLongitude: Double
+    ) -> Double {
+        guard !loadedAddresses.isEmpty else { return 0 }
+        if loadedAddresses.count >= reportedTotal {
+            return Double(requestedRadius)
+        }
+        let furthest = loadedAddresses.reduce(0.0) { partial, address in
+            max(
+                partial,
+                distanceMeters(
+                    latitude1: centerLatitude,
+                    longitude1: centerLongitude,
+                    latitude2: address.lat,
+                    longitude2: address.lon
+                )
+            )
+        }
+        return min(Double(requestedRadius), furthest + 20)
+    }
+
+    static func isCovered(
+        requestLatitude: Double,
+        requestLongitude: Double,
+        visibleRadius: Double,
+        coverageLatitude: Double,
+        coverageLongitude: Double,
+        coverageRadius: Double
+    ) -> Bool {
+        let centerDistance = distanceMeters(
+            latitude1: requestLatitude,
+            longitude1: requestLongitude,
+            latitude2: coverageLatitude,
+            longitude2: coverageLongitude
+        )
+        return centerDistance + visibleRadius <= coverageRadius * 0.92
+    }
+
+    private static func distanceSquared(
+        _ address: KartverketService.AdressePunkt,
+        centerLatitude: Double,
+        centerLongitude: Double
+    ) -> Double {
+        let latitudeDelta = address.lat - centerLatitude
+        let longitudeDelta = (address.lon - centerLongitude)
+            * cos(centerLatitude * .pi / 180)
+        return latitudeDelta * latitudeDelta + longitudeDelta * longitudeDelta
+    }
+
+    private static func distanceMeters(
+        latitude1: Double,
+        longitude1: Double,
+        latitude2: Double,
+        longitude2: Double
+    ) -> Double {
+        let radius = 6_371_000.0
+        let phi1 = latitude1 * .pi / 180
+        let phi2 = latitude2 * .pi / 180
+        let deltaPhi = (latitude2 - latitude1) * .pi / 180
+        let deltaLambda = (longitude2 - longitude1) * .pi / 180
+        let a = sin(deltaPhi / 2) * sin(deltaPhi / 2)
+            + cos(phi1) * cos(phi2)
+            * sin(deltaLambda / 2) * sin(deltaLambda / 2)
+        return radius * 2 * atan2(sqrt(a), sqrt(1 - a))
+    }
+}
+
 @MainActor
 final class KartverketService {
     static let shared = KartverketService()
@@ -142,23 +343,47 @@ final class KartverketService {
         var id: String { "\(adressetekst)|\(postnummer)" }
     }
 
-    private struct AdresseResponse: Decodable {
-        let total: Int
-        let adresser: [AdressePunkt]
-    }
+struct AdressePage: Sendable {
+    let total: Int
+    let side: Int
+    let pageSize: Int
+    let hasMore: Bool
+    let adresser: [AdressePunkt]
+}
 
-    /// Alle husstandsadresser innen radius (backend-proxy mot Kartverkets
-    /// punktsøk, maks 2000 m, 1000 per side — Kartverkets maks). ([], 0) ved feil.
-    func fetchAdresser(
-        lat: Double, lon: Double, radius: Int, side: Int = 0,
-        using api: APIClient
-    ) async -> (adresser: [AdressePunkt], total: Int) {
-        guard let r: AdresseResponse = try? await api._get(
-            "/api/leadgrid/kartverket/adresser/punkt" +
-            "?lat=\(lat)&lon=\(lon)&radius=\(radius)&side=\(side)"
-        ) else { return ([], 0) }
-        return (r.adresser, r.total)
-    }
+private struct AdresseResponse: Decodable {
+    let total: Int
+    let side: Int?
+    let pageSize: Int?
+    let hasMore: Bool?
+    let adresser: [AdressePunkt]
+}
+
+/// Én avstandssortert side med husstandsadresser. Feil kastes slik at
+/// kartet kan beholde eksisterende pins og tilby eksplisitt retry.
+func fetchAdresser(
+    lat: Double,
+    lon: Double,
+    radius: Int,
+    side: Int = 0,
+    pageSize: Int = DorsalgAddressFetchPolicy.pageSize,
+    using api: APIClient
+) async throws -> AdressePage {
+    let safePageSize = min(1_000, max(50, pageSize))
+    let response: AdresseResponse = try await api._get(
+        "/api/leadgrid/kartverket/adresser/punkt" +
+        "?lat=\(lat)&lon=\(lon)&radius=\(radius)" +
+        "&side=\(side)&page_size=\(safePageSize)"
+    )
+    return AdressePage(
+        total: response.total,
+        side: response.side ?? side,
+        pageSize: response.pageSize ?? safePageSize,
+        hasMore: response.hasMore
+            ?? ((side + 1) * safePageSize < response.total),
+        adresser: response.adresser
+    )
+}
 
     // MARK: - Dørsalg: husstands-status (vunnet/avslått, mig 0397)
     // Utfallet på døra er org-data og persisteres — adressene selv aldri.
