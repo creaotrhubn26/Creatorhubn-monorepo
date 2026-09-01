@@ -81,6 +81,7 @@ import {
 import { useDeviceDetection } from '../hooks/useDeviceDetection';
 import {
   AdvancedBrushEngine,
+  BRUSH_PRESETS,
   DEFAULT_BRUSH_SETTINGS,
   type BrushConfig,
   type ProBrushType,
@@ -380,6 +381,13 @@ function brushConfigDiffers(a: ProBrushSettings, b: BrushConfig): boolean {
     || a.grain !== b.grain
     || a.tiltSensitivity !== b.tiltSensitivity
     || a.pressureSensitivity !== b.pressureSensitivity
+    || a.engineVersion !== b.engineVersion
+    || a.tipModel !== b.tipModel
+    || a.material !== b.material
+    || a.paperProfile !== b.paperProfile
+    || a.pigmentDepletion !== b.pigmentDepletion
+    || a.bleed !== b.bleed
+    || a.bristleCount !== b.bristleCount
   );
 }
 
@@ -421,6 +429,8 @@ const PRO_BRUSH_TYPES: readonly ProBrushType[] = [
   'wash',
   'spikes',
   'fill', 'halftone', 'stamp', 'custom',
+  'bluepencil', 'redpencil', 'mechanical', 'dryink', 'tonemarker',
+  'tortillon', 'vinyl', 'pastel', 'stipple', 'sumi', 'gouache', 'oil',
 ];
 const SELECTION_SNAP_GRID_SIZE = 50;
 const SELECTION_EDGE_SNAP_THRESHOLD = 18;
@@ -472,6 +482,9 @@ const STREAMLINE_BY_TYPE: Partial<Record<ProBrushType, number>> = {
   wash: 0.18,
   spikes: 0.25,
   fill: 0.3, halftone: 0.2, stamp: 2.5, custom: 0.12,
+  bluepencil: 0.28, redpencil: 0.28, mechanical: 0.35, dryink: 0.18,
+  tonemarker: 0.3, tortillon: 0.15, vinyl: 0.15, pastel: 0.15,
+  stipple: 0.3, sumi: 0.18, gouache: 0.18, oil: 0.18,
 };
 
 export function applyStreamline(points: PencilPoint[], amount: number): PencilPoint[] {
@@ -511,10 +524,10 @@ function drawPolylinePreviewSegment(
   const width = Math.max(0.8, brush.size * sizeMultiplier * pressureFactor);
 
   ctx.save();
-  if (brush.type === 'eraser') {
+  if (brush.type === 'eraser' || brush.type === 'vinyl') {
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
     ctx.globalAlpha = 1;
-  } else if (brush.type === 'smudge') {
+  } else if (brush.type === 'smudge' || brush.type === 'tortillon') {
     // Ghost-preview — selve smudgen skjer på committed-laget ved stroke-end
     ctx.strokeStyle = 'rgba(160,160,160,0.4)';
     ctx.globalAlpha = 1;
@@ -551,7 +564,8 @@ function drawLivePreviewSegment(
 ): number {
   // Highlighter + eraser + smudge holder seg på polyline — stamp-engine
   // passer ikke for brede jevne strøk, destination-out eller piksel-drag.
-  if (brush.type === 'highlighter' || brush.type === 'eraser' || brush.type === 'smudge') {
+  if (brush.type === 'highlighter' || brush.type === 'eraser' || brush.type === 'vinyl'
+      || brush.type === 'smudge' || brush.type === 'tortillon') {
     drawPolylinePreviewSegment(ctx, from, to, brush);
     return 0;
   }
@@ -1619,6 +1633,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
   // State
   const [brushSettings, setBrushSettings] = useState<ProBrushSettings>({
     ...DEFAULT_BRUSH_SETTINGS,
+    ...(initialBrushSettings?.type ? BRUSH_PRESETS[initialBrushSettings.type] : {}),
     ...initialBrushSettings,
   });
   const [strokes, setStrokes] = useState<PencilStroke[]>(initialStrokes);
@@ -1913,8 +1928,12 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
       previewBrushSize(rememberedSize);
       return {
         ...prev,
+        ...(BRUSH_PRESETS[type] ?? {}),
         type,
         size: rememberedSize,
+        color: type === 'bluepencil' ? '#4f86c6'
+          : type === 'redpencil' ? '#c95757'
+            : prev.color,
       };
     });
   }, [normalizeBrushSize, previewBrushSize]);
@@ -1933,7 +1952,17 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
     setBrushSettings((prev) => {
       const resolved = typeof update === 'function' ? update(prev) : update;
       const requestedType = resolved.type && isProBrushType(resolved.type) ? resolved.type : prev.type;
-      const next = { ...prev, ...resolved, type: requestedType };
+      const typeChanged = requestedType !== prev.type;
+      const next = {
+        ...prev,
+        ...(typeChanged ? BRUSH_PRESETS[requestedType] ?? {} : {}),
+        ...resolved,
+        type: requestedType,
+      };
+      if (typeChanged && resolved.color === undefined) {
+        if (requestedType === 'bluepencil') next.color = '#4f86c6';
+        if (requestedType === 'redpencil') next.color = '#c95757';
+      }
 
       if (resolved.type && requestedType !== prev.type && resolved.size === undefined) {
         const rememberedSize = normalizeBrushSize(
@@ -2625,7 +2654,8 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
 
       const shouldApplyQuickShape = quickShapeEnabled
         && activeTool === 'brush'
-        && brushSnapshot.type !== 'eraser';
+        && !['eraser', 'vinyl', 'kneaded', 'lightlift', 'smudge', 'tortillon', 'softfocus']
+          .includes(brushSnapshot.type);
       const finalPoints = shouldApplyQuickShape
         ? maybeConvertToQuickShapeLine(snappedPoints)
         : snappedPoints;
@@ -2635,6 +2665,7 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
         color: brushSnapshot.color,
         width: brushSnapshot.size,
         opacity: brushSnapshot.opacity,
+        engineVersion: brushSnapshot.engineVersion ?? 2,
         brush: {
           type: brushSnapshot.type,
           size: brushSnapshot.size,
@@ -2646,6 +2677,13 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
           grain: brushSnapshot.grain,
           tiltSensitivity: brushSnapshot.tiltSensitivity,
           pressureSensitivity: brushSnapshot.pressureSensitivity,
+          engineVersion: brushSnapshot.engineVersion ?? 2,
+          tipModel: brushSnapshot.tipModel,
+          material: brushSnapshot.material,
+          paperProfile: brushSnapshot.paperProfile,
+          pigmentDepletion: brushSnapshot.pigmentDepletion,
+          bleed: brushSnapshot.bleed,
+          bristleCount: brushSnapshot.bristleCount,
         },
       };
       
@@ -3164,11 +3202,12 @@ export const PencilCanvasPro = React.forwardRef<PencilCanvasProHandle, PencilCan
         } else {
           renderEraserStroke(ctx, renderStroke.points, brush);
         }
-      } else if (brush.type === 'eraser') {
+        return;
+      } else if (brush.type === 'eraser' || brush.type === 'vinyl') {
         renderEraserStroke(ctx, renderStroke.points, brush);
         return;
       }
-      if (brush.type === 'smudge') {
+      if (brush.type === 'smudge' || brush.type === 'tortillon') {
         applySmudgeStroke(ctx, renderStroke.points, brush);
         return;
       }

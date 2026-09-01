@@ -28,15 +28,27 @@ import { canAccessProject, canEditProject } from "./project-team-routes";
 import { requireTeamAccess } from "./team-access";
 import { resolveCrewRoles } from "../../frontend/shared/crew-roles.ts";
 import { CANONICAL_PROFESSIONS, normalizeProfession as normalizeCanonProfession, isWorkspaceCategory as isWsCategory } from "../../frontend/shared/profession-types.ts";
+import { idempotencyMiddleware } from "./_shared-idempotency";
 import { signAssetReadUrl, deleteCaptureObjects } from "./capture-upload-service";
-import { archiveToRoleRoomB2, presignRoleRoomB2Download, getFromRoleRoomB2, slugifyForKey } from "./b2-archive-helper";
+import {
+  archiveToRoleRoomB2,
+  getFromRoleRoomB2,
+  headRoleRoomB2Object,
+  presignRoleRoomB2Download,
+  presignRoleRoomB2Upload,
+  slugifyForKey,
+} from "./b2-archive-helper";
 import { Vibrant } from "node-vibrant/node";
-import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, aiAllowed, invalidateGenSettings, emitGenAiMeter, falConfigured, falSubmit, falPoll, falOutputUrl, beebleConfigured, beebleSubmit, beeblePoll, higgsfieldConfigured, higgsfieldSubmit, higgsfieldPoll, DEFAULT_CREDIT_PACKS } from "./generative-media";
+import { GEN_MODELS, publicModelList, getGenSettings, isWhitelisted, aiAllowed, invalidateGenSettings, falConfigured, falSubmit, falPoll, falOutputUrl, beebleConfigured, beebleSubmit, beeblePoll, higgsfieldConfigured, higgsfieldPoll, DEFAULT_CREDIT_PACKS } from "./generative-media";
 import Stripe from "stripe";
 import { ensureCreditSchema as ensureCreditSchemaShared, getUserCredits as getUserCreditsShared, creditMove as creditMoveShared } from "./ai-credits";
 import { createGoogleMeetLink } from "./google-meet";
 import { classifySession } from "./capture-culling-service";
 import { enqueuePhotoEnhancerJobFromBuffer, listPhotoEnhancerJobsByProjectId } from "./photo-enhancer-routes";
+import {
+  downloadTrustedStoryboardVideoOutput,
+  trustedStoryboardVideoOutputUrl,
+} from "./storyboard-ai-video-durability";
 
 // Web-opplasting holdes i minne og skyves server-side til B2 (Role Room-bøtta).
 // 60 MB tak — store RAW/originaler skal uansett gjennom capture multipart-flyten.
@@ -58,16 +70,58 @@ const mediaUpload = multer({
     else cb(new Error("Filtype ikke tillatt") as any, false);
   },
 });
-// Video-review-kopier (komprimert H.264/H.265) — 500 MB tak. Større mastere
-// hører hjemme i capture/leveranse-flyten, ikke review-rommet.
-const videoUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 500 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    if (file.mimetype.startsWith("video/")) cb(null, true);
-    else cb(new Error("Kun videofiler er tillatt") as any, false);
-  },
-});
+// Moderne klienter laster review-video direkte til B2 via presigned PUT. Denne
+// begrensede memory-fallbacken beholdes for eldre app-versjoner, men må aldri
+// kunne allokere den tidligere grensen på 500 MiB per request.
+const DEFAULT_VIDEO_REVIEW_UPLOAD_MAX_BYTES = 64 * 1024 * 1024;
+const DEFAULT_VIDEO_REVIEW_UPLOAD_MAX_CONCURRENT = 1;
+// Behold den tidligere produktgrensen på 500 MiB, men flytt byteflyten ut av
+// Node-prosessen. Større mastere går fortsatt gjennom capture/leveranseflyten.
+const DEFAULT_VIDEO_REVIEW_DIRECT_MAX_BYTES = 500 * 1024 * 1024;
+
+function createVideoReviewUpload(maxBytes: number) {
+  return multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: maxBytes, files: 1, fields: 8 },
+    fileFilter: (_req, file, cb) => {
+      if (file.mimetype.startsWith("video/")) cb(null, true);
+      else cb(new Error("Kun videofiler er tillatt") as any, false);
+    },
+  });
+}
+
+function isVideoContentType(value: string): boolean {
+  return /^video\/[a-z0-9][a-z0-9.+-]{0,100}$/.test(value);
+}
+
+function isUuid(value: unknown): value is string {
+  return typeof value === "string"
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function projectVideoVersionPrefix(projectId: string): string | null {
+  const normalized = String(projectId || "").trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(normalized)) return null;
+  return `workspace/${normalized}/video-versions/`;
+}
+
+function isProjectVideoVersionB2Key(projectId: string, value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const prefix = projectVideoVersionPrefix(projectId);
+  if (!prefix || !value.startsWith(prefix)) return false;
+  const leaf = value.slice(prefix.length);
+  return leaf.length > 0
+    && leaf.length <= 240
+    && !leaf.includes("..")
+    && !/[\\/\u0000-\u001f\u007f]/.test(leaf);
+}
+
+function buildProjectVideoVersionB2Key(projectId: string, originalName: string): string | null {
+  const prefix = projectVideoVersionPrefix(projectId);
+  if (!prefix) return null;
+  const safeName = slugifyForKey(originalName || "video") || "video";
+  return `${prefix}${crypto.randomUUID()}-${safeName}`;
+}
 
 export interface ProjectWorkspaceRoutesDeps {
   app: express.Application;
@@ -81,6 +135,10 @@ export interface ProjectWorkspaceRoutesDeps {
     | { userId: string; email: string; name: string; role: string }
     | null
     | Promise<{ userId: string; email: string; name: string; role: string } | null>;
+  /** Test seams; production callers cannot raise the hard safety ceilings. */
+  videoUploadMaxBytes?: number;
+  videoUploadMaxConcurrent?: number;
+  videoDirectUploadMaxBytes?: number;
 }
 
 let schemaReady: Promise<void> | null = null;
@@ -429,6 +487,25 @@ async function guessNoteCategoryBE(pool: any, projectId: string, label: string):
 
 export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): void {
   const { app, pool, requireUserSession } = deps;
+  const boundedPositiveInt = (value: unknown, ceiling: number): number => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0
+      ? Math.min(Math.floor(parsed), ceiling)
+      : ceiling;
+  };
+  const videoUploadMaxBytes = boundedPositiveInt(
+    deps.videoUploadMaxBytes,
+    DEFAULT_VIDEO_REVIEW_UPLOAD_MAX_BYTES,
+  );
+  const videoUploadMaxConcurrent = boundedPositiveInt(
+    deps.videoUploadMaxConcurrent,
+    DEFAULT_VIDEO_REVIEW_UPLOAD_MAX_CONCURRENT,
+  );
+  const videoDirectUploadMaxBytes = boundedPositiveInt(
+    deps.videoDirectUploadMaxBytes,
+    DEFAULT_VIDEO_REVIEW_DIRECT_MAX_BYTES,
+  );
+  const videoUpload = createVideoReviewUpload(videoUploadMaxBytes);
 
   // Lokal lagrings-fallback (for dev / testing uten B2-credentials)
   app.get("/api/local-storage/:key(*)", (req, res) => {
@@ -473,13 +550,70 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   };
 
   // Middleware-variant som MÅ kjøre FØR multer på opplastings-ruter. Ellers
-  // buffrer multer hele filen (opptil 500 MB) i minnet for uautentiserte
-  // requests før guard-en inne i handleren kjører → minne-DoS. Kjør auth først.
+  // buffrer multer hele filen i minnet for uautentiserte requests før guard-en
+  // inne i handleren kjører → minne-DoS. Kjør auth først.
   const guardMw = async (req: any, res: any, next: any) => {
     const uid = await guard(req, res);
     if (!uid) return; // guard har allerede sendt respons
     req._guardUid = uid;
     next();
+  };
+
+  const workspaceIdempotency = idempotencyMiddleware({
+    pool,
+    scope: "project-workspace",
+  });
+
+  const resolveProjectOwnerUserId = async (projectId: string): Promise<string | null> => {
+    const primary = await pool.query(
+      `SELECT user_id::text AS user_id FROM projects WHERE id::text = $1 LIMIT 1`,
+      [projectId],
+    ).catch(() => ({ rows: [] as any[] }));
+    if (primary.rows[0]?.user_id) return String(primary.rows[0].user_id);
+    const legacy = await pool.query(
+      `SELECT user_id::text AS user_id FROM legacy.projects WHERE id::text = $1 LIMIT 1`,
+      [projectId],
+    ).catch(() => ({ rows: [] as any[] }));
+    return legacy.rows[0]?.user_id ? String(legacy.rows[0].user_id) : null;
+  };
+
+  // Legacy multipart-fallback: én aktiv request globalt og én per bruker/
+  // prosjekt. Slotten tas etter auth, før multer begynner å buffre bytes.
+  let activeVideoUploads = 0;
+  const activeVideoUploadScopes = new Set<string>();
+  const videoUploadConcurrencyMw = (req: any, res: any, next: any) => {
+    const contentLength = Number(req.headers?.["content-length"] || 0);
+    // Litt slingringsmonn for multipart-boundary/header-bytes; multer håndhever
+    // den eksakte filgrensen under parsing.
+    if (Number.isFinite(contentLength) && contentLength > videoUploadMaxBytes + 1024 * 1024) {
+      return res.status(413).json({ error: "video_too_large", maxBytes: videoUploadMaxBytes });
+    }
+    const scope = `${String(req._guardUid || "")}:${String(req.params?.projectId || "")}`;
+    if (activeVideoUploads >= videoUploadMaxConcurrent || activeVideoUploadScopes.has(scope)) {
+      res.setHeader("Retry-After", "5");
+      return res.status(429).json({ error: "video_upload_busy" });
+    }
+    activeVideoUploads += 1;
+    activeVideoUploadScopes.add(scope);
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      activeVideoUploads = Math.max(0, activeVideoUploads - 1);
+      activeVideoUploadScopes.delete(scope);
+    };
+    res.once("finish", release);
+    res.once("close", release);
+    next();
+  };
+  const parseVideoUpload = (req: any, res: any, next: any) => {
+    videoUpload.single("file")(req, res, (err: any) => {
+      if (!err) return next();
+      if (err?.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({ error: "video_too_large", maxBytes: videoUploadMaxBytes });
+      }
+      return res.status(415).json({ error: "invalid_video_upload" });
+    });
   };
 
   // ─────────── Samkjøringsboard / Oppgaver ───────────
@@ -1148,18 +1282,20 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         [req.params.projectId],
       ).catch(() => ({ rows: [] }));
       const customer = cust.rows[0] || null;
-      let meetings: any[] = [];
-      if (customer?.id) {
-        const m = await pool.query(
-          `SELECT id, title, description, location, meet_link, web_view_url, scheduled_at, duration_minutes
-             FROM crm_meetings WHERE customer_id = $1 ORDER BY scheduled_at ASC NULLS LAST LIMIT 30`,
-          [customer.id],
-        ).catch(() => ({ rows: [] }));
-        meetings = m.rows.map((r: any) => ({
-          id: r.id, title: r.title, description: r.description, location: r.location,
-          meetLink: r.meet_link, webViewUrl: r.web_view_url, scheduledAt: r.scheduled_at, durationMinutes: r.duration_minutes,
-        }));
-      }
+      const m = await pool.query(
+        `SELECT id, title, description, location, meet_link, web_view_url,
+                scheduled_at, duration_minutes, status, calendar_sync_status
+           FROM crm_meetings
+          WHERE project_id = $1
+             OR (project_id IS NULL AND customer_id = $2)
+          ORDER BY scheduled_at ASC NULLS LAST LIMIT 30`,
+        [req.params.projectId, customer?.id || null],
+      ).catch(() => ({ rows: [] }));
+      const meetings = m.rows.map((r: any) => ({
+        id: r.id, title: r.title, description: r.description, location: r.location,
+        meetLink: r.meet_link, webViewUrl: r.web_view_url, scheduledAt: r.scheduled_at,
+        durationMinutes: r.duration_minutes, status: r.status, calendarSyncStatus: r.calendar_sync_status,
+      }));
       res.json({
         crmCustomer: customer ? { id: customer.id, name: customer.name, email: customer.email, status: customer.status, projectType: customer.project_type } : null,
         meetings,
@@ -1168,14 +1304,32 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   });
 
   // POST møte — oppretter crm_meeting, evt. med ekte Google Meet-lenke.
-  app.post("/api/projects/:projectId/meetings", async (req, res) => {
-    const uid = await guard(req, res); if (!uid) return;
+  app.post("/api/projects/:projectId/meetings", guardMw, workspaceIdempotency, async (req, res) => {
+    const uid = String((req as any)._guardUid || "");
     try {
       const b = req.body ?? {};
       const title = typeof b.title === "string" && b.title.trim() ? b.title.trim() : "Møte";
-      const scheduledAt = b.scheduledAt || null;
-      const durationMinutes = Number(b.durationMinutes) || 60;
-      // Knytt til prosjektets CRM-kunde hvis den finnes.
+      if (title.length > 255) {
+        return res.status(400).json({ error: "title_too_long" });
+      }
+      const scheduledDate = new Date(String(b.scheduledAt || ""));
+      if (!Number.isFinite(scheduledDate.getTime())) {
+        return res.status(400).json({ error: "invalid_scheduled_at" });
+      }
+      const scheduledAt = scheduledDate.toISOString();
+      const durationMinutes = Number(b.durationMinutes ?? 60);
+      if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 24 * 60) {
+        return res.status(400).json({ error: "invalid_duration_minutes" });
+      }
+      const projectId = String(req.params.projectId);
+      const description = typeof b.description === "string" ? b.description.trim() || null : null;
+      const location = typeof b.location === "string" ? b.location.trim() || null : null;
+      if ((description?.length || 0) > 10_000 || (location?.length || 0) > 500) {
+        return res.status(400).json({ error: "meeting_text_too_long" });
+      }
+
+      // Knytt til prosjektets CRM-kunde hvis den finnes, men behold project_id
+      // som autoritativ kobling slik at bookinger uten CRM-kunde fortsatt lastes.
       const cust = await pool.query(
         `SELECT id, name FROM crm_customers WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
         [req.params.projectId],
@@ -1183,27 +1337,402 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const customerId = cust.rows[0]?.id || null;
       const proj = await pool.query(`SELECT COALESCE(title, name) AS title FROM projects WHERE id = $1 LIMIT 1`, [req.params.projectId]).catch(() => ({ rows: [] }));
 
-      // Ekte Google Meet-lenke hvis brukeren har Google koblet (ellers stille fallback).
-      let meetLink: string | null = typeof b.meetLink === "string" ? b.meetLink : null;
-      let webViewUrl: string | null = null;
-      if (b.generateMeet && scheduledAt) {
-        try {
-          const meet = await createGoogleMeetLink(pool, {
-            title, description: b.description || null, startDateTime: scheduledAt, duration: durationMinutes,
-            projectId: req.params.projectId, projectName: proj.rows[0]?.title || null, clientName: cust.rows[0]?.name || null,
-          }, uid);
-          if (meet && (meet as any).meetLink) { meetLink = (meet as any).meetLink; webViewUrl = (meet as any).webViewUrl || null; }
-        } catch (err) { console.warn("[avtaler] google meet failed:", (err as Error)?.message); }
+      const ownerUserId = (await resolveProjectOwnerUserId(projectId)) || uid;
+      const initialMeetLink = typeof b.meetLink === "string" && b.meetLink.trim() ? b.meetLink.trim() : null;
+      if (initialMeetLink && !/^https?:\/\//i.test(initialMeetLink)) {
+        return res.status(400).json({ error: "invalid_meet_link" });
+      }
+      const initialSyncStatus = b.generateMeet ? "pending" : initialMeetLink ? "external_link" : "not_requested";
+
+      let r: any = null;
+      let replayed = false;
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(
+          `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+          [`workspace-meetings:${ownerUserId}`],
+        );
+
+        const existing = await client.query(
+          `SELECT *
+             FROM crm_meetings
+            WHERE project_id = $1
+              AND owner_user_id = $2
+              AND scheduled_at = $3::timestamptz
+              AND duration_minutes = $4
+              AND COALESCE(title, '') = $5
+              AND COALESCE(description, '') = COALESCE($6, '')
+              AND COALESCE(location, '') = COALESCE($7, '')
+              AND COALESCE(status, 'confirmed') NOT IN ('cancelled', 'canceled')
+            ORDER BY created_at ASC
+            LIMIT 1
+            FOR UPDATE`,
+          [projectId, ownerUserId, scheduledAt, durationMinutes, title, description, location],
+        );
+
+        if (existing.rows[0]) {
+          r = existing.rows[0];
+          replayed = true;
+          await client.query("COMMIT");
+        } else {
+          const conflict = await client.query(
+            `SELECT id, title, scheduled_at, duration_minutes
+               FROM crm_meetings
+              WHERE owner_user_id = $1
+                AND COALESCE(status, 'confirmed') NOT IN ('cancelled', 'canceled')
+                AND scheduled_at < $2::timestamptz + ($3::int * INTERVAL '1 minute')
+                AND scheduled_at + (COALESCE(duration_minutes, 60) * INTERVAL '1 minute') > $2::timestamptz
+              ORDER BY scheduled_at ASC
+              LIMIT 1`,
+            [ownerUserId, scheduledAt, durationMinutes],
+          );
+          if (conflict.rows[0]) {
+            await client.query("ROLLBACK");
+            return res.status(409).json({
+              error: "booking_conflict",
+              conflict: {
+                id: conflict.rows[0].id,
+                title: conflict.rows[0].title,
+                scheduledAt: conflict.rows[0].scheduled_at,
+                durationMinutes: conflict.rows[0].duration_minutes,
+              },
+            });
+          }
+
+          const inserted = await client.query(
+            `INSERT INTO crm_meetings (
+               id, customer_id, project_id, title, description, location,
+               meet_link, scheduled_at, duration_minutes, owner_user_id,
+               status, calendar_sync_status, calendar_sync_attempt_id,
+               created_at, updated_at
+             )
+             VALUES (
+               gen_random_uuid(), $1, $2, $3, $4, $5,
+               $6, $7, $8, $9,
+               'confirmed', $10, $11,
+               NOW(), NOW()
+             )
+             RETURNING *`,
+            [
+              customerId,
+              projectId,
+              title,
+              description,
+              location,
+              initialMeetLink,
+              scheduledAt,
+              durationMinutes,
+              ownerUserId,
+              initialSyncStatus,
+              b.generateMeet ? crypto.randomUUID() : null,
+            ],
+          );
+          r = inserted.rows[0];
+          await client.query("COMMIT");
+        }
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => {});
+        throw error;
+      } finally {
+        client.release();
       }
 
-      const ins = await pool.query(
-        `INSERT INTO crm_meetings (id, customer_id, title, description, location, meet_link, web_view_url, scheduled_at, duration_minutes, owner_user_id, created_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, now()) RETURNING *`,
-        [customerId, title, b.description || null, b.location || null, meetLink, webViewUrl, scheduledAt, durationMinutes, uid],
-      );
-      const r = ins.rows[0];
-      res.status(201).json({ id: r.id, title: r.title, meetLink: r.meet_link, webViewUrl: r.web_view_url, scheduledAt: r.scheduled_at, durationMinutes: r.duration_minutes });
+      if (replayed) {
+        res.setHeader("Idempotent-Replayed", "true");
+        return res.status(200).json({
+          id: r.id,
+          title: r.title,
+          meetLink: r.meet_link,
+          webViewUrl: r.web_view_url,
+          scheduledAt: r.scheduled_at,
+          durationMinutes: r.duration_minutes,
+          status: r.status,
+          calendarSyncStatus: r.calendar_sync_status,
+          replayed: true,
+        });
+      }
+
+      if (b.generateMeet) {
+        try {
+          const meet = await createGoogleMeetLink(pool, {
+            title,
+            description,
+            location,
+            startDateTime: scheduledAt,
+            duration: durationMinutes,
+            projectId,
+            projectName: proj.rows[0]?.title || null,
+            clientName: cust.rows[0]?.name || null,
+          }, uid);
+          const updated = await pool.query(
+            `UPDATE crm_meetings
+                SET meet_link = $3,
+                    web_view_url = $4,
+                    calendar_event_id = $5,
+                    calendar_sync_status = 'synced',
+                    calendar_sync_error = NULL,
+                    updated_at = NOW()
+              WHERE id = $1 AND project_id = $2
+              RETURNING *`,
+            [r.id, projectId, meet.meetLink, meet.webViewUrl, meet.calendarEventId],
+          );
+          if (updated.rows[0]) r = updated.rows[0];
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.warn("[avtaler] google meet failed:", message);
+          await pool.query(
+            `UPDATE crm_meetings
+                SET calendar_sync_status = 'failed',
+                    calendar_sync_error = $3,
+                    updated_at = NOW()
+              WHERE id = $1 AND project_id = $2`,
+            [r.id, projectId, message.slice(0, 1000)],
+          ).catch(() => {});
+          r.calendar_sync_status = "failed";
+        }
+      }
+
+      return res.status(201).json({
+        id: r.id,
+        title: r.title,
+        meetLink: r.meet_link,
+        webViewUrl: r.web_view_url,
+        scheduledAt: r.scheduled_at,
+        durationMinutes: r.duration_minutes,
+        status: r.status,
+        calendarSyncStatus: r.calendar_sync_status,
+        replayed: false,
+      });
     } catch (e) { console.error("POST meetings", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ─────────── Prosjektutstyr — eierinventar + eksplisitte prosjektkoblinger ───
+  app.get("/api/projects/:projectId/equipment", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const projectId = String(req.params.projectId);
+      const ownerUserId = await resolveProjectOwnerUserId(projectId);
+      if (!ownerUserId) return res.status(404).json({ error: "project_not_found" });
+      const isOwner = uid === ownerUserId;
+      const canManageAssignments = await canEditProject(pool, uid, projectId);
+      const result = await pool.query(
+        `SELECT
+           equipment.id,
+           equipment.user_id,
+           equipment.user_type,
+           equipment.category,
+           equipment.brand,
+           equipment.model,
+           equipment.condition,
+           equipment.image_url,
+           equipment.settings,
+           equipment.quantity AS inventory_quantity,
+           equipment.created_at,
+           equipment.updated_at,
+           assignment.id AS assignment_id,
+           assignment.quantity AS assignment_quantity,
+           assignment.assignment_type,
+           assignment.responsible_member_id,
+           assignment.notes AS assignment_notes,
+           assignment.documents AS assignment_documents,
+           assignment.created_at AS assignment_created_at,
+           assignment.updated_at AS assignment_updated_at
+         FROM user_equipment AS equipment
+         LEFT JOIN project_equipment_assignments AS assignment
+           ON assignment.project_id = $1
+          AND assignment.equipment_id = equipment.id
+        WHERE equipment.user_id::text = $2
+          AND ($3::boolean OR assignment.id IS NOT NULL)
+        ORDER BY (assignment.id IS NOT NULL) DESC, equipment.created_at DESC, equipment.id DESC`,
+        [projectId, ownerUserId, isOwner],
+      );
+
+      const items = result.rows.map((row: any) => {
+        let settings: Record<string, any> = {};
+        try {
+          settings = typeof row.settings === "string"
+            ? JSON.parse(row.settings)
+            : row.settings && typeof row.settings === "object"
+              ? row.settings
+              : {};
+        } catch { settings = {}; }
+        return {
+          id: row.id,
+          userId: row.user_id,
+          profession: row.user_type,
+          name: settings.name || `${row.brand || ""} ${row.model || ""}`.trim(),
+          brand: row.brand,
+          model: row.model,
+          category: row.category,
+          status: settings.status || row.condition || "available",
+          condition: settings.condition || row.condition || null,
+          imageUrl: row.image_url || settings.imageUrl || null,
+          specifications: settings.specifications || {},
+          quantity: Number(row.inventory_quantity) || 1,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          assignedToProject: Boolean(row.assignment_id),
+          assignment: row.assignment_id ? {
+            id: row.assignment_id,
+            quantity: Number(row.assignment_quantity) || 1,
+            assignmentType: row.assignment_type,
+            responsibleMemberId: row.responsible_member_id,
+            notes: row.assignment_notes,
+            documents: Array.isArray(row.assignment_documents) ? row.assignment_documents : [],
+            createdAt: row.assignment_created_at,
+            updatedAt: row.assignment_updated_at,
+          } : null,
+        };
+      });
+
+      res.json({
+        items,
+        ownerUserId,
+        canManageAssignments,
+        canCreateInventory: isOwner,
+      });
+    } catch (e) {
+      console.error("GET project equipment", e);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  app.post(
+    "/api/projects/:projectId/equipment/assignments",
+    guardMw,
+    workspaceIdempotency,
+    async (req, res) => {
+      const uid = String((req as any)._guardUid || "");
+      try {
+        const projectId = String(req.params.projectId);
+        const equipmentId = Number(req.body?.equipmentId);
+        const quantity = Number(req.body?.quantity ?? 1);
+        const assignmentType = req.body?.assignmentType === "reserve" ? "reserve" : "primary";
+        const responsibleMemberId = isUuid(req.body?.responsibleMemberId)
+          ? req.body.responsibleMemberId
+          : null;
+        const notes = typeof req.body?.notes === "string" ? req.body.notes.trim() || null : null;
+        const documents = Array.isArray(req.body?.documents) ? req.body.documents : [];
+        const documentsJson = JSON.stringify(documents);
+        if ((notes?.length || 0) > 5_000) {
+          return res.status(400).json({ error: "notes_too_long" });
+        }
+        if (documents.length > 50 || Buffer.byteLength(documentsJson, "utf8") > 100_000) {
+          return res.status(400).json({ error: "documents_too_large" });
+        }
+
+        if (!Number.isInteger(equipmentId) || equipmentId < 1) {
+          return res.status(400).json({ error: "invalid_equipment_id" });
+        }
+        if (!Number.isInteger(quantity) || quantity < 1 || quantity > 9999) {
+          return res.status(400).json({ error: "invalid_quantity" });
+        }
+
+        const ownerUserId = await resolveProjectOwnerUserId(projectId);
+        if (!ownerUserId) return res.status(404).json({ error: "project_not_found" });
+        const equipment = await pool.query(
+          `SELECT id, quantity
+             FROM user_equipment
+            WHERE id = $1 AND user_id::text = $2
+            LIMIT 1`,
+          [equipmentId, ownerUserId],
+        );
+        if (!equipment.rows[0]) {
+          return res.status(404).json({ error: "equipment_not_found" });
+        }
+        if (quantity > (Number(equipment.rows[0].quantity) || 1)) {
+          return res.status(400).json({ error: "quantity_exceeds_inventory" });
+        }
+        if (responsibleMemberId) {
+          const member = await pool.query(
+            `SELECT 1
+               FROM project_team_members
+              WHERE id = $1
+                AND project_id = $2
+                AND status = 'active'
+                AND deactivated_at IS NULL
+              LIMIT 1`,
+            [responsibleMemberId, projectId],
+          );
+          if (!member.rows[0]) {
+            return res.status(400).json({ error: "invalid_responsible_member" });
+          }
+        }
+
+        const assignment = await pool.query(
+          `INSERT INTO project_equipment_assignments (
+             project_id,
+             project_owner_user_id,
+             equipment_id,
+             quantity,
+             responsible_member_id,
+             assignment_type,
+             notes,
+             documents,
+             created_by,
+             updated_by
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $9)
+           ON CONFLICT (project_id, equipment_id)
+           DO UPDATE SET
+             project_owner_user_id = EXCLUDED.project_owner_user_id,
+             quantity = EXCLUDED.quantity,
+             responsible_member_id = EXCLUDED.responsible_member_id,
+             assignment_type = EXCLUDED.assignment_type,
+             notes = EXCLUDED.notes,
+             documents = EXCLUDED.documents,
+             updated_by = EXCLUDED.updated_by,
+             updated_at = NOW()
+           RETURNING *`,
+          [
+            projectId,
+            ownerUserId,
+            equipmentId,
+            quantity,
+            responsibleMemberId,
+            assignmentType,
+            notes,
+            documentsJson,
+            uid,
+          ],
+        );
+        return res.status(200).json({
+          assignment: {
+            id: assignment.rows[0].id,
+            projectId: assignment.rows[0].project_id,
+            equipmentId: assignment.rows[0].equipment_id,
+            quantity: assignment.rows[0].quantity,
+            assignmentType: assignment.rows[0].assignment_type,
+            responsibleMemberId: assignment.rows[0].responsible_member_id,
+            notes: assignment.rows[0].notes,
+            documents: assignment.rows[0].documents,
+          },
+        });
+      } catch (e) {
+        console.error("POST project equipment assignment", e);
+        res.status(500).json({ error: "failed" });
+      }
+    },
+  );
+
+  app.delete("/api/projects/:projectId/equipment/assignments/:equipmentId", guardMw, async (req, res) => {
+    const equipmentId = Number(req.params.equipmentId);
+    if (!Number.isInteger(equipmentId) || equipmentId < 1) {
+      return res.status(400).json({ error: "invalid_equipment_id" });
+    }
+    try {
+      const removed = await pool.query(
+        `DELETE FROM project_equipment_assignments
+          WHERE project_id = $1 AND equipment_id = $2
+          RETURNING id`,
+        [String(req.params.projectId), equipmentId],
+      );
+      return res.json({ ok: true, removed: (removed.rowCount || 0) > 0 });
+    } catch (e) {
+      console.error("DELETE project equipment assignment", e);
+      return res.status(500).json({ error: "failed" });
+    }
   });
 
   // ─────────── Editor-handoff (LESER editing_jobs — redigerings-marketplace) ───
@@ -1991,6 +2520,15 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const me = await userIdentity(uid);
       const settings = await getGenSettings(pool);
       const model = GEN_MODELS["photo-enhance"];
+      if (!settings.enabled) return res.status(503).json({ error: "ai_disabled" });
+      if (settings.billingMode !== "free_whitelist") return res.status(409).json({
+        error: "legacy_ai_requires_durable_billing",
+        message: "Betalt AI-forbedring må startes fra en durable faktureringsflyt.",
+      });
+      if (!aiAllowed(settings, me.email, me.role)) return res.status(403).json({
+        error: "not_whitelisted",
+        message: "AI-forbedring er ikke aktivert for din konto.",
+      });
       const body = (req.body ?? {}) as { assetIds?: unknown; preset?: unknown };
       const preset = typeof body.preset === "string" && body.preset ? body.preset : "auto";
       const sessions = await pool.query(`SELECT id FROM capture_sessions WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
@@ -2003,14 +2541,9 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         : await pool.query(`SELECT id, full_key, preview_key, mime, original_filename FROM capture_assets WHERE session_id = ANY($1::uuid[]) AND flagged_for_client IS TRUE AND rejected IS NOT TRUE ORDER BY rating DESC NULLS LAST LIMIT 30`, [sessionIds]).catch(() => ({ rows: [] }));
       if (rows.rows.length === 0) return res.status(400).json({ error: "no_assets", message: "Ingen bilder å forbedre (marker bilder for klient først, eller send assetIds)." });
       // Gate + dagstak + kreditt-pre-sjekk for HELE batchen (N bilder).
-      if (settings.enabled) {
-        if (!aiAllowed(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted", message: "AI-forbedring er ikke aktivert for din konto." });
-        const batchCost = rows.rows.length * model.estCostUsd;
-        const spent = await spentTodayUsd();
-        if (spent + batchCost > settings.dailyCapUsd) return res.status(429).json({ error: "daily_cap", message: `Dagstak nådd ($${settings.dailyCapUsd}).` });
-        const pf = await creditPreflight(settings, uid, batchCost);
-        if (!pf.ok) return res.status(402).json({ error: "insufficient_credits", message: `Ikke nok kreditter for ${rows.rows.length} bilder (rest $${pf.balance.toFixed(2)}, trenger $${pf.retail.toFixed(2)}). Kjøp mer.` });
-      }
+      const batchCost = rows.rows.length * model.estCostUsd;
+      const spent = await spentTodayUsd();
+      if (spent + batchCost > settings.dailyCapUsd) return res.status(429).json({ error: "daily_cap", message: `Dagstak nådd ($${settings.dailyCapUsd}).` });
       const jobs: any[] = []; const failures: any[] = [];
       for (const r of rows.rows) {
         const sourceKey = r.full_key || r.preview_key;
@@ -2021,37 +2554,19 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
           const resp = await fetch(url);
           if (!resp.ok) { failures.push({ assetId: r.id, reason: `b2_fetch_${resp.status}` }); continue; }
           const buffer = Buffer.from(await resp.arrayBuffer());
-          // Kreditt trekkes FØR arbeidet køes (atomisk debit). Preflight-en over er
-          // kun en LESNING, så parallelle batcher kan alle passere den mot samme
-          // saldo (TOCTOU) og køe ubetalt arbeid. Her gater den atomiske debiten
-          // hvert bilde individuelt: går saldoen tom returnerer creditMove false og
-          // vi stopper resten av batchen. Idempotent ref pr. asset-forsøk.
-          const retailUsd = model.estCostUsd * (settings.markupMultiplier || 1);
-          let chargeRef: string | null = null;
-          if (settings.enabled && settings.billingMode === "credits") {
-            chargeRef = `enhance:${r.id}:${crypto.randomUUID()}`;
-            let charged = false;
-            try { charged = await creditMove(uid, "spend", -retailUsd, chargeRef, "photo-enhance"); } catch { /* */ }
-            if (!charged) { failures.push({ assetId: r.id, reason: "insufficient_credits" }); break; }
-          }
           const jobId = await enqueuePhotoEnhancerJobFromBuffer({
             buffer, fileName: r.original_filename || `${r.id}.jpg`, mimeType: r.mime || "image/jpeg",
             projectId: pid, owner: uid, userId: uid, preset,
           });
           if (!jobId) {
-            // Køing feilet → arbeidet skjer aldri; refunder debiten (idempotent ref).
-            if (chargeRef) { try { await creditMove(uid, "purchase", retailUsd, `refund:${chargeRef}`, "photo-enhance-refund"); } catch { /* */ } }
             failures.push({ assetId: r.id, reason: "enqueue_failed" }); continue;
           }
-          if (settings.enabled) {
-            const gid = crypto.randomUUID();
-            await pool.query(
-              `INSERT INTO generative_ai_jobs (id, project_id, user_id, user_email, model, kind, status, provider, source_asset_id, est_cost_usd, completed_at, input)
-               VALUES ($1,$2,$3,$4,$5,'image-edit','completed',$6,$7,$8,NOW(),$9::jsonb)`,
-              [gid, pid, uid, me.email, model.key, model.provider, r.id, model.estCostUsd, JSON.stringify({ prompt: "Foto-forbedring", enhancerJobId: jobId })],
-            ).catch(() => {});
-            try { await emitGenAiMeter(pool, { userId: uid, valueUsd: model.estCostUsd, settings }); } catch { /* */ }
-          }
+          const gid = crypto.randomUUID();
+          await pool.query(
+            `INSERT INTO generative_ai_jobs (id, project_id, user_id, user_email, model, kind, status, provider, source_asset_id, est_cost_usd, completed_at, input)
+             VALUES ($1,$2,$3,$4,$5,'image-edit','completed',$6,$7,$8,NOW(),$9::jsonb)`,
+            [gid, pid, uid, me.email, model.key, model.provider, r.id, model.estCostUsd, JSON.stringify({ prompt: "Foto-forbedring", enhancerJobId: jobId, billingModeAtSubmit: settings.billingMode })],
+          ).catch(() => {});
           jobs.push({ assetId: r.id, jobId });
         } catch { failures.push({ assetId: r.id, reason: "fetch_threw" }); }
       }
@@ -2654,6 +3169,24 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       fal_request_id varchar, response_url text, input jsonb, source_asset_id uuid,
       output_b2_key text, output_url_temp text, est_cost_usd numeric DEFAULT 0,
       error text, created_at timestamptz DEFAULT now(), completed_at timestamptz)`).catch(() => {});
+    // Migration 0479 intentionally skips clean databases where this legacy
+    // compatibility table does not exist yet. Replay its partial due index
+    // immediately after lazy table creation so a recorded migration cannot
+    // leave later sweeps doing a JSON full-table scan.
+    await pool.query(`CREATE INDEX IF NOT EXISTS
+      generative_ai_jobs_legacy_billing_due_idx
+      ON public.generative_ai_jobs (
+        ((input #>> '{legacyBilling,status}')),
+        ((input #>> '{legacyBilling,nextAttemptAt}')),
+        ((input #>> '{legacyBilling,leaseExpiresAt}')),
+        ((input #>> '{legacyBilling,deadlineAt}')),
+        completed_at,
+        id
+      )
+      WHERE status = 'completed'
+        AND (input #>> '{legacyBilling,mode}') IN ('metered','credits')
+        AND (input #>> '{legacyBilling,status}')
+          IN ('pending','retry_wait','delivering')`).catch(() => {});
     await pool.query(`CREATE TABLE IF NOT EXISTS project_ai_consent (
       project_id varchar PRIMARY KEY, consented boolean DEFAULT false,
       consented_by varchar, consented_at timestamptz)`).catch(() => {});
@@ -2738,7 +3271,12 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const pid = req.params.projectId;
       const me = await userIdentity(uid);
       const settings = await getGenSettings(pool);
-      if (!settings.enabled || !falConfigured()) return res.status(503).json({ error: "ai_disabled" });
+      if (!settings.enabled) return res.status(503).json({ error: "ai_disabled" });
+      if (settings.billingMode !== "free_whitelist") return res.status(409).json({
+        error: "legacy_ai_requires_durable_billing",
+        message: "Betalt AI-generering må startes fra Storyboard Room.",
+      });
+      if (!falConfigured()) return res.status(503).json({ error: "ai_disabled" });
       if (!aiAllowed(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted", message: "AI-redigering er ikke aktivert for din konto." });
       const model = GEN_MODELS["nano-banana-2-edit"];
       // Samtykke-gate (persondata → tredjepart).
@@ -2753,7 +3291,13 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const assetId = req.body?.assetId;
       if (!prompt || !assetId) return res.status(400).json({ error: "assetId_and_prompt_required" });
       // Kilde fra B2 → presignet URL (fal henter den; 1t holder i kø).
-      const a = await pool.query(`SELECT full_key, preview_key, original_filename FROM capture_assets WHERE id = $1`, [assetId]).catch(() => ({ rows: [] }));
+      const a = await pool.query(
+        `SELECT a.full_key, a.preview_key, a.original_filename
+           FROM capture_assets a
+           JOIN capture_sessions s ON s.id = a.session_id
+          WHERE a.id = $1 AND s.project_id = $2`,
+        [assetId, pid],
+      ).catch(() => ({ rows: [] }));
       const srcKey = a.rows[0]?.full_key || a.rows[0]?.preview_key;
       if (!srcKey) return res.status(404).json({ error: "asset_not_found" });
       const srcUrl = await signAssetReadUrl(srcKey);
@@ -2764,7 +3308,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       await pool.query(
         `INSERT INTO generative_ai_jobs (id, project_id, user_id, user_email, model, kind, status, provider, fal_request_id, response_url, input, source_asset_id, est_cost_usd)
          VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,$10::jsonb,$11,$12)`,
-        [id, pid, uid, me.email, model.key, model.kind, model.provider, sub.requestId, sub.responseUrl || null, JSON.stringify({ prompt }), assetId, model.estCostUsd],
+        [id, pid, uid, me.email, model.key, model.kind, model.provider, sub.requestId, sub.responseUrl || null, JSON.stringify({ prompt, billingModeAtSubmit: settings.billingMode }), assetId, model.estCostUsd],
       );
       res.status(202).json({ jobId: id, status: "queued" });
     } catch (e) { console.error("POST ai/image-edit", e); res.status(500).json({ error: "failed" }); }
@@ -2779,7 +3323,12 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const pid = req.params.projectId;
       const me = await userIdentity(uid);
       const settings = await getGenSettings(pool);
-      if (!settings.enabled || !falConfigured()) return res.status(503).json({ error: "ai_disabled" });
+      if (!settings.enabled) return res.status(503).json({ error: "ai_disabled" });
+      if (settings.billingMode !== "free_whitelist") return res.status(409).json({
+        error: "legacy_ai_requires_durable_billing",
+        message: "Betalt AI-generering må startes fra Storyboard Room.",
+      });
+      if (!falConfigured()) return res.status(503).json({ error: "ai_disabled" });
       if (!aiAllowed(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted" });
       const model = GEN_MODELS["nano-banana-2-t2i"];
       const spent = await spentTodayUsd();
@@ -2795,7 +3344,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       await pool.query(
         `INSERT INTO generative_ai_jobs (id, project_id, user_id, user_email, model, kind, status, provider, fal_request_id, response_url, input, est_cost_usd)
          VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,$10::jsonb,$11)`,
-        [id, pid, uid, me.email, model.key, model.kind, model.provider, sub.requestId, sub.responseUrl || null, JSON.stringify({ prompt, addToMoodboard: true }), model.estCostUsd],
+        [id, pid, uid, me.email, model.key, model.kind, model.provider, sub.requestId, sub.responseUrl || null, JSON.stringify({ prompt, addToMoodboard: true, billingModeAtSubmit: settings.billingMode }), model.estCostUsd],
       );
       res.status(202).json({ jobId: id, status: "queued" });
     } catch (e) { console.error("POST ai/concept-image", e); res.status(500).json({ error: "failed" }); }
@@ -2814,13 +3363,23 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const me = await userIdentity(uid);
       const settings = await getGenSettings(pool);
       if (!settings.enabled) return res.status(503).json({ error: "ai_disabled" });
+      if (settings.billingMode !== "free_whitelist") return res.status(409).json({
+        error: "legacy_ai_requires_durable_billing",
+        message: "Betalte AI-forslag må startes fra den durable Storyboard Room-flyten.",
+      });
       if (!aiAllowed(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted" });
       const consent = await pool.query(`SELECT consented FROM project_ai_consent WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
       if (!consent.rows[0]?.consented) return res.status(409).json({ error: "consent_required" });
       const mode = req.body?.mode === "edit" ? "edit" : "motion";
       const assetId = req.body?.assetId;
       if (!assetId) return res.status(400).json({ error: "assetId_required" });
-      const a = await pool.query(`SELECT preview_key, full_key FROM capture_assets WHERE id = $1`, [assetId]).catch(() => ({ rows: [] }));
+      const a = await pool.query(
+        `SELECT a.preview_key, a.full_key
+           FROM capture_assets a
+           JOIN capture_sessions s ON s.id = a.session_id
+          WHERE a.id = $1 AND s.project_id = $2`,
+        [assetId, pid],
+      ).catch(() => ({ rows: [] }));
       const srcKey = a.rows[0]?.preview_key || a.rows[0]?.full_key;
       if (!srcKey) return res.status(404).json({ error: "asset_not_found" });
       const obj = await getFromRoleRoomB2(srcKey).catch(() => null);
@@ -2855,15 +3414,28 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const me = await userIdentity(uid);
       const settings = await getGenSettings(pool);
       if (!settings.enabled) return res.status(503).json({ error: "ai_disabled" });
+      if (settings.billingMode !== "free_whitelist") return res.status(409).json({
+        error: "legacy_ai_requires_durable_billing",
+        message: "Betalt AI-generering må startes fra Storyboard Room.",
+      });
       if (!aiAllowed(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted", message: "AI-video er ikke aktivert for din konto." });
       // Video-leverandør: Seedance (fal, standard) eller Higgsfield DoP (kinematisk).
       const wantHiggsfield = ["higgsfield", "higgsfield-dop-i2v"].includes(String(req.body?.model || req.body?.provider || ""));
-      const model = GEN_MODELS[wantHiggsfield ? "higgsfield-dop-i2v" : "seedance-2-i2v"];
-      const providerReady = model.provider === "higgsfield" ? higgsfieldConfigured() : falConfigured();
-      if (!providerReady) return res.status(503).json({
+      // Denne eldre workspace-kontrakten oppretter jobben ETTER provider-kallet.
+      // Higgsfield har ikke en dokumentert idempotency-kontrakt for generation
+      // POST, så timeout/5xx kan ellers gi en betalt, foreldreløs jobb og en
+      // senere retry kan duplisere den. Nye Higgsfield-jobber må derfor gå via
+      // Storyboard Rooms durable state-maskin. Polling av eksisterende jobber
+      // nedenfor beholdes under migreringen.
+      if (wantHiggsfield) return res.status(409).json({
+        error: "higgsfield_requires_durable_job",
+        status: "blocked",
+        message: "Higgsfield-generering må startes fra Storyboard Room mens denne arbeidsflyten oppgraderes.",
+      });
+      const model = GEN_MODELS["seedance-2-i2v"];
+      if (!falConfigured()) return res.status(503).json({
         error: "provider_not_configured",
-        message: model.provider === "higgsfield"
-          ? "Higgsfield-servercredential er ikke konfigurert." : "fal (FAL_KEY) er ikke konfigurert.",
+        message: "fal (FAL_KEY) er ikke konfigurert.",
       });
       const consent = await pool.query(`SELECT consented FROM project_ai_consent WHERE project_id = $1`, [pid]).catch(() => ({ rows: [] }));
       if (!consent.rows[0]?.consented) return res.status(409).json({ error: "consent_required", message: "Krever samtykke: kundebilder sendes til tredjeparts AI utenfor EØS." });
@@ -2876,27 +3448,26 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const prompt = String(req.body?.prompt || "").trim().slice(0, 1000);
       const assetId = req.body?.assetId;
       if (!prompt || !assetId) return res.status(400).json({ error: "assetId_and_prompt_required" });
-      const a = await pool.query(`SELECT full_key, preview_key FROM capture_assets WHERE id = $1`, [assetId]).catch(() => ({ rows: [] }));
+      const a = await pool.query(
+        `SELECT a.full_key, a.preview_key
+           FROM capture_assets a
+           JOIN capture_sessions s ON s.id = a.session_id
+          WHERE a.id = $1 AND s.project_id = $2`,
+        [assetId, pid],
+      ).catch(() => ({ rows: [] }));
       const srcKey = a.rows[0]?.preview_key || a.rows[0]?.full_key; // preview (mindre) holder som startbilde
       if (!srcKey) return res.status(404).json({ error: "asset_not_found" });
       const srcUrl = await signAssetReadUrl(srcKey);
       if (!srcUrl) return res.status(503).json({ error: "source_unavailable" });
-      // Dispatch til riktig leverandør. request-id → fal_request_id, poll-url →
-      // response_url (Higgsfield: status_url; fal: response_url). Poll-ruten
-      // dispatcher tilbake på job.provider.
-      let sub: { requestId?: string; responseUrl?: string | null; error?: string };
-      if (model.provider === "higgsfield") {
-        const hs = await higgsfieldSubmit({ imageUrl: srcUrl, prompt, model: "dop-turbo" });
-        sub = { requestId: hs.id, responseUrl: hs.statusUrl || null, error: hs.error };
-      } else {
-        sub = await falSubmit(model.falPath, { prompt, image_url: srcUrl, duration: String(duration), resolution: "720p" });
-      }
+      // Denne legacy-ruten sender foreløpig bare til fal. Higgsfield er sperret
+      // over til den kan bruke samme durable submission-kontrakt som Storyboard.
+      const sub = await falSubmit(model.falPath, { prompt, image_url: srcUrl, duration: String(duration), resolution: "720p" });
       if (sub.error || !sub.requestId) return res.status(502).json({ error: sub.error || "submit_failed" });
       const id = crypto.randomUUID();
       await pool.query(
         `INSERT INTO generative_ai_jobs (id, project_id, user_id, user_email, model, kind, status, provider, fal_request_id, response_url, input, source_asset_id, est_cost_usd)
          VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,$10::jsonb,$11,$12)`,
-        [id, pid, uid, me.email, model.key, model.kind, model.provider, sub.requestId, sub.responseUrl || null, JSON.stringify({ prompt, duration }), assetId, estCost],
+        [id, pid, uid, me.email, model.key, model.kind, model.provider, sub.requestId, sub.responseUrl || null, JSON.stringify({ prompt, duration, billingModeAtSubmit: settings.billingMode }), assetId, estCost],
       );
       res.status(202).json({ jobId: id, status: "queued", estCostUsd: estCost });
     } catch (e) { console.error("POST ai/image-to-video", e); res.status(500).json({ error: "failed" }); }
@@ -2912,6 +3483,10 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const me = await userIdentity(uid);
       const settings = await getGenSettings(pool);
       if (!settings.enabled) return res.status(503).json({ error: "ai_disabled" });
+      if (settings.billingMode !== "free_whitelist") return res.status(409).json({
+        error: "legacy_ai_requires_durable_billing",
+        message: "Betalt AI-generering må startes fra Storyboard Room.",
+      });
       if (!aiAllowed(settings, me.email, me.role)) return res.status(403).json({ error: "not_whitelisted" });
       if (!beebleConfigured()) return res.status(503).json({ error: "beeble_not_configured", message: "SwitchX (BEEBLE_API_KEY) er ikke konfigurert." });
       const model = GEN_MODELS["switchx-restyle"];
@@ -2926,14 +3501,32 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const maxResolution = req.body?.maxResolution === 1080 ? 1080 : 720;
       if (!prompt || !versionId) return res.status(400).json({ error: "versionId_and_prompt_required" });
       // Kilde-video fra versjonen (B2-key presignes; ekstern file_url som fallback).
-      const v = await pool.query(`SELECT b2_key, file_url FROM project_video_versions WHERE id = $1 AND project_id = $2`, [versionId, pid]).catch(() => ({ rows: [] }));
+      const v = await pool.query(
+        `SELECT b2_key, storage_version_id, file_url
+           FROM project_video_versions
+          WHERE id = $1 AND project_id = $2`,
+        [versionId, pid],
+      ).catch(() => ({ rows: [] }));
       if (!v.rows.length) return res.status(404).json({ error: "version_not_found" });
-      const sourceUri = v.rows[0].b2_key ? await presignRoleRoomB2Download(v.rows[0].b2_key, undefined, 3600) : v.rows[0].file_url;
+      const sourceUri = isProjectVideoVersionB2Key(pid, v.rows[0].b2_key)
+        ? await presignRoleRoomB2Download(
+            v.rows[0].b2_key,
+            undefined,
+            3600,
+            v.rows[0].storage_version_id || undefined,
+          )
+        : v.rows[0].file_url;
       if (!sourceUri) return res.status(503).json({ error: "source_unavailable" });
       // Valgfritt referansebilde (et capture-asset preview).
       let referenceImageUri: string | null = null;
       if (req.body?.referenceAssetId) {
-        const ra = await pool.query(`SELECT preview_key, full_key FROM capture_assets WHERE id = $1`, [req.body.referenceAssetId]).catch(() => ({ rows: [] }));
+        const ra = await pool.query(
+          `SELECT a.preview_key, a.full_key
+             FROM capture_assets a
+             JOIN capture_sessions s ON s.id = a.session_id
+            WHERE a.id = $1 AND s.project_id = $2`,
+          [req.body.referenceAssetId, pid],
+        ).catch(() => ({ rows: [] }));
         const rk = ra.rows[0]?.preview_key || ra.rows[0]?.full_key;
         if (rk) referenceImageUri = await signAssetReadUrl(rk);
       }
@@ -2944,7 +3537,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       await pool.query(
         `INSERT INTO generative_ai_jobs (id, project_id, user_id, user_email, model, kind, status, provider, fal_request_id, response_url, input, source_asset_id, est_cost_usd)
          VALUES ($1,$2,$3,$4,$5,'video-to-video','queued','beeble',$6,NULL,$7::jsonb,NULL,$8)`,
-        [id, pid, uid, me.email, model.key, sub.id, JSON.stringify({ prompt, versionId, maxResolution }), model.estCostUsd],
+        [id, pid, uid, me.email, model.key, sub.id, JSON.stringify({ prompt, versionId, maxResolution, billingModeAtSubmit: settings.billingMode }), model.estCostUsd],
       );
       res.status(202).json({ jobId: id, status: "queued" });
     } catch (e) { console.error("POST ai/video-restyle", e); res.status(500).json({ error: "failed" }); }
@@ -2959,13 +3552,33 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const job = j.rows[0];
       if (!job) return res.status(404).json({ error: "not_found" });
       const beforeUrl = job.source_asset_id ? await (async () => {
-        const a = await pool.query(`SELECT preview_key, full_key FROM capture_assets WHERE id = $1`, [job.source_asset_id]).catch(() => ({ rows: [] }));
+        const a = await pool.query(
+          `SELECT a.preview_key, a.full_key
+             FROM capture_assets a
+             JOIN capture_sessions s ON s.id = a.session_id
+            WHERE a.id = $1 AND s.project_id = $2`,
+          [job.source_asset_id, pid],
+        ).catch(() => ({ rows: [] }));
         const k = a.rows[0]?.preview_key || a.rows[0]?.full_key; return k ? signAssetReadUrl(k) : null;
       })() : null;
-      const isVideoKind = job.kind === "image-to-video";
-      // Allerede ferdig?
-      if (job.status === "completed" && job.output_b2_key) {
-        return res.json({ status: "completed", kind: job.kind, isVideo: isVideoKind, beforeUrl, afterUrl: await presignRoleRoomB2Download(job.output_b2_key, undefined, 3600), prompt: job.input?.prompt });
+      const isVideoKind = job.kind === "image-to-video" || job.kind === "video-to-video";
+      const completedPayload = async (row: any) => {
+        const safeTemporaryOutput = typeof row.output_url_temp === "string"
+          ? trustedStoryboardVideoOutputUrl(row.output_url_temp)?.toString() ?? null
+          : null;
+        const afterUrl = row.output_b2_key
+          ? await presignRoleRoomB2Download(row.output_b2_key, undefined, 3600)
+          : safeTemporaryOutput;
+        return afterUrl
+          ? { status: "completed", kind: row.kind, isVideo: row.kind === "image-to-video" || row.kind === "video-to-video", beforeUrl, afterUrl, prompt: row.input?.prompt }
+          : { status: "failed", kind: row.kind, error: "completed_output_unavailable", beforeUrl };
+      };
+      // Alle terminale completed-rader returneres uten ny provider-poll. Dette
+      // inkluderer trygge, midlertidige provider-URL-er når B2-arkivering feilet.
+      // Fakturering dreneres av den isolerte bakgrunnsworkeren; en leserute skal
+      // aldri arve Stripe-/ledger-latens.
+      if (job.status === "completed") {
+        return res.json(await completedPayload(job));
       }
       if (job.status === "failed") return res.json({ status: "failed", kind: job.kind, error: job.error, beforeUrl });
       // Poll fal.
@@ -2983,37 +3596,86 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         p = await falPoll(job.response_url);
       }
       if (p.status !== "COMPLETED") {
-        if (p.status === "ERROR") { await pool.query(`UPDATE generative_ai_jobs SET status='failed', error=$1 WHERE id=$2`, [p.error || "fal_error", job.id]).catch(() => {}); return res.json({ status: "failed", kind: job.kind, error: p.error, beforeUrl }); }
-        await pool.query(`UPDATE generative_ai_jobs SET status='running' WHERE id=$1`, [job.id]).catch(() => {});
+        if (p.status === "ERROR") {
+          await pool.query(
+            `UPDATE generative_ai_jobs SET status='failed', error=$1
+              WHERE id=$2 AND project_id=$3
+                AND status IN ('queued','running','processing')`,
+            [p.error || "fal_error", job.id, pid],
+          );
+          return res.json({ status: "failed", kind: job.kind, error: p.error, beforeUrl });
+        }
+        await pool.query(
+          `UPDATE generative_ai_jobs SET status='running'
+            WHERE id=$1 AND project_id=$2
+              AND status IN ('queued','running','processing')`,
+          [job.id, pid],
+        );
         return res.json({ status: "running", kind: job.kind, beforeUrl });
       }
       // Ferdig → hent fal-output (bilde eller video), lagre til B2 (permanent).
       const out = falOutputUrl(p.result);
       const outUrl = out.url;
-      if (!outUrl) { await pool.query(`UPDATE generative_ai_jobs SET status='failed', error='no_output' WHERE id=$1`, [job.id]).catch(() => {}); return res.json({ status: "failed", kind: job.kind, error: "no_output", beforeUrl }); }
+      if (!outUrl) {
+        await pool.query(
+          `UPDATE generative_ai_jobs SET status='failed', error='no_output'
+            WHERE id=$1 AND project_id=$2
+              AND status IN ('queued','running','processing')`,
+          [job.id, pid],
+        );
+        return res.json({ status: "failed", kind: job.kind, error: "no_output", beforeUrl });
+      }
+      if (!trustedStoryboardVideoOutputUrl(outUrl)) {
+        await pool.query(
+          `UPDATE generative_ai_jobs
+              SET status='failed',error='untrusted_output_url'
+            WHERE id=$1 AND project_id=$2
+              AND status IN ('queued','running','processing')`,
+          [job.id, pid],
+        );
+        return res.json({
+          status: "failed",
+          kind: job.kind,
+          error: "untrusted_output_url",
+          beforeUrl,
+        });
+      }
       let b2Key: string | null = null;
       try {
-        const r = await fetch(outUrl);
-        if (r.ok) {
-          const buf = Buffer.from(await r.arrayBuffer());
-          const ct = r.headers.get("content-type") || (out.isVideo ? "video/mp4" : "image/png");
-          const ext = out.isVideo ? "mp4" : ct.includes("jpeg") ? "jpg" : "png";
-          const key = `workspace/${pid}/ai-${out.isVideo ? "video" : "edits"}/${job.id}.${ext}`;
-          const stored = await archiveToRoleRoomB2(key, buf, ct);
-          if (stored) b2Key = key;
-        }
+        const downloaded = await downloadTrustedStoryboardVideoOutput({
+          providerUrl: outUrl,
+          expectedKind: out.isVideo ? "video" : "image",
+        });
+        const ct = downloaded.contentType;
+        const ext = out.isVideo ? "mp4" : ct.includes("jpeg") ? "jpg" : "png";
+        const key = `workspace/${pid}/ai-${out.isVideo ? "video" : "edits"}/${job.id}.${ext}`;
+        const stored = await archiveToRoleRoomB2(key, downloaded.bytes, ct);
+        if (stored) b2Key = key;
       } catch { /* fallback til temp-url */ }
-      await pool.query(
-        `UPDATE generative_ai_jobs SET status='completed', output_b2_key=$1, output_url_temp=$2, completed_at=NOW() WHERE id=$3`,
-        [b2Key, b2Key ? null : outUrl, job.id],
-      ).catch(() => {});
-      // Fakturering ved fullføring (idempotent på job-id):
-      const fsettings = await getGenSettings(pool);
-      // (a) metered → Stripe-måler-event (dvale til env satt);
-      try { await emitGenAiMeter(pool, { userId: job.user_id, valueUsd: Number(job.est_cost_usd || 0), settings: fsettings }); } catch { /* metering skal aldri blokkere resultatet */ }
-      // (b) credits → trekk retail (kost×påslag) fra brukerens lommebok.
-      if (fsettings.billingMode === "credits") {
-        try { await creditMove(job.user_id, "spend", -(Number(job.est_cost_usd || 0) * (fsettings.markupMultiplier || 1)), `job:${job.id}`, `${job.model}`); } catch { /* */ }
+      const completion = await pool.query(
+        `UPDATE generative_ai_jobs
+            SET status='completed', output_b2_key=$1, output_url_temp=$2,
+                completed_at=NOW()
+          WHERE id=$3 AND project_id=$4
+            AND status IN ('queued','running','processing')
+          RETURNING id`,
+        [b2Key, b2Key ? null : outUrl, job.id, pid],
+      );
+      // En parallell poll kan ha fullført jobben mens denne forespørselen
+      // lastet ned output. Bare CAS-vinneren får utføre finansielle sideeffekter.
+      if (!completion.rows[0]) {
+        const settled = await pool.query(
+          `SELECT * FROM generative_ai_jobs WHERE id=$1 AND project_id=$2`,
+          [job.id, pid],
+        );
+        const current = settled.rows[0];
+        if (current?.status === "completed") {
+          return res.json(await completedPayload(current));
+        }
+        if (current?.status === "failed") {
+          return res.json({ status: "failed", kind: current.kind, error: current.error, beforeUrl });
+        }
+        return res.json({ status: "running", kind: job.kind, beforeUrl });
       }
       // Konsept-bilder legges auto i moodboardet (idempotent på job-id i b2_key).
       if (job.input?.addToMoodboard && b2Key) {
@@ -3287,6 +3949,10 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     // Videofilene ligger på B2 (Cloudflare Stream = kun streaming-lag). b2_key
     // presignes til en avspillings-URL ved lesing.
     await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS b2_key text`).catch(() => {});
+    await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS content_type text`).catch(() => {});
+    await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS size_bytes bigint`).catch(() => {});
+    await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS upload_expires_at timestamptz`).catch(() => {});
+    await pool.query(`ALTER TABLE project_video_versions ADD COLUMN IF NOT EXISTS storage_version_id text`).catch(() => {});
     await pool.query(`CREATE TABLE IF NOT EXISTS project_video_comments (
       id uuid PRIMARY KEY,
       version_id uuid NOT NULL,
@@ -3318,16 +3984,27 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       await ensureVideoSchema();
       const pid = req.params.projectId;
       const vs = await pool.query(
-        `SELECT id, version_label, version_number, file_url, b2_key, stream_uid, thumbnail_url, duration, chapters, status, created_at,
+        `SELECT id, version_label, version_number, file_url, b2_key, storage_version_id, stream_uid, thumbnail_url, duration, chapters, status, created_at,
                 (SELECT count(*) FROM project_video_comments c WHERE c.version_id = v.id)::int comment_count,
                 (SELECT count(*) FROM project_video_comments c WHERE c.version_id = v.id AND c.status NOT IN ('resolved','done'))::int open_count
-           FROM project_video_versions v WHERE project_id = $1 ORDER BY version_number ASC`,
+           FROM project_video_versions v
+          WHERE project_id = $1 AND (status IS NULL OR status <> 'upload_pending')
+          ORDER BY version_number ASC`,
         [pid],
       ).catch(() => ({ rows: [] }));
       // B2-nøkkel → presignet avspillings-URL (1t). file_url (ekstern) brukes som fallback.
       const versions = await Promise.all(vs.rows.map(async (v: any) => ({
         id: v.id, versionLabel: v.version_label || `V${v.version_number}`, versionNumber: v.version_number,
-        fileUrl: v.b2_key ? await presignRoleRoomB2Download(v.b2_key, undefined, 3600) : (v.file_url || null),
+        fileUrl: isProjectVideoVersionB2Key(pid, v.b2_key)
+          // Direct uploads bindes til versjonen HEAD bekreftet. Null er en
+          // eksplisitt bakoverkompatibel fallback for historiske serveruploads.
+          ? await presignRoleRoomB2Download(
+              v.b2_key,
+              undefined,
+              3600,
+              v.storage_version_id || undefined,
+            )
+          : (v.file_url || null),
         streamUid: v.stream_uid || null, thumbnailUrl: v.thumbnail_url || null,
         duration: v.duration != null ? Number(v.duration) : null, status: v.status, createdAt: v.created_at,
         commentCount: v.comment_count || 0, openCount: v.open_count || 0,
@@ -3363,35 +4040,251 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     } catch { /* best-effort — aldri la varsling velte skriveoperasjonen */ }
   }
 
-  // Ny versjon (V1/V2/…) — file_url eller stream_uid + valgfrie chapters.
+  // Alle skrivere som reserverer et versjonsnummer eller bytter prosjektets
+  // aktive review-versjon må dele denne låsen. Radlåser alene er ikke nok når
+  // to nye rader opprettes samtidig, siden ingen av dem finnes ved MAX()+1.
+  async function withProjectVideoVersionWrite<T>(
+    projectId: string,
+    write: (client: any) => Promise<T>,
+  ): Promise<T> {
+    const client = await pool.connect();
+    let transactionStarted = false;
+    let releaseError: Error | undefined;
+    try {
+      await client.query("BEGIN");
+      transactionStarted = true;
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        [`project-video-review:${projectId}`],
+      );
+      const result = await write(client);
+      await client.query("COMMIT");
+      transactionStarted = false;
+      return result;
+    } catch (error) {
+      releaseError = error instanceof Error ? error : new Error(String(error));
+      if (transactionStarted) {
+        await client.query("ROLLBACK").catch(() => undefined);
+      }
+      throw error;
+    } finally {
+      // node-postgres kaster en klient som har hatt en transaksjonsfeil ut av
+      // poolen når feilen sendes til release, i stedet for å gjenbruke den.
+      client.release(releaseError);
+    }
+  }
+
+  class VideoUploadStateChangedError extends Error {
+    constructor() { super("upload_state_changed"); }
+  }
+
+  // Direkte klient→B2-opplasting. Serveren velger nøkkelen og registrerer en
+  // prosjektbundet pending-rad FØR URL-en gis til klienten. Klienten kan derfor
+  // aldri velge namespace eller få en vilkårlig bucket-key registrert.
+  app.post("/api/projects/:projectId/video-versions/upload-url", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureVideoSchema();
+      const pid = String(req.params.projectId || "");
+      const fileName = String(req.body?.fileName || "").trim().slice(0, 240);
+      const contentType = String(req.body?.contentType || "").trim().toLowerCase();
+      const sizeBytes = Number(req.body?.sizeBytes);
+      if (!fileName || !isVideoContentType(contentType)) {
+        return res.status(415).json({ error: "video_only" });
+      }
+      if (!Number.isSafeInteger(sizeBytes) || sizeBytes <= 0 || sizeBytes > videoDirectUploadMaxBytes) {
+        return res.status(413).json({ error: "video_too_large", maxBytes: videoDirectUploadMaxBytes });
+      }
+      const key = buildProjectVideoVersionB2Key(pid, fileName);
+      if (!key) return res.status(400).json({ error: "invalid_project_id" });
+      const uploadUrl = await presignRoleRoomB2Upload(key, contentType, 3600, sizeBytes);
+      if (!uploadUrl) return res.status(503).json({ error: "b2_not_configured" });
+      const id = crypto.randomUUID();
+      const registration = await withProjectVideoVersionWrite(pid, async (client) => {
+        const n = await client.query(
+          `SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_video_versions WHERE project_id = $1`,
+          [pid],
+        );
+        const versionNumber = Number(n.rows[0]?.n || 1);
+        const label = String(req.body?.versionLabel || `V${versionNumber}`).slice(0, 80);
+        await client.query(
+          `INSERT INTO project_video_versions
+             (id, project_id, version_label, version_number, b2_key, content_type, size_bytes, upload_expires_at, status, uploaded_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,NOW() + INTERVAL '1 hour','upload_pending',$8)`,
+          [id, pid, label, versionNumber, key, contentType, sizeBytes, uid],
+        );
+        return { versionNumber };
+      });
+      res.status(201).json({
+        id,
+        versionNumber: registration.versionNumber,
+        uploadUrl,
+        expiresInSeconds: 3600,
+        maxBytes: videoDirectUploadMaxBytes,
+      });
+    } catch (e) {
+      console.error("POST video upload-url", e);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // Gjør en registrert direkte-upload synlig først etter at B2 bekrefter både
+  // objekt, størrelse og MIME. Lookupen er alltid (id, project_id), og key-en
+  // valideres på nytt før noen B2-operasjon.
+  app.post("/api/projects/:projectId/video-versions/:vid/confirm-upload", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      await ensureVideoSchema();
+      const pid = String(req.params.projectId || "");
+      const found = await pool.query(
+        `SELECT id, version_number, b2_key, content_type, size_bytes, storage_version_id, status
+           FROM project_video_versions
+          WHERE id = $1 AND project_id = $2`,
+        [req.params.vid, pid],
+      );
+      const version = found.rows[0];
+      if (!version) return res.status(404).json({ error: "version_not_found" });
+      if (!isProjectVideoVersionB2Key(pid, version.b2_key)) {
+        return res.status(409).json({ error: "invalid_video_storage_key" });
+      }
+      if (version.status !== "upload_pending") {
+        return res.json({
+          id: version.id,
+          versionNumber: Number(version.version_number),
+          status: version.status,
+        });
+      }
+      const object = await headRoleRoomB2Object(version.b2_key);
+      if (!object) return res.status(409).json({ error: "upload_not_complete" });
+      const expectedSize = Number(version.size_bytes);
+      const expectedType = String(version.content_type || "").split(";", 1)[0].trim().toLowerCase();
+      const actualType = String(object.contentType || "").split(";", 1)[0].trim().toLowerCase();
+      if (!Number.isSafeInteger(expectedSize)
+        || object.size !== expectedSize
+        || !isVideoContentType(expectedType)
+        || actualType !== expectedType) {
+        return res.status(409).json({ error: "upload_metadata_mismatch" });
+      }
+      // Backblaze-bøtter er versjonerte. Uten en VersionId kan den samme
+      // presigned PUT-en replays etter HEAD og lydløst bytte en godkjent cut.
+      if (!object.versionId) {
+        return res.status(409).json({ error: "upload_version_unavailable" });
+      }
+      // HEAD skjer utenfor transaksjonen fordi B2-kallet kan ta tid. Selve
+      // state-overgangen deler prosjektlåsen med alle andre versjonsskrivere.
+      const transition = await withProjectVideoVersionWrite(pid, async (client) => {
+        const locked = await client.query(
+          `SELECT id, version_number, status
+             FROM project_video_versions
+            WHERE id=$1 AND project_id=$2
+            FOR UPDATE`,
+          [version.id, pid],
+        );
+        const lockedVersion = locked.rows[0];
+        if (!lockedVersion) {
+          return { kind: "not_found" as const };
+        }
+        if (lockedVersion.status !== "upload_pending") {
+          return { kind: "existing" as const, row: lockedVersion };
+        }
+        await client.query(
+          `UPDATE project_video_versions
+              SET status='superseded'
+            WHERE project_id=$1 AND status='under_review' AND id<>$2`,
+          [pid, version.id],
+        );
+        const updated = await client.query(
+          `UPDATE project_video_versions
+              SET status='under_review', upload_expires_at=NULL, storage_version_id=$3
+            WHERE id=$1 AND project_id=$2 AND status='upload_pending'
+            RETURNING id, version_number, status`,
+          [version.id, pid, object.versionId],
+        );
+        if (!updated.rows.length) {
+          throw new VideoUploadStateChangedError();
+        }
+        return { kind: "promoted" as const, row: updated.rows[0] };
+      }).catch((error) => {
+        if (error instanceof VideoUploadStateChangedError) return { kind: "state_changed" as const };
+        throw error;
+      });
+      if (transition.kind === "not_found") {
+        return res.status(404).json({ error: "version_not_found" });
+      }
+      if (transition.kind === "state_changed") {
+        return res.status(409).json({ error: "upload_state_changed" });
+      }
+      if (transition.kind === "existing") {
+        return res.json({
+          id: transition.row.id,
+          versionNumber: Number(transition.row.version_number),
+          status: transition.row.status,
+        });
+      }
+      notifyVideoRoomUpdated(pid, uid, "version");
+      res.json({
+        id: transition.row.id,
+        versionNumber: Number(transition.row.version_number),
+        status: transition.row.status,
+      });
+    } catch (e) {
+      console.error("POST video confirm-upload", e);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  // Ny ekstern versjon (V1/V2/…) — file_url eller stream_uid. B2-nøkler er
+  // bare tillatt gjennom den serverbundne upload-flyten over.
   app.post("/api/projects/:projectId/video-versions", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
       await ensureVideoSchema();
       const pid = req.params.projectId;
       const b = req.body || {};
-      if (!b.b2Key && !b.fileUrl && !b.streamUid) return res.status(400).json({ error: "b2Key_or_fileUrl_or_streamUid_required" });
-      const n = await pool.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_video_versions WHERE project_id = $1`, [pid]);
-      const vn = n.rows[0].n;
-      // Eldre versjoner går fra under_review → superseded.
-      await pool.query(`UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND status='under_review'`, [pid]).catch(() => {});
+      if (Object.prototype.hasOwnProperty.call(b, "b2Key")) {
+        return res.status(400).json({
+          error: "b2_upload_route_required",
+          message: "B2-videoer må registreres via den serverbundne upload-flyten.",
+        });
+      }
+      if (!b.fileUrl && !b.streamUid) return res.status(400).json({ error: "fileUrl_or_streamUid_required" });
       const id = crypto.randomUUID();
-      await pool.query(
-        `INSERT INTO project_video_versions (id, project_id, version_label, version_number, file_url, b2_key, stream_uid, thumbnail_url, duration, chapters, status, uploaded_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'under_review',$11)`,
-        [id, pid, String(b.versionLabel || `V${vn}`).slice(0, 80), vn, b.fileUrl || null, b.b2Key || null, b.streamUid || null,
-         b.thumbnailUrl || null, b.duration != null ? Number(b.duration) : null,
-         b.chapters ? JSON.stringify(b.chapters) : null, uid],
-      );
+      const created = await withProjectVideoVersionWrite(pid, async (client) => {
+        const n = await client.query(
+          `SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_video_versions WHERE project_id = $1`,
+          [pid],
+        );
+        const versionNumber = Number(n.rows[0]?.n || 1);
+        // Eldre versjoner går fra under_review → superseded i samme transaksjon
+        // som den nye review-versjonen opprettes.
+        await client.query(
+          `UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND status='under_review'`,
+          [pid],
+        );
+        await client.query(
+          `INSERT INTO project_video_versions (id, project_id, version_label, version_number, file_url, b2_key, stream_uid, thumbnail_url, duration, chapters, status, uploaded_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'under_review',$11)`,
+          [id, pid, String(b.versionLabel || `V${versionNumber}`).slice(0, 80), versionNumber,
+           b.fileUrl || null, null, b.streamUid || null, b.thumbnailUrl || null,
+           b.duration != null ? Number(b.duration) : null,
+           b.chapters ? JSON.stringify(b.chapters) : null, uid],
+        );
+        return { versionNumber };
+      });
       notifyVideoRoomUpdated(pid, uid, "version");
-      res.status(201).json({ id, versionNumber: vn });
+      res.status(201).json({ id, versionNumber: created.versionNumber });
     } catch (e) { console.error("POST video-versions", e); res.status(500).json({ error: "failed" }); }
   });
 
   // Last opp videofil → B2 → opprett versjon. Server-side (samme beviste mønster
   // som /images): multer → archiveToRoleRoomB2. Cloudflare Stream = kun streaming,
   // kilden bor på B2. b2_key presignes til avspilling i GET /video-room.
-  app.post("/api/projects/:projectId/video-versions/upload", guardMw, videoUpload.single("file"), async (req, res) => {
+  app.post(
+    "/api/projects/:projectId/video-versions/upload",
+    guardMw,
+    videoUploadConcurrencyMw,
+    parseVideoUpload,
+    async (req, res) => {
     const uid = (req as any)._guardUid; if (!uid) return;
     try {
       await ensureVideoSchema();
@@ -3399,23 +4292,34 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const file = (req as any).file;
       if (!file) return res.status(400).json({ error: "file_required" });
       if (!String(file.mimetype || "").startsWith("video/")) return res.status(415).json({ error: "video_only" });
-      const key = `workspace/${pid}/video-versions/${crypto.randomUUID()}-${slugifyForKey(file.originalname || "video.mp4")}`;
+      const key = buildProjectVideoVersionB2Key(pid, file.originalname || "video.mp4");
+      if (!key) return res.status(400).json({ error: "invalid_project_id" });
       const stored = await archiveToRoleRoomB2(key, file.buffer, file.mimetype);
       if (!stored) return res.status(503).json({ error: "b2_not_configured" });
-      const n = await pool.query(`SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_video_versions WHERE project_id = $1`, [pid]);
-      const vn = n.rows[0].n;
-      await pool.query(`UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND status='under_review'`, [pid]).catch(() => {});
       const id = crypto.randomUUID();
-      const label = String(req.body?.versionLabel || `V${vn}`).slice(0, 80);
-      await pool.query(
-        `INSERT INTO project_video_versions (id, project_id, version_label, version_number, b2_key, status, uploaded_by)
-         VALUES ($1,$2,$3,$4,$5,'under_review',$6)`,
-        [id, pid, label, vn, key, uid],
-      );
+      const created = await withProjectVideoVersionWrite(pid, async (client) => {
+        const n = await client.query(
+          `SELECT COALESCE(MAX(version_number),0)+1 AS n FROM project_video_versions WHERE project_id = $1`,
+          [pid],
+        );
+        const versionNumber = Number(n.rows[0]?.n || 1);
+        await client.query(
+          `UPDATE project_video_versions SET status='superseded' WHERE project_id=$1 AND status='under_review'`,
+          [pid],
+        );
+        const label = String(req.body?.versionLabel || `V${versionNumber}`).slice(0, 80);
+        await client.query(
+          `INSERT INTO project_video_versions (id, project_id, version_label, version_number, b2_key, storage_version_id, status, uploaded_by)
+           VALUES ($1,$2,$3,$4,$5,$6,'under_review',$7)`,
+          [id, pid, label, versionNumber, key, stored.versionId || null, uid],
+        );
+        return { versionNumber };
+      });
       notifyVideoRoomUpdated(pid, uid, "version");
-      res.status(201).json({ id, versionNumber: vn });
+      res.status(201).json({ id, versionNumber: created.versionNumber });
     } catch (e) { console.error("POST video upload", e); res.status(500).json({ error: "failed" }); }
-  });
+    },
+  );
 
   // Tidsstemplet kommentar.
   app.post("/api/projects/:projectId/video-comments", async (req, res) => {
@@ -3424,18 +4328,38 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       await ensureVideoSchema();
       const pid = req.params.projectId; const b = req.body || {};
       if (!b.versionId || !b.comment) return res.status(400).json({ error: "versionId_and_comment_required" });
+      if (!isUuid(b.versionId) || (b.parentId != null && !isUuid(b.parentId))) {
+        return res.status(400).json({ error: "invalid_comment_reference" });
+      }
       const id = crypto.randomUUID();
-      await pool.query(
+      const inserted = await pool.query(
         `INSERT INTO project_video_comments (id, version_id, project_id, timecode_sec, end_timecode_sec, comment, author_name, author_kind, category, is_decision, parent_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+         SELECT $1, v.id, v.project_id, $4, $5, $6, $7, $8, $9, $10, $11
+           FROM project_video_versions v
+          WHERE v.id = $2
+            AND v.project_id = $3
+            AND (v.status IS NULL OR v.status <> 'upload_pending')
+            AND (
+              $11::uuid IS NULL
+              OR EXISTS (
+                SELECT 1
+                  FROM project_video_comments parent
+                 WHERE parent.id = $11
+                   AND parent.project_id = v.project_id
+                   AND parent.version_id = v.id
+              )
+            )
+         RETURNING *`,
         [id, b.versionId, pid, Number(b.timecodeSec || 0), b.endTimecodeSec != null ? Number(b.endTimecodeSec) : null,
          String(b.comment).slice(0, 4000), String(b.authorName || "").slice(0, 200) || null,
          String(b.authorKind || "creator").slice(0, 20), b.category ? String(b.category).slice(0, 40) : null,
          !!b.isDecision, b.parentId || null],
       );
-      const row = await pool.query(`SELECT * FROM project_video_comments WHERE id = $1`, [id]);
+      if (!inserted.rows.length) {
+        return res.status(404).json({ error: "video_version_or_parent_not_found" });
+      }
       notifyVideoRoomUpdated(pid, uid, "comment");
-      res.status(201).json(mapVideoComment(row.rows[0]));
+      res.status(201).json(mapVideoComment(inserted.rows[0]));
     } catch (e) { console.error("POST video-comments", e); res.status(500).json({ error: "failed" }); }
   });
 
@@ -3460,7 +4384,13 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const uid = await guard(req, res); if (!uid) return;
     try {
       const pid = req.params.projectId;
-      const upd = await pool.query(`UPDATE project_video_versions SET status='approved' WHERE id=$1 AND project_id=$2 RETURNING id`, [req.params.vid, pid]).catch(() => ({ rows: [] }));
+      const upd = await pool.query(
+        `UPDATE project_video_versions
+            SET status='approved'
+          WHERE id=$1 AND project_id=$2 AND status <> 'upload_pending'
+          RETURNING id`,
+        [req.params.vid, pid],
+      ).catch(() => ({ rows: [] }));
       if (!upd.rows.length) return res.status(404).json({ error: "not_found" });
       notifyVideoRoomUpdated(pid, uid, "approval");
       res.json({ ok: true });

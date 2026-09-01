@@ -8,9 +8,21 @@
   "fps": 25,
   "vo": { "provider": null, "note": "Ingen VO. All dialog fra walkie/utenfor bildet — ingen synlig munn som snakker (unngår leppesynk)." },
   "camera_language": "steadicam som følger henne bakfra/skrått bak, ALLTID i bevegelse samme retning; skjøter skjules med whip-pans og wipes (person/van/vegg fyller bildet)",
+  "render_policy": {
+    "default": "native-stamp-animatic-and-real-ui",
+    "higgsfield_keyshots": ["b08_silence"],
+    "higgsfield_generated_seconds": 5,
+    "higgsfield_editorial_hold_seconds": 1,
+    "seedance_keyshots": ["b01_open", "b07_pressure", "b10_flow", "b14_roll"],
+    "editorial_parallax_shots": ["b02_runner", "b03_rigg", "b04_regi", "b05_port", "b06_actor", "b09_first_order", "b11_actor2", "b12_director2", "b13_standby", "b15_action"],
+    "maximum_higgsfield_jobs": 1,
+    "estimated_provider_cost_usd": 2.9,
+    "full_ai_video_reference_cost_usd": 9.0,
+    "note": "Kostnadsestimatene følger backend-katalogens $0.10/s. Ekte pris valideres mot provider før bestilling. UI genereres aldri av AI."
+  },
   "out": "~/Desktop/ROLEROOM-ONESHOT.mp4",
   "shots": [
-    { "id": "b01_open", "act": 1, "beat": "åpning — lyd før bilde", "t": "0-6",
+    { "id": "b01_open", "act": 1, "beat": "åpning — lyd før bilde", "t": "0-6", "dur": 6.0,
       "sound": "overlappende walkie-stemmer + pling FØR bildet fader opp; generator-brumm under",
       "motion": "steadicam following her from behind, already mid-stride, brisk walking pace through basecamp, slight handheld sway, cold dawn",
       "prompt": "steadicam shot from directly behind a female producer in a practical field jacket with a headset around her neck, walking fast through a film production basecamp at cold blue dawn, crew trucks and flight cases lining the path, crew silhouettes crossing frame, motion energy, cinematic one-take feel" },

@@ -1,6 +1,18 @@
 import pg from 'pg';
+
+function requireEnv(name) {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`Missing required environment variable: ${name}`);
+  return value;
+}
+
+const DATABASE_URL = requireEnv("DATABASE_URL");
+const PHOTOGRAPHER_ID = requireEnv("POWEROFFICE_VERIFY_PHOTOGRAPHER_ID");
+const APPKEY = requireEnv("POWEROFFICE_APPLICATION_KEY");
+const SUBKEY = requireEnv("POWEROFFICE_SUBSCRIPTION_KEY");
+
 const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: DATABASE_URL,
   ssl: { rejectUnauthorized: false },
 });
 
@@ -9,21 +21,18 @@ const r = await pool.query(`
   SELECT photographer_id, provider, status, client_key, label,
          last_verified_at, last_used_at
   FROM photographer_integrations
-  WHERE photographer_id = '53391080-8437-471e-800b-8b0d01e8b465' AND provider = 'poweroffice'
-`);
+  WHERE photographer_id = $1 AND provider = 'poweroffice'
+`, [PHOTOGRAPHER_ID]);
 const row = r.rows[0];
 if (!row) { console.error('Ingen rad funnet'); process.exit(1); }
 console.log('=== DB-rad i photographer_integrations ===');
 console.log(`  photographer_id: ${row.photographer_id.slice(0,8)}…`);
 console.log(`  provider:        ${row.provider}`);
 console.log(`  status:          ${row.status}`);
-console.log(`  client_key:      ${row.client_key.slice(0,12)}…${row.client_key.slice(-4)} (len=${row.client_key.length})`);
+console.log(`  client_key:      present (len=${row.client_key.length})`);
 console.log(`  last_verified:   ${row.last_verified_at}`);
-console.log(`  matches input:   ${row.client_key === '452a2ece-ad21-4960-8a7b-a069791bb624' ? 'YES ✓' : 'NO — mismatch!'}`);
 
 // 2. Gjør en LIVE token-exchange med den lagrede ClientKey
-const APPKEY = 'ba291105-ab98-4335-af37-c943cbdf9bc7';
-const SUBKEY = '7842d73358244eaa8cf1bd477a8cb009';
 const basic = Buffer.from(`${APPKEY}:${row.client_key}`).toString('base64');
 
 const tokenRes = await fetch('https://goapi.poweroffice.net/Demo/OAuth/Token', {
@@ -39,7 +48,7 @@ const tokenBody = await tokenRes.json();
 console.log('\n=== Live token-exchange mot PO Demo ===');
 console.log(`  HTTP: ${tokenRes.status}`);
 if (tokenRes.status === 200) {
-  console.log(`  access_token: ${(tokenBody.access_token || '').slice(0, 20)}… (len=${(tokenBody.access_token || '').length})`);
+  console.log(`  access_token: received (len=${(tokenBody.access_token || '').length})`);
   console.log(`  expires_in:   ${tokenBody.expires_in}s`);
 
   // 3. Gjør en faktisk API-spørring mot PO med tokenet

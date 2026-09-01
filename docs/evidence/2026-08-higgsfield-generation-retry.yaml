@@ -1,0 +1,52 @@
+claim: >
+  Higgsfield generation POST requests do not currently support provider-side
+  idempotency keys. A client must not automatically repeat a generation after
+  an ambiguous timeout or transport failure because the first request may
+  already have created a billable job.
+source_type: official_docs
+source: "https://docs.higgsfield.ai/docs/concepts/errors"
+authority_tier: 1
+vendor: Higgsfield
+product: Generation API
+version_scope: "Live retry documentation, accessed 2026-08-29"
+document_revision: "Unversioned live page; no publication date stated"
+section_or_symbol: "Safe retry policy"
+evidence_summary: >
+  The official retry guide states that generation POST endpoints have no
+  idempotency key and that ambiguous timeouts must not be retried
+  automatically. Supporting official lifecycle, polling, webhook, and
+  retention pages were also verified on 2026-08-29:
+  https://docs.higgsfield.ai/docs/concepts/requests,
+  https://docs.higgsfield.ai/docs/concepts/polling,
+  https://docs.higgsfield.ai/docs/how-to/webhooks, and
+  https://docs.higgsfield.ai/docs/concepts/billing-and-retention.
+interpretation: >
+  submission_unknown is a conservative Role Room architecture state, not a
+  vendor-named lifecycle status. A local idempotency key can deduplicate Role
+  Room requests but cannot guarantee exactly-once provider submission. Polling
+  is valid only after a known request_id; a terminal webhook or operator
+  reconciliation is required when acceptance is ambiguous. The live error
+  guide recommends retrying explicit 500/503 responses, but Role Room does not
+  automatically repeat generation POSTs; this intentionally conservative
+  product policy avoids duplicate paid work when acceptance cannot be proven.
+  Retry behavior for 408 and 429 is not stated in the verified vendor docs.
+  Higgsfield also documents no webhook signature or secret, so callbacks are
+  treated only as wake signals and terminal state is confirmed by an
+  authenticated status GET.
+project_impact: >
+  backend/server/generative-media.ts now uses only the documented snake_case
+  response fields, validates UUID/status/lifecycle URLs, never sends an
+  Idempotency-Key, rejects redirects, and bounds estimate/submit/poll timeouts.
+  storyboard-ai-video-service.ts persists a durable prepared job before
+  provider I/O, gives an in-flight submit a two-minute recovery grace, parks
+  ambiguous acceptance without refund or resubmit, stores provider
+  correlation/lifecycle state, and verifies callback claims by authenticated
+  status GET. The callback ingress is mounted before the global parser with a
+  256 KB limit, high-entropy job token, bounded rate limit, and catch-all 404.
+  The legacy workspace route blocks new Higgsfield submissions and now scopes
+  every AI asset lookup to its project. Migration 0478, the reconciler, and the
+  durability worker provide poll/archive leases, verified provider-event
+  promotion, bounded media downloads, B2 archive retry, and an idempotent
+  billing/refund outbox. Stripe meter retries stop inside its documented
+  identifier-dedupe window and become delivery_unknown for reconciliation.
+confidence: verified

@@ -55,7 +55,7 @@ Disse nøklene var i klartekst i chat-konteksten under env-var-recoveryn:
 
 | Nøkkel | Hvor rotere | Hvor oppdatere |
 |--------|-------------|----------------|
-| `RENDER_API_KEY` (`rnd_xF2crLAXkxHRIxCkHLT1C3eviReK`) | Render Dashboard → Account Settings → API Keys → Regenerate | GH secret `RENDER_API_KEY` |
+| `RENDER_API_KEY` (`[REDACTED - revoke and rotate before release]`) | Render Dashboard → Account Settings → API Keys → Regenerate | GH secret `RENDER_API_KEY` |
 | `STRIPE_SECRET_KEY` (live) | Stripe Dashboard → Developers → API Keys → Roll | Render env via per-key PUT (`scripts/render-envs/restore.py` har ingen rotering — bruk `curl -X PUT .../env-vars/STRIPE_SECRET_KEY`) |
 | `ANTHROPIC_API_KEY` | console.anthropic.com → API Keys → Rotate | Render env per-key PUT |
 | `LEADGRID_INTELLIGENCE_CRON_TOKEN` | `openssl rand -hex 32` | Render env + GH secret (samme verdi i begge) |
@@ -66,7 +66,7 @@ Disse nøklene var i klartekst i chat-konteksten under env-var-recoveryn:
 ### 3. 🟡 Lagre backup-krypteringsnøkkel i 1Password
 
 ```
-RENDER_ENV_BACKUP_KEY = 48a05769008e3420f9661fd9e31fe5670e8d111f09341d9f238ec83e1141397b
+RENDER_ENV_BACKUP_KEY = [REDACTED - rotate and re-encrypt backups]
 ```
 
 Vault: Creatorhub-secrets. Hvis denne nøkkelen blir borte, blir alle B2-backups uleselige.

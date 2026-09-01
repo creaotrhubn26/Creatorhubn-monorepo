@@ -14,13 +14,17 @@ import CloudUpload from '@mui/icons-material/CloudUpload';
 import CheckCircle from '@mui/icons-material/CheckCircle';
 import EditNote from '@mui/icons-material/EditNote';
 import AutoAwesome from '@mui/icons-material/AutoAwesome';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, getStoredAuthToken } from '@/lib/queryClient';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
 import { WsCard, WsTag, WsModal, wsAlert, wsConfirm } from '../ui';
 import AiBuyCreditsModal from '../AiBuyCreditsModal';
 import CinematicVideoPlayer from '@/components/gallery/CinematicVideoPlayer';
 import { useWorkspaceUpdate } from '../WorkspaceContext';
+import {
+  applyLegacyVideoUploadAuth,
+  uploadVideoVersionWithCompatibility,
+} from './videoRoomUploadCompatibility';
 
 const PHASES = ['Brief', 'V1', 'Klient-review', 'Revisjoner', 'Levert'];
 
@@ -115,24 +119,69 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     try { await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/video-versions/${current.id}/approve`, { method: 'POST', body: {} }); load(); }
     catch (e: any) { wsAlert(e?.message || 'Kunne ikke godkjenne'); }
   };
-  // Last opp videofil → B2 (server-side multer) m/ fremdrift via XHR.
+  // Last opp videofil direkte til en serverbundet, presignet B2-nøkkel. Backend
+  // registrerer versjonen før PUT og verifiserer objektet før publisering.
   const uploadVersion = async () => {
     if (!vFile) return;
     setBusy(true); setUploadPct(0);
     try {
-      const fd = new FormData();
-      fd.append('file', vFile);
-      if (vLabel.trim()) fd.append('versionLabel', vLabel.trim());
-      await new Promise((resolve, reject) => {
+      const contentType = String(vFile.type || 'video/mp4');
+      const uploadViaXhr = (
+        method: 'POST' | 'PUT',
+        url: string,
+        body: FormData | File,
+        options: { authenticated?: boolean; contentType?: string } = {},
+      ) => new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open('POST', `/api/projects/${encodeURIComponent(projectId)}/video-versions/upload`);
-        xhr.withCredentials = true;
-        const tok = localStorage.getItem('creatorhub_auth_token') || localStorage.getItem('token');
-        if (tok) xhr.setRequestHeader('Authorization', `Bearer ${tok}`);
+        xhr.open(method, url);
+        if (options.authenticated) {
+          applyLegacyVideoUploadAuth(xhr, getStoredAuthToken());
+        }
+        if (options.contentType) xhr.setRequestHeader('Content-Type', options.contentType);
         xhr.upload.onprogress = (e) => { if (e.lengthComputable) setUploadPct(Math.round((e.loaded / e.total) * 100)); };
-        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve(null) : reject(new Error(`Opplasting feilet (${xhr.status})`));
+        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve() : reject(new Error(`Opplasting feilet (${xhr.status})`));
         xhr.onerror = () => reject(new Error('Nettverksfeil under opplasting'));
-        xhr.send(fd);
+        xhr.send(body);
+      });
+
+      await uploadVideoVersionWithCompatibility({
+        prepareDirectUpload: async () => {
+          const signed: any = await apiRequest(
+            `/api/projects/${encodeURIComponent(projectId)}/video-versions/upload-url`,
+            {
+              method: 'POST',
+              body: {
+                fileName: vFile.name || 'video.mp4',
+                contentType,
+                sizeBytes: vFile.size,
+                versionLabel: vLabel.trim() || undefined,
+              },
+            },
+          );
+          if (!signed?.uploadUrl || !signed?.id) throw new Error('Kunne ikke klargjøre opplasting');
+          return signed;
+        },
+        uploadDirect: ({ uploadUrl }) => uploadViaXhr(
+          'PUT',
+          uploadUrl,
+          vFile,
+          { contentType },
+        ),
+        confirmDirectUpload: ({ id }) => apiRequest(
+          `/api/projects/${encodeURIComponent(projectId)}/video-versions/${encodeURIComponent(id)}/confirm-upload`,
+          { method: 'POST', body: {} },
+        ).then(() => undefined),
+        uploadLegacy: () => {
+          const form = new FormData();
+          form.append('file', vFile);
+          if (vLabel.trim()) form.append('versionLabel', vLabel.trim());
+          return uploadViaXhr(
+            'POST',
+            `/api/projects/${encodeURIComponent(projectId)}/video-versions/upload`,
+            form,
+            { authenticated: true },
+          );
+        },
       });
       setAddOpen(false); setVFile(null); setVLabel(''); setUploadPct(0); load();
     } catch (e: any) { wsAlert(e?.message || 'Kunne ikke laste opp'); }

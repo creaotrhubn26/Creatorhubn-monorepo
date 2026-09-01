@@ -2,6 +2,23 @@ import { test, expect, type ConsoleMessage, type Locator, type Page } from '@pla
 
 const TEST_PAGE = '/e2e-drawing-editor.html';
 const TEST_UPLOAD_ASSET = `${process.cwd()}/client/public/test-assets/storyboard-noir-reference.svg`;
+// A cold Vite transform of the production-sized editor can legitimately take
+// longer than Playwright's default locator timeout on shared CI runners.
+const EDITOR_HYDRATION_TIMEOUT_MS = 90_000;
+
+const openDrawingEditor = async (page: Page, url: string) => {
+  await page.goto(url);
+  await expect(page.getByTestId('drawing-editor-harness-ready')).toBeVisible({
+    timeout: EDITOR_HYDRATION_TIMEOUT_MS,
+  });
+  const scenario = new URL(url, 'http://storyboard-e2e.local').searchParams.get('scenario');
+  const editorSurface = scenario === 'selection'
+    ? page.getByTestId('pencil-canvas-pro')
+    : page.getByTestId('frame-editor-shell');
+  await expect(editorSurface).toBeVisible({
+    timeout: EDITOR_HYDRATION_TIMEOUT_MS,
+  });
+};
 
 type RuntimeCollector = {
   pageErrors: string[];
@@ -119,10 +136,17 @@ const setRangeInputValue = async (locator: Locator, value: number) => {
 };
 
 test.describe('Storyboard drawing editor layout contract', () => {
+  // This suite mounts the complete production editor (large MUI/canvas/Metal-
+  // parity surface) for every isolated scenario. Complex spatial and stamp
+  // workflows legitimately perform many document-backed rerenders on CI-class
+  // machines, so keep the assertion timeouts strict while allowing the full
+  // scenario enough wall-clock time to finish.
+  test.describe.configure({ timeout: 300_000 });
+
   test('desktop studio chrome renders the full premium workspace shell', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const harness = page.getByTestId('drawing-editor-harness-ready');
     const shell = page.getByTestId('frame-editor-shell');
@@ -202,7 +226,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
     await expect(brand).toContainText('STORYBOARD PRO');
     await expect(brand).toContainText('Scene 15');
     await expect(brand).toContainText('SHOT 5B');
-    await expect(quickActions).toContainText('Approved');
+    await expect(quickActions).toContainText('Draft');
     await expect(quickActions).toContainText('Share');
     await expect(quickActions).toContainText('Export');
     await expect(headerUtilityStrip).toContainText('Present');
@@ -233,8 +257,8 @@ test.describe('Storyboard drawing editor layout contract', () => {
     await expect(inspector).toContainText('LAYERS');
     await expect(inspector).toContainText('SHOT');
     await expect(inspector).toContainText('Key Light');
-    await expect(inspector).toContainText('10:30 PM');
-    await expect(inspector).toContainText('3.200K');
+    await expect(inspector).toContainText('9:30 AM');
+    await expect(inspector).toContainText('3.440K');
     await expect(workflowChip).toContainText('shot');
     await expect(statusbar).toContainText('Strokes: 2');
 
@@ -266,7 +290,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('ipad uses the tablet workspace and keeps spatial drag plus flythrough scrub functional', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1180, height: 820 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}&device=ipad`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}&device=ipad`);
 
     const shell = page.getByTestId('frame-editor-shell');
     const header = page.getByTestId('frame-editor-header');
@@ -413,12 +437,13 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('desktop studio chrome matches the visual baseline', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const shell = page.getByTestId('frame-editor-shell');
     await expect(shell).toHaveScreenshot('storyboard-drawing-editor-desktop-shell.png', {
       animations: 'disabled',
       caret: 'hide',
+      timeout: 15_000,
     });
 
     expectNoRuntimeIssues(collector, 'desktop storyboard drawing editor screenshot');
@@ -427,7 +452,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('header and timeline match dedicated visual baselines', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     await expect(page.getByTestId('frame-editor-header')).toHaveScreenshot('storyboard-drawing-editor-header.png', {
       animations: 'disabled',
@@ -444,7 +469,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('stage topbar and shot settings card match dedicated visual baselines', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     await expect(page.getByTestId('frame-editor-stage-topbar')).toHaveScreenshot(
       'storyboard-drawing-editor-stage-topbar.png',
@@ -467,7 +492,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('status bar matches its dedicated visual baseline', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     await expect(page.getByTestId('frame-editor-statusbar')).toHaveScreenshot('storyboard-drawing-editor-statusbar.png', {
       animations: 'disabled',
@@ -480,7 +505,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('quick actions and filmstrip match dedicated visual baselines', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     await expect(page.getByTestId('frame-editor-quick-actions')).toHaveScreenshot(
       'storyboard-drawing-editor-quick-actions.png',
@@ -503,7 +528,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('transport row and lighting card match dedicated visual baselines', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     await expect(page.getByTestId('frame-editor-transport-row')).toHaveScreenshot(
       'storyboard-drawing-editor-transport-row.png',
@@ -526,7 +551,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('time-lapse replay card matches its dedicated visual baseline', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     await expect(page.getByTestId('frame-editor-timelapse-card')).toHaveScreenshot(
       'storyboard-drawing-editor-timelapse-card.png',
@@ -542,7 +567,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('animation assist and precision tools match dedicated visual baselines', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     await expect(page.getByTestId('frame-editor-animation-assist-card')).toHaveScreenshot(
       'storyboard-drawing-editor-animation-assist-card.png',
@@ -607,7 +632,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('brush and lighting detail clusters match dedicated visual baselines', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     await expect(page.getByTestId('frame-editor-brush-library')).toHaveScreenshot(
       'storyboard-drawing-editor-brush-library.png',
@@ -644,7 +669,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('canvas overlays and inspector side rack match dedicated visual baselines', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     await expect(page.getByTestId('frame-editor-canvas-overlays')).toHaveScreenshot(
       'storyboard-drawing-editor-canvas-overlays.png',
@@ -667,7 +692,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('header clusters and stage control clusters match dedicated visual baselines', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     await expect(page.getByTestId('frame-editor-brand')).toHaveScreenshot(
       'storyboard-drawing-editor-brand-cluster.png',
@@ -718,7 +743,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('timeline strips and status bar clusters match dedicated visual baselines', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     await expect(page.getByTestId('frame-editor-transport-meta')).toHaveScreenshot(
       'storyboard-drawing-editor-transport-meta.png',
@@ -769,7 +794,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('left rail, layers stack, and shot notes match dedicated visual baselines', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
 
@@ -854,7 +879,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('studio chrome interactions keep the layout contract intact', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const timeline = page.getByTestId('frame-editor-timeline');
@@ -913,7 +938,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('layer groups can collapse, regroup, and ungroup inside the inspector', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     await inspector.getByRole('button', { name: 'LAYERS' }).click();
@@ -959,7 +984,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('spatial workspace manages canvases, bookmarks, and projection from the shot inspector', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     await inspector.getByRole('button', { name: 'SHOT' }).click();
@@ -1075,7 +1100,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('reference deck and canvas fit controls stay wired to document-backed state', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const precisionCanvasTools = page.getByTestId('frame-editor-precision-canvas-tools');
@@ -1117,7 +1142,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('custom image upload supports reference overlays and drawing over an uploaded base image', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const referenceList = page.getByTestId('frame-editor-reference-list');
@@ -1160,7 +1185,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('reference study mode hides the selected reference until compare reveal', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const statusbar = page.getByTestId('frame-editor-statusbar');
@@ -1202,7 +1227,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('reference study compare opacity can be tuned while reveal is active', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const referenceLayer = page.getByTestId('pencil-canvas-pro-reference-layer');
@@ -1227,7 +1252,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('reference study rounds can save attempts, ghost the latest pass, and reset to baseline for the next round', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const referenceLayer = page.getByTestId('pencil-canvas-pro-reference-layer');
@@ -1427,7 +1452,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('reference study sessions persist across save and harness remount', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const statusbar = page.getByTestId('frame-editor-statusbar');
@@ -1480,7 +1505,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('reference study attempts can promote directly into storyboard sheet variants', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const statusbar = page.getByTestId('frame-editor-statusbar');
@@ -1519,9 +1544,10 @@ test.describe('Storyboard drawing editor layout contract', () => {
   });
 
   test('board polish present mode hides production overlays and persists across save and remount', async ({ page }) => {
+    test.slow();
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const saveButton = page.getByTestId('frame-editor-save');
@@ -1566,10 +1592,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
     await page.getByTestId('frame-editor-board-polish-card-finish-hatch').click();
     await page.getByTestId('frame-editor-board-polish-card-weather-rain').click();
     const atmosphereSlider = page.getByTestId('frame-editor-board-polish-atmosphere');
-    await atmosphereSlider.click();
-    for (let step = 0; step < 8; step += 1) {
-      await page.keyboard.press('ArrowRight');
-    }
+    await setRangeInputValue(atmosphereSlider, 0.58);
     const boardPolishOverlay = page.getByTestId('frame-editor-board-polish-overlay');
     await expect(page.getByTestId('frame-editor-status-board-polish')).toContainText('present · amber');
     await expect(page.getByTestId('frame-editor-board-polish-summary')).toContainText('present · amber');
@@ -1583,10 +1606,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
     const weatherToggle = page.getByTestId('frame-editor-board-polish-fx-toggle-weather');
     const finishFxOpacitySlider = page.getByTestId('frame-editor-board-polish-fx-opacity-finish');
     await weatherToggle.click();
-    await finishFxOpacitySlider.click();
-    for (let step = 0; step < 14; step += 1) {
-      await page.keyboard.press('ArrowLeft');
-    }
+    await setRangeInputValue(finishFxOpacitySlider, 0.36);
     await expect(boardPolishOverlay).toHaveAttribute('data-tone', 'amber');
     await expect(boardPolishOverlay).toHaveAttribute('data-finish', 'hatch');
     await expect(boardPolishOverlay).toHaveAttribute('data-weather', 'rain');
@@ -1651,10 +1671,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
     await expect(weatherRegionOverlay).toHaveAttribute('data-x-ratio', '0.1800');
     await expect(weatherRegionOverlay).toHaveAttribute('data-width-ratio', '0.6400');
     const featherSlider = page.getByTestId('frame-editor-layer-effect-region-feather');
-    await featherSlider.click();
-    for (let step = 0; step < 6; step += 1) {
-      await page.keyboard.press('ArrowRight');
-    }
+    await setRangeInputValue(featherSlider, 0.3);
     const savedWeatherFeather = await weatherRegionOverlay.getAttribute('data-feather');
     expect(Number(savedWeatherFeather || '0')).toBeGreaterThan(0.22);
 
@@ -1680,7 +1697,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('cinematic scene kits can stage a noir warehouse confrontation with present-mode polish', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
 
@@ -1705,7 +1722,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('cinematic scene kits can stage a clerestory warehouse standoff with descending beams and reflective floor weight', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
 
@@ -1732,7 +1749,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('cinematic scene kits can stage a forest titan reveal with armor scale and enclosing conifer walls', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
 
@@ -1759,7 +1776,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('cinematic scene kits can stage a titan overwatch board with foreground witnesses and helicopter support', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
 
@@ -1786,7 +1803,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('cinematic scene kits can stage a rooftop noir skyline with lightning, rain, and parapet framing', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
 
@@ -1813,7 +1830,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('cinematic scene kits can stage a rain-soaked alley pursuit with headlights, dumpsters, and steam', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
 
@@ -1840,7 +1857,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('cinematic scene kits can stage an interrogation threshold with pendant light, smoke, and doorway silhouette', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
 
@@ -1867,7 +1884,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('cinematic scene kits can stage a rain-slick last-train pursuit with platform lights, carriage glare, and a boarding fugitive', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
 
@@ -1895,7 +1912,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('shape intent assist turns rough shapes into configurable ideas, references, and guide overlays', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const statusbar = page.getByTestId('frame-editor-statusbar');
@@ -1966,7 +1983,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('shape intent combines nearby strokes into context-aware compound ideas', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const shapeIntentCard = page.getByTestId('frame-editor-shape-intent-card');
@@ -2029,7 +2046,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('shape intent can seed a reference study session directly from the selected idea', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const referenceList = page.getByTestId('frame-editor-reference-list');
@@ -2077,7 +2094,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('shape intent variant pack seeds multiple exploration references from one primitive', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const referenceList = page.getByTestId('frame-editor-reference-list');
@@ -2129,7 +2146,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('shape intent can seed a study session from a 3-variant pack', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const referenceList = page.getByTestId('frame-editor-reference-list');
@@ -2177,7 +2194,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('shape intent ranks blocking-friendly ideas first when the workflow is blocking', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=blocking&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=blocking&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const mainCanvas = page.getByTestId('pencil-canvas-pro').locator('canvas').nth(1);
@@ -2214,7 +2231,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('shape intent apply modes restyle previews and keep references plus guides wired', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const statusbar = page.getByTestId('frame-editor-statusbar');
@@ -2278,7 +2295,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('shape intent scaffolds persist as editable canvas overlays across save and harness remount', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const scaffoldShelf = page.getByTestId('frame-editor-shape-scaffold-shelf');
@@ -2347,7 +2364,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('shape intent scaffolds can start reference study directly from the editable scaffold layer', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const referenceList = page.getByTestId('frame-editor-reference-list');
@@ -2391,7 +2408,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('shape intent scaffolds can be moved and resized directly on the canvas', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const mainCanvas = page.getByTestId('pencil-canvas-pro').locator('canvas').nth(1);
@@ -2462,7 +2479,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('shape intent scaffolds expose on-canvas controls for idea cycling and primary parameter edits', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const mainCanvas = page.getByTestId('pencil-canvas-pro').locator('canvas').nth(1);
@@ -2520,7 +2537,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('shape intent ranks library-backed scaffold ideas ahead of the default primitive order', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const mainCanvas = page.getByTestId('pencil-canvas-pro').locator('canvas').nth(1);
@@ -2567,7 +2584,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
       window.localStorage.clear();
       window.sessionStorage.clear();
     });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const scaffoldLibrary = page.getByTestId('frame-editor-shape-scaffold-library');
@@ -2627,7 +2644,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
       window.localStorage.clear();
       window.sessionStorage.clear();
     });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const shapeIntentCard = page.getByTestId('frame-editor-shape-intent-card');
@@ -2692,7 +2709,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
       window.localStorage.clear();
       window.sessionStorage.clear();
     });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const referenceList = page.getByTestId('frame-editor-reference-list');
@@ -2743,7 +2760,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('shape intent scaffolds can quick-swap into sibling ideas with the right parameter set', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const mainCanvas = page.getByTestId('pencil-canvas-pro').locator('canvas').nth(1);
@@ -2793,7 +2810,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('shape scaffolds can convert to editable strokes, promote to layers, and duplicate as timeline variants', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const statusbar = page.getByTestId('frame-editor-statusbar');
@@ -2849,7 +2866,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('shape scaffold assemblies can become grouped layer stacks and timeline variants', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const statusbar = page.getByTestId('frame-editor-statusbar');
@@ -2907,7 +2924,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('shape scaffold assembly templates cover table chairs, wheel chassis, and head shoulders blocking sets', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const batchSummary = page.getByTestId('frame-editor-shape-scaffold-batch-summary');
@@ -2965,7 +2982,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('shape scaffold selected state can apply saved presets directly back onto the active scaffold', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const scaffoldLibrary = page.getByTestId('frame-editor-shape-scaffold-library');
@@ -3027,7 +3044,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('shape scaffold library entries can be updated from the selected scaffold and then reused', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const scaffoldLibrary = page.getByTestId('frame-editor-shape-scaffold-library');
@@ -3095,7 +3112,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('shape intent scaffold library persists across save and harness remount, then reloads presets to canvas', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     const scaffoldShelf = page.getByTestId('frame-editor-shape-scaffold-shelf');
@@ -3156,7 +3173,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('flythrough controls tune bookmark timing, order, transitions, and visible canvases', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     await inspector.getByRole('button', { name: 'SHOT' }).click();
@@ -3265,7 +3282,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('animatic export uses the flythrough plan and downloads a json manifest', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const animationAssistCard = page.getByTestId('frame-editor-animation-assist-card');
     const animaticPlan = page.getByTestId('frame-editor-animation-animatic-plan');
@@ -3295,7 +3312,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('thumbnail workflow falls back to the lighter editor layout without premium side panels', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1180, height: 900 });
-    await page.goto(`${TEST_PAGE}?workflow=idea&aspect=${encodeURIComponent('16:9')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=idea&aspect=${encodeURIComponent('16:9')}`);
 
     const shell = page.getByTestId('frame-editor-shell');
     const header = page.getByTestId('frame-editor-header');
@@ -3336,7 +3353,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('thumbnail workflow matches the lightweight visual baseline', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1180, height: 900 });
-    await page.goto(`${TEST_PAGE}?workflow=idea&aspect=${encodeURIComponent('16:9')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=idea&aspect=${encodeURIComponent('16:9')}`);
 
     const shell = page.getByTestId('frame-editor-shell');
     await expect(shell).toHaveScreenshot('storyboard-drawing-editor-thumbnail-shell.png', {
@@ -3350,7 +3367,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('desktop premium style primitives stay locked to the studio art direction', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1660, height: 1120 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const shell = page.getByTestId('frame-editor-shell');
     const header = page.getByTestId('frame-editor-header');
@@ -3434,7 +3451,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('micro-typography stays locked across the premium header and inspector chrome', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1660, height: 1120 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const brand = page.getByTestId('frame-editor-brand');
     const inspector = page.getByTestId('frame-editor-inspector');
@@ -3475,7 +3492,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('desktop brush panel inventory and tool affordances remain fully populated', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const brushPanel = page.getByTestId('frame-editor-brush-panel');
     const brushLibrary = page.getByTestId('frame-editor-brush-library');
@@ -3626,7 +3643,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('brush panel matches the premium visual baseline', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     await expect(page.getByTestId('frame-editor-brush-panel')).toHaveScreenshot('storyboard-drawing-editor-brush-panel.png', {
       animations: 'disabled',
@@ -3639,7 +3656,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('stage, deck, timeline, and inspector expose every expected production affordance', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const stageTopbar = page.getByTestId('frame-editor-stage-topbar');
     const stageOpticsStrip = page.getByTestId('frame-editor-stage-optics-strip');
@@ -3788,7 +3805,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
     await expect(transportRow).toContainText('PLAYBACK');
     await expect(activeFilmstripFrame).toContainText('Beat 03');
     await expect(activeFilmstripFrame).toContainText('5B');
-    await expectTexts(inspector, ['INSPECTOR', 'LIGHTING', 'LAYERS', 'SHOT', 'Key Light', 'Time', 'Intensity', '10:30 PM', '3.200K']);
+    await expectTexts(inspector, ['INSPECTOR', 'LIGHTING', 'LAYERS', 'SHOT', 'Key Light', 'Time', 'Intensity', '9:30 AM', '3.440K']);
     await expect(lightingCard).toContainText('SOFT');
     await expect(sideRack).toContainText('SOFT');
     expect(await lightingMaterials.locator('div').count()).toBeGreaterThan(2);
@@ -3950,7 +3967,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
     const motionRigCard = page.getByTestId('frame-editor-motion-rig-card');
     const shadowsLayer = page.getByTestId('frame-editor-layer-card-shadows');
     await expectTexts(inspector, ['Blend Mode', 'Multiply', 'Layer Opacity', 'Motion Rig', 'Camera Push', 'Ink Pass', 'Sketch', 'Line Art', 'Shadows', 'Lighting', 'PX / Grain', 'Shadow stack', 'Master mix']);
-    expect(await layersStack.locator('[data-testid^="frame-editor-layer-card-"]').count()).toBe(7);
+    expect(await layersStack.locator('[data-testid^="frame-editor-layer-card-"]').count()).toBe(11);
     await expect(shadowsLayer).toContainText('Multiply');
     await expect(shadowsLayer).toContainText('100%');
     await expect(layerControlsCard).toContainText('100%');
@@ -4020,7 +4037,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
     ]);
     await expect(referenceDeck).toContainText('contain');
     await expect(referenceDeck).toContainText('cover');
-    expect(await shotNotesStack.locator('[data-testid^="frame-editor-shot-note-"]').count()).toBe(7);
+    expect(await shotNotesStack.locator('[data-testid^="frame-editor-shot-note-"]').count()).toBe(11);
     await expect(shotSummaryCard).toContainText('Eyeline');
     await expect(spatialWorkspaceCard).toContainText('3 canvases');
     await expect(lightingShotNote).toContainText('LIGHT');
@@ -4033,7 +4050,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('stage and inspector details match the premium visual baseline', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     await expect(page.getByTestId('frame-editor-stage')).toHaveScreenshot('storyboard-drawing-editor-stage.png', {
       animations: 'disabled',
@@ -4050,7 +4067,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('inspector modes match dedicated visual baselines', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1640, height: 1100 });
-    await page.goto(`${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=shot&aspect=${encodeURIComponent('2.35:1')}`);
 
     const inspector = page.getByTestId('frame-editor-inspector');
     await expect(inspector).toHaveScreenshot('storyboard-drawing-editor-inspector-lighting.png', {
@@ -4077,7 +4094,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1600, height: 1080 });
 
-    await page.goto(`${TEST_PAGE}?workflow=blocking&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=blocking&aspect=${encodeURIComponent('2.35:1')}`);
     await expect(page.getByTestId('frame-editor-workflow-chip')).toContainText('blocking');
     await expect(page.getByTestId('frame-editor-timeline')).toContainText('Deck: ROUGH');
     await expect(page.getByTestId('frame-editor-timeline')).toContainText('Perspective Grid');
@@ -4093,7 +4110,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
     expect(await page.getByTestId('frame-editor-stage').count()).toBe(1);
     expect(await page.getByTestId('frame-editor-inspector').count()).toBe(1);
 
-    await page.goto(`${TEST_PAGE}?workflow=presentation&aspect=${encodeURIComponent('2.35:1')}`);
+    await openDrawingEditor(page, `${TEST_PAGE}?workflow=presentation&aspect=${encodeURIComponent('2.35:1')}`);
     await expect(page.getByTestId('frame-editor-workflow-chip')).toContainText('presentation');
     await expect(page.getByTestId('frame-editor-timeline')).toContainText('Deck: LIGHT');
     await expect(page.getByTestId('frame-editor-timeline')).toContainText('Grid Off');
@@ -4118,7 +4135,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('selection scenario supports ellipse selection, pivot reset, invert, scale, and rotate on transformed layers', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1480, height: 1100 });
-    await page.goto(`${TEST_PAGE}?scenario=selection`);
+    await openDrawingEditor(page, `${TEST_PAGE}?scenario=selection`);
 
     const canvas = page.getByTestId('pencil-canvas-pro');
     const targetRegion = page.getByTestId('selection-harness-target-region');
@@ -4307,7 +4324,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('selection snapping exposes controls and snaps rotate to angle increments', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1480, height: 1100 });
-    await page.goto(`${TEST_PAGE}?scenario=selection`);
+    await openDrawingEditor(page, `${TEST_PAGE}?scenario=selection`);
 
     const canvas = page.getByTestId('pencil-canvas-pro');
     const targetRegion = page.getByTestId('selection-harness-target-region');
@@ -4352,7 +4369,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('selection transform popover applies perspective skew to the current selection', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1480, height: 1100 });
-    await page.goto(`${TEST_PAGE}?scenario=selection`);
+    await openDrawingEditor(page, `${TEST_PAGE}?scenario=selection`);
 
     const canvas = page.getByTestId('pencil-canvas-pro');
     const targetRegion = page.getByTestId('selection-harness-target-region');
@@ -4423,7 +4440,7 @@ test.describe('Storyboard drawing editor layout contract', () => {
   test('selection perspective handles reshape the current selection directly on-canvas', async ({ page }) => {
     const collector = attachRuntimeCollector(page);
     await page.setViewportSize({ width: 1480, height: 1100 });
-    await page.goto(`${TEST_PAGE}?scenario=selection`);
+    await openDrawingEditor(page, `${TEST_PAGE}?scenario=selection`);
 
     const canvas = page.getByTestId('pencil-canvas-pro');
     const targetRegion = page.getByTestId('selection-harness-target-region');

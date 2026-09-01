@@ -109,6 +109,7 @@ const InlineFrameCanvas: React.FC<{
 }> = ({ frame, brush, tool, activeLayer, hiddenLayers, lockedLayers, layerOpacity, onCommit }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewRef = useRef<HTMLCanvasElement | null>(null);
+  const editableBaseRef = useRef<HTMLImageElement | null>(null);
   const activePointsRef = useRef<any[]>([]);
   const carryRef = useRef(0);
   const strokesRef = useRef<any[]>([]);
@@ -135,6 +136,9 @@ const InlineFrameCanvas: React.FC<{
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#fdfdfb';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (editableBaseRef.current) {
+      ctx.drawImage(editableBaseRef.current, 0, 0, canvas.width, canvas.height);
+    }
     // Lag-sortert rendering: strøk uten boardLayer regnes som Drawing.
     const layerOrder = (stroke: any) => {
       const index = BOARD_LAYERS.indexOf(stroke.boardLayer ?? 'Drawing');
@@ -161,7 +165,7 @@ const InlineFrameCanvas: React.FC<{
       // Lag-opacity multipliseres inn i brush-opacity (stamp-motoren styrer
       // alpha per dab selv, så ctx.globalAlpha alene når ikke frem der).
       const strokeBrush = { ...buildBrush(), ...(stroke.brush ?? {}), size: stroke.width ?? 4, color: stroke.color ?? '#26282e', opacity: (stroke.opacity ?? 1) * strokeLayerOpacity };
-      if (strokeBrush.type === 'eraser') {
+      if (['eraser', 'vinyl', 'kneaded', 'lightlift'].includes(strokeBrush.type)) {
         ctx.save();
         ctx.globalCompositeOperation = 'destination-out';
         ctx.lineCap = 'round';
@@ -206,6 +210,25 @@ const InlineFrameCanvas: React.FC<{
     renderCommitted();
   }, [frame?.id, frame?.drawingData?.strokes, renderCommitted]);
 
+  // Panelbildet er første rasterlag på samme canvas som strøkene. Dermed
+  // endrer destination-out-viskelær originalpikslene, og replay/undo bygger
+  // bildet + strøkhistorikken deterministisk opp igjen.
+  useEffect(() => {
+    let cancelled = false;
+    editableBaseRef.current = null;
+    const src = frame?.imageUrl;
+    if (!src) {
+      renderCommitted();
+      return () => { cancelled = true; };
+    }
+    const image = new Image();
+    image.onload = () => {
+      if (!cancelled) { editableBaseRef.current = image; renderCommitted(); }
+    };
+    image.onerror = () => { if (!cancelled) renderCommitted(); };
+    image.src = src;
+    return () => { cancelled = true; };
+  }, [frame?.id, frame?.imageUrl, renderCommitted]);
   const toCanvasPoint = useCallback((event: React.PointerEvent) => {
     const canvas = previewRef.current!;
     const rect = canvas.getBoundingClientRect();
@@ -284,7 +307,7 @@ const InlineFrameCanvas: React.FC<{
     const previous = activePointsRef.current[activePointsRef.current.length - 1];
     activePointsRef.current.push(point);
     const liveBrush = buildBrush();
-    if (liveBrush.type === 'eraser') {
+    if (['eraser', 'vinyl', 'kneaded', 'lightlift'].includes(liveBrush.type)) {
       previewCtx.save();
       previewCtx.strokeStyle = 'rgba(180,180,180,0.5)';
       previewCtx.lineWidth = liveBrush.size * 2;

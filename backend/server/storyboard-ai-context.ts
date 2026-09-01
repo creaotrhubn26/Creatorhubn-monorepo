@@ -99,6 +99,37 @@ const storyboardProductionMarkSchema = z.object({
 });
 
 /**
+ * The non-destructive viewport applied by Storyboard Room. The artwork stays
+ * in source coordinates; this snapshot records the crop the artist actually
+ * approved and therefore belongs in the production context sent to every
+ * interchangeable image/video model.
+ */
+export const storyboardShotFramingSchema = z.object({
+  version: z.literal(1).default(1),
+  centerX: z.number().finite().min(0).max(1),
+  centerY: z.number().finite().min(0).max(1),
+  zoom: z.number().finite().min(1).max(16),
+  rollDegrees: z.number().finite().min(-180).max(180),
+  aspectRatio: z.number().finite().min(0.1).max(10),
+  focusAnchorX: z.number().finite().min(0).max(1).optional(),
+  focusAnchorY: z.number().finite().min(0).max(1).optional(),
+  mode: z.enum(['automatic', 'manual', 'recomposed']),
+  intentFingerprint: z.string().trim().min(1).max(200).optional(),
+  revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  shotSize: optionalText(120),
+  angle: optionalText(80),
+  lensMm: z.number().int().min(1).max(2_000).optional(),
+}).superRefine((value, context) => {
+  if ((value.focusAnchorX == null) !== (value.focusAnchorY == null)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'focusAnchorX and focusAnchorY must be provided together',
+      path: [value.focusAnchorX == null ? 'focusAnchorX' : 'focusAnchorY'],
+    });
+  }
+});
+
+/**
  * A provider-neutral snapshot of everything that gives one storyboard shot
  * meaning. It is intentionally independent of OpenAI/fal/Higgsfield so the
  * exact same production context can be used for a still and its animation.
@@ -144,6 +175,7 @@ export const storyboardShotContextSchema = z.object({
     weather: optionalText(160),
     beat: optionalText(240),
     tags: z.array(z.string().trim().min(1).max(100)).max(30).default([]),
+    shotFraming: storyboardShotFramingSchema.nullable().optional().default(null),
   }),
   continuity: z.object({
     previous: neighbourSchema,
@@ -156,8 +188,27 @@ export const storyboardShotContextSchema = z.object({
   productionMarks: z.array(storyboardProductionMarkSchema).max(200).optional(),
 });
 
-export type StoryboardShotContext = z.infer<typeof storyboardShotContextSchema>;
 export type StoryboardProductionMark = z.infer<typeof storyboardProductionMarkSchema>;
+
+export interface StoryboardAppliedViewport {
+  /** Must stay mathematically identical to native ShotFramingGeometry. */
+  version: 'shot-framing-geometry-v1';
+  sourceSize: { width: number; height: number };
+  viewportSize: { width: number; height: number };
+  /** Null when the source-space focus anchor is outside the rendered crop. */
+  focusAnchor: { x: number; y: number } | null;
+  /** Visible, clipped mark geometry in the pixels the model actually receives. */
+  productionMarks: StoryboardProductionMark[];
+}
+
+/**
+ * `appliedViewport` is intentionally not part of the public Zod input schema.
+ * Unknown client fields are stripped at the API boundary, then the backend
+ * derives this view from trusted canvas dimensions and canonical framing.
+ */
+export type StoryboardShotContext = z.infer<typeof storyboardShotContextSchema> & {
+  appliedViewport?: StoryboardAppliedViewport;
+};
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -174,6 +225,152 @@ function finiteNumber(value: unknown): number | null {
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
+}
+
+function normalizedDegrees(value: number): number {
+  let result = value % 360;
+  if (result <= -180) result += 360;
+  if (result > 180) result -= 360;
+  return result;
+}
+
+interface UnclampedPoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * Backend counterpart of native `ShotFramingGeometry`. Coordinates are
+ * top-left/y-down and positive roll is clockwise. The chosen viewport height
+ * is arbitrary; normalized output only depends on its aspect ratio.
+ */
+function appliedViewportGeometry(
+  context: StoryboardShotContext,
+  sourceWidth: number,
+  sourceHeight: number,
+): StoryboardAppliedViewport | null {
+  const framing = context.shot.shotFraming;
+  if (!framing) return null;
+
+  const safeWidth = Number.isFinite(sourceWidth) && sourceWidth > 0
+    ? sourceWidth : 1_920;
+  const safeHeight = Number.isFinite(sourceHeight) && sourceHeight > 0
+    ? sourceHeight : 1_080;
+  const viewportHeight = safeHeight;
+  const viewportWidth = viewportHeight * framing.aspectRatio;
+  const aspectFillScale = Math.max(
+    viewportWidth / safeWidth,
+    viewportHeight / safeHeight,
+  );
+  const sourceScale = aspectFillScale * framing.zoom;
+  const radians = framing.rollDegrees * Math.PI / 180;
+  const cosine = Math.cos(radians);
+  const sine = Math.sin(radians);
+
+  const project = (point: UnclampedPoint): UnclampedPoint => {
+    const translatedX = point.x * safeWidth - framing.centerX * safeWidth;
+    const translatedY = point.y * safeHeight - framing.centerY * safeHeight;
+    const rotatedX = translatedX * cosine - translatedY * sine;
+    const rotatedY = translatedX * sine + translatedY * cosine;
+    return {
+      x: (viewportWidth / 2 + rotatedX * sourceScale) / viewportWidth,
+      y: (viewportHeight / 2 + rotatedY * sourceScale) / viewportHeight,
+    };
+  };
+
+  const projectDirection = (
+    mark: StoryboardProductionMark,
+  ): StoryboardProductionMark['direction'] => {
+    if (!mark.direction) return null;
+    let rotatedX: number;
+    let rotatedY: number;
+    if (mark.stamp) {
+      const directionRadians = (mark.direction.angleDegrees
+        + framing.rollDegrees) * Math.PI / 180;
+      rotatedX = Math.cos(directionRadians);
+      rotatedY = Math.sin(directionRadians);
+    } else {
+      const sourceX = mark.direction.dx * safeWidth;
+      const sourceY = mark.direction.dy * safeHeight;
+      rotatedX = sourceX * cosine - sourceY * sine;
+      rotatedY = sourceX * sine + sourceY * cosine;
+    }
+    const length = Math.hypot(rotatedX, rotatedY);
+    if (length <= 0.000_001) {
+      const fallbackRadians = (mark.direction.angleDegrees
+        + framing.rollDegrees) * Math.PI / 180;
+      rotatedX = Math.cos(fallbackRadians);
+      rotatedY = Math.sin(fallbackRadians);
+    }
+    const normalizedLength = Math.max(0.000_001, Math.hypot(rotatedX, rotatedY));
+    return {
+      dx: rotatedX / normalizedLength,
+      dy: rotatedY / normalizedLength,
+      angleDegrees: normalizedDegrees(Math.atan2(rotatedY, rotatedX) * 180 / Math.PI),
+    };
+  };
+
+  const productionMarks = (context.productionMarks ?? []).flatMap((mark) => {
+    const left = mark.bounds.x;
+    const top = mark.bounds.y;
+    const right = left + mark.bounds.width;
+    const bottom = top + mark.bounds.height;
+    const corners = [
+      project({ x: left, y: top }),
+      project({ x: right, y: top }),
+      project({ x: right, y: bottom }),
+      project({ x: left, y: bottom }),
+    ];
+    const projectedLeft = Math.min(...corners.map((point) => point.x));
+    const projectedTop = Math.min(...corners.map((point) => point.y));
+    const projectedRight = Math.max(...corners.map((point) => point.x));
+    const projectedBottom = Math.max(...corners.map((point) => point.y));
+    const clippedLeft = clamp01(projectedLeft);
+    const clippedTop = clamp01(projectedTop);
+    const clippedRight = clamp01(projectedRight);
+    const clippedBottom = clamp01(projectedBottom);
+    if (projectedRight < 0 || projectedLeft > 1
+        || projectedBottom < 0 || projectedTop > 1) return [];
+
+    const projectedCenter = project(mark.center);
+    const viewportStamp = mark.stamp ? {
+      ...mark.stamp,
+      rotationDegrees: normalizedDegrees(
+        mark.stamp.rotationDegrees + framing.rollDegrees,
+      ),
+    } : null;
+    return [{
+      ...mark,
+      center: {
+        x: clamp01(projectedCenter.x),
+        y: clamp01(projectedCenter.y),
+      },
+      bounds: {
+        x: clippedLeft,
+        y: clippedTop,
+        width: Math.max(0, clippedRight - clippedLeft),
+        height: Math.max(0, clippedBottom - clippedTop),
+      },
+      direction: projectDirection(mark),
+      stamp: viewportStamp,
+    }];
+  });
+
+  const sourceFocus = framing.focusAnchorX != null
+      && framing.focusAnchorY != null
+    ? project({ x: framing.focusAnchorX, y: framing.focusAnchorY }) : null;
+  const focusAnchor = sourceFocus
+      && sourceFocus.x >= 0 && sourceFocus.x <= 1
+      && sourceFocus.y >= 0 && sourceFocus.y <= 1
+    ? sourceFocus : null;
+
+  return {
+    version: 'shot-framing-geometry-v1',
+    sourceSize: { width: safeWidth, height: safeHeight },
+    viewportSize: { width: viewportWidth, height: viewportHeight },
+    focusAnchor,
+    productionMarks,
+  };
 }
 
 /**
@@ -287,23 +484,85 @@ export function enrichStoryboardContextWithStrokes(
   canvasWidth?: number | null,
   canvasHeight?: number | null,
 ): StoryboardShotContext {
-  if (context.productionMarks?.length) return context;
-  const marks = productionMarksFromStrokes(
-    strokes,
-    canvasWidth ?? 1_920,
-    canvasHeight ?? 1_080,
+  const sourceWidth = canvasWidth ?? 1_920;
+  const sourceHeight = canvasHeight ?? 1_080;
+  const marks = context.productionMarks?.length
+    ? context.productionMarks
+    : productionMarksFromStrokes(strokes, sourceWidth, sourceHeight);
+  const sourceContext: StoryboardShotContext = marks.length
+    ? { ...context, productionMarks: marks }
+    : context;
+  const appliedViewport = appliedViewportGeometry(
+    sourceContext,
+    sourceWidth,
+    sourceHeight,
   );
-  return marks.length ? { ...context, productionMarks: marks } : context;
+  if (!appliedViewport) {
+    const { appliedViewport: _ignored, ...withoutStaleViewport } = sourceContext;
+    return withoutStaleViewport;
+  }
+  return { ...sourceContext, appliedViewport };
 }
 
 export const STORYBOARD_IMAGE_MODEL = 'gpt-image-2';
 
+export type StoryboardImageAspectRequest =
+  | '1792x1024'
+  | '1024x1024'
+  | '1024x1792';
+
+export interface StoryboardImageAspectPolicy {
+  requested: StoryboardImageAspectRequest;
+  providerSize: '1536x1024' | '1024x1024' | '1024x1536';
+  canonicalLabel: '16:9' | '1:1' | '9:16';
+  canonicalUnits: { width: number; height: number };
+  canonicalAspectRatio: number;
+  normalization: 'center-crop-no-upscale';
+}
+
+/**
+ * The old OpenAI/DALL-E wire tokens are orientation hints, not the aspect of
+ * the finished storyboard panel. GPT Image currently returns 3:2 / 2:3 for
+ * landscape / portrait. Every provider result is therefore center-cropped,
+ * never stretched or upscaled, to the canonical Storyboard Room aspect.
+ */
+export function storyboardImageAspectPolicy(
+  requested: StoryboardImageAspectRequest,
+): StoryboardImageAspectPolicy {
+  if (requested === '1792x1024') {
+    return {
+      requested,
+      providerSize: '1536x1024',
+      canonicalLabel: '16:9',
+      canonicalUnits: { width: 16, height: 9 },
+      canonicalAspectRatio: 16 / 9,
+      normalization: 'center-crop-no-upscale',
+    };
+  }
+  if (requested === '1024x1792') {
+    return {
+      requested,
+      providerSize: '1024x1536',
+      canonicalLabel: '9:16',
+      canonicalUnits: { width: 9, height: 16 },
+      canonicalAspectRatio: 9 / 16,
+      normalization: 'center-crop-no-upscale',
+    };
+  }
+  return {
+    requested,
+    providerSize: '1024x1024',
+    canonicalLabel: '1:1',
+    canonicalUnits: { width: 1, height: 1 },
+    canonicalAspectRatio: 1,
+    normalization: 'center-crop-no-upscale',
+  };
+}
+
 export function storyboardImageProviderSize(
-  requested: '1792x1024' | '1024x1024' | '1024x1792',
+  requested: StoryboardImageAspectRequest,
 ): '1536x1024' | '1024x1024' | '1024x1536' {
-  if (requested === '1792x1024') return '1536x1024';
-  if (requested === '1024x1792') return '1024x1536';
-  return '1024x1024';
+  return storyboardImageAspectPolicy(requested).providerSize;
 }
 
 export function storyboardImageProviderQuality(

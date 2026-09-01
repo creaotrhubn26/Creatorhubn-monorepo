@@ -63,6 +63,8 @@ targets:
     platform: iOS
     sources:
       - path: StoryboardStudioTests
+      - path: ../../frontend/shared/fixtures/storyboard-coverage-policy-v1.json
+        buildPhase: resources
     dependencies:
       - target: StoryboardStudio
     settings:

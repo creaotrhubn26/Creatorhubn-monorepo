@@ -94,7 +94,8 @@ final class ReviewState: ObservableObject {
                 selected = (first.scene.id, first.frame.id)
             }
         }
-        await FrameImageCache.prefetch(frames: Array(allFrames.map(\.frame).prefix(24)))
+        await FrameImageCache.prefetchPreviewSources(
+            frames: Array(allFrames.map(\.frame).prefix(24)))
         presentNames = await RoleRoomAPIClient.shared.reportPresence(manuscriptId: manuscript.id)
     }
 
@@ -480,8 +481,10 @@ struct ReviewView: View {
         } label: {
             HStack(alignment: .top, spacing: 9) {
                 Group {
-                    if let image = decodeDataURL(pair.frame.thumbnailDataURL)
-                        ?? FrameImageCache.image(for: pair.frame.imageUrl) {
+                    if let image = StoryboardFramePreviewResolver.image(
+                        for: pair.frame,
+                        maxWidth: 312,
+                        includeReviewLayer: true) {
                         Image(uiImage: image).resizable().scaledToFill()
                     } else {
                         Rectangle().fill(Color.white.opacity(0.06))
@@ -532,6 +535,14 @@ struct ReviewView: View {
                 .stroke(isSelected ? BoardBrand.accent : .clear, lineWidth: 1.5))
         }
         .buttonStyle(.plain)
+        .task(id: StoryboardFramePreviewResolver.loadTaskKey(
+            for: pair.frame)) {
+            guard await StoryboardFramePreviewResolver.load(
+                for: pair.frame,
+                maxWidth: 312,
+                includeReviewLayer: true) != nil else { return }
+            state.objectWillChange.send()
+        }
     }
 
     private func dueLabel(_ frame: FrameSummary) -> (text: String, urgent: Bool)? {
@@ -659,27 +670,41 @@ struct ReviewView: View {
     private func versionImage(_ pair: (scene: SceneSummary, frame: FrameSummary),
                               version: Int) -> UIImage? {
         if version == 0 {
-            return FrameRenderService.image(for: pair.frame, maxWidth: 900,
-                                            includeReviewLayer: true)
-                ?? decodeDataURL(pair.frame.thumbnailDataURL)
+            return StoryboardFramePreviewResolver.image(
+                for: pair.frame,
+                maxWidth: 900,
+                includeReviewLayer: true)
         }
         guard historyVersions.indices.contains(version - 1) else { return nil }
         let history = historyVersions[version - 1]
-        let ghost = FrameSummary(
+        var ghost = FrameSummary(
             id: "\(pair.frame.id)-v\(version)", shotNumber: pair.frame.shotNumber,
             detail: "", strokesJSON: history.strokes,
             description: "", notes: nil, shotType: nil, lensMm: nil, movement: nil,
-            durationSec: 0, transition: nil, focusDepth: nil, timeOfDay: nil,
+            durationSec: pair.frame.durationSec,
+            shotDuration: pair.frame.shotDuration,
+            durationRevision: pair.frame.durationRevision,
+            transition: nil, focusDepth: nil, timeOfDay: nil,
             weather: nil, beatTag: nil, tags: [], thumbnailDataURL: nil,
             drawingWidth: pair.frame.drawingWidth, drawingHeight: pair.frame.drawingHeight,
             frameStatus: nil, comments: [], updatedAt: nil,
             underlayDataURL: nil, underlayOpacity: nil,
             perspectiveMode: nil, vanishingPoints: nil, voiceoverDataURL: nil,
             imageUrl: pair.frame.imageUrl,
+            imageSource: pair.frame.imageSource,
             reviewPriority: nil, reviewDueAt: nil,
             reviewApprovedBy: nil, reviewApprovedAt: nil, reviewStarred: nil,
-            reviewAssignee: nil, reviewColorLabel: nil, reviewSnoozedUntil: nil)
-        return FrameRenderService.image(for: ghost, maxWidth: 900)
+            reviewAssignee: nil, reviewColorLabel: nil, reviewSnoozedUntil: nil,
+            layerState: pair.frame.layerState,
+            angle: pair.frame.angle,
+            shotFraming: pair.frame.shotFraming)
+        ghost.aiStoryboardId = pair.frame.aiStoryboardId
+        ghost.aiSourceRevision = pair.frame.aiSourceRevision
+        ghost.aiSourceFramingFingerprint =
+            pair.frame.aiSourceFramingFingerprint
+        ghost.aiRasterPlacementFraming =
+            pair.frame.aiRasterPlacementFraming
+        return FrameRenderCoordinator.image(for: ghost, maxWidth: 900)
     }
 
     /// Panel-verktøy i boardstil — flytende pill, verktøyene virker på panelet.
@@ -870,6 +895,14 @@ struct ReviewView: View {
             }
             captionRow(pair.frame)
         }
+        .task(id: StoryboardFramePreviewResolver.loadTaskKey(
+            for: pair.frame)) {
+            guard await StoryboardFramePreviewResolver.load(
+                for: pair.frame,
+                maxWidth: 900,
+                includeReviewLayer: true) != nil else { return }
+            state.objectWillChange.send()
+        }
     }
 
     /// Scenens øvrige shots stablet under (mockupens panel 1/2-stabel) —
@@ -893,8 +926,10 @@ struct ReviewView: View {
                                 .frame(width: 30, alignment: .leading)
                             VStack(spacing: 3) {
                                 Group {
-                                    if let image = decodeDataURL(frame.thumbnailDataURL)
-                                        ?? FrameImageCache.image(for: frame.imageUrl) {
+                                    if let image = StoryboardFramePreviewResolver.image(
+                                        for: frame,
+                                        maxWidth: 640,
+                                        includeReviewLayer: true) {
                                         Image(uiImage: image).resizable().scaledToFit()
                                     } else {
                                         Rectangle().fill(Color.white.opacity(0.05))
@@ -908,6 +943,14 @@ struct ReviewView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .task(id: StoryboardFramePreviewResolver.loadTaskKey(
+                        for: frame)) {
+                        guard await StoryboardFramePreviewResolver.load(
+                            for: frame,
+                            maxWidth: 640,
+                            includeReviewLayer: true) != nil else { return }
+                        state.objectWillChange.send()
+                    }
                 }
             }
         }

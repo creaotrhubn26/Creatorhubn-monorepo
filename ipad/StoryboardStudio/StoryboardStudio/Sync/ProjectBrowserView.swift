@@ -491,6 +491,10 @@ struct FrameDrawingScreen: View {
     @State private var renderer = MetalStrokeRenderer()
     @State private var status: String?
     @State private var isSaving = false
+    @State private var baseUpdatedAt: String?
+    @State private var baseStrokesJSON: String?
+    @State private var baseLayerState: BoardLayerState?
+    @State private var baseShotFraming: ShotFramingState?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -505,17 +509,46 @@ struct FrameDrawingScreen: View {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if let status { Text(status).font(.caption).foregroundStyle(.secondary) }
                 Button {
+                    guard !isSaving,
+                          let json = try? StrokeSerialization.encodeToWebJSON(
+                            canvasState.strokes) else { return }
+                    let thumbnail = renderer?.thumbnailDataURL(
+                        framing: canvasState.shotFraming)
+                    let layers = canvasState.layerState
+                    let framing = canvasState.shotFraming
+                    let expectedUpdatedAt = baseUpdatedAt
+                    let mergeBase = baseStrokesJSON
+                    let layerBase = baseLayerState
+                    let framingBase = baseShotFraming
                     isSaving = true
                     status = nil
                     Task {
                         do {
-                            let json = try StrokeSerialization.encodeToWebJSON(canvasState.strokes)
-                            try await RoleRoomAPIClient.shared.saveFrameStrokes(
+                            let saved = try await RoleRoomAPIClient.shared.saveFrameStrokes(
                                 manuscriptId: manuscriptId,
                                 sceneId: sceneId,
                                 frameId: frame.id,
-                                strokesJSON: json
+                                strokesJSON: json,
+                                thumbnailDataURL: thumbnail,
+                                baseUpdatedAt: expectedUpdatedAt,
+                                layerState: layers,
+                                shotFraming: framing,
+                                baseStrokesJSON: mergeBase,
+                                baseLayerState: layerBase,
+                                baseShotFraming: framingBase
                             )
+                            baseUpdatedAt = saved.updatedAt ?? expectedUpdatedAt
+                            baseStrokesJSON = saved.strokesJSON ?? json
+                            let authoritativeLayers = saved.layerState ?? layers
+                            let authoritativeFraming = saved.shotFraming ?? framing
+                            baseLayerState = authoritativeLayers
+                            baseShotFraming = authoritativeFraming
+                            if canvasState.layerState == layers {
+                                canvasState.applyLayerState(authoritativeLayers)
+                            }
+                            if canvasState.shotFraming == framing {
+                                canvasState.shotFraming = authoritativeFraming
+                            }
                             status = "Synket ✓"
                         } catch {
                             status = error.localizedDescription
@@ -529,10 +562,24 @@ struct FrameDrawingScreen: View {
             }
         }
         .onAppear {
+            canvasState.contentSize = CGSize(
+                width: max(1, frame.drawingWidth),
+                height: max(1, frame.drawingHeight))
             if let json = frame.strokesJSON,
                let strokes = try? StrokeSerialization.decodeFromWebJSON(json) {
                 canvasState.strokes = strokes
             }
+            canvasState.beginHistory(
+                frameId: frame.id, layerState: frame.layerState,
+                shotFraming: frame.shotFraming ?? ShotFramingState(
+                    shotSize: frame.shotType, angle: frame.angle,
+                    lensMm: frame.lensMm,
+                    aspectRatio: frame.drawingWidth / max(1, frame.drawingHeight)))
+            canvasState.revision += 1
+            baseUpdatedAt = frame.updatedAt
+            baseStrokesJSON = frame.strokesJSON
+            baseLayerState = canvasState.layerState
+            baseShotFraming = canvasState.shotFraming
         }
     }
 }

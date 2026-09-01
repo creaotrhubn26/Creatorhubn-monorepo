@@ -2,6 +2,20 @@ import type { Pool } from "pg";
 
 type JsonRecord = Record<string, unknown>;
 
+export class NormalizedSceneIdentityConflictError extends Error {
+  constructor(readonly sceneId: string) {
+    super("normalized_scene_identity_conflict");
+    this.name = "NormalizedSceneIdentityConflictError";
+  }
+}
+
+export class NormalizedManuscriptIdentityConflictError extends Error {
+  constructor(readonly manuscriptId: string) {
+    super("normalized_manuscript_identity_conflict");
+    this.name = "NormalizedManuscriptIdentityConflictError";
+  }
+}
+
 function text(...values: unknown[]): string {
   for (const value of values) {
     if (typeof value === "string" && value.trim()) return value.trim();
@@ -43,7 +57,7 @@ export async function mirrorManuscriptToProductionTables(
   const title = text(manuscript.title, "Untitled manuscript");
   if (!id || !projectId) throw new Error("normalized_manuscript_identity_required");
 
-  await pool.query(
+  const mirrored = await pool.query<{ id: string }>(
     `INSERT INTO casting_manuscripts
        (id, project_id, title, format, content, version, status, metadata,
         created_at, updated_at)
@@ -57,7 +71,9 @@ export async function mirrorManuscriptToProductionTables(
        status = EXCLUDED.status,
        metadata = COALESCE(casting_manuscripts.metadata, '{}'::jsonb)
          || EXCLUDED.metadata,
-       updated_at = NOW()`,
+       updated_at = NOW()
+     WHERE casting_manuscripts.project_id = EXCLUDED.project_id
+     RETURNING id`,
     [
       id,
       projectId,
@@ -74,6 +90,9 @@ export async function mirrorManuscriptToProductionTables(
       }),
     ],
   );
+  if (mirrored.rows.length !== 1) {
+    throw new NormalizedManuscriptIdentityConflictError(id);
+  }
 }
 
 export async function mirrorSceneToProductionTables(
@@ -100,7 +119,7 @@ export async function mirrorSceneToProductionTables(
     ...(props.length && !Array.isArray(submittedBreakdown.props) ? { props } : {}),
   };
 
-  await pool.query(
+  const mirrored = await pool.query<{ id: string }>(
     `INSERT INTO casting_scenes
        (id, project_id, manuscript_id, act_id, scene_number, title,
         description, setting, time_of_day, int_ext, characters,
@@ -119,7 +138,10 @@ export async function mirrorSceneToProductionTables(
        int_ext = EXCLUDED.int_ext,
        characters = EXCLUDED.characters,
        production_breakdown = EXCLUDED.production_breakdown,
-       updated_at = NOW()`,
+       updated_at = NOW()
+     WHERE casting_scenes.project_id = EXCLUDED.project_id
+       AND casting_scenes.manuscript_id IS NOT DISTINCT FROM EXCLUDED.manuscript_id
+     RETURNING id`,
     [
       id,
       projectId,
@@ -135,4 +157,10 @@ export async function mirrorSceneToProductionTables(
       JSON.stringify(productionBreakdown),
     ],
   );
+  // A scene id is globally unique in the normalized table. Never let a
+  // client-generated compat id move an existing row across a tenant or
+  // manuscript boundary; the conditional conflict update is race-safe.
+  if (mirrored.rows.length !== 1) {
+    throw new NormalizedSceneIdentityConflictError(id);
+  }
 }

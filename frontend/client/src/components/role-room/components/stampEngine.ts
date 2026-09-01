@@ -71,6 +71,10 @@ export interface StampConfig {
   sizeJitter?: number;
   directionTexture?: number;   // mikrolinjer i strøkretning (Shade 2.0)
   hatch?: HatchParams;         // prosedural skravering
+  tipModel?: 'stamp' | 'ribbon' | 'filament' | 'particle' | 'region' | 'wet';
+  pigmentDepletion?: number;
+  bleed?: number;
+  bristleCount?: number;
 }
 
 const DAB_CANVAS_SIZE = 128;
@@ -382,6 +386,9 @@ const STAMP_CONFIG_BY_BRUSH: Partial<Record<ProBrushType, StampConfig>> = {
     pressureToOpacity: 0.4,
     flow: 0.25,
     sizeMultiplier: 2.2,
+    tipModel: 'wet',
+    pigmentDepletion: 0.08,
+    bleed: 0.58,
   },
   graphite: {
     preset: 'pencil-graphite',
@@ -556,12 +563,88 @@ const STAMP_CONFIG_BY_BRUSH: Partial<Record<ProBrushType, StampConfig>> = {
     preset: 'marker-chisel', spacing: 0.05, scatter: 0.02, jitterAngle: 8,
     tiltRotation: true, pressureToSize: 0.25, pressureToOpacity: 0.6,
     flow: 0.3, sizeMultiplier: 1.6, pressureCurve: 0.7,
-    wobble: 0.12, tiltOval: 0.5,
+    wobble: 0.12, tiltOval: 0.5, tipModel: 'wet',
+    pigmentDepletion: 0.08, bleed: 0.58,
   },
   spikes: {
     preset: 'ink-round', spacing: 0.14, scatter: 0.25, jitterAngle: 40,
     tiltRotation: false, pressureToSize: 0.5, pressureToOpacity: 0.45,
     flow: 0.7, sizeMultiplier: 0.5, pressureCurve: 0.8, sizeJitter: 0.35,
+  },
+  bluepencil: {
+    preset: 'pencil-graphite', spacing: 0.09, scatter: 0.07, jitterAngle: 9,
+    tiltRotation: true, pressureToSize: 0.58, pressureToOpacity: 0.5,
+    flow: 0.58, sizeMultiplier: 1, pressureCurve: 0.68,
+    velocityToOpacity: -0.16, wobble: 0.12, tipModel: 'stamp', pigmentDepletion: 0.08,
+  },
+  redpencil: {
+    preset: 'pencil-graphite', spacing: 0.09, scatter: 0.07, jitterAngle: 9,
+    tiltRotation: true, pressureToSize: 0.58, pressureToOpacity: 0.5,
+    flow: 0.58, sizeMultiplier: 1, pressureCurve: 0.68,
+    velocityToOpacity: -0.16, wobble: 0.12, tipModel: 'stamp', pigmentDepletion: 0.08,
+  },
+  mechanical: {
+    preset: 'ink-round', spacing: 0.04, scatter: 0.01, jitterAngle: 2,
+    tiltRotation: false, pressureToSize: 0.28, pressureToOpacity: 0.5,
+    flow: 0.9, sizeMultiplier: 0.9, pressureCurve: 0.72,
+    velocityToOpacity: -0.08, taperDistance: 3, tipModel: 'stamp', pigmentDepletion: 0.04,
+  },
+  dryink: {
+    preset: 'bristle-flat', spacing: 0.075, scatter: 0.08, jitterAngle: 7,
+    tiltRotation: true, pressureToSize: 0.8, pressureToOpacity: 0.7,
+    flow: 0.74, sizeMultiplier: 1.35, pressureCurve: 0.72,
+    velocityToOpacity: -0.26, taperDistance: 9, sizeJitter: 0.16,
+    directionTexture: 0.7, tipModel: 'filament', pigmentDepletion: 0.36, bristleCount: 5,
+  },
+  tonemarker: {
+    preset: 'marker-chisel', spacing: 0.045, scatter: 0, jitterAngle: 0,
+    tiltRotation: true, pressureToSize: 0.15, pressureToOpacity: 0.18,
+    flow: 0.34, sizeMultiplier: 2.2, pressureCurve: 0.9,
+    tiltOval: 0.35, tipModel: 'ribbon', bleed: 0.05,
+  },
+  tortillon: {
+    preset: 'charcoal-tooth', spacing: 0.055, scatter: 0.02, jitterAngle: 4,
+    tiltRotation: true, pressureToSize: 0.46, pressureToOpacity: 0.62,
+    flow: 0.32, sizeMultiplier: 1.2, pressureCurve: 0.7,
+    tiltOval: 0.35, tipModel: 'region',
+  },
+  vinyl: {
+    preset: 'ink-round', spacing: 0.04, scatter: 0, jitterAngle: 0,
+    tiltRotation: false, pressureToSize: 0.72, pressureToOpacity: 0.2,
+    flow: 1, sizeMultiplier: 1.35, pressureCurve: 0.72, tipModel: 'region',
+  },
+  pastel: {
+    preset: 'charcoal-tooth', spacing: 0.09, scatter: 0.2, jitterAngle: 28,
+    tiltRotation: true, pressureToSize: 0.7, pressureToOpacity: 0.74,
+    flow: 0.42, sizeMultiplier: 1.7, pressureCurve: 0.72,
+    tiltOval: 0.55, sizeJitter: 0.3, tipModel: 'particle', pigmentDepletion: 0.16,
+  },
+  stipple: {
+    preset: 'ink-round', spacing: 0.18, scatter: 0.75, jitterAngle: 180,
+    tiltRotation: false, pressureToSize: 0.82, pressureToOpacity: 0.35,
+    flow: 0.72, sizeMultiplier: 0.45, pressureCurve: 0.74,
+    sizeJitter: 0.45, tipModel: 'particle',
+  },
+  sumi: {
+    preset: 'bristle-round', spacing: 0.055, scatter: 0.035, jitterAngle: 5,
+    tiltRotation: true, pressureToSize: 0.94, pressureToOpacity: 0.72,
+    flow: 0.66, sizeMultiplier: 1.8, pressureCurve: 0.62,
+    velocityToSize: -0.15, velocityToOpacity: -0.24, taperDistance: 18,
+    tipModel: 'filament', pigmentDepletion: 0.32, bleed: 0.25, bristleCount: 7,
+  },
+  gouache: {
+    preset: 'bristle-flat', spacing: 0.045, scatter: 0.03, jitterAngle: 6,
+    tiltRotation: true, pressureToSize: 0.52, pressureToOpacity: 0.34,
+    flow: 0.82, sizeMultiplier: 1.6, pressureCurve: 0.72,
+    wobble: 0.08, tiltOval: 0.42, tipModel: 'wet',
+    pigmentDepletion: 0.18, bleed: 0.18, bristleCount: 9,
+  },
+  oil: {
+    preset: 'bristle-flat', spacing: 0.05, scatter: 0.025, jitterAngle: 5,
+    tiltRotation: true, pressureToSize: 0.78, pressureToOpacity: 0.3,
+    flow: 0.84, sizeMultiplier: 1.55, pressureCurve: 0.7,
+    velocityToOpacity: -0.12, taperDistance: 10, directionTexture: 0.85,
+    tipModel: 'filament', pigmentDepletion: 0.24, bleed: 0.04, bristleCount: 11,
   },
 };
 
@@ -704,6 +787,7 @@ function drawSingleDab(
   alpha: number,
   stretchX = 1,
   stretchY = 1,
+  hardness = 0.6,
 ): void {
   const scaleX = (size / DAB_CANVAS_SIZE) * stretchX;
   const scaleY = (size / DAB_CANVAS_SIZE) * stretchY;
@@ -713,6 +797,8 @@ function drawSingleDab(
   ctx.save();
   ctx.transform(cos * scaleX, sin * scaleX, -sin * scaleY, cos * scaleY, x, y);
   ctx.globalAlpha = alpha;
+  const softness = Math.max(0, 1 - Math.min(1, Math.max(0, hardness))) * size * 0.018;
+  ctx.filter = softness > 0.08 ? `blur(${softness.toFixed(2)}px)` : 'none';
   ctx.drawImage(dab, -DAB_CANVAS_SIZE / 2, -DAB_CANVAS_SIZE / 2);
   ctx.restore();
 }
@@ -803,6 +889,12 @@ function renderDabAt(
     const tooth = paperTooth(sample.x * 0.22, sample.y * 0.22);
     grainFactor = (1 - grain * (1 - tooth) * 0.85) * (1 - grain * 0.12 + rng() * grain * 0.24);
   }
+  if (config.pigmentDepletion) {
+    pressureAlphaFactor *= Math.max(
+      0.4,
+      1 - config.pigmentDepletion * Math.min(1, velocity / 2) * 0.6,
+    );
+  }
   const alpha = Math.min(1, brush.opacity * config.flow * pressureAlphaFactor * grainFactor);
 
   // Scatter — radial jitter; grain øker spredningen litt (papirtann)
@@ -825,7 +917,9 @@ function renderDabAt(
 
   // Rotation: tilt (hvis tiltRotation) eller bevegelsesretning + jitter
   let rotation: number;
-  if (config.tiltRotation) {
+  if (config.tiltRotation && typeof sample.rollAngle === 'number') {
+    rotation = (sample.rollAngle * Math.PI) / 180;
+  } else if (config.tiltRotation) {
     rotation = tiltAngleRad(sample);
     if (rotation === 0) {
       rotation = Math.atan2(dirY, dirX);
@@ -841,11 +935,57 @@ function renderDabAt(
   let stretchX = 1;
   let stretchY = 1;
   if (config.tiltOval) {
-    const tilt = Math.min(1, Math.hypot(sample.tiltX ?? 0, sample.tiltY ?? 0) / 90);
+    const tilt = Math.min(
+      1,
+      (Math.hypot(sample.tiltX ?? 0, sample.tiltY ?? 0) / 90)
+        * Math.max(0, brush.tiltSensitivity ?? 0.5),
+    );
     stretchX = 1 + tilt * 2.5 * config.tiltOval;
     stretchY = Math.max(0.3, 1 - tilt * 0.55 * config.tiltOval);
   }
-  drawSingleDab(ctx, tinted, x, y, size, rotation, alpha, stretchX, stretchY);
+  const hardness = typeof brush.hardness === 'number' ? brush.hardness : 0.6;
+  const tipModel = brush.tipModel ?? config.tipModel ?? 'stamp';
+  const bleed = Math.max(
+    0,
+    Math.min(1, Math.max(brush.bleed ?? config.bleed ?? 0, (brush.wetness ?? 0) * 0.65)),
+  );
+  if (bleed > 0.01) {
+    drawSingleDab(
+      ctx, tinted, x, y, size * (1 + bleed * 0.22), rotation,
+      alpha * bleed * 0.2, stretchX, stretchY, Math.min(hardness, 0.15),
+    );
+  }
+  if (tipModel === 'filament') {
+    const bristleCount = Math.max(1, Math.min(16, brush.bristleCount ?? config.bristleCount ?? 5));
+    const nx = -Math.sin(rotation);
+    const ny = Math.cos(rotation);
+    for (let index = 0; index < bristleCount; index += 1) {
+      const lane = bristleCount === 1 ? 0 : index / (bristleCount - 1) - 0.5;
+      const offset = (lane + (rng() - 0.5) * 0.16) * size * 0.7;
+      drawSingleDab(
+        ctx, tinted, x + nx * offset, y + ny * offset,
+        size * (0.2 + rng() * 0.13), rotation,
+        alpha * (0.42 + rng() * 0.28),
+        Math.max(1.8, stretchX * 2.4), Math.max(0.35, stretchY * 0.62), hardness,
+      );
+    }
+  } else if (tipModel === 'particle') {
+    drawSingleDab(ctx, tinted, x, y, size, rotation, alpha, stretchX, stretchY, hardness);
+    const particles = Math.max(2, Math.min(6, Math.floor(2 + grain * 4)));
+    for (let index = 0; index < particles; index += 1) {
+      const angle = rng() * Math.PI * 2;
+      const radius = rng() * size * 0.58;
+      drawSingleDab(
+        ctx, tinted, x + Math.cos(angle) * radius, y + Math.sin(angle) * radius,
+        size * (0.16 + rng() * 0.34), rotation + (rng() - 0.5) * Math.PI,
+        alpha * (0.3 + rng() * 0.38), 1, 1, hardness,
+      );
+    }
+  } else if (tipModel === 'wet') {
+    drawSingleDab(ctx, tinted, x, y, size, rotation, alpha, stretchX, stretchY, hardness);
+  } else {
+    drawSingleDab(ctx, tinted, x, y, size, rotation, alpha, stretchX, stretchY, hardness);
+  }
 
   // Shade 2.0 (spec §38): mikrolinjer i strøkretningen.
   if (config.directionTexture && rng() < config.directionTexture) {
@@ -858,7 +998,7 @@ function renderDabAt(
       ctx, tinted,
       x + ux * offset - uy * lift,
       y + uy * offset + ux * lift,
-      size * 0.18, Math.atan2(uy, ux), Math.min(1, alpha * 0.8), 3.5, 0.5,
+      size * 0.18, Math.atan2(uy, ux), Math.min(1, alpha * 0.8), 3.5, 0.5, hardness,
     );
   }
 }

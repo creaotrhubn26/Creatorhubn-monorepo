@@ -1,12 +1,12 @@
 # Promoter main til ett merke-nettsted.
 #
-# creatorhubn.com deployes automatisk fra main. leadgrid.no og
-# theroleroom.com deployes fra hver sin live/*-gren, slik at en regresjon på
-# main ikke når dem før du bevisst promoterer. Denne workflowen flytter
-# live-grenen til ønsket commit (default: main-HEAD) — Netlify bygger da KUN
-# den ene siten.
+# CreatorHub promoteres automatisk til live/creatorhub først etter grønn
+# migrering og eksakt backend-deploy. Denne manuelle workflowen eier bare
+# live/leadgrid og live/roleroom. Alle mål må matche produksjonens eksakte
+# backend-commit; Leadgrid må i tillegg passere den kanoniske smoke-testen.
 #
 # Kjør: Actions → «Promoter merke» → Run workflow → velg merke.
+# Rollback hører ikke hjemme her; denne workflowen tillater bare fast-forward.
 name: Promoter merke
 
 on:
@@ -21,52 +21,320 @@ on:
           - theroleroom.com
           - begge
       ref:
-        description: 'Commit/gren som skal ut (tomt = main-HEAD)'
+        description: "Commit/gren som skal ut (tomt = main-HEAD)"
         required: false
         type: string
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: promote-brand-production
+  cancel-in-progress: false
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
 
 jobs:
-  promote:
-    runs-on: ubuntu-latest
+  preflight:
+    name: Resolve and verify the exact promotion target
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      brand: ${{ steps.resolve.outputs.brand }}
+      main_sha: ${{ steps.resolve.outputs.main_sha }}
+      require_leadgrid: ${{ steps.resolve.outputs.require_leadgrid }}
+      target_sha: ${{ steps.resolve.outputs.target_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout selected workflow commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Finn commit som skal promoteres
-        id: target
+      - name: Resolve target and preflight every selected live branch
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          REQUESTED_BRAND: ${{ inputs.brand }}
+          REQUESTED_REF: ${{ inputs.ref }}
+          SELECTED_REF: ${{ github.ref }}
+          SELECTED_SHA: ${{ github.sha }}
+        shell: bash
         run: |
-          REF="${{ inputs.ref }}"
-          if [ -z "$REF" ]; then REF="origin/main"; fi
-          SHA=$(git rev-parse "$REF")
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "Promoterer $SHA — $(git log -1 --format=%s "$SHA")"
+          set -euo pipefail
+          if [ "$SELECTED_REF" != "refs/heads/main" ]; then
+            echo "::error::Brand promotion must be dispatched from main"
+            exit 1
+          fi
+          if [[ ! "$SELECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Selected workflow SHA is not a full lowercase commit SHA"
+            exit 1
+          fi
+          checked_out=$(git rev-parse HEAD)
+          if [ "$checked_out" != "$SELECTED_SHA" ]; then
+            echo "::error::Checkout does not match the selected workflow SHA"
+            exit 1
+          fi
 
-      - name: Flytt live-gren(er)
-        run: |
-          set -e
-          SHA='${{ steps.target.outputs.sha }}'
-          promote() {
-            # --force-with-lease ville trenge lokal ref; live-grenene eies av
-            # denne workflowen, så rett push er trygt og forutsigbart.
-            git push --force origin "$SHA:refs/heads/$1"
-            echo "✓ $2 → $SHA"
-          }
-          case '${{ inputs.brand }}' in
-            leadgrid.no)     promote live/leadgrid "leadgrid.no" ;;
-            theroleroom.com) promote live/roleroom "theroleroom.com" ;;
-            begge)           promote live/leadgrid "leadgrid.no"; promote live/roleroom "theroleroom.com" ;;
+          branches=()
+          require_leadgrid=false
+          case "$REQUESTED_BRAND" in
+            leadgrid.no)
+              branches+=(live/leadgrid)
+              require_leadgrid=true
+              ;;
+            theroleroom.com)
+              branches+=(live/roleroom)
+              ;;
+            begge)
+              branches+=(live/leadgrid live/roleroom)
+              require_leadgrid=true
+              ;;
+            *)
+              echo "::error::Unsupported brand selection"
+              exit 1
+              ;;
           esac
 
-      - name: Oppsummering
-        run: |
+          api="https://api.github.com/repos/$REPOSITORY"
+          accept="Accept: application/vnd.github+json"
+          version_header="X-GitHub-Api-Version: 2026-03-10"
+          current_main=$(curl -fsS --connect-timeout 3 --max-time 20 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/git/ref/heads/main" | jq -er '.object.sha')
+          if [ "$current_main" != "$SELECTED_SHA" ]; then
+            echo "::error::Selected workflow commit is not current main"
+            exit 1
+          fi
+
+          if [ -z "$REQUESTED_REF" ]; then
+            target_sha="$current_main"
+          elif [[ "$REQUESTED_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            if ! target_sha=$(git rev-parse --verify "${REQUESTED_REF}^{commit}"); then
+              echo "::error::Requested commit is not available as a commit object"
+              exit 1
+            fi
+          else
+            if ! git check-ref-format --branch "$REQUESTED_REF" >/dev/null; then
+              echo "::error::Requested branch name is invalid"
+              exit 1
+            fi
+            if ! target_sha=$(git rev-parse --verify "refs/remotes/origin/${REQUESTED_REF}^{commit}"); then
+              echo "::error::Requested branch is not available from origin"
+              exit 1
+            fi
+          fi
+          if [[ ! "$target_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Promotion target did not resolve to a full commit SHA"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$target_sha" "$current_main"; then
+            echo "::error::Promotion target is not reachable from current main"
+            exit 1
+          fi
+
+          version_json=$(curl -fsS --connect-timeout 3 --max-time 15 \
+            -H "Accept: application/json" -H "Cache-Control: no-cache" \
+            "$BACKEND_URL/api/version")
+          backend_sha=$(jq -er '.commit | select(type == "string")' <<<"$version_json")
+          if [[ ! "$backend_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Production backend returned an invalid commit identifier"
+            exit 1
+          fi
+          if [ "$backend_sha" != "$target_sha" ]; then
+            echo "::error::Production backend does not run the exact promotion target: backend=$backend_sha target=$target_sha"
+            exit 1
+          fi
+
+          for branch in "${branches[@]}"; do
+            live_sha=$(curl -fsS --connect-timeout 3 --max-time 20 \
+              -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+              "$api/git/ref/heads/$branch" | jq -er '.object.sha')
+            if [[ ! "$live_sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::$branch did not resolve to a full commit SHA"
+              exit 1
+            fi
+            comparison=$(curl -fsS --connect-timeout 3 --max-time 30 \
+              -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+              "$api/compare/$live_sha...$target_sha")
+            compare_status=$(jq -er '.status' <<<"$comparison")
+            merge_base=$(jq -er '.merge_base_commit.sha' <<<"$comparison")
+            behind_by=$(jq -er '.behind_by' <<<"$comparison")
+            if [ "$merge_base" != "$live_sha" ] || [ "$behind_by" -ne 0 ] || \
+               { [ "$compare_status" != "ahead" ] && [ "$compare_status" != "identical" ]; }; then
+              echo "::error::$branch cannot move to $target_sha with a fast-forward"
+              exit 1
+            fi
+          done
+
           {
-            echo "### Promotert: ${{ inputs.brand }}"
-            echo ""
-            echo "Commit: \`${{ steps.target.outputs.sha }}\`"
-            echo ""
-            echo "Netlify bygger nå kun det valgte nettstedet. creatorhubn.com er upåvirket."
+            printf 'brand=%s\n' "$REQUESTED_BRAND"
+            printf 'main_sha=%s\n' "$current_main"
+            printf 'require_leadgrid=%s\n' "$require_leadgrid"
+            printf 'target_sha=%s\n' "$target_sha"
+          } >> "$GITHUB_OUTPUT"
+          echo "Preflight passed for $REQUESTED_BRAND at exact backend commit $target_sha."
+
+  leadgrid_smoketest:
+    name: Verify Leadgrid before its frontend promotion
+    if: needs.preflight.outputs.require_leadgrid == 'true'
+    needs: preflight
+    permissions:
+      contents: read
+    uses: ./.github/workflows/leadgrid-post-deploy-smoketest.yml
+    with:
+      expected_commit: ${{ needs.preflight.outputs.target_sha }}
+      run_daily_rescore: false
+
+  promote:
+    name: Fast-forward selected production branches
+    if: ${{ always() && needs.preflight.result == 'success' && (needs.leadgrid_smoketest.result == 'success' || needs.leadgrid_smoketest.result == 'skipped') }}
+    needs: [preflight, leadgrid_smoketest]
+    environment: Production
+    concurrency:
+      group: creatorhub-production-database-and-backend
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Revalidate and update every selected live branch
+        env:
+          EXPECTED_MAIN: ${{ needs.preflight.outputs.main_sha }}
+          GH_TOKEN: ${{ github.token }}
+          PROMOTION_TARGET: ${{ needs.preflight.outputs.target_sha }}
+          REPOSITORY: ${{ github.repository }}
+          REQUESTED_BRAND: ${{ needs.preflight.outputs.brand }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_MAIN" =~ ^[0-9a-f]{40}$ ]] || \
+             [[ ! "$PROMOTION_TARGET" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Preflight outputs are not full lowercase commit SHAs"
+            exit 1
+          fi
+
+          branches=()
+          labels=()
+          case "$REQUESTED_BRAND" in
+            leadgrid.no)
+              branches+=(live/leadgrid)
+              labels+=(leadgrid.no)
+              ;;
+            theroleroom.com)
+              branches+=(live/roleroom)
+              labels+=(theroleroom.com)
+              ;;
+            begge)
+              branches+=(live/leadgrid live/roleroom)
+              labels+=(leadgrid.no theroleroom.com)
+              ;;
+            *)
+              echo "::error::Unsupported brand selection"
+              exit 1
+              ;;
+          esac
+
+          api="https://api.github.com/repos/$REPOSITORY"
+          accept="Accept: application/vnd.github+json"
+          version_header="X-GitHub-Api-Version: 2026-03-10"
+          current_main=$(curl -fsS --connect-timeout 3 --max-time 20 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/git/ref/heads/main" | jq -er '.object.sha')
+          if [ "$current_main" != "$EXPECTED_MAIN" ]; then
+            echo "::error::Main advanced after promotion preflight"
+            exit 1
+          fi
+
+          lineage=$(curl -fsS --connect-timeout 3 --max-time 30 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/compare/$PROMOTION_TARGET...$current_main")
+          lineage_status=$(jq -er '.status' <<<"$lineage")
+          lineage_base=$(jq -er '.merge_base_commit.sha' <<<"$lineage")
+          if [ "$lineage_base" != "$PROMOTION_TARGET" ] || \
+             { [ "$lineage_status" != "ahead" ] && [ "$lineage_status" != "identical" ]; }; then
+            echo "::error::Promotion target is no longer reachable from current main"
+            exit 1
+          fi
+
+          version_json=$(curl -fsS --connect-timeout 3 --max-time 15 \
+            -H "Accept: application/json" -H "Cache-Control: no-cache" \
+            "$BACKEND_URL/api/version")
+          backend_sha=$(jq -er '.commit | select(type == "string")' <<<"$version_json")
+          if [[ ! "$backend_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Production backend returned an invalid commit identifier"
+            exit 1
+          fi
+          if [ "$backend_sha" != "$PROMOTION_TARGET" ]; then
+            echo "::error::Production backend changed after preflight: backend=$backend_sha target=$PROMOTION_TARGET"
+            exit 1
+          fi
+
+          live_shas=()
+          for branch in "${branches[@]}"; do
+            live_sha=$(curl -fsS --connect-timeout 3 --max-time 20 \
+              -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+              "$api/git/ref/heads/$branch" | jq -er '.object.sha')
+            if [[ ! "$live_sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::$branch did not resolve to a full commit SHA"
+              exit 1
+            fi
+            comparison=$(curl -fsS --connect-timeout 3 --max-time 30 \
+              -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+              "$api/compare/$live_sha...$PROMOTION_TARGET")
+            compare_status=$(jq -er '.status' <<<"$comparison")
+            merge_base=$(jq -er '.merge_base_commit.sha' <<<"$comparison")
+            behind_by=$(jq -er '.behind_by' <<<"$comparison")
+            if [ "$merge_base" != "$live_sha" ] || [ "$behind_by" -ne 0 ] || \
+               { [ "$compare_status" != "ahead" ] && [ "$compare_status" != "identical" ]; }; then
+              echo "::error::$branch cannot move to $PROMOTION_TARGET with a fast-forward"
+              exit 1
+            fi
+            live_shas+=("$live_sha")
+          done
+
+          update_payload=$(jq -cn --arg sha "$PROMOTION_TARGET" '{sha: $sha, force: false}')
+          for index in "${!branches[@]}"; do
+            branch="${branches[$index]}"
+            label="${labels[$index]}"
+            if [ "${live_shas[$index]}" != "$PROMOTION_TARGET" ]; then
+              response="$RUNNER_TEMP/promote-$index.json"
+              status=$(curl -sS --connect-timeout 3 --max-time 30 \
+                -o "$response" -w '%{http_code}' -X PATCH \
+                -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+                -H 'Content-Type: application/json' --data-binary "$update_payload" \
+                "$api/git/refs/heads/$branch")
+              if [ "$status" != 200 ] || \
+                 [ "$(jq -r '.object.sha // empty' "$response")" != "$PROMOTION_TARGET" ]; then
+                echo "::error::GitHub rejected the non-forced update of $branch (HTTP $status)"
+                exit 1
+              fi
+            fi
+            verified_sha=$(curl -fsS --connect-timeout 3 --max-time 20 \
+              -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+              "$api/git/ref/heads/$branch" | jq -er '.object.sha')
+            if [ "$verified_sha" != "$PROMOTION_TARGET" ]; then
+              echo "::error::$branch did not remain at the verified target"
+              exit 1
+            fi
+            echo "$label -> $PROMOTION_TARGET"
+          done
+
+      - name: Oppsummering
+        env:
+          PROMOTED_BRAND: ${{ needs.preflight.outputs.brand }}
+          TARGET_SHA: ${{ needs.preflight.outputs.target_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            printf '### Promotert: %s\n\n' "$PROMOTED_BRAND"
+            printf 'Commit: `%s`\n\n' "$TARGET_SHA"
+            printf '%s\n' 'Backend-SHA og eventuell Leadgrid-smoke er verifisert. creatorhubn.com er upåvirket.'
           } >> "$GITHUB_STEP_SUMMARY"

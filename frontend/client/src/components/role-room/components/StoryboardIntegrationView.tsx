@@ -52,6 +52,11 @@ import {
   History as HistoryIcon,
 } from '@mui/icons-material';
 import type { SceneBreakdown, StoryboardFrame as StoryboardFrameModel } from '../models/casting';
+import {
+  normalizeShotFramingState,
+  shotFramingStatesEqual,
+  type ShotFramingState,
+} from '@shared/storyboard-shot-framing';
 import { FrameDrawingEditor } from './FrameDrawingEditor';
 // Sprint A.7: Creative Studio-panel — shot-forslag, coverage-gaps, refs
 import { CreativeSuggestionsPanel } from './drawing/CreativeSuggestionsPanel';
@@ -153,6 +158,7 @@ interface StoryboardFrame {
   // Intensjonslaget (STORYBOARD_DESIGN.md): DP-metadata + beat + status
   shotType?: string;          // WS/MS/CU/OTS/POV/…
   lensMm?: number;            // 14-135
+  shotFraming?: ShotFramingState;
   beatTag?: StoryboardBeatTag;
   frameStatus?: StoryboardFrameStatus;
   location?: string;
@@ -625,8 +631,9 @@ const renderStrokesToThumbnailDataUrl = (
       const points = stroke.points;
       if (!Array.isArray(points) || points.length < 2) continue;
       const type = stroke.brush?.type;
-      if (type === 'smudge') continue;
-      const isEraser = type === 'eraser';
+      if (type === 'smudge' || type === 'tortillon') continue;
+      const isEraser = type === 'eraser' || type === 'vinyl'
+        || type === 'kneaded' || type === 'lightlift';
       const widthMultiplier =
         type === 'highlighter' ? 3
           : type === 'watercolor' ? 2.4
@@ -820,6 +827,7 @@ const toLibraryItem = (value: unknown): StoryboardLibraryItem | null => {
       workflowLevel: isStoryboardDetailLevel(frameRaw.detailLevel) ? frameRaw.detailLevel : undefined,
       imageUrl: typeof frameRaw.imageUrl === 'string' ? frameRaw.imageUrl : undefined,
     }),
+    shotFraming: normalizeShotFramingState(frameRaw.shotFraming),
   });
 
   const sceneNumber =
@@ -1002,6 +1010,7 @@ const toLocalFrames = (frames?: StoryboardFrameModel[]): StoryboardFrame[] => {
     variantLabel: typeof f.variantLabel === 'string' ? f.variantLabel : undefined,
     shotType: typeof f.shotType === 'string' ? f.shotType : undefined,
     lensMm: typeof f.lensMm === 'number' && Number.isFinite(f.lensMm) ? f.lensMm : undefined,
+    shotFraming: normalizeShotFramingState(f.shotFraming),
     beatTag: isBeatTag(f.beatTag) ? f.beatTag : undefined,
     frameStatus: isFrameStatus(f.frameStatus) ? f.frameStatus : undefined,
     location: typeof f.location === 'string' ? f.location : undefined,
@@ -1052,6 +1061,7 @@ const toModelFrames = (frames: StoryboardFrame[], defaultSceneId: string): Story
     variantLabel: f.variantLabel,
     shotType: f.shotType,
     lensMm: f.lensMm,
+    shotFraming: normalizeShotFramingState(f.shotFraming),
     beatTag: f.beatTag,
     frameStatus: f.frameStatus,
     location: f.location,
@@ -1098,6 +1108,7 @@ const framesEqual = (a: StoryboardFrame[], b: StoryboardFrame[]): boolean => {
       left.variantLabel !== right.variantLabel ||
       left.shotType !== right.shotType ||
       left.lensMm !== right.lensMm ||
+      !shotFramingStatesEqual(left.shotFraming, right.shotFraming) ||
       left.beatTag !== right.beatTag ||
       left.frameStatus !== right.frameStatus ||
       left.location !== right.location ||

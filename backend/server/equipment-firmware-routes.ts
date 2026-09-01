@@ -23,6 +23,7 @@
 
 import type express from "express";
 import type { Pool } from "pg";
+import { idempotencyMiddleware } from "./_shared-idempotency";
 import { eq, and, desc, asc, inArray, sql } from "drizzle-orm";
 import {
   type CompatCatalogItem,
@@ -122,6 +123,17 @@ export function setupEquipmentFirmwareRoutes(deps: EquipmentFirmwareRoutesDeps):
     resolveSoftwareOrderColumn,
     toIsoString,
   } = deps;
+
+  const equipmentInventoryIdempotency = async (req: any, res: any, next: any) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    req._equipmentInventorySession = session;
+    return idempotencyMiddleware({
+      pool,
+      // A caller can only replay its own cached response.
+      scope: `equipment-inventory:${session.userId}`,
+    })(req, res, next);
+  };
 
   app.get("/api/equipment/software", async (req, res) => {
     const profession =
@@ -681,8 +693,8 @@ export function setupEquipmentFirmwareRoutes(deps: EquipmentFirmwareRoutesDeps):
     }
   });
 
-  app.post("/api/equipment/inventory", async (req, res) => {
-    const _session = requireUserSession(req, res);
+  app.post("/api/equipment/inventory", equipmentInventoryIdempotency, async (req: any, res) => {
+    const _session = req._equipmentInventorySession;
     if (!_session) return;
     try {
       const {

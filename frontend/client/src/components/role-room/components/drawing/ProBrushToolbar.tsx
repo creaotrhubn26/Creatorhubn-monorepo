@@ -119,18 +119,20 @@ interface BrushDefinition {
 }
 
 const BRUSHES: BrushDefinition[] = [
-  { type: 'pen', name: 'Pen', icon: <Create />, tipShape: 'round' },
-  { type: 'pencil', name: 'Pencil', icon: <Edit />, tipShape: 'pointed' },
-  // Sprint A.7: storyboard-bransje-brushes for value-studies, atmosfære
-  // og figurarbeid. Plassert sammen med pencil-familien.
-  { type: 'graphite', name: 'Graphite', icon: <Gesture />, tipShape: 'flat' },
-  { type: 'charcoal', name: 'Charcoal', icon: <BlurOn />, tipShape: 'pointed' },
-  { type: 'conte', name: 'Conté', icon: <EditOutlined />, tipShape: 'pointed' },
+  // Samme core-rekkefølge som iPad. Hele katalogen ligger i Brush Library /
+  // Frame Drawing Editor; hurtigraden holder produksjonsverktøyene synlige.
+  { type: 'layout', name: 'Layout', icon: <EditOutlined />, tipShape: 'pointed' },
+  { type: 'pencil', name: 'Blyant', icon: <Edit />, tipShape: 'pointed' },
+  { type: 'heavy', name: 'Heavy', icon: <Gesture />, tipShape: 'pointed' },
+  { type: 'detail', name: 'Detalj', icon: <Create />, tipShape: 'pointed' },
+  { type: 'ink', name: 'Tusj', icon: <Create />, tipShape: 'pointed' },
+  { type: 'dryink', name: 'Tørr tusj', icon: <Brush />, tipShape: 'flat' },
   { type: 'marker', name: 'Marker', icon: <BorderColor />, tipShape: 'chisel' },
-  { type: 'brush', name: 'Brush', icon: <Brush />, tipShape: 'pointed' },
-  { type: 'watercolor', name: 'Watercolor', icon: <FormatPaint />, tipShape: 'round' },
-  { type: 'highlighter', name: 'Highlighter', icon: <Highlight />, tipShape: 'flat' },
-  { type: 'eraser', name: 'Eraser', icon: <AutoFixHigh />, tipShape: 'round' },
+  { type: 'hatch', name: 'Skraver', icon: <Gesture />, tipShape: 'flat' },
+  { type: 'shade', name: 'Skygge', icon: <BlurOn />, tipShape: 'flat' },
+  { type: 'eraser', name: 'Viskelær', icon: <AutoFixHigh />, tipShape: 'round' },
+  { type: 'tortillon', name: 'Tortillon', icon: <BlurOn />, tipShape: 'pointed' },
+  { type: 'watercolor', name: 'Akvarell', icon: <FormatPaint />, tipShape: 'round' },
 ];
 
 // Quick color palette matching reference image
@@ -344,7 +346,7 @@ export const ProBrushToolbar: React.FC<ProBrushToolbarProps> = ({
               <BrushIcon>
                 <BrushTipSVG
                   type={brush.type}
-                  color={brush.type === 'eraser' ? '#FF69B4' : brushConfig.color}
+                  color={brush.type === 'eraser' || brush.type === 'vinyl' ? '#FF69B4' : brushConfig.color}
                   size={brushConfig.size}
                 />
               </BrushIcon>

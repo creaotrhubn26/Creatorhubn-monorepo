@@ -57,7 +57,34 @@ export type AdvancedBrushType =
   | 'fill'
   | 'halftone'
   | 'stamp'
-  | 'custom';
+  | 'custom'
+  // Brush Engine 2 — samme raw values som Storyboard Room på iPad.
+  | 'bluepencil'
+  | 'redpencil'
+  | 'mechanical'
+  | 'dryink'
+  | 'tonemarker'
+  | 'tortillon'
+  | 'vinyl'
+  | 'pastel'
+  | 'stipple'
+  | 'sumi'
+  | 'gouache'
+  | 'oil'
+  // Role Room Traditional Studio — originale clean-room-pensler.
+  | 'sketchHB' | 'sketch6B' | 'sketchTilt'
+  | 'colorHard' | 'colorSoft' | 'colorShade'
+  | 'studio2H' | 'studioHB' | 'studio4B'
+  | 'vineCharcoal' | 'blockCharcoal' | 'softPastel'
+  | 'nibFine' | 'nibRough' | 'nibBrush'
+  | 'toneDots' | 'toneLines' | 'toneCross'
+  | 'comicFlat' | 'comicShade'
+  | 'stippleFine' | 'stippleRough' | 'stippleFill';
+
+export type BrushTipModel = 'stamp' | 'ribbon' | 'filament' | 'particle' | 'region' | 'wet';
+export type BrushMaterial = 'graphite' | 'charcoal' | 'chalk' | 'ink' | 'marker'
+  | 'watercolor' | 'gouache' | 'oil' | 'eraser' | 'blender' | 'utility';
+export type BrushPaperProfile = 'smooth' | 'storyboard' | 'rough' | 'absorbent';
 
 // Alias for external usage
 export type ProBrushType = AdvancedBrushType;
@@ -74,6 +101,13 @@ export interface BrushConfig {
   grain: number;         // 0-1: texture grain amount
   tiltSensitivity: number;
   pressureSensitivity: number;
+  engineVersion?: number;
+  tipModel?: BrushTipModel;
+  material?: BrushMaterial;
+  paperProfile?: BrushPaperProfile;
+  pigmentDepletion?: number;
+  bleed?: number;
+  bristleCount?: number;
 }
 
 // Alias for external usage
@@ -118,7 +152,7 @@ export const BRUSH_PRESETS: Record<AdvancedBrushType, Partial<BrushConfig>> = {
   skintex: { grain: 0.55, flow: 0.5, hardness: 0.5, tiltSensitivity: 0.4, pressureSensitivity: 0.7 },
   rocktex: { grain: 0.6, flow: 0.55, hardness: 0.7, tiltSensitivity: 0.4, pressureSensitivity: 0.7 },
   gloss: { grain: 0, flow: 0.95, hardness: 0.8, tiltSensitivity: 0.3, pressureSensitivity: 0.85 },
-  wash: { grain: 0.22, flow: 0.16, hardness: 0.25, tiltSensitivity: 0.5, pressureSensitivity: 0.6 },
+  wash: { grain: 0.22, flow: 0.16, hardness: 0.25, wetness: 0.6, tiltSensitivity: 0.5, pressureSensitivity: 0.6, engineVersion: 2, tipModel: 'wet', material: 'watercolor', paperProfile: 'absorbent', pigmentDepletion: 0.08, bleed: 0.58, bristleCount: 9 },
   spikes: { grain: 0.3, flow: 0.8, hardness: 0.65, tiltSensitivity: 0.3, pressureSensitivity: 0.8 },
   // iPad-runde: fyll/raster/stamp/egen spiss — web rendrer fallback (data-kompat)
   fill: { grain: 0, flow: 0.9, hardness: 0.7, tiltSensitivity: 0, pressureSensitivity: 0.3 },
@@ -126,6 +160,41 @@ export const BRUSH_PRESETS: Record<AdvancedBrushType, Partial<BrushConfig>> = {
   stamp: { grain: 0, flow: 1, hardness: 0.5, tiltSensitivity: 0, pressureSensitivity: 0.3 },
   custom: { grain: 0.3, flow: 0.85, hardness: 0.6, tiltSensitivity: 0.5, pressureSensitivity: 0.8 },
   speedlines: { grain: 0.15, flow: 0.8, hardness: 0.7, tiltSensitivity: 0.2, pressureSensitivity: 0.6 },
+  bluepencil: { grain: 0.3, flow: 0.24, hardness: 0.62, tiltSensitivity: 0.42, pressureSensitivity: 0.62, engineVersion: 2, tipModel: 'stamp', material: 'graphite', paperProfile: 'storyboard', pigmentDepletion: 0.08 },
+  redpencil: { grain: 0.3, flow: 0.24, hardness: 0.62, tiltSensitivity: 0.42, pressureSensitivity: 0.62, engineVersion: 2, tipModel: 'stamp', material: 'graphite', paperProfile: 'storyboard', pigmentDepletion: 0.08 },
+  mechanical: { grain: 0.14, flow: 0.68, hardness: 0.9, tiltSensitivity: 0.08, pressureSensitivity: 0.72, engineVersion: 2, tipModel: 'stamp', material: 'graphite', paperProfile: 'smooth', pigmentDepletion: 0.04 },
+  dryink: { grain: 0.76, flow: 0.54, hardness: 0.74, wetness: 0.04, tiltSensitivity: 0.52, pressureSensitivity: 0.86, engineVersion: 2, tipModel: 'filament', material: 'ink', paperProfile: 'rough', pigmentDepletion: 0.36, bristleCount: 5 },
+  tonemarker: { grain: 0.05, flow: 0.34, hardness: 0.55, tiltSensitivity: 0.92, pressureSensitivity: 0.3, engineVersion: 2, tipModel: 'ribbon', material: 'marker', paperProfile: 'smooth', bleed: 0.05 },
+  tortillon: { grain: 0.2, flow: 0.25, hardness: 0.46, tiltSensitivity: 0.45, pressureSensitivity: 0.8, engineVersion: 2, tipModel: 'region', material: 'blender', paperProfile: 'storyboard' },
+  vinyl: { grain: 0, flow: 1, hardness: 0.96, tiltSensitivity: 0.12, pressureSensitivity: 0.82, engineVersion: 2, tipModel: 'region', material: 'eraser', paperProfile: 'smooth' },
+  pastel: { grain: 0.82, flow: 0.3, hardness: 0.22, tiltSensitivity: 0.7, pressureSensitivity: 0.88, engineVersion: 2, tipModel: 'particle', material: 'chalk', paperProfile: 'rough', pigmentDepletion: 0.16 },
+  stipple: { grain: 0.44, flow: 0.42, hardness: 0.84, tiltSensitivity: 0.1, pressureSensitivity: 0.7, engineVersion: 2, tipModel: 'particle', material: 'utility', paperProfile: 'storyboard' },
+  sumi: { grain: 0.56, flow: 0.48, hardness: 0.38, wetness: 0.72, tiltSensitivity: 0.8, pressureSensitivity: 0.95, engineVersion: 2, tipModel: 'filament', material: 'ink', paperProfile: 'absorbent', pigmentDepletion: 0.32, bleed: 0.25, bristleCount: 7 },
+  gouache: { grain: 0.26, flow: 0.72, hardness: 0.5, wetness: 0.44, tiltSensitivity: 0.62, pressureSensitivity: 0.78, engineVersion: 2, tipModel: 'wet', material: 'gouache', paperProfile: 'storyboard', pigmentDepletion: 0.18, bleed: 0.18, bristleCount: 9 },
+  oil: { grain: 0.34, flow: 0.74, hardness: 0.66, wetness: 0.22, tiltSensitivity: 0.74, pressureSensitivity: 0.86, engineVersion: 2, tipModel: 'filament', material: 'oil', paperProfile: 'rough', pigmentDepletion: 0.24, bleed: 0.04, bristleCount: 11 },
+  sketchHB: { grain: 0.58, flow: 0.48, hardness: 0.58, tiltSensitivity: 0.5, pressureSensitivity: 0.78, engineVersion: 2, tipModel: 'stamp', material: 'graphite', paperProfile: 'storyboard', pigmentDepletion: 0.08 },
+  sketch6B: { grain: 0.72, flow: 0.66, hardness: 0.36, tiltSensitivity: 0.68, pressureSensitivity: 0.94, engineVersion: 2, tipModel: 'stamp', material: 'graphite', paperProfile: 'storyboard', pigmentDepletion: 0.08 },
+  sketchTilt: { grain: 0.82, flow: 0.24, hardness: 0.24, tiltSensitivity: 0.96, pressureSensitivity: 0.72, engineVersion: 2, tipModel: 'ribbon', material: 'graphite', paperProfile: 'rough', pigmentDepletion: 0.14 },
+  colorHard: { grain: 0.48, flow: 0.56, hardness: 0.78, tiltSensitivity: 0.42, pressureSensitivity: 0.78, engineVersion: 2, tipModel: 'stamp', material: 'graphite', paperProfile: 'storyboard', pigmentDepletion: 0.08 },
+  colorSoft: { grain: 0.62, flow: 0.5, hardness: 0.5, tiltSensitivity: 0.64, pressureSensitivity: 0.9, engineVersion: 2, tipModel: 'stamp', material: 'graphite', paperProfile: 'storyboard', pigmentDepletion: 0.08 },
+  colorShade: { grain: 0.76, flow: 0.28, hardness: 0.28, tiltSensitivity: 0.94, pressureSensitivity: 0.78, engineVersion: 2, tipModel: 'ribbon', material: 'graphite', paperProfile: 'rough', pigmentDepletion: 0.14 },
+  studio2H: { grain: 0.42, flow: 0.38, hardness: 0.84, tiltSensitivity: 0.34, pressureSensitivity: 0.68, engineVersion: 2, tipModel: 'stamp', material: 'graphite', paperProfile: 'storyboard', pigmentDepletion: 0.08 },
+  studioHB: { grain: 0.56, flow: 0.56, hardness: 0.62, tiltSensitivity: 0.56, pressureSensitivity: 0.82, engineVersion: 2, tipModel: 'stamp', material: 'graphite', paperProfile: 'storyboard', pigmentDepletion: 0.08 },
+  studio4B: { grain: 0.7, flow: 0.7, hardness: 0.38, tiltSensitivity: 0.72, pressureSensitivity: 0.96, engineVersion: 2, tipModel: 'stamp', material: 'graphite', paperProfile: 'storyboard', pigmentDepletion: 0.08 },
+  vineCharcoal: { grain: 0.92, flow: 0.32, hardness: 0.2, tiltSensitivity: 0.72, pressureSensitivity: 0.92, engineVersion: 2, tipModel: 'particle', material: 'charcoal', paperProfile: 'rough', pigmentDepletion: 0.22 },
+  blockCharcoal: { grain: 0.88, flow: 0.5, hardness: 0.28, tiltSensitivity: 0.88, pressureSensitivity: 0.94, engineVersion: 2, tipModel: 'particle', material: 'charcoal', paperProfile: 'rough', pigmentDepletion: 0.22 },
+  softPastel: { grain: 0.86, flow: 0.34, hardness: 0.18, tiltSensitivity: 0.74, pressureSensitivity: 0.9, engineVersion: 2, tipModel: 'particle', material: 'chalk', paperProfile: 'rough', pigmentDepletion: 0.16 },
+  nibFine: { grain: 0.42, flow: 0.76, hardness: 0.9, wetness: 0.02, tiltSensitivity: 0.18, pressureSensitivity: 0.84, engineVersion: 2, tipModel: 'filament', material: 'ink', paperProfile: 'rough', pigmentDepletion: 0.18, bristleCount: 1 },
+  nibRough: { grain: 0.8, flow: 0.54, hardness: 0.7, wetness: 0.02, tiltSensitivity: 0.56, pressureSensitivity: 0.9, engineVersion: 2, tipModel: 'filament', material: 'ink', paperProfile: 'rough', pigmentDepletion: 0.36, bristleCount: 5 },
+  nibBrush: { grain: 0.88, flow: 0.48, hardness: 0.48, wetness: 0.04, tiltSensitivity: 0.78, pressureSensitivity: 0.96, engineVersion: 2, tipModel: 'filament', material: 'ink', paperProfile: 'rough', pigmentDepletion: 0.44, bleed: 0.02, bristleCount: 9 },
+  toneDots: { grain: 0, flow: 0.88, hardness: 0.96, tiltSensitivity: 0, pressureSensitivity: 0.9, engineVersion: 2, tipModel: 'particle', material: 'utility', paperProfile: 'storyboard' },
+  toneLines: { grain: 0.08, flow: 0.64, hardness: 0.9, tiltSensitivity: 0, pressureSensitivity: 0.72, engineVersion: 2, tipModel: 'particle', material: 'utility', paperProfile: 'storyboard' },
+  toneCross: { grain: 0.08, flow: 0.64, hardness: 0.9, tiltSensitivity: 0, pressureSensitivity: 0.72, engineVersion: 2, tipModel: 'particle', material: 'utility', paperProfile: 'storyboard' },
+  comicFlat: { grain: 0.04, flow: 0.9, hardness: 0.68, tiltSensitivity: 0.82, pressureSensitivity: 0.28, engineVersion: 2, tipModel: 'ribbon', material: 'marker', paperProfile: 'smooth', bleed: 0.05 },
+  comicShade: { grain: 0.04, flow: 0.84, hardness: 0.94, tiltSensitivity: 0, pressureSensitivity: 0.88, engineVersion: 2, tipModel: 'ribbon', material: 'marker', paperProfile: 'smooth', bleed: 0.05 },
+  stippleFine: { grain: 0.24, flow: 0.48, hardness: 0.96, tiltSensitivity: 0.08, pressureSensitivity: 0.7, engineVersion: 2, tipModel: 'particle', material: 'utility', paperProfile: 'storyboard' },
+  stippleRough: { grain: 0.58, flow: 0.44, hardness: 0.82, tiltSensitivity: 0.1, pressureSensitivity: 0.8, engineVersion: 2, tipModel: 'particle', material: 'utility', paperProfile: 'storyboard' },
+  stippleFill: { grain: 0.46, flow: 0.38, hardness: 0.88, tiltSensitivity: 0.08, pressureSensitivity: 0.82, engineVersion: 2, tipModel: 'particle', material: 'utility', paperProfile: 'storyboard' },
   pencil: {
     hardness: 0.6,
     flow: 0.8,
@@ -171,6 +240,13 @@ export const BRUSH_PRESETS: Record<AdvancedBrushType, Partial<BrushConfig>> = {
     grain: 0.4,
     pressureSensitivity: 1,
     tiltSensitivity: 0.7,
+    engineVersion: 2,
+    tipModel: 'filament',
+    material: 'ink',
+    paperProfile: 'absorbent',
+    pigmentDepletion: 0.18,
+    bleed: 0.12,
+    bristleCount: 7,
   },
   watercolor: {
     hardness: 0.1,
@@ -178,6 +254,13 @@ export const BRUSH_PRESETS: Record<AdvancedBrushType, Partial<BrushConfig>> = {
     wetness: 0.8,
     grain: 0.2,
     pressureSensitivity: 0.7,
+    engineVersion: 2,
+    tipModel: 'wet',
+    material: 'watercolor',
+    paperProfile: 'absorbent',
+    pigmentDepletion: 0.08,
+    bleed: 0.58,
+    bristleCount: 9,
   },
   ink: {
     hardness: 0.7,

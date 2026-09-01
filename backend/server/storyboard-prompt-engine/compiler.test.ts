@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { storyboardShotContextSchema } from '../storyboard-ai-context.js';
+import {
+  enrichStoryboardContextWithStrokes,
+  storyboardShotContextSchema,
+} from '../storyboard-ai-context.js';
 import {
   compileStoryboardPrompt,
   PROMPT_ENGINE_VERSION,
@@ -86,6 +89,116 @@ describe('The Role Room Prompt Engine', () => {
     expect(result.inspector.lockedProperties).toContain('style');
     expect(result.inspector.model.id).toBe('gpt-image-2');
     expect(result.inspector.inheritedConstraintCount).toBeGreaterThan(18);
+  });
+
+  it('kompilerer den anvendte viewporten som en låst camera-constraint', () => {
+    const framed = storyboardShotContextSchema.parse({
+      ...trollContext,
+      shot: {
+        ...trollContext.shot,
+        shotFraming: {
+          version: 1,
+          centerX: 0.42,
+          centerY: 0.38,
+          zoom: 2.4,
+          rollDegrees: -8,
+          aspectRatio: 2.39,
+          focusAnchorX: 0.45,
+          focusAnchorY: 0.34,
+          mode: 'manual',
+          intentFingerprint: 'CU|Dutch|85',
+          revision: 3,
+          shotSize: 'CU',
+          angle: 'Dutch',
+          lensMm: 85,
+        },
+      },
+    });
+    const image = compileStoryboardPrompt({
+      kind: 'storyboard-image', modelId: 'gpt-image-2', context: framed,
+    });
+    const applied = image.modules.find((entry) => entry.id === 'camera')
+      ?.constraints.find((entry) => entry.id === 'applied-framing');
+
+    expect(applied).toMatchObject({ locked: true, priority: 100, source: 'shot' });
+    expect(applied?.text).toContain('center 42% from left, 38% from top');
+    expect(applied?.text).toContain('2.40x zoom');
+    expect(applied?.text).toContain('-8.0 degree roll');
+    expect(applied?.text).toContain('focus anchor at 45% from left, 34% from top');
+    expect(applied?.text).toContain('do not zoom out, recenter, level, or reframe');
+    expect(image.inspector.lockedProperties).toContain('applied-framing');
+
+    const video = compileStoryboardPrompt({
+      kind: 'storyboard-video', modelId: 'seedance-2-i2v', context: framed,
+    });
+    expect(video.compiledPrompt).toContain('Applied viewport is authoritative');
+    expect(video.compiledPrompt.length).toBeLessThanOrEqual(1_200);
+  });
+
+  it('holder GPT Image-instruksen dynamisk for portrait og cinema-format', () => {
+    for (const aspectRatio of [9 / 16, 2.39]) {
+      const context = storyboardShotContextSchema.parse({
+        ...trollContext,
+        shot: {
+          ...trollContext.shot,
+          shotFraming: {
+            version: 1,
+            centerX: 0.5,
+            centerY: 0.5,
+            zoom: 1,
+            rollDegrees: 0,
+            aspectRatio,
+            mode: 'manual',
+            revision: 1,
+          },
+        },
+      });
+      const compiled = compileStoryboardPrompt({
+        kind: 'storyboard-image', modelId: 'gpt-image-2', context,
+      }).compiledPrompt;
+
+      expect(compiled).toContain(`${aspectRatio.toFixed(3)}:1 aspect ratio`);
+      expect(compiled).toContain('at the applied shot aspect ratio');
+      expect(compiled).not.toContain('16:9 storyboard panel');
+    }
+  });
+
+  it('bruker viewport-koordinater for fokus og artistmerker etter framing', () => {
+    const source = storyboardShotContextSchema.parse({
+      ...trollContext,
+      shot: {
+        ...trollContext.shot,
+        shotFraming: {
+          version: 1, centerX: 0.4, centerY: 0.5, zoom: 2,
+          rollDegrees: 0, aspectRatio: 2,
+          focusAnchorX: 0.5, focusAnchorY: 0.5,
+          mode: 'manual', revision: 2,
+        },
+      },
+      productionMarks: [{
+        strokeId: 'negative-space-source', kind: 'negativeSpace',
+        center: { x: 0.45, y: 0.5 },
+        bounds: { x: 0.4, y: 0.4, width: 0.1, height: 0.2 },
+        direction: null,
+      }],
+    });
+    const context = enrichStoryboardContextWithStrokes(
+      source, [], 1_000, 500,
+    );
+    const result = compileStoryboardPrompt({
+      kind: 'storyboard-image', modelId: 'gpt-image-2', context,
+    });
+    const framing = result.modules.find((entry) => entry.id === 'camera')
+      ?.constraints.find((entry) => entry.id === 'applied-framing');
+    const mark = result.modules.find((entry) => entry.id === 'shot')
+      ?.constraints.find((entry) => entry.id.includes('artist-mark'));
+
+    expect(framing?.text).toContain(
+      'focus anchor at 70% from left, 50% from top in the applied viewport',
+    );
+    expect(mark?.text).toContain('Center 60% from left, 50% from top');
+    expect(mark?.text).toContain('bounds 20% by 40%');
+    expect(mark?.text).not.toContain('Center 45% from left');
   });
 
   it('kompilerer en versjonert Medical-pakke fra kanonisk produksjonsdata', () => {

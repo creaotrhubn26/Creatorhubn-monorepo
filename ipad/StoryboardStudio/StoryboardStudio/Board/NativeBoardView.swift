@@ -2,6 +2,8 @@ import SwiftUI
 import UIKit
 import PhotosUI
 import AVFoundation
+import AVKit
+import CryptoKit
 
 // Native Board Pro — mockup-flaten («Neon City», STORYBOARD_DESIGN.md §4b)
 // i SwiftUI rundt Metal-motoren, med Role Room-brand (fiolett aksent).
@@ -52,45 +54,247 @@ func decodeDataURL(_ dataURL: String?) -> UIImage? {
     return UIImage(data: data)
 }
 
+private func storyboardThumbnailDataURL(_ dataURL: String) -> String? {
+    guard let image = decodeDataURL(dataURL) else { return nil }
+    let maxWidth = 420.0
+    let scale = min(1, maxWidth / max(1, image.size.width))
+    let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    let thumb = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+        image.draw(in: CGRect(origin: .zero, size: size))
+    }
+    guard let data = thumb.jpegData(compressionQuality: 0.72) else { return nil }
+    return "data:image/jpeg;base64," + data.base64EncodedString()
+}
+
+enum FrameDurationResponseAdoptionPolicy {
+    /// A reload may replace optimistic pixels/state while a PATCH is in
+    /// flight. Only an explicitly queued later target is allowed to outlive
+    /// the authoritative response for the completed request.
+    static func shouldApplyAuthoritativeResponse(
+        newerPendingTarget: MediaTime?
+    ) -> Bool {
+        newerPendingTarget == nil
+    }
+}
+
+enum FrameDurationVideoInvalidationPolicy {
+    static func afterDurationChange(
+        _ state: StoryboardPaintoverState?,
+        changed: Bool
+    ) -> StoryboardPaintoverState? {
+        guard changed, var state else { return state }
+        state.videoStale = true
+        return state
+    }
+}
+
+enum CameraMotionHistorySyncPolicy {
+    /// A framing-only undo/redo still changes the coordinate system to which
+    /// an otherwise equal motion track is bound. It therefore needs the same
+    /// dedicated OCC mutation as a changed track.
+    static func requiresMotionRebind(
+        framingChanged: Bool,
+        currentTrack: CameraMotionTrack?,
+        authoritativeTrack: CameraMotionTrack?,
+        readState: FrameCameraMotionReadState
+    ) -> Bool {
+        guard framingChanged else { return false }
+        switch readState {
+        case .invalid, .upgradeRequired:
+            return false
+        case .none, .valid:
+            // `.none` may be a legacy summary, but without a decoded known
+            // v1 track there is nothing safe to serialize or rebind.
+            return currentTrack != nil || authoritativeTrack != nil
+        }
+    }
+}
+
 @MainActor
 final class BoardState: ObservableObject {
     let manuscript: ManuscriptSummary
     let projectId: String?
     @Published var scenes: [SceneSummary] = []
+    @Published var scenarioPacks: [StoryboardScenarioPackSummary] = []
+    @Published var aiModels: [StoryboardAIModelSummary] = []
+    @Published var scenarioCatalogError: String?
     @Published var selectedSceneIndex = 0
     @Published var activeFrameIndex = 0
     @Published var errorMessage: String?
     @Published var syncStatus: String?
+    private let usesLocalSample: Bool
+    private var pendingDurations: [String: MediaTime] = [:]
+    private var durationExpectedRevisions: [String: Int] = [:]
+    private var durationSyncTasks: [String: Task<Void, Never>] = [:]
+    private var durationRollbacks: [String: DurationRollbackState] = [:]
 
-    init(manuscript: ManuscriptSummary, projectId: String? = nil) {
+    private struct DurationRollbackState {
+        let shotDuration: MediaTime?
+        let durationSec: Double
+        let durationRevision: Int?
+        let updatedAt: String?
+        let sourceUpdatedAt: String?
+        let aiPaintoverState: StoryboardPaintoverState?
+        let cameraMotion: FrameDurationCameraMotionSidecar?
+    }
+
+    init(manuscript: ManuscriptSummary, projectId: String? = nil,
+         sampleScenes: [SceneSummary] = []) {
         self.manuscript = manuscript
         self.projectId = projectId
+        self.usesLocalSample = !sampleScenes.isEmpty
+        self.scenes = RoleRoomAPIClient.applyingStoryboardTiming(
+            manuscript.storyboardTiming, to: sampleScenes)
     }
 
     var scene: SceneSummary? { scenes.indices.contains(selectedSceneIndex) ? scenes[selectedSceneIndex] : nil }
+    var isLocalSample: Bool { usesLocalSample }
     var frame: FrameSummary? {
         guard let scene, scene.frames.indices.contains(activeFrameIndex) else { return nil }
         return scene.frames[activeFrameIndex]
     }
 
     func reload() async {
+        guard !usesLocalSample else { return }
+        let selectedSceneId = scene?.id
+        let selectedFrameId = frame?.id
         do {
-            scenes = try await RoleRoomAPIClient.shared.fetchScenes(manuscriptId: manuscript.id)
-            selectedSceneIndex = min(selectedSceneIndex, max(0, scenes.count - 1))
-            // Behold aktivt shot (klemt) — reset til 0 kastet brukeren tilbake
-            // til første shot ved hver Inspector-patch.
-            activeFrameIndex = min(activeFrameIndex, max(0, (scene?.frames.count ?? 1) - 1))
+            let fetched = try await RoleRoomAPIClient.shared.fetchScenes(
+                manuscriptId: manuscript.id)
+            let refreshed = RoleRoomAPIClient.applyingStoryboardTiming(
+                manuscript.storyboardTiming, to: fetched)
+            scenes = refreshed
+            if let selectedSceneId,
+               let sameScene = refreshed.firstIndex(where: { $0.id == selectedSceneId }) {
+                selectedSceneIndex = sameScene
+            } else {
+                selectedSceneIndex = min(selectedSceneIndex, max(0, refreshed.count - 1))
+            }
+            // Server-reorder må ikke flytte den aktive canvasen fra A til B
+            // mens en save await-er. Bevar identitet, ikke bare gammel indeks.
+            if let selectedFrameId,
+               let sameFrame = scene?.frames.firstIndex(where: { $0.id == selectedFrameId }) {
+                activeFrameIndex = sameFrame
+            } else {
+                activeFrameIndex = min(
+                    activeFrameIndex, max(0, (scene?.frames.count ?? 1) - 1))
+            }
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadScenarioPacksIfNeeded() async {
+        guard !usesLocalSample else { return }
+        if scenarioPacks.isEmpty {
+            do {
+                scenarioPacks = try await RoleRoomAPIClient.shared.fetchScenarioPacks()
+                scenarioCatalogError = nil
+            } catch {
+                scenarioCatalogError = error.localizedDescription
+            }
+        }
+        if aiModels.isEmpty {
+            aiModels = (try? await RoleRoomAPIClient.shared.fetchStoryboardAIModels()) ?? []
         }
     }
 
     /// Live-polling: 304-billig sjekk mot serveren; true = noe endret og
     /// summaries er lastet på nytt.
     func refreshFromServer() async -> Bool {
+        guard !usesLocalSample else { return false }
         let changed = await RoleRoomAPIClient.shared.pollScenesChanged(manuscriptId: manuscript.id)
         if changed { await reload() }
         return changed
+    }
+
+    func refreshAnimationURLs() async {
+        guard let projectId else { return }
+        var changed = false
+        var refreshedURLs: [(StoryboardAIVideoRefreshIdentity, String)] = []
+        for scene in scenes {
+            for frame in scene.frames {
+                guard let jobId = frame.aiVideoJobId,
+                      let storyboardId = frame.aiStoryboardId else { continue }
+                let storedStatus = StoryboardVideoJobLifecyclePolicy
+                    .normalizedStatus(frame.aiVideoStatus)
+                guard storedStatus == "completed"
+                        || StoryboardVideoJobLifecyclePolicy
+                            .isActive(storedStatus) else { continue }
+                if storedStatus == "completed",
+                   !Self.videoURLNeedsRefresh(frame.aiVideoURL) { continue }
+                guard let status = try? await RoleRoomAPIClient.shared.pollStoryboardAnimation(
+                    projectId: projectId, storyboardId: storyboardId, jobId: jobId) else { continue }
+                let remoteStatus = StoryboardVideoJobLifecyclePolicy
+                    .normalizedStatus(status.status)
+                if remoteStatus == "completed" {
+                    // Polling the job transactionally adopts its URL on the
+                    // server only while the submit-time source CAS is still
+                    // current. Never replay a completion URL through the
+                    // compatibility patch endpoint after that decision: the
+                    // frame may change between this response and a patch.
+                    changed = true
+                    if StoryboardAIVideoCompletionPolicy.serverAdopted(status),
+                       let outputURL = status.outputURL,
+                       let parsedURL = URL(string: outputURL),
+                       parsedURL.scheme?.lowercased() == "https" {
+                        refreshedURLs.append((
+                            StoryboardAIVideoRefreshIdentity(
+                                sceneId: scene.id, frameId: frame.id,
+                                storyboardId: storyboardId, jobId: jobId),
+                            outputURL))
+                    }
+                } else if remoteStatus == "failed" {
+                    try? await RoleRoomAPIClient.shared.saveFramePatch(
+                        manuscriptId: manuscript.id, sceneId: scene.id, frameId: frame.id,
+                        fields: ["aiVideoStatus": "failed"])
+                    changed = true
+                }
+            }
+        }
+        if changed {
+            await reload()
+            // A signed B2 URL may be fresher than the provider URL persisted
+            // at adoption. Apply it only to this freshly reloaded in-memory
+            // frame; never race a source edit through saveFramePatch.
+            for (identity, outputURL) in refreshedURLs {
+                guard let sceneIndex = scenes.firstIndex(where: {
+                    $0.id == identity.sceneId
+                }),
+                      let frameIndex = scenes[sceneIndex].frames.firstIndex(where: {
+                    $0.id == identity.frameId
+                }) else { continue }
+                let current = scenes[sceneIndex].frames[frameIndex]
+                guard StoryboardAIVideoRefreshPolicy.canApply(
+                    identity,
+                    sceneId: scenes[sceneIndex].id,
+                    frameId: current.id,
+                    storyboardId: current.aiStoryboardId,
+                    jobId: current.aiVideoJobId,
+                    sourceIdentityMatches: StoryboardVideoPlaybackPolicy
+                        .sourceIdentityMatches(current)) else { continue }
+                scenes[sceneIndex].frames[frameIndex].aiVideoURL = outputURL
+            }
+        }
+    }
+
+    private static func videoURLNeedsRefresh(_ value: String?) -> Bool {
+        guard let value, let components = URLComponents(string: value) else { return true }
+        let items = (components.queryItems ?? []).reduce(into: [String: String]()) {
+            $0[$1.name.lowercased()] = $1.value ?? ""
+        }
+        guard let rawDate = items["x-amz-date"],
+              let seconds = TimeInterval(items["x-amz-expires"] ?? "") else {
+            return false
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
+        guard let signedAt = formatter.date(from: rawDate) else { return true }
+        return signedAt.addingTimeInterval(seconds).timeIntervalSinceNow < 300
     }
 
     func addShot() {
@@ -251,15 +455,433 @@ final class BoardState: ObservableObject {
         patchFrame(frameId: frame.id, fields: fields)
     }
 
+    /// Updates the visible sample immediately, then serializes dedicated OCC
+    /// writes per frame. Rapid +/- taps therefore cannot conflict with an
+    /// earlier request from this same iPad.
+    func setActiveFrameDuration(seconds: Double) {
+        guard seconds.isFinite,
+              scenes.indices.contains(selectedSceneIndex),
+              scenes[selectedSceneIndex].frames.indices.contains(activeFrameIndex)
+        else { return }
+        let boundedSeconds = min(600, max(0.5, seconds))
+        guard let duration = try? MediaTime(
+            seconds: boundedSeconds, preferredTimescale: 600)
+        else { return }
+
+        let sceneId = scenes[selectedSceneIndex].id
+        let current = scenes[selectedSceneIndex].frames[activeFrameIndex]
+        let frameId = current.id
+        let key = durationSyncKey(sceneId: sceneId, frameId: frameId)
+        if durationRollbacks[key] == nil {
+            durationRollbacks[key] = DurationRollbackState(
+                shotDuration: current.shotDuration,
+                durationSec: current.durationSec,
+                durationRevision: current.durationRevision,
+                updatedAt: current.updatedAt,
+                sourceUpdatedAt: current.sourceUpdatedAt,
+                aiPaintoverState: current.aiPaintoverState,
+                cameraMotion: durationCameraMotionSidecar(from: current))
+        }
+        if durationExpectedRevisions[key] == nil {
+            // Canonical phase-1 frames without an explicit revision are
+            // server-defined revision 1; truly legacy frames begin at 0.
+            durationExpectedRevisions[key] = current.durationRevision
+                ?? (current.shotDuration == nil ? 0 : 1)
+        }
+
+        scenes[selectedSceneIndex].frames[activeFrameIndex].shotDuration = duration
+        scenes[selectedSceneIndex].frames[activeFrameIndex].durationSec =
+            duration.seconds
+        if usesLocalSample {
+            scenes[selectedSceneIndex].frames[activeFrameIndex]
+                .durationRevision = (current.durationRevision ?? 0) + 1
+            if current.cameraMotionReadState == .valid,
+               current.cameraMotionStatus == nil
+                    || current.cameraMotionStatus == "valid",
+               let track = current.cameraMotionTrack,
+               let retimed = try? track.retimedProportionally(
+                    from: current.effectiveShotDuration,
+                    to: duration) {
+                scenes[selectedSceneIndex].frames[activeFrameIndex]
+                    .cameraMotionTrack = retimed
+                scenes[selectedSceneIndex].frames[activeFrameIndex]
+                    .cameraMotionRevision =
+                    (current.cameraMotionRevision ?? 0) + 1
+                scenes[selectedSceneIndex].frames[activeFrameIndex]
+                    .cameraMotionFingerprint =
+                    try? retimed.canonicalRenderFingerprint(for: duration)
+            }
+        }
+
+        scenes[selectedSceneIndex].frames[activeFrameIndex].aiPaintoverState =
+            FrameDurationVideoInvalidationPolicy.afterDurationChange(
+                current.aiPaintoverState,
+                changed: duration != current.effectiveShotDuration)
+
+
+        guard !usesLocalSample else {
+            durationRollbacks.removeValue(forKey: key)
+            durationExpectedRevisions.removeValue(forKey: key)
+            syncStatus = nil
+            return
+        }
+
+        pendingDurations[key] = duration
+        syncStatus = "Lagrer varighet …"
+        guard durationSyncTasks[key] == nil else { return }
+        durationSyncTasks[key] = Task { [weak self] in
+            await self?.flushDurationChanges(
+                sceneId: sceneId, frameId: frameId, key: key)
+        }
+    }
+
+    private func flushDurationChanges(
+        sceneId: String,
+        frameId: String,
+        key: String
+    ) async {
+        while let requestedDuration = pendingDurations.removeValue(forKey: key) {
+            guard durationFrameIndices(
+                sceneId: sceneId, frameId: frameId) != nil else {
+                finishDurationSync(key: key)
+                return
+            }
+            let expectedRevision = durationExpectedRevisions[key] ?? 0
+            do {
+                let response = try await RoleRoomAPIClient.shared
+                    .patchFrameDuration(
+                        manuscriptId: manuscript.id,
+                        sceneId: sceneId,
+                        frameId: frameId,
+                        shotDuration: requestedDuration,
+                        expectedDurationRevision: expectedRevision)
+                durationExpectedRevisions[key] = response.durationRevision
+                let currentFrame = durationFrameIndices(
+                    sceneId: sceneId, frameId: frameId).flatMap {
+                        scenes[$0.scene].frames[$0.frame]
+                    }
+                durationRollbacks[key] = DurationRollbackState(
+                    shotDuration: response.shotDuration,
+                    durationSec: response.durationSec,
+                    durationRevision: response.durationRevision,
+                    updatedAt: response.updatedAt,
+                    sourceUpdatedAt: response.sourceUpdatedAt,
+                    aiPaintoverState: response.aiPaintoverState
+                        ?? currentFrame?.aiPaintoverState,
+                    cameraMotion: response.cameraMotion
+                        ?? currentFrame.flatMap(durationCameraMotionSidecar))
+
+                if let indices = durationFrameIndices(
+                    sceneId: sceneId, frameId: frameId) {
+                    // Preserve a newer optimistic tap while this response was
+                    // in flight, but always advance its server precondition.
+                    let newerPendingTarget = pendingDurations[key]
+                    if FrameDurationResponseAdoptionPolicy
+                        .shouldApplyAuthoritativeResponse(
+                            newerPendingTarget: newerPendingTarget) {
+                        applyDurationResponse(response, at: indices)
+                    } else {
+                        scenes[indices.scene].frames[indices.frame]
+                            .durationRevision = response.durationRevision
+                        applyDurationCameraMotion(response.cameraMotion, at: indices)
+                        if let state = response.aiPaintoverState {
+                            scenes[indices.scene].frames[indices.frame]
+                                .aiPaintoverState = state
+                        }
+                        if !response.updatedAt.isEmpty {
+                            scenes[indices.scene].frames[indices.frame]
+                                .updatedAt = response.updatedAt
+                        }
+                        if let sourceUpdatedAt = response.sourceUpdatedAt {
+                            scenes[indices.scene].frames[indices.frame]
+                                .sourceUpdatedAt = sourceUpdatedAt
+                        }
+                    }
+                }
+                syncStatus = pendingDurations[key] == nil
+                    ? "Varighet synket ✓" : "Lagrer varighet …"
+            } catch let error as FrameDurationPatchError {
+                pendingDurations.removeValue(forKey: key)
+                if let current = error.currentState,
+                   let indices = durationFrameIndices(
+                    sceneId: sceneId, frameId: frameId) {
+                    scenes[indices.scene].frames[indices.frame].shotDuration =
+                        current.shotDuration
+                    scenes[indices.scene].frames[indices.frame].durationSec =
+                        current.shotDuration.seconds
+                    scenes[indices.scene].frames[indices.frame].durationRevision =
+                        current.revision
+                    if let rollback = durationRollbacks[key],
+                       let rollbackDuration = rollback.shotDuration
+                        ?? MediaTimeCoding.decodeLegacySeconds(
+                            rollback.durationSec),
+                       current.shotDuration == rollbackDuration {
+                        scenes[indices.scene].frames[indices.frame]
+                            .aiPaintoverState = rollback.aiPaintoverState
+                    }
+                } else {
+                    restoreDuration(
+                        durationRollbacks[key],
+                        sceneId: sceneId,
+                        frameId: frameId)
+                }
+                await reload()
+                syncStatus = error.localizedDescription
+                finishDurationSync(key: key)
+                return
+            } catch {
+                pendingDurations.removeValue(forKey: key)
+                restoreDuration(
+                    durationRollbacks[key],
+                    sceneId: sceneId,
+                    frameId: frameId)
+                syncStatus = error.localizedDescription
+                finishDurationSync(key: key)
+                return
+            }
+        }
+        finishDurationSync(key: key)
+    }
+
+    private func durationFrameIndices(
+        sceneId: String,
+        frameId: String
+    ) -> (scene: Int, frame: Int)? {
+        guard let sceneIndex = scenes.firstIndex(where: { $0.id == sceneId }),
+              let frameIndex = scenes[sceneIndex].frames.firstIndex(
+                where: { $0.id == frameId }) else { return nil }
+        return (sceneIndex, frameIndex)
+    }
+
+    private func durationCameraMotionSidecar(
+        from frame: FrameSummary
+    ) -> FrameDurationCameraMotionSidecar? {
+        guard frame.cameraMotionTrack != nil
+                || frame.cameraMotionRevision != nil
+                || frame.cameraMotionRawJSON != nil else { return nil }
+        return FrameDurationCameraMotionSidecar(
+            track: frame.cameraMotionTrack,
+            revision: frame.cameraMotionRevision ?? 0,
+            updatedAt: frame.cameraMotionUpdatedAt,
+            fingerprint: frame.cameraMotionFingerprint,
+            baseFramingFingerprint:
+                frame.cameraMotionBaseFramingFingerprint,
+            status: frame.cameraMotionStatus ?? "valid",
+            readState: frame.cameraMotionReadState,
+            rawJSON: frame.cameraMotionRawJSON)
+    }
+
+    private func applyDurationCameraMotion(
+        _ sidecar: FrameDurationCameraMotionSidecar?,
+        at indices: (scene: Int, frame: Int)
+    ) {
+        guard let sidecar else { return }
+        var frame = scenes[indices.scene].frames[indices.frame]
+        frame.cameraMotionTrack = sidecar.track
+        frame.cameraMotionRevision = sidecar.revision
+        frame.cameraMotionUpdatedAt = sidecar.updatedAt
+        frame.cameraMotionFingerprint = sidecar.fingerprint
+        frame.cameraMotionBaseFramingFingerprint =
+            sidecar.baseFramingFingerprint
+        frame.cameraMotionStatus = sidecar.status
+        frame.cameraMotionReadState = sidecar.readState
+        frame.cameraMotionRawJSON = sidecar.rawJSON
+        scenes[indices.scene].frames[indices.frame] = frame
+    }
+
+    private func applyDurationResponse(
+        _ response: FrameDurationPatchResponse,
+        at indices: (scene: Int, frame: Int)
+    ) {
+        scenes[indices.scene].frames[indices.frame].shotDuration =
+            response.shotDuration
+        scenes[indices.scene].frames[indices.frame].durationSec =
+            response.durationSec
+        scenes[indices.scene].frames[indices.frame].durationRevision =
+            response.durationRevision
+        applyDurationCameraMotion(response.cameraMotion, at: indices)
+        if let state = response.aiPaintoverState {
+            scenes[indices.scene].frames[indices.frame]
+                .aiPaintoverState = state
+        }
+        if !response.updatedAt.isEmpty {
+            scenes[indices.scene].frames[indices.frame].updatedAt =
+                response.updatedAt
+        }
+        if let sourceUpdatedAt = response.sourceUpdatedAt {
+            scenes[indices.scene].frames[indices.frame].sourceUpdatedAt =
+                sourceUpdatedAt
+        }
+    }
+
+    private func restoreDuration(
+        _ rollback: DurationRollbackState?,
+        sceneId: String,
+        frameId: String
+    ) {
+        guard let rollback,
+              let indices = durationFrameIndices(
+                sceneId: sceneId, frameId: frameId) else { return }
+        scenes[indices.scene].frames[indices.frame].shotDuration =
+            rollback.shotDuration
+        scenes[indices.scene].frames[indices.frame].durationSec =
+            rollback.durationSec
+        scenes[indices.scene].frames[indices.frame].durationRevision =
+            rollback.durationRevision
+        scenes[indices.scene].frames[indices.frame].updatedAt =
+            rollback.updatedAt
+        scenes[indices.scene].frames[indices.frame].sourceUpdatedAt =
+            rollback.sourceUpdatedAt
+        scenes[indices.scene].frames[indices.frame].aiPaintoverState =
+            rollback.aiPaintoverState
+        applyDurationCameraMotion(rollback.cameraMotion, at: indices)
+    }
+
+    private func finishDurationSync(key: String) {
+        pendingDurations.removeValue(forKey: key)
+        durationExpectedRevisions.removeValue(forKey: key)
+        durationRollbacks.removeValue(forKey: key)
+        durationSyncTasks.removeValue(forKey: key)
+    }
+
+    private func durationSyncKey(sceneId: String, frameId: String) -> String {
+        "\(sceneId)\u{1F}\(frameId)"
+    }
+
+    /// Immediate in-memory update used by the camera engine. Network/offline
+    /// persistence is intentionally handled by the same crash-safe document
+    /// autosave as strokes, so framing and its thumbnail commit atomically.
+    func applyShotFramingLocally(
+        _ framing: ShotFramingState,
+        markAIStale: Bool = true
+    ) {
+        guard scenes.indices.contains(selectedSceneIndex),
+              scenes[selectedSceneIndex].frames.indices.contains(activeFrameIndex)
+        else { return }
+        let normalized = framing.normalized()
+        let previous = scenes[selectedSceneIndex].frames[activeFrameIndex]
+            .shotFraming?.normalized()
+        let motionNeedsRebase = markAIStale
+            && scenes[selectedSceneIndex].frames[activeFrameIndex].cameraMotionTrack != nil
+            && previous?.canonicalFingerprint != normalized.canonicalFingerprint
+        scenes[selectedSceneIndex].frames[activeFrameIndex].shotFraming = normalized
+        scenes[selectedSceneIndex].frames[activeFrameIndex].shotType = normalized.shotSize
+        scenes[selectedSceneIndex].frames[activeFrameIndex].angle = normalized.angle
+        if motionNeedsRebase {
+            scenes[selectedSceneIndex].frames[activeFrameIndex]
+                .cameraMotionStatus = "needsRebase"
+        }
+        scenes[selectedSceneIndex].frames[activeFrameIndex].lensMm = normalized.lensMm
+        if markAIStale {
+            markActiveAIOutputStaleLocally(reason: "shot-framing-changed")
+            syncStatus = usesLocalSample
+                ? "Lokal framing oppdatert" : "Utsnitt endret · venter på synk"
+        }
+    }
+
+    /// Optimistic camera-motion adoption for the active shot. Camera motion
+    /// invalidates a generated video, but does not make the approved still
+    /// raster stale; the still remains the source plate for the move.
+    func applyCameraMotionLocally(
+        _ track: CameraMotionTrack?,
+        revision: Int? = nil,
+        status: String = "valid",
+        updatedAt: String? = nil,
+        fingerprint: String? = nil,
+        baseFramingFingerprint: String? = nil,
+        frameUpdatedAt: String? = nil,
+        sourceUpdatedAt: String? = nil,
+        paintoverState: StoryboardPaintoverState? = nil,
+        markVideoStale: Bool = true
+    ) {
+        guard scenes.indices.contains(selectedSceneIndex),
+              scenes[selectedSceneIndex].frames.indices.contains(activeFrameIndex)
+        else { return }
+        var frame = scenes[selectedSceneIndex].frames[activeFrameIndex]
+        frame.cameraMotionTrack = track
+        frame.cameraMotionReadState = track == nil ? .none : .valid
+        frame.cameraMotionRawJSON = nil
+        frame.cameraMotionStatus = status
+        if let revision { frame.cameraMotionRevision = revision }
+        if let updatedAt { frame.cameraMotionUpdatedAt = updatedAt }
+        frame.cameraMotionFingerprint = fingerprint
+        frame.cameraMotionBaseFramingFingerprint = baseFramingFingerprint
+        if let frameUpdatedAt { frame.updatedAt = frameUpdatedAt }
+        if let sourceUpdatedAt { frame.sourceUpdatedAt = sourceUpdatedAt }
+        if let paintoverState {
+            frame.aiPaintoverState = paintoverState
+        } else if markVideoStale, var paintover = frame.aiPaintoverState {
+            paintover.videoStale = true
+            frame.aiPaintoverState = paintover
+        }
+        scenes[selectedSceneIndex].frames[activeFrameIndex] = frame
+        syncStatus = usesLocalSample
+            ? "Lokal kamerabane oppdatert"
+            : "Kamerabane endret · venter på synk"
+    }
+
+    /// Immediate UI-side stale gate. The server repeats this validation, but
+    /// the Inspector must never offer Animate during the autosave debounce.
+    func markActiveAIOutputStaleLocally(reason: String) {
+        guard scenes.indices.contains(selectedSceneIndex),
+              scenes[selectedSceneIndex].frames.indices.contains(activeFrameIndex)
+        else { return }
+        let frame = scenes[selectedSceneIndex].frames[activeFrameIndex]
+        guard frame.aiStoryboardId != nil || frame.aiSourceFramingFingerprint != nil else {
+            return
+        }
+        // A source mutation invalidates the pixels themselves and therefore
+        // outranks camera-only staleness. A later camera edit must not downgrade
+        // that stronger gate while the same generated raster is still active.
+        if reason == "shot-framing-changed",
+           frame.aiOutputStale,
+           frame.aiOutputStaleReason != nil,
+           frame.aiOutputStaleReason != "shot-framing-changed" {
+            return
+        }
+        scenes[selectedSceneIndex].frames[activeFrameIndex].aiOutputStale = true
+        scenes[selectedSceneIndex].frames[activeFrameIndex].aiOutputStaleReason = reason
+    }
+
     func patchFrame(frameId: String, fields: [String: any Sendable]) {
         guard let scene else { return }
+        patchFrame(sceneId: scene.id, frameId: frameId, fields: fields)
+    }
+
+    func patchFrame(
+        sceneId: String, frameId: String, fields: [String: any Sendable]
+    ) {
+        guard !usesLocalSample else {
+            syncStatus = nil
+            return
+        }
         syncStatus = "…"
         Task {
             do {
                 try await RoleRoomAPIClient.shared.saveFramePatch(
-                    manuscriptId: manuscript.id, sceneId: scene.id, frameId: frameId, fields: fields)
+                    manuscriptId: manuscript.id, sceneId: sceneId,
+                    frameId: frameId, fields: fields)
                 await reload()
                 syncStatus = "Synket ✓"
+            } catch {
+                syncStatus = error.localizedDescription
+            }
+        }
+    }
+
+    func patchActiveScene(_ fields: [String: any Sendable]) {
+        guard let scene else { return }
+        guard !usesLocalSample else {
+            syncStatus = nil
+            return
+        }
+        syncStatus = "…"
+        Task {
+            do {
+                try await RoleRoomAPIClient.shared.saveScenePatch(
+                    manuscriptId: manuscript.id, sceneId: scene.id, fields: fields)
+                await reload()
+                syncStatus = "Scene-kontekst synket ✓"
             } catch {
                 syncStatus = error.localizedDescription
             }
@@ -304,6 +926,317 @@ enum BoardTool: String, CaseIterable {
         case .text: return "textformat"
         }
     }
+    var label: String {
+        switch self {
+        case .select: return "Lasso og transformer"
+        case .draw: return "Tegn"
+        case .eraser: return "Viskelær"
+        case .arrow: return "Pil"
+        case .rect: return "Rektangel"
+        case .text: return "Tekst"
+        }
+    }
+}
+
+struct BoardCanvasBackground {
+    let editableBase: CGImage?
+    /// Approved AI Color/Atmosphere is already rendered in output/viewport
+    /// coordinates. Present it after the camera transform so it is never
+    /// cropped a second time. The Pencil source remains the editable document.
+    let viewportPreview: CGImage?
+    let referenceUnderlay: CGImage?
+    let referenceOpacity: Double
+}
+
+struct EditableFrameRasterIdentity: Hashable {
+    let raster: FrameRasterIdentity
+    let placementFingerprint: String?
+
+    init?(frame: FrameSummary) {
+        guard let raster = FrameRasterIdentity(frame: frame) else { return nil }
+        self.raster = raster
+        placementFingerprint = StoryboardFrameImagePolicy
+            .rasterPlacementFraming(for: frame)?.canonicalFingerprint
+    }
+}
+
+private struct RetainedEditableBase {
+    let identity: EditableFrameRasterIdentity
+    let image: UIImage
+}
+
+struct StoryboardAIRasterEditingDecision: Equatable {
+    let activeLayer: String
+    let automaticallySelectedLayer: String?
+    let suppressedSourceLayers: Set<String>
+}
+
+/// Pure state transition for AI raster editing. The board records ownership of
+/// an automatic Color/Atmosphere selection so an unsafe camera/source change
+/// can return to Drawing without overriding an artist's explicit layer choice.
+enum StoryboardAIRasterEditingPolicy {
+    static func permitsRaster(
+        isOutputStale: Bool,
+        staleReason: String?
+    ) -> Bool {
+        !isOutputStale || staleReason == "shot-framing-changed"
+    }
+
+    static func resolve(
+        canUseRaster: Bool,
+        activeLayer: String,
+        automaticallySelectedLayer: String?,
+        targetLayer: String
+    ) -> StoryboardAIRasterEditingDecision {
+        guard canUseRaster else {
+            return StoryboardAIRasterEditingDecision(
+                activeLayer: automaticallySelectedLayer == activeLayer
+                    ? "Drawing" : activeLayer,
+                automaticallySelectedLayer: nil,
+                suppressedSourceLayers: [])
+        }
+        guard activeLayer == "Drawing" else {
+            return StoryboardAIRasterEditingDecision(
+                activeLayer: activeLayer,
+                automaticallySelectedLayer: automaticallySelectedLayer,
+                suppressedSourceLayers: ["Drawing"])
+        }
+        return StoryboardAIRasterEditingDecision(
+            activeLayer: targetLayer,
+            automaticallySelectedLayer: targetLayer,
+            suppressedSourceLayers: ["Drawing"])
+    }
+}
+
+enum StoryboardActiveRasterPolicy {
+    static func expectsRaster(_ frame: FrameSummary) -> Bool {
+        FrameDocumentProjection.effectiveRasterSource(for: frame)
+            .includesFrameImage
+    }
+}
+
+private struct BoardScenarioSelection: Equatable {
+    let packId: String
+    let packVersion: String
+    let subdomainId: String
+    let zoneId: String
+    let roleIds: [String]
+    let propTypeIds: [String]
+    let actionIds: [String]
+    let stateIds: [String]
+    let continuityLockIds: [String]
+    let inheritedFromScene: Bool
+
+    var patchFields: [String: any Sendable] {
+        [
+            "scenarioPackId": packId, "scenarioPackVersion": packVersion,
+            "scenarioSubdomainId": subdomainId, "scenarioZoneId": zoneId,
+            "scenarioRoleIds": roleIds, "scenarioPropTypeIds": propTypeIds,
+            "scenarioActionIds": actionIds, "scenarioStateIds": stateIds,
+            "scenarioContinuityLockIds": continuityLockIds,
+        ]
+    }
+}
+
+private enum BoardInspectorTab: String, CaseIterable, Identifiable {
+    case shot = "Shot"
+    case story = "Story"
+    case production = "Produksjon"
+    case ai = "AI"
+
+    var id: String { rawValue }
+
+    var accessibilityIdentifier: String {
+        "inspector-tab-\(String(describing: self))"
+    }
+}
+
+private struct InspectorDraftReference: Equatable {
+    let sceneId: String
+    let frameId: String
+}
+
+private enum AIInspectorPrimaryAction {
+    case generateColor
+    case reviewColor
+    case generateAtmosphere
+
+    case reviewAtmosphere
+    case animate
+    case animationInProgress
+
+    var label: String {
+        switch self {
+        case .generateColor: return "Generate AI Color"
+        case .reviewColor: return "Review Color candidate"
+        case .generateAtmosphere: return "Generate AI Atmosphere"
+        case .reviewAtmosphere: return "Review Atmosphere candidate"
+        case .animate: return "Animate approved"
+        case .animationInProgress: return "Animation in progress"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .generateColor: return "paintpalette.fill"
+        case .reviewColor, .reviewAtmosphere: return "checkmark.rectangle.stack"
+        case .generateAtmosphere: return "cloud.sun.fill"
+        case .animate: return "play.rectangle.fill"
+        case .animationInProgress: return "clock.arrow.circlepath"
+        }
+    }
+}
+
+@MainActor
+private struct CameraMotionEditorSession: Identifiable {
+    let id = UUID()
+    let sourceFrame: FrameSummary
+    let model: CameraMotionEditorModel
+}
+private struct CameraMotionPreviewSurface: View {
+    let sourceFrame: FrameSummary
+    let framing: ShotFramingState
+    let strokesOverride: [PencilStroke]?
+    let layerStateOverride: BoardLayerState?
+    let localDocumentRevision: Int
+
+    @State private var image: UIImage?
+    @State private var completedPlateKey: CameraMotionPreviewPlateKey?
+
+    private var sourceSize: ShotFramingSize {
+        ShotFramingSize(
+            width: sourceFrame.drawingWidth,
+            height: sourceFrame.drawingHeight
+        )
+    }
+
+    private var compactRasterIdentity: String? {
+        guard let value = sourceFrame.imageUrl else { return nil }
+        // A data URL can be several megabytes. The source OCC/revision fields
+        // already own its identity, so the task key must not copy or hash that
+        // payload on every 60/120 Hz affine presentation tick.
+        if value.hasPrefix("data:") {
+            return "inline-raster"
+        }
+        return value
+    }
+
+    private var plateKey: CameraMotionPreviewPlateKey {
+        CameraMotionPreviewPlateKey(
+            frameID: sourceFrame.id,
+            localDocumentRevision: localDocumentRevision,
+            sourceUpdatedAt:
+                sourceFrame.sourceUpdatedAt ?? sourceFrame.updatedAt,
+            rasterIdentity: [
+                compactRasterIdentity ?? "",
+                sourceFrame.imageSource ?? "",
+                sourceFrame.aiSourceRevision.map(String.init) ?? "",
+                sourceFrame.aiRasterPlacementFraming?
+                    .canonicalFingerprint ?? "source-space",
+            ].joined(separator: "|"),
+            sourceSize: sourceSize,
+            strokeCount: strokesOverride?.count ?? -1
+        )
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let viewportSize = ShotFramingSize(
+                width: max(1, Double(proxy.size.width)),
+                height: max(1, Double(proxy.size.height))
+            )
+            let snapshot = CameraMotionPreviewSnapshot(
+                plateKey: plateKey,
+                sourceSize: sourceSize,
+                viewportSize: viewportSize,
+                framing: framing
+            )
+            ZStack {
+                if let image, let affine = snapshot?.affine {
+                    Image(uiImage: image)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(
+                            width: CGFloat(affine.sourceSize.width),
+                            height: CGFloat(affine.sourceSize.height)
+                        )
+                        .scaleEffect(CGFloat(affine.scale))
+                        .rotationEffect(.degrees(affine.rotationDegrees))
+                        .position(
+                            x: CGFloat(affine.imageCenterInViewport.x),
+                            y: CGFloat(affine.imageCenterInViewport.y)
+                        )
+                        .opacity(completedPlateKey == plateKey ? 1 : 0.72)
+                        .accessibilityHidden(true)
+                } else if completedPlateKey == plateKey {
+                    ContentUnavailableView(
+                        "Preview unavailable",
+                        systemImage: "viewfinder",
+                        description: Text(
+                            "The frozen source plate cannot cover this camera move."))
+                        .foregroundStyle(.secondary)
+                }
+
+                if completedPlateKey != plateKey {
+                    ProgressView()
+                        .tint(.white)
+                        .padding(12)
+                        .background(.black.opacity(0.5), in: Capsule())
+                        .accessibilityLabel("Rendering camera preview")
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
+        }
+        .task(id: plateKey) {
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            var previewFrame = sourceFrame
+            let plateFraming = ShotFramingState(
+                centerX: 0.5,
+                centerY: 0.5,
+                zoom: 1,
+                rollDegrees: 0,
+                aspectRatio: sourceSize.aspectRatio
+            )
+            previewFrame.shotFraming = plateFraming
+            previewFrame.cameraMotionTrack = nil
+            previewFrame.cameraMotionReadState = .none
+            previewFrame.cameraMotionRawJSON = nil
+            previewFrame.cameraMotionStatus = "valid"
+            let plateWidth = min(
+                3_072,
+                max(1_280, CGFloat(sourceFrame.drawingWidth))
+            )
+            let rendered = FrameRenderCoordinator.image(
+                for: previewFrame,
+                maxWidth: plateWidth,
+                at: .zero,
+                framingOverride: plateFraming,
+                strokesOverride: strokesOverride,
+                layerStateOverride: layerStateOverride,
+                localDocumentRevision: localDocumentRevision)
+            guard !Task.isCancelled else { return }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                image = rendered
+                completedPlateKey = plateKey
+            }
+        }
+    }
+}
+
+
+
+private struct AIFrameSessionKey: Equatable, Sendable {
+    let projectId: String
+    let sceneId: String
+    let frameId: String
+    let epoch: UUID
+    /// Same-frame edits must invalidate in-flight consent, generation,
+    /// approval and animation work just as decisively as navigation does.
+    let documentRevision: Int
 }
 
 struct NativeBoardView: View {
@@ -314,6 +1247,7 @@ struct NativeBoardView: View {
     @State private var showShotList = false
     @State private var showScript = false
     @State private var showReview = false
+    @State private var showProductionDashboard = false
     @State private var exportPDFURL: URL?
     @State private var boardTool: BoardTool = .draw
     @State private var textPromptShown = false
@@ -323,97 +1257,347 @@ struct NativeBoardView: View {
     @State private var scrollTarget: Int?
     @State private var showFullscreenDraw = false
     @State private var showBrushEditor = false
+    @State private var showPromptInspector = false
+    @State private var showAIVersionBrowser = false
+    @State private var cameraMotionEditorSession: CameraMotionEditorSession?
+    @State private var promptCompilation: StoryboardPromptCompilationSummary?
+    @State private var aiStatus: String?
+    @State private var aiInFlight = false
+    /// Per-frame operation registry survives A → B → A navigation. A single
+    /// Bool was reset on frame switches and could reopen paid actions while
+    /// the original request for A was still running.
+    @State private var activeAIFrameOperations: [String: UUID] = [:]
+    @State private var aiFrameEpoch = UUID()
+    @State private var selectedVideoModelId = "seedance-2-i2v"
+    @State private var imageStageVersions: [StoryboardAIImageVersionSummary] = []
+    @State private var imageVersionDocumentRevisions: [String: Int] = [:]
+    @State private var imageStageStoryboardId: String?
+    @State private var currentAIImageSourceRevision: Int?
+    @State private var pendingImageStageVersion: StoryboardAIImageVersionSummary?
+    @State private var pendingImageStageGeneration: String?
+    @State private var animationPreflight: StoryboardAnimationPreflightSummary?
+    @State private var animationPreflightSourceImage: UIImage?
+    @State private var animationPreflightComposite: StoryboardPaintoverComposite?
+    @State private var animationPreflightSession: AIFrameSessionKey?
+    @State private var showAIConsentPrompt = false
+    @State private var pendingAIConsentAction = "animate"
+    @State private var pendingAIConsentSession: AIFrameSessionKey?
+    @State private var stampInspectorStrokeID: String?
     @State private var toneReport: ToneReport?
     @State private var showToneReport = false
     @State private var pendingDeleteFrameId: String?
     @State private var newSceneTitle = ""
+    @State private var lastObservedCameraMotionTrack: CameraMotionTrack?
+    @State private var cameraMotionAutosyncTask: Task<Void, Never>?
+    @State private var cameraMotionSyncInFlight = false
+    @State private var cameraMotionSyncRequestedAfterCurrent = false
     @State private var showNewScenePrompt = false
+    @State private var sceneThumbnailImages: [String: UIImage] = [:]
+    @State private var shotPreviewImages: [String: UIImage] = [:]
+    @State private var scenePreviewRenderKeys: [String: String] = [:]
+    @State private var shotPreviewRenderKeys: [String: String] = [:]
+    @State private var retainedEditableBaseImages: [String: RetainedEditableBase] = [:]
+    @State private var automaticallySelectedAIRasterLayer: String?
+    @State private var showNewLayerPrompt = false
+    @State private var newLayerName = ""
+    @State private var selectedInspectorTab: BoardInspectorTab = .shot
+    @State private var showInspectorSheet = false
+    @State private var isInspectorDockVisible = true
+    @State private var isReframing = false
+    @State private var framingGestureBaseline: ShotFramingState?
+    @State private var framingPanTranslation: CGSize = .zero
+    @State private var framingMagnification: CGFloat = 1
+    @State private var framingRotationDegrees: Double = 0
+    @State private var framingPanActive = false
+    @State private var framingZoomActive = false
+    @State private var framingRollActive = false
+    /// Tracks whether the main Metal canvas currently owns a source-space AI
+    /// raster or has fallen back to Pencil because the camera no longer
+    /// matches that raster. A camera gesture may emit dozens of revisions;
+    /// only the coordinate-space transition requires an expensive rebuild.
+    @State private var appliedAIRasterPolicyKey = "none"
     @Environment(\.dismiss) private var dismiss
 
     enum InitialSheet { case script, shotList, animatic, review }
 
     init(manuscript: ManuscriptSummary, projectId: String? = nil,
-         initialSceneIndex: Int = 0, initialSheet: InitialSheet? = nil) {
-        let state = BoardState(manuscript: manuscript, projectId: projectId)
+         initialSceneIndex: Int = 0, initialSheet: InitialSheet? = nil,
+         sampleScenes: [SceneSummary] = []) {
+        let state = BoardState(manuscript: manuscript, projectId: projectId,
+                               sampleScenes: sampleScenes)
         state.selectedSceneIndex = initialSceneIndex
         _board = StateObject(wrappedValue: state)
         _showScript = State(initialValue: initialSheet == .script)
         _showShotList = State(initialValue: initialSheet == .shotList)
         _showAnimatic = State(initialValue: initialSheet == .animatic)
         _showReview = State(initialValue: initialSheet == .review)
+        _selectedInspectorTab = State(initialValue:
+            BoardInspectorTab(rawValue: ProcessInfo.processInfo.environment[
+                "SB_UI_TEST_INSPECTOR_TAB"] ?? "") ?? .shot)
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            topbar
-            Divider().overlay(BoardBrand.border)
-            HStack(spacing: 0) {
-                scenesColumn
+        serviceObservedBoardView
+    }
+
+    private var workspaceView: some View {
+        GeometryReader { geometry in
+            let forceDockedInspector = ProcessInfo.processInfo.environment[
+                "SB_UI_TEST_FORCE_DOCKED_INSPECTOR"] == "1"
+            let compactWorkspace = !forceDockedInspector
+                && (geometry.size.width < 1_060
+                    || ProcessInfo.processInfo.environment[
+                        "SB_UI_TEST_COMPACT_WORKSPACE"] == "1")
+            VStack(spacing: 0) {
+                topbar(compactWorkspace: compactWorkspace)
                 Divider().overlay(BoardBrand.border)
-                sheetArea
+                HStack(spacing: 0) {
+                    scenesColumn
+                    Divider().overlay(BoardBrand.border)
+                    sheetArea
+                    if !compactWorkspace && isInspectorDockVisible {
+                        Divider().overlay(BoardBrand.border)
+                        inspector
+                    }
+                }
                 Divider().overlay(BoardBrand.border)
-                inspector
+                brushBar
             }
-            Divider().overlay(BoardBrand.border)
-            brushBar
+            .background(BoardBrand.chrome)
         }
-        .background(BoardBrand.chrome)
+    }
+
+    /// Type-erasure boundaries keep Swift's generic View type from growing
+    /// beyond the compiler's practical limit as production observers expand.
+    private var presentedBoardView: AnyView {
+        AnyView(workspaceView
         .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showAnimatic) {
             AnimaticView(sceneHeading: board.scene?.heading ?? "",
-                         frames: board.scene?.frames ?? [],
+                         frames: effectiveFramesForRendering(
+                            board.scene?.frames ?? []),
+                         storyboardTiming: board.manuscript.storyboardTiming,
                          onVoiceoverChanged: { frameId, dataURL in
                              board.patchFrame(frameId: frameId, fields: [
                                  "voiceoverDataURL": dataURL ?? NSNull(),
                              ])
                          })
         }
+        .fullScreenCover(item: $cameraMotionEditorSession) { session in
+            CameraMotionEditorView(
+                shotNumber: session.sourceFrame.shotNumber,
+                shotTitle: session.sourceFrame.description,
+                sourceSize: ShotFramingSize(
+                    width: session.sourceFrame.drawingWidth,
+                    height: session.sourceFrame.drawingHeight),
+                model: session.model,
+                canvas: { framing in
+                    cameraMotionPreview(
+                        sourceFrame: session.sourceFrame,
+                        framing: framing)
+                },
+                onPresentationFramingChanged: { framing in
+                    canvasState.presentationFraming = framing
+                },
+                onSave: { commit in
+                    commitCameraMotion(
+                        commit,
+                        sourceFrame: session.sourceFrame)
+                    cameraMotionEditorSession = nil
+                },
+                onCancel: {
+                    canvasState.presentationFraming = nil
+                    cameraMotionEditorSession = nil
+                })
+        }
         .fullScreenCover(isPresented: $showFullscreenDraw) {
             if let frame = board.frame {
                 FullscreenDrawView(canvasState: canvasState, frame: frame,
-                                   underlay: composedUnderlay())
+                                   background: composedCanvasBackground())
             }
         }
-        .task { await board.reload() }
+        .fullScreenCover(isPresented: $showProductionDashboard) {
+            BoardProductionDashboard(
+                projectTitle: board.manuscript.title,
+                scenes: effectiveScenesForRendering(),
+                onSelectFrame: { sceneIndex, frameIndex in
+                    board.selectedSceneIndex = sceneIndex
+                    board.activeFrameIndex = frameIndex
+                })
+        }
+        .alert("Nytt lag", isPresented: $showNewLayerPrompt) {
+            TextField("Lagnavn", text: $newLayerName)
+            Button("Avbryt", role: .cancel) { newLayerName = "" }
+            Button("Opprett") { addLayer(named: newLayerName) }
+        } message: {
+            Text("Lag blir lagret med shotet og følger eksport og synk.")
+        })
+    }
+
+    private var loadedBoardView: AnyView {
+        AnyView(presentedBoardView
+        .task {
+            await board.reload()
+            await board.loadScenarioPacksIfNeeded()
+            await board.refreshAnimationURLs()
+            loadActiveFrameIntoCanvas()
+            await retryPendingCameraMotionForActiveFrame()
+        }
+        .task(id: scenePreviewTaskKey) { await rebuildSceneThumbnails() }
+        .task(id: board.frame?.id) {
+            await retryPendingCameraMotionForActiveFrame()
+        }
+        .task(id: shotPreviewTaskKey) { await rebuildShotPreviews() }
+        .task(id: activeRasterTaskKey) {
+            await loadActiveRaster()
+            await refreshImageStageVersions()
+        })
+    }
+
+    private var frameSelectionObservedBoardView: AnyView {
+        AnyView(loadedBoardView
         .onChange(of: board.activeFrameIndex) { loadActiveFrameIntoCanvas() }
-        .onChange(of: board.selectedSceneIndex) { board.activeFrameIndex = 0; loadActiveFrameIntoCanvas() }
+        .onChange(of: board.selectedSceneIndex) {
+            board.activeFrameIndex = 0
+            loadActiveFrameIntoCanvas()
+        }
         .onChange(of: board.scenes.count) { loadActiveFrameIntoCanvas() }
         .onChange(of: canvasState.revision) { scheduleAutosync() }
+        )
+    }
+
+    private var frameObservedBoardView: AnyView {
+        AnyView(frameSelectionObservedBoardView
+        .onChange(of: canvasState.shotFraming) { handleShotFramingChange() }
+        .onChange(of: canvasState.cameraMotionTrack) { handleCameraMotionTrackChange() }
+        .onChange(of: board.frame?.durationRevision) {
+            reconcileDurationCameraMotion()
+        }
+        )
+    }
+
+    private func handleShotFramingChange() {
+        guard canvasState.shotFraming != lastObservedShotFraming else { return }
+        // A persisted camera edit invalidates any transient evaluated
+        // presentation tick. Static editing immediately falls back to the
+        // same canonical t=0 pose until the next frozen snapshot is made.
+        canvasState.presentationFraming = nil
+        lastObservedShotFraming = canvasState.shotFraming
+        invalidateAnimationPreflightForCameraHistoryChange()
+        board.applyShotFramingLocally(canvasState.shotFraming)
+        updateAIRasterEditingMode()
+        refreshFramingDependentBackground()
+        if CameraMotionHistorySyncPolicy.requiresMotionRebind(
+            framingChanged: true,
+            currentTrack: canvasState.cameraMotionTrack,
+            authoritativeTrack: loadedFrameCameraMotionTrack,
+            readState: board.frame?.cameraMotionReadState ?? .upgradeRequired
+        ) {
+            scheduleCameraMotionAutosync()
+        }
+    }
+
+    private func handleCameraMotionTrackChange() {
+        guard canvasState.cameraMotionTrack != lastObservedCameraMotionTrack else { return }
+        lastObservedCameraMotionTrack = canvasState.cameraMotionTrack
+        invalidateAnimationPreflightForCameraHistoryChange()
+        board.applyCameraMotionLocally(canvasState.cameraMotionTrack)
+        scheduleCameraMotionAutosync()
+    }
+
+    private var rasterObservedBoardView: AnyView {
+        AnyView(frameObservedBoardView
+        .onChange(of: board.frame?.imageUrl) { handleAIImageURLChange() }
+        .onChange(of: board.frame?.aiOutputStale) { refreshAIRasterUnderlay() }
+        .onChange(of: board.frame?.aiOutputStaleReason) { refreshAIRasterUnderlay() }
+        )
+    }
+
+    private var underlayObservedBoardView: AnyView {
+        AnyView(rasterObservedBoardView
+        .onChange(of: board.frame?.aiSourceFramingFingerprint) {
+            refreshAIRasterUnderlay()
+        }
         .onChange(of: onionMode) { applyUnderlay(to: renderer) }
-        .onChange(of: perspectiveMode) { persistPerspective(); updateSnapState() }
+        .onChange(of: board.frame?.underlayDataURL) { applyUnderlay(to: renderer) }
+        )
+    }
+
+    private var backgroundObservedBoardView: AnyView {
+        AnyView(underlayObservedBoardView
+        .onChange(of: board.frame?.underlayOpacity) { applyUnderlay(to: renderer) }
+        )
+    }
+
+    private func handleAIImageURLChange() {
+        // Et godkjent AI Color/Atmosphere-bilde er en ny rasterbase, ikke
+        // et nytt tegnedokument. Behold stroke-historikken mens den nye
+        // basen lastes av activeRasterTaskKey.
+        applyUnderlay(to: renderer)
+        updateAIRasterEditingMode()
+        canvasState.backgroundRevision += 1
+    }
+
+    private func refreshAIRasterUnderlay() {
+        updateAIRasterEditingMode()
+        applyUnderlay(to: renderer)
+    }
+
+    private var serviceTaskBoardView: AnyView {
+        AnyView(backgroundObservedBoardView
+        .onChange(of: perspectiveMode) { handlePerspectiveModeChange() }
         .onChange(of: perspectiveSnap) { updateSnapState() }
         .task {
-            // Retry-løkke for usynkede frames (nett tilbake / feilet synk).
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 60_000_000_000)
-                if !pendingFrameIds.isEmpty { flushAllPending() }
-            }
+            await retryPendingDocumentsLoop()
         }
+        )
+    }
+
+    private var serviceObservedBoardView: AnyView {
+        AnyView(serviceTaskBoardView
         .task {
-            // Live-polling (30 s, 304-billig med ETag): web-endringer dukker
-            // opp uten app-restart. Aktiv frame reloades kun når vi ikke har
-            // lokale usynkede endringer.
-            presentOthers = await RoleRoomAPIClient.shared.reportPresence(
-                manuscriptId: board.manuscript.id)
-            while !Task.isCancelled {
-                // Andre til stede → tettere polling (10 s, 304-billig).
-                let interval: UInt64 = presentOthers.isEmpty ? 30 : 10
-                try? await Task.sleep(nanoseconds: interval * 1_000_000_000)
-                guard !Task.isCancelled else { break }
-                presentOthers = await RoleRoomAPIClient.shared.reportPresence(
-                    manuscriptId: board.manuscript.id)
-                let changed = await board.refreshFromServer()
-                if changed, let other = presentOthers.first {
-                    board.syncStatus = "Oppdatert fra \(other)"
-                }
-                if changed,
-                   canvasState.revision == loadedRevision,
-                   board.frame?.updatedAt != loadedFrameUpdatedAt {
-                    loadActiveFrameIntoCanvas()
-                }
-            }
+            await liveSyncLoop()
         }
         .onChange(of: boardTool) { selectedStrokeIds = [] }
+        .onChange(of: tipPickerItem) { importSelectedBrushTip() }
+        )
+    }
+
+    private func retryPendingDocumentsLoop() async {
+        guard !board.isLocalSample else { return }
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 60_000_000_000)
+            if !pendingFrameIds.isEmpty { flushAllPending() }
+            await retryAllPendingCameraMotionMutations()
+        }
+    }
+
+    private func handlePerspectiveModeChange() {
+        persistPerspective()
+        updateSnapState()
+    }
+
+    private func liveSyncLoop() async {
+        guard !board.isLocalSample else { return }
+        presentOthers = await RoleRoomAPIClient.shared.reportPresence(
+            manuscriptId: board.manuscript.id)
+        while !Task.isCancelled {
+            let interval: UInt64 = presentOthers.isEmpty ? 30 : 10
+            try? await Task.sleep(nanoseconds: interval * 1_000_000_000)
+            guard !Task.isCancelled else { break }
+            presentOthers = await RoleRoomAPIClient.shared.reportPresence(
+                manuscriptId: board.manuscript.id)
+            let changed = await board.refreshFromServer()
+            await board.refreshAnimationURLs()
+            if changed, let other = presentOthers.first {
+                board.syncStatus = "Oppdatert fra \(other)"
+            }
+            if changed,
+               canvasState.revision == loadedRevision,
+               board.frame?.updatedAt != loadedFrameUpdatedAt {
+                loadActiveFrameIntoCanvas()
+            }
+        }
     }
 
     // Forrige lastede frame + strøkantall — usynkede strøk flushes automatisk
@@ -421,10 +1605,32 @@ struct NativeBoardView: View {
     @State private var loadedFrameRef: (sceneId: String, frameId: String)?
     @State private var loadedRevision = 0
     @State private var loadedFrameUpdatedAt: String?
+    /// Stable Pencil/layer/framing token used only by the AI pipeline.
+    /// General frame OCC keeps using loadedFrameUpdatedAt so comments and
+    /// approval metadata cannot masquerade as source edits.
+    @State private var loadedFrameSourceUpdatedAt: String?
+    @State private var loadedFrameStrokesJSON: String?
+    @State private var loadedFrameLayerState: BoardLayerState?
+    @State private var loadedFrameShotFraming: ShotFramingState?
+    @State private var loadedFrameCameraMotionTrack: CameraMotionTrack?
+    @State private var loadedFrameCameraMotionRevision = 0
+    @State private var loadedFrameCameraMotionFingerprint: String?
+    @State private var loadedFrameCameraMotionStatus: String?
+    @State private var loadedFramePaintoverState: StoryboardPaintoverState?
+    @State private var lastObservedShotFraming: ShotFramingState?
     @State private var pendingFrameIds: Set<String> = []
 
     private func loadActiveFrameIntoCanvas() {
+        if loadedFrameRef?.sceneId != board.scene?.id
+            || loadedFrameRef?.frameId != board.frame?.id {
+            resetFrameScopedAIState()
+        } else {
+            // A same-frame reload may contain a collaborator's newer source.
+            // Fail closed until image-stage GET confirms the live revision.
+            currentAIImageSourceRevision = nil
+        }
         flushPendingStrokes()
+        canvasState.endHistory()
         autosyncTask?.cancel()
         canvasState.contentSize = board.frame.map {
             CGSize(width: $0.drawingWidth, height: $0.drawingHeight)
@@ -432,46 +1638,314 @@ struct NativeBoardView: View {
         // Pending-backup (app drept før synk) er alltid nyere enn serverens
         // versjon — gjenopprett og synk den.
         var restoredPending = false
+        var recoveredLayerState = board.frame?.layerState
+        var recoveredShotFraming = board.frame?.shotFraming
+        var recoveredStrokesJSON = board.frame?.strokesJSON ?? "[]"
+        var recoveredBaseUpdatedAt = board.frame?.updatedAt
+        var recoveredBaseSourceUpdatedAt =
+            board.frame?.sourceUpdatedAt
+        var recoveredBaseStrokesJSON = board.frame?.strokesJSON
+        var recoveredBaseLayerState = board.frame?.layerState
+        var recoveredBaseShotFraming = board.frame?.shotFraming
+        var recoveredCameraMotionTrack = board.frame?.cameraMotionTrack
+        var recoveredBaseCameraMotionTrack = board.frame?.cameraMotionTrack
+        var recoveredBaseCameraMotionRevision =
+            board.frame?.cameraMotionRevision ?? 0
+        var recoveredBaseCameraMotionFingerprint =
+            board.frame?.cameraMotionFingerprint
+        var recoveredBaseCameraMotionStatus = board.frame?.cameraMotionStatus
+        var restoredPendingCameraMotion = false
+        var restoredPendingCameraFraming = false
         if let frameId = board.frame?.id,
-           let pending = PendingStrokeStore.load(frameId: frameId),
-           let strokes = try? StrokeSerialization.decodeFromWebJSON(pending) {
-            canvasState.strokes = strokes
-            restoredPending = true
-            board.syncStatus = "Gjenopprettet usynket tegning"
-        } else if let json = board.frame?.strokesJSON,
-           let strokes = try? StrokeSerialization.decodeFromWebJSON(json) {
-            canvasState.strokes = strokes
-        } else {
-            canvasState.strokes = []
+           let pending = PendingStrokeStore.loadDocument(frameId: frameId) {
+            // v1-v4 manglet original base. For slike eldre WAL-er velger vi
+            // en tapsfri union med dagens serverdokument (lokale tillegg
+            // beholdes uten å slette samtidige serverstrøk).
+            let pendingJSON: String
+            if pending.baseStrokesJSON == nil,
+               let serverJSON = board.frame?.strokesJSON,
+               let merged = StrokeMerge.union(
+                serverJSON: serverJSON, oursJSON: pending.strokesJSON) {
+                pendingJSON = merged
+            } else {
+                pendingJSON = pending.strokesJSON
+            }
+            if let strokes = try? StrokeSerialization.decodeFromWebJSON(pendingJSON) {
+                canvasState.strokes = strokes
+                recoveredStrokesJSON = pendingJSON
+                recoveredLayerState = pending.layerState ?? recoveredLayerState
+                recoveredShotFraming = pending.shotFraming ?? recoveredShotFraming
+                recoveredBaseUpdatedAt = pending.baseUpdatedAt ?? recoveredBaseUpdatedAt
+                recoveredBaseStrokesJSON = pending.baseStrokesJSON
+                    ?? recoveredBaseStrokesJSON
+                recoveredBaseLayerState = pending.baseLayerState
+                    ?? recoveredBaseLayerState
+                recoveredBaseShotFraming = pending.baseShotFraming
+                    ?? recoveredBaseShotFraming
+                restoredPending = true
+                board.syncStatus = "Gjenopprettet usynket tegning"
+            }
         }
-        canvasState.undoStack = []
-        canvasState.redoStack = []
+        if let frameId = board.frame?.id,
+           let pendingMotion = PendingCameraMotionStore.load(frameId: frameId) {
+            recoveredShotFraming = pendingMotion.initialFraming
+            recoveredCameraMotionTrack = pendingMotion.motionTrack
+            recoveredBaseUpdatedAt = pendingMotion.baseUpdatedAt
+                ?? recoveredBaseUpdatedAt
+            recoveredBaseSourceUpdatedAt =
+                pendingMotion.baseSourceUpdatedAt
+            recoveredBaseStrokesJSON = pendingMotion.baseStrokesJSON
+                ?? recoveredBaseStrokesJSON
+            recoveredBaseLayerState = pendingMotion.baseLayerState
+                ?? recoveredBaseLayerState
+            recoveredBaseShotFraming = pendingMotion.baseShotFraming
+                ?? recoveredBaseShotFraming
+            recoveredBaseCameraMotionTrack = pendingMotion.baseMotionTrack
+            recoveredBaseCameraMotionRevision =
+                pendingMotion.expectedMotionRevision
+            recoveredBaseCameraMotionFingerprint =
+                pendingMotion.baseMotionFingerprint
+            recoveredBaseCameraMotionStatus =
+                pendingMotion.baseMotionStatus
+            restoredPendingCameraMotion = true
+            restoredPendingCameraFraming = pendingMotion.changesInitialFraming
+            board.syncStatus = "Gjenopprettet usynket kamerabane"
+        }
+        if !restoredPending {
+            if let json = board.frame?.strokesJSON,
+               let strokes = try? StrokeSerialization.decodeFromWebJSON(json) {
+                canvasState.strokes = strokes
+            } else {
+                canvasState.strokes = []
+            }
+        }
+        if let frame = board.frame {
+            let legacyFraming = ShotFramingState(
+                shotSize: frame.shotType, angle: frame.angle, lensMm: frame.lensMm,
+                aspectRatio: frame.drawingWidth / max(1, frame.drawingHeight)
+            )
+            canvasState.beginHistory(
+                frameId: frame.id,
+                layerState: recoveredLayerState,
+                shotFraming: recoveredShotFraming ?? legacyFraming,
+                cameraMotionTrack: recoveredCameraMotionTrack
+            )
+            // Pending/offline framing is the active document immediately,
+            // including for Prompt Engine calls made before autosync finishes.
+            board.applyShotFramingLocally(
+                canvasState.shotFraming,
+                markAIStale: restoredPending || restoredPendingCameraFraming)
+            lastObservedShotFraming = canvasState.shotFraming
+            loadedFrameLayerState = recoveredBaseLayerState
+                ?? frame.layerState ?? .standard
+            loadedFrameShotFraming = recoveredBaseShotFraming
+                ?? frame.shotFraming ?? legacyFraming
+            loadedFrameCameraMotionTrack = recoveredBaseCameraMotionTrack
+            loadedFrameCameraMotionRevision =
+                recoveredBaseCameraMotionRevision
+            loadedFrameCameraMotionFingerprint =
+                recoveredBaseCameraMotionFingerprint
+            loadedFrameCameraMotionStatus = recoveredBaseCameraMotionStatus
+            lastObservedCameraMotionTrack = canvasState.cameraMotionTrack
+            if restoredPendingCameraMotion {
+                board.applyCameraMotionLocally(
+                    canvasState.cameraMotionTrack,
+                    revision: frame.cameraMotionRevision,
+                    status: "valid")
+            }
+        } else {
+            canvasState.applyLayerState(.standard)
+            canvasState.shotFraming = .standard
+            lastObservedShotFraming = .standard
+            canvasState.undoStack = []
+            canvasState.cameraMotionTrack = nil
+            lastObservedCameraMotionTrack = nil
+            canvasState.redoStack = []
+            loadedFrameLayerState = nil
+            loadedFrameShotFraming = nil
+            loadedFrameCameraMotionTrack = nil
+            loadedFrameCameraMotionRevision = 0
+            loadedFrameCameraMotionFingerprint = nil
+            loadedFrameCameraMotionStatus = nil
+        }
         loadedFrameRef = board.scene.flatMap { scene in
             board.frame.map { (scene.id, $0.id) }
         }
-        loadedFrameUpdatedAt = board.frame?.updatedAt
-        // Remote panel-bilde: hent async og re-render når det lander.
-        if let imageUrl = board.frame?.imageUrl, !imageUrl.hasPrefix("data:"),
-           FrameImageCache.images[imageUrl] == nil, let frame = board.frame {
-            Task {
-                await FrameImageCache.prefetch(frames: [frame])
-                applyUnderlay(to: renderer)
-            }
+        loadedFrameUpdatedAt = recoveredBaseUpdatedAt
+        loadedFrameSourceUpdatedAt = if restoredPending {
+            nil
+        } else if restoredPendingCameraMotion {
+            recoveredBaseSourceUpdatedAt
+        } else {
+            board.frame?.sourceUpdatedAt
+        }
+        loadedFrameStrokesJSON = recoveredBaseStrokesJSON ?? recoveredStrokesJSON
+        // A recovered WAL is deliberately not assigned a fabricated overlay
+        // revision. This remains the last server snapshot until PATCH acks the
+        // exact recovered document.
+        loadedFramePaintoverState = board.frame?.aiPaintoverState
+        if let frame = board.frame,
+           let identity = EditableFrameRasterIdentity(frame: frame),
+           let image = FrameImageCache.image(for: frame) {
+            retainedEditableBaseImages[frame.id] = RetainedEditableBase(
+                identity: identity, image: image)
+        } else if let frame = board.frame,
+                  retainedEditableBaseImages[frame.id]?.identity
+                    != EditableFrameRasterIdentity(frame: frame) {
+            // Never let frame A pixels survive under frame B provenance.
+            retainedEditableBaseImages.removeValue(forKey: frame.id)
         }
         perspectiveMode = board.frame?.perspectiveMode ?? 0
         vanishingPoints = (board.frame?.vanishingPoints ?? []).compactMap { pair in
             pair.count == 2 ? CGPoint(x: pair[0], y: pair[1]) : nil
         }
+        updateAIRasterEditingMode()
         applyUnderlay(to: renderer)
         updateSnapState()
         pendingFrameIds = PendingStrokeStore.pendingFrameIds()
         canvasState.revision += 1
         loadedRevision = canvasState.revision
+        refreshTZeroPresentationSnapshot()
         if restoredPending {
             // Marker som usynket så autosynken plukker den opp (thumb
             // rendres etter at canvasen har rebuildet den nye framen).
             loadedRevision = -1
             scheduleAutosync()
+        }
+    }
+
+    private func reconcileDurationCameraMotion() {
+        guard let frame = board.frame,
+              loadedFrameRef?.frameId == frame.id,
+              PendingCameraMotionStore.load(frameId: frame.id) == nil,
+              !cameraMotionSyncInFlight else { return }
+        let revision = frame.cameraMotionRevision ?? 0
+        let changed = revision != loadedFrameCameraMotionRevision
+            || frame.cameraMotionTrack != loadedFrameCameraMotionTrack
+            || frame.cameraMotionFingerprint
+                != loadedFrameCameraMotionFingerprint
+            || frame.cameraMotionStatus != loadedFrameCameraMotionStatus
+        guard changed else { return }
+
+        loadedFrameUpdatedAt = frame.updatedAt
+        loadedFrameCameraMotionTrack = frame.cameraMotionTrack
+        loadedFrameCameraMotionRevision = revision
+        loadedFrameCameraMotionFingerprint =
+            frame.cameraMotionFingerprint
+        loadedFrameCameraMotionStatus = frame.cameraMotionStatus
+        lastObservedCameraMotionTrack = frame.cameraMotionTrack
+        canvasState.cameraMotionTrack = frame.cameraMotionTrack
+        canvasState.presentationFraming = nil
+    }
+
+    /// Proves the active Metal surface consumes the same immutable t=0
+    /// contract as thumbnails and exports. Editor selection/zoom is excluded;
+    /// only the recovered server/canvas/WAL document participates.
+    private func refreshTZeroPresentationSnapshot() {
+        guard let frame = board.frame,
+              let snapshot = try? FrameRenderCoordinator.snapshot(
+                for: frame,
+                at: .zero,
+                strokesOverride: canvasState.strokes,
+                layerStateOverride: canvasState.layerState,
+                framingOverride: canvasState.shotFraming,
+                localDocumentRevision: canvasState.revision)
+        else {
+            canvasState.presentationFraming = nil
+            return
+        }
+        canvasState.presentationFraming = snapshot.presentationFraming
+    }
+
+    /// Én SwiftUI-eid lastesyklus per aktiv rasterkilde. Den gamle ad-hoc
+    /// Task-en kunne bli kansellert etter at en parallell thumbnail-request
+    /// hadde fylt cachen, men før Metal fikk den nye basen. Resultatet var et
+    /// hvitt aktivt shot selv om previewen til venstre var synlig.
+    private var activeRasterTaskKey: String {
+        guard let scene = board.scene, let frame = board.frame else { return "none" }
+        let source = FrameDocumentProjection.effectiveRasterSource(for: frame)
+        let identity = EditableFrameRasterIdentity(frame: frame)
+        return [
+            scene.id, frame.id, frame.updatedAt ?? "",
+            source.stableIdentity ?? "excluded",
+            source.includesFrameImage
+                ? (identity?.placementFingerprint ?? "source-space")
+                : "no-placement",
+            frame.aiOutputStale
+                ? (frame.aiOutputStaleReason ?? "stale") : "current",
+        ].joined(separator: "|")
+    }
+
+    private func loadActiveRaster() async {
+        guard let frame = board.frame else { return }
+        let frameId = frame.id
+        let source = FrameDocumentProjection.effectiveRasterSource(for: frame)
+        guard source.includesFrameImage,
+              let identity = EditableFrameRasterIdentity(frame: frame) else {
+            retainedEditableBaseImages.removeValue(forKey: frameId)
+            updateAIRasterEditingMode()
+            applyUnderlay(to: renderer)
+            return
+        }
+        await FrameImageCache.prefetch(frames: [frame])
+        guard !Task.isCancelled,
+              board.frame?.id == frameId,
+              board.frame.flatMap(EditableFrameRasterIdentity.init(frame:)) == identity,
+              let currentFrame = board.frame,
+              let image = FrameImageCache.image(for: currentFrame) else {
+            updateAIRasterEditingMode()
+            applyUnderlay(to: renderer)
+            return
+        }
+        retainedEditableBaseImages[frameId] = RetainedEditableBase(
+            identity: identity, image: image)
+        updateAIRasterEditingMode()
+        applyUnderlay(to: renderer)
+    }
+
+    @MainActor
+    private func refreshImageStageVersions() async {
+        guard let projectId = board.projectId,
+              let sceneId = board.scene?.id,
+              let frameId = board.frame?.id,
+              let session = currentAIFrameSession() else {
+            imageStageStoryboardId = nil
+            imageStageVersions = []
+            currentAIImageSourceRevision = nil
+            return
+        }
+        do {
+            let storyboardId: String
+            if let linked = board.frame?.aiStoryboardId ?? imageStageStoryboardId {
+                storyboardId = linked
+            } else if let recovered = try await RoleRoomAPIClient.shared
+                .resolveStoryboardId(
+                    projectId: projectId, sceneId: sceneId, frameId: frameId) {
+                storyboardId = recovered
+            } else {
+                guard isCurrentAIFrameSession(session) else { return }
+                imageStageStoryboardId = nil
+                imageStageVersions = []
+                currentAIImageSourceRevision = nil
+                return
+            }
+            guard isCurrentAIFrameSession(session) else { return }
+            imageStageStoryboardId = storyboardId
+            let result = try await RoleRoomAPIClient.shared
+                .fetchStoryboardImageVersions(
+                    projectId: projectId, storyboardId: storyboardId)
+            guard !Task.isCancelled, isCurrentAIFrameSession(session),
+                  board.frame?.id == frameId,
+                  imageStageStoryboardId == storyboardId else { return }
+            imageStageVersions = result.versions
+            currentAIImageSourceRevision = result.currentSourceRevision
+            loadedFrameSourceUpdatedAt = result.sourceUpdatedAt
+        } catch {
+            if isCurrentAIFrameSession(session) {
+                imageStageVersions = []
+                currentAIImageSourceRevision = nil
+                loadedFrameSourceUpdatedAt = nil
+            }
         }
     }
 
@@ -550,7 +2024,9 @@ struct NativeBoardView: View {
                 attachedToEntityId: entityId,
                 attachmentNote: note)
             await MainActor.run {
-                FrameImageCache.images[path] = UIImage(data: jpeg)
+                if let cached = UIImage(data: jpeg) {
+                    FrameImageCache.store(cached, for: path)
+                }
             }
             return path
         } catch {
@@ -585,8 +2061,156 @@ struct NativeBoardView: View {
     /// Dekod frame-underlag + ev. onion-skin (forrige shot) og sett på
     /// gitt renderer (inline og fullskjerm har hver sin instans).
     private func applyUnderlay(to target: MetalStrokeRenderer?) {
-        let (image, opacity) = composedUnderlay()
-        target?.setUnderlay(cgImage: image, opacity: opacity)
+        let background = composedCanvasBackground()
+        target?.setEditableBase(cgImage: background.editableBase)
+        target?.setViewportPreview(cgImage: background.viewportPreview)
+        target?.setUnderlay(cgImage: background.referenceUnderlay,
+                            opacity: background.referenceOpacity)
+        // Shot-radene flytter den samme renderer-instansen mellom SwiftUI-
+        // celler. Dersom drawable-størrelsen er uendret, kalles ikke alltid
+        // layoutSubviews på nytt. Bygg derfor den nye rasterbasen direkte inn
+        // i eksisterende Metal-akkumulator i stedet for å vente på layout.
+        if let target, let texture = target.committedTexture {
+            let contentWidth = max(1, board.frame?.drawingWidth ?? 1920)
+            let scale = Double(texture.width) / contentWidth
+            target.rebuild(strokes: canvasState.visibleStrokes(), scale: scale,
+                           layerBlendModes: canvasState.layerBlendModes)
+        }
+        if let target, let mainRenderer = renderer, target === mainRenderer {
+            appliedAIRasterPolicyKey = currentAIRasterPolicyKey
+        }
+        canvasState.backgroundRevision += 1
+    }
+
+    private func exactFrameRaster(for frame: FrameSummary) -> UIImage? {
+        guard let identity = EditableFrameRasterIdentity(frame: frame) else {
+            return nil
+        }
+        if let image = FrameImageCache.image(for: frame) { return image }
+        guard let retained = retainedEditableBaseImages[frame.id],
+              retained.identity == identity else { return nil }
+        return retained.image
+    }
+
+    /// Preview-only fallback. Exact source pixels still pass the coordinator's
+    /// camera/coverage gate. A legacy thumbnail-only poster is deliberately
+    /// isolated here and can never enter export, animation or AI source paths.
+    private func safeDirectRasterFallback(for frame: FrameSummary) -> UIImage? {
+        if frame.imageUrl != nil {
+            guard FrameRenderCoordinator.allowsDirectRasterFallback(
+                for: frame) else { return nil }
+            return exactFrameRaster(for: frame)
+        }
+        guard let posterURL = StoryboardPreviewPolicy
+            .legacyThumbnailOnlyPosterURL(for: frame) else { return nil }
+        return FrameImageCache.image(for: posterURL)
+    }
+
+    private var currentAIRasterPolicyKey: String {
+        guard let frame = board.frame else { return "none" }
+        guard StoryboardFrameImagePolicy.isAIViewportEncoded(frame) else {
+            return "source:\(frame.id)"
+        }
+        if let placement = StoryboardFrameImagePolicy
+            .rasterPlacementFraming(for: frame) {
+            return [
+                "editable", frame.id,
+                frame.imageUrl ?? "",
+                frame.aiSourceFramingFingerprint ?? "",
+                placement.canonicalFingerprint,
+                canvasState.shotFraming.canonicalFingerprint,
+                String(frame.aiSourceRevision ?? -1),
+                frame.aiOutputStale ? (frame.aiOutputStaleReason ?? "stale") : "current",
+            ].joined(separator: ":")
+        }
+        return "archived:\(frame.id)"
+    }
+
+    /// Rebuild the editable source-space base whenever archived raster
+    /// placement/provenance changes. Legacy approvals without a frozen pose
+    /// still fail closed after a camera edit and return to Pencil until the
+    /// generated viewport is re-approved.
+    private func refreshFramingDependentBackground() {
+        guard currentAIRasterPolicyKey != appliedAIRasterPolicyKey else { return }
+        applyUnderlay(to: renderer)
+    }
+
+    private func updateAIRasterEditingMode() {
+        let frame = board.frame
+        let target = frame?.aiAtmosphereFramingFingerprint
+            == canvasState.shotFraming.canonicalFingerprint
+            ? "Atmosphere" : "Color"
+        let decision = StoryboardAIRasterEditingPolicy.resolve(
+            canUseRaster: frame.map(canUseApprovedAIRaster) ?? false,
+            activeLayer: canvasState.activeBoardLayer,
+            automaticallySelectedLayer: automaticallySelectedAIRasterLayer,
+            targetLayer: target)
+        canvasState.activeBoardLayer = decision.activeLayer
+        automaticallySelectedAIRasterLayer = decision.automaticallySelectedLayer
+        canvasState.suppressedSourceLayers = decision.suppressedSourceLayers
+    }
+
+    /// A frozen AI viewport may remain editable after a camera change only
+    /// while the versioned coverage policy proves that every requested pixel
+    /// is present in the archived raster. Pull-outs and unsafe translations
+    /// therefore return to Pencil instead of exposing blank/synthesized areas.
+    private func canUseApprovedAIRaster(_ frame: FrameSummary) -> Bool {
+        guard StoryboardFrameImagePolicy.rasterPlacementFraming(for: frame) != nil,
+              exactFrameRaster(for: frame) != nil,
+              StoryboardAIRasterEditingPolicy.permitsRaster(
+                isOutputStale: frame.aiOutputStale,
+                staleReason: frame.aiOutputStaleReason),
+              let snapshot = try? FrameRenderCoordinator.snapshot(
+                for: frame,
+                at: .zero,
+                strokesOverride: canvasState.strokes,
+                layerStateOverride: canvasState.layerState,
+                framingOverride: canvasState.shotFraming,
+                localDocumentRevision: canvasState.revision)
+        else { return false }
+        return FrameRenderCoordinator.canRender(frame: frame, snapshot: snapshot)
+    }
+
+    /// Et faktisk panelbilde går inn i rasterakkumulatoren og kan viskes i.
+    /// Referansefoto/onion uten panelbilde forblir et skjerm-underlag.
+    private func composedCanvasBackground() -> BoardCanvasBackground {
+        let frameImage = board.frame.flatMap { frame in
+            exactFrameRaster(for: frame)
+        }
+        if let frame = board.frame,
+           canUseApprovedAIRaster(frame),
+           let rasterPlacement = StoryboardFrameImagePolicy
+            .rasterPlacementFraming(for: frame),
+           let rasterSourceIdentity = FrameDocumentProjection
+            .effectiveRasterSource(for: frame).stableIdentity,
+           let preview = frameImage {
+            let sourceSpace = StoryboardViewportRasterMapper.sourceSpaceImage(
+                viewportImage: preview, frame: frame,
+                framing: rasterPlacement,
+                rasterSourceIdentity: rasterSourceIdentity)
+            return BoardCanvasBackground(
+                editableBase: sourceSpace?.cgImage, viewportPreview: nil,
+                referenceUnderlay: nil, referenceOpacity: 0)
+        }
+        if let frame = board.frame,
+           StoryboardFrameImagePolicy.isAIViewportEncoded(frame) {
+            // The archived AI image belongs to an older camera transform.
+            // Keep it in version review; the live canvas returns to Pencil.
+            return BoardCanvasBackground(
+                editableBase: nil, viewportPreview: nil,
+                referenceUnderlay: nil, referenceOpacity: 0)
+        }
+        if board.frame?.imageUrl != nil {
+            // Imported/source-space images keep their native pixels. Never
+            // flatten reference/onion layers into the editable raster: that
+            // both stretched mismatched aspects and leaked guides into saves.
+            return BoardCanvasBackground(editableBase: frameImage?.cgImage,
+                                         viewportPreview: nil,
+                                         referenceUnderlay: nil, referenceOpacity: 0)
+        }
+        let (composed, opacity) = composedUnderlay()
+        return BoardCanvasBackground(editableBase: nil, viewportPreview: nil,
+                                     referenceUnderlay: composed, referenceOpacity: opacity)
     }
 
     /// Komponert underlag (referansefoto + onion-lag) for aktiv frame —
@@ -595,15 +2219,19 @@ struct NativeBoardView: View {
         // Bilde-frame: statisk innhold tegnes underst med full opacity
         // (i motsetning til referanse-underlaget følger det med i eksport
         // via FrameRenderService).
-        let frameImage = FrameImageCache.image(for: board.frame?.imageUrl)
+        let frameImage = board.frame.flatMap { frame in
+            exactFrameRaster(for: frame)
+        }
         let underlayImage = board.frame?.underlayDataURL.flatMap(decodeDataURL)
         // Onion-kilder med alpha: forrige tydeligst, nabo nummer to svakere.
         var onionLayers: [(image: UIImage, alpha: CGFloat)] = []
         if onionMode > 0, let scene = board.scene {
             func render(_ index: Int) -> UIImage? {
                 guard scene.frames.indices.contains(index) else { return nil }
-                return FrameRenderService.image(for: scene.frames[index], maxWidth: 1120)
-                    ?? decodeDataURL(scene.frames[index].thumbnailDataURL)
+                let frame = effectiveFrameForRendering(scene.frames[index])
+                return FrameRenderCoordinator.image(
+                    for: frame,
+                    maxWidth: 1120)
             }
             let current = board.activeFrameIndex
             if let previous = render(current - 1) { onionLayers.append((previous, 0.35)) }
@@ -611,6 +2239,12 @@ struct NativeBoardView: View {
             if onionMode == 3, let older = render(current - 2) { onionLayers.append((older, 0.2)) }
         }
         let opacity = board.frame?.underlayOpacity ?? 0.4
+        // Ingen kompositt nødvendig: behold originalens faktiske piksler.
+        // Tidligere ble også rene panelbilder først rasterisert til 1120 px,
+        // som gjorde 1B og øvrige shots uklare i Retina/fullskjerm.
+        if let frameImage, underlayImage == nil, onionLayers.isEmpty {
+            return (frameImage.cgImage, 1)
+        }
         switch (underlayImage, onionLayers.isEmpty && frameImage == nil) {
         case (nil, true):
             return (nil, 0)
@@ -618,7 +2252,9 @@ struct NativeBoardView: View {
             return (underlay.cgImage, opacity)
         default:
             // Komponer på papirfarget flate (samlet opacity 1 i shaderen).
-            let width = 1120.0
+            let logicalWidth = board.frame?.drawingWidth ?? 1920
+            let sourceWidth = Double(frameImage?.cgImage?.width ?? 0)
+            let width = min(4096, max(logicalWidth, max(sourceWidth, 1120)))
             let height = width * (board.frame.map { $0.drawingHeight / max(1, $0.drawingWidth) } ?? 9.0 / 16)
             let size = CGSize(width: width, height: height)
             let format = UIGraphicsImageRendererFormat()
@@ -641,59 +2277,291 @@ struct NativeBoardView: View {
         }
     }
 
+    /// Apply a server-preserved sidecar only when that sidecar did not change
+    /// locally after the immutable save snapshot. Newer local camera/layer
+    /// intent remains in the WAL for the follow-up three-way save.
+    private func reconcileConfirmedSidecars(
+        snapshot: ActiveFrameSaveSnapshot,
+        layerState: BoardLayerState,
+        shotFraming: ShotFramingState
+    ) {
+        guard loadedFrameRef?.frameId == snapshot.frameId else { return }
+        if canvasState.layerState == snapshot.layerState,
+           layerState != snapshot.layerState {
+            canvasState.applyLayerState(layerState)
+        }
+        if canvasState.shotFraming == snapshot.shotFraming,
+           shotFraming != snapshot.shotFraming {
+            canvasState.shotFraming = shotFraming
+            lastObservedShotFraming = shotFraming
+            board.applyShotFramingLocally(shotFraming, markAIStale: false)
+        }
+    }
+
     private func flushPendingStrokes() {
+        guard !board.isLocalSample else { return }
         guard let ref = loadedFrameRef, canvasState.revision != loadedRevision,
               let json = try? StrokeSerialization.encodeToWebJSON(canvasState.strokes) else { return }
-        let manuscriptId = board.manuscript.id
+        // Dersom den vanlige autosynken allerede lagrer dette shotet, lar vi
+        // completion lese den nyere WAL-en og starte frame-switch-save etterpå.
+        if syncInFlight {
+            syncRequestedAfterCurrent = true
+            return
+        }
+        let snapshot = ActiveFrameSaveSnapshot(
+            manuscriptId: board.manuscript.id,
+            sceneId: ref.sceneId,
+            frameId: ref.frameId,
+            revision: canvasState.revision,
+            strokesJSON: json,
+            thumbnailDataURL: renderer?.thumbnailDataURL(
+                framing: canvasState.shotFraming),
+            layerState: canvasState.layerState,
+            shotFraming: canvasState.shotFraming,
+            baseUpdatedAt: loadedFrameUpdatedAt,
+            baseStrokesJSON: loadedFrameStrokesJSON,
+            baseLayerState: loadedFrameLayerState,
+            baseShotFraming: loadedFrameShotFraming)
+        PendingStrokeStore.save(
+            snapshot.strokesJSON, frameId: snapshot.frameId,
+            layerState: snapshot.layerState,
+            shotFraming: snapshot.shotFraming,
+            localRevision: snapshot.revision,
+            thumbnailDataURL: snapshot.thumbnailDataURL,
+            baseUpdatedAt: snapshot.baseUpdatedAt,
+            baseStrokesJSON: snapshot.baseStrokesJSON,
+            baseLayerState: snapshot.baseLayerState,
+            baseShotFraming: snapshot.baseShotFraming)
+        pendingFrameIds.insert(snapshot.frameId)
         Task {
-            _ = try? await RoleRoomAPIClient.shared.saveFrameStrokes(
-                manuscriptId: manuscriptId, sceneId: ref.sceneId,
-                frameId: ref.frameId, strokesJSON: json)
+            guard let result = try? await RoleRoomAPIClient.shared.saveFrameStrokes(
+                manuscriptId: snapshot.manuscriptId,
+                sceneId: snapshot.sceneId,
+                frameId: snapshot.frameId,
+                strokesJSON: snapshot.strokesJSON,
+                thumbnailDataURL: snapshot.thumbnailDataURL,
+                baseUpdatedAt: snapshot.baseUpdatedAt,
+                layerState: snapshot.layerState,
+                shotFraming: snapshot.shotFraming,
+                baseStrokesJSON: snapshot.baseStrokesJSON,
+                baseLayerState: snapshot.baseLayerState,
+                baseShotFraming: snapshot.baseShotFraming)
+            else { return }
+            let pending = PendingStrokeStore.loadDocument(frameId: snapshot.frameId)
+            let plan = FrameSaveRacePolicy.completionPlan(
+                snapshot: snapshot,
+                loadedFrameId: loadedFrameRef?.frameId,
+                currentRevision: canvasState.revision,
+                pendingDocument: pending)
+            let authoritativeLayerState = result.layerState ?? snapshot.layerState
+            let authoritativeShotFraming = result.shotFraming ?? snapshot.shotFraming
+            if plan.updateActiveBaselines {
+                loadedRevision = snapshot.revision
+                loadedFrameUpdatedAt = result.updatedAt ?? snapshot.baseUpdatedAt
+                currentAIImageSourceRevision = result.sourceRevision
+                loadedFrameSourceUpdatedAt = result.sourceUpdatedAt
+                loadedFrameStrokesJSON = result.strokesJSON ?? snapshot.strokesJSON
+                loadedFrameLayerState = authoritativeLayerState
+                loadedFrameShotFraming = authoritativeShotFraming
+                if let paintoverState = result.paintoverState {
+                    loadedFramePaintoverState = paintoverState
+                }
+                reconcileConfirmedSidecars(
+                    snapshot: snapshot,
+                    layerState: authoritativeLayerState,
+                    shotFraming: authoritativeShotFraming)
+            }
+            if plan.clearPendingDocument, let pending,
+               PendingStrokeStore.clear(
+                frameId: snapshot.frameId, ifUnchangedFrom: pending) {
+                pendingFrameIds.remove(snapshot.frameId)
+            } else if PendingStrokeStore.loadDocument(
+                frameId: snapshot.frameId) != nil {
+                pendingFrameIds.insert(snapshot.frameId)
+                if plan.scheduleLatestActiveSave {
+                    scheduleAutosync()
+                } else if loadedFrameRef?.frameId != snapshot.frameId {
+                    flushAllPending()
+                }
+            }
         }
     }
 
     @State private var autosyncTask: Task<Void, Never>?
 
     private func syncActiveFrameStrokes() {
-        guard let scene = board.scene, let frame = board.frame else { return }
+        guard !board.isLocalSample else {
+            board.syncStatus = "Lokal UX-demo · ingen serverendringer"
+            return
+        }
         // Re-entrancy-vern (E2E-QA fant race): manuell Synk + autosynk-
         // timeren samtidig ga to parallelle saves og visnings-desynk.
-        guard !syncInFlight else { return }
+        guard !syncInFlight else {
+            // Ikke mist en autosync som fyrer mens forrige snapshot fortsatt
+            // er på vei til serveren. Completion planlegger den nyeste WAL-en
+            // på nytt etter at in-flight-vernet er løftet.
+            syncRequestedAfterCurrent = true
+            return
+        }
+        guard let scene = board.scene, let frame = board.frame,
+              let ref = loadedFrameRef,
+              ref.sceneId == scene.id, ref.frameId == frame.id,
+              let json = try? StrokeSerialization.encodeToWebJSON(canvasState.strokes)
+        else { return }
+
+        // Alt API-kallet skal lagre fryses FØR Task opprettes. SwiftUI-state
+        // kan endres mens await pågår (tegning, kamerautsnitt eller shotbytte).
+        let snapshot = ActiveFrameSaveSnapshot(
+            manuscriptId: board.manuscript.id,
+            sceneId: ref.sceneId,
+            frameId: ref.frameId,
+            revision: canvasState.revision,
+            strokesJSON: json,
+            thumbnailDataURL: renderer?.thumbnailDataURL(
+                framing: canvasState.shotFraming),
+            layerState: canvasState.layerState,
+            shotFraming: canvasState.shotFraming,
+            baseUpdatedAt: loadedFrameUpdatedAt,
+            baseStrokesJSON: loadedFrameStrokesJSON,
+            baseLayerState: loadedFrameLayerState,
+            baseShotFraming: loadedFrameShotFraming
+        )
+        // Oppgrader den lette per-edit WAL-en med thumb akkurat én gang når
+        // nett-save starter; unngår dyr rasterisering på hvert Pencil-commit.
+        PendingStrokeStore.save(
+            snapshot.strokesJSON, frameId: snapshot.frameId,
+            layerState: snapshot.layerState,
+            shotFraming: snapshot.shotFraming,
+            localRevision: snapshot.revision,
+            thumbnailDataURL: snapshot.thumbnailDataURL,
+            baseUpdatedAt: snapshot.baseUpdatedAt,
+            baseStrokesJSON: snapshot.baseStrokesJSON,
+            baseLayerState: snapshot.baseLayerState,
+            baseShotFraming: snapshot.baseShotFraming)
+        pendingFrameIds.insert(snapshot.frameId)
         syncInFlight = true
         board.syncStatus = "…"
-        // Thumb rendres fra akkumulatoren så SCENES/minimap viser native
-        // tegninger uten å vente på web.
-        let thumbnail = renderer?.thumbnailDataURL()
         Task {
+            var shouldScheduleLatest = false
+            var shouldFlushInactivePending = false
             do {
-                let json = try StrokeSerialization.encodeToWebJSON(canvasState.strokes)
                 let result = try await RoleRoomAPIClient.shared.saveFrameStrokes(
-                    manuscriptId: board.manuscript.id, sceneId: scene.id, frameId: frame.id,
-                    strokesJSON: json, thumbnailDataURL: thumbnail,
-                    baseUpdatedAt: loadedFrameUpdatedAt)
-                loadedRevision = canvasState.revision
-                // KRITISK (funnet av E2E-QA): uten oppdatert baseline så
-                // NESTE synk på samme frame en falsk konflikt → union-merge
-                // gjenopplivet slettede/angrede strøk for alltid.
-                loadedFrameUpdatedAt = result.updatedAt ?? loadedFrameUpdatedAt
-                PendingStrokeStore.clear(frameId: frame.id)
-                pendingFrameIds.remove(frame.id)
-                if result.merged {
+                    manuscriptId: snapshot.manuscriptId,
+                    sceneId: snapshot.sceneId,
+                    frameId: snapshot.frameId,
+                    strokesJSON: snapshot.strokesJSON,
+                    thumbnailDataURL: snapshot.thumbnailDataURL,
+                    baseUpdatedAt: snapshot.baseUpdatedAt,
+                    layerState: snapshot.layerState,
+                    shotFraming: snapshot.shotFraming,
+                    baseStrokesJSON: snapshot.baseStrokesJSON,
+                    baseLayerState: snapshot.baseLayerState,
+                    baseShotFraming: snapshot.baseShotFraming)
+
+                let pending = PendingStrokeStore.loadDocument(
+                    frameId: snapshot.frameId)
+                let plan = FrameSaveRacePolicy.completionPlan(
+                    snapshot: snapshot,
+                    loadedFrameId: loadedFrameRef?.frameId,
+                    currentRevision: canvasState.revision,
+                    pendingDocument: pending)
+                let authoritativeStrokesJSON = result.strokesJSON
+                    ?? snapshot.strokesJSON
+                let authoritativeLayerState = result.layerState
+                    ?? snapshot.layerState
+                let authoritativeShotFraming = result.shotFraming
+                    ?? snapshot.shotFraming
+
+                if plan.updateActiveBaselines {
+                    // Baseline er snapshotet serveren faktisk bekreftet —
+                    // aldri en nyere canvas-revisjon som oppstod under await.
+                    loadedRevision = snapshot.revision
+                    loadedFrameUpdatedAt = result.updatedAt ?? snapshot.baseUpdatedAt
+                    currentAIImageSourceRevision = result.sourceRevision
+                    loadedFrameSourceUpdatedAt = result.sourceUpdatedAt
+                    loadedFrameStrokesJSON = authoritativeStrokesJSON
+                    loadedFrameLayerState = authoritativeLayerState
+                    loadedFrameShotFraming = authoritativeShotFraming
+                    if let paintoverState = result.paintoverState {
+                        loadedFramePaintoverState = paintoverState
+                    }
+                    reconcileConfirmedSidecars(
+                        snapshot: snapshot,
+                        layerState: authoritativeLayerState,
+                        shotFraming: authoritativeShotFraming)
+                }
+                if plan.clearPendingDocument, let pending,
+                   PendingStrokeStore.clear(
+                    frameId: snapshot.frameId, ifUnchangedFrom: pending) {
+                    pendingFrameIds.remove(snapshot.frameId)
+                } else if PendingStrokeStore.loadDocument(
+                    frameId: snapshot.frameId) != nil {
+                    pendingFrameIds.insert(snapshot.frameId)
+                }
+                shouldScheduleLatest = plan.scheduleLatestActiveSave
+                shouldFlushInactivePending = PendingStrokeStore.loadDocument(
+                    frameId: snapshot.frameId) != nil
+                    && loadedFrameRef?.frameId != snapshot.frameId
+
+                // Serveren kan ha flettet inn samtidige strøk samtidig som
+                // artisten fortsatte å tegne lokalt. Rebase den nyeste lokale
+                // canvasen på serverens bekreftede dokument før oppfølgingssave.
+                if result.merged, plan.scheduleLatestActiveSave,
+                   loadedFrameRef?.frameId == snapshot.frameId,
+                   let currentJSON = try? StrokeSerialization.encodeToWebJSON(
+                    canvasState.strokes),
+                   let rebasedJSON = StrokeMerge.threeWay(
+                    serverJSON: authoritativeStrokesJSON,
+                    baseJSON: snapshot.strokesJSON,
+                    oursJSON: currentJSON),
+                   rebasedJSON != currentJSON,
+                   let rebasedStrokes = try? StrokeSerialization.decodeFromWebJSON(
+                    rebasedJSON) {
+                    canvasState.strokes = rebasedStrokes
+                    canvasState.revision += 1
+                }
+
+                if result.merged, plan.updateActiveBaselines,
+                   !plan.scheduleLatestActiveSave {
                     // Ekte konflikt: serveren hadde nyere strøk — hent unionen
                     // inn i canvasen så lokal visning matcher det som ble lagret.
                     await board.reload()
-                    loadActiveFrameIntoCanvas()
-                    board.syncStatus = "Synket (flettet med annen enhet) ✓"
-                } else {
-                    board.syncStatus = "Synket ✓"
+                    // Brukeren kan ha tegnet eller byttet shot mens reload
+                    // await-et. Da må lokal canvas/WAL vinne og synkes etterpå.
+                    if loadedFrameRef?.frameId == snapshot.frameId,
+                       canvasState.revision == snapshot.revision {
+                        loadActiveFrameIntoCanvas()
+                        board.syncStatus = "Synket (flettet med annen enhet) ✓"
+                    } else {
+                        shouldScheduleLatest = true
+                    }
+                } else if plan.updateActiveBaselines {
+                    board.syncStatus = plan.scheduleLatestActiveSave
+                        ? "Nyere endring venter på synk"
+                        : "Synket ✓"
                 }
             } catch SyncError.unauthenticated {
-                board.syncStatus = "Token utløpt — logg inn på nytt"
+                if loadedFrameRef?.frameId == snapshot.frameId {
+                    board.syncStatus = "Token utløpt — logg inn på nytt"
+                }
             } catch {
                 // Pending-fil beholdes; neste autosynk prøver igjen.
-                board.syncStatus = error.localizedDescription
+                if loadedFrameRef?.frameId == snapshot.frameId {
+                    board.syncStatus = error.localizedDescription
+                }
             }
+            let queuedWhileSaving = syncRequestedAfterCurrent
+            syncRequestedAfterCurrent = false
             syncInFlight = false
+            if queuedWhileSaving || shouldScheduleLatest {
+                // scheduleAutosync skriver den nyeste snapshot-WAL-en på nytt
+                // og starter etter at syncInFlight er false, så kallet kan
+                // ikke lenger forsvinne i re-entrancy-vernet.
+                scheduleAutosync()
+            }
+            if shouldFlushInactivePending {
+                flushAllPending()
+            }
         }
     }
 
@@ -708,16 +2576,33 @@ struct NativeBoardView: View {
             }
             guard let scene = board.scenes.first(where: { scene in
                 scene.frames.contains { $0.id == frameId }
-            }), let json = PendingStrokeStore.load(frameId: frameId) else { continue }
+            }), let pending = PendingStrokeStore.loadDocument(frameId: frameId) else { continue }
             let manuscriptId = board.manuscript.id
             let sceneId = scene.id
+            let savedPending = pending
             Task {
                 do {
                     _ = try await RoleRoomAPIClient.shared.saveFrameStrokes(
                         manuscriptId: manuscriptId, sceneId: sceneId,
-                        frameId: frameId, strokesJSON: json)
-                    PendingStrokeStore.clear(frameId: frameId)
-                    pendingFrameIds.remove(frameId)
+                        frameId: frameId, strokesJSON: savedPending.strokesJSON,
+                        thumbnailDataURL: savedPending.thumbnailDataURL,
+                        baseUpdatedAt: savedPending.baseUpdatedAt,
+                        layerState: savedPending.layerState,
+                        shotFraming: savedPending.shotFraming,
+                        baseStrokesJSON: savedPending.baseStrokesJSON,
+                        baseLayerState: savedPending.baseLayerState,
+                        baseShotFraming: savedPending.baseShotFraming)
+                    // En ny lokal WAL kan ha blitt skrevet mens await pågikk.
+                    // Slett bare filen som faktisk ble sendt og bekreftet.
+                    if PendingStrokeStore.clear(
+                        frameId: frameId, ifUnchangedFrom: savedPending) {
+                        pendingFrameIds.remove(frameId)
+                    } else {
+                        pendingFrameIds.insert(frameId)
+                        if loadedFrameRef?.frameId == frameId {
+                            scheduleAutosync()
+                        }
+                    }
                 } catch {
                     // beholdes på disk; neste retry tar den
                 }
@@ -727,10 +2612,38 @@ struct NativeBoardView: View {
 
     // Autosynk: backup til disk straks, nett-synk etter 3 s ro.
     private func scheduleAutosync() {
+        guard !board.isLocalSample else { return }
         guard let frame = board.frame,
               canvasState.revision != loadedRevision,
               let json = try? StrokeSerialization.encodeToWebJSON(canvasState.strokes) else { return }
-        PendingStrokeStore.save(json, frameId: frame.id)
+        let changes = activePaintoverChanges()
+        if changes.pencilContentChanged {
+            currentAIImageSourceRevision = nil
+            loadedFrameSourceUpdatedAt = nil
+            board.markActiveAIOutputStaleLocally(
+                reason: "source-document-changed")
+        } else if changes.framingChanged {
+            board.markActiveAIOutputStaleLocally(
+                reason: "shot-framing-changed")
+        }
+        if changes.pencilChanged || changes.colorChanged
+            || changes.atmosphereChanged {
+            // A confirmation is bound to an immutable rendered PNG. Editing
+            // any contributing layer dismisses it, without fabricating a new
+            // server-owned overlay revision locally.
+            animationPreflight = nil
+            animationPreflightSourceImage = nil
+            animationPreflightComposite = nil
+            animationPreflightSession = nil
+        }
+        PendingStrokeStore.save(
+            json, frameId: frame.id, layerState: canvasState.layerState,
+            shotFraming: canvasState.shotFraming,
+            localRevision: canvasState.revision,
+            baseUpdatedAt: loadedFrameUpdatedAt,
+            baseStrokesJSON: loadedFrameStrokesJSON,
+            baseLayerState: loadedFrameLayerState,
+            baseShotFraming: loadedFrameShotFraming)
         pendingFrameIds.insert(frame.id)
         autosyncTask?.cancel()
         autosyncTask = Task {
@@ -740,9 +2653,295 @@ struct NativeBoardView: View {
         }
     }
 
+    private func activePaintoverChanges() -> StoryboardPaintoverChangeSet {
+        StoryboardPaintoverDocumentPolicy.classify(
+            baseStrokesJSON: loadedFrameStrokesJSON,
+            currentStrokes: canvasState.strokes,
+            baseLayerState: loadedFrameLayerState,
+            currentLayerState: canvasState.layerState,
+            baseShotFraming: loadedFrameShotFraming,
+            currentShotFraming: canvasState.shotFraming)
+    }
+
+    /// Paid Color generation may only start from a frame snapshot the server
+    /// has acknowledged. This closes the draw -> immediate Generate window
+    /// where the delayed autosync previously made a just-created candidate
+    /// stale before it could even be reviewed.
+    @MainActor
+    private func acknowledgeActiveSourceForAIGeneration(
+        session: AIFrameSessionKey
+    ) async throws -> AISourceSnapshotAcknowledgement {
+        autosyncTask?.cancel()
+        var waitPasses = 0
+        while syncInFlight && waitPasses < 200 {
+            try await Task.sleep(nanoseconds: 50_000_000)
+            guard isSameAIFrameIdentity(session) else {
+                throw SyncError.serverMessage(
+                    "Shotet ble byttet under synk. AI-generering ble ikke startet.")
+            }
+            waitPasses += 1
+        }
+        guard !syncInFlight else {
+            throw SyncError.serverMessage(
+                "Synkronisering tar uvanlig lang tid. Prøv igjen før AI-generering.")
+        }
+        autosyncTask?.cancel()
+        guard isCurrentAIFrameSession(session),
+              let ref = loadedFrameRef,
+              ref.sceneId == session.sceneId,
+              ref.frameId == session.frameId,
+              let strokesJSON = try? StrokeSerialization.encodeToWebJSON(
+                canvasState.strokes)
+        else {
+            throw SyncError.serverMessage(
+                "Shotet ble endret før kilden var låst. AI-generering ble ikke startet.")
+        }
+
+        let snapshot = ActiveFrameSaveSnapshot(
+            manuscriptId: board.manuscript.id,
+            sceneId: ref.sceneId,
+            frameId: ref.frameId,
+            revision: canvasState.revision,
+            strokesJSON: strokesJSON,
+            thumbnailDataURL: renderer?.thumbnailDataURL(
+                framing: canvasState.shotFraming),
+            layerState: canvasState.layerState,
+            shotFraming: canvasState.shotFraming,
+            baseUpdatedAt: loadedFrameUpdatedAt,
+            baseStrokesJSON: loadedFrameStrokesJSON,
+            baseLayerState: loadedFrameLayerState,
+            baseShotFraming: loadedFrameShotFraming)
+        PendingStrokeStore.save(
+            snapshot.strokesJSON, frameId: snapshot.frameId,
+            layerState: snapshot.layerState,
+            shotFraming: snapshot.shotFraming,
+            localRevision: snapshot.revision,
+            thumbnailDataURL: snapshot.thumbnailDataURL,
+            baseUpdatedAt: snapshot.baseUpdatedAt,
+            baseStrokesJSON: snapshot.baseStrokesJSON,
+            baseLayerState: snapshot.baseLayerState,
+            baseShotFraming: snapshot.baseShotFraming)
+        pendingFrameIds.insert(snapshot.frameId)
+        syncInFlight = true
+        defer {
+            syncInFlight = false
+            if syncRequestedAfterCurrent {
+                syncRequestedAfterCurrent = false
+                scheduleAutosync()
+            }
+        }
+
+        let result = try await RoleRoomAPIClient.shared.saveFrameStrokes(
+            manuscriptId: snapshot.manuscriptId,
+            sceneId: snapshot.sceneId,
+            frameId: snapshot.frameId,
+            strokesJSON: snapshot.strokesJSON,
+            thumbnailDataURL: snapshot.thumbnailDataURL,
+            baseUpdatedAt: snapshot.baseUpdatedAt,
+            layerState: snapshot.layerState,
+            shotFraming: snapshot.shotFraming,
+            baseStrokesJSON: snapshot.baseStrokesJSON,
+            baseLayerState: snapshot.baseLayerState,
+            baseShotFraming: snapshot.baseShotFraming)
+        guard isSameAIFrameIdentity(session) else {
+            throw SyncError.serverMessage(
+                "Shotet ble byttet etter kildesynk. AI-generering ble ikke startet.")
+        }
+        guard let updatedAt = result.updatedAt,
+              !updatedAt.isEmpty,
+              let sourceUpdatedAt = result.sourceUpdatedAt,
+              !sourceUpdatedAt.isEmpty else {
+            currentAIImageSourceRevision = nil
+            loadedFrameSourceUpdatedAt = nil
+            throw SyncError.serverMessage(
+                "Serveren kunne ikke bekrefte AI-kilden. Ingen generering ble startet.")
+        }
+        let sourceRevision = result.sourceRevision
+
+        let authoritativeStrokesJSON = result.strokesJSON ?? snapshot.strokesJSON
+        let authoritativeLayerState = result.layerState ?? snapshot.layerState
+        let authoritativeShotFraming = result.shotFraming ?? snapshot.shotFraming
+        loadedFrameUpdatedAt = updatedAt
+        loadedFrameStrokesJSON = authoritativeStrokesJSON
+        loadedFrameLayerState = authoritativeLayerState
+        loadedFrameShotFraming = authoritativeShotFraming
+        guard let paintoverState = result.paintoverState else {
+            throw SyncError.serverMessage(
+                "Serveren kunne ikke bekrefte paintover-identiteten. Ingen AI-kostnad er utløst.")
+        }
+        loadedFramePaintoverState = paintoverState
+        currentAIImageSourceRevision = sourceRevision
+        loadedFrameSourceUpdatedAt = sourceUpdatedAt
+
+        if result.merged, canvasState.revision != snapshot.revision {
+            // The artist continued drawing while the server was also merging
+            // a collaborator's changes. Rebase the live local document onto
+            // the acknowledged server result; never replace the newer canvas
+            // (or its WAL) with the older immutable generation snapshot.
+            if let currentJSON = try? StrokeSerialization.encodeToWebJSON(
+                canvasState.strokes),
+               let rebasedJSON = StrokeMerge.threeWay(
+                serverJSON: authoritativeStrokesJSON,
+                baseJSON: snapshot.strokesJSON,
+                oursJSON: currentJSON),
+               rebasedJSON != currentJSON,
+               let rebasedStrokes = try? StrokeSerialization.decodeFromWebJSON(
+                rebasedJSON) {
+                canvasState.strokes = rebasedStrokes
+                canvasState.revision += 1
+            }
+            loadedRevision = snapshot.revision
+            reconcileConfirmedSidecars(
+                snapshot: snapshot,
+                layerState: authoritativeLayerState,
+                shotFraming: authoritativeShotFraming)
+            currentAIImageSourceRevision = nil
+            scheduleAutosync()
+            throw SyncError.serverMessage(
+                "Shotet ble flettet samtidig som du tegnet. De nyeste lokale endringene er bevart og synkes før AI-generering.")
+        }
+
+        if result.merged {
+            if let mergedStrokes = try? StrokeSerialization.decodeFromWebJSON(
+                authoritativeStrokesJSON) {
+                canvasState.strokes = mergedStrokes
+            }
+            canvasState.applyLayerState(authoritativeLayerState)
+            canvasState.shotFraming = authoritativeShotFraming
+            lastObservedShotFraming = authoritativeShotFraming
+            canvasState.revision += 1
+            loadedRevision = canvasState.revision
+            if let pending = PendingStrokeStore.loadDocument(frameId: snapshot.frameId),
+               PendingStrokeStore.clear(
+                frameId: snapshot.frameId, ifUnchangedFrom: pending) {
+                pendingFrameIds.remove(snapshot.frameId)
+            }
+            throw SyncError.serverMessage(
+                "Shotet ble flettet med endringer fra en annen enhet. Kontroller resultatet og start AI-generering på nytt.")
+        }
+
+        guard canvasState.revision == snapshot.revision else {
+            loadedRevision = snapshot.revision
+            reconcileConfirmedSidecars(
+                snapshot: snapshot,
+                layerState: authoritativeLayerState,
+                shotFraming: authoritativeShotFraming)
+            currentAIImageSourceRevision = nil
+            scheduleAutosync()
+            throw SyncError.serverMessage(
+                "Tegningen ble endret under kildelåsing. Den nyeste versjonen synkes før AI-generering.")
+        }
+        loadedRevision = snapshot.revision
+        reconcileConfirmedSidecars(
+            snapshot: snapshot,
+            layerState: authoritativeLayerState,
+            shotFraming: authoritativeShotFraming)
+        if let pending = PendingStrokeStore.loadDocument(frameId: snapshot.frameId),
+           FrameSaveRacePolicy.pendingMatches(pending, represents: snapshot),
+           PendingStrokeStore.clear(frameId: snapshot.frameId, ifUnchangedFrom: pending) {
+            pendingFrameIds.remove(snapshot.frameId)
+        }
+        board.syncStatus = "AI-kilde synket ✓"
+        return AISourceSnapshotAcknowledgement(
+            frameUpdatedAt: updatedAt,
+            sourceUpdatedAt: sourceUpdatedAt,
+            sourceRevision: sourceRevision,
+            strokesJSON: authoritativeStrokesJSON,
+            layerState: authoritativeLayerState,
+            shotFraming: authoritativeShotFraming,
+            paintoverState: paintoverState)
+    }
+
     // MARK: Topbar
 
-    private var topbar: some View {
+    @ViewBuilder
+    private func topbar(compactWorkspace: Bool) -> some View {
+        if compactWorkspace {
+            compactTopbar
+        } else {
+            fullTopbar
+        }
+    }
+
+    private var compactTopbar: some View {
+        HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(LinearGradient(
+                    colors: [BoardBrand.accent, Color(red: 0.388, green: 0.4, blue: 0.945)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 32, height: 32)
+                .overlay(Image(systemName: "rectangle.grid.2x2")
+                    .font(.system(size: 15)).foregroundStyle(.white))
+            Text(board.manuscript.title)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+            if let scene = board.scene {
+                Menu {
+                    ForEach(Array(board.scenes.enumerated()), id: \.element.id) { index, entry in
+                        Button(entry.heading) { board.selectedSceneIndex = index }
+                    }
+                } label: {
+                    Text("S\(board.selectedSceneIndex + 1) · \(scene.heading)")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(BoardBrand.dim)
+                        .lineLimit(1)
+                        .frame(maxWidth: 180)
+                }
+            }
+            Spacer(minLength: 4)
+            Menu {
+                Button("Script") { showScript = true }
+                Button("Shot List") { showShotList = true }
+                Button("Production Health") { showProductionDashboard = true }
+                Button("Review") { showReview = true }
+                Button("Animatic") { showAnimatic = true }
+                Divider()
+                Button("Eksporter") { exportPDF(includeUnderlay: false) }
+            } label: {
+                Image(systemName: "rectangle.grid.1x2")
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("Arbeidsflater")
+            Button {
+                showInspectorSheet = true
+            } label: {
+                Image(systemName: "sidebar.right")
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("Åpne Inspector")
+            .accessibilityIdentifier("open-adaptive-inspector")
+            HStack(spacing: 0) {
+                Button { canvasState.undo() } label: {
+                    Image(systemName: "arrow.uturn.backward").frame(width: 40, height: 44)
+                }
+                .disabled(canvasState.undoStack.isEmpty)
+                .accessibilityLabel("Angre")
+                Button { canvasState.redo() } label: {
+                    Image(systemName: "arrow.uturn.forward").frame(width: 40, height: 44)
+                }
+                .disabled(canvasState.redoStack.isEmpty)
+                .accessibilityLabel("Gjenta")
+            }
+            Button { syncActiveFrameStrokes() } label: {
+                Image(systemName: "icloud.and.arrow.up")
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(BoardBrand.accent, in: RoundedRectangle(cornerRadius: 9))
+            }
+            .accessibilityLabel("Synk")
+            Button { dismiss() } label: {
+                Image(systemName: "xmark").frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("Lukk board")
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(BoardBrand.dim)
+        .padding(.horizontal, 10)
+        .frame(height: 52)
+    }
+
+    private var fullTopbar: some View {
         HStack(spacing: 14) {
             RoundedRectangle(cornerRadius: 8)
                 .fill(LinearGradient(colors: [BoardBrand.accent, Color(red: 0.388, green: 0.4, blue: 0.945)], startPoint: .topLeading, endPoint: .bottomTrailing))
@@ -767,6 +2966,9 @@ struct NativeBoardView: View {
                 topTab("Board", icon: "rectangle.grid.2x2", active: true) {}
                 topTab("Script", icon: "doc.text", active: false) { showScript = true }
                 topTab("Shot List", icon: "list.bullet", active: false) { showShotList = true }
+                topTab("Health", icon: "waveform.path.ecg", active: false) {
+                    showProductionDashboard = true
+                }
                 topTab("Review", icon: "checkmark.bubble", active: false) { showReview = true }
                 topTab("Animatic", icon: "play.rectangle", active: false) { showAnimatic = true }
             }
@@ -798,6 +3000,28 @@ struct NativeBoardView: View {
                 }
                 .buttonStyle(.plain)
             }
+            HStack(spacing: 2) {
+                Button { canvasState.undo() } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                        .frame(width: 44, height: 44)
+                }
+                .disabled(canvasState.undoStack.isEmpty)
+                .accessibilityLabel("Angre")
+                .accessibilityHint("To fingre på tegneflaten eller Kommando-Z")
+                .keyboardShortcut("z", modifiers: .command)
+
+                Button { canvasState.redo() } label: {
+                    Image(systemName: "arrow.uturn.forward")
+                        .frame(width: 44, height: 44)
+                }
+                .disabled(canvasState.redoStack.isEmpty)
+                .accessibilityLabel("Gjenta")
+                .accessibilityHint("Tre fingre på tegneflaten eller Skift-Kommando-Z")
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
             if let status = board.syncStatus {
                 Text(status).font(.system(size: 12)).foregroundStyle(BoardBrand.dim)
                 if status.localizedCaseInsensitiveContains("token") {
@@ -849,36 +3073,60 @@ struct NativeBoardView: View {
                 }
                 Button {
                     pdfExportProgress = "…"
+                    let scenes = effectiveScenesForRendering()
                     Task {
-                        exportPDFURL = await BoardPDFExporter.exportPresentation(
-                            projectTitle: board.manuscript.title, scenes: board.scenes,
+                        let result = await BoardPDFExporter.exportPresentation(
+                            projectTitle: board.manuscript.title, scenes: scenes,
                             progress: { done, total in pdfExportProgress = "\(done)/\(total)" })
+                        if let result {
+                            exportPDFURL = result
+                        } else {
+                            pdfExportFailed = true
+                        }
                         pdfExportProgress = nil
                     }
                 } label: {
                     Label("Presentasjon (PDF)", systemImage: "rectangle.grid.3x2")
                 }
                 Button {
+                    let scenes = effectiveScenesForRendering()
                     exportPDFURL = BoardPDFExporter.exportCSV(
-                        projectTitle: board.manuscript.title, scenes: board.scenes)
+                        projectTitle: board.manuscript.title, scenes: scenes)
                 } label: {
                     Label("Shot-liste (CSV)", systemImage: "tablecells")
                 }
             } label: {
                 Image(systemName: "square.and.arrow.up")
                     .font(.system(size: 16)).foregroundStyle(BoardBrand.dim)
+                    .frame(width: 44, height: 44)
             }
             .disabled(board.scenes.isEmpty || pdfExportProgress != nil)
             .accessibilityLabel("Eksporter PDF")
+            Button {
+                isInspectorDockVisible.toggle()
+            } label: {
+                Image(systemName: isInspectorDockVisible
+                      ? "sidebar.trailing" : "sidebar.trailing")
+                    .symbolVariant(isInspectorDockVisible ? .fill : .none)
+                    .font(.system(size: 16))
+                    .foregroundStyle(isInspectorDockVisible ? BoardBrand.accent : BoardBrand.dim)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isInspectorDockVisible ? "Skjul Inspector" : "Vis Inspector")
+            .accessibilityIdentifier("toggle-docked-inspector")
+            .keyboardShortcut("i", modifiers: [.command, .option])
             Button { syncActiveFrameStrokes() } label: {
                 Label("Synk", systemImage: "icloud.and.arrow.up")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12).padding(.vertical, 7)
                     .background(BoardBrand.accent, in: RoundedRectangle(cornerRadius: 9))
+                    .frame(minHeight: 44)
             }
             Button { dismiss() } label: {
                 Image(systemName: "xmark").foregroundStyle(BoardBrand.dim)
+                    .frame(width: 44, height: 44)
             }
         }
         .padding(.horizontal, 16)
@@ -893,8 +3141,226 @@ struct NativeBoardView: View {
                 .padding(.horizontal, 12).padding(.vertical, 7)
                 .background(active ? Color.white.opacity(0.1) : .clear,
                             in: RoundedRectangle(cornerRadius: 8))
+                .frame(minHeight: 44)
         }
         .buttonStyle(.plain)
+    }
+
+    /// Fingerprinten gjør at SwiftUI avbryter gammel preview-lasting når
+    /// scene-/frame-data byttes av live-synk.
+    private var scenePreviewTaskKey: String {
+        board.scenes.map { scene in
+            guard let frame = StoryboardPreviewPolicy.representativeFrame(in: scene.frames) else {
+                return scene.id
+            }
+            let thumbnailKey = frame.thumbnailDataURL.map {
+                "\($0.count):\($0.prefix(24))"
+            } ?? ""
+            return [scene.id, frame.id, frame.updatedAt ?? "",
+                    frame.imageUrl ?? "", thumbnailKey,
+                    framingPreviewKey(frame.shotFraming),
+                    frame.id == board.frame?.id ? String(canvasState.revision) : "",
+                    pendingFrameIds.contains(frame.id) ? "pending" : ""
+            ].joined(separator: "|")
+        }.joined(separator: ";")
+    }
+
+    /// One authoritative render snapshot for previews, AI-adjacent exports
+    /// and animatics. The server summary can lag the active canvas by the
+    /// autosave debounce, and inactive shots can still have a durable WAL.
+    /// Rendering must never make that lag visible to the artist.
+    private func effectiveFrameForRendering(_ frame: FrameSummary) -> FrameSummary {
+        var effective = frame
+        if loadedFrameRef?.frameId == frame.id,
+           let liveJSON = try? StrokeSerialization.encodeToWebJSON(canvasState.strokes) {
+            effective.strokesJSON = liveJSON
+            effective.layerState = canvasState.layerState
+            effective.shotFraming = canvasState.shotFraming
+            effective.shotType = canvasState.shotFraming.shotSize ?? effective.shotType
+            effective.angle = canvasState.shotFraming.angle ?? effective.angle
+            effective.lensMm = canvasState.shotFraming.lensMm ?? effective.lensMm
+            let changes = activePaintoverChanges()
+            if changes.pencilChanged || changes.colorChanged
+                || changes.atmosphereChanged {
+                // Derived render snapshot only. The acknowledged baseline is
+                // untouched until PATCH returns its server-owned state.
+                effective.aiPaintoverState?.videoStale = true
+            }
+            return effective
+        }
+        if pendingFrameIds.contains(frame.id),
+           let pending = PendingStrokeStore.loadDocument(frameId: frame.id) {
+            effective.strokesJSON = pending.strokesJSON
+            effective.layerState = pending.layerState
+            effective.shotFraming = pending.shotFraming
+            effective.shotType = pending.shotFraming?.shotSize ?? effective.shotType
+            effective.angle = pending.shotFraming?.angle ?? effective.angle
+            effective.lensMm = pending.shotFraming?.lensMm ?? effective.lensMm
+        }
+        return effective
+    }
+
+    private func effectiveFramesForRendering(
+        _ frames: [FrameSummary]
+    ) -> [FrameSummary] {
+        frames.map(effectiveFrameForRendering)
+    }
+
+    private func effectiveScenesForRendering() -> [SceneSummary] {
+        board.scenes.map { scene in
+            var effective = scene
+            effective.frames = effectiveFramesForRendering(scene.frames)
+            return effective
+        }
+    }
+
+    /// Scene-listen viser et faktisk kompositt (original + strøk) når det
+    /// finnes. Gamle/blanke thumbnailUrl-data brukes bare som siste fallback.
+    private func rebuildSceneThumbnails() async {
+        do {
+            try await Task.sleep(nanoseconds: 220_000_000)
+        } catch {
+            return
+        }
+        let scenes = effectiveScenesForRendering()
+        let representatives = scenes.compactMap {
+            StoryboardPreviewPolicy.representativeFrame(in: $0.frames)
+        }
+        await FrameImageCache.prefetchPreviewSources(frames: representatives)
+        guard !Task.isCancelled else { return }
+
+        let activeSceneIds = Set(scenes.map(\.id))
+        var nextImages = sceneThumbnailImages.filter { activeSceneIds.contains($0.key) }
+        var nextKeys = scenePreviewRenderKeys.filter { activeSceneIds.contains($0.key) }
+        for scene in scenes {
+            guard let frame = StoryboardPreviewPolicy.representativeFrame(in: scene.frames) else {
+                nextImages.removeValue(forKey: scene.id)
+                nextKeys.removeValue(forKey: scene.id)
+                continue
+            }
+            guard !Task.isCancelled else { return }
+            let key = previewRenderKey(frame)
+            if nextKeys[scene.id] == key, nextImages[scene.id] != nil { continue }
+            let directFallback = safeDirectRasterFallback(for: frame)
+            if let image = FrameRenderCoordinator.image(for: frame, maxWidth: 248)
+                ?? directFallback {
+                nextImages[scene.id] = image
+                nextKeys[scene.id] = key
+            } else {
+                nextImages.removeValue(forKey: scene.id)
+                nextKeys[scene.id] = key
+            }
+        }
+        guard !Task.isCancelled else { return }
+        sceneThumbnailImages = nextImages
+        scenePreviewRenderKeys = nextKeys
+    }
+
+    private func scenePreviewFallbackImage(for scene: SceneSummary) -> UIImage? {
+        guard let frame = StoryboardPreviewPolicy.representativeFrame(in: scene.frames) else {
+            return nil
+        }
+        return safeDirectRasterFallback(for: frame)
+    }
+
+    /// Alle shot-rader i valgt scene får en fulloppløselig preview. Dette er
+    /// separat fra 280 px thumbnailDataURL, som kun er en rask placeholder.
+    private var shotPreviewTaskKey: String {
+        guard let scene = board.scene else { return "none" }
+        let frameKeys = scene.frames.map { frame in
+            [frame.id, frame.updatedAt ?? "", frame.imageUrl ?? "",
+             String(frame.strokesJSON?.count ?? 0),
+             framingPreviewKey(frame.shotFraming),
+             frame.id == board.frame?.id ? String(canvasState.revision) : "",
+             pendingFrameIds.contains(frame.id) ? "pending" : ""
+            ].joined(separator: "|")
+        }
+        return ([scene.id] + frameKeys).joined(separator: ";")
+    }
+
+    private func framingPreviewKey(_ state: ShotFramingState?) -> String {
+        guard let state else { return "framing:none" }
+        return [
+            String(state.revision), String(format: "%.5f", state.centerX),
+            String(format: "%.5f", state.centerY), String(format: "%.5f", state.zoom),
+            String(format: "%.3f", state.rollDegrees), state.shotSize ?? "",
+            state.angle ?? "", state.lensMm.map(String.init) ?? "",
+        ].joined(separator: ":")
+    }
+
+    private func previewRenderKey(_ frame: FrameSummary) -> String {
+        [
+            frame.id,
+            frame.updatedAt ?? "",
+            frame.imageUrl ?? "",
+            String(frame.aiSourceRevision ?? -1),
+            frame.aiOutputStale
+                ? (frame.aiOutputStaleReason ?? "stale") : "current",
+            String(frame.strokesJSON?.hashValue ?? 0),
+            framingPreviewKey(frame.shotFraming),
+            frame.id == loadedFrameRef?.frameId ? String(canvasState.revision) : "",
+            pendingFrameIds.contains(frame.id) ? "pending" : "",
+        ].joined(separator: "|")
+    }
+
+    private func rebuildShotPreviews() async {
+        guard let scene = board.scene else {
+            shotPreviewImages = [:]
+            shotPreviewRenderKeys = [:]
+            return
+        }
+        // Pencil can publish several revisions per second. Let SwiftUI cancel
+        // superseded tasks so only the settled revision reaches GPU readback.
+        do {
+            try await Task.sleep(nanoseconds: 140_000_000)
+        } catch {
+            return
+        }
+        let sceneId = scene.id
+        let frames = effectiveFramesForRendering(scene.frames)
+        await FrameImageCache.prefetch(frames: frames)
+        guard !Task.isCancelled, board.scene?.id == sceneId else { return }
+
+        let activeFrameIds = Set(frames.map(\.id))
+        var nextImages = shotPreviewImages.filter { activeFrameIds.contains($0.key) }
+        var nextKeys = shotPreviewRenderKeys.filter { activeFrameIds.contains($0.key) }
+        for frame in frames {
+            guard !Task.isCancelled else { return }
+            let key = previewRenderKey(frame)
+            if nextKeys[frame.id] == key, nextImages[frame.id] != nil { continue }
+            // This is a UI preview, never the export source. 960 px remains
+            // crisp on the iPad shot strip while avoiding 1280–1920 px
+            // scene-wide Metal rebuilds after every Pencil gesture.
+            let previewWidth = min(960, max(640, CGFloat(frame.drawingWidth)))
+            let directFallback = safeDirectRasterFallback(for: frame)
+            if let image = FrameRenderCoordinator.image(for: frame, maxWidth: previewWidth)
+                ?? directFallback {
+                nextImages[frame.id] = image
+                nextKeys[frame.id] = key
+            } else {
+                nextImages.removeValue(forKey: frame.id)
+                nextKeys[frame.id] = key
+            }
+        }
+        guard !Task.isCancelled, board.scene?.id == sceneId else { return }
+        shotPreviewImages = nextImages
+        shotPreviewRenderKeys = nextKeys
+    }
+
+    private func fullResolutionRaster(for frame: FrameSummary) -> UIImage? {
+        exactFrameRaster(for: frame)
+    }
+
+    @ViewBuilder
+    private func inactiveShotPreview(frame: FrameSummary) -> some View {
+        if let image = shotPreviewImages[frame.id]
+            ?? safeDirectRasterFallback(for: frame) {
+            Image(uiImage: image).resizable().interpolation(.high).scaledToFill()
+        } else {
+            Color(white: 0.925)
+            Text(frame.imageUrl == nil ? "Trykk for å tegne" : "Laster original …")
+                .font(.system(size: 11)).foregroundStyle(Color(white: 0.6))
+        }
     }
 
     // MARK: SCENES
@@ -918,14 +3384,28 @@ struct NativeBoardView: View {
                         Button { board.selectedSceneIndex = index } label: {
                             HStack(spacing: 10) {
                                 Group {
-                                    if let image = decodeDataURL(scene.frames.compactMap(\.thumbnailDataURL).first) {
-                                        Image(uiImage: image).resizable().scaledToFill()
+                                    if let image = sceneThumbnailImages[scene.id]
+                                        ?? scenePreviewFallbackImage(for: scene) {
+                                        ZStack {
+                                            Color.black.opacity(0.22)
+                                            Image(uiImage: image)
+                                                .resizable()
+                                                .interpolation(.high)
+                                                .scaledToFit()
+                                        }
                                     } else {
-                                        Color.white.opacity(0.06)
+                                        ZStack {
+                                            Color.white.opacity(0.06)
+                                            ProgressView().controlSize(.mini).tint(BoardBrand.dim)
+                                        }
                                     }
                                 }
                                 .frame(width: 62, height: 40)
                                 .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityIdentifier("scene-thumbnail-\(scene.id)")
+                                .accessibilityLabel("Scene-thumbnail \(index + 1)")
+                                .accessibilityValue(sceneThumbnailImages[scene.id] == nil ? "loading" : "loaded")
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(String(format: "%02d", index + 1))
                                         .font(.system(size: 10, weight: .bold)).foregroundStyle(BoardBrand.label)
@@ -1038,8 +3518,11 @@ struct NativeBoardView: View {
         return Button {
             boardTool = tool
             // Tegn/viskelær speiles i pensel-valget (samme kobling som web).
-            if tool == .eraser { canvasState.brushType = .eraser }
-            if tool == .draw && canvasState.brushType == .eraser { canvasState.brushType = .pencil }
+            if tool == .eraser { canvasState.selectBrush(.eraser) }
+            if tool == .draw,
+               [.eraser, .kneaded, .lightlift].contains(canvasState.brushType) {
+                canvasState.selectBrush(.pencil)
+            }
         } label: {
             Image(systemName: tool.icon)
                 .font(.system(size: 14))
@@ -1049,6 +3532,8 @@ struct NativeBoardView: View {
                             in: RoundedRectangle(cornerRadius: 7))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(tool.label)
+        .help(tool.label)
     }
 
     private var sheetArea: some View {
@@ -1093,12 +3578,148 @@ struct NativeBoardView: View {
             BrushEditorSheet(canvasState: canvasState)
                 .presentationDetents([.medium])
         }
+        .sheet(isPresented: $showPromptInspector) {
+            PromptInspectorSheet(compilation: promptCompilation, status: aiStatus)
+                .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showInspectorSheet) {
+            NavigationStack {
+                inspectorPanel(isOverlay: true)
+                    .navigationTitle("Inspector")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Ferdig") {
+                                flushInspectorDrafts()
+                                showInspectorSheet = false
+                            }
+                        }
+                    }
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+        .fullScreenCover(isPresented: $showAIVersionBrowser) {
+            AIStageVersionBrowser(
+                versions: imageStageVersions,
+                currentFramingFingerprint: canvasState.shotFraming.canonicalFingerprint
+            ) { version in
+                Task { await approveImageStageVersion(version) }
+            }
+        }
+        .sheet(item: $pendingImageStageVersion) { version in
+            AIImageStagePreviewSheet(
+                version: version,
+                sourceImage: imageStageVersions.first(where: {
+                    $0.id == version.parentVersionId
+                }).flatMap { decodeDataURL($0.imageData) },
+                resultImage: decodeDataURL(version.imageData),
+                onCancel: {
+                    pendingImageStageVersion = nil
+                    aiStatus = "Kandidat beholdt uten godkjenning"
+                },
+                onRegenerate: {
+                    pendingImageStageVersion = nil
+                    pendingImageStageGeneration = version.stage
+                },
+                onApprove: {
+                    pendingImageStageVersion = nil
+                    Task { await approveImageStageVersion(version) }
+                })
+            .interactiveDismissDisabled()
+        }
+        .sheet(item: $animationPreflight) { preflight in
+            AnimationPreflightSheet(
+                preflight: preflight,
+                sourceImage: animationPreflightSourceImage,
+                sourceStage: approvedAnimationStageLabel,
+                onCancel: {
+                    animationPreflight = nil
+                    animationPreflightSourceImage = nil
+                    animationPreflightComposite = nil
+                    animationPreflightSession = nil
+                    aiStatus = "Animasjon avbrutt før kostnad"
+                },
+                onConfirm: {
+                    let composite = animationPreflightComposite
+                    animationPreflight = nil
+                    animationPreflightSourceImage = nil
+                    Task { await animateActiveStoryboard(
+                        checkConsent: false,
+                        confirmedPreflight: preflight,
+                        confirmedPaintoverComposite: composite) }
+                })
+            .interactiveDismissDisabled()
+        }
+        .sheet(isPresented: Binding(
+            get: { stampInspectorStrokeID != nil },
+            set: { if !$0 { stampInspectorStrokeID = nil } }
+        )) {
+            if let stampInspectorStrokeID {
+                PlacedStampInspectorSheet(
+                    canvasState: canvasState, strokeID: stampInspectorStrokeID)
+                    .presentationDetents([.medium, .large])
+            }
+        }
         .sheet(isPresented: $showToneReport) {
             ToneReportSheet(report: toneReport, hero: heroReport)
                 .presentationDetents([.medium])
         }
+        .confirmationDialog(
+            pendingImageStageGeneration == "atmosphere"
+                ? "Generer AI Atmosphere?" : "Generer AI Color?",
+            isPresented: Binding(
+                get: { pendingImageStageGeneration != nil },
+                set: { if !$0 { pendingImageStageGeneration = nil } }
+            ), titleVisibility: .visible
+        ) {
+            Button("Generer med GPT Image 2 · HD") {
+                guard let stage = pendingImageStageGeneration else { return }
+                pendingImageStageGeneration = nil
+                Task { await generateImageStage(stage: stage) }
+            }
+            Button("Avbryt", role: .cancel) { pendingImageStageGeneration = nil }
+        } message: {
+            Text("Dette oppretter en ny kandidat og bruker AI-kreditter. Originaltegningen blir ikke overskrevet.")
+        }
+        .alert("Tillat AI for prosjektet?", isPresented: $showAIConsentPrompt) {
+            Button(pendingAIConsentAction == "animate"
+                   ? "Tillat og animer" : "Tillat og generer") {
+                guard let consentSession = pendingAIConsentSession else { return }
+                let action = pendingAIConsentAction
+                pendingAIConsentSession = nil
+                Task {
+                    do {
+                        try await RoleRoomAPIClient.shared.setProjectAIConsent(
+                            projectId: consentSession.projectId, consented: true)
+                        guard isCurrentAIFrameSession(consentSession) else { return }
+                        if action == "animate" {
+                            await animateActiveStoryboard(checkConsent: false)
+                        } else {
+                            await generateImageStage(
+                                stage: action, checkConsent: false)
+                        }
+                    } catch {
+                        if isCurrentAIFrameSession(consentSession) {
+                            aiStatus = error.localizedDescription
+                        }
+                    }
+                }
+            }
+            Button("Avbryt", role: .cancel) { pendingAIConsentSession = nil }
+        } message: {
+            Text("Produksjonskontekst og eventuelt startbilde sendes til valgt AI-leverandør. Samtykket lagres på prosjektet og kan trekkes tilbake i The Role Room.")
+        }
         .sheet(item: $exportPDFURL) { url in
             ShareSheet(items: [url])
+        }
+        .alert("Eksport stoppet", isPresented: $pdfExportFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(
+                "Minst ett panel har deklarert innhold som ikke lenger kan "
+                + "knyttes til riktig kilde, revisjon eller kamera. Last inn "
+                + "originalen på nytt eller regenerer panelet før eksport.")
         }
         .sheet(isPresented: $showReauth) {
             NavigationStack { LoginView(sync: reauthSync) }
@@ -1376,7 +3997,7 @@ struct NativeBoardView: View {
         var phase = "SETUP"
         let entries: [(index: Int, phase: String, weight: Double)] = frames.enumerated().map { index, frame in
             if let beat = frame.beatTag, let mapped = Self.beatToPhase[beat] { phase = mapped }
-            return (index, phase, max(0.5, frame.durationSec))
+            return (index, phase, max(0.5, frame.effectiveShotDuration.seconds))
         }
         return HStack(spacing: 2) {
             ForEach(entries, id: \.index) { entry in
@@ -1452,7 +4073,8 @@ struct NativeBoardView: View {
                         .disabled(index == (board.scene?.frames.count ?? 1) - 1)
                         Button {
                             exportPDFURL = FrameRenderService.exportPNG(
-                                frame: frame, projectTitle: board.manuscript.title)
+                                frame: effectiveFrameForRendering(frame),
+                                projectTitle: board.manuscript.title)
                         } label: {
                             Label("Eksporter PNG", systemImage: "photo")
                         }
@@ -1527,16 +4149,15 @@ struct NativeBoardView: View {
             ZStack {
                 if isActive, renderer != nil {
                     activeCanvas(frame: frame)
-                } else if let image = decodeDataURL(frame.thumbnailDataURL)
-                    ?? FrameImageCache.image(for: frame.imageUrl) {
-                    Image(uiImage: image).resizable().scaledToFill()
                 } else {
-                    Color(white: 0.925)
-                    Text("Trykk for å tegne")
-                        .font(.system(size: 11)).foregroundStyle(Color(white: 0.6))
+                    inactiveShotPreview(frame: frame)
                 }
             }
-            .aspectRatio(CGFloat(frame.drawingWidth / max(1, frame.drawingHeight)), contentMode: .fit)
+            .aspectRatio(
+                CGFloat((isActive ? canvasState.shotFraming.aspectRatio
+                                   : frame.shotFraming?.aspectRatio)
+                    ?? (frame.drawingWidth / max(1, frame.drawingHeight))),
+                contentMode: .fit)
             .frame(maxWidth: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: 4))
             .overlay(RoundedRectangle(cornerRadius: 4)
@@ -1550,7 +4171,7 @@ struct NativeBoardView: View {
                 metaEntry("CAM / SHOT", frame.shotType ?? "—")
                 metaEntry("LENS / CAMERA", frame.lensMm.map { "\($0)mm" } ?? "—")
                 metaEntry("MOVEMENT", frame.movement ?? "—")
-                metaEntry("DURATION", "\(Int(frame.durationSec)) SEC")
+                metaEntry("DURATION", "\(Int(frame.effectiveShotDuration.seconds)) SEC")
                 if let beat = frame.beatTag {
                     Text(beat)
                         .font(.system(size: 9, weight: .bold)).kerning(0.8)
@@ -1587,9 +4208,44 @@ struct NativeBoardView: View {
     }
 
     private func appendAnnotation(_ stroke: PencilStroke) {
-        canvasState.undoStack.append(canvasState.strokes)
-        canvasState.redoStack = []
+        canvasState.captureUndo("Legg til annotasjon")
         canvasState.strokes.append(stroke)
+        canvasState.revision += 1
+    }
+
+    private func framingGeometry(for frame: FrameSummary,
+                                 viewportSize: CGSize) -> ShotFramingGeometry? {
+        ShotFramingGeometry(
+            sourceSize: ShotFramingSize(width: frame.drawingWidth,
+                                        height: frame.drawingHeight),
+            viewportSize: ShotFramingSize(width: viewportSize.width,
+                                          height: viewportSize.height),
+            state: canvasState.shotFraming
+        )
+    }
+
+    private func sourcePoint(_ viewportPoint: CGPoint,
+                             geometry: ShotFramingGeometry?,
+                             fallbackScale: CGFloat) -> CGPoint {
+        guard let geometry else {
+            return CGPoint(x: viewportPoint.x / fallbackScale,
+                           y: viewportPoint.y / fallbackScale)
+        }
+        let point = geometry.sourcePoint(fromViewportPoint: ShotFramingPoint(
+            x: viewportPoint.x, y: viewportPoint.y))
+        return CGPoint(x: point.x, y: point.y)
+    }
+
+    private func viewportPoint(_ sourcePoint: CGPoint,
+                               geometry: ShotFramingGeometry?,
+                               fallbackScale: CGFloat) -> CGPoint {
+        guard let geometry else {
+            return CGPoint(x: sourcePoint.x * fallbackScale,
+                           y: sourcePoint.y * fallbackScale)
+        }
+        let point = geometry.viewportPoint(fromSourcePoint: ShotFramingPoint(
+            x: sourcePoint.x, y: sourcePoint.y))
+        return CGPoint(x: point.x, y: point.y)
     }
 
     private func commitTextAnnotation(style: String?) {
@@ -1605,10 +4261,31 @@ struct NativeBoardView: View {
     private func activeCanvas(frame: FrameSummary) -> some View {
         GeometryReader { geo in
             let scale = geo.size.width / CGFloat(max(1, frame.drawingWidth))
+            let framing = framingGeometry(for: frame, viewportSize: geo.size)
+            let expectsRaster = StoryboardActiveRasterPolicy.expectsRaster(frame)
+            let rasterPending = expectsRaster
+                && fullResolutionRaster(for: frame) == nil
             ZStack(alignment: .topTrailing) {
                 PencilCanvasView(state: canvasState, renderer: renderer)
                     .background(Color(red: 0.992, green: 0.992, blue: 0.984))
-                    .allowsHitTesting(boardTool == .draw || boardTool == .eraser)
+                    .allowsHitTesting(!rasterPending
+                        && (boardTool == .draw || boardTool == .eraser))
+                // Den lille server-thumbnailen er kun en eksplisitt
+                // lasteplaceholder. Tegning/visking aktiveres først når den
+                // fulloppløselige, redigerbare rasterbasen er i Metal.
+                if rasterPending {
+                    ZStack {
+                        Color(white: 0.94)
+                        ProgressView("Laster original …")
+                            .font(.system(size: 11, weight: .semibold))
+                            .tint(BoardBrand.accent)
+                            .padding(9)
+                            .background(.black.opacity(0.58), in: Capsule())
+                            .foregroundStyle(.white)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped().allowsHitTesting(false)
+                }
                 // Tekst-annotasjoner: Metal tegner ikke tekst — SwiftUI-overlay
                 // i samme håndskrift som web (Caveat ↔ Bradley Hand).
                 ForEach(canvasState.strokes.filter {
@@ -1617,29 +4294,42 @@ struct NativeBoardView: View {
                 }) { stroke in
                     if let point = stroke.points.first {
                         let style = stroke.annotationStyle
+                        let metrics = StoryboardAnnotationLayoutMetrics.resolve(
+                            style: style,
+                            sourceScale: framing?.sourceScale ?? Double(scale))
                         Text(style == nil ? (stroke.textAnnotation ?? "").uppercased()
                                           : (stroke.textAnnotation ?? ""))
                             .font(.custom(BoardBrand.handwriting,
-                                          size: max(12, (style == nil ? 40 : 30) * scale)))
+                                          size: CGFloat(metrics.fontSize)))
                             .foregroundStyle(style == "note"
                                 ? Color(red: 0.25, green: 0.22, blue: 0.15)
                                 : (Color(hex: stroke.color) ?? BoardBrand.accent))
-                            .padding(style == nil ? 0 : 10)
+                            .padding(CGFloat(metrics.padding))
                             .background {
                                 if style == "note" {
-                                    RoundedRectangle(cornerRadius: 2)
+                                    RoundedRectangle(
+                                        cornerRadius: CGFloat(metrics.cornerRadius))
                                         .fill(Color(red: 0.96, green: 0.91, blue: 0.75))
-                                        .shadow(color: .black.opacity(0.2), radius: 3, y: 2)
+                                        .shadow(color: .black.opacity(0.2),
+                                                radius: 3 * CGFloat(metrics.displayScale),
+                                                y: 2 * CGFloat(metrics.displayScale))
                                 } else if style == "bubble" {
-                                    RoundedRectangle(cornerRadius: 10)
+                                    RoundedRectangle(
+                                        cornerRadius: CGFloat(metrics.cornerRadius))
                                         .fill(.white)
-                                        .overlay(RoundedRectangle(cornerRadius: 10)
+                                        .overlay(RoundedRectangle(
+                                            cornerRadius: CGFloat(metrics.cornerRadius))
                                             .stroke(Color(hex: stroke.color) ?? BoardBrand.accent,
-                                                    lineWidth: 2))
-                                        .shadow(color: .black.opacity(0.15), radius: 3, y: 2)
+                                                    lineWidth: CGFloat(metrics.lineWidth)))
+                                        .shadow(color: .black.opacity(0.15),
+                                                radius: 3 * CGFloat(metrics.displayScale),
+                                                y: 2 * CGFloat(metrics.displayScale))
                                 }
                             }
-                            .position(x: CGFloat(point.x) * scale, y: CGFloat(point.y) * scale)
+                            .rotationEffect(.degrees(canvasState.shotFraming.rollDegrees))
+                            .position(viewportPoint(CGPoint(x: point.x, y: point.y),
+                                                    geometry: framing,
+                                                    fallbackScale: scale))
                             .allowsHitTesting(false)
                     }
                 }
@@ -1651,10 +4341,13 @@ struct NativeBoardView: View {
                         onCommit: { persistPerspective(); updateSnapState() })
                 }
                 if boardTool == .arrow || boardTool == .rect || boardTool == .text {
-                    annotationCapture(scale: scale)
+                    annotationCapture(scale: scale, geometry: framing)
                 }
                 if boardTool == .select {
-                    lassoCapture(scale: scale)
+                    lassoCapture(scale: scale, geometry: framing)
+                }
+                if isReframing {
+                    framingAdjustmentOverlay(frame: frame, viewportSize: geo.size)
                 }
                 // Fullskjerm tegnemodus (pinch-zoom, palm rejection)
                 Button { showFullscreenDraw = true } label: {
@@ -1671,7 +4364,380 @@ struct NativeBoardView: View {
         }
     }
 
-    private func annotationCapture(scale: CGFloat) -> some View {
+    private func normalizedBounds(for strokes: [PencilStroke],
+                                  frame: FrameSummary) -> ShotFramingRect? {
+        let points = strokes.flatMap { stroke -> [ShotFramingPoint] in
+            let stampScale = stroke.stampInstance.map {
+                $0.scale * $0.depth.renderScale
+            } ?? 1
+            let radius = max(2, stroke.width * stampScale / 2)
+            return stroke.points.flatMap { point in
+                [
+                    ShotFramingPoint(x: (point.x - radius) / frame.drawingWidth,
+                                     y: (point.y - radius) / frame.drawingHeight),
+                    ShotFramingPoint(x: (point.x + radius) / frame.drawingWidth,
+                                     y: (point.y + radius) / frame.drawingHeight),
+                ]
+            }
+        }
+        guard let minX = points.map(\.x).min(), let maxX = points.map(\.x).max(),
+              let minY = points.map(\.y).min(), let maxY = points.map(\.y).max()
+        else { return nil }
+        return ShotFramingRect(minX: minX, minY: minY,
+                               width: maxX - minX, height: maxY - minY)
+            .clampedToUnitSquare()
+    }
+
+    private func autoFramingInputs(frame: FrameSummary)
+        -> (bounds: ShotFramingRect?, focus: ShotFramingPoint?) {
+        let visible = canvasState.visibleStrokes().filter { $0.textAnnotation == nil }
+        let selected = visible.filter { selectedStrokeIds.contains($0.id) }
+        let subjectTypes: Set<BrushType> = [
+            .gestureBrush, .silhouetteBrush, .characterPoseStamp,
+            .faceExpressionStamp, .handPoseStamp, .crowdStamp,
+        ]
+        let semanticSubjects = visible.filter {
+            guard let type = $0.brush?.type else { return false }
+            return subjectTypes.contains(type)
+        }
+        // Only selected or semantic strokes are trustworthy subject bounds.
+        // Treating an entire freehand/background drawing as one character can
+        // cancel a CU request because the bounds span the whole canvas.
+        let subjectStrokes = !selected.isEmpty ? selected : semanticSubjects
+        let sceneBounds = normalizedBounds(for: visible, frame: frame)
+        let focusPoints = visible.filter { $0.brush?.type == .focusBrush }
+            .flatMap(\.points)
+        let focus: ShotFramingPoint? = if !focusPoints.isEmpty {
+            ShotFramingPoint(
+                x: focusPoints.map(\.x).reduce(0, +)
+                    / Double(focusPoints.count) / frame.drawingWidth,
+                y: focusPoints.map(\.y).reduce(0, +)
+                    / Double(focusPoints.count) / frame.drawingHeight
+            )
+        } else if subjectStrokes.isEmpty, let sceneBounds {
+            // With no semantic subject, retain useful composition context but
+            // let the shot preset own the zoom. The user can refine this with
+            // a Focus Brush or by selecting strokes.
+            ShotFramingPoint(x: sceneBounds.midX, y: sceneBounds.midY)
+        } else { nil }
+        return (normalizedBounds(for: subjectStrokes, frame: frame), focus)
+    }
+
+    private func shotFramingQualityReport(
+        frame: FrameSummary
+    ) -> ShotFramingQualityReport {
+        let state = canvasState.shotFraming.normalized()
+        let outputWidth = 1_920.0
+        let outputHeight = outputWidth / max(0.1, state.aspectRatio)
+        let sourceSize: ShotFramingSize
+        if StoryboardFrameImagePolicy.usesViewportCoordinates(frame),
+           let rasterSourceIdentity = FrameDocumentProjection
+            .effectiveRasterSource(for: frame).stableIdentity,
+           let viewportImage = fullResolutionRaster(for: frame),
+           let mapped = StoryboardViewportRasterMapper.sourceSpaceImage(
+                viewportImage: viewportImage,
+                frame: frame,
+                framing: state,
+                rasterSourceIdentity: rasterSourceIdentity)?.cgImage {
+            sourceSize = ShotFramingSize(
+                width: Double(mapped.width), height: Double(mapped.height))
+        } else if let cgImage = fullResolutionRaster(for: frame)?.cgImage {
+            sourceSize = ShotFramingSize(
+                width: Double(cgImage.width), height: Double(cgImage.height))
+        } else {
+            sourceSize = FrameRenderService.vectorSourceRenderSize(
+                frame: frame, outputWidth: outputWidth, framing: state)
+        }
+        let selected = canvasState.strokes.filter {
+            selectedStrokeIds.contains($0.id) && $0.textAnnotation == nil
+        }
+        return ShotFramingQualityValidator.validate(
+            state: state,
+            sourceSize: sourceSize,
+            outputSize: ShotFramingSize(width: outputWidth, height: outputHeight),
+            protectedSourceBounds: selected.isEmpty
+                ? nil : normalizedBounds(for: selected, frame: frame))
+    }
+
+    private func shotFramingQualityText(
+        _ code: ShotFramingQualityIssueCode
+    ) -> String {
+        switch code {
+        case .invalidDimensions: return "Ugyldige bildedimensjoner"
+        case .aspectRatioMismatch: return "Kilden krever sentrert aspect-fill crop"
+        case .uncoveredViewport: return "Utsnittet etterlater tomme kanter"
+        case .insufficientResolution: return "Rasterkilden kan bli litt myk i dette utsnittet"
+        case .excessiveUpscale: return "Rasterkilden har for lav oppløsning for dette utsnittet"
+        case .focusOutsideSafeArea: return "Fokuspunktet ligger utenfor safe area"
+        case .protectedContentClipped: return "Valgt motiv blir klippet av safe area"
+        }
+    }
+
+    /// Paid providers only receive production-valid camera windows. Warnings
+    /// remain advisory; geometry errors move the artist back to Shot controls
+    /// before credits can be reserved.
+    @MainActor
+    private func requireProductionReadyFraming(_ frame: FrameSummary) -> Bool {
+        let report = shotFramingQualityReport(frame: frame)
+        guard !report.isAcceptable,
+              let issue = report.issues.first(where: { $0.severity == .error })
+        else { return true }
+        selectedInspectorTab = .shot
+        isInspectorDockVisible = true
+        aiStatus = "Utsnittet må justeres før AI: \(shotFramingQualityText(issue.code)). Ingen AI-kostnad er utløst."
+        return false
+    }
+
+    private func finishFramingChange(_ state: ShotFramingState,
+                                     label: String,
+                                     captureUndo: Bool = true) {
+        if captureUndo { canvasState.captureUndo(label) }
+        var next = state.normalized()
+        next.revision = max(canvasState.shotFraming.revision, next.revision) + 1
+        next.intentFingerprint = next.canonicalFingerprint
+        canvasState.shotFraming = next
+        canvasState.revision += 1
+    }
+
+    private func applyShotSize(_ value: String, frame: FrameSummary) {
+        guard let shotSize = ShotSize(metadataValue: value) else { return }
+        let suggested = automaticFramingState(
+            shotSize: shotSize,
+            lensMm: canvasState.shotFraming.lensMm ?? frame.lensMm ?? 35,
+            frame: frame)
+        finishFramingChange(suggested, label: "Endre shot size")
+    }
+
+    private func automaticFramingState(
+        shotSize: ShotSize, lensMm: Int, frame: FrameSummary,
+        aspectRatio: Double? = nil
+    ) -> ShotFramingState {
+        let inputs = autoFramingInputs(frame: frame)
+        let source = ShotFramingSize(width: frame.drawingWidth,
+                                     height: frame.drawingHeight)
+        var baseState = canvasState.shotFraming
+        baseState.aspectRatio = aspectRatio ?? baseState.aspectRatio
+        let viewport = ShotFramingSize(
+            width: frame.drawingWidth,
+            height: frame.drawingWidth
+                / max(0.1, baseState.aspectRatio))
+        var suggested = ShotFramingGeometry.suggestedState(
+            for: shotSize, currentState: baseState,
+            sourceSize: source, viewportSize: viewport,
+            fullSubjectBounds: inputs.bounds, focusAnchor: inputs.focus)
+        suggested.lensMm = lensMm
+        let lensRatio = Double(lensMm) / 35.0
+        let desiredZoom = suggested.zoom * lensRatio
+        suggested.zoom = desiredZoom
+        // A 2D crop can preview field of view, but it cannot synthesize the
+        // perspective/compression of a different physical lens. Keep the
+        // preview immediate and mark non-35mm optics for true AI recompose.
+        suggested.mode = lensMm == 35 ? .automatic : .recomposed
+        if let geometry = ShotFramingGeometry(
+            sourceSize: source, viewportSize: viewport, state: suggested) {
+            let covered = geometry.stateEnsuringFullCoverage()
+            if covered.zoom > max(ShotFramingState.minimumZoom, desiredZoom) + 0.000_001 {
+                suggested.mode = .recomposed
+            }
+            suggested = covered
+        }
+        return suggested
+    }
+
+    private func applyLens(_ lensMm: Int, frame: FrameSummary) {
+        let shotSize = ShotSize(metadataValue:
+            canvasState.shotFraming.shotSize ?? frame.shotType) ?? .wide
+        let next = automaticFramingState(
+            shotSize: shotSize, lensMm: lensMm, frame: frame)
+        finishFramingChange(next, label: "Endre objektiv")
+    }
+
+    private func applyAspectRatio(_ aspectRatio: Double, frame: FrameSummary) {
+        let shotSize = ShotSize(metadataValue:
+            canvasState.shotFraming.shotSize ?? frame.shotType) ?? .wide
+        let next = automaticFramingState(
+            shotSize: shotSize,
+            lensMm: canvasState.shotFraming.lensMm ?? frame.lensMm ?? 35,
+            frame: frame,
+            aspectRatio: aspectRatio)
+        finishFramingChange(next, label: "Endre bildeformat")
+    }
+
+    private func aspectRatioValue(_ label: String) -> Double {
+        switch label {
+        case "2.39:1": return 2.39
+        case "4:3": return 4.0 / 3.0
+        case "1:1": return 1
+        case "9:16": return 9.0 / 16.0
+        default: return 16.0 / 9.0
+        }
+    }
+
+    private func applyCameraAngle(_ angle: String, frame: FrameSummary) {
+        var next = canvasState.shotFraming
+        next.angle = angle
+        switch angle {
+        case "Dutch":
+            next.rollDegrees = 8
+            next.mode = next.lensMm == 35 ? .automatic : .recomposed
+        case "Eye level":
+            next.rollDegrees = 0
+            next.mode = next.lensMm == 35 ? .automatic : .recomposed
+        default:
+            // Low/high/bird/worm alter perspective, not merely crop. Keep the
+            // current artwork intact and explicitly request AI re-composition.
+            next.rollDegrees = 0
+            next.mode = .recomposed
+        }
+        let source = ShotFramingSize(width: frame.drawingWidth,
+                                     height: frame.drawingHeight)
+        let viewport = ShotFramingSize(
+            width: frame.drawingWidth,
+            height: frame.drawingWidth / max(0.1, next.aspectRatio))
+        if let geometry = ShotFramingGeometry(sourceSize: source, viewportSize: viewport,
+                                              state: next) {
+            next = geometry.stateEnsuringFullCoverage()
+        }
+        finishFramingChange(next, label: "Endre kameravinkel")
+    }
+
+    private func resetFraming(frame: FrameSummary) {
+        var reset = automaticFramingState(
+            shotSize: .wide, lensMm: 35, frame: frame)
+        reset.angle = "Eye level"
+        reset.rollDegrees = 0
+        reset.mode = .automatic
+        finishFramingChange(reset, label: "Nullstill utsnitt")
+    }
+
+    private func beginFramingGestureIfNeeded() {
+        guard framingGestureBaseline == nil else { return }
+        framingGestureBaseline = canvasState.shotFraming
+        framingPanTranslation = .zero
+        framingMagnification = 1
+        framingRotationDegrees = 0
+        canvasState.captureUndo("Juster utsnitt")
+    }
+
+    private func updateFramingGesture(
+        sourceSize: ShotFramingSize, viewportSize: CGSize
+    ) {
+        guard let baseline = framingGestureBaseline else { return }
+        canvasState.shotFraming = ShotFramingInteraction.state(
+            baseline: baseline,
+            panTranslation: ShotFramingSize(
+                width: Double(framingPanTranslation.width),
+                height: Double(framingPanTranslation.height)),
+            magnification: Double(framingMagnification),
+            rotationDegrees: framingRotationDegrees,
+            sourceSize: sourceSize,
+            viewportSize: ShotFramingSize(
+                width: Double(viewportSize.width),
+                height: Double(viewportSize.height)))
+    }
+
+    private func finishFramingGestureIfComplete() {
+        guard !framingPanActive, !framingZoomActive, !framingRollActive,
+              framingGestureBaseline != nil else { return }
+        framingGestureBaseline = nil
+        framingPanTranslation = .zero
+        framingMagnification = 1
+        framingRotationDegrees = 0
+        finishFramingChange(
+            canvasState.shotFraming,
+            label: "Juster utsnitt", captureUndo: false)
+    }
+
+    private func framingAdjustmentOverlay(frame: FrameSummary,
+                                          viewportSize: CGSize) -> some View {
+        let sourceSize = ShotFramingSize(width: frame.drawingWidth,
+                                         height: frame.drawingHeight)
+        return ZStack {
+            Color.black.opacity(0.08).contentShape(Rectangle())
+            Path { path in
+                for fraction in [1.0 / 3.0, 2.0 / 3.0] {
+                    path.move(to: CGPoint(x: viewportSize.width * fraction, y: 0))
+                    path.addLine(to: CGPoint(x: viewportSize.width * fraction,
+                                             y: viewportSize.height))
+                    path.move(to: CGPoint(x: 0, y: viewportSize.height * fraction))
+                    path.addLine(to: CGPoint(x: viewportSize.width,
+                                             y: viewportSize.height * fraction))
+                }
+            }
+            .stroke(Color.white.opacity(0.58), lineWidth: 0.8)
+            RoundedRectangle(cornerRadius: 3)
+                .stroke(Color.yellow.opacity(0.72), style: StrokeStyle(lineWidth: 1,
+                                                                      dash: [7, 5]))
+                .padding(viewportSize.width * 0.05)
+            VStack {
+                HStack(spacing: 8) {
+                    Label("Dra · knip · roter", systemImage: "viewfinder")
+                    Spacer()
+                    Text(String(format: "%.2f× · %.1f°",
+                                canvasState.shotFraming.zoom,
+                                canvasState.shotFraming.rollDegrees))
+                        .monospacedDigit()
+                    Button("Ferdig") { isReframing = false }
+                        .buttonStyle(.borderedProminent).tint(BoardBrand.accent)
+                        .accessibilityIdentifier("finish-shot-framing")
+                }
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(8)
+                .background(.black.opacity(0.68), in: RoundedRectangle(cornerRadius: 8))
+                .padding(8)
+                Spacer()
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Manuell framing")
+        .accessibilityIdentifier("shot-framing-overlay")
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    framingPanActive = true
+                    beginFramingGestureIfNeeded()
+                    framingPanTranslation = value.translation
+                    updateFramingGesture(
+                        sourceSize: sourceSize, viewportSize: viewportSize)
+                }
+                .onEnded { _ in
+                    framingPanActive = false
+                    finishFramingGestureIfComplete()
+                }
+        )
+        .simultaneousGesture(
+            MagnificationGesture()
+                .onChanged { value in
+                    framingZoomActive = true
+                    beginFramingGestureIfNeeded()
+                    framingMagnification = value
+                    updateFramingGesture(
+                        sourceSize: sourceSize, viewportSize: viewportSize)
+                }
+                .onEnded { _ in
+                    framingZoomActive = false
+                    finishFramingGestureIfComplete()
+                }
+        )
+        .simultaneousGesture(
+            RotationGesture()
+                .onChanged { value in
+                    framingRollActive = true
+                    beginFramingGestureIfNeeded()
+                    framingRotationDegrees = value.degrees
+                    updateFramingGesture(
+                        sourceSize: sourceSize, viewportSize: viewportSize)
+                }
+                .onEnded { _ in
+                    framingRollActive = false
+                    finishFramingGestureIfComplete()
+                }
+        )
+    }
+
+    private func annotationCapture(scale: CGFloat,
+                                   geometry: ShotFramingGeometry?) -> some View {
         ZStack {
             Color.clear.contentShape(Rectangle())
             // Gummistrikk-preview i view-rom
@@ -1699,14 +4765,19 @@ struct NativeBoardView: View {
                     let start = value.startLocation
                     let end = value.location
                     if boardTool == .text {
-                        textPromptPoint = CGPoint(x: end.x / scale, y: end.y / scale)
+                        textPromptPoint = sourcePoint(end, geometry: geometry,
+                                                      fallbackScale: scale)
                         textPromptShown = true
                         return
                     }
                     // Innholdsrom-koordinater (web lagrer 1920×1080-rom)
-                    let sx = Double(start.x / scale), sy = Double(start.y / scale)
-                    let ex = Double(end.x / scale), ey = Double(end.y / scale)
-                    guard hypot(ex - sx, ey - sy) >= 12 else { return }
+                    let sourceStart = sourcePoint(start, geometry: geometry,
+                                                  fallbackScale: scale)
+                    let sourceEnd = sourcePoint(end, geometry: geometry,
+                                                fallbackScale: scale)
+                    let sx = Double(sourceStart.x), sy = Double(sourceStart.y)
+                    let ex = Double(sourceEnd.x), ey = Double(sourceEnd.y)
+                    guard hypot(end.x - start.x, end.y - start.y) >= 12 else { return }
                     let points: [StrokePoint]
                     if boardTool == .arrow {
                         // Web-paritet: linje + tilbake til spiss + to hodelinjer (34px, ±0.45 rad)
@@ -1731,16 +4802,42 @@ struct NativeBoardView: View {
 
     // MARK: Lasso-select: marker strøk → flytt (drag) eller slett
 
-    private func selectionRect(scale: CGFloat) -> CGRect? {
+    private func selectionRect(scale: CGFloat,
+                               geometry: ShotFramingGeometry?) -> CGRect? {
         let selected = canvasState.strokes.filter { selectedStrokeIds.contains($0.id) }
-        let points = selected.flatMap(\.points)
-        guard let firstX = points.map(\.x).min(), let lastX = points.map(\.x).max(),
-              let firstY = points.map(\.y).min(), let lastY = points.map(\.y).max() else { return nil }
-        return CGRect(x: firstX * scale, y: firstY * scale,
-                      width: max(20, (lastX - firstX) * scale), height: max(20, (lastY - firstY) * scale))
+        let bounds = selected.compactMap { stroke -> (Double, Double, Double, Double)? in
+            guard let minX = stroke.points.map(\.x).min(),
+                  let maxX = stroke.points.map(\.x).max(),
+                  let minY = stroke.points.map(\.y).min(),
+                  let maxY = stroke.points.map(\.y).max() else { return nil }
+            let stampScale = stroke.stampInstance.map {
+                $0.scale * $0.depth.renderScale
+            } ?? 1
+            let radius = max(1, stroke.width * stampScale / 2)
+            return (minX - radius, minY - radius, maxX + radius, maxY + radius)
+        }
+        guard let first = bounds.first else { return nil }
+        let minX = bounds.dropFirst().reduce(first.0) { min($0, $1.0) }
+        let minY = bounds.dropFirst().reduce(first.1) { min($0, $1.1) }
+        let maxX = bounds.dropFirst().reduce(first.2) { max($0, $1.2) }
+        let maxY = bounds.dropFirst().reduce(first.3) { max($0, $1.3) }
+        let sourceCorners = [
+            CGPoint(x: minX, y: minY), CGPoint(x: maxX, y: minY),
+            CGPoint(x: maxX, y: maxY), CGPoint(x: minX, y: maxY),
+        ]
+        let corners = sourceCorners.map {
+            viewportPoint($0, geometry: geometry, fallbackScale: scale)
+        }
+        let left = corners.map(\.x).min() ?? 0
+        let top = corners.map(\.y).min() ?? 0
+        let right = corners.map(\.x).max() ?? left
+        let bottom = corners.map(\.y).max() ?? top
+        return CGRect(x: left, y: top, width: max(20, right - left),
+                      height: max(20, bottom - top))
     }
 
-    private func lassoCapture(scale: CGFloat) -> some View {
+    private func lassoCapture(scale: CGFloat,
+                              geometry: ShotFramingGeometry?) -> some View {
         ZStack(alignment: .topLeading) {
             Color.clear.contentShape(Rectangle())
             if lassoPoints.count > 1 {
@@ -1750,7 +4847,7 @@ struct NativeBoardView: View {
                 }
                 .stroke(BoardBrand.accent, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
             }
-            if let rect = selectionRect(scale: scale) {
+            if let rect = selectionRect(scale: scale, geometry: geometry) {
                 RoundedRectangle(cornerRadius: 4)
                     .stroke(BoardBrand.accent, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
                     .background(BoardBrand.accent.opacity(0.06))
@@ -1764,8 +4861,14 @@ struct NativeBoardView: View {
                         DragGesture()
                             .onChanged { selectionDragOffset = $0.translation }
                             .onEnded { value in
-                                moveSelection(dx: Double(value.translation.width / scale),
-                                              dy: Double(value.translation.height / scale))
+                                let sourceOrigin = sourcePoint(.zero, geometry: geometry,
+                                                               fallbackScale: scale)
+                                let sourceTranslation = sourcePoint(
+                                    CGPoint(x: value.translation.width,
+                                            y: value.translation.height),
+                                    geometry: geometry, fallbackScale: scale)
+                                moveSelection(dx: sourceTranslation.x - sourceOrigin.x,
+                                              dy: sourceTranslation.y - sourceOrigin.y)
                                 selectionDragOffset = .zero
                             }
                     )
@@ -1784,7 +4887,8 @@ struct NativeBoardView: View {
                             }
                             .onEnded { _ in
                                 transformSelection(scaleBy: Double(selectionScaleFactor),
-                                                   rotateBy: 0, viewRect: rect, scale: scale)
+                                                   rotateBy: 0, viewRect: rect, scale: scale,
+                                                   geometry: geometry)
                                 selectionScaleFactor = 1
                             }
                     )
@@ -1803,7 +4907,8 @@ struct NativeBoardView: View {
                             }
                             .onEnded { _ in
                                 transformSelection(scaleBy: 1, rotateBy: selectionRotationAngle,
-                                                   viewRect: rect, scale: scale)
+                                                   viewRect: rect, scale: scale,
+                                                   geometry: geometry)
                                 selectionRotationAngle = 0
                             }
                     )
@@ -1829,6 +4934,19 @@ struct NativeBoardView: View {
                     retouchButton("paintpalette", "Pensel-farge") {
                         retouchSelection(color: canvasState.brushColor)
                     }
+                    if selectedStrokeIds.contains(where: { id in
+                        canvasState.strokes.first(where: { $0.id == id })?.stampInstance != nil
+                    }) {
+                        retouchButton("arrow.left.and.right", "Speilvend stamp") {
+                            flipSelectedStamps()
+                        }
+                        retouchButton("slider.horizontal.3", "Stamp Inspector") {
+                            stampInspectorStrokeID = selectedStrokeIds.first(where: { id in
+                                canvasState.strokes.first(where: { $0.id == id })?
+                                    .stampInstance != nil
+                            })
+                        }
+                    }
                 }
                 .offset(x: max(0, rect.minX - 8), y: max(0, rect.minY - 36))
             }
@@ -1837,15 +4955,17 @@ struct NativeBoardView: View {
             selectedStrokeIds.isEmpty
                 ? DragGesture(minimumDistance: 0)
                     .onChanged { lassoPoints.append($0.location) }
-                    .onEnded { _ in finishLasso(scale: scale) }
+                    .onEnded { _ in finishLasso(scale: scale, geometry: geometry) }
                 : nil
         )
     }
 
-    private func finishLasso(scale: CGFloat) {
+    private func finishLasso(scale: CGFloat, geometry: ShotFramingGeometry?) {
         defer { lassoPoints = [] }
         guard lassoPoints.count > 4 else { return }
-        let polygon = lassoPoints.map { CGPoint(x: $0.x / scale, y: $0.y / scale) }
+        let polygon = lassoPoints.map {
+            sourcePoint($0, geometry: geometry, fallbackScale: scale)
+        }
         var hit: Set<String> = []
         for stroke in canvasState.strokes {
             let total = stroke.points.count
@@ -1874,8 +4994,7 @@ struct NativeBoardView: View {
                                   opacityFactor: Double = 1,
                                   color: String? = nil) {
         guard !selectedStrokeIds.isEmpty else { return }
-        canvasState.undoStack.append(canvasState.strokes)
-        canvasState.redoStack = []
+        canvasState.captureUndo("Juster utvalg")
         canvasState.strokes = canvasState.strokes.map { stroke in
             guard selectedStrokeIds.contains(stroke.id) else { return stroke }
             var adjusted = stroke
@@ -1904,13 +5023,15 @@ struct NativeBoardView: View {
 
     /// Skaler/roter valgte strøk rundt utvalgets senter (innholdsrom).
     private func transformSelection(scaleBy factor: Double, rotateBy angle: Double,
-                                    viewRect: CGRect, scale: CGFloat) {
+                                    viewRect: CGRect, scale: CGFloat,
+                                    geometry: ShotFramingGeometry?) {
         guard !selectedStrokeIds.isEmpty,
               factor != 1 || angle != 0 else { return }
-        let center = (x: Double(viewRect.midX / scale), y: Double(viewRect.midY / scale))
+        let sourceCenter = sourcePoint(CGPoint(x: viewRect.midX, y: viewRect.midY),
+                                       geometry: geometry, fallbackScale: scale)
+        let center = (x: Double(sourceCenter.x), y: Double(sourceCenter.y))
         let cosA = cos(angle), sinA = sin(angle)
-        canvasState.undoStack.append(canvasState.strokes)
-        canvasState.redoStack = []
+        canvasState.captureUndo("Transformer utvalg")
         canvasState.strokes = canvasState.strokes.map { stroke in
             guard selectedStrokeIds.contains(stroke.id) else { return stroke }
             var transformed = stroke
@@ -1922,17 +5043,36 @@ struct NativeBoardView: View {
                 p.y = center.y + dx * sinA + dy * cosA
                 return p
             }
-            transformed.width *= factor
-            transformed.brush?.size *= factor
+            if var stamp = transformed.stampInstance {
+                stamp.scale = min(8, max(0.1, stamp.scale * factor))
+                stamp.rotationDegrees += angle * 180 / .pi
+                transformed.stampInstance = stamp
+            } else {
+                transformed.width *= factor
+                transformed.brush?.size *= factor
+            }
             return transformed
+        }
+        canvasState.revision += 1
+    }
+
+    private func flipSelectedStamps() {
+        guard !selectedStrokeIds.isEmpty else { return }
+        canvasState.captureUndo("Speil stamp")
+        canvasState.strokes = canvasState.strokes.map { stroke in
+            guard selectedStrokeIds.contains(stroke.id),
+                  var stamp = stroke.stampInstance else { return stroke }
+            var flipped = stroke
+            stamp.flipX.toggle()
+            flipped.stampInstance = stamp
+            return flipped
         }
         canvasState.revision += 1
     }
 
     private func moveSelection(dx: Double, dy: Double) {
         guard !selectedStrokeIds.isEmpty, dx != 0 || dy != 0 else { return }
-        canvasState.undoStack.append(canvasState.strokes)
-        canvasState.redoStack = []
+        canvasState.captureUndo("Flytt utvalg")
         canvasState.strokes = canvasState.strokes.map { stroke in
             guard selectedStrokeIds.contains(stroke.id) else { return stroke }
             var moved = stroke
@@ -1949,8 +5089,7 @@ struct NativeBoardView: View {
 
     private func deleteSelection() {
         guard !selectedStrokeIds.isEmpty else { return }
-        canvasState.undoStack.append(canvasState.strokes)
-        canvasState.redoStack = []
+        canvasState.captureUndo("Slett utvalg")
         canvasState.strokes.removeAll { selectedStrokeIds.contains($0.id) }
         canvasState.revision += 1
         selectedStrokeIds = []
@@ -1965,246 +5104,1137 @@ struct NativeBoardView: View {
         }
     }
 
+
+    // MARK: Camera motion
+
+    private func openCameraMotionEditor(
+        frame: FrameSummary,
+        applying preset: CameraMotionEditorPreset?
+    ) {
+        guard !cameraMotionSyncInFlight else {
+            board.syncStatus = "Vent til kamerabanen er ferdig synket"
+            return
+        }
+        switch frame.cameraMotionReadState {
+        case .invalid:
+            board.syncStatus = "Kamerabanen er ugyldig og er bevart for gjenoppretting"
+            return
+        case .upgradeRequired:
+            board.syncStatus = "Kamerabanen er laget i et nyere format. Oppgrader appen."
+            return
+        case .none, .valid:
+            break
+        }
+
+        let isActive = board.frame?.id == frame.id
+        let fallback = ShotFramingState(
+            shotSize: frame.shotType,
+            angle: frame.angle,
+            lensMm: frame.lensMm,
+            aspectRatio: frame.drawingWidth / max(1, frame.drawingHeight))
+        let initialFraming = isActive
+            ? canvasState.shotFraming
+            : (frame.shotFraming ?? fallback)
+        let motionTrack = isActive
+            ? canvasState.cameraMotionTrack
+            : frame.cameraMotionTrack
+        let sourceFrame = frame
+        let model = CameraMotionEditorModel(
+            initialFraming: initialFraming,
+            motionTrack: motionTrack,
+            shotDuration: frame.effectiveShotDuration,
+            timing: frame.storyboardTiming,
+            validator: { initial, track, duration in
+                cameraMotionValidation(
+                    sourceFrame: sourceFrame,
+                    initialFraming: initial,
+                    track: track,
+                    duration: duration)
+            })
+        if let preset,
+           preset != .custom,
+           CameraMotionEditorPreset.resolve(track: motionTrack) != preset {
+            model.applyPreset(preset)
+        }
+        cameraMotionEditorSession = CameraMotionEditorSession(
+            sourceFrame: sourceFrame,
+            model: model)
+    }
+
+    private func cameraMotionValidation(
+        sourceFrame: FrameSummary,
+        initialFraming: ShotFramingState,
+        track: CameraMotionTrack?,
+        duration: MediaTime
+    ) -> CameraMotionEditorValidation {
+        var candidate = sourceFrame
+        candidate.shotFraming = initialFraming.normalized()
+        candidate.shotDuration = duration
+        candidate.durationSec = duration.seconds
+        candidate.cameraMotionTrack = track
+        candidate.cameraMotionReadState = track == nil ? .none : .valid
+        candidate.cameraMotionStatus = "valid"
+        let report = FrameRenderCoordinator.motionCoverageReport(
+            frame: candidate)
+        let codes = (report.blockingCodes + report.warningCodes)
+            .map(cameraMotionIssueText)
+            .joined(separator: " · ")
+        switch report.classification {
+        case .valid:
+            return .ready
+        case .warning:
+            return CameraMotionEditorValidation(
+                severity: .warning,
+                title: "Coverage warning",
+                detail: codes.isEmpty
+                    ? "Review the complete move before export."
+                    : codes)
+        case .blocking:
+            return CameraMotionEditorValidation(
+                severity: .blocking,
+                title: "Move exceeds source coverage",
+                detail: codes.isEmpty
+                    ? "The full camera path cannot be rendered safely."
+                    : codes)
+        }
+    }
+
+    private func cameraMotionIssueText(
+        _ code: StoryboardCoverageIssueCode
+    ) -> String {
+        switch code {
+        case .uncoveredViewport: return "Camera path leaves the source plate"
+        case .motionPlateRequired: return "A larger motion plate is required"
+        case .lowSourceResolution: return "Source resolution becomes too low"
+        case .largeEmptyCorners: return "Rotation exposes empty corners"
+        case .aggressiveDigitalZoom: return "Digital zoom is aggressive"
+        case .focusNearCropEdge: return "Focus point approaches the crop edge"
+        case .criticalSubjectOutside: return "Critical subject leaves frame"
+        case .aspectRatioMismatch: return "Aspect ratio does not match"
+        case .invalidMotionTrack: return "Camera track is invalid"
+        case .unsupportedProjectFrameRate: return "Frame rate is unsupported"
+        case .unsupportedPolicyVersion: return "Coverage policy needs an upgrade"
+        case .invalidDimensions: return "Source dimensions are invalid"
+        case .invalidFraming: return "Framing is invalid"
+        case .coverageNonConvergent: return "Camera curve cannot be verified"
+        case .emptyViewport: return "Viewport is empty"
+        case .providerMaySynthesizeOutsideSource:
+            return "Provider may synthesize outside the source"
+        }
+    }
+
+    private func canAdjustShotDuration(frame: FrameSummary) -> Bool {
+        guard !cameraMotionSyncInFlight,
+              !frame.hasBlockingCameraMotionDraft else { return false }
+        return PendingCameraMotionStore.load(frameId: frame.id) == nil
+    }
+
+    private func adjustShotDuration(
+        frame: FrameSummary,
+        deltaSeconds: Double
+    ) {
+        guard canAdjustShotDuration(frame: frame) else {
+            board.syncStatus =
+                "Vent til kamerabanen er synket før varigheten endres."
+            return
+        }
+        board.setActiveFrameDuration(
+            seconds: frame.effectiveShotDuration.seconds + deltaSeconds)
+    }
+
+    private func cameraMotionStatusText(
+        frame: FrameSummary,
+        track: CameraMotionTrack?
+    ) -> String {
+        if cameraMotionSyncInFlight && board.frame?.id == frame.id {
+            return "Saving camera move…"
+        }
+        if frame.cameraMotionReadState == .upgradeRequired {
+            return "Newer camera format — update required"
+        }
+        if frame.cameraMotionReadState == .invalid
+            || frame.cameraMotionStatus == "invalid" {
+            return "Invalid draft preserved — playback blocked"
+        }
+        if frame.cameraMotionStatus == "needsRebase" {
+            return "Start framing changed — open editor to rebase"
+        }
+        guard let track, track.enabled, !track.keyframes.isEmpty else {
+            return "Static · no camera transform"
+        }
+        let keyLabel = track.keyframes.count == 1 ? "key" : "keys"
+        if track.mode == .performed {
+            return "Performed · \(track.keyframes.count) \(keyLabel)"
+        }
+        let preset = CameraMotionEditorPreset.resolve(track: track)
+        return "\(preset.label) · \(track.keyframes.count) \(keyLabel)"
+    }
+
+    private func cameraMotionStatusSymbol(frame: FrameSummary) -> String {
+        if cameraMotionSyncInFlight { return "arrow.triangle.2.circlepath" }
+        if frame.hasBlockingCameraMotionDraft {
+            return "exclamationmark.triangle.fill"
+        }
+        return frame.cameraMotionTrack == nil
+            ? "pause.circle.fill" : "checkmark.seal.fill"
+    }
+
+    private func cameraMotionStatusColor(frame: FrameSummary) -> Color {
+        if cameraMotionSyncInFlight { return BoardBrand.accent }
+        if frame.hasBlockingCameraMotionDraft { return .orange }
+        return .green
+    }
+
+    private func cameraMotionPreview(
+        sourceFrame: FrameSummary,
+        framing: ShotFramingState
+    ) -> some View {
+        let isActive = board.frame?.id == sourceFrame.id
+        return CameraMotionPreviewSurface(
+            sourceFrame: sourceFrame,
+            framing: framing,
+            strokesOverride: isActive ? canvasState.strokes : nil,
+            layerStateOverride: isActive ? canvasState.layerState : nil,
+            localDocumentRevision: isActive ? canvasState.revision : 0)
+    }
+
+    private func commitCameraMotion(
+        _ commit: CameraMotionEditorCommit,
+        sourceFrame: FrameSummary
+    ) {
+        guard board.frame?.id == sourceFrame.id else {
+            board.syncStatus = "Shotet ble byttet. Kamerabanen ble ikke lagret."
+            return
+        }
+        let framing = commit.initialFraming.normalized()
+        let framingChanged = framing != canvasState.shotFraming
+        let motionChanged = commit.motionTrack != canvasState.cameraMotionTrack
+        let requiresRebase = board.frame?.cameraMotionStatus == "needsRebase"
+        guard framingChanged || motionChanged || requiresRebase else {
+            canvasState.presentationFraming = nil
+            return
+        }
+        let nextRevision = canvasState.revision + (framingChanged ? 1 : 0)
+        guard let mutation = pendingCameraMotionMutation(
+            initialFraming: framing,
+            motionTrack: commit.motionTrack,
+            localRevision: nextRevision)
+        else {
+            board.syncStatus = "Kamerabanen kunne ikke fryses for lagring"
+            return
+        }
+        if !board.isLocalSample,
+           !PendingCameraMotionStore.save(mutation) {
+            board.syncStatus = "Kamerabanen kunne ikke sikres på enheten"
+            return
+        }
+
+        invalidateAnimationPreflightForCameraHistoryChange()
+        if framingChanged || motionChanged {
+            canvasState.captureUndo("Endre kamerabane")
+        }
+        lastObservedShotFraming = framing
+        lastObservedCameraMotionTrack = commit.motionTrack
+        canvasState.shotFraming = framing
+        canvasState.cameraMotionTrack = commit.motionTrack
+        canvasState.presentationFraming = nil
+        if framingChanged { canvasState.revision = nextRevision }
+        board.applyShotFramingLocally(framing, markAIStale: framingChanged)
+        board.applyCameraMotionLocally(commit.motionTrack)
+        updateAIRasterEditingMode()
+        refreshFramingDependentBackground()
+
+        guard !board.isLocalSample else { return }
+        cameraMotionAutosyncTask?.cancel()
+        cameraMotionAutosyncTask = Task {
+            await persistPendingCameraMotion(mutation)
+        }
+    }
+
+    private func invalidateAnimationPreflightForCameraHistoryChange() {
+        animationPreflight = nil
+        animationPreflightSourceImage = nil
+        animationPreflightComposite = nil
+        animationPreflightSession = nil
+    }
+
+    private func pendingCameraMotionMutation(
+        initialFraming: ShotFramingState,
+        motionTrack: CameraMotionTrack?,
+        localRevision: Int
+    ) -> PendingCameraMotionMutation? {
+        guard let ref = loadedFrameRef,
+              let frame = board.frame,
+              frame.id == ref.frameId,
+              let strokesJSON = try? StrokeSerialization.encodeToWebJSON(
+                canvasState.strokes)
+        else { return nil }
+        return PendingCameraMotionMutation(
+            manuscriptId: board.manuscript.id,
+            sceneId: ref.sceneId,
+            frameId: ref.frameId,
+            shotDuration: frame.effectiveShotDuration,
+            initialFraming: initialFraming.normalized(),
+            motionTrack: motionTrack,
+            expectedMotionRevision: loadedFrameCameraMotionRevision,
+            baseMotionTrack: loadedFrameCameraMotionTrack,
+            baseMotionFingerprint: loadedFrameCameraMotionFingerprint,
+            baseMotionStatus: loadedFrameCameraMotionStatus,
+            localRevision: localRevision,
+            strokesJSON: strokesJSON,
+            thumbnailDataURL: renderer?.thumbnailDataURL(
+                framing: initialFraming),
+            layerState: canvasState.layerState,
+            baseUpdatedAt: loadedFrameUpdatedAt,
+            baseSourceUpdatedAt: loadedFrameSourceUpdatedAt,
+            baseStrokesJSON: loadedFrameStrokesJSON,
+            baseLayerState: loadedFrameLayerState,
+            baseShotFraming: loadedFrameShotFraming
+                ?? frame.shotFraming
+                ?? canvasState.shotFraming)
+    }
+
+    private func scheduleCameraMotionAutosync() {
+        guard !board.isLocalSample,
+              let mutation = pendingCameraMotionMutation(
+                initialFraming: canvasState.shotFraming,
+                motionTrack: canvasState.cameraMotionTrack,
+                localRevision: canvasState.revision),
+              PendingCameraMotionStore.save(mutation)
+        else { return }
+        if cameraMotionSyncInFlight {
+            cameraMotionSyncRequestedAfterCurrent = true
+            return
+        }
+        cameraMotionAutosyncTask?.cancel()
+        cameraMotionAutosyncTask = Task {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
+            await persistPendingCameraMotion(mutation)
+        }
+    }
+
+    @MainActor
+    private func persistPendingCameraMotion(
+        _ mutation: PendingCameraMotionMutation
+    ) async {
+        guard !board.isLocalSample,
+              mutation.manuscriptId == board.manuscript.id else { return }
+        if cameraMotionSyncInFlight {
+            cameraMotionSyncRequestedAfterCurrent = true
+            return
+        }
+        cameraMotionSyncInFlight = true
+        board.syncStatus = "Lagrer kamerabane…"
+
+        var waitPasses = 0
+        while syncInFlight && waitPasses < 200 {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            guard !Task.isCancelled else {
+                cameraMotionSyncInFlight = false
+                return
+            }
+            waitPasses += 1
+        }
+        guard !syncInFlight else {
+            board.syncStatus = "Tegnesynk pågår · kamerabanen er sikret lokalt"
+            cameraMotionSyncInFlight = false
+            return
+        }
+
+        syncInFlight = true
+        defer {
+            syncInFlight = false
+            cameraMotionSyncInFlight = false
+            if syncRequestedAfterCurrent {
+                syncRequestedAfterCurrent = false
+                scheduleAutosync()
+            }
+            if cameraMotionSyncRequestedAfterCurrent {
+                cameraMotionSyncRequestedAfterCurrent = false
+                let pending = PendingCameraMotionStore.pendingMutations()
+                    .filter {
+                        $0.manuscriptId == board.manuscript.id
+                    }
+                // Finish the just-rebased same-frame queue before unrelated
+                // older WALs can consume the single global in-flight slot.
+                if let next = pending.first(where: {
+                    $0.frameId == mutation.frameId
+                }) ?? pending.first {
+                    cameraMotionAutosyncTask = Task {
+                        await persistPendingCameraMotion(next)
+                    }
+                }
+            }
+        }
+
+        do {
+            var expectedRevision = mutation.expectedMotionRevision
+            var committedSourceSnapshot:
+                PendingCameraMotionAuthoritativeBase.SourceSnapshot?
+            var committedSourcePaintoverState:
+                StoryboardPaintoverState?
+            if mutation.changesInitialFraming {
+                let sourceResult = try await RoleRoomAPIClient.shared
+                    .saveFrameStrokes(
+                        manuscriptId: mutation.manuscriptId,
+                        sceneId: mutation.sceneId,
+                        frameId: mutation.frameId,
+                        strokesJSON: mutation.strokesJSON,
+                        thumbnailDataURL: mutation.thumbnailDataURL,
+                        baseUpdatedAt: mutation.baseUpdatedAt,
+                        layerState: mutation.layerState,
+                        shotFraming: mutation.initialFraming,
+                        baseStrokesJSON: mutation.baseStrokesJSON,
+                        baseLayerState: mutation.baseLayerState,
+                        baseShotFraming: mutation.baseShotFraming)
+                let authoritativeFraming = sourceResult.shotFraming
+                    ?? mutation.initialFraming
+                guard authoritativeFraming.canonicalFingerprint
+                    == mutation.initialFraming.canonicalFingerprint else {
+                    throw SyncError.serverMessage(
+                        "Startutsnittet ble endret på en annen enhet. Kamerabanen er bevart lokalt.")
+                }
+                if let sourceUpdatedAt = sourceResult.sourceUpdatedAt,
+                   !sourceUpdatedAt.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                   ).isEmpty {
+                    committedSourceSnapshot = .init(
+                        strokesJSON: sourceResult.strokesJSON ?? mutation.strokesJSON,
+                        layerState: sourceResult.layerState ?? mutation.layerState,
+                        shotFraming: authoritativeFraming,
+                        sourceUpdatedAt: sourceUpdatedAt)
+                }
+                committedSourcePaintoverState =
+                    sourceResult.paintoverState
+                if let pending = PendingStrokeStore.loadDocument(
+                    frameId: mutation.frameId),
+                   pending.strokesJSON == mutation.strokesJSON,
+                   pending.layerState == mutation.layerState,
+                   pending.shotFraming == mutation.initialFraming {
+                    _ = PendingStrokeStore.clear(
+                        frameId: mutation.frameId,
+                        ifUnchangedFrom: pending)
+                    pendingFrameIds.remove(mutation.frameId)
+                }
+                await board.reload()
+                guard let current = board.scenes
+                    .first(where: { $0.id == mutation.sceneId })?
+                    .frames.first(where: { $0.id == mutation.frameId })
+                else {
+                    throw SyncError.serverMessage(
+                        "Shotet forsvant mens Start-utsnittet ble lagret.")
+                }
+                let currentFraming = current.shotFraming ?? ShotFramingState(
+                    shotSize: current.shotType,
+                    angle: current.angle,
+                    lensMm: current.lensMm,
+                    aspectRatio: current.drawingWidth
+                        / max(1, current.drawingHeight))
+                guard currentFraming.canonicalFingerprint
+                    == mutation.initialFraming.canonicalFingerprint else {
+                    throw SyncError.serverMessage(
+                        "Startutsnittet ble ikke bekreftet av serveren. "
+                        + "Kamerabanen er bevart lokalt.")
+                }
+                let currentRevision = current.cameraMotionRevision ?? 0
+                let sameBaseMotion = current.cameraMotionTrack
+                    == mutation.baseMotionTrack
+                    || (mutation.baseMotionFingerprint != nil
+                        && current.cameraMotionFingerprint
+                            == mutation.baseMotionFingerprint)
+                let unchanged = currentRevision == expectedRevision
+                    && sameBaseMotion
+                let ownFramingRevalidation = expectedRevision < Int.max
+                    && currentRevision == expectedRevision + 1
+                    && sameBaseMotion
+                    && current.cameraMotionStatus == "needsRebase"
+                guard unchanged || ownFramingRevalidation else {
+                    throw SyncError.serverMessage(
+                        "Kamerabanen ble endret på en annen enhet. Din lokale versjon er bevart.")
+                }
+                expectedRevision = currentRevision
+            }
+
+            let response = try await RoleRoomAPIClient.shared
+                .patchFrameCameraMotion(
+                    manuscriptId: mutation.manuscriptId,
+                    sceneId: mutation.sceneId,
+                    frameId: mutation.frameId,
+                    cameraMotionTrack: mutation.motionTrack,
+                    expectedMotionRevision: expectedRevision,
+                    shotDuration: mutation.shotDuration)
+            if mutation.motionTrack != nil {
+                guard response.cameraMotionBaseFramingFingerprint
+                    == mutation.initialFraming.canonicalFingerprint else {
+                    throw SyncError.serverMessage(
+                        "Serveren bandt kamerabanen til feil Start-utsnitt. Den lokale versjonen er bevart.")
+                }
+            }
+
+            // Reload only the authoritative summary. CanvasState remains the
+            // optimistic document and is restored below if a newer local WAL
+            // exists.
+            await board.reload()
+            guard let acknowledgedFrame = board.scenes
+                .first(where: { $0.id == mutation.sceneId })?
+                .frames.first(where: { $0.id == mutation.frameId })
+            else {
+                throw SyncError.serverMessage(
+                    "Shotet forsvant etter at kamerabanen ble lagret.")
+            }
+            let acknowledgedFraming = acknowledgedFrame.shotFraming
+                ?? ShotFramingState(
+                    shotSize: acknowledgedFrame.shotType,
+                    angle: acknowledgedFrame.angle,
+                    lensMm: acknowledgedFrame.lensMm,
+                    aspectRatio: acknowledgedFrame.drawingWidth
+                        / max(1, acknowledgedFrame.drawingHeight)
+                )
+            let authoritative = PendingCameraMotionAuthoritativeBase(
+                motionTrack: response.cameraMotionTrack,
+                motionRevision: response.cameraMotionRevision,
+                motionFingerprint: response.cameraMotionFingerprint,
+                motionStatus: response.cameraMotionStatus,
+                frameUpdatedAt: response.updatedAt,
+                sourceUpdatedAt:
+                    response.sourceUpdatedAt
+                        ?? acknowledgedFrame.sourceUpdatedAt,
+                shotFraming: acknowledgedFraming,
+                sourceSnapshot: committedSourceSnapshot
+            )
+
+            let isActiveFrame = loadedFrameRef?.frameId == mutation.frameId
+            let activeDocumentStillMatches = isActiveFrame
+                && canvasState.revision == mutation.localRevision
+                && canvasState.shotFraming == mutation.initialFraming
+                && canvasState.cameraMotionTrack == mutation.motionTrack
+
+            // Advance the in-memory authoritative base even while CanvasState
+            // already contains B. Otherwise the next autosave recreates B on
+            // A's stale revision and self-conflicts.
+            if isActiveFrame {
+                loadedRevision = mutation.localRevision
+                loadedFrameUpdatedAt = response.updatedAt
+                loadedFrameSourceUpdatedAt = authoritative.sourceUpdatedAt
+                loadedFrameShotFraming = acknowledgedFraming
+                loadedFrameCameraMotionTrack = response.cameraMotionTrack
+                loadedFrameCameraMotionRevision =
+                    response.cameraMotionRevision
+                loadedFrameCameraMotionFingerprint =
+                    response.cameraMotionFingerprint
+                loadedFrameCameraMotionStatus =
+                    response.cameraMotionStatus
+                if let source = committedSourceSnapshot {
+                    loadedFrameStrokesJSON = source.strokesJSON
+                    loadedFrameLayerState = source.layerState
+                    loadedFrameShotFraming = source.shotFraming
+                }
+                if let state = response.aiPaintoverState
+                    ?? committedSourcePaintoverState {
+                    loadedFramePaintoverState = state
+                }
+            }
+
+            let queued = PendingCameraMotionStore.load(
+                frameId: mutation.frameId)
+            let decision = PendingCameraMotionStore.rebaseDecision(
+                acknowledged: mutation,
+                queued: queued,
+                onto: authoritative
+            )
+            var hasNewerQueuedIntent = false
+            var queueConflict = false
+            switch decision {
+            case .noNewerMutation:
+                if queued == mutation {
+                    guard PendingCameraMotionStore.clear(
+                        ifUnchangedFrom: mutation
+                    ) else {
+                        queueConflict = true
+                        break
+                    }
+                }
+            case .rebased(let rebased):
+                guard let queued,
+                      PendingCameraMotionStore.compareAndReplace(
+                        queued,
+                        with: rebased
+                      ) else {
+                    queueConflict = true
+                    break
+                }
+                hasNewerQueuedIntent = true
+                cameraMotionSyncRequestedAfterCurrent = true
+            case .conflict:
+                queueConflict = true
+            }
+
+            if queueConflict {
+                // A third local write or unknown/remote provenance is not a
+                // same-client rebase. Preserve it for explicit/later retry.
+                cameraMotionSyncRequestedAfterCurrent = false
+            } else if isActiveFrame,
+                      !activeDocumentStillMatches,
+                      !hasNewerQueuedIntent {
+                // The published Canvas change reached us before its onChange
+                // autosave. Freeze it now against the just-acknowledged base.
+                scheduleCameraMotionAutosync()
+                hasNewerQueuedIntent = true
+            }
+
+            let adoptServerResponse = !queueConflict
+                && !hasNewerQueuedIntent
+                && (!isActiveFrame || activeDocumentStillMatches)
+
+            guard isActiveFrame else {
+                board.syncStatus = queueConflict
+                    ? "Nyere kameraredigering har ukjent base · bevart lokalt"
+                    : (hasNewerQueuedIntent
+                        ? "Nyere kameraredigering venter på synk"
+                        : "Kamerabane synket ✓")
+                return
+            }
+            if adoptServerResponse {
+                lastObservedShotFraming = acknowledgedFraming
+                lastObservedCameraMotionTrack = response.cameraMotionTrack
+                canvasState.shotFraming = acknowledgedFraming
+                canvasState.cameraMotionTrack = response.cameraMotionTrack
+                canvasState.presentationFraming = nil
+                board.applyCameraMotionLocally(
+                    response.cameraMotionTrack,
+                    revision: response.cameraMotionRevision,
+                    status: response.cameraMotionStatus,
+                    updatedAt: response.cameraMotionUpdatedAt,
+                    fingerprint: response.cameraMotionFingerprint,
+                    baseFramingFingerprint:
+                        response.cameraMotionBaseFramingFingerprint,
+                    frameUpdatedAt: response.updatedAt,
+                    sourceUpdatedAt: response.sourceUpdatedAt,
+                    paintoverState: response.aiPaintoverState,
+                    markVideoStale: response.aiPaintoverState == nil)
+                board.syncStatus = "Kamerabane synket ✓"
+            } else {
+                // BoardState was refreshed above; restore B's optimistic
+                // presentation without touching its rebased WAL.
+                board.applyShotFramingLocally(
+                    canvasState.shotFraming,
+                    markAIStale: false)
+                board.applyCameraMotionLocally(canvasState.cameraMotionTrack)
+                board.syncStatus = queueConflict
+                    ? "Nyere kameraredigering har ukjent base · bevart lokalt"
+                    : "Nyere kameraredigering venter på synk"
+            }
+        } catch let error as FrameCameraMotionPatchError {
+            await board.reload()
+            board.syncStatus = error.localizedDescription
+        } catch {
+            board.syncStatus = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func retryPendingCameraMotionForActiveFrame() async {
+        guard let frameId = board.frame?.id,
+              let mutation = PendingCameraMotionStore.load(frameId: frameId)
+        else { return }
+        await persistPendingCameraMotion(mutation)
+    }
+
+    @MainActor
+    private func retryAllPendingCameraMotionMutations() async {
+        for mutation in PendingCameraMotionStore.pendingMutations()
+        where mutation.manuscriptId == board.manuscript.id {
+            guard !Task.isCancelled else { return }
+            await persistPendingCameraMotion(mutation)
+        }
+    }
+
     // MARK: Inspector
 
     private var inspector: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                panelLabel("Inspector")
-                if let frame = board.frame {
-                    HStack {
-                        Text("SHOT \(frame.shotNumber)")
-                            .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-                        Spacer()
-                        Image(systemName: "lock").font(.system(size: 12)).foregroundStyle(BoardBrand.dim)
-                    }
-                    .padding(10)
-                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+        inspectorPanel(isOverlay: false)
+    }
 
-                    inspectorPicker("Camera / Shot", value: frame.shotType,
-                                    options: ["EWS", "WS", "MS", "MCU", "CU", "OTS", "POV", "INSERT"]) {
-                        board.patchActiveFrame(["shotType": $0])
-                    }
-                    inspectorPicker("Lens", value: frame.lensMm.map { "\($0)mm" },
-                                    options: ["14mm", "18mm", "24mm", "28mm", "35mm", "50mm", "85mm", "135mm"]) {
-                        board.patchActiveFrame(["lensMm": Int($0.replacingOccurrences(of: "mm", with: "")) ?? 35])
-                    }
-
-                    // SHOT SIZE-glyfrad (mockup): EWS→ECU, aktiv i fiolett.
-                    panelLabel("Shot size")
-                    HStack(spacing: 6) {
-                        glyphButton("figure.stand", value: "EWS", current: frame.shotType) { board.patchActiveFrame(["shotType": "EWS"]) }
-                        glyphButton("figure.walk", value: "WS", current: frame.shotType) { board.patchActiveFrame(["shotType": "WS"]) }
-                        glyphButton("person.fill", value: "MS", current: frame.shotType) { board.patchActiveFrame(["shotType": "MS"]) }
-                        glyphButton("person.crop.circle", value: "CU", current: frame.shotType) { board.patchActiveFrame(["shotType": "CU"]) }
-                        glyphButton("eye", value: "ECU", current: frame.shotType) { board.patchActiveFrame(["shotType": "ECU"]) }
-                    }
-
-                    // MOVEMENT-glyfrad (mockup).
-                    panelLabel("Movement")
-                    HStack(spacing: 6) {
-                        glyphButton("minus", value: "Static", current: frame.movement) { board.patchActiveFrame(["movement": "Static"]) }
-                        glyphButton("arrow.left.and.right", value: "Pan", current: frame.movement) { board.patchActiveFrame(["movement": "Pan"]) }
-                        glyphButton("arrow.up.and.down", value: "Tilt", current: frame.movement) { board.patchActiveFrame(["movement": "Tilt"]) }
-                        glyphButton("plus.magnifyingglass", value: "Push In", current: frame.movement) { board.patchActiveFrame(["movement": "Push In"]) }
-                        glyphButton("arrow.right.to.line", value: "Tracking", current: frame.movement) { board.patchActiveFrame(["movement": "Tracking"]) }
-                        glyphButton("hand.raised", value: "Handheld", current: frame.movement) { board.patchActiveFrame(["movement": "Handheld"]) }
-                    }
-
-                    // DURATION-stepper (mockup: tallfelt).
-                    HStack {
-                        panelLabel("Duration (sec)")
-                        Spacer()
-                        Button { board.patchActiveFrame(["duration": max(0.5, frame.durationSec - 0.5)]) } label: {
-                            Image(systemName: "minus").font(.system(size: 11)).foregroundStyle(.white)
-                                .frame(width: 24, height: 24)
-                                .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 6))
-                        }
-                        Text(String(format: "%.1f", frame.durationSec))
-                            .font(.system(size: 13).monospacedDigit()).foregroundStyle(.white)
-                            .frame(width: 34)
-                        Button { board.patchActiveFrame(["duration": frame.durationSec + 0.5]) } label: {
-                            Image(systemName: "plus").font(.system(size: 11)).foregroundStyle(.white)
-                                .frame(width: 24, height: 24)
-                                .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 6))
+    @ViewBuilder
+    private func inspectorPanel(isOverlay: Bool) -> some View {
+        let content = VStack(spacing: 0) {
+            if let frame = board.frame {
+                inspectorHeader(frame)
+                    .accessibilityIdentifier("storyboard-inspector-v2")
+                Divider().overlay(BoardBrand.border)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        switch selectedInspectorTab {
+                        case .shot:
+                            shotInspector(frame)
+                        case .story:
+                            storyInspector(frame)
+                        case .production:
+                            productionInspector(frame)
+                        case .ai:
+                            storyboardAIInspector(frame)
                         }
                     }
-                    inspectorPicker("Transition", value: frame.transition,
-                                    options: ["Cut", "Dissolve", "Match Cut", "Smash Cut", "Wipe", "Fade"]) {
-                        board.patchActiveFrame(["transition": $0])
-                    }
-                    inspectorPicker("Focus / Depth", value: frame.focusDepth, options: ["Shallow", "Deep"]) {
-                        board.patchActiveFrame(["focusDepth": $0])
-                    }
-                    inspectorPicker("Time of day", value: frame.timeOfDay, options: ["Day", "Night", "Dawn", "Dusk"]) {
-                        board.patchActiveFrame(["timeOfDay": $0])
-                    }
-                    inspectorPicker("Weather", value: frame.weather,
-                                    options: ["Clear", "Rain", "Snow", "Overcast", "Fog"]) {
-                        board.patchActiveFrame(["weather": $0])
-                    }
-
-                    // ACTION / DIALOG (frame.description)
-                    panelLabel("Action / Dialog")
-                    TextField("Hva skjer i shotet…", text: $descriptionDraft, axis: .vertical)
-                        .lineLimit(2...4)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white)
-                        .padding(8)
-                        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
-                        .onSubmit { board.patchActiveFrame(["description": descriptionDraft]) }
-
-                    // BEAT-tag (web BEAT_TAG_OPTIONS)
-                    inspectorPicker("Beat", value: frame.beatTag,
-                                    options: ["ESTABLISHING", "TENSION", "BEAT", "ACTION", "DIALOGUE", "RESOLUTION"]) {
-                        board.patchActiveFrame(["beatTag": $0])
-                    }
-
-                    // NOTES (mockup: fritekstfelt).
-                    panelLabel("Notes")
-                    TextField("Add notes…", text: $notesDraft, axis: .vertical)
-                        .lineLimit(2...4)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white)
-                        .padding(8)
-                        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
-                        .onSubmit { board.patchActiveFrame(["notes": notesDraft]) }
-
-                    // TAGS (mockup: chips med x + tillegg).
-                    panelLabel("Tags")
-                    FlowTags(tags: frame.tags) { removed in
-                        board.patchActiveFrame(["tags": frame.tags.filter { $0 != removed }])
-                    }
-                    HStack(spacing: 6) {
-                        TextField("Ny tag", text: $tagDraft)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.white)
-                            .textInputAutocapitalization(.characters)
-                            .padding(.horizontal, 8).padding(.vertical, 5)
-                            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 7))
-                            .onSubmit { addTag(frame: frame) }
-                        Button { addTag(frame: frame) } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 11)).foregroundStyle(.white)
-                                .frame(width: 24, height: 24)
-                                .background(BoardBrand.accent, in: RoundedRectangle(cornerRadius: 7))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(tagDraft.trimmingCharacters(in: .whitespaces).isEmpty)
-                    }
-
-                    // Referanse-underlag: foto i lav opacity bak tegningen
-                    // (kun i canvas — aldri i thumbnails/PDF/PNG).
-                    panelLabel("Underlag")
-                    HStack(spacing: 6) {
-                        PhotosPicker(selection: $underlayPickerItem, matching: .images) {
-                            Label(frame.underlayDataURL == nil ? "Velg foto" : "Bytt foto",
-                                  systemImage: "photo.on.rectangle")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 8).padding(.vertical, 5)
-                                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 7))
-                        }
-                        if frame.underlayDataURL != nil {
-                            Button {
-                                board.patchActiveFrame(["underlayDataURL": NSNull(), "underlayOpacity": NSNull()])
-                                renderer?.setUnderlay(cgImage: nil, opacity: 0)
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 11)).foregroundStyle(.white)
-                                    .frame(width: 24, height: 24)
-                                    .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Fjern underlag")
-                        }
-                    }
-                    if frame.underlayDataURL != nil {
-                        HStack(spacing: 8) {
-                            Slider(value: Binding(
-                                get: { frame.underlayOpacity ?? 0.4 },
-                                set: { value in
-                                    board.patchActiveFrame(["underlayOpacity": value])
-                                    applyUnderlay(to: renderer)
-                                }), in: 0.05...0.9)
-                                .tint(BoardBrand.accent)
-                            Text("\(Int((frame.underlayOpacity ?? 0.4) * 100))%")
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(BoardBrand.dim)
-                        }
-                    }
-                } else {
-                    Text("Velg et shot").font(.system(size: 13)).foregroundStyle(BoardBrand.dim)
+                    .padding(14)
                 }
+                .accessibilityIdentifier("storyboard-inspector-scroll")
+                .scrollDismissesKeyboard(.interactively)
+            } else {
+                ContentUnavailableView("Velg et shot", systemImage: "rectangle.on.rectangle")
+                    .foregroundStyle(BoardBrand.dim)
             }
-            .padding(14)
         }
-        .frame(width: 250)
         .background(BoardBrand.chrome)
         .onChange(of: board.frame?.id) {
-            notesDraft = board.frame?.notes ?? ""
-            descriptionDraft = board.frame?.description ?? ""
+            flushInspectorDrafts()
+            loadInspectorDrafts()
         }
-        .onChange(of: tipPickerItem) {
-            guard let item = tipPickerItem else { return }
-            tipPickerItem = nil
-            let isStamp = canvasState.brushType == .stamp
-            Task {
-                guard let data = try? await item.loadTransferable(type: Data.self),
-                      let image = UIImage(data: data) else { return }
-                // ≤256px PNG (alpha bevares) — bakes i strøket ved tegning.
-                let maxSide = 256.0
-                let scaleFactor = min(1, maxSide / max(image.size.width, image.size.height))
-                let size = CGSize(width: image.size.width * scaleFactor,
-                                  height: image.size.height * scaleFactor)
-                let format = UIGraphicsImageRendererFormat()
-                format.scale = 1
-                let scaled = UIGraphicsImageRenderer(size: size, format: format).image { _ in
-                    image.draw(in: CGRect(origin: .zero, size: size))
-                }
-                guard let png = scaled.pngData() else { return }
-                let dataURL = "data:image/png;base64," + png.base64EncodedString()
-                if isStamp {
-                    canvasState.stampTipDataURL = dataURL
-                    UserDefaults.standard.set(dataURL, forKey: "sb.stampTip")
-                } else {
-                    canvasState.customTipDataURL = dataURL
-                    UserDefaults.standard.set(dataURL, forKey: "sb.customTip")
-                }
-            }
-        }
+        .onChange(of: descriptionDraft) { scheduleInspectorDraftAutosave() }
+        .onChange(of: notesDraft) { scheduleInspectorDraftAutosave() }
+        .onChange(of: board.frame?.updatedAt) { reconcileInspectorDraft() }
+        .onAppear { loadInspectorDrafts() }
+        .onDisappear { flushInspectorDrafts() }
         .onChange(of: underlayPickerItem) {
-            guard let item = underlayPickerItem else { return }
-            underlayPickerItem = nil
-            Task {
-                guard let data = try? await item.loadTransferable(type: Data.self),
-                      let image = UIImage(data: data) else { return }
-                // Nedskalert JPEG holder scene-payloaden nede (hele scenen
-                // POSTes ved hver synk).
-                let maxSide = 1280.0
-                let scale = min(1, maxSide / max(image.size.width, image.size.height))
-                let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-                let format = UIGraphicsImageRendererFormat()
-                format.scale = 1
-                let scaled = UIGraphicsImageRenderer(size: size, format: format).image { _ in
-                    image.draw(in: CGRect(origin: .zero, size: size))
+            importSelectedUnderlay()
+        }
+
+        if isOverlay {
+            content.frame(minWidth: 360, idealWidth: 480, maxWidth: .infinity,
+                          maxHeight: .infinity)
+        } else {
+            content.frame(width: 340)
+        }
+    }
+
+    private func inspectorHeader(_ frame: FrameSummary) -> some View {
+        let readiness = StoryboardReadiness.frame(frame)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("SHOT \(frame.shotNumber)")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text(frame.description.isEmpty ? "Ingen handling beskrevet" : frame.description)
+                        .font(.system(size: 11))
+                        .foregroundStyle(BoardBrand.dim)
+                        .lineLimit(1)
                 }
-                guard let jpeg = scaled.jpegData(compressionQuality: 0.6) else { return }
-                let dataURL = "data:image/jpeg;base64," + jpeg.base64EncodedString()
-                board.patchActiveFrame(["underlayDataURL": dataURL,
-                                        "underlayOpacity": board.frame?.underlayOpacity ?? 0.4])
-                renderer?.setUnderlay(cgImage: scaled.cgImage,
-                                      opacity: board.frame?.underlayOpacity ?? 0.4)
+                Spacer(minLength: 4)
+                Label("\(readiness.completed)/\(readiness.total)",
+                      systemImage: readiness.progress == 1
+                        ? "checkmark.shield.fill" : "checkmark.shield")
+                    .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(readiness.progress == 1 ? Color.green : BoardBrand.accent)
+                    .accessibilityLabel("Produksjonsklar \(readiness.completed) av \(readiness.total)")
+            }
+            Picker("Inspector", selection: $selectedInspectorTab) {
+                ForEach(BoardInspectorTab.allCases) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("inspector-tab-picker")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+    }
+
+    @ViewBuilder
+    private func inspectorSection<Content: View>(
+        _ title: String, symbol: String, @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(title.uppercased(), systemImage: symbol)
+                .font(.system(size: 11, weight: .bold))
+                .kerning(0.6)
+                .foregroundStyle(BoardBrand.label)
+            content()
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(BoardBrand.border))
+    }
+
+    @ViewBuilder
+    private func shotInspector(_ frame: FrameSummary) -> some View {
+        let framingQuality = shotFramingQualityReport(frame: frame)
+        let aiRecompositionResolved = canvasState.shotFraming.mode == .recomposed
+            && StoryboardFrameImagePolicy.usesViewportCoordinates(frame)
+        let activeMotionTrack = board.frame?.id == frame.id
+            ? canvasState.cameraMotionTrack : frame.cameraMotionTrack
+        let selectedMotionPreset = CameraMotionEditorPreset.resolve(
+            track: activeMotionTrack)
+        inspectorSection("Shot size", symbol: "viewfinder") {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4),
+                      spacing: 6) {
+                ForEach(["EWS", "WS", "MS", "MCU", "CU", "ECU", "OTS", "POV"],
+                        id: \.self) { value in
+                    inspectorChoice(value, selected: frame.shotType == value) {
+                        applyShotSize(value, frame: frame)
+                    }
+                }
             }
         }
-        .onAppear {
-            notesDraft = board.frame?.notes ?? ""
-            descriptionDraft = board.frame?.description ?? ""
+        .accessibilityIdentifier("inspector-shot-content")
+
+        inspectorSection("Camera", symbol: "camera") {
+            inspectorPicker("Angle", value: frame.angle,
+                            options: ["Eye level", "Low", "High", "Dutch",
+                                      "Bird's-eye", "Worm's-eye"]) {
+                applyCameraAngle($0, frame: frame)
+            }
+            inspectorPicker("Lens", value: frame.lensMm.map { "\($0)mm" },
+                            options: ["14mm", "18mm", "24mm", "28mm", "35mm",
+                                      "50mm", "85mm", "135mm"]) {
+                applyLens(Int($0.replacingOccurrences(of: "mm", with: "")) ?? 35,
+                          frame: frame)
+            }
+        }
+
+        inspectorSection("Aspect ratio", symbol: "rectangle.ratio.16.to.9") {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3),
+                      spacing: 6) {
+                ForEach(["16:9", "2.39:1", "4:3", "1:1", "9:16"], id: \.self) { label in
+                    let value = aspectRatioValue(label)
+                    inspectorChoice(
+                        label,
+                        selected: abs(canvasState.shotFraming.aspectRatio - value) < 0.001
+                    ) {
+                        applyAspectRatio(value, frame: frame)
+                    }
+                }
+            }
+        }
+
+        inspectorSection("Framing", symbol: "crop") {
+            HStack(spacing: 8) {
+                Label(String(format: "%.2f×", canvasState.shotFraming.zoom),
+                      systemImage: "magnifyingglass")
+                Text(String(format: "%.1f°", canvasState.shotFraming.rollDegrees))
+                Spacer()
+                Text(aiRecompositionResolved
+                     ? "AI resolved" : canvasState.shotFraming.mode.rawValue.capitalized)
+                    .foregroundStyle(aiRecompositionResolved
+                        ? Color.green
+                        : canvasState.shotFraming.mode == .recomposed
+                            ? Color.orange : BoardBrand.accent)
+            }
+            .font(.system(size: 11, weight: .semibold).monospacedDigit())
+            .foregroundStyle(BoardBrand.dim)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("shot-framing-status")
+
+            if canvasState.shotFraming.mode == .recomposed
+                && !aiRecompositionResolved {
+                VStack(alignment: .leading, spacing: 7) {
+                    Label("Vinkel eller optikk endrer perspektiv. Utsnittet er en trygg 2D-preview og må rekomponeres av AI før animasjon.",
+                          systemImage: "wand.and.rays")
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(.orange)
+                    Button {
+                        selectedInspectorTab = .ai
+                        pendingImageStageGeneration = "color"
+                    } label: {
+                        Label("Rekomponer med AI", systemImage: "sparkles")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.orange)
+                    .accessibilityIdentifier("recompose-shot-with-ai")
+                }
+            }
+
+            HStack(spacing: 7) {
+                Button {
+                    isReframing.toggle()
+                } label: {
+                    Label(isReframing ? "Ferdig" : "Juster utsnitt",
+                          systemImage: isReframing ? "checkmark" : "viewfinder")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(BoardBrand.accent)
+                .accessibilityIdentifier("adjust-shot-framing")
+
+                Button("Auto") {
+                    applyShotSize(canvasState.shotFraming.shotSize
+                        ?? frame.shotType ?? "WS", frame: frame)
+                }
+                .buttonStyle(.bordered)
+
+                Button("Reset") { resetFraming(frame: frame) }
+                    .buttonStyle(.bordered)
+            }
+            .font(.system(size: 11, weight: .semibold))
+
+            if frame.aiOutputStale {
+                Label("Farge/atmosfære er eldre enn dette utsnittet. Regenerer før animasjon.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(.orange)
+            }
+
+            if framingQuality.issues.isEmpty {
+                Label("Produksjonsklart utsnitt",
+                      systemImage: "checkmark.seal.fill")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(.green)
+                    .accessibilityIdentifier("shot-framing-quality-ok")
+            } else {
+                ForEach(Array(framingQuality.issues.enumerated()), id: \.offset) {
+                    _, issue in
+                    Label(shotFramingQualityText(issue.code),
+                          systemImage: issue.severity == .error
+                            ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(issue.severity == .error ? Color.red : Color.orange)
+                }
+                .accessibilityIdentifier("shot-framing-quality-issues")
+            }
+        }
+
+        inspectorSection("Movement", symbol: "move.3d") {
+            Label(
+                cameraMotionStatusText(frame: frame, track: activeMotionTrack),
+                systemImage: cameraMotionStatusSymbol(frame: frame)
+            )
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(cameraMotionStatusColor(frame: frame))
+            .accessibilityIdentifier("camera-motion-status")
+
+            LazyVGrid(
+                columns: [GridItem(.flexible()), GridItem(.flexible())],
+                spacing: 6
+            ) {
+                ForEach(CameraMotionEditorPreset.allCases.filter {
+                    $0 != .custom
+                }) { preset in
+                    inspectorChoice(
+                        preset.label,
+                        selected: selectedMotionPreset == preset
+                    ) {
+                        openCameraMotionEditor(
+                            frame: frame,
+                            applying: preset)
+                    }
+                }
+            }
+
+            Button {
+                openCameraMotionEditor(frame: frame, applying: nil)
+            } label: {
+                Label("Open Start / End editor", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(maxWidth: .infinity, minHeight: 34)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(BoardBrand.accent)
+            .disabled(cameraMotionSyncInFlight)
+            .accessibilityIdentifier("open-camera-motion-editor")
+            HStack {
+                Text("DURATION")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(BoardBrand.label)
+                Spacer()
+                inspectorStepButton("minus") {
+                    adjustShotDuration(frame: frame, deltaSeconds: -0.5)
+                }
+                .disabled(!canAdjustShotDuration(frame: frame))
+                Text(String(format: "%.1f sec", frame.effectiveShotDuration.seconds))
+                    .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(.white)
+                    .frame(minWidth: 58)
+                inspectorStepButton("plus") {
+                    adjustShotDuration(frame: frame, deltaSeconds: 0.5)
+                }
+                .disabled(!canAdjustShotDuration(frame: frame))
+            }
+        }
+
+        DisclosureGroup {
+            VStack(spacing: 10) {
+                inspectorPicker("Transition", value: frame.transition,
+                                options: ["Cut", "Dissolve", "Match Cut", "Smash Cut", "Wipe", "Fade"]) {
+                    board.patchActiveFrame(["transition": $0])
+                }
+                inspectorPicker("Focus / Depth", value: frame.focusDepth,
+                                options: ["Shallow", "Deep"]) {
+                    board.patchActiveFrame(["focusDepth": $0])
+                }
+                inspectorPicker("Time of day", value: frame.timeOfDay,
+                                options: ["Day", "Night", "Dawn", "Dusk"]) {
+                    board.patchActiveFrame(["timeOfDay": $0])
+                }
+                inspectorPicker("Weather", value: frame.weather,
+                                options: ["Clear", "Rain", "Snow", "Overcast", "Fog"]) {
+                    board.patchActiveFrame(["weather": $0])
+                }
+            }
+            .padding(.top, 8)
+        } label: {
+            Label("Advanced camera", systemImage: "slider.horizontal.3")
+                .font(.system(size: 12, weight: .semibold))
+        }
+        .tint(BoardBrand.accent)
+        .padding(12)
+        .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private func storyInspector(_ frame: FrameSummary) -> some View {
+        inspectorSection("Action / Dialog", symbol: "text.bubble") {
+            TextField("Hva skjer i shotet…", text: $descriptionDraft, axis: .vertical)
+                .lineLimit(3...7)
+                .font(.system(size: 13))
+                .foregroundStyle(.white)
+                .padding(10)
+                .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 8))
+                .onSubmit { flushInspectorDrafts() }
+                .accessibilityIdentifier("inspector-action-field")
+        }
+        .accessibilityIdentifier("inspector-story-content")
+
+        inspectorSection("Story beat", symbol: "waveform.path") {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                ForEach(["ESTABLISHING", "TENSION", "BEAT", "ACTION",
+                         "DIALOGUE", "RESOLUTION"], id: \.self) { value in
+                    inspectorChoice(value, selected: frame.beatTag == value) {
+                        board.patchActiveFrame(["beatTag": value])
+                    }
+                }
+            }
+        }
+
+        inspectorSection("Notes", symbol: "note.text") {
+            TextField("Produksjonsnotater…", text: $notesDraft, axis: .vertical)
+                .lineLimit(3...7)
+                .font(.system(size: 13))
+                .foregroundStyle(.white)
+                .padding(10)
+                .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 8))
+                .onSubmit { flushInspectorDrafts() }
+                .accessibilityIdentifier("inspector-notes-field")
+        }
+
+        inspectorSection("Tags", symbol: "tag") {
+            FlowTags(tags: frame.tags) { removed in
+                board.patchActiveFrame(["tags": frame.tags.filter { $0 != removed }])
+            }
+            HStack(spacing: 6) {
+                TextField("Ny tag", text: $tagDraft)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white)
+                    .textInputAutocapitalization(.characters)
+                    .padding(.horizontal, 10)
+                    .frame(minHeight: 44)
+                    .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 8))
+                    .onSubmit { addTag(frame: frame) }
+                Button { addTag(frame: frame) } label: {
+                    Image(systemName: "plus")
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(BoardBrand.accent, in: RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                .disabled(tagDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                .accessibilityLabel("Legg til tag")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func productionInspector(_ frame: FrameSummary) -> some View {
+        productionReadinessPanel(frame)
+            .accessibilityIdentifier("inspector-production-content")
+        inspectorSection("Scenario / AI context", symbol: "shippingbox") {
+            scenarioInspector(frame)
+        }
+        inspectorSection("Underlag", symbol: "photo.on.rectangle") {
+            underlayInspector(frame)
+        }
+    }
+
+    private func inspectorChoice(
+        _ value: String, selected: Bool, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                if selected { Image(systemName: "checkmark") }
+                Text(value).lineLimit(1).minimumScaleFactor(0.75)
+            }
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(selected ? Color.white : BoardBrand.dim)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(selected ? BoardBrand.accent : Color.white.opacity(0.055),
+                        in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(value)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func inspectorStepButton(
+        _ symbol: String, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(symbol == "plus" ? "Øk varighet" : "Reduser varighet")
+    }
+
+    @ViewBuilder
+    private func underlayInspector(_ frame: FrameSummary) -> some View {
+        HStack(spacing: 8) {
+            PhotosPicker(selection: $underlayPickerItem, matching: .images) {
+                Label(frame.underlayDataURL == nil ? "Velg foto" : "Bytt foto",
+                      systemImage: "photo.badge.plus")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 8))
+            }
+            if frame.underlayDataURL != nil {
+                Button {
+                    board.patchActiveFrame([
+                        "underlayDataURL": NSNull(), "underlayOpacity": NSNull(),
+                    ])
+                    renderer?.setUnderlay(cgImage: nil, opacity: 0)
+                } label: {
+                    Image(systemName: "trash")
+                        .foregroundStyle(.red)
+                        .frame(width: 44, height: 44)
+                        .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Fjern underlag")
+            }
+        }
+        if frame.underlayDataURL != nil {
+            HStack(spacing: 10) {
+                Slider(value: Binding(
+                    get: { frame.underlayOpacity ?? 0.4 },
+                    set: { value in
+                        board.patchActiveFrame(["underlayOpacity": value])
+                        applyUnderlay(to: renderer)
+                    }), in: 0.05...0.9)
+                    .tint(BoardBrand.accent)
+                Text("\(Int((frame.underlayOpacity ?? 0.4) * 100))%")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(BoardBrand.dim)
+                    .frame(width: 38)
+            }
         }
     }
 
     @State private var notesDraft = ""
     @State private var descriptionDraft = ""
+    @State private var inspectorDraftReference: InspectorDraftReference?
+    @State private var lastSavedDescription = ""
+    @State private var lastSavedNotes = ""
+    @State private var inspectorAutosaveTask: Task<Void, Never>?
     @State private var tagDraft = ""
     @State private var underlayPickerItem: PhotosPickerItem?
     @State private var tipPickerItem: PhotosPickerItem?
@@ -2228,16 +6258,24 @@ struct NativeBoardView: View {
     @State private var historyEntries: [(updatedAt: String, strokes: String)] = []
     @State private var showHistorySheet = false
     @State private var pdfExportProgress: String?
+    @State private var pdfExportFailed = false
     @State private var heroReport: HeroReport?
     @State private var syncInFlight = false
+    @State private var syncRequestedAfterCurrent = false
 
     private func exportPDF(includeUnderlay: Bool) {
         pdfExportProgress = "…"
+        let scenes = effectiveScenesForRendering()
         Task {
-            exportPDFURL = await BoardPDFExporter.export(
-                projectTitle: board.manuscript.title, scenes: board.scenes,
+            let result = await BoardPDFExporter.export(
+                projectTitle: board.manuscript.title, scenes: scenes,
                 includeUnderlay: includeUnderlay,
                 progress: { done, total in pdfExportProgress = "\(done)/\(total)" })
+            if let result {
+                exportPDFURL = result
+            } else {
+                pdfExportFailed = true
+            }
             pdfExportProgress = nil
         }
     }
@@ -2252,11 +6290,1696 @@ struct NativeBoardView: View {
     @State private var selectionScaleFactor: CGFloat = 1
     @State private var selectionRotationAngle: Double = 0
 
+    private func loadInspectorDrafts() {
+        inspectorAutosaveTask?.cancel()
+        guard let scene = board.scene, let frame = board.frame else {
+            inspectorDraftReference = nil
+            lastSavedDescription = ""
+            lastSavedNotes = ""
+            descriptionDraft = ""
+            notesDraft = ""
+            return
+        }
+        inspectorDraftReference = InspectorDraftReference(
+            sceneId: scene.id, frameId: frame.id)
+        lastSavedDescription = frame.description
+        lastSavedNotes = frame.notes ?? ""
+        if let pending = InspectorTextDraftStore.load(frameId: frame.id),
+           pending.sceneId == scene.id {
+            descriptionDraft = pending.description
+            notesDraft = pending.notes
+        } else {
+            descriptionDraft = frame.description
+            notesDraft = frame.notes ?? ""
+        }
+    }
+
+    private func scheduleInspectorDraftAutosave() {
+        guard inspectorDraftReference != nil,
+              descriptionDraft != lastSavedDescription || notesDraft != lastSavedNotes else {
+            return
+        }
+        if let reference = inspectorDraftReference {
+            InspectorTextDraftStore.save(InspectorTextDraft(
+                sceneId: reference.sceneId, frameId: reference.frameId,
+                description: descriptionDraft, notes: notesDraft, updatedAt: Date()))
+        }
+        inspectorAutosaveTask?.cancel()
+        inspectorAutosaveTask = Task {
+            try? await Task.sleep(nanoseconds: 650_000_000)
+            guard !Task.isCancelled else { return }
+            flushInspectorDrafts()
+        }
+    }
+
+    /// Saves against the captured scene/shot reference so a fast scene switch
+    /// cannot accidentally write the previous draft into the newly selected shot.
+    private func flushInspectorDrafts() {
+        inspectorAutosaveTask?.cancel()
+        guard let reference = inspectorDraftReference else { return }
+        var fields: [String: any Sendable] = [:]
+        if descriptionDraft != lastSavedDescription {
+            fields["description"] = descriptionDraft
+        }
+        if notesDraft != lastSavedNotes {
+            fields["notes"] = notesDraft
+        }
+        guard !fields.isEmpty else { return }
+        lastSavedDescription = descriptionDraft
+        lastSavedNotes = notesDraft
+        board.patchFrame(
+            sceneId: reference.sceneId, frameId: reference.frameId, fields: fields)
+    }
+
+    private func reconcileInspectorDraft() {
+        guard let reference = inspectorDraftReference,
+              let frame = board.frame, frame.id == reference.frameId,
+              let pending = InspectorTextDraftStore.load(frameId: reference.frameId),
+              frame.description == pending.description,
+              (frame.notes ?? "") == pending.notes else { return }
+        InspectorTextDraftStore.clear(frameId: reference.frameId)
+        lastSavedDescription = frame.description
+        lastSavedNotes = frame.notes ?? ""
+    }
+
+    private func importSelectedBrushTip() {
+        guard let item = tipPickerItem else { return }
+        tipPickerItem = nil
+        let isStamp = canvasState.brushType == .stamp
+        Task {
+            guard let data = try? await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data) else { return }
+            let maxSide = 256.0
+            let scaleFactor = min(1, maxSide / max(image.size.width, image.size.height))
+            let size = CGSize(width: image.size.width * scaleFactor,
+                              height: image.size.height * scaleFactor)
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            let scaled = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+                image.draw(in: CGRect(origin: .zero, size: size))
+            }
+            guard let png = scaled.pngData() else { return }
+            let dataURL = "data:image/png;base64," + png.base64EncodedString()
+            if isStamp {
+                canvasState.stampTipDataURL = dataURL
+                UserDefaults.standard.set(dataURL, forKey: "sb.stampTip")
+            } else {
+                canvasState.customTipDataURL = dataURL
+                UserDefaults.standard.set(dataURL, forKey: "sb.customTip")
+            }
+        }
+    }
+
+    private func importSelectedUnderlay() {
+        guard let item = underlayPickerItem else { return }
+        underlayPickerItem = nil
+        Task {
+            guard let data = try? await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data) else { return }
+            let maxSide = 1280.0
+            let scale = min(1, maxSide / max(image.size.width, image.size.height))
+            let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            let scaled = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+                image.draw(in: CGRect(origin: .zero, size: size))
+            }
+            guard let jpeg = scaled.jpegData(compressionQuality: 0.6) else { return }
+            let dataURL = "data:image/jpeg;base64," + jpeg.base64EncodedString()
+            board.patchActiveFrame([
+                "underlayDataURL": dataURL,
+                "underlayOpacity": board.frame?.underlayOpacity ?? 0.4,
+            ])
+            renderer?.setUnderlay(
+                cgImage: scaled.cgImage, opacity: board.frame?.underlayOpacity ?? 0.4)
+        }
+    }
+
     private func addTag(frame: FrameSummary) {
         let tag = tagDraft.trimmingCharacters(in: .whitespaces).uppercased()
         tagDraft = ""
         guard !tag.isEmpty, !frame.tags.contains(tag) else { return }
         board.patchActiveFrame(["tags": frame.tags + [tag]])
+    }
+
+    private func productionReadinessPanel(_ frame: FrameSummary) -> some View {
+        let status = StoryboardReadiness.frame(frame)
+        let frameIssues = StoryboardProductionAnalysis.continuityIssues(scenes: board.scenes)
+            .filter { $0.sceneIndex == board.selectedSceneIndex
+                && $0.frameIndex == board.activeFrameIndex }
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("PRODUCTION READY", systemImage: "checkmark.shield")
+                    .font(.system(size: 11, weight: .bold)).kerning(0.5)
+                    .foregroundStyle(BoardBrand.label)
+                Spacer()
+                Text("\(status.completed)/\(status.total)")
+                    .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(status.progress == 1 ? Color.green : BoardBrand.accent)
+            }
+            ProgressView(value: status.progress)
+                .tint(status.progress == 1 ? .green : BoardBrand.accent)
+            if !status.missing.isEmpty {
+                Text("Mangler: " + status.missing.prefix(3).joined(separator: " · "))
+                    .font(.system(size: 11)).foregroundStyle(BoardBrand.dim).lineLimit(2)
+            }
+            if !frameIssues.isEmpty {
+                Label("\(frameIssues.count) mulig continuity-avvik",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(.orange)
+            }
+            Button { showProductionDashboard = true } label: {
+                HStack {
+                    Text("Åpne Production Health")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+        }
+        .padding(10)
+        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(BoardBrand.border))
+    }
+
+    @ViewBuilder
+    private func scenarioInspector(_ frame: FrameSummary) -> some View {
+        let selection = effectiveScenario(frame)
+        let pack = board.scenarioPacks.first { $0.id == selection?.packId }
+        let subdomain = pack?.subdomains.first { $0.id == selection?.subdomainId }
+        let zone = subdomain?.zones.first { $0.id == selection?.zoneId }
+
+        if board.scenarioPacks.isEmpty {
+            Text(board.scenarioCatalogError ?? "Laster scenario-katalog …")
+                .font(.system(size: 11))
+                .foregroundStyle(BoardBrand.dim)
+        } else {
+            scenarioPicker("Pakke", value: pack?.label, options: board.scenarioPacks) {
+                $0.label
+            } onSelect: { selectScenarioPack($0) }
+
+            if let pack {
+                scenarioPicker("Miljø", value: subdomain?.label, options: pack.subdomains) {
+                    $0.label
+                } onSelect: { selectScenarioSubdomain($0, in: pack) }
+
+                if let subdomain {
+                    scenarioPicker("Sone", value: zone?.label, options: subdomain.zones) {
+                        $0.label
+                    } onSelect: { selectScenarioZone($0, pack: pack, subdomain: subdomain) }
+
+                    scenarioMultiSelect(
+                        "Roller", options: subdomain.roles,
+                        selected: selection?.roleIds ?? []) { values in
+                            patchScenarioSelection(selection, field: "scenarioRoleIds", values: values)
+                        }
+                    scenarioMultiSelect(
+                        "Props", options: subdomain.propTypes,
+                        selected: selection?.propTypeIds ?? []) { values in
+                            patchScenarioSelection(selection, field: "scenarioPropTypeIds", values: values)
+                        }
+                    scenarioMultiSelect(
+                        "Handling", options: subdomain.actions,
+                        selected: selection?.actionIds ?? []) { values in
+                            patchScenarioSelection(selection, field: "scenarioActionIds", values: values)
+                        }
+                    scenarioMultiSelect(
+                        "Tilstand", options: subdomain.states,
+                        selected: selection?.stateIds ?? []) { values in
+                            patchScenarioSelection(selection, field: "scenarioStateIds", values: values)
+                        }
+                    scenarioMultiSelect(
+                        "Continuity", options: subdomain.continuityLocks,
+                        selected: selection?.continuityLockIds ?? []) { values in
+                            patchScenarioSelection(selection, field: "scenarioContinuityLockIds", values: values)
+                        }
+                }
+
+                HStack(spacing: 6) {
+                    Image(systemName: selection?.packVersion == pack.version
+                          && zone != nil ? "checkmark.shield.fill" : "exclamationmark.triangle.fill")
+                    Text(selection?.packVersion == pack.version && zone != nil
+                         ? "Prompt Engine · v\(pack.version)"
+                           + (selection?.inheritedFromScene == true ? " · arvet fra scene" : " · shot override")
+                         : "Velg gyldig miljø/sone for v\(pack.version)")
+                    Spacer(minLength: 0)
+                    Menu {
+                        if let selection {
+                            Button("Bruk på hele scenen") {
+                                board.patchActiveScene(selection.patchFields)
+                            }
+                        }
+                        Button("Arv fra scene") { clearScenario() }
+                        Button("Fjern fra shot", role: .destructive) { clearScenario() }
+                    } label: { Image(systemName: "ellipsis.circle") }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(BoardBrand.dim)
+                }
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(selection?.packVersion == pack.version && zone != nil
+                                 ? BoardBrand.accent : Color.orange)
+
+                ForEach(scenarioContinuityWarnings(frame), id: \.self) { warning in
+                    Label(warning, systemImage: "exclamationmark.triangle")
+                        .font(.system(size: 9))
+                        .foregroundStyle(Color.orange)
+                }
+            }
+        }
+    }
+
+    private func effectiveScenario(_ frame: FrameSummary) -> BoardScenarioSelection? {
+        let scene = board.scene
+        let useFrame = frame.scenarioPackId != nil
+        guard let packId = useFrame ? frame.scenarioPackId : scene?.scenarioPackId,
+              let version = useFrame ? frame.scenarioPackVersion : scene?.scenarioPackVersion,
+              let subdomainId = useFrame ? frame.scenarioSubdomainId : scene?.scenarioSubdomainId,
+              let zoneId = useFrame ? frame.scenarioZoneId : scene?.scenarioZoneId else { return nil }
+        return BoardScenarioSelection(
+            packId: packId, packVersion: version, subdomainId: subdomainId, zoneId: zoneId,
+            roleIds: useFrame ? frame.scenarioRoleIds : scene?.scenarioRoleIds ?? [],
+            propTypeIds: useFrame ? frame.scenarioPropTypeIds : scene?.scenarioPropTypeIds ?? [],
+            actionIds: useFrame ? frame.scenarioActionIds : scene?.scenarioActionIds ?? [],
+            stateIds: useFrame ? frame.scenarioStateIds : scene?.scenarioStateIds ?? [],
+            continuityLockIds: useFrame
+                ? frame.scenarioContinuityLockIds : scene?.scenarioContinuityLockIds ?? [],
+            inheritedFromScene: !useFrame)
+    }
+
+    @ViewBuilder
+    private func scenarioMultiSelect(
+        _ label: String, options: [StoryboardScenarioOptionSummary], selected: [String],
+        onChange: @escaping ([String]) -> Void
+    ) -> some View {
+        if !options.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                panelLabel(label)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 5) {
+                        ForEach(options) { option in
+                            let active = selected.contains(option.id)
+                            Button(option.label) {
+                                onChange(active
+                                    ? selected.filter { $0 != option.id }
+                                    : selected + [option.id])
+                            }
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(active ? Color.white : BoardBrand.dim)
+                            .padding(.horizontal, 9)
+                            .frame(minHeight: 44)
+                            .background(active ? BoardBrand.accent : Color.white.opacity(0.05),
+                                        in: Capsule())
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(active ? .isSelected : [])
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func patchScenarioSelection(
+        _ selection: BoardScenarioSelection?, field: String, values: [String]
+    ) {
+        guard let selection else { return }
+        var fields = selection.patchFields
+        fields[field] = values
+        board.patchActiveFrame(fields)
+    }
+
+    private func scenarioContinuityWarnings(_ frame: FrameSummary) -> [String] {
+        guard let scene = board.scene,
+              let index = scene.frames.firstIndex(where: { $0.id == frame.id }),
+              let current = effectiveScenario(frame) else { return [] }
+        let neighbours = [index > 0 ? scene.frames[index - 1] : nil,
+                          index + 1 < scene.frames.count ? scene.frames[index + 1] : nil]
+            .compactMap { $0 }.compactMap(effectiveScenario)
+        var warnings: [String] = []
+        for other in neighbours {
+            if current.packId != other.packId || current.packVersion != other.packVersion {
+                warnings.append("Scenario-pakke avviker fra naboshot")
+            } else if current.zoneId != other.zoneId {
+                warnings.append("Sone avviker – kontroller geografi/skjermretning")
+            }
+            if Set(current.roleIds) != Set(other.roleIds) {
+                warnings.append("Rollevalg avviker fra naboshot")
+            }
+            if Set(current.propTypeIds) != Set(other.propTypeIds) {
+                warnings.append("Propvalg avviker fra naboshot")
+            }
+        }
+        return Array(Set(warnings)).sorted()
+    }
+
+    private func selectScenarioPack(_ id: String) {
+        guard let pack = board.scenarioPacks.first(where: { $0.id == id }),
+              let subdomain = pack.subdomains.first,
+              let zone = subdomain.zones.first else { return }
+        board.patchActiveFrame([
+            "scenarioPackId": pack.id,
+            "scenarioPackVersion": pack.version,
+            "scenarioSubdomainId": subdomain.id,
+            "scenarioZoneId": zone.id,
+            "scenarioRoleIds": [String](),
+            "scenarioPropTypeIds": [String](),
+            "scenarioActionIds": [String](),
+            "scenarioStateIds": [String](),
+            "scenarioContinuityLockIds": subdomain.continuityLocks.map(\.id),
+        ])
+    }
+
+    private func selectScenarioSubdomain(
+        _ id: String, in pack: StoryboardScenarioPackSummary
+    ) {
+        guard let subdomain = pack.subdomains.first(where: { $0.id == id }),
+              let zone = subdomain.zones.first else { return }
+        board.patchActiveFrame([
+            "scenarioPackId": pack.id,
+            "scenarioPackVersion": pack.version,
+            "scenarioSubdomainId": subdomain.id,
+            "scenarioZoneId": zone.id,
+            "scenarioRoleIds": [String](),
+            "scenarioPropTypeIds": [String](),
+            "scenarioActionIds": [String](),
+            "scenarioStateIds": [String](),
+            "scenarioContinuityLockIds": subdomain.continuityLocks.map(\.id),
+        ])
+    }
+
+    private func selectScenarioZone(
+        _ id: String,
+        pack: StoryboardScenarioPackSummary,
+        subdomain: StoryboardScenarioSubdomainSummary
+    ) {
+        guard subdomain.zones.contains(where: { $0.id == id }) else { return }
+        var fields: [String: any Sendable] = [
+            "scenarioPackId": pack.id,
+            "scenarioPackVersion": pack.version,
+            "scenarioSubdomainId": subdomain.id,
+            "scenarioZoneId": id,
+        ]
+        if let current = board.frame.flatMap(effectiveScenario),
+           current.packId == pack.id, current.subdomainId == subdomain.id {
+            fields["scenarioRoleIds"] = current.roleIds
+            fields["scenarioPropTypeIds"] = current.propTypeIds
+            fields["scenarioActionIds"] = current.actionIds
+            fields["scenarioStateIds"] = current.stateIds
+            fields["scenarioContinuityLockIds"] = current.continuityLockIds
+        }
+        board.patchActiveFrame(fields)
+    }
+
+    private func clearScenario() {
+        board.patchActiveFrame([
+            "scenarioPackId": NSNull(),
+            "scenarioPackVersion": NSNull(),
+            "scenarioSubdomainId": NSNull(),
+            "scenarioZoneId": NSNull(),
+            "scenarioRoleIds": [String](),
+            "scenarioPropTypeIds": [String](),
+            "scenarioActionIds": [String](),
+            "scenarioStateIds": [String](),
+            "scenarioContinuityLockIds": [String](),
+        ])
+    }
+
+    private var approvedColorVersion: StoryboardAIImageVersionSummary? {
+        return imageStageVersions.last {
+            $0.stage == "color" && $0.isApproved && imageVersionMatchesActiveFrame($0)
+        }
+    }
+
+    private var approvedAtmosphereVersion: StoryboardAIImageVersionSummary? {
+        let changes = activePaintoverChanges()
+        guard loadedFramePaintoverState?.atmosphereStale == false,
+              !changes.colorChanged else { return nil }
+        return imageStageVersions.last {
+            $0.stage == "atmosphere" && $0.isApproved && imageVersionMatchesActiveFrame($0)
+        }
+    }
+
+    private var approvedAnimationVersion: StoryboardAIImageVersionSummary? {
+        switch StoryboardPaintoverStageSelection.animationStage(
+            hasApprovedColor: approvedColorVersion != nil,
+            hasApprovedAtmosphere: approvedAtmosphereVersion != nil,
+            state: loadedFramePaintoverState,
+            localChanges: activePaintoverChanges()) {
+        case .atmosphere: return approvedAtmosphereVersion
+        case .color: return approvedColorVersion
+        case nil: return nil
+        }
+    }
+
+    private var approvedAnimationStageLabel: String {
+        approvedAnimationVersion?.stage == "atmosphere"
+            ? "Approved AI Atmosphere" : "Approved AI Color"
+    }
+
+    private func videoBelongsToCurrentActiveSource(
+        _ frame: FrameSummary
+    ) -> Bool {
+        let changes = activePaintoverChanges()
+        guard !changes.pencilChanged, !changes.colorChanged,
+              !changes.atmosphereChanged else { return false }
+        return StoryboardVideoPlaybackPolicy.belongsToCurrentSource(frame)
+    }
+
+    @ViewBuilder
+    private func storyboardAIInspector(_ frame: FrameSummary) -> some View {
+        let action = aiInspectorPrimaryAction
+        let videoModels = board.aiModels.filter { $0.modality == "video" }
+        let selectedModel = videoModels.first { $0.id == selectedVideoModelId }
+
+        inspectorSection("AI pipeline", symbol: "wand.and.stars") {
+            VStack(spacing: 0) {
+                aiPipelineRow(
+                    "Pencil source", state: .approved,
+                    detail: "Original drawing · immutable")
+                aiPipelineConnector(active: approvedColorVersion != nil)
+                aiPipelineRow(
+                    "AI Color", state: aiStageState("color"),
+                    detail: aiStageDetail("color"))
+                aiPipelineConnector(active: approvedAtmosphereVersion != nil)
+                aiPipelineRow(
+                    "AI Atmosphere", state: aiStageState("atmosphere"),
+                    detail: aiStageDetail("atmosphere"))
+                aiPipelineConnector(
+                    active: videoBelongsToCurrentActiveSource(frame))
+                aiPipelineRow(
+                    "Animation",
+                    state: videoBelongsToCurrentActiveSource(frame)
+                        ? .approved
+                        : isActiveVideoJobStatus(frame.aiVideoStatus) ? .candidate : .waiting,
+                    detail: videoBelongsToCurrentActiveSource(frame)
+                        ? "Ready in Animatic"
+                        : isActiveVideoJobStatus(frame.aiVideoStatus)
+                            ? "Provider job is already running" : "Requires approved image")
+            }
+
+            Button { performAIInspectorPrimaryAction(action) } label: {
+                HStack {
+                    if aiInFlight {
+                        ProgressView().controlSize(.small).tint(.white)
+                    } else {
+                        Image(systemName: action.symbol)
+                    }
+                    Text(aiInFlight ? (aiStatus ?? "Working …") : action.label)
+                    Spacer()
+                    if !aiInFlight { Image(systemName: "arrow.right") }
+                }
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .background(BoardBrand.accent, in: RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+            .disabled(
+                aiInFlight || board.projectId == nil
+                    || action == .animationInProgress)
+            .accessibilityIdentifier("ai-primary-action")
+
+            if action == .animate {
+                Menu {
+                    ForEach(videoModels) { model in
+                        Button {
+                            selectedVideoModelId = model.id
+                        } label: {
+                            Label(
+                                model.label + String(
+                                    format: " · ~$%.2f/5s", model.estimatedCostUsd),
+                                systemImage: model.configured
+                                    ? "checkmark.circle" : "xmark.circle")
+                        }
+                    }
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("VIDEO MODEL")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(BoardBrand.label)
+                            Text(selectedModel?.label ?? "Seedance 2")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+                        Spacer()
+                        if let selectedModel {
+                            Text(String(format: "~$%.2f / 5s", selectedModel.estimatedCostUsd))
+                                .font(.system(size: 11).monospacedDigit())
+                                .foregroundStyle(BoardBrand.dim)
+                        }
+                        Image(systemName: "chevron.up.chevron.down")
+                            .foregroundStyle(BoardBrand.dim)
+                    }
+                    .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("ai-video-model-picker")
+            } else {
+                Label("GPT Image 2 · HD · confirmation before credits",
+                      systemImage: "creditcard")
+                    .font(.system(size: 11))
+                    .foregroundStyle(BoardBrand.dim)
+            }
+        }
+        .accessibilityIdentifier("inspector-ai-content")
+
+        inspectorSection("Control", symbol: "switch.2") {
+            Button { inspectActivePrompt() } label: {
+                inspectorNavigationRow(
+                    "Prompt Inspector", detail: "Inherited context and compiled prompt",
+                    symbol: "doc.text.magnifyingglass")
+            }
+            .buttonStyle(.plain)
+            .disabled(aiInFlight || board.projectId == nil)
+            .accessibilityIdentifier("open-prompt-inspector")
+
+            Button { showAIVersionBrowser = true } label: {
+                inspectorNavigationRow(
+                    "Versions", detail: "\(imageStageVersions.count) candidates",
+                    symbol: "photo.stack")
+            }
+            .buttonStyle(.plain)
+            .disabled(imageStageVersions.isEmpty)
+            .accessibilityIdentifier("ai-version-browser")
+        }
+
+        if let aiStatus, !aiInFlight {
+            Label(aiStatus, systemImage: "info.circle")
+                .font(.system(size: 11))
+                .foregroundStyle(BoardBrand.dim)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    private enum AIPipelineVisualState {
+        case waiting
+        case candidate
+        case approved
+    }
+
+    private var aiInspectorPrimaryAction: AIInspectorPrimaryAction {
+        if isActiveVideoJobStatus(board.frame?.aiVideoStatus) {
+            return .animationInProgress
+        }
+        if let frame = board.frame, frame.aiOutputStale {
+            let fingerprint = canvasState.shotFraming.canonicalFingerprint
+            let colorSourceChanged = frame.aiOutputStaleReason != "atmosphere-framing-stale"
+            if colorSourceChanged || frame.aiColorFramingFingerprint != fingerprint {
+                return latestImageCandidate(stage: "color") == nil
+                    ? .generateColor : .reviewColor
+            }
+            return latestImageCandidate(stage: "atmosphere") == nil
+                ? .generateAtmosphere : .reviewAtmosphere
+        }
+        if approvedColorVersion == nil {
+            return latestImageCandidate(stage: "color") == nil ? .generateColor : .reviewColor
+        }
+        if approvedAtmosphereVersion == nil {
+            return latestImageCandidate(stage: "atmosphere") == nil
+                ? .generateAtmosphere : .reviewAtmosphere
+        }
+        return .animate
+    }
+
+    private func latestImageCandidate(stage: String) -> StoryboardAIImageVersionSummary? {
+        imageStageVersions.last {
+            $0.stage == stage && $0.status == "generated"
+                && imageVersionMatchesActiveFrame($0)
+        }
+    }
+
+    private func imageVersionMatchesActiveFrame(
+        _ version: StoryboardAIImageVersionSummary
+    ) -> Bool {
+        guard version.frameId == board.frame?.id
+            && version.storyboardId == (imageStageStoryboardId ?? board.frame?.aiStoryboardId)
+            && version.framingFingerprint
+                == canvasState.shotFraming.canonicalFingerprint else { return false }
+        let changes = activePaintoverChanges()
+        guard AIImageStagePaintoverPolicy.matches(
+            stage: version.stage,
+            isApproved: version.isApproved,
+            capturedColorRevision: version.paintoverColorRevision,
+            capturedColorFingerprint: version.paintoverColorFingerprint,
+            state: loadedFramePaintoverState,
+            localChanges: changes) else { return false }
+        return AIImageVersionRevisionPolicy.matches(
+            candidateSourceRevision: version.sourceRevision,
+            authoritativeSourceRevision: currentAIImageSourceRevision,
+            generatedDocumentRevision: nil,
+            // Approved/generated bases depend on Drawing/framing; editable
+            // Color/Atmosphere remain separate overlays. Their stage-specific
+            // identity checks above replace the old blanket revision gate.
+            currentDocumentRevision: loadedRevision,
+            loadedDocumentRevision: loadedRevision,
+            isApproved: version.isApproved,
+            frameIsStale: board.frame?.aiOutputStale ?? true)
+    }
+
+    private func performAIInspectorPrimaryAction(_ action: AIInspectorPrimaryAction) {
+        switch action {
+        case .generateColor:
+            pendingImageStageGeneration = "color"
+        case .reviewColor:
+            pendingImageStageVersion = latestImageCandidate(stage: "color")
+        case .generateAtmosphere:
+            pendingImageStageGeneration = "atmosphere"
+        case .reviewAtmosphere:
+            pendingImageStageVersion = latestImageCandidate(stage: "atmosphere")
+        case .animate:
+            Task { await animateActiveStoryboard() }
+        case .animationInProgress:
+            break
+        }
+    }
+
+    private func isActiveVideoJobStatus(_ status: String?) -> Bool {
+        StoryboardVideoJobLifecyclePolicy.isActive(status)
+    }
+
+    private func aiStageState(_ stage: String) -> AIPipelineVisualState {
+        if imageStageVersions.contains(where: {
+            $0.stage == stage && $0.isApproved && imageVersionMatchesActiveFrame($0)
+        }) {
+            return .approved
+        }
+        if latestImageCandidate(stage: stage) != nil { return .candidate }
+        return .waiting
+    }
+
+    private func aiStageDetail(_ stage: String) -> String {
+        switch aiStageState(stage) {
+        case .approved: return "Approved source"
+        case .candidate: return "Candidate ready for review"
+        case .waiting:
+            return stage == "color" ? "Generated from Pencil" : "Requires approved Color"
+        }
+    }
+
+    private func aiPipelineRow(
+        _ title: String, state: AIPipelineVisualState, detail: String
+    ) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: state == .approved
+                  ? "checkmark.circle.fill" : state == .candidate
+                  ? "circle.dotted.circle.fill" : "circle")
+                .font(.system(size: 17))
+                .foregroundStyle(state == .approved ? Color.green
+                                 : state == .candidate ? BoardBrand.accent : BoardBrand.dim)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                Text(detail).font(.system(size: 10)).foregroundStyle(BoardBrand.dim)
+            }
+            Spacer()
+            if state == .candidate {
+                Text("REVIEW")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(BoardBrand.accent)
+            }
+        }
+        .frame(minHeight: 44)
+    }
+
+    private func aiPipelineConnector(active: Bool) -> some View {
+        HStack {
+            Rectangle()
+                .fill(active ? BoardBrand.accent : BoardBrand.border)
+                .frame(width: 2, height: 12)
+                .padding(.leading, 10)
+            Spacer()
+        }
+    }
+
+    private func inspectorNavigationRow(
+        _ title: String, detail: String, symbol: String
+    ) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol).foregroundStyle(BoardBrand.accent).frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                Text(detail).font(.system(size: 10)).foregroundStyle(BoardBrand.dim)
+            }
+            Spacer()
+            Image(systemName: "chevron.right").foregroundStyle(BoardBrand.dim)
+        }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+    }
+
+    private func activeAIContext() -> (
+        projectId: String, scene: SceneSummary, frame: FrameSummary,
+        context: [String: any Sendable], strokes: String?
+    )? {
+        guard let projectId = board.projectId, let scene = board.scene,
+              let persistedFrame = board.frame else { return nil }
+        var frame = persistedFrame
+        frame.shotFraming = canvasState.shotFraming
+        frame.shotType = canvasState.shotFraming.shotSize ?? frame.shotType
+        frame.angle = canvasState.shotFraming.angle ?? frame.angle
+        frame.lensMm = canvasState.shotFraming.lensMm ?? frame.lensMm
+        frame.layerState = canvasState.layerState
+        let index = scene.frames.firstIndex(where: { $0.id == frame.id }) ?? 0
+        let previous = index > 0 ? scene.frames[index - 1] : nil
+        let next = index + 1 < scene.frames.count ? scene.frames[index + 1] : nil
+        let context = RoleRoomAPIClient.storyboardShotContext(
+            manuscript: board.manuscript, scene: scene, frame: frame,
+            previous: previous, next: next)
+        let liveStrokes = try? StrokeSerialization.encodeToWebJSON(canvasState.strokes)
+        return (projectId, scene, frame, context, liveStrokes ?? frame.strokesJSON)
+    }
+
+    /// Builds the provider source from one explicit approved version, never
+    /// from the raster currently displayed by the frame. Color is overlaid on
+    /// approved Color; Atmosphere is overlaid on approved Atmosphere. This
+    /// prevents a later stage from being baked twice.
+    @MainActor
+    private func freezePaintoverComposite(
+        baseVersion: StoryboardAIImageVersionSummary,
+        includedThroughStage stage: StoryboardPaintoverCompositeStage,
+        acknowledgement: AISourceSnapshotAcknowledgement,
+        frame: FrameSummary
+    ) async throws -> StoryboardPaintoverComposite {
+        let expectedBaseStage = stage.rawValue
+        guard baseVersion.stage == expectedBaseStage,
+              baseVersion.frameId == frame.id,
+              baseVersion.isApproved,
+              let sourceRevision = acknowledgement.sourceRevision,
+              baseVersion.sourceRevision == sourceRevision,
+              let baseFraming = baseVersion.framingFingerprint,
+              baseFraming == acknowledgement.shotFraming.canonicalFingerprint
+        else {
+            throw SyncError.malformed(
+                "Godkjent \(expectedBaseStage)-base tilhører et eldre shot. Ingen AI-kostnad er utløst.")
+        }
+        if stage == .atmosphere,
+           acknowledgement.paintoverState.atmosphereStale {
+            throw SyncError.malformed(
+                "Color er endret etter godkjent Atmosphere. Bruk Color eller regenerer Atmosphere før animasjon.")
+        }
+        var renderFrame = frame
+        renderFrame.strokesJSON = acknowledgement.strokesJSON
+        renderFrame.layerState = acknowledgement.layerState
+        renderFrame.shotFraming = acknowledgement.shotFraming
+        renderFrame.shotType = acknowledgement.shotFraming.shotSize
+        renderFrame.angle = acknowledgement.shotFraming.angle
+        renderFrame.lensMm = acknowledgement.shotFraming.lensMm
+        renderFrame.aiStoryboardId = baseVersion.storyboardId
+        renderFrame.aiSourceFramingFingerprint = baseFraming
+        renderFrame.aiSourceRevision = sourceRevision
+        renderFrame.aiOutputStale = false
+        await FrameImageCache.prefetch(imageURLs: [baseVersion.imageData])
+        guard let strokes = try? StrokeSerialization.decodeFromWebJSON(
+                acknowledgement.strokesJSON),
+              let imageData = FrameRenderService.animationSourceDataURL(
+                for: renderFrame,
+                visibleStrokes: strokes,
+                stage: stage == .color ? .color : .atmosphere,
+                overlayLayers: StoryboardPaintoverStageSelection.overlayLayers(
+                    for: stage),
+                frameImageURLOverride: baseVersion.imageData,
+                frameImageIsViewportEncodedOverride: true),
+              let image = decodeDataURL(imageData),
+              let pixels = image.cgImage,
+              pixels.width >= 64, pixels.height >= 64 else {
+            throw SyncError.malformed(
+                "Paintover-kilden kunne ikke fryses tapsfritt. Ingen AI-kostnad er utløst.")
+        }
+        let state = acknowledgement.paintoverState
+        return StoryboardPaintoverComposite(
+            imageData: imageData,
+            width: pixels.width,
+            height: pixels.height,
+            includedThroughStage: stage,
+            baseVersionId: baseVersion.id,
+            frameUpdatedAt: acknowledgement.frameUpdatedAt,
+            sourceUpdatedAt: acknowledgement.sourceUpdatedAt,
+            sourceRevision: sourceRevision,
+            framingFingerprint: baseFraming,
+            colorRevision: state.colorRevision,
+            atmosphereRevision: state.atmosphereRevision,
+            colorFingerprint: state.colorFingerprint,
+            atmosphereFingerprint: state.atmosphereFingerprint)
+    }
+
+    private func currentAIFrameSession() -> AIFrameSessionKey? {
+        guard let projectId = board.projectId, let sceneId = board.scene?.id,
+              let frameId = board.frame?.id else { return nil }
+        return AIFrameSessionKey(
+            projectId: projectId, sceneId: sceneId,
+            frameId: frameId, epoch: aiFrameEpoch,
+            documentRevision: canvasState.revision)
+    }
+
+    private func isCurrentAIFrameSession(_ session: AIFrameSessionKey) -> Bool {
+        isSameAIFrameIdentity(session)
+            && session.documentRevision == canvasState.revision
+    }
+
+    private func isSameAIFrameIdentity(_ session: AIFrameSessionKey) -> Bool {
+        session.epoch == aiFrameEpoch
+            && session.projectId == board.projectId
+            && session.sceneId == board.scene?.id
+            && session.frameId == board.frame?.id
+    }
+
+    private func aiOperationKey(
+        projectId: String, sceneId: String, frameId: String
+    ) -> String {
+        "\(projectId)|\(sceneId)|\(frameId)"
+    }
+
+    private func aiOperationKey(_ session: AIFrameSessionKey) -> String {
+        aiOperationKey(
+            projectId: session.projectId,
+            sceneId: session.sceneId,
+            frameId: session.frameId)
+    }
+
+    private var activeFrameAIOperationKey: String? {
+        guard let projectId = board.projectId,
+              let sceneId = board.scene?.id,
+              let frameId = board.frame?.id else { return nil }
+        return aiOperationKey(
+            projectId: projectId, sceneId: sceneId, frameId: frameId)
+    }
+
+    @MainActor
+    private func beginAIFrameOperation(_ session: AIFrameSessionKey) -> UUID? {
+        let key = aiOperationKey(session)
+        guard activeAIFrameOperations[key] == nil else {
+            if activeFrameAIOperationKey == key { aiInFlight = true }
+            return nil
+        }
+        let operationID = UUID()
+        activeAIFrameOperations[key] = operationID
+        if activeFrameAIOperationKey == key { aiInFlight = true }
+        return operationID
+    }
+
+    @MainActor
+    private func endAIFrameOperation(
+        _ operationID: UUID, session: AIFrameSessionKey
+    ) {
+        let key = aiOperationKey(session)
+        if activeAIFrameOperations[key] == operationID {
+            activeAIFrameOperations.removeValue(forKey: key)
+        }
+        aiInFlight = activeFrameAIOperationKey.flatMap {
+            activeAIFrameOperations[$0]
+        } != nil
+    }
+
+    private func resetFrameScopedAIState() {
+        aiFrameEpoch = UUID()
+        aiInFlight = activeFrameAIOperationKey.flatMap {
+            activeAIFrameOperations[$0]
+        } != nil
+        aiStatus = nil
+        promptCompilation = nil
+        imageStageStoryboardId = board.frame?.aiStoryboardId
+        imageStageVersions = []
+        currentAIImageSourceRevision = nil
+        imageVersionDocumentRevisions = [:]
+        pendingImageStageVersion = nil
+        pendingImageStageGeneration = nil
+        animationPreflight = nil
+        animationPreflightSourceImage = nil
+        animationPreflightComposite = nil
+        animationPreflightSession = nil
+        showAIVersionBrowser = false
+        showAIConsentPrompt = false
+        pendingAIConsentSession = nil
+    }
+
+    private func inspectActivePrompt() {
+        guard let input = activeAIContext(), let session = currentAIFrameSession() else { return }
+        guard let operationID = beginAIFrameOperation(session) else { return }
+        let framingFingerprint = canvasState.shotFraming.canonicalFingerprint
+        aiStatus = "Kompilerer produksjonskontekst …"
+        Task {
+            defer { endAIFrameOperation(operationID, session: session) }
+            do {
+                let storyboardId: String
+                var ensuredSourceRevision: Int?
+                if let existing = imageStageStoryboardId ?? input.frame.aiStoryboardId {
+                    storyboardId = existing
+                } else if let recovered = try await RoleRoomAPIClient.shared
+                    .resolveStoryboardId(
+                        projectId: input.projectId,
+                        sceneId: input.scene.id,
+                        frameId: input.frame.id) {
+                    storyboardId = recovered
+                } else {
+                    let ensured = try await RoleRoomAPIClient.shared.ensureStoryboard(
+                        projectId: input.projectId,
+                        scene: input.scene,
+                        frame: input.frame,
+                        strokesJSON: input.strokes,
+                        preserveExistingImagePipeline: true)
+                    storyboardId = ensured.id
+                    ensuredSourceRevision = ensured.currentSourceRevision
+                }
+                guard isCurrentAIFrameSession(session),
+                      canvasState.shotFraming.canonicalFingerprint == framingFingerprint
+                else { return }
+                imageStageStoryboardId = storyboardId
+                if let ensuredSourceRevision {
+                    currentAIImageSourceRevision = ensuredSourceRevision
+                }
+                let compilation = try await RoleRoomAPIClient.shared.compileStoryboardPrompt(
+                    projectId: input.projectId, storyboardId: storyboardId,
+                    model: "gpt-image-1-mini", kind: "storyboard-image",
+                    context: input.context)
+                guard isCurrentAIFrameSession(session),
+                      canvasState.shotFraming.canonicalFingerprint == framingFingerprint
+                else { return }
+                promptCompilation = compilation
+                aiStatus = compilation.valid
+                    ? "Prompt validert ✓" : "Prompt har valideringsfunn"
+                showPromptInspector = true
+            } catch {
+                if isCurrentAIFrameSession(session) {
+                    aiStatus = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func generateImageStage(stage: String, checkConsent: Bool = true) async {
+        guard let input = activeAIContext(), let session = currentAIFrameSession() else { return }
+        guard stage == "color" || stage == "atmosphere" else { return }
+        guard requireProductionReadyFraming(input.frame) else { return }
+        // MainActor makes this an atomic single-flight gate. It is acquired
+        // before the first consent await so two rapid confirmations cannot
+        // submit duplicate paid generations for the same shot.
+        guard let operationID = beginAIFrameOperation(session) else { return }
+        defer { endAIFrameOperation(operationID, session: session) }
+        let framingFingerprint = canvasState.shotFraming.canonicalFingerprint
+        if checkConsent {
+            do {
+                if try await !RoleRoomAPIClient.shared.fetchProjectAIConsent(
+                    projectId: input.projectId) {
+                    guard isCurrentAIFrameSession(session),
+                          canvasState.shotFraming.canonicalFingerprint == framingFingerprint
+                    else { return }
+                    pendingAIConsentAction = stage
+                    pendingAIConsentSession = session
+                    showAIConsentPrompt = true
+                    return
+                }
+            } catch {
+                if isCurrentAIFrameSession(session) {
+                    aiStatus = error.localizedDescription
+                }
+                return
+            }
+        }
+        guard isCurrentAIFrameSession(session),
+              canvasState.shotFraming.canonicalFingerprint == framingFingerprint
+        else { return }
+        aiStatus = stage == "color"
+            ? "Synkroniserer og låser Pencil-kilden …"
+            : "Bruker godkjent Color og genererer atmosfære …"
+        do {
+            guard isCurrentAIFrameSession(session) else { return }
+            // Capture this before the exact save advances the local baseline.
+            // It decides whether an existing immutable Pencil chain can be
+            // reused or must be replaced with a newly frozen Drawing source.
+            let changesBeforeAcknowledgement = activePaintoverChanges()
+            var expectedSourceRevision: Int?
+            var expectedSourceUpdatedAt: String?
+            var sourceStrokesJSON = input.strokes
+            var paintoverComposite: StoryboardPaintoverComposite?
+            let acknowledgement = try await acknowledgeActiveSourceForAIGeneration(
+                session: session)
+            expectedSourceRevision = acknowledgement.sourceRevision
+            expectedSourceUpdatedAt = acknowledgement.sourceUpdatedAt
+            sourceStrokesJSON = acknowledgement.strokesJSON
+            if stage == "color" {
+                aiStatus = "Pencil-kilden er låst · klargjør produksjonsfarger …"
+            } else {
+                guard input.frame.aiOutputStale == false,
+                      !activePaintoverChanges().pencilChanged else {
+                    throw SyncError.malformed(
+                        "Pencil eller utsnitt er endret. Regenerer AI Color før Atmosphere — ingen AI-kostnad er utløst.")
+                }
+                guard let storyboardId = imageStageStoryboardId
+                    ?? input.frame.aiStoryboardId else {
+                    throw SyncError.malformed(
+                        "Godkjenn AI Color før Atmosphere. Ingen AI-kostnad er utløst.")
+                }
+                // Revision and stable source token must come from the same
+                // authoritative read immediately before the paid stage.
+                let versionList = try await RoleRoomAPIClient.shared
+                    .fetchStoryboardImageVersions(
+                        projectId: input.projectId, storyboardId: storyboardId)
+                guard isCurrentAIFrameSession(session) else { return }
+                imageStageVersions = versionList.versions
+                currentAIImageSourceRevision = versionList.currentSourceRevision
+                loadedFrameSourceUpdatedAt = versionList.sourceUpdatedAt
+                guard versionList.currentSourceRevision
+                        == acknowledgement.sourceRevision,
+                      versionList.sourceUpdatedAt
+                        == acknowledgement.sourceUpdatedAt,
+                      let approvedColor = versionList.versions.last(where: {
+                        $0.stage == "color" && $0.isApproved
+                            && $0.frameId == input.frame.id
+                            && $0.framingFingerprint == framingFingerprint
+                            && $0.sourceRevision
+                                == acknowledgement.sourceRevision
+                      }) else {
+                    throw SyncError.malformed(
+                        "Godkjent Color tilhører ikke den synkede Pencil-kilden. Regenerer Color først.")
+                }
+                paintoverComposite = try await freezePaintoverComposite(
+                    baseVersion: approvedColor,
+                    includedThroughStage: .color,
+                    acknowledgement: acknowledgement,
+                    frame: input.frame)
+            }
+            guard isCurrentAIFrameSession(session) else { return }
+            // Decode the immutable snapshot captured before the first await.
+            // Reading canvasState here would mix a newer document with an
+            // older prompt/context when the artist keeps drawing.
+            let capturedStrokes = sourceStrokesJSON.flatMap {
+                try? StrokeSerialization.decodeFromWebJSON($0)
+            } ?? []
+            let drawingStrokes = capturedStrokes.filter {
+                ($0.boardLayer ?? "Drawing") == "Drawing"
+            }
+            let importedPencil = stage == "color"
+                && StoryboardFrameImagePolicy.isImportedPencilSource(input.frame)
+            if importedPencil {
+                await FrameImageCache.prefetch(frames: [input.frame])
+                guard isCurrentAIFrameSession(session) else { return }
+            }
+            let pencilSource = stage == "color"
+                && (!drawingStrokes.isEmpty || importedPencil)
+                ? FrameRenderService.pencilSourceDataURL(
+                    for: input.frame,
+                    visibleStrokes: drawingStrokes,
+                    includeImportedFrameImage: importedPencil)
+                : nil
+            if importedPencil && pencilSource == nil {
+                throw SyncError.malformed(
+                    "Originalbildet er ikke ferdig lastet i full oppløsning. Prøv igjen — ingen AI-kostnad er utløst.")
+            }
+            if stage == "color" && pencilSource == nil
+                && input.frame.imageUrl == nil && imageStageVersions.isEmpty {
+                throw SyncError.malformed(
+                    "Tegn eller importer et Pencil-panel før AI Color. Ingen AI-kostnad er utløst.")
+            }
+            var existingStoryboardId = imageStageStoryboardId
+                ?? input.frame.aiStoryboardId
+            if existingStoryboardId == nil {
+                existingStoryboardId = try await RoleRoomAPIClient.shared
+                    .resolveStoryboardId(
+                        projectId: input.projectId,
+                        sceneId: input.scene.id,
+                        frameId: input.frame.id)
+                guard isCurrentAIFrameSession(session) else { return }
+                if let recovered = existingStoryboardId {
+                    imageStageStoryboardId = recovered
+                }
+            }
+            if stage == "color", pencilSource == nil,
+               StoryboardFrameImagePolicy.isApprovedAIOutput(input.frame),
+               existingStoryboardId == nil {
+                throw SyncError.malformed(
+                    "AI-panelets immutable Pencil-kilde kunne ikke gjenopprettes. Last shotet på nytt — ingen AI-kostnad er utløst.")
+            }
+            let storyboardId: String
+            if let existingStoryboardId,
+               stage == "atmosphere"
+                || (stage == "color"
+                    && !input.frame.aiOutputStale
+                    && !changesBeforeAcknowledgement.pencilChanged) {
+                // Regenerering bruker den immutable Pencil-versjonen som
+                // allerede ligger i versjonskjeden. Det aktive AI-previewet
+                // må aldri lastes opp igjen som en falsk Pencil-kilde.
+                storyboardId = existingStoryboardId
+            } else {
+                let ensured = try await RoleRoomAPIClient.shared.ensureStoryboard(
+                    projectId: input.projectId, scene: input.scene, frame: input.frame,
+                    strokesJSON: sourceStrokesJSON,
+                    imageDataOverride: pencilSource,
+                    workflowLevelOverride: stage == "color"
+                        ? "ai-pipeline-pencil-source" : nil,
+                    expectedSourceRevision: expectedSourceRevision,
+                    expectedSourceUpdatedAt: expectedSourceUpdatedAt,
+                    expectedFramingFingerprint: framingFingerprint)
+                storyboardId = ensured.id
+                expectedSourceRevision = ensured.currentSourceRevision
+                    ?? expectedSourceRevision
+                if stage == "color" {
+                    guard let lockedToken = expectedSourceUpdatedAt,
+                          ensured.sourceUpdatedAt == lockedToken else {
+                        throw SyncError.malformed(
+                            "Shotet ble endret av en annen enhet under klargjøring. Ingen AI-kostnad er utløst.")
+                    }
+                }
+                // Color keeps the compat token acknowledged before its
+                // immutable Pencil raster was built. Never launder an older
+                // raster by adopting a newer token returned by upsert.
+                if stage != "color" {
+                    expectedSourceUpdatedAt = ensured.sourceUpdatedAt
+                        ?? expectedSourceUpdatedAt
+                }
+            }
+            // Last no-cost checkpoint before a provider generation can spend.
+            guard isCurrentAIFrameSession(session),
+                  canvasState.shotFraming.canonicalFingerprint == framingFingerprint
+            else { return }
+            guard requireProductionReadyFraming(input.frame) else { return }
+            guard let expectedSourceRevision,
+                  let expectedSourceUpdatedAt,
+                  !expectedSourceUpdatedAt.isEmpty else {
+                throw SyncError.malformed(
+                    "Serveren mangler en bekreftet source revision. Ingen AI-kostnad er utløst.")
+            }
+            imageStageStoryboardId = storyboardId
+            let operationIdentity = try AIImageGenerationOperationIdentity(
+                projectId: input.projectId,
+                storyboardId: storyboardId,
+                frameId: input.frame.id,
+                stage: stage,
+                sourceRevision: expectedSourceRevision,
+                sourceUpdatedAt: expectedSourceUpdatedAt,
+                framingFingerprint: framingFingerprint,
+                requestFingerprint: AIImageGenerationOperationIdentity
+                    .contextFingerprint(input.context),
+                paintoverCompositeFingerprint:
+                    paintoverComposite?.identityFingerprint)
+            // Written before the first paid request. A timeout or app kill
+            // reconstructs this exact identity and reuses the same server key.
+            let idempotencyKey = try AIImageGenerationOperationStore
+                .operationKey(for: operationIdentity)
+            let result: StoryboardAIImageStageResult
+            do {
+                result = try await RoleRoomAPIClient.shared.generateStoryboardImageStage(
+                    projectId: input.projectId, storyboardId: storyboardId,
+                    stage: stage, context: input.context,
+                    expectedSourceRevision: expectedSourceRevision,
+                    expectedCompatFrameUpdatedAt: expectedSourceUpdatedAt,
+                    idempotencyKey: idempotencyKey,
+                    paintoverComposite: paintoverComposite)
+            } catch {
+                // A structured server rejection is a known terminal attempt:
+                // its operation row is failed (or was never claimed), so the
+                // next explicit click needs a new key. Transport, cancellation
+                // and malformed-success errors keep the key because provider
+                // outcome may be unknown.
+                if AIImageGenerationOperationRetentionPolicy
+                    .shouldClearAfterTerminalResponse(error) {
+                    _ = AIImageGenerationOperationStore.clear(
+                        operationIdentity,
+                        ifOperationKeyMatches: idempotencyKey)
+                }
+                throw error
+            }
+            guard result.version.storyboardId == storyboardId,
+                  result.version.frameId == input.frame.id,
+                  result.version.framingFingerprint == framingFingerprint,
+                  result.version.sourceRevision == expectedSourceRevision else {
+                throw SyncError.malformed("AI-kandidaten tilhører et annet shot eller utsnitt")
+            }
+            // The paid candidate is now durably persisted and belongs to the
+            // exact captured source. A later explicit regeneration may use a
+            // fresh operation key even if its source remains unchanged.
+            _ = AIImageGenerationOperationStore.clear(
+                operationIdentity, ifOperationKeyMatches: idempotencyKey)
+            guard isCurrentAIFrameSession(session) else { return }
+            imageVersionDocumentRevisions[result.version.id] = session.documentRevision
+            imageStageStoryboardId = storyboardId
+            if let existingIndex = imageStageVersions.firstIndex(where: {
+                $0.id == result.version.id
+            }) {
+                imageStageVersions[existingIndex] = result.version
+            } else {
+                imageStageVersions.append(result.version)
+            }
+            currentAIImageSourceRevision = expectedSourceRevision
+            loadedFrameSourceUpdatedAt = expectedSourceUpdatedAt
+            pendingImageStageVersion = result.version
+            if let prompt = result.prompt { promptCompilation = prompt }
+            // Candidate adoption and operation unlock never wait for the
+            // presentation-only Prompt Inspector request.
+            Task {
+                guard let compilation = try? await RoleRoomAPIClient.shared
+                    .compileStoryboardPrompt(
+                        projectId: input.projectId,
+                        storyboardId: storyboardId,
+                        model: "gpt-image-2",
+                        kind: stage == "color"
+                            ? "storyboard-color" : "storyboard-atmosphere",
+                        context: input.context),
+                      isCurrentAIFrameSession(session),
+                      pendingImageStageVersion?.id == result.version.id
+                else { return }
+                promptCompilation = compilation
+            }
+            // Refresh is presentation-only. A transient GET failure after the
+            // provider succeeded must not hide a paid candidate or suggest a
+            // duplicate regeneration.
+            if let versionList = try? await RoleRoomAPIClient.shared
+                .fetchStoryboardImageVersions(
+                    projectId: input.projectId, storyboardId: storyboardId),
+               isCurrentAIFrameSession(session) {
+                imageStageVersions = versionList.versions.contains(where: {
+                    $0.id == result.version.id
+                }) ? versionList.versions : versionList.versions + [result.version]
+                currentAIImageSourceRevision = versionList.currentSourceRevision
+                loadedFrameSourceUpdatedAt = versionList.sourceUpdatedAt
+            }
+            guard isCurrentAIFrameSession(session) else { return }
+            if canvasState.shotFraming.canonicalFingerprint != framingFingerprint {
+                aiStatus = "Utsnittet ble endret mens AI jobbet. Kandidaten er arkivert, men kan ikke godkjennes; generer på nytt."
+                return
+            }
+            aiStatus = result.estimatedCostUsd.map {
+                String(format: "%@-kandidat klar · $%.2f · godkjenning kreves",
+                       stage == "color" ? "Color" : "Atmosphere", $0)
+            } ?? "AI-kandidat klar · godkjenning kreves"
+        } catch {
+            if isCurrentAIFrameSession(session) {
+                aiStatus = error.localizedDescription
+            }
+        }
+    }
+
+    @MainActor
+    private func approveImageStageVersion(
+        _ candidate: StoryboardAIImageVersionSummary
+    ) async {
+        guard let input = activeAIContext(), let session = currentAIFrameSession() else { return }
+        let framingFingerprint = canvasState.shotFraming.canonicalFingerprint
+        guard imageVersionMatchesActiveFrame(candidate),
+              candidate.storyboardId == (imageStageStoryboardId ?? input.frame.aiStoryboardId),
+              candidate.frameId == input.frame.id,
+              candidate.framingFingerprint == framingFingerprint else {
+            aiStatus = "Kandidaten tilhører et eldre shot eller utsnitt. Generer på nytt."
+            return
+        }
+        let storyboardId = candidate.storyboardId
+        guard let operationID = beginAIFrameOperation(session) else { return }
+        aiStatus = "Godkjenner \(candidate.stage == "color" ? "AI Color" : "AI Atmosphere") …"
+        defer { endAIFrameOperation(operationID, session: session) }
+        do {
+            let approval = try await RoleRoomAPIClient.shared.approveStoryboardImageVersion(
+                projectId: input.projectId, storyboardId: storyboardId,
+                versionId: candidate.id,
+                expectedFramingFingerprint: framingFingerprint)
+            let approved = approval.version
+            guard approved.storyboardId == storyboardId,
+                  approved.frameId == input.frame.id,
+                  approved.framingFingerprint == framingFingerprint else {
+                throw SyncError.malformed("Godkjenningen returnerte feil shot-kontekst")
+            }
+            guard isSameAIFrameIdentity(session) else { return }
+            currentAIImageSourceRevision = approval.currentSourceRevision
+            // Approval adopts the preview in the compatibility frame and
+            // advances the general OCC token without changing the Pencil
+            // document. Keep the stable source token separate for Atmosphere.
+            if let adoptedFrameUpdatedAt = approval.adoptedFrameUpdatedAt,
+               !adoptedFrameUpdatedAt.isEmpty {
+                loadedFrameUpdatedAt = adoptedFrameUpdatedAt
+            }
+            if let sourceUpdatedAt = approval.sourceUpdatedAt,
+               !sourceUpdatedAt.isEmpty {
+                loadedFrameSourceUpdatedAt = sourceUpdatedAt
+            }
+            let sameFrameSourceChanged = !isCurrentAIFrameSession(session)
+            if sameFrameSourceChanged {
+                let changes = activePaintoverChanges()
+                // Color/Atmosphere edits do not mutate Pencil identity. Keep
+                // their WAL intact and let its exact PATCH acknowledgement
+                // advance only the server-owned downstream stage revisions.
+                if changes.pencilChanged {
+                    let reason = canvasState.shotFraming.canonicalFingerprint
+                        == framingFingerprint
+                        ? "source-changed-during-approval"
+                        : "framing-changed-during-approval"
+                    try await RoleRoomAPIClient.shared.saveFramePatch(
+                        manuscriptId: board.manuscript.id,
+                        sceneId: input.scene.id,
+                        frameId: input.frame.id,
+                        fields: [
+                            "aiStoryboardId": storyboardId,
+                            "aiOutputStale": true,
+                            "aiOutputStaleReason": reason,
+                        ])
+                }
+                if isSameAIFrameIdentity(session) {
+                    await board.reload()
+                    loadedFramePaintoverState = board.frame?.aiPaintoverState
+                    if let versionList = try? await RoleRoomAPIClient.shared
+                        .fetchStoryboardImageVersions(
+                            projectId: input.projectId, storyboardId: storyboardId) {
+                        imageStageVersions = versionList.versions
+                        currentAIImageSourceRevision = versionList.currentSourceRevision
+                        loadedFrameSourceUpdatedAt = versionList.sourceUpdatedAt
+                    }
+                    aiStatus = changes.pencilChanged
+                        ? "Pencil eller utsnitt ble endret under godkjenning. Shotet må genereres på nytt."
+                        : "Godkjent ✓ · lokale paintover-endringer synkes separat"
+                }
+                return
+            }
+            // Approval already adopted the raster and all compatibility fields
+            // in the same server transaction as the revision/framing CAS.
+            // A second generic frame patch here could race a collaborator's
+            // Pencil edit and partially overwrite the authoritative state.
+            guard isCurrentAIFrameSession(session) else { return }
+            await board.reload()
+            guard isCurrentAIFrameSession(session) else { return }
+            loadedFramePaintoverState = board.frame?.aiPaintoverState
+            // Version refresh is presentation-only. It must not sit between
+            // the committed approval and adoption of the approved image.
+            if let versionList = try? await RoleRoomAPIClient.shared
+                .fetchStoryboardImageVersions(
+                    projectId: input.projectId, storyboardId: storyboardId),
+               isCurrentAIFrameSession(session) {
+                imageStageVersions = versionList.versions
+                currentAIImageSourceRevision = versionList.currentSourceRevision
+                loadedFrameSourceUpdatedAt = versionList.sourceUpdatedAt
+            }
+            aiStatus = approved.stage == "color"
+                ? "AI Color godkjent · Atmosphere er låst opp ✓"
+                : "AI Atmosphere godkjent · klart for animasjon ✓"
+        } catch {
+            if isCurrentAIFrameSession(session) {
+                aiStatus = error.localizedDescription
+            }
+        }
+    }
+
+    @MainActor
+    private func animateActiveStoryboard(
+        checkConsent: Bool = true,
+        confirmedPreflight: StoryboardAnimationPreflightSummary? = nil,
+        confirmedPaintoverComposite: StoryboardPaintoverComposite? = nil
+    ) async {
+        guard let input = activeAIContext(), let session = currentAIFrameSession() else { return }
+        let framingFingerprint = canvasState.shotFraming.canonicalFingerprint
+        let modelId = selectedVideoModelId
+        if let confirmedPreflight {
+            guard animationPreflightSession == session else {
+                aiStatus = "Shotet ble endret etter forhåndskontrollen. Kjør den på nytt — ingen videokostnad er utløst."
+                animationPreflight = nil
+                animationPreflightSourceImage = nil
+                animationPreflightComposite = nil
+                animationPreflightSession = nil
+                return
+            }
+            animationPreflightSession = nil
+            animationPreflightComposite = nil
+            guard confirmedPreflight.model == modelId else {
+                aiStatus = "Valgt modell er endret. Kjør forhåndskontrollen på nytt — ingen videokostnad er utløst."
+                return
+            }
+            guard confirmedPaintoverComposite != nil else {
+                aiStatus = "Den fryste paintover-kilden mangler. Kjør forhåndskontrollen på nytt — ingen videokostnad er utløst."
+                return
+            }
+        }
+        guard !input.frame.aiOutputStale else {
+            aiStatus = "Utsnittet er endret. Regenerer og godkjenn AI Color/Atmosphere før animasjon — ingen videokostnad er utløst."
+            return
+        }
+        guard requireProductionReadyFraming(input.frame) else { return }
+        guard !isActiveVideoJobStatus(input.frame.aiVideoStatus) else {
+            aiStatus = StoryboardVideoJobLifecyclePolicy
+                .reconciliationMessage(for: input.frame.aiVideoStatus)
+                ?? "En animasjonsjobb kjører allerede for shotet. Ingen ny videokostnad er utløst."
+            return
+        }
+        // Acquire before consent/preflight awaits. The confirmation dialog
+        // otherwise leaves a short window where the paid action can be
+        // launched twice from two rapidly scheduled Tasks.
+        guard let operationID = beginAIFrameOperation(session) else { return }
+        defer { endAIFrameOperation(operationID, session: session) }
+        if checkConsent {
+            do {
+                if try await !RoleRoomAPIClient.shared.fetchProjectAIConsent(
+                    projectId: input.projectId) {
+                    guard isCurrentAIFrameSession(session),
+                          canvasState.shotFraming.canonicalFingerprint == framingFingerprint
+                    else { return }
+                    pendingAIConsentAction = "animate"
+                    pendingAIConsentSession = session
+                    showAIConsentPrompt = true
+                    return
+                }
+            } catch {
+                if isCurrentAIFrameSession(session) {
+                    aiStatus = error.localizedDescription
+                }
+                return
+            }
+        }
+        guard isCurrentAIFrameSession(session),
+              canvasState.shotFraming.canonicalFingerprint == framingFingerprint
+        else { return }
+        aiStatus = "Kontrollerer godkjent AI-kilde …"
+        do {
+            guard let storyboardId = imageStageStoryboardId ?? input.frame.aiStoryboardId else {
+                throw SyncError.malformed(
+                    "Godkjenn AI Color eller AI Atmosphere før animasjon. Ingen videokostnad er utløst.")
+            }
+            let acknowledgement: AISourceSnapshotAcknowledgement?
+            if confirmedPreflight == nil {
+                acknowledgement = try await acknowledgeActiveSourceForAIGeneration(
+                    session: session)
+            } else {
+                acknowledgement = nil
+            }
+            let versionList = try await RoleRoomAPIClient.shared.fetchStoryboardImageVersions(
+                projectId: input.projectId, storyboardId: storyboardId)
+            guard isCurrentAIFrameSession(session),
+                  canvasState.shotFraming.canonicalFingerprint == framingFingerprint
+            else { return }
+            imageStageStoryboardId = storyboardId
+            imageStageVersions = versionList.versions
+            currentAIImageSourceRevision = versionList.currentSourceRevision
+            loadedFrameSourceUpdatedAt = versionList.sourceUpdatedAt
+            guard let animationSourceRevision = versionList.currentSourceRevision,
+                  let animationSourceUpdatedAt = versionList.sourceUpdatedAt,
+                  !animationSourceUpdatedAt.isEmpty else {
+                throw SyncError.malformed(
+                    "Serveren kunne ikke låse animasjonskilden. Ingen videokostnad er utløst.")
+            }
+            let composite: StoryboardPaintoverComposite
+            if let acknowledgement {
+                guard acknowledgement.sourceRevision == animationSourceRevision,
+                      acknowledgement.sourceUpdatedAt == animationSourceUpdatedAt
+                else {
+                    throw SyncError.malformed(
+                        "Shotet ble endret mellom kildesynk og versjonskontroll. Ingen videokostnad er utløst.")
+                }
+                let approvedColor = versionList.versions.last(where: {
+                    $0.stage == "color" && $0.isApproved
+                        && $0.frameId == input.frame.id
+                        && $0.framingFingerprint == framingFingerprint
+                        && $0.sourceRevision == animationSourceRevision
+                })
+                let approvedAtmosphere = versionList.versions.last(where: {
+                    $0.stage == "atmosphere" && $0.isApproved
+                        && $0.frameId == input.frame.id
+                        && $0.framingFingerprint == framingFingerprint
+                        && $0.sourceRevision == animationSourceRevision
+                })
+                guard let selectedStage = StoryboardPaintoverStageSelection
+                    .animationStage(
+                        hasApprovedColor: approvedColor != nil,
+                        hasApprovedAtmosphere: approvedAtmosphere != nil,
+                        state: acknowledgement.paintoverState),
+                      let approvedSource = selectedStage == .atmosphere
+                        ? approvedAtmosphere : approvedColor else {
+                    throw SyncError.malformed(
+                        "Godkjent AI-kilde tilhører et eldre shot eller utsnitt. Regenerer før animasjon — ingen videokostnad er utløst.")
+                }
+                composite = try await freezePaintoverComposite(
+                    baseVersion: approvedSource,
+                    includedThroughStage: selectedStage,
+                    acknowledgement: acknowledgement,
+                    frame: input.frame)
+            } else if let confirmedPaintoverComposite {
+                guard confirmedPaintoverComposite.sourceRevision
+                        == animationSourceRevision,
+                      confirmedPaintoverComposite.sourceUpdatedAt
+                        == animationSourceUpdatedAt,
+                      confirmedPaintoverComposite.framingFingerprint
+                        == framingFingerprint,
+                      loadedFrameUpdatedAt
+                        == confirmedPaintoverComposite.frameUpdatedAt,
+                      versionList.versions.contains(where: {
+                        $0.id == confirmedPaintoverComposite.baseVersionId
+                            && $0.stage == confirmedPaintoverComposite
+                                .includedThroughStage.rawValue
+                            && $0.isApproved
+                      }) else {
+                    throw SyncError.malformed(
+                        "Den bekreftede paintover-kilden er ikke lenger gjeldende. Kjør forhåndskontrollen på nytt.")
+                }
+                composite = confirmedPaintoverComposite
+            } else {
+                throw SyncError.malformed(
+                    "Fryst paintover-kilde mangler. Ingen videokostnad er utløst.")
+            }
+            var animationContext = input.context
+            let animationProject: [String: any Sendable] = [
+                "styleProfileId": "story-pencil-color",
+                "creativeDirection": composite.includedThroughStage == .atmosphere
+                    ? "Approved production-aware color storyboard with controlled atmosphere"
+                    : "Approved production-aware color storyboard",
+            ]
+            animationContext["project"] = animationProject
+            aiStatus = "Kompilerer motion prompt fra godkjent \(composite.includedThroughStage.rawValue) …"
+            let compiled = try await RoleRoomAPIClient.shared.compileStoryboardPrompt(
+                projectId: input.projectId, storyboardId: storyboardId,
+                model: modelId, kind: "storyboard-video",
+                context: animationContext)
+            guard isCurrentAIFrameSession(session),
+                  canvasState.shotFraming.canonicalFingerprint == framingFingerprint
+            else { return }
+            promptCompilation = compiled
+            guard compiled.valid else {
+                aiStatus = "Motion prompt feilet validering"
+                showPromptInspector = true
+                return
+            }
+            if confirmedPreflight == nil {
+                aiStatus = "Henter autoritativ pris fra leverandøren …"
+                let checked = try await RoleRoomAPIClient.shared.preflightStoryboardAnimation(
+                    projectId: input.projectId, storyboardId: storyboardId,
+                    context: animationContext, model: modelId,
+                    duration: input.frame.effectiveShotDuration.seconds,
+                    paintoverComposite: composite)
+                guard isCurrentAIFrameSession(session),
+                      canvasState.shotFraming.canonicalFingerprint == framingFingerprint
+                else { return }
+                animationPreflightSourceImage = decodeDataURL(composite.imageData)
+                animationPreflightComposite = composite
+                animationPreflightSession = session
+                animationPreflight = checked
+                aiStatus = String(format: "Klar til start · $%.2f", checked.estimatedCostUsd)
+                return
+            }
+            // Last no-cost checkpoint before the provider request. A frame
+            // switch, a reframe or a model change invalidates the confirmation.
+            guard isCurrentAIFrameSession(session),
+                  canvasState.shotFraming.canonicalFingerprint == framingFingerprint,
+                  selectedVideoModelId == modelId
+            else { return }
+            guard requireProductionReadyFraming(input.frame) else { return }
+            guard let confirmedPreflight else {
+                aiStatus = "Forhåndskontroll mangler. Ingen videokostnad er utløst."
+                return
+            }
+            let job = try await RoleRoomAPIClient.shared.startStoryboardAnimation(
+                projectId: input.projectId, storyboardId: storyboardId,
+                context: animationContext, model: modelId,
+                duration: input.frame.effectiveShotDuration.seconds,
+                confirmedPreflight: confirmedPreflight,
+                paintoverComposite: composite)
+            // Backend atomically persists the submitting handle and exact
+            // source binding before provider IO. A generic native frame patch
+            // here would advance general OCC and could overwrite that state.
+            if let reconciliationMessage = StoryboardVideoJobLifecyclePolicy
+                .reconciliationMessage(for: job.status) {
+                await board.reload()
+                if isSameAIFrameIdentity(session) {
+                    aiStatus = reconciliationMessage
+                }
+                return
+            }
+            guard StoryboardVideoJobLifecyclePolicy.isPollable(job.status) else {
+                await board.reload()
+                if isSameAIFrameIdentity(session) {
+                    aiStatus = "Jobben er lagret med status «\(job.status)». Automatisk statuskontroll er satt på pause; jobben blir ikke sendt på nytt."
+                }
+                return
+            }
+            if isCurrentAIFrameSession(session) {
+                aiStatus = job.estimatedCostUsd.map {
+                    String(format: "Animerer · estimert $%.2f …", $0)
+                } ?? "Animerer …"
+            }
+            var consecutivePollErrors = 0
+            for _ in 0..<72 {
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+                let status: StoryboardAIJobSummary
+                do {
+                    status = try await RoleRoomAPIClient.shared.pollStoryboardAnimation(
+                        projectId: input.projectId, storyboardId: storyboardId,
+                        jobId: job.jobId)
+                    consecutivePollErrors = 0
+                } catch {
+                    consecutivePollErrors += 1
+                    if consecutivePollErrors < 5 { continue }
+                    throw error
+                }
+                if status.status == "completed" {
+                    // The server has already settled and conditionally
+                    // adopted the completion in one transaction. Reload that
+                    // state; a second client-side URL patch could attach an
+                    // old paid result after a concurrent source edit.
+                    await board.reload()
+                    if isSameAIFrameIdentity(session) {
+                        if StoryboardAIVideoCompletionPolicy.serverAdopted(status),
+                           canvasState.shotFraming.canonicalFingerprint
+                                == framingFingerprint,
+                           let currentFrame = board.frame,
+                           videoBelongsToCurrentActiveSource(currentFrame) {
+                            aiStatus = "Animert shot klart ✓"
+                        } else {
+                            aiStatus = "Animasjonen er ferdig, men kilden ble endret. Resultatet er arkivert og er ikke festet til aktivt shot."
+                        }
+                    }
+                    return
+                }
+                if let reconciliationMessage = StoryboardVideoJobLifecyclePolicy
+                    .reconciliationMessage(for: status.status) {
+                    await board.reload()
+                    if isSameAIFrameIdentity(session) {
+                        aiStatus = reconciliationMessage
+                    }
+                    return
+                }
+                if StoryboardVideoJobLifecyclePolicy
+                    .normalizedStatus(status.status) == "failed" {
+                    await board.reload()
+                    if isCurrentAIFrameSession(session) {
+                        aiStatus = status.error ?? "AI-video feilet"
+                    }
+                    return
+                }
+                guard StoryboardVideoJobLifecyclePolicy
+                    .isPollable(status.status) else {
+                    await board.reload()
+                    if isSameAIFrameIdentity(session) {
+                        aiStatus = "Jobben er lagret med status «\(status.status)». Automatisk statuskontroll er satt på pause; jobben blir ikke sendt på nytt."
+                    }
+                    return
+                }
+            }
+            if isCurrentAIFrameSession(session) {
+                aiStatus = "Jobben kjører videre; åpne shotet senere for status"
+            }
+        } catch {
+            if isCurrentAIFrameSession(session) {
+                aiStatus = error.localizedDescription
+            }
+        }
     }
 
     private func glyphButton(
@@ -2267,7 +7990,7 @@ struct NativeBoardView: View {
             Image(systemName: symbol)
                 .font(.system(size: 13))
                 .foregroundStyle(selected ? .white : BoardBrand.dim)
-                .frame(width: 34, height: 30)
+                .frame(width: 44, height: 44)
                 .background(selected ? BoardBrand.accent : Color.white.opacity(0.05),
                             in: RoundedRectangle(cornerRadius: 7))
         }
@@ -2288,9 +8011,37 @@ struct NativeBoardView: View {
             } label: {
                 Text(value ?? "—")
                     .font(.system(size: 13)).foregroundStyle(.white)
-                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .padding(.horizontal, 10)
+                    .frame(minHeight: 44)
                     .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
             }
+            .accessibilityLabel("\(label): \(value ?? "Ikke valgt")")
+        }
+    }
+
+    private func scenarioPicker<Option: Identifiable>(
+        _ label: String,
+        value: String?,
+        options: [Option],
+        optionLabel: @escaping (Option) -> String,
+        onSelect: @escaping (String) -> Void
+    ) -> some View where Option.ID == String {
+        HStack {
+            panelLabel(label)
+            Spacer()
+            Menu {
+                ForEach(options) { option in
+                    Button(optionLabel(option)) { onSelect(option.id) }
+                }
+            } label: {
+                Text(value ?? "—")
+                    .font(.system(size: 12)).foregroundStyle(.white)
+                    .lineLimit(1)
+                    .padding(.horizontal, 10)
+                    .frame(minHeight: 44)
+                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+            }
+            .accessibilityLabel("\(label): \(value ?? "Ikke valgt")")
         }
     }
 
@@ -2309,19 +8060,8 @@ struct NativeBoardView: View {
     }
 
     // Story Brush Engine-settet (spec §47/§83): DRAW / TONE / CLEAN.
-    private static let brushChips: [(BrushType, String)] = [
-        (.layout, "Layout"), (.pencil, "Blyant"), (.heavy, "Heavy"),
-        (.detail, "Detalj"), (.ink, "Tusj"),
-        (.hatch, "Skraver"), (.crosshatch, "Kryss"), (.shade, "Skygge"),
-        (.graintex, "Korn"), (.smudge, "Smudge"),
-        (.eraser, "Viskelær"), (.kneaded, "Kna"), (.lightlift, "Lysløft"),
-        (.forest, "Skog"), (.debris, "Bunn"), (.organictex, "Bark"), (.fur, "Pels"),
-        (.toneblock, "Tone"), (.speedlines, "Fart"),
-        (.airbrush, "Luft"), (.wethair, "Hår"), (.softfocus, "Fokus"),
-        (.skintex, "Hud"), (.rocktex, "Stein"), (.gloss, "Glans"),
-        (.wash, "Vask"), (.spikes, "Pigg"), (.watercolor, "Akvarell"),
-        (.fill, "Fyll"), (.halftone, "Raster"), (.stamp, "Stamp"), (.custom, "Egen"),
-    ]
+    private static let brushChips: [(BrushType, String)] =
+        BrushCatalog.all.map { ($0, BrushCatalog.displayName($0)) }
 
     private var brushColorBinding: Binding<Color> {
         Binding(
@@ -2360,6 +8100,12 @@ struct NativeBoardView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(BoardBrand.accent.opacity(0.25), in: Capsule())
+                if board.frame?.imageUrl != nil {
+                    Label("Bilde redigeres", systemImage: "photo.badge.checkmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.green)
+                        .accessibilityLabel("Panelbildet er redigerbart")
+                }
                 Spacer()
                 Button { canvasState.undo() } label: {
                     Image(systemName: "arrow.uturn.backward")
@@ -2367,12 +8113,14 @@ struct NativeBoardView: View {
                 }
                 .disabled(canvasState.undoStack.isEmpty)
                 .accessibilityLabel("Angre")
+                .accessibilityHint("To fingre på tegneflaten eller Kommando-Z")
                 Button { canvasState.redo() } label: {
                     Image(systemName: "arrow.uturn.forward")
                         .font(.system(size: 13)).foregroundStyle(canvasState.redoStack.isEmpty ? BoardBrand.label : .white)
                 }
                 .disabled(canvasState.redoStack.isEmpty)
                 .accessibilityLabel("Gjenta")
+                .accessibilityHint("Tre fingre på tegneflaten eller Skift-Kommando-Z")
                 Text("\(canvasState.strokes.count) strøk")
                     .font(.system(size: 10).monospacedDigit()).foregroundStyle(BoardBrand.dim)
             }
@@ -2387,7 +8135,12 @@ struct NativeBoardView: View {
                             ForEach(Array(chips[(row * 5)..<min(row * 5 + 5, chips.count)]), id: \.0) { type, name in
                                 let selected = canvasState.brushType == type
                                 let favorite = canvasState.favoriteBrushes.contains(type.rawValue)
-                                Button { canvasState.selectBrush(type) } label: {
+                                Button {
+                                    canvasState.selectBrush(type)
+                                    boardTool = [.eraser, .vinyl, .kneaded, .lightlift].contains(type)
+                                        ? .eraser
+                                        : .draw
+                                } label: {
                                     BrushTipGlyph(type: type)
                                         .frame(width: 44, height: 26)
                                         .background(selected ? Color.white.opacity(0.12) : Color.white.opacity(0.04),
@@ -2406,6 +8159,7 @@ struct NativeBoardView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel(name)
+                                .accessibilityValue(selected ? "valgt" : "ikke valgt")
                                 .contextMenu {
                                     Text(BrushDefaults.describe(type))
                                     Button {
@@ -2421,6 +8175,7 @@ struct NativeBoardView: View {
                 }
                 }
                 .frame(height: 92)
+                .accessibilityIdentifier("brush-palette-scroll")
                 VStack(spacing: 4) {
                     HStack(spacing: 5) {
                         ColorPicker("Farge", selection: brushColorBinding, supportsOpacity: false)
@@ -2467,7 +8222,7 @@ struct NativeBoardView: View {
                                 .accessibilityLabel("Symbol \(symbol)")
                             }
                         }
-                        if canvasState.brushType == .eraser {
+                        if canvasState.brushType == .eraser || canvasState.brushType == .vinyl {
                             // Objektmodus: berørte strøk slettes hele
                             Button { canvasState.eraserObjectMode.toggle() } label: {
                                 Image(systemName: "scissors")
@@ -2515,10 +8270,16 @@ struct NativeBoardView: View {
 
     /// Favoritter først (stabil rekkefølge ellers).
     private func sortedBrushChips() -> [(BrushType, String)] {
+        let selection = board.frame.flatMap(effectiveScenario)
+        let recommended = ProductionMarkCatalog.recommendedStamps(
+            packId: selection?.packId, subdomainId: selection?.subdomainId)
+        let front = BrushCatalog.core + recommended.filter { !BrushCatalog.core.contains($0) }
+        let curated = front + BrushCatalog.all.filter { !front.contains($0) }
+        let base = curated.map { ($0, BrushCatalog.displayName($0)) }
         let favorites = canvasState.favoriteBrushes
-        guard !favorites.isEmpty else { return Self.brushChips }
-        return Self.brushChips.filter { favorites.contains($0.0.rawValue) }
-            + Self.brushChips.filter { !favorites.contains($0.0.rawValue) }
+        guard !favorites.isEmpty else { return base }
+        return base.filter { favorites.contains($0.0.rawValue) }
+            + base.filter { !favorites.contains($0.0.rawValue) }
     }
 
     private func sliderRow(
@@ -2542,92 +8303,245 @@ struct NativeBoardView: View {
         )
     }
 
+    private func mutateLayers(_ label: String, _ mutation: () -> Void) {
+        canvasState.captureUndo(label)
+        mutation()
+        canvasState.revision += 1
+        canvasState.persistHistory()
+    }
+
+    private func addLayer(named rawName: String) {
+        let name = String(rawName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
+        newLayerName = ""
+        guard !name.isEmpty, !canvasState.layerOrder.contains(name) else { return }
+        automaticallySelectedAIRasterLayer = nil
+        mutateLayers("Opprett lag") {
+            canvasState.layerOrder.insert(name, at: 0)
+            canvasState.activeBoardLayer = name
+        }
+    }
+
+    private func duplicateActiveLayer() {
+        automaticallySelectedAIRasterLayer = nil
+        let source = canvasState.activeBoardLayer
+        var candidate = "\(source) copy"
+        var suffix = 2
+        while canvasState.layerOrder.contains(candidate) {
+            candidate = "\(source) copy \(suffix)"
+            suffix += 1
+        }
+        let target = candidate
+        mutateLayers("Dupliser lag") {
+            let sourceIndex = canvasState.layerOrder.firstIndex(of: source) ?? 0
+            canvasState.layerOrder.insert(target, at: sourceIndex)
+            canvasState.layerOpacity[target] = canvasState.layerOpacity[source] ?? 1
+            canvasState.layerBlendModes[target] = canvasState.layerBlendModes[source] ?? .normal
+            let copies = canvasState.strokes.filter { ($0.boardLayer ?? "Drawing") == source }
+                .map { stroke -> PencilStroke in
+                    var copy = stroke
+                    copy.id = "layer-copy-\(UUID().uuidString)"
+                    copy.boardLayer = target
+                    return copy
+                }
+            canvasState.strokes.append(contentsOf: copies)
+            canvasState.activeBoardLayer = target
+        }
+    }
+
+    private func deleteActiveCustomLayer() {
+        automaticallySelectedAIRasterLayer = nil
+        let target = canvasState.activeBoardLayer
+        guard !BoardLayers.defaultOrder.contains(target), canvasState.layerOrder.count > 1 else { return }
+        mutateLayers("Slett lag") {
+            canvasState.strokes.removeAll { ($0.boardLayer ?? "Drawing") == target }
+            canvasState.layerOrder.removeAll { $0 == target }
+            canvasState.hiddenLayers.remove(target)
+            canvasState.lockedLayers.remove(target)
+            canvasState.layerOpacity.removeValue(forKey: target)
+            canvasState.layerBlendModes.removeValue(forKey: target)
+            canvasState.activeBoardLayer = canvasState.layerOrder.first ?? "Drawing"
+        }
+    }
+
+    private func selectBoardLayer(_ layer: String) {
+        automaticallySelectedAIRasterLayer = nil
+        canvasState.activeBoardLayer = layer
+    }
+
+    private func moveLayer(_ layer: String, offset: Int) {
+        guard let index = canvasState.layerOrder.firstIndex(of: layer) else { return }
+        let destination = min(canvasState.layerOrder.count - 1, max(0, index + offset))
+        guard destination != index else { return }
+        mutateLayers("Flytt lag") {
+            canvasState.layerOrder.remove(at: index)
+            canvasState.layerOrder.insert(layer, at: destination)
+        }
+    }
+
     private static let layerIcons: [String: String] = [
         "Drawing": "paintbrush.pointed.fill",
+        "Color": "paintpalette.fill",
+        "Atmosphere": "cloud.fog.fill",
         "Camera / Arrows": "arrow.up.right.square",
         "Dialog": "text.bubble",
         "Notes": "note.text",
     ]
 
+    private func productionPaletteButton(
+        _ label: String, accessibilityName: String,
+        color: String, brush: BrushType
+    ) -> some View {
+        let active = canvasState.brushColor == color && canvasState.brushType == brush
+        return Button {
+            canvasState.selectBrush(brush)
+            canvasState.brushColor = color
+            boardTool = .draw
+        } label: {
+            HStack(spacing: 3) {
+                Circle().fill(Color(hex: color) ?? .white)
+                    .frame(width: 9, height: 9)
+                Text(label).font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(active ? .white : BoardBrand.dim)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(active ? BoardBrand.accent.opacity(0.3) : Color.white.opacity(0.05),
+                        in: RoundedRectangle(cornerRadius: 5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityName)
+        .accessibilityValue(active ? "valgt" : "ikke valgt")
+    }
+
     private var layersPanel: some View {
         VStack(alignment: .leading, spacing: 6) {
-            panelLabel("Layers")
-            ForEach(BoardLayers.all, id: \.self) { layer in
+            HStack {
+                panelLabel("Layers")
+                Spacer()
+                Menu {
+                    Button("Nytt lag", systemImage: "plus") { showNewLayerPrompt = true }
+                    Button("Dupliser aktivt lag", systemImage: "plus.square.on.square") {
+                        duplicateActiveLayer()
+                    }
+                    Button("Slett aktivt lag", systemImage: "trash", role: .destructive) {
+                        deleteActiveCustomLayer()
+                    }
+                    .disabled(BoardLayers.defaultOrder.contains(canvasState.activeBoardLayer))
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Laghandlinger")
+            }
+            ScrollView(.vertical, showsIndicators: true) {
+                LazyVStack(spacing: 2) {
+                    ForEach(canvasState.layerOrder, id: \.self) { layer in
                 let active = canvasState.activeBoardLayer == layer
                 let hidden = canvasState.hiddenLayers.contains(layer)
                 let locked = canvasState.lockedLayers.contains(layer)
-                HStack(spacing: 8) {
+                HStack(spacing: 4) {
                     Button {
-                        if hidden { canvasState.hiddenLayers.remove(layer) }
-                        else { canvasState.hiddenLayers.insert(layer) }
+                        mutateLayers(hidden ? "Vis lag" : "Skjul lag") {
+                            if hidden { canvasState.hiddenLayers.remove(layer) }
+                            else { canvasState.hiddenLayers.insert(layer) }
+                        }
                     } label: {
                         Image(systemName: hidden ? "eye.slash" : "eye")
                             .font(.system(size: 11))
                             .foregroundStyle(hidden ? BoardBrand.label : BoardBrand.dim)
+                            .frame(width: 36, height: 44)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Vis \(layer)")
                     Image(systemName: Self.layerIcons[layer] ?? "square")
                         .font(.system(size: 9))
                         .foregroundStyle(active ? .white : BoardBrand.label)
-                    Button { canvasState.activeBoardLayer = layer } label: {
+                    Button { selectBoardLayer(layer) } label: {
                         Text(layer)
                             .font(.system(size: 11, weight: active ? .bold : .regular))
                             .foregroundStyle(active ? .white : BoardBrand.dim)
                             .lineLimit(1)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityValue(active ? "valgt" : "ikke valgt")
                     Spacer(minLength: 0)
+                    VStack(spacing: 0) {
+                        Button { moveLayer(layer, offset: -1) } label: {
+                            Image(systemName: "chevron.up").frame(width: 24, height: 20)
+                        }
+                        .disabled(canvasState.layerOrder.first == layer)
+                        Button { moveLayer(layer, offset: 1) } label: {
+                            Image(systemName: "chevron.down").frame(width: 24, height: 20)
+                        }
+                        .disabled(canvasState.layerOrder.last == layer)
+                    }
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(BoardBrand.label)
                     Button {
-                        if locked { canvasState.lockedLayers.remove(layer) }
-                        else { canvasState.lockedLayers.insert(layer) }
+                        mutateLayers(locked ? "Lås opp lag" : "Lås lag") {
+                            if locked { canvasState.lockedLayers.remove(layer) }
+                            else { canvasState.lockedLayers.insert(layer) }
+                        }
                     } label: {
                         Image(systemName: locked ? "lock.fill" : "lock.open")
                             .font(.system(size: 10))
                             .foregroundStyle(locked ? BoardBrand.accent : BoardBrand.label)
+                            .frame(width: 36, height: 44)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Lås \(layer)")
                 }
-                .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(active ? BoardBrand.accent.opacity(0.22) : .clear,
-                            in: RoundedRectangle(cornerRadius: 6))
+                .padding(.horizontal, 4)
+                .frame(minHeight: 44)
+                        .background(active ? BoardBrand.accent.opacity(0.22) : .clear,
+                                    in: RoundedRectangle(cornerRadius: 6))
+                    }
+                }
             }
-            // Blend-modus (kun Normal støttes) + opacity for aktivt lag (mockup)
+            .frame(maxHeight: .infinity)
+            // Blend-modus og opacity lagres med dokumentet og brukes av Metal
+            // både på lerretet og i eksport.
             HStack(spacing: 8) {
                 Menu {
-                    Button("Normal") {}
+                    ForEach(BoardLayerBlendMode.allCases) { mode in
+                        Button {
+                            guard canvasState.layerBlendModes[canvasState.activeBoardLayer] != mode else {
+                                return
+                            }
+                            mutateLayers("Endre blend mode") {
+                                canvasState.layerBlendModes[canvasState.activeBoardLayer] = mode
+                            }
+                        } label: {
+                            if (canvasState.layerBlendModes[canvasState.activeBoardLayer] ?? .normal) == mode {
+                                Label(mode.label, systemImage: "checkmark")
+                            } else {
+                                Text(mode.label)
+                            }
+                        }
+                    }
                 } label: {
                     HStack(spacing: 4) {
-                        Text("Normal").font(.system(size: 10, weight: .semibold)).foregroundStyle(.white)
+                        Text((canvasState.layerBlendModes[canvasState.activeBoardLayer] ?? .normal).label)
+                            .font(.system(size: 10, weight: .semibold)).foregroundStyle(.white)
                         Image(systemName: "chevron.down")
                             .font(.system(size: 7, weight: .bold)).foregroundStyle(BoardBrand.dim)
                     }
                     .padding(.horizontal, 8).padding(.vertical, 4)
                     .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
                 }
-                Slider(value: activeLayerOpacityBinding, in: 0.1...1)
+                Slider(value: activeLayerOpacityBinding, in: 0.05...1) { editing in
+                    if editing { canvasState.captureUndo("Juster lagopasitet") }
+                    else {
+                        canvasState.revision += 1
+                        canvasState.persistHistory()
+                    }
+                }
                     .tint(BoardBrand.accent)
                 Text("\(Int((canvasState.layerOpacity[canvasState.activeBoardLayer] ?? 1) * 100))%")
                     .font(.system(size: 9).monospacedDigit()).foregroundStyle(BoardBrand.dim)
                     .frame(width: 28, alignment: .trailing)
             }
             .padding(.top, 2)
-            // Hurtigfarger (mockup-swatches): hvit + sort blekk
-            HStack(spacing: 6) {
-                ForEach(["#ffffff", "#26282e"], id: \.self) { hex in
-                    Button { canvasState.brushColor = hex } label: {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color(hex: hex) ?? .white)
-                            .frame(width: 22, height: 22)
-                            .overlay(RoundedRectangle(cornerRadius: 4)
-                                .stroke(canvasState.brushColor == hex ? BoardBrand.accent : BoardBrand.border,
-                                        lineWidth: canvasState.brushColor == hex ? 1.5 : 1))
-                    }
-                    .buttonStyle(.plain)
-                }
-                Spacer()
-            }
         }
         .padding(12)
         .frame(width: 200)
@@ -2643,8 +8557,13 @@ struct NativeBoardView: View {
                 ForEach(Array((board.scene?.frames ?? []).enumerated()), id: \.element.id) { index, frame in
                     Button { scrollTarget = index } label: {
                         ZStack {
-                            if let image = decodeDataURL(frame.thumbnailDataURL) {
-                                Image(uiImage: image).resizable().scaledToFill()
+                            Color.black.opacity(0.22)
+                            if let image = shotPreviewImages[frame.id]
+                                ?? safeDirectRasterFallback(for: frame) {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .interpolation(.high)
+                                    .scaledToFit()
                             } else {
                                 Color.white.opacity(0.07)
                             }
@@ -2684,6 +8603,11 @@ struct NativeBoardView: View {
 // Voiceover per shot: m4a i Documents/voiceover/<frameId>.m4a — lokalt
 // på enheten (server-synk er bevisst utelatt; animatic-lyd er arbeidslyd).
 enum VoiceoverStore {
+    enum PersistedVoiceoverError: Error, Sendable, Equatable {
+        case malformedDataURL
+        case emptyAudio
+    }
+
     static var directory: URL {
         let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("voiceover", isDirectory: true)
@@ -2702,26 +8626,277 @@ enum VoiceoverStore {
     static func delete(frameId: String) {
         try? FileManager.default.removeItem(at: url(frameId: frameId))
     }
+
+    /// Decodes only the audio/base64 form written by Storyboard Room. A
+    /// non-empty persisted value is authoritative production data, so a
+    /// malformed payload must never be treated as if the shot had no audio.
+    static func persistedAudioData(from dataURL: String) throws -> Data {
+        let trimmed = dataURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.lowercased().hasPrefix("data:audio/"),
+              let comma = trimmed.firstIndex(of: ","),
+              trimmed[..<comma].lowercased().hasSuffix(";base64"),
+              let data = Data(base64Encoded: String(
+                trimmed[trimmed.index(after: comma)...]))
+        else { throw PersistedVoiceoverError.malformedDataURL }
+        guard !data.isEmpty else { throw PersistedVoiceoverError.emptyAudio }
+        return data
+    }
+
+    /// Materializes synced audio before playback/export. Existing local
+    /// recordings win during their pending sync window, but every declared
+    /// server payload is still validated fail-closed.
+    static func materializePersistedAudio(for frames: [FrameSummary]) throws {
+        for frame in frames {
+            guard let raw = frame.voiceoverDataURL?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !raw.isEmpty else { continue }
+            let data = try persistedAudioData(from: raw)
+            let destination = url(frameId: frame.id)
+            guard !FileManager.default.fileExists(atPath: destination.path)
+            else { continue }
+            try data.write(to: destination, options: .atomic)
+        }
+    }
 }
 
-// Animatic → MP4: ett stillbilde per shot i shot-varighet (H.264 1280×720).
-// Frames re-rendres i hi-res gjennom motoren; thumb/plakat som fallback.
+/// Shared geometry for every fixed-size storyboard surface. Images are scaled
+/// uniformly and centered, so portrait, CinemaScope and legacy formats keep
+/// their authored pixel aspect instead of being stretched to the container.
+enum StoryboardAspectLayout {
+    static func aspectFitRect(sourceSize: CGSize, in container: CGRect) -> CGRect {
+        guard sourceSize.width.isFinite, sourceSize.height.isFinite,
+              container.width.isFinite, container.height.isFinite,
+              sourceSize.width > 0, sourceSize.height > 0,
+              container.width > 0, container.height > 0 else {
+            return container
+        }
+        let scale = min(
+            container.width / sourceSize.width,
+            container.height / sourceSize.height)
+        let fittedSize = CGSize(
+            width: sourceSize.width * scale,
+            height: sourceSize.height * scale)
+        return CGRect(
+            x: container.midX - fittedSize.width / 2,
+            y: container.midY - fittedSize.height / 2,
+            width: fittedSize.width,
+            height: fittedSize.height)
+    }
+}
+
+enum AnimaticTimelineError: Error, Sendable, Equatable {
+    case emptyTimeline
+    case nonPositiveDuration(frameIndex: Int)
+    case inexactDuration(frameIndex: Int, timelineTimescale: Int32)
+    case inconsistentStoryboardTiming(frameIndex: Int)
+    case arithmeticOverflow
+}
+
+enum AnimaticExportError: Error, Sendable, Equatable {
+    case cancelled
+    case missingVideoTrack
+    case cannotCreateCompositionTrack
+    case invalidVoiceover(frameId: String)
+    case exportSessionUnavailable
+    case exportFailed
+}
+
+struct AnimaticTimelinePlan: Sendable, Equatable {
+    struct Entry: Sendable, Equatable {
+        let startValue: Int64
+        let durationValue: Int64
+    }
+
+    let timescale: Int32
+    let entries: [Entry]
+    let totalValue: Int64
+}
+
+/// Builds one integer-tick edit timeline. Conversion is deliberately exact:
+/// a project such as 24000/1001 cannot be exported on a 600 Hz timeline and
+/// must choose a compatible timebase instead of accumulating rounded drift.
+enum AnimaticTimelinePlanner {
+    static func resolveTiming(
+        frames: [FrameSummary],
+        explicit: StoryboardTiming? = nil
+    ) throws -> StoryboardTiming {
+        let timing = explicit ?? frames.first?.storyboardTiming
+            ?? .legacyDefault
+        for (index, frame) in frames.enumerated()
+        where frame.storyboardTiming != timing {
+            throw AnimaticTimelineError.inconsistentStoryboardTiming(
+                frameIndex: index)
+        }
+        return timing
+    }
+
+    static func make(
+        durations: [MediaTime],
+        timing: StoryboardTiming
+    ) throws -> AnimaticTimelinePlan {
+        guard !durations.isEmpty else {
+            throw AnimaticTimelineError.emptyTimeline
+        }
+        var entries: [AnimaticTimelinePlan.Entry] = []
+        entries.reserveCapacity(durations.count)
+        var cursor: Int64 = 0
+        for (index, duration) in durations.enumerated() {
+            guard duration > .zero else {
+                throw AnimaticTimelineError.nonPositiveDuration(
+                    frameIndex: index)
+            }
+            let ticks: Int64
+            do {
+                ticks = try duration.scaledValueExactly(
+                    to: timing.timelineTimescale)
+            } catch {
+                throw AnimaticTimelineError.inexactDuration(
+                    frameIndex: index,
+                    timelineTimescale: timing.timelineTimescale)
+            }
+            guard ticks > 0 else {
+                throw AnimaticTimelineError.nonPositiveDuration(
+                    frameIndex: index)
+            }
+            entries.append(.init(
+                startValue: cursor, durationValue: ticks))
+            let next = cursor.addingReportingOverflow(ticks)
+            guard !next.overflow else {
+                throw AnimaticTimelineError.arithmeticOverflow
+            }
+            cursor = next.partialValue
+        }
+        return AnimaticTimelinePlan(
+            timescale: timing.timelineTimescale,
+            entries: entries,
+            totalValue: cursor)
+    }
+}
+
+/// Distinguishes an intentionally blank shot (which receives a slate) from a
+/// shot that claims artwork but lost it somewhere in cache/coordinator/render.
+/// Malformed non-empty stroke payloads count as declared content and therefore
+/// fail closed rather than being mistaken for a creative blank.
+enum AnimaticFrameContentPolicy {
+    static func declaresVisualContent(_ frame: FrameSummary) -> Bool {
+        if hasText(frame.imageUrl)
+            || hasText(frame.thumbnailDataURL)
+            || hasText(frame.aiVideoURL)
+            || frame.aiPaintoverState?.colorHasContent == true
+            || frame.aiPaintoverState?.atmosphereHasContent == true {
+            return true
+        }
+        guard let raw = frame.strokesJSON?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else { return false }
+        guard let data = raw.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data)
+        else { return true }
+        if let strokes = object as? [Any] { return !strokes.isEmpty }
+        return !(object is NSNull)
+    }
+
+    static func acceptsRenderAvailability(
+        frames: [FrameSummary],
+        rendered: [Bool]
+    ) -> Bool {
+        guard frames.count == rendered.count else { return false }
+        return zip(frames, rendered).allSatisfy { frame, isAvailable in
+            !declaresVisualContent(frame) || isAvailable
+        }
+    }
+
+    private static func hasText(_ value: String?) -> Bool {
+        guard let value else { return false }
+        return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
+// Animatic → MP4 på prosjektets eksakte frame-grid (H.264 1280×720).
+// Samme rasjonelle localTime som previewen bruker evaluerer kamerabanen; en
+// lagret thumbnail er aldri eksportkilde og bare bevisst tomme shots får slate.
 @MainActor
 enum AnimaticVideoExporter {
-    static func export(sceneHeading: String, frames: [FrameSummary]) async -> URL? {
-        guard !frames.isEmpty else { return nil }
+    static func export(
+        sceneHeading: String,
+        frames: [FrameSummary],
+        storyboardTiming explicitTiming: StoryboardTiming? = nil
+    ) async -> URL? {
+        guard !frames.isEmpty, !Task.isCancelled else { return nil }
+        let timing: StoryboardTiming
+        let plan: AnimaticTimelinePlan
+        let samplePlans: [StoryboardFrameSamplePlan]
+        do {
+            timing = try AnimaticTimelinePlanner.resolveTiming(
+                frames: frames, explicit: explicitTiming)
+            plan = try AnimaticTimelinePlanner.make(
+                durations: frames.map(\.effectiveShotDuration),
+                timing: timing)
+            samplePlans = try zip(frames, plan.entries).map { frame, entry in
+                try StoryboardFrameSamplePlan.make(
+                    shotDuration: frame.effectiveShotDuration,
+                    timing: timing,
+                    shotStart: MediaTime(
+                        value: entry.startValue,
+                        timescale: plan.timescale))
+            }
+        } catch {
+            return nil
+        }
+
+        do {
+            try VoiceoverStore.materializePersistedAudio(for: frames)
+        } catch {
+            return nil
+        }
         await FrameImageCache.prefetch(frames: frames)
+        guard !Task.isCancelled else { return nil }
+        let declaresContent = frames.map(
+            AnimaticFrameContentPolicy.declaresVisualContent)
+        for frame in frames {
+            guard FrameRenderCoordinator.canPlayCameraMotion(frame: frame)
+            else { return nil }
+        }
+        for (frame, hasContent) in zip(frames, declaresContent) where hasContent {
+            guard let snapshot = try? FrameRenderCoordinator.snapshot(
+                for: frame,
+                at: .zero),
+                  FrameRenderCoordinator.canRender(
+                    frame: frame, snapshot: snapshot) else { return nil }
+        }
+        let tZeroRendered: [UIImage?] = zip(frames, declaresContent).map {
+            frame, hasContent in
+            guard hasContent else { return nil }
+            return FrameRenderCoordinator.image(
+                for: frame, maxWidth: 1280, at: .zero)
+        }
+        guard AnimaticFrameContentPolicy.acceptsRenderAvailability(
+            frames: frames,
+            rendered: tZeroRendered.map { $0 != nil }) else { return nil }
+
         let videoSize = CGSize(width: 1280, height: 720)
+        let safeHeading = sceneHeading
+            .replacingOccurrences(of: "/", with: "-")
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(sceneHeading.replacingOccurrences(of: "/", with: "-")) animatic.mp4")
+            .appendingPathComponent(
+                "\(safeHeading)-\(UUID().uuidString)-animatic.mp4")
         try? FileManager.default.removeItem(at: url)
-        guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mp4) else { return nil }
+        guard let writer = try? AVAssetWriter(
+            outputURL: url, fileType: .mp4) else { return nil }
+        var completed = false
+        defer {
+            if !completed {
+                if writer.status == .writing { writer.cancelWriting() }
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: Int(videoSize.width),
             AVVideoHeightKey: Int(videoSize.height),
         ])
         input.expectsMediaDataInRealTime = false
+        input.mediaTimeScale = timing.timelineTimescale
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(
             assetWriterInput: input,
             sourcePixelBufferAttributes: [
@@ -2729,123 +8904,224 @@ enum AnimaticVideoExporter {
                 kCVPixelBufferWidthKey as String: Int(videoSize.width),
                 kCVPixelBufferHeightKey as String: Int(videoSize.height),
             ])
+        guard writer.canAdd(input) else { return nil }
         writer.add(input)
         guard writer.startWriting() else { return nil }
         writer.startSession(atSourceTime: .zero)
-        var time = CMTime.zero
-        let rendered: [UIImage?] = frames.map { frame in
-            FrameRenderService.image(for: frame, maxWidth: 1280)
-                ?? decodeDataURL(frame.thumbnailDataURL)
-        }
-        func append(_ buffer: CVPixelBuffer, at presentationTime: CMTime) async {
+
+        func append(
+            _ buffer: CVPixelBuffer,
+            at presentationTime: CMTime
+        ) async -> Bool {
             while !input.isReadyForMoreMediaData {
-                try? await Task.sleep(nanoseconds: 20_000_000)
+                guard !Task.isCancelled, writer.status == .writing else {
+                    return false
+                }
+                do {
+                    try await Task.sleep(nanoseconds: 20_000_000)
+                } catch {
+                    return false
+                }
             }
-            adaptor.append(buffer, withPresentationTime: presentationTime)
+            guard !Task.isCancelled, writer.status == .writing else {
+                return false
+            }
+            return adaptor.append(
+                buffer, withPresentationTime: presentationTime)
         }
+
         for (index, frame) in frames.enumerated() {
-            guard let buffer = pixelBuffer(image: rendered[index], shotNumber: frame.shotNumber,
-                                           size: videoSize) else { continue }
-            await append(buffer, at: time)
-            var holdSeconds = max(0.5, frame.durationSec)
-            // Dissolve/Fade mot NESTE shot: siste 0,5 s erstattes av 8
-            // interpolerte mellombilder (kryssfading av stillbilder).
+            guard !Task.isCancelled else { return nil }
+            let entry = plan.entries[index]
+            let framePlan = samplePlans[index]
+            let hasMotion = frame.renderableCameraMotionTrack.map {
+                $0.enabled && !$0.keyframes.isEmpty
+            } ?? false
             let transition = (frame.transition ?? "").lowercased()
-            if index + 1 < frames.count,
-               transition.contains("dissolve") || transition.contains("fade"),
-               holdSeconds > 0.7 {
-                holdSeconds -= 0.5
-                var fadeTime = CMTimeAdd(time, CMTime(seconds: holdSeconds,
-                                                      preferredTimescale: 600))
-                let fadeSteps = 8
-                for step in 1...fadeSteps {
-                    let alpha = CGFloat(step) / CGFloat(fadeSteps + 1)
+            let usesBlend = index + 1 < frames.count
+                && (transition.contains("dissolve")
+                    || transition.contains("fade"))
+                && entry.durationValue > framePlan.frameDurationValue
+            let fadeWindow = usesBlend
+                ? min(
+                    entry.durationValue - framePlan.frameDurationValue,
+                    max(framePlan.frameDurationValue,
+                        Int64(plan.timescale) / 2))
+                : 0
+            let fadeStart = entry.durationValue - fadeWindow
+
+            for sample in framePlan.samples {
+                guard !Task.isCancelled else { return nil }
+                let image: UIImage?
+                if declaresContent[index] {
+                    image = hasMotion
+                        ? FrameRenderCoordinator.image(
+                            for: frame,
+                            maxWidth: 1280,
+                            at: sample.localTime)
+                        : tZeroRendered[index]
+                    guard image != nil else { return nil }
+                } else {
+                    image = nil
+                }
+
+                var presentedImage = image
+                guard let localValue = try? sample.localTime
+                    .scaledValueExactly(to: plan.timescale),
+                      let presentationValue = try? sample.presentationTime
+                        .scaledValueExactly(to: plan.timescale)
+                else { return nil }
+                if usesBlend,
+                   fadeWindow > 0,
+                   localValue >= fadeStart,
+                   let currentImage = image,
+                   let nextImage = tZeroRendered[index + 1] {
+                    let alpha = CGFloat(localValue - fadeStart)
+                        / CGFloat(fadeWindow)
                     let format = UIGraphicsImageRendererFormat()
                     format.scale = 1
-                    let blended = UIGraphicsImageRenderer(size: videoSize, format: format)
+                    presentedImage = UIGraphicsImageRenderer(
+                        size: videoSize, format: format)
                         .image { context in
                             UIColor.white.setFill()
-                            context.fill(CGRect(origin: .zero, size: videoSize))
-                            rendered[index]?.draw(in: aspectFit(rendered[index], in: videoSize),
-                                                  blendMode: .normal, alpha: 1 - alpha)
-                            rendered[index + 1]?.draw(in: aspectFit(rendered[index + 1], in: videoSize),
-                                                      blendMode: .normal, alpha: alpha)
+                            context.fill(CGRect(
+                                origin: .zero, size: videoSize))
+                            currentImage.draw(
+                                in: aspectFit(currentImage, in: videoSize),
+                                blendMode: .normal, alpha: 1 - alpha)
+                            nextImage.draw(
+                                in: aspectFit(nextImage, in: videoSize),
+                                blendMode: .normal, alpha: alpha)
                         }
-                    if let fadeBuffer = pixelBuffer(image: blended, shotNumber: frame.shotNumber,
-                                                    size: videoSize) {
-                        await append(fadeBuffer, at: fadeTime)
-                    }
-                    fadeTime = CMTimeAdd(fadeTime, CMTime(seconds: 0.5 / Double(fadeSteps),
-                                                          preferredTimescale: 600))
                 }
-                holdSeconds += 0.5
+                guard let buffer = pixelBuffer(
+                    image: presentedImage,
+                    shotNumber: frame.shotNumber,
+                    size: videoSize),
+                      await append(buffer, at: CMTime(
+                        value: presentationValue,
+                        timescale: plan.timescale)) else { return nil }
             }
-            time = CMTimeAdd(time, CMTime(seconds: holdSeconds, preferredTimescale: 600))
         }
         input.markAsFinished()
-        writer.endSession(atSourceTime: time)
+        writer.endSession(atSourceTime: CMTime(
+            value: plan.totalValue, timescale: plan.timescale))
         await withCheckedContinuation { continuation in
             writer.finishWriting { continuation.resume() }
         }
-        guard writer.status == .completed else { return nil }
-        return await mixVoiceover(videoURL: url, frames: frames)
+        guard writer.status == .completed, !Task.isCancelled else {
+            return nil
+        }
+        do {
+            let finalURL = try await mixVoiceover(
+                videoURL: url, frames: frames, plan: plan)
+            completed = true
+            return finalURL
+        } catch {
+            return nil
+        }
     }
 
     /// Legg voiceover-klippene inn på shot-tidene (composition + re-eksport).
     /// Uten voiceover returneres videofilen urørt.
-    private static func mixVoiceover(videoURL: URL, frames: [FrameSummary]) async -> URL {
-        guard frames.contains(where: { VoiceoverStore.exists(frameId: $0.id) }) else {
-            return videoURL
+    private static func mixVoiceover(
+        videoURL: URL,
+        frames: [FrameSummary],
+        plan: AnimaticTimelinePlan
+    ) async throws -> URL {
+        let voicedFrames = frames.filter {
+            VoiceoverStore.exists(frameId: $0.id)
         }
+        guard !voicedFrames.isEmpty else { return videoURL }
+        guard !Task.isCancelled else { throw AnimaticExportError.cancelled }
+
         let composition = AVMutableComposition()
         let videoAsset = AVURLAsset(url: videoURL)
-        guard let videoTrack = try? await videoAsset.loadTracks(withMediaType: .video).first,
-              let videoDuration = try? await videoAsset.load(.duration),
-              let compositionVideo = composition.addMutableTrack(
-                withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
-              (try? compositionVideo.insertTimeRange(
-                CMTimeRange(start: .zero, duration: videoDuration),
-                of: videoTrack, at: .zero)) != nil,
+        let videoTracks = try await videoAsset.loadTracks(
+            withMediaType: .video)
+        guard let videoTrack = videoTracks.first else {
+            throw AnimaticExportError.missingVideoTrack
+        }
+        let videoDuration = try await videoAsset.load(.duration)
+        guard let compositionVideo = composition.addMutableTrack(
+            withMediaType: .video,
+            preferredTrackID: kCMPersistentTrackID_Invalid),
               let compositionAudio = composition.addMutableTrack(
-                withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
-            return videoURL
+                withMediaType: .audio,
+                preferredTrackID: kCMPersistentTrackID_Invalid) else {
+            throw AnimaticExportError.cannotCreateCompositionTrack
         }
-        var time = CMTime.zero
-        for frame in frames {
-            let shotDuration = CMTime(seconds: max(0.5, frame.durationSec), preferredTimescale: 600)
-            defer { time = CMTimeAdd(time, shotDuration) }
+        try compositionVideo.insertTimeRange(
+            CMTimeRange(start: .zero, duration: videoDuration),
+            of: videoTrack,
+            at: .zero)
+
+        for (frame, entry) in zip(frames, plan.entries) {
+            guard !Task.isCancelled else {
+                throw AnimaticExportError.cancelled
+            }
             guard VoiceoverStore.exists(frameId: frame.id) else { continue }
-            let audioAsset = AVURLAsset(url: VoiceoverStore.url(frameId: frame.id))
-            guard let audioTrack = try? await audioAsset.loadTracks(withMediaType: .audio).first,
-                  let audioDuration = try? await audioAsset.load(.duration) else { continue }
+            let audioAsset = AVURLAsset(
+                url: VoiceoverStore.url(frameId: frame.id))
+            let audioTracks = try await audioAsset.loadTracks(
+                withMediaType: .audio)
+            guard let audioTrack = audioTracks.first else {
+                throw AnimaticExportError.invalidVoiceover(frameId: frame.id)
+            }
+            let audioDuration = try await audioAsset.load(.duration)
+            guard audioDuration.isValid,
+                  !audioDuration.isIndefinite,
+                  CMTimeCompare(audioDuration, .zero) > 0 else {
+                throw AnimaticExportError.invalidVoiceover(frameId: frame.id)
+            }
+            let time = CMTime(
+                value: entry.startValue, timescale: plan.timescale)
+            let shotDuration = CMTime(
+                value: entry.durationValue, timescale: plan.timescale)
             let clip = CMTimeMinimum(audioDuration, shotDuration)
-            try? compositionAudio.insertTimeRange(
-                CMTimeRange(start: .zero, duration: clip), of: audioTrack, at: time)
+            try compositionAudio.insertTimeRange(
+                CMTimeRange(start: .zero, duration: clip),
+                of: audioTrack,
+                at: time)
         }
+
+        guard !Task.isCancelled else { throw AnimaticExportError.cancelled }
         let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("animatic-voiceover.mp4")
+            .appendingPathComponent(
+                "\(UUID().uuidString)-animatic-voiceover.mp4")
         try? FileManager.default.removeItem(at: outputURL)
-        guard let export = AVAssetExportSession(asset: composition,
-                                                presetName: AVAssetExportPresetHighestQuality) else {
-            return videoURL
+        var keepOutput = false
+        defer {
+            if !keepOutput { try? FileManager.default.removeItem(at: outputURL) }
+        }
+        guard let export = AVAssetExportSession(
+            asset: composition,
+            presetName: AVAssetExportPresetHighestQuality) else {
+            throw AnimaticExportError.exportSessionUnavailable
         }
         export.outputURL = outputURL
         export.outputFileType = .mp4
         await withCheckedContinuation { continuation in
             export.exportAsynchronously { continuation.resume() }
         }
-        return export.status == .completed ? outputURL : videoURL
+        guard !Task.isCancelled else { throw AnimaticExportError.cancelled }
+        guard export.status == .completed else {
+            throw AnimaticExportError.exportFailed
+        }
+        keepOutput = true
+        // The mixed file supersedes the silent intermediate; keeping both for
+        // every export would leak large temporary assets over a work session.
+        try? FileManager.default.removeItem(at: videoURL)
+        return outputURL
     }
 
     private static func aspectFit(_ image: UIImage?, in size: CGSize) -> CGRect {
         guard let image, image.size.width > 0, image.size.height > 0 else {
             return CGRect(origin: .zero, size: size)
         }
-        let scale = min(size.width / image.size.width, size.height / image.size.height)
-        let drawSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-        return CGRect(x: (size.width - drawSize.width) / 2,
-                      y: (size.height - drawSize.height) / 2,
-                      width: drawSize.width, height: drawSize.height)
+        return StoryboardAspectLayout.aspectFitRect(
+            sourceSize: image.size,
+            in: CGRect(origin: .zero, size: size))
     }
 
     /// Aspekt-fit på hvit flate; shots uten tegning får plakat med shot-nr.
@@ -2870,11 +9146,9 @@ enum AnimaticVideoExporter {
         UIColor.white.setFill()
         context.fill(CGRect(origin: .zero, size: size))
         if let image {
-            let scale = min(size.width / image.size.width, size.height / image.size.height)
-            let drawSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-            image.draw(in: CGRect(x: (size.width - drawSize.width) / 2,
-                                  y: (size.height - drawSize.height) / 2,
-                                  width: drawSize.width, height: drawSize.height))
+            image.draw(in: StoryboardAspectLayout.aspectFitRect(
+                sourceSize: image.size,
+                in: CGRect(origin: .zero, size: size)))
         } else {
             let text = "SHOT \(shotNumber)" as NSString
             let attributes: [NSAttributedString.Key: Any] = [
@@ -2894,12 +9168,30 @@ enum AnimaticVideoExporter {
 struct AnimaticView: View {
     let sceneHeading: String
     let frames: [FrameSummary]
+    let storyboardTiming: StoryboardTiming
     // Synk: kalles ved opptak-stopp (dataURL) og sletting (nil) —
     // boardet PATCHer framen så lyden følger prosjektet på tvers av enheter.
     var onVoiceoverChanged: ((String, String?) -> Void)?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(
+        sceneHeading: String,
+        frames: [FrameSummary],
+        storyboardTiming: StoryboardTiming? = nil,
+        onVoiceoverChanged: ((String, String?) -> Void)? = nil
+    ) {
+        self.sceneHeading = sceneHeading
+        self.frames = frames
+        self.storyboardTiming = storyboardTiming
+            ?? frames.first?.storyboardTiming
+            ?? .legacyDefault
+        self.onVoiceoverChanged = onVoiceoverChanged
+    }
+
     @State private var index = 0
     @State private var playing = true
+    @State private var playheadSampleIndex = 0
     @State private var exporting = false
     @State private var exportURL: URL?
     @State private var audioRecorder: AVAudioRecorder?
@@ -2907,6 +9199,7 @@ struct AnimaticView: View {
     @State private var voiceoverPlayer: AVAudioPlayer?
     @State private var voiceoverRevision = 0
 
+    @State private var exportFailed = false
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -2919,8 +9212,15 @@ struct AnimaticView: View {
                     Button {
                         exporting = true
                         Task {
-                            exportURL = await AnimaticVideoExporter.export(
-                                sceneHeading: sceneHeading, frames: frames)
+                            let result = await AnimaticVideoExporter.export(
+                                sceneHeading: sceneHeading,
+                                frames: frames,
+                                storyboardTiming: storyboardTiming)
+                            if let result {
+                                exportURL = result
+                            } else {
+                                exportFailed = true
+                            }
                             exporting = false
                         }
                     } label: {
@@ -2940,7 +9240,14 @@ struct AnimaticView: View {
                 .padding(.horizontal, 24)
                 ZStack {
                     if let frame = frames.indices.contains(index) ? frames[index] : nil {
-                        if let image = decodeDataURL(frame.thumbnailDataURL) {
+                        // Preview, frame stepping and MP4 export all consume
+                        // the exact same evaluated storyboard compositor.
+                        // Generated videos remain available in their own
+                        // review surface and never replace this timebase.
+                        if let image = FrameRenderCoordinator.image(
+                            for: frame,
+                            maxWidth: 1600,
+                            at: previewTime(for: frame)) {
                             Image(uiImage: image).resizable().scaledToFit()
                                 .id(frame.id)
                                 .transition(.opacity)
@@ -2969,7 +9276,7 @@ struct AnimaticView: View {
                         }
                     }
                     if let frame = frames.indices.contains(index) ? frames[index] : nil {
-                        Text("\(frame.shotNumber) · \(Int(frame.durationSec))s")
+                        Text("\(frame.shotNumber) · \(Int(frame.effectiveShotDuration.seconds))s")
                             .font(.system(size: 12).monospacedDigit())
                             .foregroundStyle(.white.opacity(0.6))
                         // Voiceover: opptak per shot (lokalt, mikses i MP4)
@@ -2998,43 +9305,194 @@ struct AnimaticView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 24).padding(.bottom, 20)
+                .padding(.horizontal, 24)
+                if let frame = frames.indices.contains(index)
+                    ? frames[index] : nil,
+                   let framePlan = try? StoryboardFrameSamplePlan.make(
+                    shotDuration: frame.effectiveShotDuration,
+                    timing: storyboardTiming) {
+                    HStack(spacing: 10) {
+                        Button {
+                            playing = false
+                            playheadSampleIndex = max(0, playheadSampleIndex - 1)
+                        } label: {
+                            Image(systemName: "backward.frame.fill")
+                                .frame(width: 44, height: 44)
+                        }
+                        .accessibilityLabel("Forrige bilde")
+                        Slider(
+                            value: Binding(
+                                get: { Double(min(
+                                    playheadSampleIndex,
+                                    max(0, framePlan.samples.count - 1))) },
+                                set: { value in
+                                    playing = false
+                                    playheadSampleIndex = min(
+                                        max(0, Int(value.rounded())),
+                                        max(0, framePlan.samples.count - 1))
+                                }),
+                            in: 0...Double(max(1, framePlan.samples.count - 1)),
+                            step: 1)
+                            .tint(BoardBrand.accent)
+                            .accessibilityLabel("Animatic-tidslinje")
+                            .accessibilityValue(timecode(for: frame))
+                        Button {
+                            playing = false
+                            playheadSampleIndex = min(
+                                max(0, framePlan.samples.count - 1),
+                                playheadSampleIndex + 1)
+                        } label: {
+                            Image(systemName: "forward.frame.fill")
+                                .frame(width: 44, height: 44)
+                        }
+                        .accessibilityLabel("Neste bilde")
+                        Text(timecode(for: frame))
+                            .font(.system(size: 11).monospacedDigit())
+                            .foregroundStyle(.white.opacity(0.65))
+                    }
+                    .padding(.horizontal, 24)
+                }
+                Spacer().frame(height: 4)
+                    .padding(.bottom, 12)
             }
         }
         .sheet(item: $exportURL) { url in
             ShareSheet(items: [url])
         }
+        .alert("Animatic-eksport stoppet", isPresented: $exportFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(
+                "Kontroller at prosjektets tidsbase representerer alle "
+                + "shot-varigheter eksakt, og at shots med deklarert "
+                + "bildeinnhold fortsatt kan rendres.")
+        }
         .onAppear {
             // Server-voiceover → lokale filer (andre enheters opptak).
-            for frame in frames where !VoiceoverStore.exists(frameId: frame.id) {
-                guard let dataURL = frame.voiceoverDataURL,
-                      let comma = dataURL.firstIndex(of: ","),
-                      let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])) else { continue }
-                try? data.write(to: VoiceoverStore.url(frameId: frame.id))
-            }
+            try? VoiceoverStore.materializePersistedAudio(for: frames)
             voiceoverRevision += 1
+            if reduceMotion { playing = false }
+        }
+        .onChange(of: playing) {
+            if playing { voiceoverPlayer?.play() }
+            else { voiceoverPlayer?.pause() }
         }
         .task(id: "\(index)-\(playing)") {
             guard playing, frames.indices.contains(index) else { return }
-            // Spill shot-voiceover under avspilling.
-            let frameId = frames[index].id
+            let frame = frames[index]
+            guard FrameRenderCoordinator.canPlayCameraMotion(frame: frame),
+                  let framePlan = try? StoryboardFrameSamplePlan.make(
+                    shotDuration: frame.effectiveShotDuration,
+                    timing: storyboardTiming),
+                  !framePlan.samples.isEmpty else {
+                playing = false
+                exportFailed = true
+                return
+            }
+            let startIndex = min(
+                max(0, playheadSampleIndex),
+                framePlan.samples.count - 1)
+            let startTime = framePlan.samples[startIndex].localTime
+            let frameId = frame.id
             if VoiceoverStore.exists(frameId: frameId), recordingFrameId == nil {
                 voiceoverPlayer = try? AVAudioPlayer(
                     contentsOf: VoiceoverStore.url(frameId: frameId))
+                voiceoverPlayer?.currentTime = startTime.seconds
                 voiceoverPlayer?.play()
             }
-            let seconds = max(0.5, frames[index].durationSec)
-            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+
+            let clock = ContinuousClock()
+            let origin = clock.now
+            for sampleIndex in startIndex..<framePlan.samples.count {
+                let sample = framePlan.samples[sampleIndex]
+                let offset = sample.localTime.seconds - startTime.seconds
+                guard offset.isFinite, offset >= 0 else {
+                    playing = false
+                    exportFailed = true
+                    return
+                }
+                do {
+                    try await clock.sleep(
+                        until: origin.advanced(
+                            by: .nanoseconds(Int64(
+                                (offset * 1_000_000_000).rounded()))),
+                        tolerance: .milliseconds(2))
+                } catch { return }
+                guard playing, frames.indices.contains(index),
+                      frames[index].id == frameId else { return }
+                playheadSampleIndex = sampleIndex
+            }
+            let remaining = frame.effectiveShotDuration.seconds
+                - startTime.seconds
+            do {
+                try await clock.sleep(
+                    until: origin.advanced(by: .nanoseconds(Int64(
+                        (remaining * 1_000_000_000).rounded()))),
+                    tolerance: .milliseconds(2))
+            } catch { return }
             if playing {
-                let transition = (frames[index].transition ?? "").lowercased()
+                let transition = (frame.transition ?? "").lowercased()
                 let next = (index + 1) % max(1, frames.count)
-                if transition.contains("dissolve") || transition.contains("fade") {
+                playheadSampleIndex = 0
+                if !reduceMotion
+                    && (transition.contains("dissolve")
+                        || transition.contains("fade")) {
                     withAnimation(.easeInOut(duration: 0.45)) { index = next }
                 } else {
                     index = next
                 }
+                if next == index && frames.count == 1 {
+                    playing = false
+                }
             }
         }
+    }
+
+    private func previewTime(for frame: FrameSummary) -> MediaTime {
+        guard let plan = try? StoryboardFrameSamplePlan.make(
+            shotDuration: frame.effectiveShotDuration,
+            timing: storyboardTiming),
+              !plan.samples.isEmpty else { return .zero }
+        let safeIndex = min(
+            max(0, playheadSampleIndex),
+            plan.samples.count - 1)
+        return plan.samples[safeIndex].localTime
+    }
+
+    private func timecode(for frame: FrameSummary) -> String {
+        let current = previewTime(for: frame)
+        let fps = storyboardTiming.projectFrameRate.seconds
+        let totalFrames = fps > 0
+            ? Int((current.seconds * fps).rounded(.towardZero)) : 0
+        let nominalFPS = max(1, Int(fps.rounded()))
+        let framesPart = totalFrames % nominalFPS
+        let totalSeconds = totalFrames / nominalFPS
+        let seconds = totalSeconds % 60
+        let minutes = (totalSeconds / 60) % 60
+        let hours = totalSeconds / 3_600
+        return String(
+            format: "%02d:%02d:%02d:%02d",
+            hours, minutes, seconds, framesPart)
+    }
+
+}
+private struct StoryboardVideoPanel: View {
+    let url: URL
+    let playing: Bool
+    @State private var player: AVPlayer
+
+    init(url: URL, playing: Bool) {
+        self.url = url
+        self.playing = playing
+        _player = State(initialValue: AVPlayer(url: url))
+    }
+
+    var body: some View {
+        VideoPlayer(player: player)
+            .aspectRatio(16 / 9, contentMode: .fit)
+            .onAppear { if playing { player.play() } }
+            .onChange(of: playing) { playing ? player.play() : player.pause() }
+            .onDisappear { player.pause() }
     }
 }
 
@@ -3120,7 +9578,7 @@ struct ShotListSheet: View {
                                 .padding(.horizontal, 6).padding(.vertical, 2)
                                 .background(Color.purple.opacity(0.18), in: Capsule())
                         }
-                        Text(String(format: "%.1fs", frame.durationSec))
+                        Text(String(format: "%.1fs", frame.effectiveShotDuration.seconds))
                             .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                     }
                 }
@@ -3395,18 +9853,25 @@ private struct StrokePreview: View {
 struct FullscreenDrawView: View {
     @ObservedObject var canvasState: CanvasState
     let frame: FrameSummary
-    // Komponert av boardet (underlag + onion) — samme bilde begge steder.
+    // Komponert av boardet — panelbildet er redigerbar base, mens et rent
+    // referanseunderlag forblir skjerm-only.
     // Perspektiv-overlay følger bevisst IKKE med hit: fullskjerm zoomer i
     // UIScrollView-rommet der et SwiftUI-overlay ikke ville fulgt canvasen.
-    var underlay: (CGImage?, Double) = (nil, 0)
+    let background: BoardCanvasBackground
     @State private var renderer = MetalStrokeRenderer()
     @State private var fingerDraws = false
     @Environment(\.dismiss) private var dismiss
 
-    private var aspect: CGFloat { CGFloat(frame.drawingWidth / max(1, frame.drawingHeight)) }
+    private var aspect: CGFloat {
+        CGFloat(canvasState.shotFraming.aspectRatio)
+    }
 
     private func applyUnderlay() {
-        renderer?.setUnderlay(cgImage: underlay.0, opacity: underlay.1)
+        renderer?.setEditableBase(cgImage: background.editableBase)
+        renderer?.setViewportPreview(cgImage: background.viewportPreview)
+        renderer?.setUnderlay(cgImage: background.referenceUnderlay,
+                              opacity: background.referenceOpacity)
+        canvasState.backgroundRevision += 1
     }
 
     var body: some View {
@@ -3455,7 +9920,7 @@ extension AnimaticView {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playAndRecord, options: [.defaultToSpeaker])
         try? session.setActive(true)
-        session.requestRecordPermission { granted in
+        AVAudioApplication.requestRecordPermission { granted in
             guard granted else { return }
             Task { @MainActor in
                 let settings: [String: Any] = [
@@ -3754,142 +10219,525 @@ enum PresentationFooter {
     }
 }
 
+/// Felles preview-policy for scene-listen. Bildekilden kommer før en lagret
+/// thumbnail fordi eldre iPad-versjoner kunne lagre en hvit thumbnail før
+/// det eksterne originalbildet var ferdig lastet.
+enum StoryboardPreviewPolicy {
+    static func sourceURLs(for frame: FrameSummary) -> [String] {
+        var seen = Set<String>()
+        return [frame.imageUrl, frame.thumbnailDataURL]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+
+    /// Legacy projects sometimes retained only a scene-list poster after the
+    /// authoritative drawing/raster was lost. It is safe to display that
+    /// artifact solely at an identity camera. It remains declared content so
+    /// production export fails and asks for migration/regeneration.
+    static func legacyThumbnailOnlyPosterURL(
+        for frame: FrameSummary
+    ) -> String? {
+        guard hasEmptyStrokeDocument(frame.strokesJSON),
+              FrameDocumentProjection.normalizedRasterURL(frame.imageUrl) == nil,
+              let thumbnail = frame.thumbnailDataURL?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !thumbnail.isEmpty,
+              !frame.aiOutputStale,
+              !StoryboardFrameImagePolicy.isApprovedAIOutput(frame),
+              frame.drawingWidth.isFinite,
+              frame.drawingHeight.isFinite,
+              frame.drawingWidth > 0,
+              frame.drawingHeight > 0 else { return nil }
+        let sourceAspect = frame.drawingWidth / frame.drawingHeight
+        let framing = (frame.shotFraming ?? ShotFramingState(
+            shotSize: frame.shotType,
+            angle: frame.angle,
+            lensMm: frame.lensMm,
+            aspectRatio: sourceAspect)).normalized()
+        let epsilon = 0.000_001
+        guard abs(framing.centerX - 0.5) <= epsilon,
+              abs(framing.centerY - 0.5) <= epsilon,
+              abs(framing.zoom - 1) <= epsilon,
+              abs(framing.rollDegrees) <= epsilon,
+              abs(framing.aspectRatio - sourceAspect) <= epsilon else {
+            return nil
+        }
+        return thumbnail
+    }
+
+    private static func hasEmptyStrokeDocument(_ raw: String?) -> Bool {
+        guard let raw else { return true }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        guard let data = trimmed.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(
+                with: data),
+              let strokes = object as? [Any]
+        else { return false }
+        return strokes.isEmpty
+    }
+
+    static func representativeFrame(in frames: [FrameSummary]) -> FrameSummary? {
+        frames.first(where: hasVisualContent) ?? frames.first
+    }
+
+    private static func hasVisualContent(_ frame: FrameSummary) -> Bool {
+        if !sourceURLs(for: frame).isEmpty { return true }
+        guard let strokes = frame.strokesJSON?.trimmingCharacters(in: .whitespacesAndNewlines)
+        else { return false }
+        return !strokes.isEmpty && strokes != "[]"
+    }
+}
+
+/// One provenance-aware resolver for every non-editing thumbnail surface.
+/// It first asks the t=0 coordinator, then permits only an exact cached raster
+/// under the direct-camera gate or an explicitly preview-only legacy poster.
+@MainActor
+enum StoryboardFramePreviewResolver {
+    static func loadTaskKey(for frame: FrameSummary) -> String {
+        let payload = [
+            frame.id,
+            frame.updatedAt ?? "",
+            frame.imageUrl ?? "",
+            frame.aiSourceRevision.map(String.init) ?? "legacy",
+            frame.thumbnailDataURL ?? "",
+        ].joined(separator: "\u{1F}")
+        return SHA256.hash(data: Data(payload.utf8)).map {
+            String(format: "%02x", $0)
+        }.joined()
+    }
+
+    static func image(
+        for frame: FrameSummary,
+        maxWidth: CGFloat,
+        includeReviewLayer: Bool = false
+    ) -> UIImage? {
+        if let rendered = FrameRenderCoordinator.image(
+            for: frame,
+            maxWidth: maxWidth,
+            includeReviewLayer: includeReviewLayer) {
+            return rendered
+        }
+        if frame.imageUrl != nil {
+            guard FrameRenderCoordinator.allowsDirectRasterFallback(
+                for: frame) else { return nil }
+            return FrameImageCache.image(for: frame)
+        }
+        guard let posterURL = StoryboardPreviewPolicy
+            .legacyThumbnailOnlyPosterURL(for: frame) else { return nil }
+        return FrameImageCache.image(for: posterURL)
+    }
+
+    static func load(
+        for frame: FrameSummary,
+        maxWidth: CGFloat,
+        includeReviewLayer: Bool = false
+    ) async -> UIImage? {
+        await FrameImageCache.prefetchPreviewSources(frames: [frame])
+        guard !Task.isCancelled else { return nil }
+        return image(
+            for: frame,
+            maxWidth: maxWidth,
+            includeReviewLayer: includeReviewLayer)
+    }
+}
+
+/// Declares which coordinate space a frame raster occupies. Imported images
+/// are source-space artwork. Approved AI stages are already generated for the
+/// canonical camera viewport and must be reconstructed through their archived
+/// placement before applying a later presentation camera.
+enum StoryboardFrameImagePolicy {
+    static func isImportedPencilSource(_ frame: FrameSummary) -> Bool {
+        guard frame.imageUrl != nil else { return false }
+        let source = frame.imageSource?.lowercased()
+        if let source,
+           ["imported", "uploaded", "captured", "drawn", "placeholder"]
+            .contains(source) { return true }
+        // Legacy imports predate imageSource. AI viewport provenance has
+        // explicit pipeline fingerprints, so an unlabelled raster without
+        // those fields remains a source-space import.
+        return source == nil
+            && (frame.aiStoryboardId == nil
+                || frame.aiSourceFramingFingerprint == nil)
+    }
+
+    static func isApprovedAIOutput(_ frame: FrameSummary) -> Bool {
+        let source = frame.imageSource?.lowercased() ?? ""
+        return source.hasPrefix("ai-")
+            || source == "ai" || source == "generated"
+            || source == "ai-generated"
+            || (frame.aiStoryboardId != nil
+                && frame.aiSourceFramingFingerprint != nil
+                && !isImportedPencilSource(frame))
+    }
+
+    static func isAIViewportEncoded(_ frame: FrameSummary) -> Bool {
+        frame.imageUrl != nil && isApprovedAIOutput(frame)
+    }
+
+    /// Camera transform that authored an approved viewport raster. New
+    /// approvals persist the complete pose; legacy records may reconstruct it
+    /// only while their fingerprint still equals the current t=0 camera.
+    static func rasterPlacementFraming(
+        for frame: FrameSummary
+    ) -> ShotFramingState? {
+        guard isAIViewportEncoded(frame),
+              let sourceFingerprint = frame.aiSourceFramingFingerprint else {
+            return nil
+        }
+        if let archived = frame.aiRasterPlacementFraming {
+            return archived.normalized()
+        }
+        let framing = (frame.shotFraming ?? ShotFramingState(
+            shotSize: frame.shotType, angle: frame.angle, lensMm: frame.lensMm,
+            aspectRatio: frame.drawingWidth / max(1, frame.drawingHeight)
+        )).normalized()
+        return sourceFingerprint == framing.canonicalFingerprint
+            ? framing : nil
+    }
+
+    static func usesViewportCoordinates(_ frame: FrameSummary) -> Bool {
+        rasterPlacementFraming(for: frame) != nil
+    }
+}
+
+enum StoryboardVideoPlaybackPolicy {
+    static func sourceIdentityMatches(_ frame: FrameSummary) -> Bool {
+        let framing = (frame.shotFraming ?? ShotFramingState(
+            shotSize: frame.shotType, angle: frame.angle, lensMm: frame.lensMm,
+            aspectRatio: frame.drawingWidth / max(1, frame.drawingHeight)
+        )).normalized()
+        return sourceIdentityMatches(
+            videoStatus: frame.aiVideoStatus,
+            isOutputStale: frame.aiOutputStale,
+            videoFraming: frame.aiVideoSourceFramingFingerprint,
+            currentFraming: framing.canonicalFingerprint,
+            videoRevision: frame.aiVideoSourceRevision,
+            sourceRevision: frame.aiSourceRevision,
+            videoSourceUpdatedAt: frame.aiVideoSourceUpdatedAt,
+            sourceUpdatedAt: frame.sourceUpdatedAt,
+            paintoverState: frame.aiPaintoverState,
+            videoBaseVersionId: frame.aiVideoSourceBaseVersionId,
+            videoStage: frame.aiVideoSourceStage,
+            videoFrameUpdatedAt: frame.aiVideoSourceFrameUpdatedAt,
+            videoColorRevision: frame.aiVideoSourceColorRevision,
+            videoAtmosphereRevision: frame.aiVideoSourceAtmosphereRevision,
+            videoColorFingerprint: frame.aiVideoSourceColorFingerprint,
+            videoAtmosphereFingerprint:
+                frame.aiVideoSourceAtmosphereFingerprint,
+            videoColorHasContent: frame.aiVideoSourceColorHasContent,
+            videoAtmosphereHasContent:
+                frame.aiVideoSourceAtmosphereHasContent,
+            videoCompositeFingerprint:
+                frame.aiVideoSourceCompositeFingerprint)
+    }
+
+    static func sourceIdentityMatches(
+        videoStatus: String?,
+        isOutputStale: Bool,
+        videoFraming: String?,
+        currentFraming: String,
+        videoRevision: Int?,
+        sourceRevision: Int?,
+        videoSourceUpdatedAt: String?,
+        sourceUpdatedAt: String?,
+        paintoverState: StoryboardPaintoverState? = nil,
+        videoBaseVersionId: String? = nil,
+        videoStage: String? = nil,
+        videoFrameUpdatedAt: String? = nil,
+        videoColorRevision: Int? = nil,
+        videoAtmosphereRevision: Int? = nil,
+        videoColorFingerprint: String? = nil,
+        videoAtmosphereFingerprint: String? = nil,
+        videoColorHasContent: Bool? = nil,
+        videoAtmosphereHasContent: Bool? = nil,
+        videoCompositeFingerprint: String? = nil
+    ) -> Bool {
+        guard !isOutputStale,
+              videoStatus?.lowercased() == "completed",
+              let videoFraming,
+              let videoRevision,
+              let sourceRevision,
+              let videoSourceUpdatedAt,
+              let sourceUpdatedAt,
+              let paintoverState,
+              !paintoverState.videoStale,
+              let videoBaseVersionId,
+              UUID(uuidString: videoBaseVersionId) != nil,
+              videoStage == "color" || videoStage == "atmosphere",
+              videoStage != "atmosphere" || !paintoverState.atmosphereStale,
+              let videoFrameUpdatedAt, !videoFrameUpdatedAt.isEmpty,
+              let videoColorRevision,
+              let videoAtmosphereRevision,
+              let videoColorFingerprint,
+              let videoAtmosphereFingerprint,
+              let videoColorHasContent,
+              let videoAtmosphereHasContent,
+              let videoCompositeFingerprint,
+              isSHA256(videoCompositeFingerprint) else { return false }
+        return videoFraming == currentFraming
+            && videoRevision == sourceRevision
+            && videoSourceUpdatedAt == sourceUpdatedAt
+            && videoColorRevision == paintoverState.colorRevision
+            && videoAtmosphereRevision == paintoverState.atmosphereRevision
+            && videoColorFingerprint.lowercased()
+                == paintoverState.colorFingerprint.lowercased()
+            && videoAtmosphereFingerprint.lowercased()
+                == paintoverState.atmosphereFingerprint.lowercased()
+            && videoColorHasContent == paintoverState.colorHasContent
+            && videoAtmosphereHasContent == paintoverState.atmosphereHasContent
+    }
+
+    private static func isSHA256(_ value: String) -> Bool {
+        value.count == 64 && value.unicodeScalars.allSatisfy {
+            (48...57).contains($0.value)
+                || (65...70).contains($0.value)
+                || (97...102).contains($0.value)
+        }
+    }
+
+    static func belongsToCurrentSource(_ frame: FrameSummary) -> Bool {
+        frame.aiVideoURL != nil && sourceIdentityMatches(frame)
+    }
+
+    @MainActor
+    static func currentURL(_ frame: FrameSummary) -> URL? {
+        // A provider video may have valid provenance yet belong to a frame
+        // whose current immutable document cannot render safely. Keep every
+        // presentation surface on the same fail-closed t=0 contract.
+        guard let snapshot = try? FrameRenderCoordinator.snapshot(
+            for: frame, at: .zero),
+              FrameRenderCoordinator.canRender(frame: frame, snapshot: snapshot),
+              belongsToCurrentSource(frame), let value = frame.aiVideoURL else {
+            return nil
+        }
+        return URL(string: value)
+    }
+}
+
+/// Canonicalizes a final-viewport AI raster back into the immutable document
+/// coordinate space. Applying the same camera once then reconstructs the
+/// approved pixels exactly, while the resulting base remains erasable and can
+/// receive Color/Atmosphere paintover strokes.
+@MainActor
+enum StoryboardViewportRasterMapper {
+    private static let cache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 12
+        cache.totalCostLimit = 220 * 1_024 * 1_024
+        return cache
+    }()
+
+    static func sourceSpaceImage(
+        viewportImage: UIImage,
+        frame: FrameSummary,
+        framing: ShotFramingState,
+        rasterSourceIdentity: String,
+        maximumDimension: CGFloat = 8_192
+    ) -> UIImage? {
+        guard viewportImage.size.width > 0, viewportImage.size.height > 0,
+              frame.drawingWidth > 0, frame.drawingHeight > 0,
+              !rasterSourceIdentity.isEmpty else { return nil }
+        let normalizedFraming = framing.normalized()
+        guard let geometry = ShotFramingGeometry(
+                sourceSize: ShotFramingSize(
+                    width: frame.drawingWidth, height: frame.drawingHeight),
+                viewportSize: ShotFramingSize(
+                    width: viewportImage.size.width,
+                    height: viewportImage.size.height),
+                state: normalizedFraming) else { return nil }
+        let requestedScale = geometry.sourceScale
+        let capScale = min(
+            maximumDimension / frame.drawingWidth,
+            maximumDimension / frame.drawingHeight)
+        let renderScale = max(0.01, min(requestedScale, capScale))
+        let outputSize = CGSize(
+            width: frame.drawingWidth * renderScale,
+            height: frame.drawingHeight * renderScale)
+        func exact(_ value: Double) -> String {
+            String(value.bitPattern, radix: 16)
+        }
+        let pixelWidth = viewportImage.cgImage?.width
+            ?? Int((viewportImage.size.width * viewportImage.scale).rounded())
+        let pixelHeight = viewportImage.cgImage?.height
+            ?? Int((viewportImage.size.height * viewportImage.scale).rounded())
+        let key = [
+            "viewport-source-v2",
+            rasterSourceIdentity,
+            normalizedFraming.canonicalFingerprint,
+            "source:\(exact(frame.drawingWidth))x\(exact(frame.drawingHeight))",
+            "viewport:\(exact(Double(viewportImage.size.width)))"
+                + "x\(exact(Double(viewportImage.size.height)))"
+                + "@\(pixelWidth)x\(pixelHeight)",
+            "output:\(exact(Double(outputSize.width)))"
+                + "x\(exact(Double(outputSize.height)))",
+            "cap:\(exact(Double(maximumDimension)))",
+        ].joined(separator: "|") as NSString
+        if let cached = cache.object(forKey: key) { return cached }
+
+        func destination(_ viewport: ShotFramingPoint) -> CGPoint {
+            let source = geometry.sourcePoint(fromViewportPoint: viewport)
+            return CGPoint(x: source.x * renderScale, y: source.y * renderScale)
+        }
+        let origin = destination(ShotFramingPoint(x: 0, y: 0))
+        let xAxis = destination(ShotFramingPoint(x: viewportImage.size.width, y: 0))
+        let yAxis = destination(ShotFramingPoint(x: 0, y: viewportImage.size.height))
+        let transform = CGAffineTransform(
+            a: (xAxis.x - origin.x) / viewportImage.size.width,
+            b: (xAxis.y - origin.y) / viewportImage.size.width,
+            c: (yAxis.x - origin.x) / viewportImage.size.height,
+            d: (yAxis.y - origin.y) / viewportImage.size.height,
+            tx: origin.x,
+            ty: origin.y)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let mapped = UIGraphicsImageRenderer(size: outputSize, format: format).image { context in
+            context.cgContext.setBlendMode(.copy)
+            context.cgContext.concatenate(transform)
+            viewportImage.draw(in: CGRect(origin: .zero, size: viewportImage.size))
+        }
+        let cost = max(1, Int(outputSize.width * outputSize.height * 4))
+        cache.setObject(mapped, forKey: key, cost: cost)
+        return mapped
+    }
+}
+
 // Minne-cache for remote panel-bilder (B2 download-stier) — de synkrone
 // render-veiene (canvas, celler, eksport) leser herfra; async prefetch
 // fyller den. dataURL-er dekodes direkte og trenger ikke cachen.
+struct FrameRasterIdentity: Hashable, Sendable {
+    let imageURL: String
+    let sourceRevision: Int?
+
+    init?(frame: FrameSummary) {
+        guard let imageURL = frame.imageUrl?.trimmingCharacters(
+            in: .whitespacesAndNewlines), !imageURL.isEmpty else { return nil }
+        self.imageURL = imageURL
+        sourceRevision = frame.aiSourceRevision
+    }
+}
+
 @MainActor
 enum FrameImageCache {
-    static var images: [String: UIImage] = [:]
+    private struct PrefetchRequest: Hashable, Sendable {
+        let imageURL: String
+        let cacheKey: String
+    }
+
+    private static let images: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 96
+        cache.totalCostLimit = 180 * 1_024 * 1_024
+        return cache
+    }()
+
+    private static func cost(_ image: UIImage) -> Int {
+        let pixels = Int(image.size.width * image.scale * image.size.height * image.scale)
+        return max(1, pixels * 4)
+    }
+
+    private static func cacheKey(for identity: FrameRasterIdentity) -> String {
+        let source = "\(identity.sourceRevision.map(String.init) ?? "legacy")\u{1F}\(identity.imageURL)"
+        let digest = SHA256.hash(data: Data(source.utf8))
+            .map { String(format: "%02x", $0) }.joined()
+        return "frame:\(digest)"
+    }
 
     static func image(for imageUrl: String?) -> UIImage? {
         guard let imageUrl else { return nil }
-        if imageUrl.hasPrefix("data:") { return decodeDataURL(imageUrl) }
-        return images[imageUrl]
+        if imageUrl.hasPrefix("data:") {
+            let digest = SHA256.hash(data: Data(imageUrl.utf8))
+                .map { String(format: "%02x", $0) }.joined()
+            let key = "inline:\(digest)" as NSString
+            if let cached = images.object(forKey: key) { return cached }
+            guard let decoded = decodeDataURL(imageUrl) else { return nil }
+            images.setObject(decoded, forKey: key, cost: cost(decoded))
+            return decoded
+        }
+        return images.object(forKey: imageUrl as NSString)
+    }
+
+    /// Exact frame raster. Remote bytes are keyed by URL + authoritative AI
+    /// source revision so a reused storage path cannot bind old pixels to a
+    /// newer approval identity.
+    static func image(for frame: FrameSummary) -> UIImage? {
+        guard let identity = FrameRasterIdentity(frame: frame) else { return nil }
+        if identity.imageURL.hasPrefix("data:") { return image(for: identity.imageURL) }
+        return images.object(forKey: cacheKey(for: identity) as NSString)
+    }
+
+    static func store(_ image: UIImage, for imageUrl: String) {
+        images.setObject(image, forKey: imageUrl as NSString, cost: cost(image))
     }
 
     /// Hent remote-bilder som mangler i cachen (før render/eksport).
     static func prefetch(frames: [FrameSummary]) async {
-        for frame in frames {
-            guard let imageUrl = frame.imageUrl, !imageUrl.hasPrefix("data:"),
-                  images[imageUrl] == nil else { continue }
-            if let data = await RoleRoomAPIClient.shared.fetchRemoteImageData(path: imageUrl),
-               let image = UIImage(data: data) {
-                images[imageUrl] = image
-            }
+        let requests = frames.compactMap { frame -> PrefetchRequest? in
+            guard let identity = FrameRasterIdentity(frame: frame) else { return nil }
+            return PrefetchRequest(
+                imageURL: identity.imageURL,
+                cacheKey: cacheKey(for: identity))
         }
+        await prefetch(requests: requests)
     }
-}
 
-// Delt offscreen-motor: re-rendrer frames fra strokesJSON i full oppløsning
-// (PDF/PNG-eksport og penselforhåndsvisning) — 280px-thumbs er kun for
-// scenelister. Én instans gjenbrukes; canvas resizes per kall.
-@MainActor
-enum FrameRenderService {
-    static let renderer = MetalStrokeRenderer()
+    static func prefetch(imageURLs: [String]) async {
+        await prefetch(requests: imageURLs.map {
+            PrefetchRequest(imageURL: $0, cacheKey: $0)
+        })
+    }
 
-    /// Rendrer frame-tegningen offscreen ved gitt bredde (aspekt fra
-    /// drawingWidth/Height). Tekst-annotasjoner («PUSH IN») tegnes inn med
-    /// CoreText (Metal tegner ikke tekst); underlaget kan tas med for
-    /// review-utgaver. nil → ingen strøk / motor utilgjengelig.
-    static func image(for frame: FrameSummary, maxWidth: CGFloat,
-                      includeUnderlay: Bool = false,
-                      includeReviewLayer: Bool = false) -> UIImage? {
-        guard let renderer,
-              let json = frame.strokesJSON,
-              let strokes = try? StrokeSerialization.decodeFromWebJSON(json) else { return nil }
-        // Redlines (lag «Review») er reviewer-markeringer — aldri i
-        // PDF/PNG/animatic-leveranser, kun i review-flaten.
-        let drawable = strokes.filter {
-            $0.textAnnotation == nil
-                && (includeReviewLayer || $0.boardLayer != "Review")
+    /// Scene-preview trenger også remote thumbnailUrl for eldre/drawn-only
+    /// frames. Kildene dedupliseres før sekvensiell nedlasting.
+    static func prefetchPreviewSources(frames: [FrameSummary]) async {
+        await prefetch(frames: frames)
+        await prefetch(imageURLs: frames.compactMap { frame in
+            frame.thumbnailDataURL
+        })
+    }
+
+    private static func prefetch(requests: [PrefetchRequest]) async {
+        var seen = Set<String>()
+        let missing = requests.filter { request in
+            !request.imageURL.hasPrefix("data:")
+                && seen.insert(request.cacheKey).inserted
+                && images.object(forKey: request.cacheKey as NSString) == nil
         }
-        let frameImage = FrameImageCache.image(for: frame.imageUrl)
-        guard frame.drawingWidth > 0,
-              !drawable.isEmpty || frameImage != nil else { return nil }
-        let scale = maxWidth / frame.drawingWidth
-        renderer.resizeCanvas(width: Int(maxWidth),
-                              height: Int(frame.drawingHeight * scale))
-        renderer.rebuild(strokes: drawable, scale: scale)
-        guard let dataURL = renderer.thumbnailDataURL(maxWidth: maxWidth),
-              let base = decodeDataURL(dataURL) else { return nil }
-
-        let annotations = strokes.filter { ($0.textAnnotation ?? "").isEmpty == false }
-        let underlayImage = includeUnderlay ? frame.underlayDataURL.flatMap(decodeDataURL) : nil
-        guard underlayImage != nil || !annotations.isEmpty || frameImage != nil else { return base }
-        let size = base.size
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        return UIGraphicsImageRenderer(size: size, format: format).image { context in
-            UIColor.white.setFill()
-            context.fill(CGRect(origin: .zero, size: size))
-            if let frameImage {
-                frameImage.draw(in: CGRect(origin: .zero, size: size))
-            }
-            if let underlay = underlayImage {
-                underlay.draw(in: CGRect(origin: .zero, size: size), blendMode: .normal,
-                              alpha: CGFloat(frame.underlayOpacity ?? 0.4))
-            }
-            // Multiply: hvitt papir slipper bildet/underlaget gjennom, grafitt biter.
-            base.draw(in: CGRect(origin: .zero, size: size), blendMode: .multiply, alpha: 1)
-            for stroke in annotations {
-                guard let point = stroke.points.first else { continue }
-                let style = stroke.annotationStyle
-                let text = style == nil
-                    ? (stroke.textAnnotation ?? "").uppercased()
-                    : (stroke.textAnnotation ?? "")
-                let fontSize = max(12, (style == nil ? 40 : 30) * scale)
-                let attributes: [NSAttributedString.Key: Any] = [
-                    .font: UIFont(name: BoardBrand.handwriting, size: fontSize)
-                        ?? UIFont.systemFont(ofSize: fontSize),
-                    .foregroundColor: style == "note"
-                        ? UIColor(red: 0.25, green: 0.22, blue: 0.15, alpha: 1)
-                        : UIColor(Color(hex: stroke.color) ?? BoardBrand.accent),
-                ]
-                let textSize = (text as NSString).size(withAttributes: attributes)
-                let origin = CGPoint(x: CGFloat(point.x) * scale - textSize.width / 2,
-                                     y: CGFloat(point.y) * scale - textSize.height / 2)
-                // Post-it / snakkeboble: bakgrunnsform bak teksten.
-                if style == "note" || style == "bubble" {
-                    let pad = 10 * scale
-                    let box = CGRect(x: origin.x - pad, y: origin.y - pad,
-                                     width: textSize.width + pad * 2,
-                                     height: textSize.height + pad * 2)
-                    let path = UIBezierPath(roundedRect: box,
-                                            cornerRadius: style == "bubble" ? 10 * scale : 2)
-                    if style == "note" {
-                        UIColor(red: 0.96, green: 0.91, blue: 0.75, alpha: 0.95).setFill()
-                        path.fill()
-                    } else {
-                        UIColor.white.setFill()
-                        path.fill()
-                        UIColor(Color(hex: stroke.color) ?? BoardBrand.accent).setStroke()
-                        path.lineWidth = 2 * scale
-                        path.stroke()
-                        // Hale nederst til venstre
-                        let tail = UIBezierPath()
-                        tail.move(to: CGPoint(x: box.minX + box.width * 0.22, y: box.maxY))
-                        tail.addLine(to: CGPoint(x: box.minX + box.width * 0.14,
-                                                 y: box.maxY + 14 * scale))
-                        tail.addLine(to: CGPoint(x: box.minX + box.width * 0.34, y: box.maxY))
-                        UIColor.white.setFill()
-                        tail.fill()
+        // Fire samtidige requests holder scenelisten rask uten å oversvømme
+        // radiosamband eller dekodingsminne på eldre iPad-er.
+        for start in stride(from: 0, to: missing.count, by: 4) {
+            guard !Task.isCancelled else { return }
+            let chunk = Array(missing[start..<min(start + 4, missing.count)])
+            let payloads: [(PrefetchRequest, Data)] = await withTaskGroup(
+                of: (PrefetchRequest, Data?).self,
+                returning: [(PrefetchRequest, Data)].self
+            ) { group in
+                for request in chunk {
+                    group.addTask {
+                        let data = await RoleRoomAPIClient.shared.fetchRemoteImageData(
+                            path: request.imageURL)
+                        return (request, data)
                     }
                 }
-                (text as NSString).draw(at: origin, withAttributes: attributes)
+                var result: [(PrefetchRequest, Data)] = []
+                for await (request, data) in group {
+                    if let data { result.append((request, data)) }
+                }
+                return result
+            }
+            for (request, data) in payloads {
+                guard let image = UIImage(data: data) else { continue }
+                images.setObject(
+                    image, forKey: request.cacheKey as NSString, cost: cost(image))
+                // Generic consumers (asset browser/legacy thumbnail paths)
+                // may reuse the latest bytes, but render/export use exact key.
+                images.setObject(
+                    image, forKey: request.imageURL as NSString, cost: cost(image))
             }
         }
     }
-
-    /// PNG-fil i temp for deling (shot-menyens «Eksporter PNG»).
-    static func exportPNG(frame: FrameSummary, projectTitle: String) -> URL? {
-        guard let image = image(for: frame, maxWidth: 1920) ?? decodeDataURL(frame.thumbnailDataURL),
-              let png = image.pngData() else { return nil }
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(projectTitle.replacingOccurrences(of: "/", with: "-")) \(frame.shotNumber).png")
-        try? png.write(to: url)
-        return url
-    }
 }
+
 
 @MainActor
 enum BoardPDFExporter {
@@ -3898,16 +10746,33 @@ enum BoardPDFExporter {
     static func export(projectTitle: String, scenes: [SceneSummary],
                        includeUnderlay: Bool = false,
                        progress: ((Int, Int) -> Void)? = nil) async -> URL? {
-        // Pre-render alle frame-bilder (den tunge delen).
+        // Pre-render all authoritative frame composites. Stored thumbnails
+        // are preview artifacts and must never silently enter a deliverable.
         let allFrames = scenes.flatMap(\.frames)
         await FrameImageCache.prefetch(frames: allFrames)
+        guard !Task.isCancelled else { return nil }
+        let declaresContent = allFrames.map(
+            AnimaticFrameContentPolicy.declaresVisualContent)
+        for (frame, hasContent) in zip(allFrames, declaresContent)
+        where hasContent {
+            guard let snapshot = try? FrameRenderCoordinator.snapshot(
+                for: frame,
+                at: .zero),
+                  FrameRenderCoordinator.canRender(
+                    frame: frame, snapshot: snapshot) else { return nil }
+        }
         var images: [String: UIImage] = [:]
-        for (index, frame) in allFrames.enumerated() {
+        for (index, pair) in zip(allFrames, declaresContent).enumerated() {
+            let (frame, hasContent) = pair
+            guard !Task.isCancelled else { return nil }
             progress?(index + 1, allFrames.count)
-            if let image = FrameRenderService.image(for: frame, maxWidth: 1120,
-                                                    includeUnderlay: includeUnderlay)
-                ?? decodeDataURL(frame.thumbnailDataURL) {
+            if let image = FrameRenderCoordinator.image(
+                for: frame,
+                maxWidth: 1120,
+                includeUnderlay: includeUnderlay) {
                 images[frame.id] = image
+            } else if hasContent {
+                return nil
             }
             await Task.yield()
         }
@@ -3948,7 +10813,7 @@ enum BoardPDFExporter {
                                       in page: CGRect) {
         context.beginPage()
         let shotCount = scenes.reduce(0) { $0 + $1.frames.count }
-        let totalSeconds = scenes.flatMap(\.frames).reduce(0.0) { $0 + $1.durationSec }
+        let totalSeconds = scenes.flatMap(\.frames).reduce(0.0) { $0 + $1.effectiveShotDuration.seconds }
         let formatter = DateFormatter()
         formatter.dateStyle = .long
         formatter.locale = Locale(identifier: "nb_NO")
@@ -3979,13 +10844,28 @@ enum BoardPDFExporter {
         let allFrames = scenes.flatMap(\.frames)
         guard !allFrames.isEmpty else { return nil }
         await FrameImageCache.prefetch(frames: allFrames)
+        guard !Task.isCancelled else { return nil }
+        let declaresContent = allFrames.map(
+            AnimaticFrameContentPolicy.declaresVisualContent)
+        for (frame, hasContent) in zip(allFrames, declaresContent)
+        where hasContent {
+            guard let snapshot = try? FrameRenderCoordinator.snapshot(
+                for: frame,
+                at: .zero),
+                  FrameRenderCoordinator.canRender(
+                    frame: frame, snapshot: snapshot) else { return nil }
+        }
         var images: [String: UIImage] = [:]
-        for (index, frame) in allFrames.enumerated() {
+        for (index, pair) in zip(allFrames, declaresContent).enumerated() {
+            let (frame, hasContent) = pair
+            guard !Task.isCancelled else { return nil }
             progress?(index + 1, allFrames.count)
-            if let image = FrameRenderService.image(for: frame, maxWidth: 640)
-                ?? decodeDataURL(frame.thumbnailDataURL)
-                ?? FrameImageCache.image(for: frame.imageUrl) {
+            if let image = FrameRenderCoordinator.image(
+                for: frame,
+                maxWidth: 640) {
                 images[frame.id] = image
+            } else if hasContent {
+                return nil
             }
             await Task.yield()
         }
@@ -4033,11 +10913,17 @@ enum BoardPDFExporter {
                         let x = margin + Double(column) * (cellWidth + 14)
                         let y = 58.0 + Double(row) * (cellHeight + 16)
                         let panelRect = CGRect(x: x, y: y, width: cellWidth, height: panelHeight)
+                        UIColor.white.setFill()
+                        UIBezierPath(rect: panelRect).fill()
+                        if let image = images[frame.id] {
+                            image.draw(in: StoryboardAspectLayout.aspectFitRect(
+                                sourceSize: image.size,
+                                in: panelRect))
+                        }
                         UIColor.black.setStroke()
                         let border = UIBezierPath(rect: panelRect)
                         border.lineWidth = 1
                         border.stroke()
-                        images[frame.id]?.draw(in: panelRect)
                         // Nummer-badge
                         let badge = CGRect(x: x + 4, y: y + 4, width: 22, height: 16)
                         UIColor.white.setFill()
@@ -4100,13 +10986,20 @@ enum BoardPDFExporter {
         var rows = ["Scene;Shot;Beskrivelse;Type;Lens;Bevegelse;Varighet (s);Beat;Status;Tags"]
         for scene in scenes {
             for frame in scene.frames {
-                let cells = [
+                let lensText: String = frame.lensMm.map { "\($0)mm" } ?? ""
+                let durationText: String = String(
+                    format: "%.1f",
+                    frame.effectiveShotDuration.seconds)
+                let rawCells: [String] = [
                     scene.heading, frame.shotNumber, frame.description,
-                    frame.shotType ?? "", frame.lensMm.map { "\($0)mm" } ?? "",
-                    frame.movement ?? "", String(format: "%.1f", frame.durationSec),
+                    frame.shotType ?? "", lensText,
+                    frame.movement ?? "", durationText,
                     frame.beatTag ?? "", frame.frameStatus ?? "",
                     frame.tags.joined(separator: ", "),
-                ].map { $0.replacingOccurrences(of: ";", with: ",") }
+                ]
+                let cells = rawCells.map { cell -> String in
+                    cell.replacingOccurrences(of: ";", with: ",")
+                }
                 rows.append(cells.joined(separator: ";"))
             }
         }
@@ -4143,18 +11036,22 @@ enum BoardPDFExporter {
                              .foregroundColor: UIColor.darkGray])
         // Frame
         UIColor.black.setStroke()
+        UIColor.white.setFill()
+        UIBezierPath(rect: thumbRect).fill()
+        if let image {
+            image.draw(in: StoryboardAspectLayout.aspectFitRect(
+                sourceSize: image.size,
+                in: thumbRect))
+        }
         let border = UIBezierPath(rect: thumbRect)
         border.lineWidth = 1
         border.stroke()
-        if let image {
-            image.draw(in: thumbRect)
-        }
         // Metadata-kolonne
         let meta = [
             "CAM/SHOT  \(frame.shotType ?? "—")",
             "LENS  \(frame.lensMm.map { "\($0)mm" } ?? "—")",
             "MOVE  \(frame.movement ?? "—")",
-            "DUR  \(String(format: "%.1f", frame.durationSec)) s",
+            "DUR  \(String(format: "%.1f", frame.effectiveShotDuration.seconds)) s",
             frame.beatTag.map { "BEAT  \($0)" } ?? "",
             frame.frameStatus.map { "STATUS  \($0)" } ?? "",
         ].filter { !$0.isEmpty }.joined(separator: "\n")
@@ -4188,6 +11085,364 @@ struct ShareSheet: UIViewControllerRepresentable {
 
 // Mini pensel-editor (spec §25-ånden): overstyr tekstur-parametre for valgt
 // pensel. Overrides gjelder nye strøk til penselen byttes.
+private func productionStampVariantLabel(_ type: BrushType) -> String {
+    switch type {
+    case .crowdStamp: return "Blocking / positur"
+    case .treeStamp: return "Tretype / tilstand"
+    case .windowStamp: return "Vindu / tilstand"
+    case .carStamp: return "Kjøretøy / kameravinkel"
+    case .chairStamp: return "Stoltype / vinkel"
+    case .faceExpressionStamp: return "Uttrykk"
+    case .handPoseStamp: return "Håndpositur"
+    case .cameraRigStamp: return "Rigg / bevegelse"
+    case .characterPoseStamp: return "Karakterpositur"
+    case .doorStamp: return "Dør / åpning"
+    case .tableStamp: return "Bordtype"
+    case .sofaStamp: return "Sofatype"
+    case .buildingStamp: return "Bygningstype"
+    case .streetLightStamp: return "Lysarmatur"
+    case .boomMicStamp: return "Lydrigg"
+    case .filmLightStamp: return "Filmlys / modifier"
+    case .bedStamp: return "Sengetype"
+    case .staircaseStamp: return "Trappetype"
+    case .counterStamp: return "Disk / benk"
+    case .workstationStamp: return "Arbeidsstasjon"
+    case .communicationStamp: return "Kommunikasjonsenhet"
+    case .luggageStamp: return "Bagasje / utstyr"
+    case .publicTransportStamp: return "Transporttype"
+    case .animalStamp: return "Dyretype / pose"
+    case .rockTerrainStamp: return "Terrengform"
+    case .waterStamp: return "Vannform"
+    case .fireSmokeStamp: return "Brann / røykeffekt"
+    case .weatherFXStamp: return "Væreffekt"
+    default: return "Variant"
+    }
+}
+
+private struct BoardAIButtonStyle: ButtonStyle {
+    var accent = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(Color.white)
+            .padding(.horizontal, 8).padding(.vertical, 6)
+            .background(
+                accent ? BoardBrand.accent.opacity(configuration.isPressed ? 0.65 : 1)
+                    : Color.white.opacity(configuration.isPressed ? 0.12 : 0.06),
+                in: RoundedRectangle(cornerRadius: 7))
+    }
+}
+
+private struct AIImageStagePreviewSheet: View {
+    let version: StoryboardAIImageVersionSummary
+    let sourceImage: UIImage?
+    let resultImage: UIImage?
+    let onCancel: () -> Void
+    let onRegenerate: () -> Void
+    let onApprove: () -> Void
+
+    private var title: String {
+        version.stage == "atmosphere" ? "AI Atmosphere" : "AI Color"
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                HStack(spacing: 12) {
+                    preview(sourceImage, label: version.stage == "color"
+                            ? "Original Pencil" : "Approved Color")
+                    Image(systemName: "arrow.right")
+                        .font(.title2.weight(.semibold)).foregroundStyle(.secondary)
+                    preview(resultImage, label: title + " · Candidate")
+                }
+                .padding(.horizontal)
+
+                Label("Originalen er låst. Kandidaten påvirker ikke storyboardet før du godkjenner.",
+                      systemImage: "lock.shield.fill")
+                    .font(.callout).foregroundStyle(.secondary)
+
+                HStack {
+                    Button("Behold uten godkjenning", action: onCancel)
+                    Spacer()
+                    Button("Regenerer", action: onRegenerate)
+                    Button("Godkjenn \(title)", action: onApprove)
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("approve-ai-image-stage")
+                }
+                .padding(.horizontal)
+            }
+            .padding(.vertical)
+            .navigationTitle("\(title) · før / etter")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    @ViewBuilder
+    private func preview(_ image: UIImage?, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label.uppercased())
+                .font(.caption2.weight(.bold)).foregroundStyle(.secondary)
+            Group {
+                if let image {
+                    Image(uiImage: image).resizable().scaledToFit()
+                } else {
+                    ContentUnavailableView("Ingen forhåndsvisning",
+                                           systemImage: "photo")
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: 420)
+            .background(Color(white: 0.96), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.black.opacity(0.12)))
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+private struct PromptInspectorSheet: View {
+    let compilation: StoryboardPromptCompilationSummary?
+    let status: String?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if let compilation {
+                    List {
+                        Section("Oppsummering") {
+                            LabeledContent("Modell", value: compilation.modelLabel)
+                            LabeledContent("Leverandør", value: compilation.modelProvider)
+                            LabeledContent("Stil", value: compilation.styleLabel)
+                            if let scenario = compilation.scenarioLabel {
+                                LabeledContent("Scenario", value: scenario)
+                            }
+                            LabeledContent("Arvede constraints",
+                                           value: "\(compilation.inheritedConstraintCount)")
+                            Label(compilation.valid ? "Gyldig prompt" : "Må kontrolleres",
+                                  systemImage: compilation.valid
+                                    ? "checkmark.shield.fill" : "exclamationmark.triangle.fill")
+                                .foregroundStyle(compilation.valid ? Color.green : Color.orange)
+                        }
+                        if !compilation.lockedProperties.isEmpty {
+                            Section("Låst") {
+                                Text(compilation.lockedProperties.joined(separator: " · "))
+                            }
+                        }
+                        if !compilation.issues.isEmpty {
+                            Section("Validering") {
+                                ForEach(compilation.issues) { issue in
+                                    Label(issue.message, systemImage: issue.severity == "error"
+                                          ? "xmark.octagon.fill" : "exclamationmark.triangle")
+                                        .foregroundStyle(issue.severity == "error"
+                                                         ? Color.red : Color.orange)
+                                }
+                            }
+                        }
+                        ForEach(compilation.modules.filter { !$0.constraints.isEmpty }) { module in
+                            Section(module.label) {
+                                ForEach(module.constraints) { constraint in
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        HStack {
+                                            Text(constraint.source.uppercased())
+                                                .font(.caption2.monospaced())
+                                                .foregroundStyle(.secondary)
+                                            if constraint.locked {
+                                                Image(systemName: "lock.fill").font(.caption2)
+                                            }
+                                        }
+                                        Text(constraint.text).font(.subheadline)
+                                    }
+                                }
+                            }
+                        }
+                        Section("Compiled prompt") {
+                            Text(compilation.compiledPrompt)
+                                .font(.system(.caption, design: .monospaced))
+                                .textSelection(.enabled)
+                        }
+                    }
+                } else {
+                    ContentUnavailableView(
+                        status ?? "Ingen prompt kompilert",
+                        systemImage: "doc.text.magnifyingglass",
+                        description: Text("Velg Prompt Inspector på et shot."))
+                }
+            }
+            .navigationTitle("Prompt Inspector")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Ferdig") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+private struct AnimationPreflightSheet: View {
+    let preflight: StoryboardAnimationPreflightSummary
+    let sourceImage: UIImage?
+    let sourceStage: String
+    let onCancel: () -> Void
+    let onConfirm: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    if let sourceImage {
+                        Image(uiImage: sourceImage)
+                            .resizable()
+                            .scaledToFit()
+                            .background(Color(uiColor: .systemGray6))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.secondary.opacity(0.25)))
+                            .accessibilityLabel("Eksakt animasjonskilde")
+                    }
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label("Dette eksakte bildet sendes til leverandøren",
+                              systemImage: "checkmark.shield.fill")
+                            .font(.headline).foregroundStyle(Color.green)
+                        LabeledContent("Kilde", value: sourceStage)
+                        LabeledContent("Modell", value: preflight.model)
+                        LabeledContent("Leverandør", value: preflight.provider.capitalized)
+                        LabeledContent("Kostnad",
+                                       value: String(format: "$%.2f", preflight.estimatedCostUsd))
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel(String(
+                                format: "Autoritativ kostnad $%.2f",
+                                preflight.estimatedCostUsd))
+                        if let credits = preflight.providerCredits {
+                            LabeledContent("Provider credits",
+                                           value: String(format: "%.2f", credits))
+                        }
+                        LabeledContent("Kilde-ID", value: preflight.sourceFingerprint)
+                            .font(.caption.monospaced())
+                        LabeledContent("Prompt-ID", value: preflight.compilationFingerprint)
+                            .font(.caption.monospaced())
+                    }
+                    Text("Grafittlinjer, valgt farge og atmosfære er bakt inn i kilden. Prompt enhancement er slått av, slik at Higgsfield ikke omskriver uttrykket mot foto eller concept art.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    HStack {
+                        Button("Avbryt", role: .cancel, action: onCancel)
+                            .buttonStyle(.bordered)
+                        Spacer()
+                        Button(action: onConfirm) {
+                            Label(String(format: "Start · $%.2f", preflight.estimatedCostUsd),
+                                  systemImage: "play.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityLabel("Bekreft og start animasjon")
+                    }
+                }
+                .padding(24)
+            }
+            .navigationTitle("Kontroller før animasjon")
+        }
+    }
+}
+
+private func productionStampControlHelp(_ type: BrushType) -> String {
+    switch type {
+    case .crowdStamp:
+        return "Bytt mellom bakgrunnsgruppe, bevegelse, tett crowd og reaksjonsblocking."
+    case .faceExpressionStamp:
+        return "Bytt uttrykk uten å endre karakteridentitet, kameravinkel eller stil."
+    case .handPoseStamp:
+        return "Bytt håndpositur; roter og speilvend etter karakterens blocking."
+    case .cameraRigStamp:
+        return "Bytt mellom stativ, håndholdt, dolly og kran."
+    case .characterPoseStamp:
+        return "Bytt mellom stående, løp, lav huk og pekerpositur; roter og speilvend etter blocking."
+    case .doorStamp:
+        return "Bytt dørtype og åpningstilstand; perspektivjustering beholder lesbar karm og svingretning."
+    case .boomMicStamp:
+        return "Bytt lydrigg; produksjonsoverlayet holdes separat fra ren storyboard-artwork."
+    case .filmLightStamp:
+        return "Bytt fixture og modifier; produksjonsoverlayet kan plasseres som et lysdiagram."
+    case .staircaseStamp:
+        return "Bytt trappetype og bruk rotasjon/perspektiv for å låse stigning og blocking."
+    case .workstationStamp:
+        return "Bytt fra enkel kontorplass til klippesuite eller kontrollrom uten å miste skjermsemantikken."
+    case .communicationStamp:
+        return "Bytt kommunikasjonsprop; valgt enhet og tilstand sendes videre som AI-kontekst."
+    case .publicTransportStamp:
+        return "Bytt transportmiddel og behold reiseretning, skala, dører og passasjerkontekst."
+    case .animalStamp:
+        return "Bytt art og pose; blikk, bevegelse og skala lagres for videre generering."
+    case .fireSmokeStamp, .weatherFXStamp:
+        return "Bytt effekt og bruk dybde, skala og opacity for kontinuitet gjennom sekvensen."
+    default:
+        return "Variantene beholder samme Story Pencil-stil og kan transformeres fritt."
+    }
+}
+
+private func productionStampAtlasName(_ type: BrushType) -> String? {
+    switch type {
+    case .crowdStamp: return "StampCrowdAtlas"
+    case .treeStamp: return "StampTreeAtlas"
+    case .windowStamp: return "StampWindowAtlas"
+    case .carStamp: return "StampCarAtlas"
+    case .chairStamp: return "StampChairAtlas"
+    case .faceExpressionStamp: return "StampFaceAtlas"
+    case .handPoseStamp: return "StampHandAtlas"
+    case .cameraRigStamp: return "StampCameraRigAtlas"
+    case .characterPoseStamp: return "StampCharacterPoseAtlas"
+    case .doorStamp: return "StampDoorAtlas"
+    case .tableStamp: return "StampTableAtlas"
+    case .sofaStamp: return "StampSofaAtlas"
+    case .buildingStamp: return "StampBuildingAtlas"
+    case .streetLightStamp: return "StampStreetLightAtlas"
+    case .boomMicStamp: return "StampBoomMicAtlas"
+    case .filmLightStamp: return "StampFilmLightAtlas"
+    case .bedStamp: return "StampBedAtlas"
+    case .staircaseStamp: return "StampStaircaseAtlas"
+    case .counterStamp: return "StampCounterAtlas"
+    case .workstationStamp: return "StampWorkstationAtlas"
+    case .communicationStamp: return "StampCommunicationAtlas"
+    case .luggageStamp: return "StampLuggageAtlas"
+    case .publicTransportStamp: return "StampPublicTransportAtlas"
+    case .animalStamp: return "StampAnimalAtlas"
+    case .rockTerrainStamp: return "StampRockTerrainAtlas"
+    case .waterStamp: return "StampWaterAtlas"
+    case .fireSmokeStamp: return "StampFireSmokeAtlas"
+    case .weatherFXStamp: return "StampWeatherFXAtlas"
+    default: return nil
+    }
+}
+
+/// Viser bare valgt atlasrute. Dette er en inspector-preview; lerretet
+/// fortsetter å bruke Metal-masken og kan derfor farges, viskes og transformeres.
+private struct ProductionStampAtlasPreview: View {
+    let brushType: BrushType
+    let variant: Int
+
+    var body: some View {
+        if let assetName = productionStampAtlasName(brushType) {
+            GeometryReader { geometry in
+                let normalized = ProductionStampCatalog.normalizedVariant(
+                    variant, for: brushType)
+                let column = normalized % 2
+                let row = normalized / 2
+                Image(assetName)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: geometry.size.width * 2,
+                           height: geometry.size.height * 2)
+                    .offset(x: -CGFloat(column) * geometry.size.width,
+                            y: -CGFloat(row) * geometry.size.height)
+            }
+            .clipped()
+            .background(Color(red: 0.98, green: 0.975, blue: 0.955))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.primary.opacity(0.12)))
+            .accessibilityLabel("Forhåndsvisning av "
+                + productionStampVariantLabel(brushType))
+        }
+    }
+}
+
 struct BrushEditorSheet: View {
     @ObservedObject var canvasState: CanvasState
     @Environment(\.dismiss) private var dismiss
@@ -4212,12 +11467,49 @@ struct BrushEditorSheet: View {
         }
     }
 
+    private var isWetBrush: Bool {
+        [.watercolor, .wash, .sumi, .gouache, .oil, .brush].contains(canvasState.brushType)
+    }
+
+    private var isFilamentBrush: Bool {
+        (BrushSpec.preset(canvasState.brushType, size: 1, color: "#000000", opacity: 1)
+            .tipModel ?? .stamp) == .filament
+    }
+
+    private var isProductionStamp: Bool {
+        canvasState.brushType.isProductionStamp
+    }
+
+    private var stampVariantBinding: Binding<Int> {
+        Binding(
+            get: { canvasState.stampVariantOverride ?? -1 },
+            set: { canvasState.stampVariantOverride = $0 < 0 ? nil : $0 }
+        )
+    }
+
+    private var stampDepthBinding: Binding<String> {
+        Binding(
+            get: { canvasState.stampDepthOverride?.rawValue ?? "auto" },
+            set: { canvasState.stampDepthOverride = ProductionStampDepth(rawValue: $0) }
+        )
+    }
+
+    private func paperBinding(default defaultValue: PaperProfile) -> Binding<PaperProfile> {
+        Binding(
+            get: { canvasState.paperProfileOverride ?? defaultValue },
+            set: { canvasState.paperProfileOverride = $0 }
+        )
+    }
+
     var body: some View {
         let preset = BrushSpec.preset(canvasState.brushType, size: canvasState.brushSize,
                                       color: canvasState.brushColor, opacity: canvasState.brushOpacity)
         NavigationStack {
             Form {
                 Section("Tekstur") {
+                    LabeledContent("Hardhet") {
+                        Slider(value: overrideBinding(\.hardnessOverride, default: preset.hardness), in: 0...1)
+                    }
                     LabeledContent("Grain") {
                         Slider(value: overrideBinding(\.grainOverride, default: preset.grain), in: 0...1)
                     }
@@ -4226,6 +11518,31 @@ struct BrushEditorSheet: View {
                     }
                     LabeledContent("Fargevariasjon") {
                         Slider(value: overrideBinding(\.hueJitterOverride, default: 0), in: 0...1)
+                    }
+                }
+                Section("Materiale") {
+                    Picker("Papir", selection: paperBinding(default: preset.paperProfile ?? .storyboard)) {
+                        ForEach(PaperProfile.allCases, id: \.self) { paper in
+                            Text(paper.rawValue.capitalized).tag(paper)
+                        }
+                    }
+                    if isWetBrush {
+                        LabeledContent("Våthet") {
+                            Slider(value: overrideBinding(\.wetnessOverride, default: preset.wetness), in: 0...1)
+                        }
+                        LabeledContent("Blødning") {
+                            Slider(value: overrideBinding(\.bleedOverride, default: preset.bleed ?? 0), in: 0...1)
+                        }
+                    }
+                    LabeledContent("Pigmentuttømming") {
+                        Slider(value: overrideBinding(\.pigmentDepletionOverride,
+                                                      default: preset.pigmentDepletion ?? 0), in: 0...1)
+                    }
+                    if isFilamentBrush {
+                        LabeledContent("Bust (Int(canvasState.bristleCountOverride ?? Double(preset.bristleCount ?? 5)))") {
+                            Slider(value: overrideBinding(\.bristleCountOverride,
+                                                          default: Double(preset.bristleCount ?? 5)), in: 1...16, step: 1)
+                        }
                     }
                 }
                 // §48: parametre per kategori — vis kun det penselen støtter
@@ -4252,21 +11569,317 @@ struct BrushEditorSheet: View {
                         }
                     }
                 }
+                if isProductionStamp {
+                    Section("Posering og form") {
+                        Picker(productionStampVariantLabel(canvasState.brushType),
+                               selection: stampVariantBinding) {
+                            Text("Auto · unik per plassering").tag(-1)
+                            ForEach(ProductionStampCatalog.variants(
+                                for: canvasState.brushType)) { variant in
+                                Text(variant.name).tag(variant.id)
+                            }
+                        }
+                        Text(productionStampControlHelp(canvasState.brushType))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Picker("Dybde", selection: stampDepthBinding) {
+                            Text("Auto fra plassering").tag("auto")
+                            ForEach(ProductionStampDepth.allCases, id: \.self) { depth in
+                                Text(depth.displayName).tag(depth.rawValue)
+                            }
+                        }
+                        Toggle("Speilvend horisontalt",
+                               isOn: $canvasState.stampFlipX)
+                        Picker("Stil", selection: $canvasState.stampStyleProfileId) {
+                            ForEach(ProductionStampStyleCatalog.options) { style in
+                                Text(style.name).tag(style.id)
+                            }
+                        }
+                        TextField("Continuity-ID (valgfritt)",
+                                  text: $canvasState.stampContinuityId)
+                            .textInputAutocapitalization(.never)
+                        if let selected = canvasState.stampVariantOverride,
+                           let variant = ProductionStampCatalog.variant(
+                            selected, for: canvasState.brushType) {
+                            LabeledContent("AI-kontekst") {
+                                Text(variant.parameters.sorted { $0.key < $1.key }
+                                    .map { "\($0.key): \($0.value)" }
+                                    .joined(separator: " · "))
+                                    .font(.caption.monospaced())
+                                    .multilineTextAlignment(.trailing)
+                            }
+                        }
+                        Text("Tap plasserer. Drag bestemmer størrelse og rotasjon. "
+                             + "Velg stampen med lasso for direkte flytt-, skaler- "
+                             + "og rotasjonshåndtak.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Section {
                     Button("Tilbakestill til preset") {
                         canvasState.grainOverride = nil
                         canvasState.flowOverride = nil
+                        canvasState.hardnessOverride = nil
+                        canvasState.wetnessOverride = nil
+                        canvasState.bleedOverride = nil
+                        canvasState.pigmentDepletionOverride = nil
+                        canvasState.bristleCountOverride = nil
+                        canvasState.paperProfileOverride = nil
                         canvasState.hatchAngleOverride = nil
                         canvasState.hatchDensityOverride = nil
                         canvasState.hatchLengthOverride = nil
                         canvasState.envDensityOverride = nil
                         canvasState.envScaleOverride = nil
+                        canvasState.stampVariantOverride = nil
+                        canvasState.stampDepthOverride = nil
+                        canvasState.stampFlipX = false
                     }
                 }
             }
             .navigationTitle("Pensel-editor")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) { Button("Ferdig") { dismiss() } }
+            }
+        }
+    }
+}
+
+/// Inspector for et allerede plassert stempel. Endringer committes samlet
+/// som én undo-operasjon og beholder stroke-ID/continuity gjennom synk.
+struct PlacedStampInspectorSheet: View {
+    @ObservedObject var canvasState: CanvasState
+    let strokeID: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: ProductionStampInstance
+    @State private var draftCenterX: Double
+    @State private var draftCenterY: Double
+    private let brushType: BrushType
+
+    init(canvasState: CanvasState, strokeID: String) {
+        self.canvasState = canvasState
+        self.strokeID = strokeID
+        let stroke = canvasState.strokes.first(where: { $0.id == strokeID })
+        let type = stroke?.brush?.type ?? .crowdStamp
+        brushType = type
+        let variant = ProductionStampCatalog.variant(0, for: type)
+        let center = stroke?.points.first
+            ?? StrokePoint(x: 0, y: 0, pressure: 1,
+                           tiltX: 0, tiltY: 0, timestamp: 0)
+        _draftCenterX = State(initialValue: center.x)
+        _draftCenterY = State(initialValue: center.y)
+        _draft = State(initialValue: stroke?.stampInstance
+            ?? ProductionStampInstance(
+                variant: 0, variantName: variant?.name ?? "Variant 1",
+                seed: ProductionStampCatalog.stableSeed(for: strokeID),
+                parameters: variant?.parameters ?? [:]))
+    }
+
+    private var continuityBinding: Binding<String> {
+        Binding(
+            get: { draft.continuityId ?? "" },
+            set: {
+                let cleaned = $0.trimmingCharacters(in: .whitespacesAndNewlines)
+                draft.continuityId = cleaned.isEmpty ? nil : String(cleaned.prefix(120))
+            }
+        )
+    }
+
+    private func preparedDraft() -> ProductionStampInstance {
+        var prepared = draft
+        let variantIndex = ProductionStampCatalog.normalizedVariant(
+            prepared.variant, for: brushType)
+        if let variant = ProductionStampCatalog.variant(variantIndex, for: brushType) {
+            prepared.variant = variantIndex
+            prepared.variantName = variant.name
+            prepared.parameters = variant.parameters
+        }
+        prepared.scale = min(8, max(0.1, prepared.scale))
+        prepared.styleProfileId = String(prepared.styleProfileId.prefix(100))
+        prepared.perspectiveSkew = min(0.45, max(-0.45,
+            prepared.perspectiveSkew ?? 0))
+        prepared.compoundGeometry = ProductionStampGeometryCatalog.geometry(
+            for: brushType, variant: prepared.variant, seed: prepared.seed)
+        return prepared
+    }
+
+    private func apply() {
+        guard let index = canvasState.strokes.firstIndex(where: { $0.id == strokeID }) else {
+            dismiss()
+            return
+        }
+        let prepared = preparedDraft()
+        canvasState.captureUndo("Rediger stamp")
+        if let anchor = canvasState.strokes[index].points.first {
+            let dx = draftCenterX - anchor.x
+            let dy = draftCenterY - anchor.y
+            canvasState.strokes[index].points = canvasState.strokes[index].points.map { point in
+                var moved = point
+                moved.x += dx
+                moved.y += dy
+                return moved
+            }
+        }
+        canvasState.strokes[index].stampInstance = prepared
+        canvasState.strokes[index].boardLayer = prepared.renderLayer == .productionOverlay
+            ? "Camera / Arrows"
+            : "Drawing"
+        canvasState.revision += 1
+        dismiss()
+    }
+
+    private func releaseToEditableStrokes() {
+        guard let index = canvasState.strokes.firstIndex(where: { $0.id == strokeID }) else {
+            dismiss()
+            return
+        }
+        var source = canvasState.strokes[index]
+        if let anchor = source.points.first {
+            let dx = draftCenterX - anchor.x
+            let dy = draftCenterY - anchor.y
+            source.points = source.points.map { point in
+                var moved = point
+                moved.x += dx
+                moved.y += dy
+                return moved
+            }
+        }
+        let prepared = preparedDraft()
+        let released = ProductionStampGeometryCatalog.releasedStrokes(
+            from: source, using: prepared)
+        guard !released.isEmpty else { return }
+        canvasState.captureUndo("Frigi stamp til strøk")
+        canvasState.strokes.replaceSubrange(index...index, with: released)
+        canvasState.revision += 1
+        dismiss()
+    }
+
+    var body: some View {
+        let canvasWidth = max(1, Double(canvasState.contentSize?.width ?? 1_920))
+        let canvasHeight = max(1, Double(canvasState.contentSize?.height ?? 1_080))
+        NavigationStack {
+            Form {
+                Section("Posering og uttrykk") {
+                    LabeledContent("Type", value: BrushCatalog.displayName(brushType))
+                    ProductionStampAtlasPreview(
+                        brushType: brushType, variant: draft.variant)
+                        .frame(height: 220)
+                    Picker(productionStampVariantLabel(brushType),
+                           selection: $draft.variant) {
+                        ForEach(ProductionStampCatalog.variants(for: brushType)) { variant in
+                            Text(variant.name).tag(variant.id)
+                        }
+                    }
+                    Text(productionStampControlHelp(brushType))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("Ny seedet variasjon", systemImage: "dice") {
+                        draft.seed &+= 1
+                    }
+                    LabeledContent("Seed", value: String(draft.seed))
+                        .font(.caption.monospaced())
+                }
+                Section("Transformasjon") {
+                    LabeledContent("Posisjon X \(draftCenterX, specifier: "%.0f")") {
+                        Slider(value: $draftCenterX, in: 0...canvasWidth)
+                    }
+                    LabeledContent("Posisjon Y \(draftCenterY, specifier: "%.0f")") {
+                        Slider(value: $draftCenterY, in: 0...canvasHeight)
+                    }
+                    HStack {
+                        Button("Venstre", systemImage: "arrow.left") {
+                            draftCenterX = max(0, draftCenterX - 12)
+                        }
+                        Button("Opp", systemImage: "arrow.up") {
+                            draftCenterY = max(0, draftCenterY - 12)
+                        }
+                        Button("Ned", systemImage: "arrow.down") {
+                            draftCenterY = min(canvasHeight, draftCenterY + 12)
+                        }
+                        Button("Høyre", systemImage: "arrow.right") {
+                            draftCenterX = min(canvasWidth, draftCenterX + 12)
+                        }
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.bordered)
+                    LabeledContent("Skala \(draft.scale, specifier: "%.2f")×") {
+                        Slider(value: $draft.scale, in: 0.1...8)
+                    }
+                    LabeledContent("Rotasjon \(draft.rotationDegrees, specifier: "%.0f")°") {
+                        Slider(value: $draft.rotationDegrees, in: -180...180)
+                    }
+                    HStack {
+                        Button("Roter 15° mot venstre", systemImage: "rotate.left") {
+                            draft.rotationDegrees = max(-180, draft.rotationDegrees - 15)
+                        }
+                        Button("Rett opp", systemImage: "arrow.up.to.line") {
+                            draft.rotationDegrees = 0
+                        }
+                        Button("Roter 15° mot høyre", systemImage: "rotate.right") {
+                            draft.rotationDegrees = min(180, draft.rotationDegrees + 15)
+                        }
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.bordered)
+                    LabeledContent("Perspektiv \(draft.perspectiveSkew ?? 0, specifier: "%.2f")") {
+                        Slider(value: Binding(
+                            get: { draft.perspectiveSkew ?? 0 },
+                            set: { draft.perspectiveSkew = $0 }
+                        ), in: -0.45...0.45)
+                    }
+                    Toggle("Speilvend horisontalt", isOn: $draft.flipX)
+                    Picker("Dybde", selection: $draft.depth) {
+                        ForEach(ProductionStampDepth.allCases, id: \.self) { depth in
+                            Text(depth.displayName).tag(depth)
+                        }
+                    }
+                }
+                Section("Produksjonskontekst") {
+                    Picker("Stil", selection: $draft.styleProfileId) {
+                        ForEach(ProductionStampStyleCatalog.options) { style in
+                            Text(style.name).tag(style.id)
+                        }
+                    }
+                    TextField("Continuity-ID", text: continuityBinding)
+                        .textInputAutocapitalization(.never)
+                    Picker("Lag", selection: $draft.renderLayer) {
+                        Text("Storyboard-tegning")
+                            .tag(ProductionStampRenderLayer.artwork)
+                        Text("Produksjonsoverlay")
+                            .tag(ProductionStampRenderLayer.productionOverlay)
+                    }
+                    ForEach(draft.parameters.keys.sorted(), id: \.self) { key in
+                        LabeledContent(key, value: draft.parameters[key] ?? "")
+                    }
+                }
+                Section("Redigerbar geometri") {
+                    LabeledContent("Renderkilde", value: "High-fidelity · 512 px variant")
+                    LabeledContent("Vektorbaner") {
+                        Text(String((draft.compoundGeometry
+                            ?? ProductionStampGeometryCatalog.geometry(
+                                for: brushType, variant: draft.variant,
+                                seed: draft.seed)).paths.count))
+                            .monospacedDigit()
+                    }
+                    Button("Frigjør til penselstrøk",
+                           systemImage: "square.3.layers.3d") {
+                        releaseToEditableStrokes()
+                    }
+                    Text("Stampen kan flyttes, roteres, skaleres, speilvendes, "
+                         + "viskes i og tegnes over. Frigjøring gjør kontrollgeometrien "
+                         + "til individuelle Story Pencil-strøk og kan angres.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Stamp Inspector")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Avbryt") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Bruk") { apply() }.fontWeight(.semibold)
+                }
             }
         }
     }
@@ -4405,6 +12018,312 @@ struct ToneReportSheet: View {
 
 // Krasj-vern: usynkede strøk skrives til disk ved hver endring og slettes
 // først når serveren har bekreftet. Overlever app-kill.
+struct ActiveFrameSaveSnapshot: Sendable, Equatable {
+    var manuscriptId: String
+    var sceneId: String
+    var frameId: String
+    var revision: Int
+    var strokesJSON: String
+    var thumbnailDataURL: String?
+    var layerState: BoardLayerState
+    var shotFraming: ShotFramingState
+    var baseUpdatedAt: String?
+    var baseStrokesJSON: String?
+    var baseLayerState: BoardLayerState?
+    var baseShotFraming: ShotFramingState?
+}
+
+struct AISourceSnapshotAcknowledgement: Sendable, Equatable {
+    var frameUpdatedAt: String
+    var sourceUpdatedAt: String
+    /// Nil is valid for a brand-new frame before ensureStoryboard creates its
+    /// normalized row. Generation still requires the final ensured revision.
+    var sourceRevision: Int?
+    var strokesJSON: String
+    var layerState: BoardLayerState
+    var shotFraming: ShotFramingState
+    var paintoverState: StoryboardPaintoverState
+}
+
+/// Everything that can change the paid image-stage result. The context hash
+/// includes the composed production prompt inputs while the explicit source
+/// and framing fields make review/debugging unambiguous.
+struct AIImageGenerationOperationIdentity: Codable, Sendable, Equatable {
+    let projectId: String
+    let storyboardId: String
+    let frameId: String
+    let stage: String
+    let sourceRevision: Int
+    let sourceUpdatedAt: String
+    let framingFingerprint: String
+    let requestFingerprint: String
+    /// Nil for Color/Pencil generation. Atmosphere retries include the hash
+    /// of the full immutable PNG + binding object, so an app restart cannot
+    /// reuse a provider key for different overlay pixels.
+    let paintoverCompositeFingerprint: String?
+
+    static func contextFingerprint(
+        _ context: [String: any Sendable]
+    ) throws -> String {
+        guard JSONSerialization.isValidJSONObject(context) else {
+            throw NSError(
+                domain: "StoryboardAIImageOperation", code: 1,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "Produksjonskonteksten kunne ikke låses. Ingen AI-kostnad er utløst."])
+        }
+        let data = try JSONSerialization.data(
+            withJSONObject: context, options: [.sortedKeys])
+        return SHA256.hash(data: data)
+            .map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+enum AIImageGenerationOperationRetentionPolicy {
+    static func shouldClearAfterTerminalResponse(_ error: Error) -> Bool {
+        guard let syncError = error as? SyncError else { return false }
+        guard case .serverResponse(let code, _) = syncError else { return false }
+        // Generic/provider/5xx responses can arrive after candidate commit but
+        // before a complete reply; replaying the same key is the recovery path.
+        // Only these codes prove that this key can never yield a candidate.
+        return [
+            "generation_attempt_failed",
+            "idempotency_key_reused",
+            "idempotency_payload_changed",
+        ].contains(code)
+    }
+}
+
+private struct PendingAIImageGenerationOperation: Codable, Sendable, Equatable {
+    let identity: AIImageGenerationOperationIdentity
+    let operationKey: String
+    let createdAt: Date
+}
+
+/// Disk-backed paid-operation token. It is intentionally MainActor-isolated:
+/// every native generation already starts there, which also prevents two
+/// same-process taps from racing the initial atomic write.
+@MainActor
+enum AIImageGenerationOperationStore {
+    private static let maximumRetentionAge: TimeInterval = 30 * 24 * 60 * 60
+
+    private static var directory: URL {
+        FileManager.default.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(
+                "pending-ai-image-operations", isDirectory: true)
+    }
+
+    private static func fileURL(
+        for identity: AIImageGenerationOperationIdentity
+    ) throws -> URL {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(identity)
+        let filename = SHA256.hash(data: data)
+            .map { String(format: "%02x", $0) }.joined()
+        return directory.appendingPathComponent("\(filename).json")
+    }
+
+    static func operationKey(
+        for identity: AIImageGenerationOperationIdentity,
+        now: Date = Date()
+    ) throws -> String {
+        let url = try fileURL(for: identity)
+        if let data = try? Data(contentsOf: url),
+           let pending = try? JSONDecoder().decode(
+                PendingAIImageGenerationOperation.self, from: data),
+           pending.identity == identity {
+            prune(excluding: url, now: now)
+            return pending.operationKey
+        }
+        try FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true,
+            attributes: [.protectionKey:
+                FileProtectionType.completeUntilFirstUserAuthentication])
+        let pending = PendingAIImageGenerationOperation(
+            identity: identity,
+            operationKey: "ios-\(UUID().uuidString.lowercased())",
+            createdAt: now)
+        let data = try JSONEncoder().encode(pending)
+        try data.write(
+            to: url,
+            options: [.atomic,
+                .completeFileProtectionUntilFirstUserAuthentication])
+        prune(excluding: url, now: now)
+        return pending.operationKey
+    }
+
+    private static func prune(excluding retainedURL: URL, now: Date) {
+        let manager = FileManager.default
+        let files = (try? manager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles])) ?? []
+        let cutoff = now.addingTimeInterval(-maximumRetentionAge)
+        for url in files where url.pathExtension == "json" && url != retainedURL {
+            let createdAt = (try? Data(contentsOf: url))
+                .flatMap { try? JSONDecoder().decode(
+                    PendingAIImageGenerationOperation.self, from: $0) }
+                .map(\.createdAt) ?? .distantPast
+            if createdAt < cutoff {
+                try? manager.removeItem(at: url)
+            }
+        }
+    }
+
+    static var retainedOperationCount: Int {
+        ((try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles])) ?? [])
+            .filter { $0.pathExtension == "json" }.count
+    }
+
+    /// Compare-and-clear means an older completion can never remove a newer
+    /// operation record for the same logical slot.
+    @discardableResult
+    static func clear(
+        _ identity: AIImageGenerationOperationIdentity,
+        ifOperationKeyMatches operationKey: String
+    ) -> Bool {
+        guard let url = try? fileURL(for: identity),
+              let data = try? Data(contentsOf: url),
+              let pending = try? JSONDecoder().decode(
+                PendingAIImageGenerationOperation.self, from: data),
+              pending.identity == identity,
+              pending.operationKey == operationKey else { return false }
+        do {
+            try FileManager.default.removeItem(at: url)
+            return true
+        } catch {
+            return false
+        }
+    }
+}
+
+/// Stage-aware paintover binding for candidate/approved image versions.
+/// Color depends on Pencil/framing only. Atmosphere additionally depends on
+/// the exact acknowledged Color overlay whenever that overlay has content.
+enum AIImageStagePaintoverPolicy {
+    static func matches(
+        stage: String,
+        isApproved: Bool,
+        capturedColorRevision: Int?,
+        capturedColorFingerprint: String?,
+        state: StoryboardPaintoverState?,
+        localChanges: StoryboardPaintoverChangeSet
+    ) -> Bool {
+        guard !localChanges.pencilChanged else { return false }
+        guard stage == "atmosphere" else { return true }
+        guard !localChanges.colorChanged else { return false }
+
+        if let capturedColorRevision, let state {
+            return capturedColorRevision == state.colorRevision
+                && capturedColorFingerprint?.lowercased()
+                    == state.colorFingerprint.lowercased()
+        }
+        if isApproved { return true }
+        // A generated Atmosphere response may omit composite metadata only
+        // when the authoritative Color layer is provably empty.
+        return state?.colorHasContent == false
+    }
+}
+
+/// Pure fail-closed policy for binding fetched AI versions to the live source.
+/// Kept outside SwiftUI so autosync/cache regressions are deterministic tests.
+enum AIImageVersionRevisionPolicy {
+    static func matches(
+        candidateSourceRevision: Int?,
+        authoritativeSourceRevision: Int?,
+        generatedDocumentRevision: Int?,
+        currentDocumentRevision: Int,
+        loadedDocumentRevision: Int,
+        isApproved: Bool,
+        frameIsStale: Bool
+    ) -> Bool {
+        if let authoritativeSourceRevision {
+            guard candidateSourceRevision == authoritativeSourceRevision else {
+                return false
+            }
+        }
+        if let generatedDocumentRevision {
+            return generatedDocumentRevision == currentDocumentRevision
+        }
+        if authoritativeSourceRevision != nil {
+            return currentDocumentRevision == loadedDocumentRevision
+        }
+        // Legacy approved projects remain reviewable only while the local
+        // document is clean. Generated/unapproved versions never get this
+        // compatibility escape hatch.
+        return isApproved
+            && !frameIsStale
+            && currentDocumentRevision == loadedDocumentRevision
+    }
+}
+
+struct FrameSaveCompletionPlan: Sendable, Equatable {
+    var updateActiveBaselines: Bool
+    var clearPendingDocument: Bool
+    var scheduleLatestActiveSave: Bool
+}
+
+/// Pure policy kept outside SwiftUI so save-completion ordering can be tested
+/// without a network or timing-dependent UI test.
+enum FrameSaveRacePolicy {
+    static func pendingMatches(
+        _ pending: PendingStoryboardDocument,
+        represents snapshot: ActiveFrameSaveSnapshot
+    ) -> Bool {
+        let revisionMatches = pending.localRevision.map {
+            $0 == snapshot.revision
+        } ?? true // v1-v3 WAL files had no revision sidecar.
+        let optimisticBaseMatches = pending.version < 6
+            || (pending.baseUpdatedAt == snapshot.baseUpdatedAt
+                && pending.baseStrokesJSON == snapshot.baseStrokesJSON
+                && pending.baseLayerState == snapshot.baseLayerState
+                && pending.baseShotFraming == snapshot.baseShotFraming)
+        return revisionMatches
+            && optimisticBaseMatches
+            && pending.strokesJSON == snapshot.strokesJSON
+            && pending.layerState == snapshot.layerState
+            && pending.shotFraming == snapshot.shotFraming
+    }
+
+    static func completionPlan(
+        snapshot: ActiveFrameSaveSnapshot,
+        loadedFrameId: String?,
+        currentRevision: Int,
+        pendingDocument: PendingStoryboardDocument?
+    ) -> FrameSaveCompletionPlan {
+        let isActiveFrame = loadedFrameId == snapshot.frameId
+        let pendingIsSavedSnapshot = pendingDocument.map {
+            pendingMatches($0, represents: snapshot)
+        } ?? false
+        let activeDocumentAdvanced = isActiveFrame
+            && (currentRevision != snapshot.revision
+                || (pendingDocument != nil && !pendingIsSavedSnapshot))
+        return FrameSaveCompletionPlan(
+            updateActiveBaselines: isActiveFrame,
+            clearPendingDocument: pendingIsSavedSnapshot,
+            scheduleLatestActiveSave: activeDocumentAdvanced
+        )
+    }
+}
+
+struct PendingStoryboardDocument: Codable, Sendable, Equatable {
+    static let schemaVersion = 7
+    var version = Self.schemaVersion
+    var strokesJSON: String
+    var layerState: BoardLayerState?
+    var shotFraming: ShotFramingState?
+    var localRevision: Int? = nil
+    var thumbnailDataURL: String? = nil
+    var baseUpdatedAt: String? = nil
+    var baseStrokesJSON: String? = nil
+    var baseLayerState: BoardLayerState? = nil
+    var baseShotFraming: ShotFramingState? = nil
+    var savedAt = Date()
+}
+
 enum PendingStrokeStore {
     private static var directory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -4415,17 +12334,69 @@ enum PendingStrokeStore {
         directory.appendingPathComponent("\(frameId).json")
     }
 
-    static func save(_ json: String, frameId: String) {
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try? json.write(to: fileURL(frameId), atomically: true, encoding: .utf8)
+    static func save(_ json: String, frameId: String,
+                     layerState: BoardLayerState? = nil,
+                     shotFraming: ShotFramingState? = nil,
+                     localRevision: Int? = nil,
+                     thumbnailDataURL: String? = nil,
+                     baseUpdatedAt: String? = nil,
+                     baseStrokesJSON: String? = nil,
+                     baseLayerState: BoardLayerState? = nil,
+                     baseShotFraming: ShotFramingState? = nil) {
+        try? FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true,
+            attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
+        let document = PendingStoryboardDocument(
+            strokesJSON: json, layerState: layerState,
+            shotFraming: shotFraming, localRevision: localRevision,
+            thumbnailDataURL: thumbnailDataURL,
+            baseUpdatedAt: baseUpdatedAt,
+            baseStrokesJSON: baseStrokesJSON,
+            baseLayerState: baseLayerState,
+            baseShotFraming: baseShotFraming)
+        guard let data = try? JSONEncoder().encode(document) else { return }
+        try? data.write(to: fileURL(frameId),
+                        options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
+    /// Backward-compatible accessor used by older call sites/tests.
     static func load(frameId: String) -> String? {
-        try? String(contentsOf: fileURL(frameId), encoding: .utf8)
+        loadDocument(frameId: frameId)?.strokesJSON
+    }
+
+    static func loadDocument(frameId: String) -> PendingStoryboardDocument? {
+        guard let data = try? Data(contentsOf: fileURL(frameId)) else { return nil }
+        if let document = try? JSONDecoder().decode(PendingStoryboardDocument.self, from: data) {
+            return document
+        }
+        // v1 files contained the raw strokes JSON string.
+        guard let raw = String(data: data, encoding: .utf8) else { return nil }
+        return PendingStoryboardDocument(
+            version: 1, strokesJSON: raw, layerState: nil,
+            shotFraming: nil, localRevision: nil,
+            thumbnailDataURL: nil, baseUpdatedAt: nil,
+            baseStrokesJSON: nil, baseLayerState: nil,
+            baseShotFraming: nil)
     }
 
     static func clear(frameId: String) {
         try? FileManager.default.removeItem(at: fileURL(frameId))
+    }
+
+    /// Compare-and-clear prevents a completed older upload from deleting a
+    /// newer write-ahead log created for the same frame during its await.
+    @discardableResult
+    static func clear(
+        frameId: String,
+        ifUnchangedFrom savedDocument: PendingStoryboardDocument
+    ) -> Bool {
+        guard loadDocument(frameId: frameId) == savedDocument else { return false }
+        do {
+            try FileManager.default.removeItem(at: fileURL(frameId))
+            return true
+        } catch {
+            return false
+        }
     }
 
     /// Frame-id-er med usynkede strøk på disk (indikator-grunnlag).

@@ -6,6 +6,7 @@
 
 import { create } from 'zustand';
 import type { ShotType, CameraAngle, CameraMovement } from '../models/casting';
+import type { ShotFramingState } from '@shared/storyboard-shot-framing';
 import type { StoryboardDrawingDocument } from './storyboardDrawingDocument';
 export type { ShotType, CameraAngle, CameraMovement };
 
@@ -57,6 +58,8 @@ export interface StoryboardFrame {
   cameraAngle: CameraAngle;
   cameraMovement: CameraMovement;
   duration: number; // seconds
+  /** Applied non-destructive viewport for the frame artwork. */
+  shotFraming?: ShotFramingState;
   status: FrameStatus;
   sceneSnapshot?: {
     camera: {

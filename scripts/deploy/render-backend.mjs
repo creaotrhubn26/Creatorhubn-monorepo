@@ -15,6 +15,11 @@ const FAILURE_STATUSES = new Set([
 const DEFAULT_POLL_INTERVAL_MS = 15_000;
 const DEFAULT_DEPLOY_TIMEOUT_MS = 35 * 60_000;
 const DEFAULT_PUBLIC_TIMEOUT_MS = 10 * 60_000;
+const ALLOWED_POSTGRES_TLS_MODES = new Set([
+  'require',
+  'verify-ca',
+  'verify-full',
+]);
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -47,7 +52,9 @@ function validateBackendUrl(value) {
 }
 
 function validateCommit(value) {
-  const normalized = String(value || '').trim().toLowerCase();
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase();
   if (!/^[0-9a-f]{40}$/.test(normalized)) {
     throw new Error('A full 40-character Git commit SHA is required');
   }
@@ -57,7 +64,9 @@ function validateCommit(value) {
 function apiErrorDetail(body) {
   if (!body || typeof body !== 'object') return 'request_failed';
   const candidate = body.message || body.error || body.status;
-  return typeof candidate === 'string' ? candidate.slice(0, 300) : 'request_failed';
+  return typeof candidate === 'string'
+    ? candidate.slice(0, 300)
+    : 'request_failed';
 }
 
 export function unwrapDeploy(value) {
@@ -76,10 +85,16 @@ export function deployCommitId(deploy) {
 }
 
 export function commitsMatch(actual, expected) {
-  const left = String(actual || '').trim().toLowerCase();
-  const right = String(expected || '').trim().toLowerCase();
-  if (left.length < 7 || right.length < 7) return false;
-  return left === right || left.startsWith(right) || right.startsWith(left);
+  const left = String(actual || '')
+    .trim()
+    .toLowerCase();
+  const right = String(expected || '')
+    .trim()
+    .toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(left) || !/^[0-9a-f]{40}$/.test(right)) {
+    return false;
+  }
+  return left === right;
 }
 
 async function renderRequest(
@@ -123,9 +138,14 @@ async function renderRequest(
           ': ' +
           apiErrorDetail(parsed),
       );
-      if (!retryable || attempt === attempts) throw error;
+      if (!retryable) {
+        error.renderRetryable = false;
+        throw error;
+      }
+      if (attempt === attempts) throw error;
       lastError = error;
     } catch (error) {
+      if (error?.renderRetryable === false) throw error;
       lastError = error;
       if (attempt === attempts) throw error;
     }
@@ -139,9 +159,184 @@ export function isAutoDeployDisabled(service) {
   const disabled =
     service?.autoDeploy === false || service?.autoDeploy === 'no';
   const triggerOff =
-    service?.autoDeployTrigger == null ||
-    service?.autoDeployTrigger === 'off';
+    service?.autoDeployTrigger == null || service?.autoDeployTrigger === 'off';
   return disabled && triggerOff;
+}
+
+export async function assertAutoDeployDisabled({
+  fetchImpl = fetch,
+  apiKey,
+  serviceId,
+}) {
+  const service = await renderRequest(
+    fetchImpl,
+    apiKey,
+    '/services/' + serviceId,
+  );
+  if (!isAutoDeployDisabled(service)) {
+    throw new Error(
+      'Render auto-deploy must already be disabled before a release starts',
+    );
+  }
+  console.log('Verified that Render auto-deploy is disabled.');
+}
+async function readRenderEnvironmentValue({
+  fetchImpl,
+  apiKey,
+  serviceId,
+  key,
+}) {
+  let response;
+  try {
+    response = await renderRequest(
+      fetchImpl,
+      apiKey,
+      '/services/' + serviceId + '/env-vars/' + encodeURIComponent(key),
+    );
+  } catch {
+    throw new Error('Render environment variable is unavailable: ' + key);
+  }
+  const envVar = response?.envVar ?? response;
+  if (envVar?.key !== key || typeof envVar.value !== 'string') {
+    throw new Error(
+      'Render environment variable is missing or invalid: ' + key,
+    );
+  }
+  return envVar.value;
+}
+
+function postgresDatabaseTarget(value) {
+  let parsed;
+  try {
+    parsed = new URL(String(value || ''));
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
+    return null;
+  }
+  const connectionParameterValues = (parameterName) =>
+    [...parsed.searchParams.entries()]
+      .filter(([name]) => name.toLowerCase() === parameterName)
+      .map(([, parameterValue]) => String(parameterValue).toLowerCase());
+  const sslModes = connectionParameterValues('sslmode');
+  if (sslModes.length !== 1 || !ALLOWED_POSTGRES_TLS_MODES.has(sslModes[0]))
+    return null;
+  const channelBindings = connectionParameterValues('channel_binding');
+  if (channelBindings.length !== 1 || channelBindings[0] !== 'require')
+    return null;
+  const encodedDatabase = parsed.pathname.slice(1);
+  if (!encodedDatabase || encodedDatabase.includes('/')) return null;
+  if (!parsed.username || !parsed.password) return null;
+  let username;
+  let password;
+  let database;
+  try {
+    username = decodeURIComponent(parsed.username);
+    password = decodeURIComponent(parsed.password);
+    database = decodeURIComponent(encodedDatabase);
+  } catch {
+    return null;
+  }
+  if (!username || !password || !database) return null;
+  const hostname = parsed.hostname.toLowerCase();
+  const labels = hostname.split('.');
+  const pooled = labels[0]?.endsWith('-pooler') === true;
+  if (pooled) {
+    labels[0] = labels[0].slice(0, -'-pooler'.length);
+  }
+  if (
+    !hostname.endsWith('.neon.tech') ||
+    !/^ep-[a-z0-9-]+$/.test(labels[0] || '')
+  )
+    return null;
+  return {
+    hostname: labels.join('.'),
+    port: parsed.port || '5432',
+    database,
+    username,
+    pooled,
+  };
+}
+
+export function databaseTargetsMatch(left, right) {
+  const leftTarget = postgresDatabaseTarget(left);
+  const rightTarget = postgresDatabaseTarget(right);
+  return Boolean(
+    leftTarget &&
+    rightTarget &&
+    leftTarget.hostname === rightTarget.hostname &&
+    leftTarget.port === rightTarget.port &&
+    leftTarget.database === rightTarget.database,
+  );
+}
+
+export function isLeastPrivilegeRuntimeDatabaseUrl(value) {
+  const target = postgresDatabaseTarget(value);
+  return Boolean(
+    target && target.username === 'creatorhub_runtime_login' && target.pooled,
+  );
+}
+
+function isLeastPrivilegeMigrationDatabaseUrl(value) {
+  const target = postgresDatabaseTarget(value);
+  return Boolean(
+    target &&
+    target.username === 'creatorhub_migration_login' &&
+    !target.pooled,
+  );
+}
+
+export async function assertRuntimeDatabaseRoles({
+  fetchImpl = fetch,
+  apiKey,
+  serviceId,
+  expectedMigrationDatabaseUrl,
+  expected = {
+    DATABASE_LOGIN_ROLE: 'creatorhub_runtime_login',
+    DATABASE_OWNER_ROLE: 'creatorhub_schema_owner',
+  },
+}) {
+  const databaseUrl = await readRenderEnvironmentValue({
+    fetchImpl,
+    apiKey,
+    serviceId,
+    key: 'DATABASE_URL',
+  });
+  const loginRole = await readRenderEnvironmentValue({
+    fetchImpl,
+    apiKey,
+    serviceId,
+    key: 'DATABASE_LOGIN_ROLE',
+  });
+  const ownerRole = await readRenderEnvironmentValue({
+    fetchImpl,
+    apiKey,
+    serviceId,
+    key: 'DATABASE_OWNER_ROLE',
+  });
+
+  const mismatches = [];
+  if (loginRole !== expected.DATABASE_LOGIN_ROLE) {
+    mismatches.push('DATABASE_LOGIN_ROLE');
+  }
+  if (ownerRole !== expected.DATABASE_OWNER_ROLE) {
+    mismatches.push('DATABASE_OWNER_ROLE');
+  }
+  if (
+    !isLeastPrivilegeRuntimeDatabaseUrl(databaseUrl) ||
+    !isLeastPrivilegeMigrationDatabaseUrl(expectedMigrationDatabaseUrl) ||
+    !databaseTargetsMatch(databaseUrl, expectedMigrationDatabaseUrl)
+  ) {
+    mismatches.push('DATABASE_URL');
+  }
+  if (mismatches.length > 0) {
+    throw new Error(
+      'Render runtime database role configuration is missing or invalid: ' +
+        mismatches.join(', '),
+    );
+  }
+  console.log('Verified Render runtime database role configuration.');
 }
 
 export async function disableAutoDeploy({
@@ -161,21 +356,9 @@ export async function disableAutoDeploy({
   if (!isAutoDeployDisabled(service)) {
     throw new Error('Render auto-deploy is still enabled after the update');
   }
-  console.log('Render auto-deploy is disabled; GitHub owns production deploys.');
-}
-
-async function findDeployForCommit(fetchImpl, apiKey, serviceId, commit) {
-  const response = await renderRequest(
-    fetchImpl,
-    apiKey,
-    '/services/' + serviceId + '/deploys?limit=20',
+  console.log(
+    'Render auto-deploy is disabled; use the canonical GitHub production workflow.',
   );
-  if (!Array.isArray(response)) return null;
-  for (const item of response) {
-    const deploy = unwrapDeploy(item);
-    if (deploy && commitsMatch(deployCommitId(deploy), commit)) return deploy;
-  }
-  return null;
 }
 
 async function getDeploy(fetchImpl, apiKey, serviceId, deployId) {
@@ -198,19 +381,18 @@ async function waitForDeploy({
   timeoutMs,
 }) {
   const deadline = Date.now() + timeoutMs;
-  let deploy = initialDeploy;
+  const deployId =
+    typeof initialDeploy?.id === 'string' ? initialDeploy.id.trim() : '';
+  if (!deployId) {
+    throw new Error('Render deploy trigger did not return a deploy identity');
+  }
+  let deploy = null;
   let lastStatus = '';
 
   while (Date.now() < deadline) {
-    if (deploy?.id) {
-      deploy = await getDeploy(fetchImpl, apiKey, serviceId, deploy.id);
-    } else {
-      deploy = await findDeployForCommit(
-        fetchImpl,
-        apiKey,
-        serviceId,
-        commit,
-      );
+    deploy = await getDeploy(fetchImpl, apiKey, serviceId, deployId);
+    if (!deploy || deploy.id !== deployId) {
+      throw new Error('Render deploy lookup returned an unexpected identity');
     }
 
     const status = String(deploy?.status || 'waiting');
@@ -301,6 +483,10 @@ export async function deployAndVerify({
   deployTimeoutMs = DEFAULT_DEPLOY_TIMEOUT_MS,
   publicTimeoutMs = DEFAULT_PUBLIC_TIMEOUT_MS,
 }) {
+  // A long migration separates workflow preflight from this mutation.
+  // Re-read Render immediately before triggering the exact deploy.
+  await assertAutoDeployDisabled({ fetchImpl, apiKey, serviceId });
+
   const created = await renderRequest(
     fetchImpl,
     apiKey,
@@ -308,6 +494,7 @@ export async function deployAndVerify({
     {
       method: 'POST',
       body: { commitId: commit, clearCache: 'do_not_clear' },
+      attempts: 1,
     },
   );
   console.log('Triggered Render deploy for commit ' + commit + '.');
@@ -327,14 +514,19 @@ export async function deployAndVerify({
     pollIntervalMs,
     timeoutMs: publicTimeoutMs,
   });
+  // Fail the release gate if service configuration drifted during rollout.
+  // The exact public commit has already been verified at this point.
+  await assertAutoDeployDisabled({ fetchImpl, apiKey, serviceId });
 }
 
-function runSelfTest() {
+async function runSelfTest() {
   assert.equal(
     deployCommitId({ commit: { id: 'A'.repeat(40) } }),
     'a'.repeat(40),
   );
-  assert.equal(commitsMatch('abcdef123', 'abcdef1234567890'), true);
+  assert.equal(commitsMatch('a'.repeat(40), 'a'.repeat(40)), true);
+  assert.equal(commitsMatch('abcdef123', 'abcdef1234567890'), false);
+  assert.equal(commitsMatch('a'.repeat(40), 'a'.repeat(39) + 'b'), false);
   assert.equal(commitsMatch('abc', 'abcdef1234567890'), false);
   assert.deepEqual(unwrapDeploy({ deploy: { id: 'dep-test' } }), {
     id: 'dep-test',
@@ -348,13 +540,325 @@ function runSelfTest() {
   assert.equal(isAutoDeployDisabled({ autoDeploy: 'yes' }), false);
   assert.throws(() => validateCommit('main'), /40-character/);
   assert.throws(() => validateBackendUrl('http://example.test'), /HTTPS/);
+
+  const responseFor = (body) => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify(body),
+  });
+  let nonRetryableRequestCount = 0;
+  let ambiguousDeployPostCount = 0;
+  let ambiguousDeployServerErrorCount = 0;
+  let staleSameCommitLookupCalled = false;
+  await assert.doesNotReject(
+    assertAutoDeployDisabled({
+      fetchImpl: async () => responseFor({ autoDeploy: 'no' }),
+      apiKey: 'test-key',
+      serviceId: 'srv-' + 'a'.repeat(20),
+    }),
+  );
+  await assert.rejects(
+    assertAutoDeployDisabled({
+      fetchImpl: async () => responseFor({ autoDeploy: 'yes' }),
+      apiKey: 'test-key',
+      serviceId: 'srv-' + 'a'.repeat(20),
+    }),
+    /must already be disabled/,
+  );
+  await assert.rejects(
+    assertAutoDeployDisabled({
+      fetchImpl: async () => {
+        nonRetryableRequestCount += 1;
+        return {
+          ok: false,
+          status: 400,
+          text: async () => JSON.stringify({ message: 'invalid request' }),
+        };
+      },
+      apiKey: 'test-key',
+      serviceId: 'srv-' + 'a'.repeat(20),
+    }),
+    /HTTP 400/,
+  );
+  assert.equal(nonRetryableRequestCount, 1);
+  await assert.rejects(
+    deployAndVerify({
+      fetchImpl: async (_url, options = {}) => {
+        if (options.method !== 'POST') return responseFor({ autoDeploy: 'no' });
+        if (options.method === 'POST') {
+          ambiguousDeployPostCount += 1;
+          throw new Error('ambiguous deploy transport failure');
+        }
+        throw new Error('unexpected request after ambiguous deploy failure');
+      },
+      apiKey: 'test-key',
+      serviceId: 'srv-' + 'a'.repeat(20),
+      backendUrl: 'https://example.test',
+      commit: 'a'.repeat(40),
+      pollIntervalMs: 0,
+      deployTimeoutMs: 100,
+      publicTimeoutMs: 100,
+    }),
+    /ambiguous deploy transport failure/,
+  );
+  assert.equal(ambiguousDeployPostCount, 1);
+  await assert.rejects(
+    deployAndVerify({
+      fetchImpl: async (_url, options = {}) => {
+        if (options.method !== 'POST') return responseFor({ autoDeploy: 'no' });
+        if (options.method === 'POST') {
+          ambiguousDeployServerErrorCount += 1;
+          return {
+            ok: false,
+            status: 503,
+            text: async () => JSON.stringify({ message: 'temporarily down' }),
+          };
+        }
+        throw new Error('unexpected request after ambiguous deploy failure');
+      },
+      apiKey: 'test-key',
+      serviceId: 'srv-' + 'a'.repeat(20),
+      backendUrl: 'https://example.test',
+      commit: 'a'.repeat(40),
+      pollIntervalMs: 0,
+      deployTimeoutMs: 100,
+      publicTimeoutMs: 100,
+    }),
+    /HTTP 503/,
+  );
+  assert.equal(ambiguousDeployServerErrorCount, 1);
+  await assert.rejects(
+    deployAndVerify({
+      fetchImpl: async (url, options = {}) => {
+        if (options.method !== 'POST') return responseFor({ autoDeploy: 'no' });
+        if (options.method === 'POST') return responseFor({});
+        if (String(url).includes('/deploys?limit=')) {
+          staleSameCommitLookupCalled = true;
+          return responseFor([
+            {
+              deploy: {
+                id: 'dep-old',
+                status: 'live',
+                commitId: 'a'.repeat(40),
+              },
+            },
+          ]);
+        }
+        throw new Error('unexpected Render self-test request');
+      },
+      apiKey: 'test-key',
+      serviceId: 'srv-' + 'a'.repeat(20),
+      backendUrl: 'https://example.test',
+      commit: 'a'.repeat(40),
+      pollIntervalMs: 0,
+      deployTimeoutMs: 100,
+      publicTimeoutMs: 100,
+    }),
+    /deploy identity/,
+  );
+  assert.equal(staleSameCommitLookupCalled, false);
+  const successfulCommit = 'b'.repeat(40);
+  const successfulServiceId = 'srv-' + 'b'.repeat(20);
+  let successfulServiceStateReads = 0;
+  await assert.doesNotReject(
+    deployAndVerify({
+      fetchImpl: async (url, options = {}) => {
+        const target = String(url);
+        if (
+          target === RENDER_API_BASE + '/services/' + successfulServiceId &&
+          options.method !== 'POST'
+        ) {
+          successfulServiceStateReads += 1;
+          return responseFor({ autoDeploy: 'no' });
+        }
+        if (target.endsWith('/deploys') && options.method === 'POST') {
+          return responseFor({ id: 'dep-new' });
+        }
+        if (target.endsWith('/deploys/dep-new')) {
+          return responseFor({
+            id: 'dep-new',
+            status: 'live',
+            commitId: successfulCommit,
+          });
+        }
+        if (target.startsWith('https://example.test/api/version')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ commit: successfulCommit }),
+          };
+        }
+        if (target === 'https://example.test/api/health') {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ status: 'ok' }),
+          };
+        }
+        if (
+          target === 'https://example.test/api/admin-room/migrations/run' &&
+          options.method === 'POST'
+        ) {
+          return { status: 404 };
+        }
+        throw new Error('unexpected successful Render self-test request');
+      },
+      apiKey: 'test-key',
+      serviceId: successfulServiceId,
+      backendUrl: 'https://example.test',
+      commit: successfulCommit,
+      pollIntervalMs: 0,
+      deployTimeoutMs: 100,
+      publicTimeoutMs: 100,
+    }),
+  );
+  assert.equal(
+    successfulServiceStateReads,
+    2,
+    'deploy must re-read auto-deploy state immediately before and after rollout',
+  );
+  const runtimeDatabaseUrl =
+    'postgresql://creatorhub_runtime_login:secret@' +
+    'ep-example-pooler.eu.neon.tech/neondb?sslmode=require&channel_binding=require';
+  const migrationDatabaseUrl =
+    'postgresql://creatorhub_migration_login:secret@' +
+    'ep-example.eu.neon.tech/neondb?sslmode=require&channel_binding=require';
+  const roleEnvironment = new Map([
+    ['DATABASE_URL', runtimeDatabaseUrl],
+    ['DATABASE_LOGIN_ROLE', 'creatorhub_runtime_login'],
+    ['DATABASE_OWNER_ROLE', 'creatorhub_schema_owner'],
+  ]);
+  const requestedRoleKeys = [];
+  const roleFetch = async (url) => {
+    const key = decodeURIComponent(String(url).split('/').at(-1) || '');
+    requestedRoleKeys.push(key);
+    return responseFor({ envVar: { key, value: roleEnvironment.get(key) } });
+  };
+  await assert.doesNotReject(
+    assertRuntimeDatabaseRoles({
+      fetchImpl: roleFetch,
+      apiKey: 'test-key',
+      serviceId: 'srv-' + 'a'.repeat(20),
+      expectedMigrationDatabaseUrl: migrationDatabaseUrl,
+    }),
+  );
+  assert.deepEqual(requestedRoleKeys, [
+    'DATABASE_URL',
+    'DATABASE_LOGIN_ROLE',
+    'DATABASE_OWNER_ROLE',
+  ]);
+  assert.equal(isLeastPrivilegeRuntimeDatabaseUrl(runtimeDatabaseUrl), true);
+  assert.equal(
+    isLeastPrivilegeRuntimeDatabaseUrl(
+      runtimeDatabaseUrl.replace('-pooler.', '.'),
+    ),
+    false,
+  );
+  assert.equal(
+    isLeastPrivilegeRuntimeDatabaseUrl(
+      runtimeDatabaseUrl.replace('creatorhub_runtime_login', 'neondb_owner'),
+    ),
+    false,
+  );
+
+  assert.equal(
+    isLeastPrivilegeRuntimeDatabaseUrl(
+      runtimeDatabaseUrl.replace('sslmode=require', 'sslmode=disable'),
+    ),
+    false,
+  );
+  assert.equal(
+    isLeastPrivilegeRuntimeDatabaseUrl(
+      runtimeDatabaseUrl.replace(':secret@', '@'),
+    ),
+    false,
+  );
+  assert.equal(
+    isLeastPrivilegeRuntimeDatabaseUrl(
+      runtimeDatabaseUrl.replace('.neon.tech', '.example.com'),
+    ),
+    false,
+  );
+  assert.equal(
+    isLeastPrivilegeRuntimeDatabaseUrl(
+      runtimeDatabaseUrl.replace('&channel_binding=require', ''),
+    ),
+    false,
+  );
+  assert.equal(
+    databaseTargetsMatch(runtimeDatabaseUrl, migrationDatabaseUrl),
+    true,
+  );
+  assert.equal(
+    databaseTargetsMatch(
+      runtimeDatabaseUrl,
+      migrationDatabaseUrl.replace('/neondb?', '/other_database?'),
+    ),
+    false,
+  );
+  for (const invalidMigrationDatabaseUrl of [
+    migrationDatabaseUrl.replace('sslmode=require', 'sslmode=disable'),
+    migrationDatabaseUrl.replace('&channel_binding=require', ''),
+    migrationDatabaseUrl.replace(
+      'creatorhub_migration_login',
+      'creatorhub_migrator',
+    ),
+    migrationDatabaseUrl.replace(':secret@', '@'),
+    migrationDatabaseUrl.replace('.neon.tech', '.example.com'),
+  ]) {
+    await assert.rejects(
+      assertRuntimeDatabaseRoles({
+        fetchImpl: roleFetch,
+        apiKey: 'test-key',
+        serviceId: 'srv-' + 'a'.repeat(20),
+        expectedMigrationDatabaseUrl: invalidMigrationDatabaseUrl,
+      }),
+      /DATABASE_URL/,
+    );
+  }
+  await assert.rejects(
+    assertRuntimeDatabaseRoles({
+      fetchImpl: roleFetch,
+      apiKey: 'test-key',
+      serviceId: 'srv-' + 'a'.repeat(20),
+      expectedMigrationDatabaseUrl: migrationDatabaseUrl.replace(
+        '/neondb?',
+        '/other_database?',
+      ),
+    }),
+    /DATABASE_URL/,
+  );
+  await assert.rejects(
+    assertRuntimeDatabaseRoles({
+      fetchImpl: async (url) => {
+        const key = decodeURIComponent(String(url).split('/').at(-1) || '');
+        if (key === 'DATABASE_OWNER_ROLE') {
+          return {
+            ok: false,
+            status: 404,
+            text: async () => JSON.stringify({ message: runtimeDatabaseUrl }),
+          };
+        }
+        return responseFor({
+          envVar: { key, value: roleEnvironment.get(key) },
+        });
+      },
+      apiKey: 'test-key',
+      serviceId: 'srv-' + 'a'.repeat(20),
+    }),
+    (error) => {
+      assert.match(error.message, /DATABASE_OWNER_ROLE/);
+      assert.doesNotMatch(error.message, /creatorhub_runtime_login:secret/);
+      return true;
+    },
+  );
   console.log('Render backend deploy self-test passed.');
 }
 
 async function main() {
   const command = process.argv[2];
   if (command === '--self-test') {
-    runSelfTest();
+    await runSelfTest();
     return;
   }
 
@@ -362,6 +866,21 @@ async function main() {
   const serviceId = validateServiceId(requiredEnv('RENDER_SERVICE_ID'));
   if (command === 'disable-auto-deploy') {
     await disableAutoDeploy({ apiKey, serviceId });
+    return;
+  }
+  if (command === 'assert-auto-deploy-off') {
+    await assertAutoDeployDisabled({ apiKey, serviceId });
+    return;
+  }
+  if (command === 'assert-runtime-database-roles') {
+    const expectedMigrationDatabaseUrl = requiredEnv(
+      'PRODUCTION_MIGRATION_DATABASE_URL',
+    );
+    await assertRuntimeDatabaseRoles({
+      apiKey,
+      serviceId,
+      expectedMigrationDatabaseUrl,
+    });
     return;
   }
   if (command === 'deploy-and-verify') {
@@ -376,7 +895,7 @@ async function main() {
     return;
   }
   throw new Error(
-    'Usage: render-backend.mjs --self-test | disable-auto-deploy | deploy-and-verify <sha>',
+    'Usage: render-backend.mjs --self-test | assert-auto-deploy-off | assert-runtime-database-roles | disable-auto-deploy | deploy-and-verify <sha>',
   );
 }
 

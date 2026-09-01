@@ -84,8 +84,17 @@ Timeline insert and overwrite are active
 Auto captions export is ready
 `;
 
+const playwrightOrigin = new URL(
+  process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5001',
+).origin;
+
 const isLocalApiUrl = (url: string): boolean => {
-  return url.includes('://localhost:5001/api/');
+  try {
+    const parsedUrl = new URL(url);
+    return parsedUrl.origin === playwrightOrigin && parsedUrl.pathname.startsWith('/api/');
+  } catch {
+    return false;
+  }
 };
 
 const isIgnorableLocalApiFailure = (url: string, failureText: string): boolean => {

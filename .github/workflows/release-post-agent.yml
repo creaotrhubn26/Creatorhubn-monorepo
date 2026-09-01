@@ -1,33 +1,159 @@
 name: Release Post Agent
 
-# Triggered by pushing a tag matching post-agent-v*  (e.g. post-agent-v0.1.1).
-# Builds the macOS Tauri app, signs it with the updater minisign key, and
-# uploads .app.tar.gz + .app.tar.gz.sig + latest.json manifest to a GitHub
-# Release. The Tauri updater plugin reads latest.json from
+# Manual production release only:
+# Actions -> Release Post Agent -> Run workflow on main -> enter an exact
+# major.minor.patch version already present in both Tauri version files.
+# The workflow signs/notarizes current main, mirrors the complete immutable
+# artifact set to B2, publishes the complete non-draft GitHub Release, and only
+# then records the published version in Render. Tag-push releases are disabled.
+# The Tauri updater reads:
 #   https://github.com/<owner>/<repo>/releases/latest/download/post-agent-darwin-aarch64.json
-# (and -x86_64) to detect new versions.
+# (and -x86_64).
 
 on:
-  push:
-    tags:
-      - 'post-agent-v*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g. 0.1.1)'
+        description: "Exact version already committed on current main (for example 0.3.92)"
         required: true
+        type: string
 
 permissions:
-  contents: write  # needed to create a Release + upload artifacts
+  contents: read
+
+concurrency:
+  group: post-agent-production-release
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  guard:
+    name: Validate exact current-main release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      target_sha: ${{ steps.release.outputs.target_sha }}
+    steps:
+      - name: Checkout selected workflow commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Validate ref, version files, main SHA, and tag
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+          SELECTED_REF: ${{ github.ref }}
+          SELECTED_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$SELECTED_REF" != "refs/heads/main" ]; then
+            echo "::error::Post Agent releases must be dispatched from main"
+            exit 1
+          fi
+          if [[ ! "$REQUESTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version must match <major>.<minor>.<patch>"
+            exit 1
+          fi
+          if [[ ! "$SELECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Selected workflow SHA is not a full lowercase commit SHA"
+            exit 1
+          fi
+          checked_out=$(git rev-parse HEAD)
+          if [ "$checked_out" != "$SELECTED_SHA" ]; then
+            echo "::error::Checkout does not match the selected workflow SHA"
+            exit 1
+          fi
+
+          api="https://api.github.com/repos/$REPOSITORY"
+          accept="Accept: application/vnd.github+json"
+          version_header="X-GitHub-Api-Version: 2026-03-10"
+          current_main=$(curl -fsS --connect-timeout 3 --max-time 20 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/git/ref/heads/main" | jq -er '.object.sha')
+          if [ "$current_main" != "$SELECTED_SHA" ]; then
+            echo "::error::Selected workflow commit is not current main"
+            exit 1
+          fi
+
+          tauri_version=$(jq -er '.version | select(type == "string")' \
+            apps/resolve-script-manager/src-tauri/tauri.conf.json)
+          cargo_version=$(python3 -c 'import pathlib,tomllib; print(tomllib.loads(pathlib.Path("apps/resolve-script-manager/src-tauri/Cargo.toml").read_text())["package"]["version"])')
+          if [ "$tauri_version" != "$REQUESTED_VERSION" ] || \
+             [ "$cargo_version" != "$REQUESTED_VERSION" ]; then
+            echo "::error::Requested version must match tauri.conf.json and Cargo.toml"
+            exit 1
+          fi
+
+          release_tag="post-agent-v$REQUESTED_VERSION"
+          tag_response="$RUNNER_TEMP/post-agent-tag-ref.json"
+          tag_status=$(curl -sS --connect-timeout 3 --max-time 20 \
+            -o "$tag_response" -w "%{http_code}" \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/git/ref/tags/$release_tag")
+          case "$tag_status" in
+            200)
+              tag_commit=$(curl -fsS --connect-timeout 3 --max-time 20 \
+                -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+                "$api/commits/$release_tag" | jq -er '.sha')
+              if [ "$tag_commit" != "$SELECTED_SHA" ]; then
+                echo "::error::Existing release tag points to a different commit"
+                exit 1
+              fi
+              ;;
+            404) ;;
+            *)
+              echo "::error::Unable to validate release tag (HTTP $tag_status)"
+              exit 1
+              ;;
+          esac
+
+          release_response="$RUNNER_TEMP/post-agent-guard-release.json"
+          release_status=$(curl -sS --connect-timeout 3 --max-time 20 \
+            -o "$release_response" -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/releases/tags/$release_tag")
+          case "$release_status" in
+            200)
+              release_is_draft=$(jq -r 'if (.draft | type) == "boolean" then (.draft | tostring) else error("draft is not boolean") end' "$release_response")
+              if [ "$release_is_draft" = false ]; then
+                echo "::error::$release_tag is already published; immutable releases cannot be rebuilt"
+                exit 1
+              fi
+              ;;
+            404) ;;
+            *)
+              echo "::error::Unable to inspect existing release (HTTP $release_status)"
+              exit 1
+              ;;
+          esac
+
+          {
+            printf 'version=%s\n' "$REQUESTED_VERSION"
+            printf 'tag=%s\n' "$release_tag"
+            printf 'target_sha=%s\n' "$SELECTED_SHA"
+          } >> "$GITHUB_OUTPUT"
+          echo "Validated Post Agent $REQUESTED_VERSION at current main $SELECTED_SHA."
+
   build-mac:
     name: Build (macOS ${{ matrix.target }})
-    # (checkout under bruker fetch-depth: 0 for git-historikk til "hva er nytt"-notater)
-    runs-on: macos-14  # Apple Silicon runner
+    needs: guard
+    environment: Production
+    permissions:
+      contents: read
+    runs-on: macos-14 # Apple Silicon runner
+    timeout-minutes: 350
     strategy:
       fail-fast: false
       matrix:
@@ -37,36 +163,30 @@ jobs:
           - target: x86_64-apple-darwin
             arch_label: darwin-x86_64
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact guarded commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0   # full historikk + tags → ekte "hva er nytt"-notater i updater-manifestet
+          ref: ${{ needs.guard.outputs.target_sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Resolve version
-        id: ver
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            # Strip "post-agent-v" prefix from tag
-            VERSION="${GITHUB_REF#refs/tags/post-agent-v}"
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Building version: $VERSION"
-
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '20'
+          node-version: "20"
+          package-manager-cache: false
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable 2026-08-31
         with:
           targets: ${{ matrix.target }}
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: apps/resolve-script-manager/src-tauri
 
-      - name: Install npm deps
+      - name: Install npm dependencies
         working-directory: apps/resolve-script-manager
         run: npm ci
 
@@ -79,250 +199,806 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         shell: bash
         run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
-          KEYCHAIN_PASSWORD=$(uuidgen)
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          set -euo pipefail
+          if [ -z "$APPLE_CERTIFICATE" ] || [ -z "$APPLE_CERTIFICATE_PASSWORD" ]; then
+            echo "::error::Apple signing certificate secrets are required"
+            exit 1
+          fi
+          keychain_path="$RUNNER_TEMP/build.keychain"
+          keychain_password=$(uuidgen)
+          certificate_path="$RUNNER_TEMP/cert.p12"
+          trap 'rm -f "$certificate_path"' EXIT
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
 
-          CERT_PATH=$RUNNER_TEMP/cert.p12
-          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
-          security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" \
-            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$certificate_path"
+          security import "$certificate_path" -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$keychain_path"
+          security list-keychain -d user -s "$keychain_path"
           security set-key-partition-list -S apple-tool:,apple:,codesign: \
-            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          rm -f "$CERT_PATH"
-
-          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+            -s -k "$keychain_password" "$keychain_path"
+          security find-identity -v -p codesigning "$keychain_path"
 
       - name: Build Tauri app (signed)
         working-directory: apps/resolve-script-manager
         env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          RUST_TARGET: ${{ matrix.target }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-        run: npm run tauri build -- --target ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ] || [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "::error::Tauri updater and Apple signing secrets are required"
+            exit 1
+          fi
+          npm run tauri build -- --target "$RUST_TARGET"
 
-      # Notariser med App Store Connect API. Submit uten --wait, så
-      # wait i separat retry-loop (Apple notary-API kan droppe network
-      # midt i poll — vi retry'er max 3× med stigende backoff).
-      - name: Notarize .app + .dmg
+      - name: Notarize, staple, and validate .app and .dmg
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          RUST_TARGET: ${{ matrix.target }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         shell: bash
-        # 350 min = rikelig rom for 3 × 40 min retry-ventene + byggetid selv når
-        # Apples notary-kø henger. En enkelt submission tar normalt 5-15 min, men
-        # under kø-incidenter (2026-06-05, 06-07, 06-08) har den stått «In Progress»
-        # i 90+ min. v0.2.22 traff den gamle 160-grensen og feilet (update_failed)
-        # selv om 3/4 submissions var Accepted. Job-default er 360, så 350 er trygt.
-        timeout-minutes: 350
+        timeout-minutes: 330
         run: |
-          BUNDLE_DIR="apps/resolve-script-manager/src-tauri/target/${{ matrix.target }}/release/bundle"
-          APP_PATH=$(find "$BUNDLE_DIR/macos" -name "*.app" | head -1)
-          DMG_PATH=$(find "$BUNDLE_DIR/dmg" -name "*.dmg" 2>/dev/null | head -1)
+          set -euo pipefail
+          if [ -z "$APPLE_ID" ] || [ -z "$APPLE_PASSWORD" ] || \
+             [ -z "$APPLE_TEAM_ID" ] || [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::Apple notarization and Tauri updater signing secrets are required"
+            exit 1
+          fi
 
-          notarize_with_retry() {
+          bundle_dir="apps/resolve-script-manager/src-tauri/target/$RUST_TARGET/release/bundle"
+          shopt -s nullglob
+          app_paths=("$bundle_dir"/macos/*.app)
+          dmg_paths=("$bundle_dir"/dmg/*.dmg)
+          tarball_paths=("$bundle_dir"/macos/*.app.tar.gz)
+          signature_paths=("$bundle_dir"/macos/*.app.tar.gz.sig)
+          if [ "${#app_paths[@]}" -ne 1 ] || [ "${#dmg_paths[@]}" -ne 1 ] || \
+             [ "${#tarball_paths[@]}" -ne 1 ] || [ "${#signature_paths[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one app, DMG, updater tarball, and signature"
+            exit 1
+          fi
+          app_path="${app_paths[0]}"
+          dmg_path="${dmg_paths[0]}"
+          tarball_path="${tarball_paths[0]}"
+          signature_path="${signature_paths[0]}"
+          app_zip="$RUNNER_TEMP/post-agent-$RUST_TARGET.zip"
+          updater_verify_dir=$(mktemp -d "$RUNNER_TEMP/post-agent-updater.XXXXXX")
+          trap 'rm -f "$app_zip"; rm -rf "$updater_verify_dir"' EXIT
+          ditto -c -k --keepParent "$app_path" "$app_zip"
+
+          notarize_and_require_accepted() {
             local target="$1"
             local label="$2"
-            local submission_id=""
-            local attempts=0
-            local max_attempts=3
-
-            echo "::group::Submit $label for notarization"
-            submission_id=$(xcrun notarytool submit "$target" \
+            local result="$RUNNER_TEMP/notary-$RUST_TARGET-$label.json"
+            xcrun notarytool submit "$target" \
               --apple-id "$APPLE_ID" \
               --password "$APPLE_PASSWORD" \
               --team-id "$APPLE_TEAM_ID" \
-              --output-format json | python3 -c "import sys,json;print(json.load(sys.stdin).get('id',''))")
-            echo "Submission ID: $submission_id"
-            echo "::endgroup::"
-
-            if [ -z "$submission_id" ]; then
-              echo "::error::Failed to submit $label for notarization"
+              --wait --timeout 150m --output-format json > "$result"
+            local submission_id
+            local status
+            submission_id=$(jq -er '.id | select(type == "string" and length > 0)' "$result")
+            status=$(jq -er '.status | select(type == "string")' "$result")
+            if [ "$status" != "Accepted" ]; then
+              echo "::error::$label notarization was $status, expected Accepted"
               return 1
             fi
-
-            while [ $attempts -lt $max_attempts ]; do
-              attempts=$((attempts + 1))
-              echo "::group::Wait for notarization (attempt $attempts/$max_attempts)"
-              if xcrun notarytool wait "$submission_id" \
-                --apple-id "$APPLE_ID" \
-                --password "$APPLE_PASSWORD" \
-                --team-id "$APPLE_TEAM_ID" \
-                --timeout 40m; then
-                echo "::endgroup::"
-                local status
-                status=$(xcrun notarytool info "$submission_id" \
-                  --apple-id "$APPLE_ID" \
-                  --password "$APPLE_PASSWORD" \
-                  --team-id "$APPLE_TEAM_ID" \
-                  --output-format json | python3 -c "import sys,json;print(json.load(sys.stdin).get('status',''))")
-                if [ "$status" = "Accepted" ]; then
-                  echo "::notice::$label notarized successfully"
-                  return 0
-                fi
-                echo "::error::Notarization status: $status (expected Accepted)"
-                return 1
-              fi
-              echo "::endgroup::"
-              echo "::warning::Notary wait failed (likely Apple-side network blip), retrying..."
-              sleep $((attempts * 30))
-            done
-            # IKKE-fatal ved timeout: Apple-køen kan henge i timevis (incident
-            # 2026-06-05/07) selv om innsendingen til slutt blir Accepted. Vi lar
-            # releasen publisere USTAPLET — appen er fortsatt notarisert async og
-            # passerer Gatekeeper online. Staple kan gjøres ved re-kjøring senere.
-            echo "::warning::$label: notarisering ikke bekreftet innen vinduet ($submission_id). Publiserer ustaplet — sjekk 'notarytool info $submission_id' senere; re-kjør for staple."
-            return 0
+            echo "$label notarization accepted: $submission_id"
           }
 
-          APP_ZIP=$RUNNER_TEMP/app.zip
-          ditto -c -k --keepParent "$APP_PATH" "$APP_ZIP"
+          notarize_and_require_accepted "$app_zip" app
+          xcrun stapler staple "$app_path"
+          xcrun stapler validate "$app_path"
+          codesign --verify --deep --strict "$app_path"
 
-          notarize_with_retry "$APP_ZIP" ".app"
-          # Best-effort staple: feiler hvis notarisering ikke er bekreftet ennå —
-          # da publiserer vi ustaplet (virker online) i stedet for å felle releasen.
-          xcrun stapler staple "$APP_PATH" || echo "::warning::.app ikke staplet (notarisering ikke bekreftet ennå)"
-          xcrun stapler validate "$APP_PATH" || true
+          notarize_and_require_accepted "$dmg_path" dmg
+          xcrun stapler staple "$dmg_path"
+          xcrun stapler validate "$dmg_path"
 
-          if [ -n "$DMG_PATH" ]; then
-            notarize_with_retry "$DMG_PATH" ".dmg"
-            xcrun stapler staple "$DMG_PATH" || echo "::warning::.dmg ikke staplet (notarisering ikke bekreftet ennå)"
-            xcrun stapler validate "$DMG_PATH" || true
+          # Tauri created its updater archive before notarization. Rebuild it
+          # from the stapled app, then replace the detached updater signature.
+          tarball_name="${tarball_path##*/}"
+          app_name="${app_path##*/}"
+          tarball_absolute="$PWD/$tarball_path"
+          rm -f "$tarball_path" "$signature_path"
+          (
+            cd "${app_path%/*}"
+            tar -czf "$tarball_name" "$app_name"
+          )
+          npm --prefix apps/resolve-script-manager run tauri -- signer sign "$tarball_absolute"
+          if [ ! -s "$tarball_path" ] || [ ! -s "$signature_path" ]; then
+            echo "::error::Failed to rebuild and sign the stapled updater archive"
+            exit 1
           fi
-
-          rm -f "$APP_ZIP"
-          echo "::notice::✓ Post Agent .app + .dmg signed and notarized"
+          tar -xzf "$tarball_path" -C "$updater_verify_dir"
+          verified_apps=("$updater_verify_dir"/*.app)
+          if [ "${#verified_apps[@]}" -ne 1 ]; then
+            echo "::error::Rebuilt updater archive does not contain exactly one app"
+            exit 1
+          fi
+          xcrun stapler validate "${verified_apps[0]}"
+          codesign --verify --deep --strict "${verified_apps[0]}"
+          echo "::notice::Post Agent app, DMG, and updater archive are Accepted, stapled, signed, and validated."
 
       - name: Collect artifacts
         id: artifacts
+        env:
+          ARCH_LABEL: ${{ matrix.arch_label }}
+          RUST_TARGET: ${{ matrix.target }}
         shell: bash
         run: |
-          BUNDLE_DIR="apps/resolve-script-manager/src-tauri/target/${{ matrix.target }}/release/bundle"
-          TARBALL=$(find "$BUNDLE_DIR/macos" -name "*.app.tar.gz" | head -1)
-          SIG=$(find "$BUNDLE_DIR/macos" -name "*.app.tar.gz.sig" | head -1)
-          DMG=$(find "$BUNDLE_DIR/dmg" -name "*.dmg" | head -1)
-          if [ -z "$TARBALL" ] || [ -z "$SIG" ]; then
-            echo "::error::Expected .app.tar.gz + .sig in $BUNDLE_DIR/macos"
-            ls -R "$BUNDLE_DIR" || true
+          set -euo pipefail
+
+          bundle_dir="apps/resolve-script-manager/src-tauri/target/$RUST_TARGET/release/bundle"
+          shopt -s nullglob
+          tarballs=("$bundle_dir"/macos/*.app.tar.gz)
+          signatures=("$bundle_dir"/macos/*.app.tar.gz.sig)
+          dmgs=("$bundle_dir"/dmg/*.dmg)
+          if [ "${#tarballs[@]}" -ne 1 ] || [ "${#signatures[@]}" -ne 1 ] || \
+             [ "${#dmgs[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one tarball, signature, and DMG"
             exit 1
           fi
-          # Rename so the GitHub Release filename is predictable for the updater URL
+
+          tarball="${tarballs[0]}"
+          signature="${signatures[0]}"
+          dmg="${dmgs[0]}"
           mkdir -p staging
-          cp "$TARBALL" "staging/post-agent-${{ matrix.arch_label }}.app.tar.gz"
-          cp "$SIG"     "staging/post-agent-${{ matrix.arch_label }}.app.tar.gz.sig"
-          if [ -n "$DMG" ]; then
-            cp "$DMG"   "staging/post-agent-${{ matrix.arch_label }}.dmg"
-          fi
-          echo "tarball=staging/post-agent-${{ matrix.arch_label }}.app.tar.gz" >> "$GITHUB_OUTPUT"
-          echo "sig=staging/post-agent-${{ matrix.arch_label }}.app.tar.gz.sig" >> "$GITHUB_OUTPUT"
-          [ -n "$DMG" ] && echo "dmg=staging/post-agent-${{ matrix.arch_label }}.dmg" >> "$GITHUB_OUTPUT"
+          tarball_out="staging/post-agent-$ARCH_LABEL.app.tar.gz"
+          signature_out="staging/post-agent-$ARCH_LABEL.app.tar.gz.sig"
+          dmg_out="staging/post-agent-$ARCH_LABEL.dmg"
+          cp "$tarball" "$tarball_out"
+          cp "$signature" "$signature_out"
+          cp "$dmg" "$dmg_out"
+
+          for artifact in "$tarball_out" "$signature_out" "$dmg_out"; do
+            if [ ! -s "$artifact" ]; then
+              echo "::error::Collected artifact is missing or empty: $artifact"
+              exit 1
+            fi
+          done
+
+          {
+            printf 'tarball=%s\n' "$tarball_out"
+            printf 'sig=%s\n' "$signature_out"
+            printf 'dmg=%s\n' "$dmg_out"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Generate updater manifest
+        env:
+          ARCH_LABEL: ${{ matrix.arch_label }}
+          RELEASE_TAG: ${{ needs.guard.outputs.tag }}
+          RELEASE_TARGET: ${{ needs.guard.outputs.target_sha }}
+          RELEASE_VERSION: ${{ needs.guard.outputs.version }}
+          REPOSITORY: ${{ github.repository }}
+          SIGNATURE_PATH: ${{ steps.artifacts.outputs.sig }}
         shell: bash
         run: |
-          SIG_CONTENT=$(cat "${{ steps.artifacts.outputs.sig }}")
-          PUB_URL="https://github.com/${{ github.repository }}/releases/download/post-agent-v${{ steps.ver.outputs.version }}/post-agent-${{ matrix.arch_label }}.app.tar.gz"
+          set -euo pipefail
+          if [ ! -s "$SIGNATURE_PATH" ]; then
+            echo "::error::Updater signature is missing or empty"
+            exit 1
+          fi
+          signature=$(tr -d '\r\n' < "$SIGNATURE_PATH")
+          if [ -z "$signature" ]; then
+            echo "::error::Updater signature contains no usable data"
+            exit 1
+          fi
+          public_url="https://github.com/$REPOSITORY/releases/download/$RELEASE_TAG/post-agent-$ARCH_LABEL.app.tar.gz"
+
           # "Hva er nytt" = commit-emnene siden forrige post-agent-tag (uten støy-commits).
           # Updater-dialogen i appen viser dette feltet (update.body), så det MÅ være ekte.
-          PREV_TAG=$(git tag -l 'post-agent-v*' --sort=-v:refname | grep -v "v${{ steps.ver.outputs.version }}\$" | head -1 || true)
-          if [ -n "$PREV_TAG" ]; then RANGE="$PREV_TAG..HEAD"; else RANGE="HEAD~12..HEAD"; fi
+          previous_tag=$(git tag -l 'post-agent-v*' --sort=-v:refname \
+            | grep -Fvx "$RELEASE_TAG" | head -n 1 || true)
           # Sti-filter til selve appen → «hva er nytt» blir en REN Post Agent-logg,
           # ikke urelaterte monorepo-commits (releases tagges utenfor main, så
           # spennet er stort). Uten dette druknet Infographic Studio i i18n/Leadgrid-støy.
-          NOTES=$(git log --no-merges --pretty=format:'%s' "$RANGE" -- apps/resolve-script-manager 2>/dev/null \
+          if [ -n "$previous_tag" ]; then
+            raw_notes=$(git log --no-merges --pretty=format:'%s' \
+              "$previous_tag..$RELEASE_TARGET" -- apps/resolve-script-manager 2>/dev/null || true)
+          else
+            raw_notes=$(git log --no-merges --pretty=format:'%s' -n 12 \
+              "$RELEASE_TARGET" -- apps/resolve-script-manager 2>/dev/null || true)
+          fi
+          notes=$(printf '%s\n' "$raw_notes" \
             | grep -vE '^chore\(post-agent\): bump|^chore: trigger|^Merge ' \
             | sed -E 's/^(feat|fix|chore|refactor|docs|style|perf|test)(\([^)]*\))?: //' \
-            | sed 's/^/• /' | head -15 || true)
-          [ -z "$NOTES" ] && NOTES="Forbedringer og feilrettinger."
-          export PA_VER="${{ steps.ver.outputs.version }}" PA_ARCH="${{ matrix.arch_label }}" \
-                 PA_SIG="$SIG_CONTENT" PA_URL="$PUB_URL" PA_NOTES="$NOTES"
+            | sed 's/^/• /' | head -n 15 || true)
+          if [ -z "$notes" ]; then
+            notes="Forbedringer og feilrettinger."
+          fi
+
+          export PA_ARCH="$ARCH_LABEL" PA_NOTES="$notes" PA_SIG="$signature" \
+            PA_URL="$public_url" PA_VER="$RELEASE_VERSION"
+          manifest_path="staging/post-agent-$ARCH_LABEL.json"
           python3 -c '
-          import json, os, datetime
+          import datetime, json, os
           print(json.dumps({
             "version": os.environ["PA_VER"],
             "notes": os.environ["PA_NOTES"],
-            "pub_date": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "platforms": { os.environ["PA_ARCH"]: { "signature": os.environ["PA_SIG"], "url": os.environ["PA_URL"] } },
           }, indent=2))
-          ' > "staging/post-agent-${{ matrix.arch_label }}.json"
-          cat "staging/post-agent-${{ matrix.arch_label }}.json"
+          ' > "$manifest_path"
+          jq -e --arg version "$RELEASE_VERSION" --arg platform "$ARCH_LABEL" \
+            --arg signature "$signature" --arg url "$public_url" '
+              .version == $version and
+              (.notes | type == "string" and length > 0) and
+              (.pub_date | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T")) and
+              (.platforms | keys == [$platform]) and
+              .platforms[$platform].signature == $signature and
+              .platforms[$platform].url == $url
+            ' "$manifest_path" >/dev/null
+          cat "$manifest_path"
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload immutable architecture artifact set
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: post-agent-${{ matrix.arch_label }}
-          path: staging/*
+          path: |
+            staging/post-agent-${{ matrix.arch_label }}.app.tar.gz
+            staging/post-agent-${{ matrix.arch_label }}.app.tar.gz.sig
+            staging/post-agent-${{ matrix.arch_label }}.dmg
+            staging/post-agent-${{ matrix.arch_label }}.json
           if-no-files-found: error
           retention-days: 7
 
-  publish-release:
-    name: Publish GitHub Release
-    needs: build-mac
-    runs-on: ubuntu-latest
+      - name: Remove temporary signing keychain
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          keychain_path="$RUNNER_TEMP/build.keychain"
+          if [ -e "$keychain_path" ]; then
+            security delete-keychain "$keychain_path"
+          fi
+
+  stage-release:
+    name: Validate and stage release dependencies
+    needs: [guard, build-mac]
+    environment: Production
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - name: Download complete matrix artifact set
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: dist
           merge-multiple: true
 
-      - name: Resolve tag
-        id: tag
+      - name: Validate all release artifacts and manifests
+        env:
+          RELEASE_TAG: ${{ needs.guard.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.guard.outputs.version }}
+          REPOSITORY: ${{ github.repository }}
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="post-agent-v${{ github.event.inputs.version }}"
-          else
-            TAG="${GITHUB_REF#refs/tags/}"
+          set -euo pipefail
+          expected=(
+            post-agent-darwin-aarch64.app.tar.gz
+            post-agent-darwin-aarch64.app.tar.gz.sig
+            post-agent-darwin-aarch64.dmg
+            post-agent-darwin-aarch64.json
+            post-agent-darwin-x86_64.app.tar.gz
+            post-agent-darwin-x86_64.app.tar.gz.sig
+            post-agent-darwin-x86_64.dmg
+            post-agent-darwin-x86_64.json
+          )
+          shopt -s nullglob
+          artifacts=(dist/*)
+          if [ "${#artifacts[@]}" -ne "${#expected[@]}" ]; then
+            echo "::error::Expected exactly ${#expected[@]} release artifacts, found ${#artifacts[@]}"
+            exit 1
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          for artifact in "${artifacts[@]}"; do
+            if [ ! -f "$artifact" ]; then
+              echo "::error::Unexpected non-file in release artifact set: $artifact"
+              exit 1
+            fi
+          done
+          for name in "${expected[@]}"; do
+            if [ ! -s "dist/$name" ]; then
+              echo "::error::Required release artifact is missing or empty: $name"
+              exit 1
+            fi
+          done
 
-      - name: Create / update GitHub Release
-        uses: softprops/action-gh-release@v2
+          for arch in aarch64 x86_64; do
+            platform="darwin-$arch"
+            signature=$(tr -d '\r\n' < "dist/post-agent-$platform.app.tar.gz.sig")
+            manifest="dist/post-agent-$platform.json"
+            public_url="https://github.com/$REPOSITORY/releases/download/$RELEASE_TAG/post-agent-$platform.app.tar.gz"
+            if [ -z "$signature" ]; then
+              echo "::error::Empty updater signature for $platform"
+              exit 1
+            fi
+            jq -e --arg version "$RELEASE_VERSION" --arg platform "$platform" \
+              --arg signature "$signature" --arg url "$public_url" '
+                .version == $version and
+                (.notes | type == "string" and length > 0) and
+                (.platforms | keys == [$platform]) and
+                .platforms[$platform].signature == $signature and
+                .platforms[$platform].url == $url
+              ' "$manifest" >/dev/null
+          done
+          echo "Validated the exact eight-file Post Agent release set."
+
+      - name: Revalidate current main and release tag before external staging
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.guard.outputs.tag }}
+          RELEASE_TARGET: ${{ needs.guard.outputs.target_sha }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/$REPOSITORY"
+          accept="Accept: application/vnd.github+json"
+          version_header="X-GitHub-Api-Version: 2026-03-10"
+          current_main=$(curl -fsS --connect-timeout 3 --max-time 20 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/git/ref/heads/main" | jq -er '.object.sha')
+          if [ "$current_main" != "$RELEASE_TARGET" ]; then
+            echo "::error::Main advanced after build; refusing to stage this release"
+            exit 1
+          fi
+
+          response="$RUNNER_TEMP/post-agent-stage-tag.json"
+          status=$(curl -sS --connect-timeout 3 --max-time 20 -o "$response" -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/git/ref/tags/$RELEASE_TAG")
+          case "$status" in
+            200)
+              tag_commit=$(curl -fsS --connect-timeout 3 --max-time 20 \
+                -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+                "$api/commits/$RELEASE_TAG" | jq -er '.sha')
+              if [ "$tag_commit" != "$RELEASE_TARGET" ]; then
+                echo "::error::Release tag changed after guard validation"
+                exit 1
+              fi
+              ;;
+            404) ;;
+            *)
+              echo "::error::Unable to revalidate release tag (HTTP $status)"
+              exit 1
+              ;;
+          esac
+
+          release_response="$RUNNER_TEMP/post-agent-stage-release.json"
+          release_status=$(curl -sS --connect-timeout 3 --max-time 20 \
+            -o "$release_response" -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/releases/tags/$RELEASE_TAG")
+          case "$release_status" in
+            200)
+              release_is_draft=$(jq -r 'if (.draft | type) == "boolean" then (.draft | tostring) else error("draft is not boolean") end' "$release_response")
+              if [ "$release_is_draft" = false ]; then
+                echo "::error::$RELEASE_TAG became published before B2 staging; refusing to overwrite immutable objects"
+                exit 1
+              fi
+              ;;
+            404) ;;
+            *)
+              echo "::error::Unable to revalidate release state (HTTP $release_status)"
+              exit 1
+              ;;
+          esac
+
+      # Production B2 secret contract: POST_AGENT_B2_KEY_ID,
+      # POST_AGENT_B2_APPLICATION_KEY, POST_AGENT_B2_BUCKET and POST_AGENT_B2_REGION.
+      # No service-wide Render environment is read by this release.
+      - name: Mirror marketplace download to B2
+        env:
+          POST_AGENT_B2_KEY_ID: ${{ secrets.POST_AGENT_B2_KEY_ID }}
+          POST_AGENT_B2_APPLICATION_KEY: ${{ secrets.POST_AGENT_B2_APPLICATION_KEY }}
+          POST_AGENT_B2_BUCKET: ${{ secrets.POST_AGENT_B2_BUCKET }}
+          POST_AGENT_B2_REGION: ${{ secrets.POST_AGENT_B2_REGION }}
+          TAG: ${{ needs.guard.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$TAG" =~ ^post-agent-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Post Agent tag must match post-agent-v<major>.<minor>.<patch>"
+            exit 1
+          fi
+          if ! command -v aws >/dev/null 2>&1; then
+            echo "::error::The ubuntu-24.04 runner does not provide the expected AWS CLI"
+            exit 1
+          fi
+
+          missing=0
+          for key in POST_AGENT_B2_KEY_ID POST_AGENT_B2_APPLICATION_KEY POST_AGENT_B2_BUCKET POST_AGENT_B2_REGION; do
+            if [ -z "${!key:-}" ]; then
+              echo "::error::$key is not configured in the Production environment"
+              missing=$((missing + 1))
+            fi
+          done
+          if [ "$missing" -gt 0 ]; then
+            exit 1
+          fi
+          echo "::add-mask::$POST_AGENT_B2_KEY_ID"
+          echo "::add-mask::$POST_AGENT_B2_APPLICATION_KEY"
+
+          b2_region="$POST_AGENT_B2_REGION"
+          b2_bucket="$POST_AGENT_B2_BUCKET"
+
+          if [[ ! "$b2_region" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+            echo "::error::POST_AGENT_B2_REGION is invalid"
+            exit 1
+          fi
+          if [[ ! "$b2_bucket" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]]; then
+            echo "::error::POST_AGENT_B2_BUCKET is invalid"
+            exit 1
+          fi
+
+          tag_version="${TAG#post-agent-}"
+          endpoint="https://s3.$b2_region.backblazeb2.com"
+          aws_config="$RUNNER_TEMP/post-agent-aws-config"
+          AWS_CONFIG_FILE="$aws_config" aws configure set default.s3.addressing_style path
+
+          for arch in aarch64 x86_64; do
+            for suffix in app.tar.gz app.tar.gz.sig dmg json; do
+              required="dist/post-agent-darwin-$arch.$suffix"
+              if [ ! -f "$required" ]; then
+                echo "::error::Required Post Agent artifact is missing: $required"
+                exit 1
+              fi
+            done
+          done
+
+          shopt -s nullglob
+          artifacts=(dist/*)
+          if [ "${#artifacts[@]}" -eq 0 ]; then
+            echo "::error::No Post Agent artifacts were downloaded"
+            exit 1
+          fi
+
+          for artifact in "${artifacts[@]}"; do
+            if [ ! -f "$artifact" ]; then
+              continue
+            fi
+            name="${artifact##*/}"
+            if [[ ! "$name" =~ ^post-agent-darwin-(aarch64|x86_64)\.(app\.tar\.gz(\.sig)?|dmg|json)$ ]]; then
+              echo "::error::Refusing unexpected release artifact: $name"
+              exit 1
+            fi
+            case "$name" in
+              *.dmg) content_type="application/x-apple-diskimage" ;;
+              *.app.tar.gz) content_type="application/gzip" ;;
+              *.sig) content_type="text/plain" ;;
+              *.json) content_type="application/json" ;;
+            esac
+
+            AWS_ACCESS_KEY_ID="$POST_AGENT_B2_KEY_ID" \
+            AWS_SECRET_ACCESS_KEY="$POST_AGENT_B2_APPLICATION_KEY" \
+            AWS_DEFAULT_REGION="$b2_region" \
+            AWS_EC2_METADATA_DISABLED=true \
+            AWS_CONFIG_FILE="$aws_config" \
+            AWS_REQUEST_CHECKSUM_CALCULATION=when_required \
+            AWS_RESPONSE_CHECKSUM_VALIDATION=when_required \
+              aws s3 cp "$artifact" \
+                "s3://$b2_bucket/downloads/post-agent/$tag_version/$name" \
+                --endpoint-url "$endpoint" \
+                --content-type "$content_type" \
+                --no-progress --only-show-errors
+            echo "uploaded $name"
+          done
+
+          echo "::notice::B2 marketplace mirror uploaded for $tag_version."
+
+  publish-release:
+    name: Publish verified GitHub Release
+    needs: [guard, stage-release]
+    environment: Production
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Download the staged immutable artifact set
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: ${{ steps.tag.outputs.tag }}
+          path: dist
+          merge-multiple: true
+
+      - name: Revalidate artifacts, main, tag, and release state
+        id: prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.guard.outputs.tag }}
+          RELEASE_TARGET: ${{ needs.guard.outputs.target_sha }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=(
+            post-agent-darwin-aarch64.app.tar.gz
+            post-agent-darwin-aarch64.app.tar.gz.sig
+            post-agent-darwin-aarch64.dmg
+            post-agent-darwin-aarch64.json
+            post-agent-darwin-x86_64.app.tar.gz
+            post-agent-darwin-x86_64.app.tar.gz.sig
+            post-agent-darwin-x86_64.dmg
+            post-agent-darwin-x86_64.json
+          )
+          shopt -s nullglob
+          artifacts=(dist/*)
+          if [ "${#artifacts[@]}" -ne "${#expected[@]}" ]; then
+            echo "::error::Publish job did not receive the exact eight-file artifact set"
+            exit 1
+          fi
+          for name in "${expected[@]}"; do
+            if [ ! -s "dist/$name" ]; then
+              echo "::error::Publish artifact is missing or empty: $name"
+              exit 1
+            fi
+          done
+
+          api="https://api.github.com/repos/$REPOSITORY"
+          accept="Accept: application/vnd.github+json"
+          version_header="X-GitHub-Api-Version: 2026-03-10"
+          current_main=$(curl -fsS --connect-timeout 3 --max-time 20 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/git/ref/heads/main" | jq -er '.object.sha')
+          if [ "$current_main" != "$RELEASE_TARGET" ]; then
+            echo "::error::Main advanced after staging; refusing to publish"
+            exit 1
+          fi
+
+          tag_response="$RUNNER_TEMP/post-agent-publish-tag.json"
+          tag_status=$(curl -sS --connect-timeout 3 --max-time 20 \
+            -o "$tag_response" -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/git/ref/tags/$RELEASE_TAG")
+          if [ "$tag_status" = 404 ]; then
+            tag_payload=$(jq -cn --arg ref "refs/tags/$RELEASE_TAG" \
+              --arg sha "$RELEASE_TARGET" '{ref: $ref, sha: $sha}')
+            tag_status=$(curl -sS --connect-timeout 3 --max-time 20 \
+              -o "$tag_response" -w '%{http_code}' -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+              -H 'Content-Type: application/json' --data-binary "$tag_payload" \
+              "$api/git/refs")
+            if [ "$tag_status" != 201 ] && [ "$tag_status" != 422 ]; then
+              echo "::error::Unable to create immutable release tag (HTTP $tag_status)"
+              exit 1
+            fi
+          elif [ "$tag_status" != 200 ]; then
+            echo "::error::Unable to read immutable release tag (HTTP $tag_status)"
+            exit 1
+          fi
+          tag_commit=$(curl -fsS --connect-timeout 3 --max-time 20 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/commits/$RELEASE_TAG" | jq -er '.sha')
+          if [ "$tag_commit" != "$RELEASE_TARGET" ]; then
+            echo "::error::Immutable release tag does not resolve to the guarded commit"
+            exit 1
+          fi
+
+          release_response="$RUNNER_TEMP/post-agent-existing-release.json"
+          release_status=$(curl -sS --connect-timeout 3 --max-time 20 \
+            -o "$release_response" -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/releases/tags/$RELEASE_TAG")
+          already_published=false
+          case "$release_status" in
+            200)
+              is_draft=$(jq -r 'if (.draft | type) == "boolean" then .draft else error("draft is not boolean") end' "$release_response")
+              if [ "$is_draft" = false ]; then
+                echo "::error::$RELEASE_TAG became published after the initial guard; refusing to mutate an immutable release"
+                exit 1
+              fi
+              ;;
+            404) ;;
+            *)
+              echo "::error::Unable to inspect existing release (HTTP $release_status)"
+              exit 1
+              ;;
+          esac
+          printf 'already_published=%s\n' "$already_published" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update a private draft with all assets
+        id: draft
+        if: steps.prepare.outputs.already_published != 'true'
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.5.0
+        with:
+          tag_name: ${{ needs.guard.outputs.tag }}
+          target_commitish: ${{ needs.guard.outputs.target_sha }}
+          name: ${{ needs.guard.outputs.tag }}
+          draft: true
+          prerelease: false
+          make_latest: false
           generate_release_notes: true
           files: dist/*
           fail_on_unmatched_files: true
 
-      # #10: hold marketplace-nedlastingen aktuell automatisk. Laster release-
-      # assets til B2 + bumper POST_AGENT_LATEST_VERSION på Render. Best-effort
-      # (continue-on-error) + henter B2-creds via Render-API'et med RENDER_API_KEY,
-      # så ingen ekstra B2-secrets trengs. Hopper over hvis nøkkelen ikke er satt.
-      - name: Auto-bump marketplace download (B2 + Render)
-        continue-on-error: true
+      - name: Verify complete draft and publish it
+        if: steps.prepare.outputs.already_published != 'true'
         env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          TAG: ${{ steps.tag.outputs.tag }}
-          SID: srv-d76ob60ule4c73dv2p60
+          DRAFT_RELEASE_ID: ${{ steps.draft.outputs.id }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.guard.outputs.tag }}
+          RELEASE_TARGET: ${{ needs.guard.outputs.target_sha }}
+          REPOSITORY: ${{ github.repository }}
         shell: bash
         run: |
-          set -e
-          pip install --quiet boto3
-          curl -s -H "Authorization: Bearer $RENDER_API_KEY" "https://api.render.com/v1/services/$SID/env-vars?limit=100" > /tmp/env.json
-          TAGV="${TAG#post-agent-}"
-          TAGV="$TAGV" python3 - <<'PY'
-          import os, json, glob, boto3
-          from botocore.config import Config
-          envs = {e["envVar"]["key"]: (e["envVar"]["value"] or "").strip() for e in json.load(open("/tmp/env.json"))}
-          region = envs.get("B2_REGION") or "eu-central-003"
-          s3 = boto3.client("s3", region_name=region, endpoint_url=f"https://s3.{region}.backblazeb2.com",
-            aws_access_key_id=envs["B2_ROLE_ROOM_APPLICATION_KEY_ID"], aws_secret_access_key=envs["B2_ROLE_ROOM_APPLICATION_KEY"],
-            config=Config(s3={"addressing_style":"path"}))
-          bucket = envs["B2_ROLE_ROOM_BUCKET_NAME"]; tagv = os.environ["TAGV"]
-          ct = {".dmg":"application/x-apple-diskimage",".gz":"application/gzip",".sig":"text/plain",".json":"application/json"}
-          for f in sorted(glob.glob("dist/*")):
-              if not os.path.isfile(f): continue
-              n = os.path.basename(f)
-              with open(f,"rb") as fh:
-                  s3.put_object(Bucket=bucket, Key=f"downloads/post-agent/{tagv}/{n}", Body=fh.read(),
-                                ContentType=ct.get(os.path.splitext(n)[1],"application/octet-stream"))
-              print("uploaded", n)
-          PY
-          curl -s -X PUT -H "Authorization: Bearer $RENDER_API_KEY" -H "Content-Type: application/json" \
-            -d "{\"value\":\"$TAGV\"}" "https://api.render.com/v1/services/$SID/env-vars/POST_AGENT_LATEST_VERSION" >/dev/null
-          echo "✓ B2-opplastet + POST_AGENT_LATEST_VERSION=$TAGV"
+          set -euo pipefail
+          if [[ ! "$DRAFT_RELEASE_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::Draft release action did not return a numeric release ID"
+            exit 1
+          fi
+          expected=(
+            post-agent-darwin-aarch64.app.tar.gz
+            post-agent-darwin-aarch64.app.tar.gz.sig
+            post-agent-darwin-aarch64.dmg
+            post-agent-darwin-aarch64.json
+            post-agent-darwin-x86_64.app.tar.gz
+            post-agent-darwin-x86_64.app.tar.gz.sig
+            post-agent-darwin-x86_64.dmg
+            post-agent-darwin-x86_64.json
+          )
+          api="https://api.github.com/repos/$REPOSITORY"
+          accept="Accept: application/vnd.github+json"
+          version_header="X-GitHub-Api-Version: 2026-03-10"
+          draft_response="$RUNNER_TEMP/post-agent-draft-release.json"
+          curl -fsS --connect-timeout 3 --max-time 20 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/releases/$DRAFT_RELEASE_ID" -o "$draft_response"
+          expected_json=$(printf '%s\n' "${expected[@]}" | jq -R . | jq -sc 'sort')
+          actual_json=$(jq -c '[.assets[].name] | sort' "$draft_response")
+          assets_ready=$(jq -r '.assets | all(.state == "uploaded" and (.size > 0))' "$draft_response")
+          if [ "$(jq -r '.tag_name' "$draft_response")" != "$RELEASE_TAG" ] || \
+             [ "$(jq -r '.draft' "$draft_response")" != true ] || \
+             [ "$actual_json" != "$expected_json" ] || [ "$assets_ready" != true ]; then
+            echo "::error::Draft release is not the complete expected release"
+            exit 1
+          fi
+
+          current_main=$(curl -fsS --connect-timeout 3 --max-time 20 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/git/ref/heads/main" | jq -er '.object.sha')
+          tag_commit=$(curl -fsS --connect-timeout 3 --max-time 20 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/commits/$RELEASE_TAG" | jq -er '.sha')
+          if [ "$current_main" != "$RELEASE_TARGET" ] || [ "$tag_commit" != "$RELEASE_TARGET" ]; then
+            echo "::error::Main or release tag changed while the draft assets were uploaded"
+            exit 1
+          fi
+
+          publish_payload=$(jq -cn '{draft: false, prerelease: false, make_latest: "true"}')
+          curl -fsS --connect-timeout 3 --max-time 30 -X PATCH \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            -H 'Content-Type: application/json' --data-binary "$publish_payload" \
+            "$api/releases/$DRAFT_RELEASE_ID" -o /dev/null
+
+      - name: Verify published release and immutable tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.guard.outputs.tag }}
+          RELEASE_TARGET: ${{ needs.guard.outputs.target_sha }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=(
+            post-agent-darwin-aarch64.app.tar.gz
+            post-agent-darwin-aarch64.app.tar.gz.sig
+            post-agent-darwin-aarch64.dmg
+            post-agent-darwin-aarch64.json
+            post-agent-darwin-x86_64.app.tar.gz
+            post-agent-darwin-x86_64.app.tar.gz.sig
+            post-agent-darwin-x86_64.dmg
+            post-agent-darwin-x86_64.json
+          )
+          api="https://api.github.com/repos/$REPOSITORY"
+          accept="Accept: application/vnd.github+json"
+          version_header="X-GitHub-Api-Version: 2026-03-10"
+          release_response="$RUNNER_TEMP/post-agent-published-release.json"
+          curl -fsS --connect-timeout 3 --max-time 20 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/releases/tags/$RELEASE_TAG" -o "$release_response"
+          expected_json=$(printf '%s\n' "${expected[@]}" | jq -R . | jq -sc 'sort')
+          actual_json=$(jq -c '[.assets[].name] | sort' "$release_response")
+          assets_ready=$(jq -r '.assets | all(.state == "uploaded" and (.size > 0))' "$release_response")
+          if [ "$(jq -r '.draft' "$release_response")" != false ] || \
+             [ "$(jq -r '.prerelease' "$release_response")" != false ] || \
+             [ "$actual_json" != "$expected_json" ] || [ "$assets_ready" != true ]; then
+            echo "::error::Published release verification failed"
+            exit 1
+          fi
+          tag_commit=$(curl -fsS --connect-timeout 3 --max-time 20 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/commits/$RELEASE_TAG" | jq -er '.sha')
+          if [ "$tag_commit" != "$RELEASE_TARGET" ]; then
+            echo "::error::Published tag no longer resolves to the guarded commit"
+            exit 1
+          fi
+          echo "::notice::$RELEASE_TAG is published with all eight verified assets."
+
+  activate-render-version:
+    name: Record the published Post Agent version in Render
+    needs: [guard, publish-release]
+    environment: Production
+    permissions:
+      contents: read
+    concurrency:
+      # Prevent the env update from interleaving with a canonical backend deploy.
+      group: creatorhub-production-database-and-backend
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Verify the published release and update the active version key
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.guard.outputs.tag }}
+          RELEASE_TARGET: ${{ needs.guard.outputs.target_sha }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: srv-d76ob60ule4c73dv2p60
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^post-agent-v[0-9]+\.[0-9]+\.[0-9]+$ ]] || \
+             [[ ! "$RELEASE_TARGET" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Release identity is invalid"
+            exit 1
+          fi
+          if [ -z "$RENDER_API_KEY" ]; then
+            echo "::error::RENDER_API_KEY is not configured in the Production environment"
+            exit 1
+          fi
+          echo "::add-mask::$RENDER_API_KEY"
+
+          expected=(
+            post-agent-darwin-aarch64.app.tar.gz
+            post-agent-darwin-aarch64.app.tar.gz.sig
+            post-agent-darwin-aarch64.dmg
+            post-agent-darwin-aarch64.json
+            post-agent-darwin-x86_64.app.tar.gz
+            post-agent-darwin-x86_64.app.tar.gz.sig
+            post-agent-darwin-x86_64.dmg
+            post-agent-darwin-x86_64.json
+          )
+          api="https://api.github.com/repos/$REPOSITORY"
+          accept="Accept: application/vnd.github+json"
+          version_header="X-GitHub-Api-Version: 2026-03-10"
+          release_response="$RUNNER_TEMP/post-agent-activation-release.json"
+          curl -fsS --connect-timeout 3 --max-time 20 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/releases/tags/$RELEASE_TAG" -o "$release_response"
+          expected_json=$(printf '%s\n' "${expected[@]}" | jq -R . | jq -sc 'sort')
+          actual_json=$(jq -c '[.assets[].name] | sort' "$release_response")
+          assets_ready=$(jq -r '.assets | all(.state == "uploaded" and (.size > 0))' "$release_response")
+          if [ "$(jq -r '.draft' "$release_response")" != false ] || \
+             [ "$(jq -r '.prerelease' "$release_response")" != false ] || \
+             [ "$actual_json" != "$expected_json" ] || [ "$assets_ready" != true ]; then
+            echo "::error::Render activation requires a complete published GitHub Release"
+            exit 1
+          fi
+          tag_commit=$(curl -fsS --connect-timeout 3 --max-time 20 \
+            -H "Authorization: Bearer $GH_TOKEN" -H "$accept" -H "$version_header" \
+            "$api/commits/$RELEASE_TAG" | jq -er '.sha')
+          if [ "$tag_commit" != "$RELEASE_TARGET" ]; then
+            echo "::error::Published release tag does not resolve to the guarded commit"
+            exit 1
+          fi
+
+          release_version="${RELEASE_TAG#post-agent-}"
+          jq -cn --arg value "$release_version" '{value: $value}' |
+            curl -fsS --connect-timeout 5 --max-time 30 -X PUT \
+              -H "Authorization: Bearer $RENDER_API_KEY" \
+              -H "Content-Type: application/json" \
+              --data-binary @- -o /dev/null \
+              "https://api.render.com/v1/services/$RENDER_SERVICE_ID/env-vars/POST_AGENT_LATEST_VERSION"
+          echo "::notice::POST_AGENT_LATEST_VERSION=$release_version now references a complete published release; the next canonical backend deploy activates it."

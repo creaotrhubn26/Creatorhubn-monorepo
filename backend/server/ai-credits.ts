@@ -67,13 +67,30 @@ export async function creditMove(pool: any, uid: string, type: string, amountUsd
         await client.query("ROLLBACK");
         return false;
       }
+    } else if (type === "refund") {
+      // Refund: restore balance without pretending that new money was bought.
+      // A real spend increased lifetime_spent_usd, so unwind that counter too,
+      // but never let imported/legacy data make it negative.
+      upd = await client.query(
+        `INSERT INTO user_ai_credits
+           (user_id, balance_usd, lifetime_purchased_usd, lifetime_spent_usd, updated_at)
+         VALUES ($1, $2, 0, 0, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET
+           balance_usd = user_ai_credits.balance_usd + $2,
+           lifetime_spent_usd = GREATEST(0, user_ai_credits.lifetime_spent_usd - $2),
+           updated_at = NOW()
+         RETURNING balance_usd`,
+        [uid, amountUsd],
+      );
     } else {
       // Purchase: krediter alltid, opprett rad for ny bruker
-      const purchaseCol = `, lifetime_purchased_usd = user_ai_credits.lifetime_purchased_usd + ${amountUsd}`;
       upd = await client.query(
         `INSERT INTO user_ai_credits (user_id, balance_usd, lifetime_purchased_usd, lifetime_spent_usd, updated_at)
          VALUES ($1, $2, $2, 0, NOW())
-         ON CONFLICT (user_id) DO UPDATE SET balance_usd = user_ai_credits.balance_usd + $2, updated_at = NOW() ${purchaseCol}
+         ON CONFLICT (user_id) DO UPDATE SET
+           balance_usd = user_ai_credits.balance_usd + $2,
+           lifetime_purchased_usd = user_ai_credits.lifetime_purchased_usd + $2,
+           updated_at = NOW()
          RETURNING balance_usd`,
         [uid, amountUsd],
       );
