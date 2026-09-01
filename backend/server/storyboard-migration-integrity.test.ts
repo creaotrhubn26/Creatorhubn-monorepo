@@ -36,14 +36,16 @@ const appliedMigrationChecksums = {
     "8e73c07f5cb74aad2cba424e668899b230cd1dcde51fcdfbe250e661cbd114f8",
   "0487_workspace_project_equipment.sql":
     "d959324092f0cf1c79d9ff12e7614faac99f153e7bfe7fd73f17e066bcd2958e",
+  "0488_storyboard_project_identity_search_path.sql":
+    "c218bc266196b3ef6c844c3b154882a8029e78a521347616bd75c3deec5e5eff",
+  "0489_leadgrid_lead_creation_idempotency.sql":
+    "48c8fa47155e917e35e9917f0828489ecb751d411909662f72469c6c39d9bdab",
 } as const;
 
 const occupiedMigrationBasenames = [
   "0472_leadgrid_project_soft_references.sql",
   "0473_leadgrid_discovery_platform.sql",
   ...Object.keys(appliedMigrationChecksums),
-  "0488_storyboard_schema_owner_boundary.sql",
-  "0489_storyboard_project_identity_search_path.sql",
 ] as const;
 
 const readMigration = (basename: string): string =>
@@ -51,9 +53,6 @@ const readMigration = (basename: string): string =>
 
 const compactSQL = (value: string): string => value.replace(/\s+/g, " ").trim();
 
-const roleBoundary = compactSQL(
-  readMigration("0488_storyboard_schema_owner_boundary.sql"),
-);
 const versions = compactSQL(
   readMigration("0476_storyboard_ai_image_versions.sql"),
 );
@@ -82,7 +81,7 @@ const tenantIdentity = compactSQL(
   readMigration("0484_storyboard_tenant_identity.sql"),
 );
 const tenantIdentityHardening = compactSQL(
-  readMigration("0489_storyboard_project_identity_search_path.sql"),
+  readMigration("0488_storyboard_project_identity_search_path.sql"),
 );
 
 describe("Storyboard Room migration integrity", () => {
@@ -103,6 +102,8 @@ describe("Storyboard Room migration integrity", () => {
       "0457_legacy_generative_ai_billing_due_index.sql",
       "0458_storyboard_ai_image_billing_outbox.sql",
       "0475_storyboard_schema_owner_boundary.sql",
+      "0488_storyboard_schema_owner_boundary.sql",
+      "0489_storyboard_project_identity_search_path.sql",
     ];
     for (const basename of obsoleteBasenames) {
       expect(
@@ -124,31 +125,29 @@ describe("Storyboard Room migration integrity", () => {
     }
   });
 
-  it("keeps forward migrations on the canonical schema-owner path", () => {
-    expect(roleBoundary).toContain(
-      "session_user <> 'creatorhub_migration_login'",
+  it("keeps role-specific migration dataflow compatible with both runners", () => {
+    const hardeningSource = readMigration(
+      "0488_storyboard_project_identity_search_path.sql",
     );
-    expect(roleBoundary).toContain("current_user <> 'creatorhub_schema_owner'");
-    expect(roleBoundary).toContain(
-      "REVOKE REFERENCES ON TABLE public.casting_storyboards FROM creatorhub_migrator",
+    expect(hardeningSource).toMatch(
+      /^-- migration-role: creatorhub_migrator\n/,
     );
-    expect(roleBoundary).not.toContain("GRANT REFERENCES");
-    expect(tenantIdentityHardening).not.toContain("creatorhub_migrator");
-    expect(`${roleBoundary}\n${tenantIdentityHardening}`).not.toMatch(
-      /^-- migration-role:/m,
+    expect(tenantIdentityHardening).toContain(
+      "CREATE OR REPLACE FUNCTION public.enforce_storyboard_project_identity()",
     );
+
+    const leadgridIdempotency = readMigration(
+      "0489_leadgrid_lead_creation_idempotency.sql",
+    );
+    expect(leadgridIdempotency).not.toMatch(/^-- migration-role:/m);
 
     const runner = readFileSync(
       new URL("../migrate.sh", import.meta.url),
       "utf8",
     );
     expect(runner).toContain("exec node scripts/run-production-migrations.mjs");
-    expect(runner).not.toContain("CREATORHUB_MIGRATOR_DATABASE_URL");
-    expect(runner).not.toContain("psql ");
     expect(runner).not.toContain("drizzle-kit");
-    expect(runner).not.toContain("_migrations_applied");
   });
-
   it("converges a runtime-created image-version table to named constraints", () => {
     const createPosition = versions.indexOf(
       "CREATE TABLE IF NOT EXISTS storyboard_ai_image_versions",
