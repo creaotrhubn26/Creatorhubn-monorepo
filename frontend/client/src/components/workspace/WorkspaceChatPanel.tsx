@@ -559,7 +559,7 @@ const WorkspaceChatPanel: React.FC<{ projectId: string; category?: string }> = (
     try {
       const [h, mm] = (meetTime || '14:00').split(':');
       const start = new Date(`${meetDate}T${(h || '14').padStart(2, '0')}:${(mm || '00').padStart(2, '0')}:00`);
-      const mt = await apiRequest(`/api/projects/${projectId}/meetings`, { method: 'POST', body: { title: meetTitle.trim() || t('aMeeting'), scheduledAt: start.toISOString(), durationMinutes: 60, generateMeet: genMeet } });
+      const mt = await apiRequest(`/api/projects/${projectId}/meetings`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: { title: meetTitle.trim() || t('aMeeting'), scheduledAt: start.toISOString(), durationMinutes: 60, generateMeet: genMeet } });
       const when = start.toLocaleString(wsDateLocale(locale), { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
       await postAction(`📅 ${mt?.title || meetTitle.trim()} · ${when}`, { action: 'meeting', refKind: 'meeting', refLabel: mt?.title || meetTitle.trim(), linkedEntityId: mt?.id, meetLink: mt?.meetLink || null });
       setMeetOpen(false); setMeetTitle(''); setMeetDate('');
