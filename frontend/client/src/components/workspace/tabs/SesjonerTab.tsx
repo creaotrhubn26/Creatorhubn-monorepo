@@ -442,6 +442,7 @@ const PlanSessionDialog: React.FC<{ open: boolean; onClose: () => void; projectI
       const startIso = new Date(when).toISOString();
       await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/meetings`, {
         method: 'POST',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
         body: {
           title: title.trim() || 'Studio-økt',
           scheduledAt: startIso,

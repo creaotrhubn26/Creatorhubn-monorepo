@@ -28,6 +28,7 @@ import { canAccessProject, canEditProject } from "./project-team-routes";
 import { requireTeamAccess } from "./team-access";
 import { resolveCrewRoles } from "../../frontend/shared/crew-roles.ts";
 import { CANONICAL_PROFESSIONS, normalizeProfession as normalizeCanonProfession, isWorkspaceCategory as isWsCategory } from "../../frontend/shared/profession-types.ts";
+import { idempotencyMiddleware } from "./_shared-idempotency";
 import { signAssetReadUrl, deleteCaptureObjects } from "./capture-upload-service";
 import {
   archiveToRoleRoomB2,
@@ -556,6 +557,24 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     if (!uid) return; // guard har allerede sendt respons
     req._guardUid = uid;
     next();
+  };
+
+  const workspaceIdempotency = idempotencyMiddleware({
+    pool,
+    scope: "project-workspace",
+  });
+
+  const resolveProjectOwnerUserId = async (projectId: string): Promise<string | null> => {
+    const primary = await pool.query(
+      `SELECT user_id::text AS user_id FROM projects WHERE id::text = $1 LIMIT 1`,
+      [projectId],
+    ).catch(() => ({ rows: [] as any[] }));
+    if (primary.rows[0]?.user_id) return String(primary.rows[0].user_id);
+    const legacy = await pool.query(
+      `SELECT user_id::text AS user_id FROM legacy.projects WHERE id::text = $1 LIMIT 1`,
+      [projectId],
+    ).catch(() => ({ rows: [] as any[] }));
+    return legacy.rows[0]?.user_id ? String(legacy.rows[0].user_id) : null;
   };
 
   // Legacy multipart-fallback: én aktiv request globalt og én per bruker/
@@ -1263,18 +1282,20 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
         [req.params.projectId],
       ).catch(() => ({ rows: [] }));
       const customer = cust.rows[0] || null;
-      let meetings: any[] = [];
-      if (customer?.id) {
-        const m = await pool.query(
-          `SELECT id, title, description, location, meet_link, web_view_url, scheduled_at, duration_minutes
-             FROM crm_meetings WHERE customer_id = $1 ORDER BY scheduled_at ASC NULLS LAST LIMIT 30`,
-          [customer.id],
-        ).catch(() => ({ rows: [] }));
-        meetings = m.rows.map((r: any) => ({
-          id: r.id, title: r.title, description: r.description, location: r.location,
-          meetLink: r.meet_link, webViewUrl: r.web_view_url, scheduledAt: r.scheduled_at, durationMinutes: r.duration_minutes,
-        }));
-      }
+      const m = await pool.query(
+        `SELECT id, title, description, location, meet_link, web_view_url,
+                scheduled_at, duration_minutes, status, calendar_sync_status
+           FROM crm_meetings
+          WHERE project_id = $1
+             OR (project_id IS NULL AND customer_id = $2)
+          ORDER BY scheduled_at ASC NULLS LAST LIMIT 30`,
+        [req.params.projectId, customer?.id || null],
+      ).catch(() => ({ rows: [] }));
+      const meetings = m.rows.map((r: any) => ({
+        id: r.id, title: r.title, description: r.description, location: r.location,
+        meetLink: r.meet_link, webViewUrl: r.web_view_url, scheduledAt: r.scheduled_at,
+        durationMinutes: r.duration_minutes, status: r.status, calendarSyncStatus: r.calendar_sync_status,
+      }));
       res.json({
         crmCustomer: customer ? { id: customer.id, name: customer.name, email: customer.email, status: customer.status, projectType: customer.project_type } : null,
         meetings,
@@ -1283,14 +1304,32 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   });
 
   // POST møte — oppretter crm_meeting, evt. med ekte Google Meet-lenke.
-  app.post("/api/projects/:projectId/meetings", async (req, res) => {
-    const uid = await guard(req, res); if (!uid) return;
+  app.post("/api/projects/:projectId/meetings", guardMw, workspaceIdempotency, async (req, res) => {
+    const uid = String((req as any)._guardUid || "");
     try {
       const b = req.body ?? {};
       const title = typeof b.title === "string" && b.title.trim() ? b.title.trim() : "Møte";
-      const scheduledAt = b.scheduledAt || null;
-      const durationMinutes = Number(b.durationMinutes) || 60;
-      // Knytt til prosjektets CRM-kunde hvis den finnes.
+      if (title.length > 255) {
+        return res.status(400).json({ error: "title_too_long" });
+      }
+      const scheduledDate = new Date(String(b.scheduledAt || ""));
+      if (!Number.isFinite(scheduledDate.getTime())) {
+        return res.status(400).json({ error: "invalid_scheduled_at" });
+      }
+      const scheduledAt = scheduledDate.toISOString();
+      const durationMinutes = Number(b.durationMinutes ?? 60);
+      if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 24 * 60) {
+        return res.status(400).json({ error: "invalid_duration_minutes" });
+      }
+      const projectId = String(req.params.projectId);
+      const description = typeof b.description === "string" ? b.description.trim() || null : null;
+      const location = typeof b.location === "string" ? b.location.trim() || null : null;
+      if ((description?.length || 0) > 10_000 || (location?.length || 0) > 500) {
+        return res.status(400).json({ error: "meeting_text_too_long" });
+      }
+
+      // Knytt til prosjektets CRM-kunde hvis den finnes, men behold project_id
+      // som autoritativ kobling slik at bookinger uten CRM-kunde fortsatt lastes.
       const cust = await pool.query(
         `SELECT id, name FROM crm_customers WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1`,
         [req.params.projectId],
@@ -1298,27 +1337,402 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const customerId = cust.rows[0]?.id || null;
       const proj = await pool.query(`SELECT COALESCE(title, name) AS title FROM projects WHERE id = $1 LIMIT 1`, [req.params.projectId]).catch(() => ({ rows: [] }));
 
-      // Ekte Google Meet-lenke hvis brukeren har Google koblet (ellers stille fallback).
-      let meetLink: string | null = typeof b.meetLink === "string" ? b.meetLink : null;
-      let webViewUrl: string | null = null;
-      if (b.generateMeet && scheduledAt) {
-        try {
-          const meet = await createGoogleMeetLink(pool, {
-            title, description: b.description || null, startDateTime: scheduledAt, duration: durationMinutes,
-            projectId: req.params.projectId, projectName: proj.rows[0]?.title || null, clientName: cust.rows[0]?.name || null,
-          }, uid);
-          if (meet && (meet as any).meetLink) { meetLink = (meet as any).meetLink; webViewUrl = (meet as any).webViewUrl || null; }
-        } catch (err) { console.warn("[avtaler] google meet failed:", (err as Error)?.message); }
+      const ownerUserId = (await resolveProjectOwnerUserId(projectId)) || uid;
+      const initialMeetLink = typeof b.meetLink === "string" && b.meetLink.trim() ? b.meetLink.trim() : null;
+      if (initialMeetLink && !/^https?:\/\//i.test(initialMeetLink)) {
+        return res.status(400).json({ error: "invalid_meet_link" });
+      }
+      const initialSyncStatus = b.generateMeet ? "pending" : initialMeetLink ? "external_link" : "not_requested";
+
+      let r: any = null;
+      let replayed = false;
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(
+          `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+          [`workspace-meetings:${ownerUserId}`],
+        );
+
+        const existing = await client.query(
+          `SELECT *
+             FROM crm_meetings
+            WHERE project_id = $1
+              AND owner_user_id = $2
+              AND scheduled_at = $3::timestamptz
+              AND duration_minutes = $4
+              AND COALESCE(title, '') = $5
+              AND COALESCE(description, '') = COALESCE($6, '')
+              AND COALESCE(location, '') = COALESCE($7, '')
+              AND COALESCE(status, 'confirmed') NOT IN ('cancelled', 'canceled')
+            ORDER BY created_at ASC
+            LIMIT 1
+            FOR UPDATE`,
+          [projectId, ownerUserId, scheduledAt, durationMinutes, title, description, location],
+        );
+
+        if (existing.rows[0]) {
+          r = existing.rows[0];
+          replayed = true;
+          await client.query("COMMIT");
+        } else {
+          const conflict = await client.query(
+            `SELECT id, title, scheduled_at, duration_minutes
+               FROM crm_meetings
+              WHERE owner_user_id = $1
+                AND COALESCE(status, 'confirmed') NOT IN ('cancelled', 'canceled')
+                AND scheduled_at < $2::timestamptz + ($3::int * INTERVAL '1 minute')
+                AND scheduled_at + (COALESCE(duration_minutes, 60) * INTERVAL '1 minute') > $2::timestamptz
+              ORDER BY scheduled_at ASC
+              LIMIT 1`,
+            [ownerUserId, scheduledAt, durationMinutes],
+          );
+          if (conflict.rows[0]) {
+            await client.query("ROLLBACK");
+            return res.status(409).json({
+              error: "booking_conflict",
+              conflict: {
+                id: conflict.rows[0].id,
+                title: conflict.rows[0].title,
+                scheduledAt: conflict.rows[0].scheduled_at,
+                durationMinutes: conflict.rows[0].duration_minutes,
+              },
+            });
+          }
+
+          const inserted = await client.query(
+            `INSERT INTO crm_meetings (
+               id, customer_id, project_id, title, description, location,
+               meet_link, scheduled_at, duration_minutes, owner_user_id,
+               status, calendar_sync_status, calendar_sync_attempt_id,
+               created_at, updated_at
+             )
+             VALUES (
+               gen_random_uuid(), $1, $2, $3, $4, $5,
+               $6, $7, $8, $9,
+               'confirmed', $10, $11,
+               NOW(), NOW()
+             )
+             RETURNING *`,
+            [
+              customerId,
+              projectId,
+              title,
+              description,
+              location,
+              initialMeetLink,
+              scheduledAt,
+              durationMinutes,
+              ownerUserId,
+              initialSyncStatus,
+              b.generateMeet ? crypto.randomUUID() : null,
+            ],
+          );
+          r = inserted.rows[0];
+          await client.query("COMMIT");
+        }
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => {});
+        throw error;
+      } finally {
+        client.release();
       }
 
-      const ins = await pool.query(
-        `INSERT INTO crm_meetings (id, customer_id, title, description, location, meet_link, web_view_url, scheduled_at, duration_minutes, owner_user_id, created_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, now()) RETURNING *`,
-        [customerId, title, b.description || null, b.location || null, meetLink, webViewUrl, scheduledAt, durationMinutes, uid],
-      );
-      const r = ins.rows[0];
-      res.status(201).json({ id: r.id, title: r.title, meetLink: r.meet_link, webViewUrl: r.web_view_url, scheduledAt: r.scheduled_at, durationMinutes: r.duration_minutes });
+      if (replayed) {
+        res.setHeader("Idempotent-Replayed", "true");
+        return res.status(200).json({
+          id: r.id,
+          title: r.title,
+          meetLink: r.meet_link,
+          webViewUrl: r.web_view_url,
+          scheduledAt: r.scheduled_at,
+          durationMinutes: r.duration_minutes,
+          status: r.status,
+          calendarSyncStatus: r.calendar_sync_status,
+          replayed: true,
+        });
+      }
+
+      if (b.generateMeet) {
+        try {
+          const meet = await createGoogleMeetLink(pool, {
+            title,
+            description,
+            location,
+            startDateTime: scheduledAt,
+            duration: durationMinutes,
+            projectId,
+            projectName: proj.rows[0]?.title || null,
+            clientName: cust.rows[0]?.name || null,
+          }, uid);
+          const updated = await pool.query(
+            `UPDATE crm_meetings
+                SET meet_link = $3,
+                    web_view_url = $4,
+                    calendar_event_id = $5,
+                    calendar_sync_status = 'synced',
+                    calendar_sync_error = NULL,
+                    updated_at = NOW()
+              WHERE id = $1 AND project_id = $2
+              RETURNING *`,
+            [r.id, projectId, meet.meetLink, meet.webViewUrl, meet.calendarEventId],
+          );
+          if (updated.rows[0]) r = updated.rows[0];
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.warn("[avtaler] google meet failed:", message);
+          await pool.query(
+            `UPDATE crm_meetings
+                SET calendar_sync_status = 'failed',
+                    calendar_sync_error = $3,
+                    updated_at = NOW()
+              WHERE id = $1 AND project_id = $2`,
+            [r.id, projectId, message.slice(0, 1000)],
+          ).catch(() => {});
+          r.calendar_sync_status = "failed";
+        }
+      }
+
+      return res.status(201).json({
+        id: r.id,
+        title: r.title,
+        meetLink: r.meet_link,
+        webViewUrl: r.web_view_url,
+        scheduledAt: r.scheduled_at,
+        durationMinutes: r.duration_minutes,
+        status: r.status,
+        calendarSyncStatus: r.calendar_sync_status,
+        replayed: false,
+      });
     } catch (e) { console.error("POST meetings", e); res.status(500).json({ error: "failed" }); }
+  });
+
+  // ─────────── Prosjektutstyr — eierinventar + eksplisitte prosjektkoblinger ───
+  app.get("/api/projects/:projectId/equipment", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const projectId = String(req.params.projectId);
+      const ownerUserId = await resolveProjectOwnerUserId(projectId);
+      if (!ownerUserId) return res.status(404).json({ error: "project_not_found" });
+      const isOwner = uid === ownerUserId;
+      const canManageAssignments = await canEditProject(pool, uid, projectId);
+      const result = await pool.query(
+        `SELECT
+           equipment.id,
+           equipment.user_id,
+           equipment.user_type,
+           equipment.category,
+           equipment.brand,
+           equipment.model,
+           equipment.condition,
+           equipment.image_url,
+           equipment.settings,
+           equipment.quantity AS inventory_quantity,
+           equipment.created_at,
+           equipment.updated_at,
+           assignment.id AS assignment_id,
+           assignment.quantity AS assignment_quantity,
+           assignment.assignment_type,
+           assignment.responsible_member_id,
+           assignment.notes AS assignment_notes,
+           assignment.documents AS assignment_documents,
+           assignment.created_at AS assignment_created_at,
+           assignment.updated_at AS assignment_updated_at
+         FROM user_equipment AS equipment
+         LEFT JOIN project_equipment_assignments AS assignment
+           ON assignment.project_id = $1
+          AND assignment.equipment_id = equipment.id
+        WHERE equipment.user_id::text = $2
+          AND ($3::boolean OR assignment.id IS NOT NULL)
+        ORDER BY (assignment.id IS NOT NULL) DESC, equipment.created_at DESC, equipment.id DESC`,
+        [projectId, ownerUserId, isOwner],
+      );
+
+      const items = result.rows.map((row: any) => {
+        let settings: Record<string, any> = {};
+        try {
+          settings = typeof row.settings === "string"
+            ? JSON.parse(row.settings)
+            : row.settings && typeof row.settings === "object"
+              ? row.settings
+              : {};
+        } catch { settings = {}; }
+        return {
+          id: row.id,
+          userId: row.user_id,
+          profession: row.user_type,
+          name: settings.name || `${row.brand || ""} ${row.model || ""}`.trim(),
+          brand: row.brand,
+          model: row.model,
+          category: row.category,
+          status: settings.status || row.condition || "available",
+          condition: settings.condition || row.condition || null,
+          imageUrl: row.image_url || settings.imageUrl || null,
+          specifications: settings.specifications || {},
+          quantity: Number(row.inventory_quantity) || 1,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          assignedToProject: Boolean(row.assignment_id),
+          assignment: row.assignment_id ? {
+            id: row.assignment_id,
+            quantity: Number(row.assignment_quantity) || 1,
+            assignmentType: row.assignment_type,
+            responsibleMemberId: row.responsible_member_id,
+            notes: row.assignment_notes,
+            documents: Array.isArray(row.assignment_documents) ? row.assignment_documents : [],
+            createdAt: row.assignment_created_at,
+            updatedAt: row.assignment_updated_at,
+          } : null,
+        };
+      });
+
+      res.json({
+        items,
+        ownerUserId,
+        canManageAssignments,
+        canCreateInventory: isOwner,
+      });
+    } catch (e) {
+      console.error("GET project equipment", e);
+      res.status(500).json({ error: "failed" });
+    }
+  });
+
+  app.post(
+    "/api/projects/:projectId/equipment/assignments",
+    guardMw,
+    workspaceIdempotency,
+    async (req, res) => {
+      const uid = String((req as any)._guardUid || "");
+      try {
+        const projectId = String(req.params.projectId);
+        const equipmentId = Number(req.body?.equipmentId);
+        const quantity = Number(req.body?.quantity ?? 1);
+        const assignmentType = req.body?.assignmentType === "reserve" ? "reserve" : "primary";
+        const responsibleMemberId = isUuid(req.body?.responsibleMemberId)
+          ? req.body.responsibleMemberId
+          : null;
+        const notes = typeof req.body?.notes === "string" ? req.body.notes.trim() || null : null;
+        const documents = Array.isArray(req.body?.documents) ? req.body.documents : [];
+        const documentsJson = JSON.stringify(documents);
+        if ((notes?.length || 0) > 5_000) {
+          return res.status(400).json({ error: "notes_too_long" });
+        }
+        if (documents.length > 50 || Buffer.byteLength(documentsJson, "utf8") > 100_000) {
+          return res.status(400).json({ error: "documents_too_large" });
+        }
+
+        if (!Number.isInteger(equipmentId) || equipmentId < 1) {
+          return res.status(400).json({ error: "invalid_equipment_id" });
+        }
+        if (!Number.isInteger(quantity) || quantity < 1 || quantity > 9999) {
+          return res.status(400).json({ error: "invalid_quantity" });
+        }
+
+        const ownerUserId = await resolveProjectOwnerUserId(projectId);
+        if (!ownerUserId) return res.status(404).json({ error: "project_not_found" });
+        const equipment = await pool.query(
+          `SELECT id, quantity
+             FROM user_equipment
+            WHERE id = $1 AND user_id::text = $2
+            LIMIT 1`,
+          [equipmentId, ownerUserId],
+        );
+        if (!equipment.rows[0]) {
+          return res.status(404).json({ error: "equipment_not_found" });
+        }
+        if (quantity > (Number(equipment.rows[0].quantity) || 1)) {
+          return res.status(400).json({ error: "quantity_exceeds_inventory" });
+        }
+        if (responsibleMemberId) {
+          const member = await pool.query(
+            `SELECT 1
+               FROM project_team_members
+              WHERE id = $1
+                AND project_id = $2
+                AND status = 'active'
+                AND deactivated_at IS NULL
+              LIMIT 1`,
+            [responsibleMemberId, projectId],
+          );
+          if (!member.rows[0]) {
+            return res.status(400).json({ error: "invalid_responsible_member" });
+          }
+        }
+
+        const assignment = await pool.query(
+          `INSERT INTO project_equipment_assignments (
+             project_id,
+             project_owner_user_id,
+             equipment_id,
+             quantity,
+             responsible_member_id,
+             assignment_type,
+             notes,
+             documents,
+             created_by,
+             updated_by
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $9)
+           ON CONFLICT (project_id, equipment_id)
+           DO UPDATE SET
+             project_owner_user_id = EXCLUDED.project_owner_user_id,
+             quantity = EXCLUDED.quantity,
+             responsible_member_id = EXCLUDED.responsible_member_id,
+             assignment_type = EXCLUDED.assignment_type,
+             notes = EXCLUDED.notes,
+             documents = EXCLUDED.documents,
+             updated_by = EXCLUDED.updated_by,
+             updated_at = NOW()
+           RETURNING *`,
+          [
+            projectId,
+            ownerUserId,
+            equipmentId,
+            quantity,
+            responsibleMemberId,
+            assignmentType,
+            notes,
+            documentsJson,
+            uid,
+          ],
+        );
+        return res.status(200).json({
+          assignment: {
+            id: assignment.rows[0].id,
+            projectId: assignment.rows[0].project_id,
+            equipmentId: assignment.rows[0].equipment_id,
+            quantity: assignment.rows[0].quantity,
+            assignmentType: assignment.rows[0].assignment_type,
+            responsibleMemberId: assignment.rows[0].responsible_member_id,
+            notes: assignment.rows[0].notes,
+            documents: assignment.rows[0].documents,
+          },
+        });
+      } catch (e) {
+        console.error("POST project equipment assignment", e);
+        res.status(500).json({ error: "failed" });
+      }
+    },
+  );
+
+  app.delete("/api/projects/:projectId/equipment/assignments/:equipmentId", guardMw, async (req, res) => {
+    const equipmentId = Number(req.params.equipmentId);
+    if (!Number.isInteger(equipmentId) || equipmentId < 1) {
+      return res.status(400).json({ error: "invalid_equipment_id" });
+    }
+    try {
+      const removed = await pool.query(
+        `DELETE FROM project_equipment_assignments
+          WHERE project_id = $1 AND equipment_id = $2
+          RETURNING id`,
+        [String(req.params.projectId), equipmentId],
+      );
+      return res.json({ ok: true, removed: (removed.rowCount || 0) > 0 });
+    } catch (e) {
+      console.error("DELETE project equipment assignment", e);
+      return res.status(500).json({ error: "failed" });
+    }
   });
 
   // ─────────── Editor-handoff (LESER editing_jobs — redigerings-marketplace) ───
