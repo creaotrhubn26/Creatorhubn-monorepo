@@ -129,6 +129,7 @@ import {
   consumeOauthState,
   persistOauthState,
 } from "./role-room-oauth-store.js";
+import { isTrustedWebOrigin } from "./web-origin-allowlist.js";
 import crypto from "node:crypto";
 
 // Role Room-casting-prosjekter har slug-IDer (f.eks. `medside-1784364797337`),
@@ -140,6 +141,7 @@ const UUID_RE =
 
 const CLIENT_ADS_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const CLIENT_ADS_OAUTH_STATE_RE = /^[A-Za-z0-9_-]{32}$/;
+const LINKEDIN_OAUTH_DEFAULT_BROWSER_ORIGIN = "https://theroleroom.com";
 
 type ClientAdsOauthFlow = "client_ads_linkedin" | "client_ads_tiktok";
 
@@ -148,8 +150,38 @@ type ClientAdsOauthState = {
   userId: string;
   configId: string;
   redirectUri: string;
+  browserOrigin?: string;
   createdAt: number;
 };
+
+function _safeLinkedinBrowserOrigin(value: unknown): string {
+  if (typeof value !== "string") return LINKEDIN_OAUTH_DEFAULT_BROWSER_ORIGIN;
+  const candidate = value.trim().replace(/\/+$/, "");
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.origin !== candidate || !isTrustedWebOrigin(parsed.origin)) {
+      return LINKEDIN_OAUTH_DEFAULT_BROWSER_ORIGIN;
+    }
+    return parsed.origin;
+  } catch {
+    return LINKEDIN_OAUTH_DEFAULT_BROWSER_ORIGIN;
+  }
+}
+
+function _linkedinOauthReturnUrl(
+  browserOrigin: unknown,
+  result: { success: true; configId: string } | { success: false; error: string },
+): string {
+  const url = new URL("/admin-room", _safeLinkedinBrowserOrigin(browserOrigin));
+  url.searchParams.set("adminTab", "role-room-agent");
+  if ("configId" in result) {
+    url.searchParams.set("oauth_success", "linkedin");
+    if (result.configId) url.searchParams.set("config", result.configId);
+  } else {
+    url.searchParams.set("oauth_error", result.error);
+  }
+  return url.toString();
+}
 
 async function _buildAdsOauthState(
   pool: Pool,
@@ -188,6 +220,7 @@ async function _consumeAdsOauthState(
     userId: state.userId,
     configId: state.configId,
     redirectUri: state.redirectUri,
+    browserOrigin: _safeLinkedinBrowserOrigin(state.browserOrigin),
   };
 }
 
@@ -1128,11 +1161,13 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     const baseUrl = (process.env.PUBLIC_BACKEND_URL || `https://${req.get("host") ?? "creatorhub-backend-rtbl.onrender.com"}`).replace(/\/+$/, "");
     const redirectUri = `${baseUrl}/api/admin-room/agent/ads/oauth/linkedin/callback`;
     const configId = typeof req.query.configId === "string" ? req.query.configId : "";
+    const browserOrigin = _safeLinkedinBrowserOrigin(req.query.browserOrigin);
     const state = await _buildAdsOauthState(pool, {
       flow: "client_ads_linkedin",
       userId: session.userId,
       configId,
       redirectUri,
+      browserOrigin,
     });
     if (!state) {
       return res.status(503).json({ error: "OAuth state-lager er utilgjengelig" });
@@ -1156,16 +1191,37 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       "client_ads_linkedin",
     );
     if (!stateParts) return res.status(400).send("Invalid or expired state");
-    if (!code) return res.status(400).send("Missing code");
-    const { userId, configId, redirectUri } = stateParts;
+    const { userId, configId, redirectUri, browserOrigin } = stateParts;
+    if (!code) {
+      return res.redirect(
+        _linkedinOauthReturnUrl(browserOrigin, {
+          success: false,
+          error: typeof req.query.error === "string"
+            ? "linkedin_consent_denied"
+            : "linkedin_missing_code",
+        }),
+      );
+    }
 
     const creds = adsOauthClientCreds("linkedin");
-    if (!creds) return res.status(503).send("LinkedIn creds mangler");
+    if (!creds) {
+      return res.redirect(
+        _linkedinOauthReturnUrl(browserOrigin, {
+          success: false,
+          error: "linkedin_configuration_error",
+        }),
+      );
+    }
 
     try {
       const tokenResult = await exchangeAdsCodeForToken("linkedin", { ...creds, code, redirectUri });
       if (!tokenResult.refreshToken || !tokenResult.accessToken) {
-        return res.redirect(`/role-room/agent/ads?oauth_error=linkedin_missing_refresh_token`);
+        return res.redirect(
+          _linkedinOauthReturnUrl(browserOrigin, {
+            success: false,
+            error: "linkedin_missing_refresh_token",
+          }),
+        );
       }
       await upsertAdsOauthConnection(pool, {
         userId,
@@ -1175,11 +1231,17 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
         expiresInSec: tokenResult.expiresInSec,
         scopes: [...(ADS_OAUTH_SCOPES.linkedin ?? [])],
       });
-      const cfgParam = configId ? `&config=${encodeURIComponent(configId)}` : "";
-      return res.redirect(`/role-room/agent/ads?oauth_success=linkedin${cfgParam}`);
+      return res.redirect(
+        _linkedinOauthReturnUrl(browserOrigin, { success: true, configId }),
+      );
     } catch (err) {
       console.error("[linkedin-oauth] callback failed", err);
-      return res.redirect(`/role-room/agent/ads?oauth_error=linkedin_${encodeURIComponent("internal_error".slice(0, 80))}`);
+      return res.redirect(
+        _linkedinOauthReturnUrl(browserOrigin, {
+          success: false,
+          error: "linkedin_internal_error",
+        }),
+      );
     }
   });
 

@@ -75,7 +75,11 @@ export default function ClientLinkedinSuitePanel({
 
   const connectOAuth = async () => {
     try {
-      const r = await fetch(`/api/admin-room/agent/ads/oauth/linkedin/start?configId=${encodeURIComponent(configId)}`, { credentials: 'include' });
+      const browserOrigin = encodeURIComponent(window.location.origin);
+      const r = await fetch(
+        `/api/admin-room/agent/ads/oauth/linkedin/start?configId=${encodeURIComponent(configId)}&browserOrigin=${browserOrigin}`,
+        { credentials: 'include' },
+      );
       const data = await r.json();
       if (!r.ok || !data.authUrl) throw new Error(data.error || `HTTP ${r.status}`);
       window.location.href = data.authUrl;
@@ -195,7 +199,13 @@ export default function ClientLinkedinSuitePanel({
               </Typography>
             </Stack>
           ) : (
-            <Stack direction="row" spacing={1} alignItems="center">
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              flexWrap="wrap"
+              useFlexGap
+            >
               <Select
                 size="small"
                 value={accountUrn}
@@ -211,6 +221,18 @@ export default function ClientLinkedinSuitePanel({
               </Select>
               <Button onClick={loadAccounts} size="small" sx={{ color: palette.accent, textTransform: 'none' }}>
                 Last på nytt
+              </Button>
+              <Button
+                onClick={connectOAuth}
+                size="small"
+                startIcon={<OpenInNewIcon fontSize="small" />}
+                sx={{
+                  color: palette.accent,
+                  textTransform: 'none',
+                  fontWeight: 700,
+                }}
+              >
+                Koble LinkedIn på nytt
               </Button>
             </Stack>
           )}
