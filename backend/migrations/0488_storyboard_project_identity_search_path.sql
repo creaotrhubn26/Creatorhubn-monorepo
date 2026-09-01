@@ -1,3 +1,4 @@
+-- migration-role: creatorhub_migrator
 -- Harden the production-applied tenant trigger without rewriting migration
 -- history. Existing triggers remain bound to this function OID.
 BEGIN;
