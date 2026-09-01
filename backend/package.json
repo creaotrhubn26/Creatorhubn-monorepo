@@ -83,6 +83,7 @@
     "db:verify-comprehensive": "tsx server/scripts/comprehensive-database-verification.ts",
     "db:verify-every-component": "tsx server/scripts/verify-every-component.ts",
     "db:verify-routes-vs-tables": "tsx server/scripts/verify-routes-vs-tables.ts",
+    "db:audit-role-room": "node scripts/audit-role-room-dataflow.mjs",
     "db:verify-backend": "tsx server/scripts/verify-backend-complete.ts",
     "db:verify-production": "tsx server/scripts/production-verification.ts",
     "test:academy-access-approval-flow": "tsx scripts/test-academy-access-approval-flow.ts",

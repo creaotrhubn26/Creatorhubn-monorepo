@@ -108,17 +108,26 @@ export async function fetchMetaKpisForPosts(
   );
   if (candidates.length === 0) return [];
 
-  // Hent meta_media_id fra feed-planner-posts hvis kolonnen finnes
+  // Koble feed-plan-ID til det faktiske Meta media-id-et som publish-jobben
+  // persisterer. Feed-plan-postene ligger som JSONB i role_room_feed_plans;
+  // det finnes derfor ingen separat role_room_feed_plan_posts-tabell.
   let mediaIdMap: Map<string, string>;
   try {
     const feedIds = candidates.map((p) => p.feedPlanPostId!).filter(Boolean);
     const r = await pool.query<{ id: string; meta_media_id: string | null }>(
-      `SELECT id, meta_media_id FROM role_room_feed_plan_posts WHERE id = ANY($1::uuid[])`,
+      `SELECT DISTINCT ON (feed_plan_post_id)
+              feed_plan_post_id AS id,
+              ig_media_id AS meta_media_id
+         FROM role_room_instagram_publish_jobs
+        WHERE feed_plan_post_id = ANY($1::text[])
+          AND status = 'published'
+          AND ig_media_id IS NOT NULL
+        ORDER BY feed_plan_post_id, published_at DESC NULLS LAST, updated_at DESC`,
       [feedIds],
     );
     mediaIdMap = new Map(r.rows.filter((row) => row.meta_media_id).map((row) => [row.id, row.meta_media_id!]));
   } catch {
-    // Kolonnen meta_media_id finnes ikke i alle miljøer — fall tilbake til tom map
+    // Publiseringsskjemaet kan mangle før migrasjoner er kjørt.
     mediaIdMap = new Map();
   }
 

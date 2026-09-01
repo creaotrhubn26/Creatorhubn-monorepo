@@ -501,9 +501,17 @@ async function logDelivery(
   try {
     await pool.query(
       `INSERT INTO notification_delivery_log
-         (notification_id, delivery_method, status, attempted_at, delivered_at,
+       (notification_id, delivery_method, status, attempted_at, delivered_at,
           error_message, metadata)
-       VALUES ($1, $2, $3, NOW(), $4, $5, $6::jsonb)`,
+       VALUES ($1, $2, $3, NOW(), $4, $5, $6::jsonb)
+       ON CONFLICT (notification_id, delivery_method)
+       DO UPDATE SET
+         status = EXCLUDED.status,
+         attempted_at = EXCLUDED.attempted_at,
+         delivered_at = EXCLUDED.delivered_at,
+         error_message = EXCLUDED.error_message,
+         retry_count = ((COALESCE(NULLIF(notification_delivery_log.retry_count, ''), '0'))::integer + 1)::text,
+         metadata = EXCLUDED.metadata`,
       [
         notificationId,
         input.method,

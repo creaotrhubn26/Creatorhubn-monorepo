@@ -68,6 +68,7 @@ import { runGscSetup } from "./role-room-agent-gsc-setup.js";
 import { runMetaPixelSetup } from "./role-room-agent-meta-pixel-setup.js";
 import multer from "multer";
 import { getLatestContractScan, MAX_PDF_BYTES, scanContract, transcribeContractPdf } from "./role-room-agent-contract-scan.js";
+import { upsertProducerProjectNotification } from "./role-room-producer-notifications.js";
 import {
   validateResearchResult,
   detectMaterialChanges,
@@ -559,9 +560,8 @@ export function setupRoleRoomAgentCoreRoutes(
   // catch swallow'er query-feil så app starter selv om migrasjonen ikke
   // har kjørt enda (cachen blir bare alltid en miss da).
   // Item #39 — team-notifikasjon når research er ferdig. Skriver én row
-  // i producer_project_notifications som dukker opp i prosjektets inbox
-  // (allerede koblet til frontend via useProducerNotifications). Best-
-  // effort: tabellen kan mangle i noen miljøer; vi swallow'er feil.
+  // i den kanoniske Role Room-inboxen. Hjelperen gjør atomisk deduplisering
+  // mot samme tabell som frontend leser.
   const notifyResearchCompleted = async (params: {
     projectId: string;
     userId: string;
@@ -573,18 +573,19 @@ export function setupRoleRoomAgentCoreRoutes(
     try {
       const versionLabel = params.versionNumber !== null ? ` (v${params.versionNumber})` : '';
       const timeLabel = typeof params.totalMs === 'number' ? ` på ${(params.totalMs / 1000).toFixed(1)}s` : '';
-      await pool.query(
-        `INSERT INTO producer_project_notifications (
-           project_id, assigned_to_user_id, inbox_type, event_type,
-           title, message, read, created_at, updated_at
-         ) VALUES ($1, $2, 'ai_research', 'research_completed', $3, $4, FALSE, now(), now())`,
-        [
-          params.projectId,
-          params.userId,
-          `Research ferdig${versionLabel}`,
-          `Bootstrap fant ${params.datapoints} datapunkter${timeLabel}. Klar for marketing plan.`,
-        ],
-      );
+      await upsertProducerProjectNotification(pool, {
+        projectId: params.projectId,
+        audience: 'producer_team',
+        eventType: 'research_completed',
+        title: `Research ferdig${versionLabel}`,
+        message: `Bootstrap fant ${params.datapoints} datapunkter${timeLabel}. Klar for marketing plan.`,
+        linkedEntityType: 'research_version',
+        linkedEntityId: params.researchId ?? `${params.projectId}:${params.versionNumber ?? 'latest'}`,
+        assignedToUserId: params.userId,
+        createdByUserId: params.userId,
+        createdByRole: 'producer',
+        metadata: { inboxType: 'ai_research', datapoints: params.datapoints },
+      });
     } catch {
       // notifications er advisory
     }

@@ -117,6 +117,7 @@ describe("client LinkedIn Matched Audiences", () => {
     expect(JSON.stringify(uploadPayload)).not.toContain("Person@Example.Test");
     expect(JSON.stringify(uploadPayload)).not.toContain("+4712345678");
     expect(pool.query).toHaveBeenCalledOnce();
+    expect(String(pool.query.mock.calls[0]?.[0])).not.toContain("$2::uuid");
   });
 
   it("fails closed before provider calls when rw_dmp_segments is missing", async () => {

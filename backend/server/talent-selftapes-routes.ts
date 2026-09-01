@@ -29,6 +29,7 @@ import {
 } from "./cloudflare-stream-service.js";
 import { notifySelftapeActivity } from "./talent-selftape-notifications.js";
 import { composeEmail } from "./email-design-system.js";
+import { upsertProducerProjectNotification } from "./role-room-producer-notifications.js";
 
 // 500 MB grense — én typisk self-tape (60-90s @ 1080p) ligger på 50-150 MB
 const MAX_SELFTAPE_BYTES = 500 * 1024 * 1024;
@@ -942,18 +943,19 @@ export function setupTalentSelftapesRoutes(deps: TalentSelftapesRoutesDeps): voi
           const roleLabel = row.casting_role_name
             ? ` for ${row.casting_role_name}-rollen`
             : "";
-          await pool.query(
-            `INSERT INTO producer_project_notifications (
-               project_id, assigned_to_user_id, inbox_type, event_type,
-               title, message, read, created_at, updated_at
-             ) VALUES ($1, $2, 'casting', 'selftape_submitted', $3, $4, FALSE, now(), now())`,
-            [
-              row.casting_project_id,
-              row.created_by,
-              `${row.talent_display_name} har sendt self-tape${roleLabel}`,
-              `Åpne kandidat-kortet i Utvelgelse for å se videoen og legge igjen kommentar.`,
-            ],
-          );
+          await upsertProducerProjectNotification(pool, {
+            projectId: row.casting_project_id,
+            audience: "producer_team",
+            eventType: "selftape_submitted",
+            title: `${row.talent_display_name} har sendt self-tape${roleLabel}`,
+            message: "Åpne kandidat-kortet i Utvelgelse for å se videoen og legge igjen kommentar.",
+            linkedEntityType: "talent_selftape_submission",
+            linkedEntityId: req.params.id,
+            assignedToUserId: row.created_by,
+            createdByUserId: talentId,
+            createdByRole: "talent",
+            metadata: { inboxType: "casting" },
+          });
         } catch (err) {
           console.warn("[selftape send producer-inbox]", err);
         }
