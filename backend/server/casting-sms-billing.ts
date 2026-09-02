@@ -81,8 +81,8 @@ export async function recordSmsUsage(input: RecordSmsUsageInput): Promise<void> 
       `INSERT INTO casting_sms_usage
          (project_id, schedule_id, candidate_id, sent_at, threshold, brand,
           twilio_message_sid, unit_price_nok_ex_vat, vat_rate,
-          total_nok_ex_vat, total_nok_incl_vat)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          total_nok_ex_vat, total_nok_incl_vat, billing_period)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         input.projectId,
         input.scheduleId,
@@ -95,6 +95,7 @@ export async function recordSmsUsage(input: RecordSmsUsageInput): Promise<void> 
         pricing.vatRate,
         totalExVat,
         totalInclVat,
+        currentBillingPeriod(sentAt),
       ],
     );
   } catch (error) {

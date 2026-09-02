@@ -12,8 +12,8 @@ Deploy-topologien og sjekklisten som faktisk gjelder. Verdikt-format:
 
 | Tjeneste | Hvor | Detaljer |
 |---|---|---|
-| Backend | **Render** `creatorhub-backend-rtbl`, docker (`Dockerfile`), auto-deploy fra `main` | `render.yaml`; plan **standard** — IKKE nedgrader (RAW-enhance/RawTherapee OOM-er på 512 MB); health `/api/health` |
-| Frontend | **Netlify** — `creatorhub-frontend-mig`, `leadgrid-no`, `theroleroom` | `creatorhubn.com` autodeployer fra `main`; `leadgrid.no` fra `live/leadgrid`; `theroleroom.com` fra `live/roleroom`; `netlify.toml` + `netlify/host-routes.json` er produksjonskildene |
+| Backend | **Render** `creatorhub-backend-rtbl`, docker (`Dockerfile`), eksakt SHA via canonical workflow | Render auto-deploy er av; `render.yaml`; plan **standard** — IKKE nedgrader (RAW-enhance/RawTherapee OOM-er på 512 MB); health `/api/health` |
+| Frontend | **Netlify** — `creatorhub-frontend-mig`, `leadgrid-no`, `theroleroom` | `creatorhubn.com` fra `live/creatorhub` etter grønn backendrelease; `leadgrid.no` fra `live/leadgrid`; `theroleroom.com` fra `live/roleroom`; `netlify.toml` + `netlify/host-routes.json` er produksjonskildene |
 | Cron | Render cron via `Dockerfile.cron` (alpine+curl) | `scripts/cron/nextrole-trial-expiry.sh`, daglig 09:00 UTC |
 | CDN | Cloudflare Worker `workers/showcase-cdn/` + R2-proxy i frontend-config | signerte B2-URL-er, 30-dagers cache |
 | iPad | TestFlight via fastlane-workflows | `capture-testflight.yml`, `leadmap-testflight.yml` |
@@ -30,11 +30,10 @@ Role Room og Leadgrid promoteres via GitHub Actions-workflowen
 2. **Pre-push-fellene** (verifiser manuelt i cloud-økter):
    `backend/package-lock.json` i sync (CH-ARCH-004); ingen
    `await import('@/…')` (CH-ARCH-005).
-3. **Migrasjoner:** nye `0NNN_*.sql` er idempotente; husk at
-   `auto-migrate-on-push.yml` venter på stabil deploy av riktig commit før
-   den trigger migrering — planlegg for vinduet der ny kode kjører mot
-   gammelt skjema (lazy self-heal ved behov). Verifiser etterpå mot
-   `_migrations_applied`.
+3. **Migrasjoner:** nye `0NNN_*.sql` er idempotente. Den kanoniske
+   `auto-migrate-on-push.yml` kjører rolle-/eierpreflight og migrering før
+   eksakt Render-deploy, verifiserer null pending på andre kjøring og promoterer
+   først deretter samme SHA til `live/creatorhub`.
 4. **Env-vars:** nye variabler inn i `render.yaml` (`sync: false` for
    secrets) OG satt i Render før koden som leser dem deployes. Stille
    degradering (à la manglende `SENTRY_DSN`) skal være dokumentert.
@@ -50,9 +49,10 @@ Role Room og Leadgrid promoteres via GitHub Actions-workflowen
   `smoke:role-room:live` / `smoke-production.sh` / Leadgrid
   post-deploy-smoketest. Overvåkning: `canary-monitor.yml`,
   `anomaly-scan.yml`, Sentry (hvis DSN satt).
-- Frontend: bekreft riktig Netlify-site og commit. CreatorHub autodeployer
-  fra `main`; Role Room/Leadgrid krever eksplisitt `Promoter merke` etter
-  merke-spesifikk verifisering.
+- Frontend: bekreft riktig Netlify-site og commit. CreatorHub skal rapportere
+  samme SHA fra `live/creatorhub` som den verifiserte backenden; Role
+  Room/Leadgrid krever eksplisitt `Promoter merke` etter merke-spesifikk
+  verifisering.
 
 ## App-releaser
 

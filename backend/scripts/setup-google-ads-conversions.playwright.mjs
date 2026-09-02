@@ -12,7 +12,7 @@
  *        - signup           (Website → Sign-up)
  *   4. Script scraper conversion-tabellen for AW-id + labels.
  *   5. Skriver `GOOGLE_ADS_CONVERSION_ID` + 3 labels til Render env.
- *   6. Trigger ny deploy.
+ *   6. Ber deg kjøre den kanoniske produksjonsworkflowen fra current main.
  *
  * Kjøres lokalt:
  *   node backend/scripts/setup-google-ads-conversions.playwright.mjs
@@ -129,6 +129,7 @@ if (!RENDER_API_KEY) {
     { key: "GOOGLE_ADS_LABEL_DEMO", value: labelDemo },
     { key: "GOOGLE_ADS_LABEL_SIGNUP", value: labelSignup },
   ];
+  const failedRenderKeys = [];
   for (const v of renderVars) {
     const r = await fetch(
       `https://api.render.com/v1/services/${RENDER_SERVICE_ID}/env-vars/${v.key}`,
@@ -144,27 +145,23 @@ if (!RENDER_API_KEY) {
     if (r.ok) {
       console.log(`  ✓ ${v.key} satt på Render`);
     } else {
+      failedRenderKeys.push(v.key);
       console.error(`  ✗ ${v.key} feilet: HTTP ${r.status}`);
     }
   }
 
-  console.log("\n→ Trigger deploy på Render...");
-  const dep = await fetch(
-    `https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys`,
-    {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${RENDER_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ clearCache: "do_not_clear" }),
-    },
-  );
-  if (dep.ok) {
-    const data = await dep.json();
-    console.log(`  ✓ Render-deploy startet: ${data.id}`);
+  if (failedRenderKeys.length > 0) {
+    process.exitCode = 1;
+    console.error(
+      "\n✗ Env-oppsettet er ufullstendig; ikke start releaseworkflowen. Feilet: " +
+        failedRenderKeys.join(", "),
+    );
   } else {
-    console.error(`  ✗ Deploy-trigger feilet: HTTP ${dep.status}`);
+    console.log("\n✓ Env-vars er lagret uten å starte en produksjonsdeploy.");
+    console.log(
+      "  Kjør GitHub Actions-workflowen «Deploy shared Render backend» fra current main",
+    );
+    console.log("  slik at migrering, eksakt-SHA og smoke-test ikke omgås.");
   }
 }
 

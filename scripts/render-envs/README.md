@@ -68,13 +68,10 @@ python3 scripts/render-envs/restore.py --from-b2 2026-06-24
 Restore-scriptet **bruker per-key PUT** (`PUT /v1/services/{id}/env-vars/{key}`),
 **aldri** collection-PUT — det ville reprodusert wipe-katastrofen.
 
-Etter restore:
-```bash
-# Trigger Render-redeploy så ny prosess plukker opp full env
-curl -X POST -H "Authorization: Bearer $RENDER_API_KEY" \
-  https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys \
-  -d '{"clearCache":"do_not_clear"}'
-```
+Etter restore skal du **ikke** trigge Render direkte. Kjør GitHub Actions-
+workflowen **Deploy shared Render backend** fra current `main`. Da blir samme
+produksjonsgate brukt for migrering, rolle-/eierpreflight, eksakt commit,
+health/smoke-test og CreatorHub-frontendpromotering.
 
 ## Hva som er backupet
 

@@ -6,7 +6,7 @@
  * booking med tid/varighet/sted (+ valgfri Google Meet for konsultasjoner),
  * og kundekortet fra prosjektets CRM-kobling. Gjenbruker de eksisterende
  * avtale-endepunktene (GET /api/projects/:id/avtaler + POST .../meetings)
- * — null ny backend, samme mønster som Sesjoner-fanens studio-økter.
+ * med prosjekt-scoping og duplikatvern, samme mønster som Sesjoner-fanens studio-økter.
  */
 import React, { useEffect, useState } from 'react';
 import { Box, Stack, Typography, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Checkbox, FormControlLabel, Alert } from '@mui/material';
@@ -209,6 +209,7 @@ const NewBookingDialog: React.FC<{ open: boolean; onClose: () => void; projectId
     try {
       await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/meetings`, {
         method: 'POST',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
         body: {
           title: title.trim() || 'Booking',
           scheduledAt: new Date(when).toISOString(),

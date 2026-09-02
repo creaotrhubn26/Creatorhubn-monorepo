@@ -7,7 +7,7 @@
  * Analytics (sentiment / publish cadence). Aggregates only — no third-party
  * names or quotes.
  *
- * Findings land in `producer_project_notifications` so they surface in
+ * Findings land in `role_room_project_notifications` so they surface in
  * the Innboks the next morning. Nothing is acted on automatically —
  * every flagged item is a suggestion for the producer.
  *
@@ -24,6 +24,7 @@ import { logAiCall } from './role-room-ai-audit.js';
 import { claudeAgentEnabled, runClaudeAgent } from './role-room-agent-claude.js';
 import { ROLE_ROOM_AGENT_SYSTEM_PROMPT } from './role-room-agent-definition.js';
 import { buildWorkspaceContextBlock } from './role-room-agent-workspace-context.js';
+import { upsertProducerProjectNotification } from './role-room-producer-notifications.js';
 
 const DAILY_SCAN_PROMPT = `Dette er en automatisert daglig «Morning Brief»-scan. Vurder hva produsenten bør ta tak i i dag, på tvers av flatene. Bruk KUN tallene i "Arbeidsflate-status (aggregert)" — hvis et område ikke har data der, ikke flagg det (ikke gjett).
 
@@ -87,19 +88,19 @@ async function insertNotification(
   },
 ): Promise<void> {
   try {
-    await pool.query(
-      `INSERT INTO producer_project_notifications (
-         project_id, assigned_to_user_id, inbox_type, event_type,
-         title, message, read, created_at, updated_at
-       ) VALUES ($1, $2, 'ai_scan', $3, $4, $5, FALSE, now(), now())`,
-      [
-        input.projectId,
-        input.userId,
-        `ai_scan_${input.severity}`,
-        input.title,
-        input.message,
-      ],
-    );
+    const day = new Date().toISOString().slice(0, 10);
+    await upsertProducerProjectNotification(pool, {
+      projectId: input.projectId,
+      audience: 'producer_team',
+      eventType: `ai_scan_${input.severity}`,
+      title: input.title,
+      message: input.message,
+      linkedEntityType: 'daily_scan',
+      linkedEntityId: `${day}:${input.title}`.slice(0, 255),
+      assignedToUserId: input.userId,
+      createdByRole: 'agent',
+      metadata: { inboxType: 'ai_scan', severity: input.severity },
+    });
   } catch {
     // Notifications are best-effort; don't fail the scan because the
     // destination table has an unexpected schema on some environments.

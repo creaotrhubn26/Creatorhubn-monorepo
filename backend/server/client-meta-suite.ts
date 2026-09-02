@@ -422,7 +422,7 @@ export async function createMetaCustomAudience(
     `INSERT INTO meta_custom_audiences (
        config_id, producer_user_id, ad_account_id, meta_audience_id,
        audience_name, source_description, upload_count, status
-     ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, 'processing')
+     ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, 'processing')
      ON CONFLICT (meta_audience_id) DO NOTHING`,
     [
       opts.configId ?? null,
@@ -527,7 +527,7 @@ export async function sendMetaCapiEvent(
        config_id, producer_user_id, pixel_id, event_name, event_time,
        event_source, external_user_id, event_value, event_currency,
        custom_properties, delivery_status, attempt_count
-     ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, 'pending', 1)
+     ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, 'pending', 1)
      RETURNING id`,
     [
       opts.configId ?? null,
@@ -622,7 +622,7 @@ export async function listMetaCapiEvents(
             event_value, event_currency, delivery_status, delivered_at,
             attempt_count, last_error
      FROM meta_capi_event_log
-     WHERE producer_user_id = $1::uuid
+     WHERE producer_user_id = $1
        AND ($2::uuid IS NULL OR config_id = $2::uuid)
      ORDER BY event_time DESC
      LIMIT $3`,

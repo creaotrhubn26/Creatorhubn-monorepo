@@ -1,5 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readWhatsAppBillingPricing } from "./casting-whatsapp-billing.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  currentWhatsAppBillingPeriod,
+  readWhatsAppBillingPricing,
+  recordWhatsAppUsage,
+} from "./casting-whatsapp-billing.js";
 
 describe("readWhatsAppBillingPricing", () => {
   const ENV_KEYS = [
@@ -44,5 +48,27 @@ describe("readWhatsAppBillingPricing", () => {
     const p = readWhatsAppBillingPricing();
     expect(p.vatRate).toBe(0.21);
     expect(p.retailPriceNokInclVat).toBeCloseTo(0.97, 2);
+  });
+});
+
+describe("WhatsApp usage persistence", () => {
+  it("formats and writes the UTC billing period explicitly", async () => {
+    const sentAt = new Date("2027-01-01T00:00:00Z");
+    expect(currentWhatsAppBillingPeriod(sentAt)).toBe("2027-01");
+    const query = vi.fn().mockResolvedValue({ rows: [], rowCount: 1 });
+
+    await recordWhatsAppUsage({
+      pool: { query } as never,
+      projectId: "project-1",
+      scheduleId: "schedule-1",
+      candidateId: "candidate-1",
+      threshold: "1h",
+      brand: "role_room",
+      sentAt,
+    });
+
+    expect(query).toHaveBeenCalledOnce();
+    expect(String(query.mock.calls[0]?.[0])).toContain("billing_period");
+    expect(query.mock.calls[0]?.[1]?.at(-1)).toBe("2027-01");
   });
 });

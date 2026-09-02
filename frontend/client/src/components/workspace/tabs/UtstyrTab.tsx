@@ -6,7 +6,7 @@
  * AI-estimat (/api/equipment/estimate-value) — så «Bock mikrofon» → hva den koster.
  * Vedlikehold/firmware: viser enheter med tilgjengelig firmware-oppdatering.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Box, Stack, Typography, Button, Dialog, DialogContent, DialogActions, IconButton, TextField, MenuItem, CircularProgress, Autocomplete } from '@mui/material';
 import Inventory2 from '@mui/icons-material/Inventory2';
 import AddCircleOutline from '@mui/icons-material/AddCircleOutline';
@@ -168,7 +168,7 @@ const leftLabel = (iso?: string, locale: 'no' | 'en' = 'no') => {
   return locale === 'en' ? `${d} d left` : `${d} d igjen`;
 };
 
-const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: string }> = ({ profession, userId }) => {
+const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: string }> = ({ projectId, profession, userId }) => {
   // Kategorien styrer hvilket gear-sett/tittel som vises — utledet via samme
   // sentrale normalisering som sidenavet bruker (workspaceCategoryFor), i stedet
   // for en egen, ufullstendig profesjons-liste som ikke kjente igjen 'musicproducer'.
@@ -181,6 +181,8 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
   // og fritekst gir dårligere katalog-oppslag enn et valgt merke/modell-par.
   const cameraCatalog = useCameraCatalog();
   const [items, setItems] = useState<any[]>([]);
+  const [canManageAssignments, setCanManageAssignments] = useState(false);
+  const [canCreateInventory, setCanCreateInventory] = useState(false);
   const [firmware, setFirmware] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -197,6 +199,8 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
   const [gridView, setGridView] = useState<'cards' | 'table'>('cards');
   const [fwBusy, setFwBusy] = useState(false);
   const [fwChecked, setFwChecked] = useState<Date | null>(null);
+  const inventoryCreateKeyRef = useRef<string | null>(null);
+  const cloneCreateKeyRef = useRef<string | null>(null);
   // Utenlandske partner-vendors får engelsk UI (WsLocaleProvider i TeamWorkspacePage).
   const locale = useWsLocale();
   const t = makeT(T, locale);
@@ -205,20 +209,37 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
   const catLabel = (c?: string) => (locale === 'en' ? (CAT_EN[c] || c) : c);
 
   const load = () => {
-    if (!userId) { setLoading(false); return; }
-    apiRequest(`/api/equipment/inventory?userId=${encodeURIComponent(userId)}`)
-      .then((r: any) => setItems(Array.isArray(r) ? r : (r?.data || [])))
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false));
-    apiRequest(`/api/equipment/firmware-updates/${encodeURIComponent(userId)}`)
+    if (!projectId || projectId === 'sample') {
+      setItems([]);
+      setCanManageAssignments(false);
+      setCanCreateInventory(false);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    apiRequest(`/api/projects/${encodeURIComponent(projectId)}/equipment`)
       .then((r: any) => {
-        const arr = Array.isArray(r) ? r : (r?.updates || r?.data || []);
-        // Firmware gjelder hardware — filtrer bort programvare/plugins (får generisk 1.0.0).
-        setFirmware(arr.filter((f: any) => !SOFTWARE_CATS.has(f.deviceType || f.category)));
+        setItems(Array.isArray(r?.items) ? r.items : []);
+        setCanManageAssignments(Boolean(r?.canManageAssignments));
+        setCanCreateInventory(Boolean(r?.canCreateInventory));
       })
-      .catch(() => setFirmware([]));
+      .catch(() => {
+        setItems([]);
+        setCanManageAssignments(false);
+        setCanCreateInventory(false);
+      })
+      .finally(() => setLoading(false));
+    if (userId) {
+      apiRequest(`/api/equipment/firmware-updates/${encodeURIComponent(userId)}`)
+        .then((r: any) => {
+          const arr = Array.isArray(r) ? r : (r?.updates || r?.data || []);
+          // Firmware gjelder hardware — filtrer bort programvare/plugins (får generisk 1.0.0).
+          setFirmware(arr.filter((f: any) => !SOFTWARE_CATS.has(f.deviceType || f.category)));
+        })
+        .catch(() => setFirmware([]));
+    }
   };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [userId]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId, userId]);
 
   const fetchValue = async () => {
     const q = [form.brand, form.model].filter(Boolean).join(' ').trim() || form.name;
@@ -256,6 +277,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
   };
 
   const openAdd = (it?: any) => {
+    inventoryCreateKeyRef.current = it?.id ? null : crypto.randomUUID();
     const s = it ? specOf(it) : {};
     setEditTarget(it || null);
     setForm(it ? {
@@ -269,6 +291,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
   };
   const save = async () => {
     if (!form.brand.trim() || !form.model.trim() || !userId) { wsAlert(t('brandModelRequired')); return; }
+    if (!editTarget && !canCreateInventory) { wsAlert('Bare prosjekteier kan opprette nytt inventar.'); return; }
     setSaving(true);
     try {
       const body = {
@@ -280,13 +303,54 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
           ...(form.licenseType === 'subscription' ? { billingCycle: form.billingCycle, subscriptionCost: Number(form.subCost) || null, renewalDate: form.renewalDate || null } : {}),
         },
       };
-      if (editTarget?.id) await apiRequest(`/api/equipment/inventory/${encodeURIComponent(editTarget.id)}`, { method: 'PATCH', body });
-      else await apiRequest(`/api/equipment/inventory`, { method: 'POST', body: { userId, profession: profession || null, ...body } });
+      if (editTarget?.id) {
+        await apiRequest(`/api/equipment/inventory/${encodeURIComponent(editTarget.id)}`, { method: 'PATCH', body });
+      } else {
+        const createKey = inventoryCreateKeyRef.current || crypto.randomUUID();
+        inventoryCreateKeyRef.current = createKey;
+        const created: any = await apiRequest(`/api/equipment/inventory`, {
+          method: 'POST',
+          headers: { 'Idempotency-Key': createKey },
+          body: { userId, profession: profession || null, ...body },
+        });
+        if (created?.id && projectId && projectId !== 'sample') {
+          await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/equipment/assignments`, {
+            method: 'POST',
+            headers: { 'Idempotency-Key': createKey },
+            body: { equipmentId: created.id, quantity: 1, assignmentType: 'primary' },
+          });
+        }
+      }
+      inventoryCreateKeyRef.current = null;
       setOpen(false); setEditTarget(null);
       setForm({ name: '', brand: '', model: '', category: cats[0], condition: 'excellent', licenseType: 'perpetual', billingCycle: 'monthly', subCost: '', renewalDate: '' }); setVal(null);
       load();
     } catch (e: any) { wsAlert(e?.message || t('couldNotSave')); }
     finally { setSaving(false); }
+  };
+  const toggleProjectAssignment = async () => {
+    if (!detItem?.id || !canManageAssignments || !projectId || projectId === 'sample') return;
+    setSaving(true);
+    try {
+      if (detItem.assignedToProject) {
+        await apiRequest(
+          `/api/projects/${encodeURIComponent(projectId)}/equipment/assignments/${encodeURIComponent(detItem.id)}`,
+          { method: 'DELETE' },
+        );
+      } else {
+        await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/equipment/assignments`, {
+          method: 'POST',
+          headers: { 'Idempotency-Key': crypto.randomUUID() },
+          body: { equipmentId: detItem.id, quantity: 1, assignmentType: 'primary' },
+        });
+      }
+      setDetItem(null);
+      load();
+    } catch (e: any) {
+      wsAlert(e?.message || t('couldNotSave'));
+    } finally {
+      setSaving(false);
+    }
   };
   const delItem = async () => {
     if (!detItem?.id || !await wsConfirm(t('delConfirm'))) return;
@@ -294,13 +358,24 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
     catch (e: any) { wsAlert(e?.message || t('couldNotSave')); }
   };
   const cloneItem = async () => {
-    if (!detItem) return;
+    if (!detItem || !userId || !canCreateInventory) return;
     try {
       const s = specOf(detItem);
+      const createKey = cloneCreateKeyRef.current || crypto.randomUUID();
+      cloneCreateKeyRef.current = createKey;
       const r: any = await apiRequest(`/api/equipment/inventory`, {
         method: 'POST',
+        headers: { 'Idempotency-Key': createKey },
         body: { userId, profession: profession || null, name: `${detItem.name || `${detItem.brand} ${detItem.model}`} (klon)`, brand: detItem.brand, model: detItem.model, category: detItem.category, condition: detItem.condition, specifications: { ...s } },
       });
+      if (r?.id && projectId && projectId !== 'sample') {
+        await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/equipment/assignments`, {
+          method: 'POST',
+          headers: { 'Idempotency-Key': createKey },
+          body: { equipmentId: r.id, quantity: 1, assignmentType: 'primary' },
+        });
+      }
+      cloneCreateKeyRef.current = null;
       load();
       setDetItem(null);
       if (r?.id) openAdd({ ...detItem, id: r.id, name: r.name });
@@ -350,7 +425,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
         icon={<Inventory2 sx={{ fontSize: 21, color: '#fff' }} />}
         title={tabTitle}
         sub={`${items.length} ${music ? t('subItemsMusic') : t('subItems')} · ${t('totalValue')} ${fmtKr(totalValue)}${monthly ? ` · ${fmtKr(monthly)}/${t('perMonth')} løpende` : ''}`}
-        actions={<Button variant="contained" startIcon={<AddCircleOutline />} onClick={() => openAdd()} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{t('addEquipment')}</Button>}
+        actions={<Button variant="contained" startIcon={<AddCircleOutline />} onClick={() => openAdd()} disabled={!canCreateInventory} title={!canCreateInventory ? 'Bare prosjekteier kan opprette nytt inventar' : undefined} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>{t('addEquipment')}</Button>}
       />
 
       {/* Stat-rad */}
@@ -477,7 +552,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
                   <Typography key="c" sx={{ fontSize: 12, color: ws.textDim }}>{catLabel(it.category)}</Typography>,
                   <Typography key="v" sx={{ fontSize: 12, fontWeight: 700, color: gearValue(it) > 0 ? ws.green : ws.textFaint }}>{gearValue(it) > 0 ? fmtKr(gearValue(it)) : '—'}</Typography>,
                   <Typography key="g" sx={{ fontSize: 12, color: ws.textDim }}>{w ? wL : '—'}</Typography>,
-                  <Box key="s" sx={{ display: 'inline-flex' }}><WsTag label={it.condition || it.status || '—'} tone="neutral" /></Box>,
+                  <Stack key="s" direction="row" spacing={0.5}><WsTag label={it.condition || it.status || '—'} tone="neutral" />{it.assignedToProject && <WsTag label="I prosjekt" tone="green" />}</Stack>,
                 ];
               })}
             />
@@ -498,6 +573,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
                   <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
                     {gearValue(it) > 0 && <WsTag label={`≈ ${fmtKr(gearValue(it))}`} tone="green" />}
                     {it.condition && <WsTag label={it.condition} tone="neutral" />}
+                    <WsTag label={it.assignedToProject ? 'I prosjekt' : 'Tilgjengelig'} tone={it.assignedToProject ? 'green' : 'neutral'} />
                     {(() => { const rk = reklamOf(it); const l = leftLabel(rk, locale); return rk ? <WsTag label={`${t('reklamasjon')}: ${l}`} tone={l === 'utløpt' || l === 'expired' ? 'neutral' : 'amber'} /> : null; })()}
                     {(() => { const w = warrantyOf(it); const l = leftLabel(w, locale); return w ? <WsTag label={`${t('garanti')}: ${l}`} tone={l === 'utløpt' || l === 'expired' ? 'neutral' : 'green'} /> : null; })()}
                     {receiptOf(it) && <WsTag label={t('receipt')} tone="neutral" />}
@@ -634,6 +710,7 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
                   {/* Status / garanti-rad */}
                   <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
                     {it.condition && <WsTag label={it.condition} tone="neutral" />}
+                    <WsTag label={it.assignedToProject ? 'I prosjekt' : 'Ikke lagt til'} tone={it.assignedToProject ? 'green' : 'neutral'} />
                     {rk && <WsTag label={`${t('reklamasjon')}: ${rkL}`} tone={rkL === 'utløpt' || rkL === 'expired' ? 'neutral' : 'amber'} />}
                     {w && <WsTag label={`${t('garanti')}: ${wL}`} tone={wL === 'utløpt' || wL === 'expired' ? 'neutral' : 'green'} />}
                     {receiptOf(it) && <WsTag label={t('receipt')} tone="neutral" />}
@@ -668,9 +745,10 @@ const UtstyrTab: React.FC<{ projectId: string; profession?: string; userId?: str
                 </Stack>
               </DialogContent>
               <DialogActions sx={{ px: 2.5, pb: 2, flexWrap: 'wrap', gap: 0.75 }}>
-                <Button size="small" startIcon={wsIcon('Edit', { fontSize: 14 })} onClick={() => { setDetItem(null); openAdd(it); }} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700 }}>{t('editBtn')}</Button>
-                <Button size="small" onClick={cloneItem} sx={{ color: ws.textDim, textTransform: 'none', fontWeight: 700 }}>{t('cloneBtn')}</Button>
-                <Button size="small" onClick={delItem} sx={{ color: '#f87171', textTransform: 'none', fontWeight: 700, ml: 'auto' }}>{t('deleteBtn')}</Button>
+                {canManageAssignments && <Button size="small" disabled={saving} onClick={toggleProjectAssignment} sx={{ color: it.assignedToProject ? '#f59e0b' : ws.green, textTransform: 'none', fontWeight: 700 }}>{it.assignedToProject ? 'Fjern fra prosjekt' : 'Legg til i prosjekt'}</Button>}
+                {canCreateInventory && <Button size="small" startIcon={wsIcon('Edit', { fontSize: 14 })} onClick={() => { setDetItem(null); openAdd(it); }} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700 }}>{t('editBtn')}</Button>}
+                {canCreateInventory && <Button size="small" onClick={cloneItem} sx={{ color: ws.textDim, textTransform: 'none', fontWeight: 700 }}>{t('cloneBtn')}</Button>}
+                {canCreateInventory && !it.assignedToProject && <Button size="small" onClick={delItem} sx={{ color: '#f87171', textTransform: 'none', fontWeight: 700, ml: 'auto' }}>{t('deleteBtn')}</Button>}
                 <Button size="small" onClick={() => setDetItem(null)} sx={{ color: ws.textDim, textTransform: 'none' }}>{t('closeDet')}</Button>
               </DialogActions>
             </>

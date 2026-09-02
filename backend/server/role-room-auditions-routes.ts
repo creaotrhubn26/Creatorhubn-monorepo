@@ -148,7 +148,7 @@ export function setupRoleRoomAuditionsRoutes(
     if (!session) return;
 
     try {
-      // LEFT JOIN på schedules for aggregert candidate_count/completed_count
+      // LEFT JOIN på casting_schedules for aggregert candidate_count/completed_count
       const result = await pool.query<AuditionRow & {
         candidate_count: number;
         completed_count: number;
@@ -157,7 +157,7 @@ export function setupRoleRoomAuditionsRoutes(
                 COALESCE(COUNT(s.id), 0)::int AS candidate_count,
                 COALESCE(SUM(CASE WHEN s.status IN ('confirmed', 'completed') THEN 1 ELSE 0 END), 0)::int AS completed_count
            FROM auditions a
-           LEFT JOIN schedules s ON s.audition_id = a.id
+           LEFT JOIN casting_schedules s ON s.audition_id = a.id
           WHERE a.project_id = $1
           GROUP BY a.id
           ORDER BY a.date DESC, a.start_time DESC NULLS LAST`,
@@ -334,7 +334,7 @@ export function setupRoleRoomAuditionsRoutes(
       // Validér at både audition og schedule eksisterer + tilhører samme prosjekt
       const validation = await pool.query<{ a_project: string; s_project: string }>(
         `SELECT a.project_id AS a_project, s.project_id AS s_project
-           FROM auditions a, schedules s
+           FROM auditions a, casting_schedules s
           WHERE a.id = $1 AND s.id = $2`,
         [auditionId, scheduleId],
       );
@@ -352,7 +352,7 @@ export function setupRoleRoomAuditionsRoutes(
       }
 
       await pool.query(
-        'UPDATE schedules SET audition_id = $1 WHERE id = $2',
+        'UPDATE casting_schedules SET audition_id = $1 WHERE id = $2',
         [auditionId, scheduleId],
       );
       return res.json({ success: true });
