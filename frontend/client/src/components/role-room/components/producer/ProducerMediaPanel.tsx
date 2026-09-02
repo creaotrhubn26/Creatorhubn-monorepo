@@ -181,6 +181,7 @@ import ProducerGoogleWorkspacePanel from './ProducerGoogleWorkspacePanel';
 import ProducerReceivedMaterialsPanel from './ProducerReceivedMaterialsPanel';
 import ProducerMeetingWorkspace from './ProducerMeetingWorkspace';
 import RoleRoomAgentDialog from './RoleRoomAgentDialog';
+import type { TabId as RoleRoomAgentTabId } from './agentTabs';
 import { RoleRoomAgentIcon } from './RoleRoomAgentIcon';
 import MarketingPlanWorkspace from './MarketingPlanWorkspace';
 import { useResearchProgress } from '../../hooks/useResearchProgress';
@@ -1985,7 +1986,20 @@ export default function ProducerMediaPanel({
   // som kan ha blitt generert inne i dialogen.
   const [marketingReloadNonce, setMarketingReloadNonce] = useState(0);
   const [roleRoomAgentDialogInitialTab, setRoleRoomAgentDialogInitialTab] =
-    useState<'research' | 'marketing-plan'>('research');
+    useState<RoleRoomAgentTabId>('research');
+
+  // LinkedIn Ads OAuth is a full-page redirect. The callback preserves this
+  // marker so content-producer mode can reopen the Agent on the same project
+  // instead of dropping the user into Admin Room.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('roleRoomAgentTab') !== 'ads-setup') return;
+    setRoleRoomAgentDialogInitialTab('ads-setup');
+    setRoleRoomAgentDialogOpen(true);
+    url.searchParams.delete('roleRoomAgentTab');
+    window.history.replaceState({}, '', url.toString());
+  }, []);
   const [roleRoomAgentGenerating, setRoleRoomAgentGenerating] = useState(false);
   const [roleRoomAgentApplying, setRoleRoomAgentApplying] = useState(false);
   const [roleRoomAgentResult, setRoleRoomAgentResult] = useState<RoleRoomAgentProducerBootstrapResult | null>(null);

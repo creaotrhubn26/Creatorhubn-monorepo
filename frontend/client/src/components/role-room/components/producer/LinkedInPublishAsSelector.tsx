@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import {
   Avatar,
   Box,
-  Button,
   CircularProgress,
   ListItemAvatar,
   ListItemText,
@@ -29,8 +28,8 @@ interface LinkedInPublishAsSelectorProps {
  * profil eller som en av bedriftene brukeren administrerer.
  *
  * Henter listen via /api/role-room/linkedin/companies. Hvis tokenet
- * mangler `w_organization_social`-scope, viser vi en re-connect-CTA
- * i stedet for dropdown.
+ * mangler `w_organization_social`-scope, forklarer vi at bedriftsside-
+ * publisering krever separat Community Management API-godkjenning.
  *
  * Auto-skjul hvis brukeren ikke admin-er noen orgs (default-publisering
  * blir alltid personlig — ingen grunn til UI-støy).
@@ -80,27 +79,12 @@ export default function LinkedInPublishAsSelector({
         }}
       >
         <Typography sx={{ color: '#fde68a', fontSize: '0.78rem', fontWeight: 600, mb: 0.4 }}>
-          Publisering som bedrift krever ekstra tilgang
+          Personlig LinkedIn-publisering er klar
         </Typography>
-        <Typography sx={{ color: 'rgba(253,230,138,0.85)', fontSize: '0.72rem', mb: 0.8 }}>
-          LinkedIn-tilkoblingen din mangler scopen som lar oss publisere på vegne av bedrifter.
-          Re-connect for å aktivere det.
+        <Typography sx={{ color: 'rgba(253,230,138,0.85)', fontSize: '0.72rem' }}>
+          Bedriftssider krever separat godkjenning for LinkedIn Community Management API.
+          Du kan fortsatt publisere til din personlige profil via Share on LinkedIn.
         </Typography>
-        <Button
-          size="small"
-          variant="outlined"
-          onClick={() => {
-            window.open('/api/role-room/linkedin/oauth/start', '_blank', 'width=600,height=720,noopener');
-          }}
-          sx={{
-            textTransform: 'none',
-            fontSize: '0.74rem',
-            color: '#fbbf24',
-            borderColor: 'rgba(251,191,36,0.5)',
-          }}
-        >
-          Re-connect LinkedIn
-        </Button>
       </Box>
     );
   }

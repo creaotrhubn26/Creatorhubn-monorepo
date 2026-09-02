@@ -37,6 +37,7 @@ import {
   MoreHoriz as MoreHorizIcon,
   Tune as TuneIcon,
   QueryStats as QueryStatsIcon,
+  PaidOutlined as AdsSetupIcon,
   Rocket as RocketIcon,
   KeyboardArrowDown as KeyboardArrowDownIcon,
 } from '@mui/icons-material';
@@ -73,9 +74,10 @@ import MarketingPlanPanel from './MarketingPlanPanel';
 import { DailyBriefCard } from './DailyBriefCard';
 import AgentDockLauncher from './AgentDockLauncher';
 import AgentCommandPalette from './AgentCommandPalette';
-import { isAdvancedTab } from './agentTabs';
+import { isAdvancedTab, type TabId } from './agentTabs';
 import ResearchVersionsPickerInline from './ResearchVersionsPickerInline';
 import MerchSuppliersPanel from './MerchSuppliersPanel';
+import AgentAdsPanel from './AgentAdsPanel';
 
 type RoleRoomAgentDialogProps = {
   open: boolean;
@@ -118,7 +120,7 @@ type RoleRoomAgentDialogProps = {
   /** Hvilken fane som er aktiv ved åpning. Default 'research'. Brukes
    *  når dialog-en åpnes fra et annet sted (f.eks. "Endre plan"-knappen
    *  i Markedsplan-arbeidsflaten) for å hoppe rett til riktig fane. */
-  initialTab?: 'research' | 'marketing-plan' | 'merch' | 'feed-planner' | 'chat';
+  initialTab?: TabId;
 };
 
 function renderList(items: string[]) {
@@ -465,7 +467,7 @@ export default function RoleRoomAgentDialog({
   // full correction trail as the newest source of truth.
   const [refinementDraft, setRefinementDraft] = useState('');
   const [refinementHistory, setRefinementHistory] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'research' | 'discovery' | 'chat' | 'merch' | 'feed-planner' | 'marketing-plan' | 'meta-page' | 'page-content' | 'ads-attribution' | 'fb-publish' | 'fb-mention' | 'ig-hashtag' | 'social-inbox' | 'mentions' | 'leads' | 'events' | 'social-analytics'>(initialTab ?? 'research');
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab ?? 'research');
 
   // Synk hvis initialTab endrer seg etter mount (dialog gjenåpnes med
   // ny tab fra parent).
@@ -615,7 +617,7 @@ export default function RoleRoomAgentDialog({
   const TAB_LABELS: Record<string, string> = {
     research: 'Research', discovery: 'Oppdag', merch: 'Merch', 'marketing-plan': 'Markedsplan',
     'feed-planner': 'Feed-planner', 'meta-page': 'Meta Page', 'page-content': 'Page Content',
-    'ads-attribution': 'Ads Attribution', 'fb-publish': 'FB Publish', 'fb-mention': 'Page Mentions',
+    'ads-attribution': 'Ads Attribution', 'ads-setup': 'Ads-oppsett', 'fb-publish': 'FB Publish', 'fb-mention': 'Page Mentions',
     'ig-hashtag': 'IG Hashtags', 'social-inbox': 'Inbox', mentions: 'Omtaler', leads: 'Leads', events: 'Arrangement', 'social-analytics': 'Analytics', chat: 'Chat',
   };
   const flowIndex = tabFlow.indexOf(activeTab);
@@ -1176,6 +1178,13 @@ export default function RoleRoomAgentDialog({
           data-testid="agent-tab-events"
         />
         <Tab
+          value="ads-setup"
+          label="Ads-oppsett"
+          icon={<AdsSetupIcon fontSize="small" />}
+          iconPosition="start"
+          data-testid="agent-tab-ads-setup"
+        />
+        <Tab
           value="social-analytics"
           label="Analytics"
           icon={<QueryStatsIcon fontSize="small" />}
@@ -1556,6 +1565,10 @@ export default function RoleRoomAgentDialog({
         ) : activeTab === 'ads-attribution' ? (
           <Box sx={{ p: { xs: 1, md: 2 } }}>
             <AdsAttributionInspector />
+          </Box>
+        ) : activeTab === 'ads-setup' ? (
+          <Box sx={{ p: { xs: 1, md: 2 } }}>
+            <AgentAdsPanel clientProjectId={projectId} defaultClientName={projectName} />
           </Box>
         ) : activeTab === 'fb-publish' ? (
           <Box sx={{ p: { xs: 1, md: 2 } }}>

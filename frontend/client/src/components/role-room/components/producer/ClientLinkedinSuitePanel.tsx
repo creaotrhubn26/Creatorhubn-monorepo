@@ -75,9 +75,20 @@ export default function ClientLinkedinSuitePanel({
 
   const connectOAuth = async () => {
     try {
-      const browserOrigin = encodeURIComponent(window.location.origin);
+      const returnUrl = new URL(window.location.href);
+      returnUrl.searchParams.delete('oauth_success');
+      returnUrl.searchParams.delete('oauth_error');
+      returnUrl.searchParams.delete('config');
+      if (returnUrl.pathname !== '/admin-room') {
+        returnUrl.searchParams.set('roleRoomAgentTab', 'ads-setup');
+      }
+      const params = new URLSearchParams({
+        configId,
+        browserOrigin: window.location.origin,
+        returnPath: `${returnUrl.pathname}${returnUrl.search}${returnUrl.hash}`,
+      });
       const r = await fetch(
-        `/api/admin-room/agent/ads/oauth/linkedin/start?configId=${encodeURIComponent(configId)}&browserOrigin=${browserOrigin}`,
+        `/api/admin-room/agent/ads/oauth/linkedin/start?${params.toString()}`,
         { credentials: 'include' },
       );
       const data = await r.json();

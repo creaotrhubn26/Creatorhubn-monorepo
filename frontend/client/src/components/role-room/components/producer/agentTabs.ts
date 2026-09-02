@@ -1,15 +1,15 @@
 /**
- * agentTabs.ts — Informasjons-arkitektur for de 17 fanene i RoleRoomAgentDialog.
+ * agentTabs.ts — Informasjons-arkitektur for fanene i RoleRoomAgentDialog.
  *
  * Ren data/typer (ingen UI, ingen @mui-import) slik at dialogen kan importere dette
  * uten å dra inn render-avhengigheter. Dialogen veksler fortsatt på de SAMME
  * `TabId`-streng-literalene — denne fila omorganiserer dem bare i 6 produsent-faser
- * og markerer de 8 sekundære/verktøy-fanene som `advanced` for «Avansert»-overflow.
+ * og markerer sekundære/verktøy-faner som `advanced` for «Avansert»-overflow.
  *
  * Ikoner med vilje utelatt — dialogen eier allerede ikon-mappingen.
  */
 
-/** Identisk union med RoleRoomAgentDialog sin `activeTab` (17 ids). */
+/** Identisk union med RoleRoomAgentDialog sin `activeTab`. */
 export type TabId =
   | 'research'
   | 'discovery'
@@ -20,6 +20,7 @@ export type TabId =
   | 'meta-page'
   | 'page-content'
   | 'ads-attribution'
+  | 'ads-setup'
   | 'fb-publish'
   | 'fb-mention'
   | 'ig-hashtag'
@@ -60,9 +61,9 @@ export interface AgentTabMeta {
 }
 
 /**
- * De 6 fasene i rekkefølge. De 8 advancedTabs er de sekundære verktøy-fanene:
+ * De 6 fasene i rekkefølge. Advanced-fanene er de sekundære verktøy-fanene:
  * discovery, meta-page, page-content, ig-hashtag, fb-publish, mentions,
- * fb-mention, ads-attribution.
+ * fb-mention og ads-attribution. Ads-oppsett er en synlig Leads-fane.
  */
 export const AGENT_TAB_GROUPS: readonly AgentTabGroup[] = [
   {
@@ -92,7 +93,7 @@ export const AGENT_TAB_GROUPS: readonly AgentTabGroup[] = [
   {
     id: 'leads',
     label: 'Leads',
-    primaryTabs: ['leads', 'events'],
+    primaryTabs: ['leads', 'events', 'ads-setup'],
     advancedTabs: ['ads-attribution'],
   },
   {
@@ -117,6 +118,7 @@ const TAB_LABELS: Record<TabId, string> = {
   'meta-page': 'Meta Page',
   'page-content': 'Page Content',
   'ads-attribution': 'Ads Attribution',
+  'ads-setup': 'Ads-oppsett',
   'fb-publish': 'FB Publish',
   'fb-mention': 'Page Mentions',
   'ig-hashtag': 'IG Hashtags',
@@ -150,7 +152,7 @@ export const PRIMARY_TAB_IDS: readonly TabId[] = AGENT_TAB_GROUPS.flatMap(
   (g) => g.primaryTabs,
 );
 
-/** De 8 avanserte/verktøy-fane-ids i fase-rekkefølge. */
+/** Avanserte/verktøy-fane-ids i fase-rekkefølge. */
 export const ADVANCED_TAB_IDS: readonly TabId[] = AGENT_TAB_GROUPS.flatMap(
   (g) => g.advancedTabs,
 );

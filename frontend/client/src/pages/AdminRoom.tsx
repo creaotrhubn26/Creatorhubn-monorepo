@@ -115,6 +115,7 @@ import AutoAwesomeMosaicIcon from '@mui/icons-material/AutoAwesomeMosaic';
 import MarketingCockpitTab from './admin-room/MarketingCockpitTab';
 import RoleRoomAgentTab from './admin-room/RoleRoomAgentTab';
 import ContentCalendarTab from './admin-room/ContentCalendarTab';
+import { clearClientAuthState } from '../lib/queryClient';
 
 const ADMIN_ROOM_OWNER_EMAIL = 'daniel@creatorhubn.com';
 
@@ -4542,56 +4543,133 @@ function resolveInitialAdminTab(): AdminRoomTab {
   return 'dashboard';
 }
 
+type AdminAuthStatus = 'checking' | 'authenticated' | 'unauthenticated' | 'error';
+
 export default function AdminRoom() {
   const [tab, setTab] = useState<AdminRoomTab>(resolveInitialAdminTab);
   const localEmail = useMemo(() => getCurrentUserEmail(), []);
-  // Backup: sjekk server-side hvis localStorage ikke har email. Google-OAuth-
-  // redirect kan miste localStorage avhengig av flyten; backend vet hvem som
-  // er innlogget via session-cookie.
   const [serverEmail, setServerEmail] = useState<string | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
+  const [authStatus, setAuthStatus] = useState<AdminAuthStatus>('checking');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authCheckVersion, setAuthCheckVersion] = useState(0);
+
+  // Admin Room skal aldri autoriseres fra en localStorage-profil alene.
+  // Dette kallet validerer bearer-tokenet mot backend og hydrater samtidig
+  // backendens in-memory session-cache fra den persisterte sesjonen. Først
+  // etterpå mountes panelene som bruker synkrone admin-guards.
   useEffect(() => {
-    if (localEmail) { setAuthChecked(true); return; }
     let cancelled = false;
+    const controller = new AbortController();
+    setAuthStatus('checking');
+    setAuthError(null);
+
     (async () => {
       try {
-        const r = await fetch('/api/auth/user', { credentials: 'include' });
-        if (!cancelled && r.ok) {
-          const body = await r.json().catch(() => ({}));
-          const email = typeof body?.user?.email === 'string'
-            ? body.user.email.toLowerCase()
-            : typeof body?.email === 'string'
-              ? body.email.toLowerCase()
-              : null;
-          setServerEmail(email);
+        const response = await fetch('/api/auth/user', {
+          credentials: 'include',
+          signal: controller.signal,
+        });
+        if (cancelled) return;
+        if (!response.ok) {
+          if (response.status === 401) {
+            setServerEmail(null);
+            setAuthStatus('unauthenticated');
+            return;
+          }
+          throw new Error(`HTTP ${response.status}`);
         }
-      } catch { /* ignore */ }
-      finally { if (!cancelled) setAuthChecked(true); }
+
+        const body = await response.json().catch(() => null) as
+          | { authenticated?: boolean; user?: { email?: string } | null; email?: string }
+          | null;
+        const email = typeof body?.user?.email === 'string'
+          ? body.user.email.trim().toLowerCase()
+          : typeof body?.email === 'string'
+            ? body.email.trim().toLowerCase()
+            : null;
+
+        if (body?.authenticated !== true || !email) {
+          setServerEmail(null);
+          setAuthStatus('unauthenticated');
+          return;
+        }
+
+        setServerEmail(email);
+        setAuthStatus('authenticated');
+      } catch (error) {
+        if (cancelled || controller.signal.aborted) return;
+        setServerEmail(null);
+        setAuthError(error instanceof Error ? error.message : 'Ukjent nettverksfeil');
+        setAuthStatus('error');
+      }
     })();
-    return () => { cancelled = true; };
-  }, [localEmail]);
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [authCheckVersion]);
 
-  const effectiveEmail = localEmail || serverEmail || '';
+  const handleReauthenticate = useCallback(() => {
+    clearClientAuthState();
+    const returnPath = `${window.location.pathname}${window.location.search}`;
+    window.location.assign(`/login?redirect=${encodeURIComponent(returnPath)}`);
+  }, []);
 
-  if (!authChecked) {
+  if (authStatus === 'checking') {
     return (
       <Container maxWidth="sm" sx={{ py: 8, textAlign: 'center' }}>
         <CircularProgress size={24} />
+        <Typography sx={{ mt: 2 }} color="text.secondary">
+          Validerer Admin Room-sesjonen…
+        </Typography>
       </Container>
     );
   }
 
-  if (effectiveEmail !== ADMIN_ROOM_OWNER_EMAIL) {
+  if (authStatus === 'error') {
+    return (
+      <Container maxWidth="sm" sx={{ py: 8 }}>
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Kunne ikke validere sesjonen mot serveren. Ingen Admin Room-data er lastet.
+          {authError ? <> Teknisk detalj: <code>{authError}</code>.</> : null}
+        </Alert>
+        <Button variant="contained" onClick={() => setAuthCheckVersion((value) => value + 1)}>
+          Prøv igjen
+        </Button>
+      </Container>
+    );
+  }
+
+  if (authStatus === 'unauthenticated') {
+    return (
+      <Container maxWidth="sm" sx={{ py: 8 }}>
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Sesjonen din er utløpt eller mangler. Logg inn på nytt før Admin Room-data kan lastes.
+        </Alert>
+        {localEmail ? (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Lagret brukerprofil: <code>{localEmail}</code>. Denne profilen er ikke en gyldig backend-sesjon.
+          </Alert>
+        ) : null}
+        <Button variant="contained" onClick={handleReauthenticate}>
+          Logg inn på nytt
+        </Button>
+      </Container>
+    );
+  }
+
+  if (serverEmail !== ADMIN_ROOM_OWNER_EMAIL) {
     return (
       <Container maxWidth="sm" sx={{ py: 8 }}>
         <Alert severity="error" sx={{ mb: 2 }}>
           Admin Room er kun tilgjengelig for produkteier ({ADMIN_ROOM_OWNER_EMAIL}).
         </Alert>
-        <Alert severity="info">
-          Innlogget som: <code>{effectiveEmail || '(ingen session funnet)'}</code>
-          {' · '}
-          <a href="/login">Logg inn på nytt</a> hvis du forventet å se denne siden.
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Innlogget som: <code>{serverEmail || '(ingen session funnet)'}</code>
         </Alert>
+        <Button variant="outlined" onClick={handleReauthenticate}>
+          Logg inn med produkteier-kontoen
+        </Button>
       </Container>
     );
   }
