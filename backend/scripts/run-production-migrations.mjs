@@ -24,7 +24,7 @@ const MIGRATION_CHECKSUM = /^[a-f0-9]{64}$/;
 const STRICT_MIGRATION_INTEGRITY_FLOOR = 474;
 const LEGACY_LEDGER_MANIFEST_FILENAME = "legacy-applied-migrations.json";
 const LEGACY_LEDGER_MANIFEST_FORMAT_VERSION = 2;
-const LEGACY_LEDGER_BASELINE_ID = "creatorhub-production-ledger-2026-08-31-v2";
+const LEGACY_LEDGER_BASELINE_ID = "creatorhub-production-ledger-2026-09-02-v3";
 const LEGACY_LEDGER_MANIFEST_KEYS = Object.freeze([
   "baselineId",
   "formatVersion",
@@ -2905,6 +2905,9 @@ async function runSelfTest() {
     "0465_leadgrid_canvas_integrity.sql",
     "0470_role_room_linkedin_publish_queue.sql",
     "0471_project_pricing_and_time_tracking.sql",
+    "0490_leadgrid_core_dataflow.sql",
+    "0491_leadgrid_lead_files.sql",
+    "0492_leadgrid_runtime_schema_backfill.sql",
   ];
   const productionManifest = await loadLegacyLedgerManifest(
     DEFAULT_MIGRATIONS_DIR,
@@ -2912,12 +2915,12 @@ async function runSelfTest() {
   assert.deepEqual(
     [...productionManifest.legacyAppliedFilenames],
     expectedLegacyAppliedFilenames,
-    "the versioned production baseline must contain exactly the 22 checksum-pinned ledger-only tombstones",
+    "the versioned production baseline must contain exactly the 25 reviewed ledger-only tombstones",
   );
   const productionInventory = await loadMigrationInventory(
     DEFAULT_MIGRATIONS_DIR,
   );
-  assert.equal(productionInventory.legacyAppliedFilenames.size, 22);
+  assert.equal(productionInventory.legacyAppliedFilenames.size, 25);
   assert.deepEqual(
     productionInventory.legacyRepositoryMigrationFiles,
     LEGACY_REPOSITORY_MIGRATION_FILENAMES,

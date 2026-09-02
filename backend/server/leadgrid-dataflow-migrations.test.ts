@@ -7,7 +7,7 @@ function migration(name: string): string {
 
 describe("Leadgrid data-flow migrations", () => {
   it("declares the core workspace, collaboration and replay contracts", () => {
-    const sql = migration("0490_leadgrid_core_dataflow.sql");
+    const sql = migration("0498_leadgrid_core_dataflow.sql");
     for (const fragment of [
       "leadgrid_lead_notes",
       "leadgrid_lead_favorites",
@@ -20,14 +20,14 @@ describe("Leadgrid data-flow migrations", () => {
   });
 
   it("declares durable, tenant-bound lead files", () => {
-    const sql = migration("0491_leadgrid_lead_files.sql");
+    const sql = migration("0499_leadgrid_lead_files.sql");
     expect(sql).toContain("CREATE TABLE IF NOT EXISTS leadgrid_lead_files");
     expect(sql).toContain("organization_id UUID NOT NULL");
     expect(sql).toContain("lead_id UUID NOT NULL REFERENCES crm_customers(id)");
   });
 
   it("moves every active lazy Leadgrid table into an explicit migration", () => {
-    const sql = migration("0492_leadgrid_runtime_schema_backfill.sql");
+    const sql = migration("0500_leadgrid_runtime_schema_backfill.sql");
     for (const table of [
       "leadgrid_doffin_watches",
       "leadgrid_anbud_pipeline",

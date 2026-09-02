@@ -72,11 +72,13 @@ Rene visningspreferanser — valgt fane, kollapsede paneler, kartstil, Pencil-ve
 
 ## Migrasjoner
 
-- `0490_leadgrid_core_dataflow.sql`: aktivitetsmetadata, møtevarighet/-status, notater, favoritter, konkurrent-workspace, replay-sikkert pitchutfall og gyldig aktivitetstype for oppgaver.
-- `0491_leadgrid_lead_files.sql`: tenantbundet kobling mellom lead og eksisterende filobjekt, med opplaster, beskrivelse og tags.
-- `0492_leadgrid_runtime_schema_backfill.sql`: eksplisitte deploy-time-skjemaer for Doffin/anbud, Canvas, møteetterarbeid, oppgaver, policyer, ruteplaner og offentlige Leadgrid-innsamlingsflyter.
+- `0498_leadgrid_core_dataflow.sql`: aktivitetsmetadata, møtevarighet/-status, notater, favoritter, konkurrent-workspace, replay-sikkert pitchutfall og gyldig aktivitetstype for oppgaver.
+- `0499_leadgrid_lead_files.sql`: tenantbundet kobling mellom lead og eksisterende filobjekt, med opplaster, beskrivelse og tags.
+- `0500_leadgrid_runtime_schema_backfill.sql`: eksplisitte deploy-time-skjemaer for Doffin/anbud, Canvas, møteetterarbeid, oppgaver, policyer, ruteplaner og offentlige Leadgrid-innsamlingsflyter.
 
-Migrasjonene er additive og idempotente. Alle tre ble kjørt mot den konfigurerte Neon-produksjonsdatabasen 2026-09-02 under PostgreSQL advisory lock, registrert i `_migrations_applied` og etterkontrollert for tabeller, nøkkelkolonner, constraints og indekser uten mangler.
+Det samme additive og idempotente SQL-innholdet ble først kjørt mot den konfigurerte Neon-produksjonsdatabasen 2026-09-02 som 0490–0492, under PostgreSQL advisory lock, og etterkontrollert uten mangler. Etter synkronisering med `main` kolliderte disse numrene med allerede kanoniske Role Room-migrasjoner. De opprinnelige Leadgrid-navnene ligger derfor eksplisitt som legacy-tombstones med produksjonens NULL-checksum, mens de kanoniske replay-filene er renummerert til 0498–0500.
+
+Produksjonsrunneren skal registrere 0498–0500 med SHA-256 ved neste deploy. Replay endrer ikke eksisterende data og gjør repositoryhistorikken entydig og kontinuerlig.
 
 ## Verifikasjon
 
