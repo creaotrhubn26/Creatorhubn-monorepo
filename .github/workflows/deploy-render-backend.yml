@@ -14,10 +14,7 @@ jobs:
   guard:
     name: Require current main workflow ref
     runs-on: ubuntu-latest
-<<<<<<< HEAD
-    timeout-minutes: 60
-=======
->>>>>>> 4dc55d842 (fix(release): serialize and verify production promotion)
+    timeout-minutes: 10
     steps:
       - name: Reject non-main dispatches
         env:
@@ -28,26 +25,6 @@ jobs:
             exit 1
           fi
 
-<<<<<<< HEAD
-      - name: Checkout exact deploy commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ steps.target.outputs.target_sha }}
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "24"
-          package-manager-cache: false
-
-      - name: Deploy exact commit and verify production
-        env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          TARGET_SHA: ${{ steps.target.outputs.target_sha }}
-        run: node scripts/deploy/render-backend.mjs deploy-and-verify "$TARGET_SHA"
-=======
   release:
     name: Run the production migration and backend release gate
     needs: guard
@@ -60,4 +37,3 @@ jobs:
     # secret-consuming job binds `environment: Production`, so GitHub resolves
     # only PRODUCTION_MIGRATION_DATABASE_URL and RENDER_API_KEY from that
     # protected environment at execution time.
->>>>>>> 4dc55d842 (fix(release): serialize and verify production promotion)
