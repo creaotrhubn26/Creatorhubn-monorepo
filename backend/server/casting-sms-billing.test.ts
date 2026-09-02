@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   currentBillingPeriod,
   readSmsBillingPricing,
+  recordSmsUsage,
 } from "./casting-sms-billing.js";
 
 describe("readSmsBillingPricing", () => {
@@ -67,5 +68,24 @@ describe("currentBillingPeriod", () => {
     expect(currentBillingPeriod(new Date("2027-01-01T00:00:00Z"))).toBe(
       "2027-01",
     );
+  });
+
+  it("writes the UTC billing period explicitly with the usage row", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [], rowCount: 1 });
+    const sentAt = new Date("2026-12-31T23:59:00Z");
+
+    await recordSmsUsage({
+      pool: { query } as never,
+      projectId: "project-1",
+      scheduleId: "schedule-1",
+      candidateId: "candidate-1",
+      threshold: "24h",
+      brand: "role_room",
+      sentAt,
+    });
+
+    expect(query).toHaveBeenCalledOnce();
+    expect(String(query.mock.calls[0]?.[0])).toContain("billing_period");
+    expect(query.mock.calls[0]?.[1]?.at(-1)).toBe("2026-12");
   });
 });

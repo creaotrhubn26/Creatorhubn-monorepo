@@ -47,7 +47,7 @@ function configuredAppBaseUrl(): string {
   ).replace(/\/+$/, "");
 }
 
-function isTrustedOrigin(origin: string): boolean {
+export function isTrustedWebOrigin(origin: string): boolean {
   return KNOWN_WEB_ORIGINS.has(origin) || isTrustedNetlifyProductionOrigin(origin);
 }
 
@@ -61,7 +61,7 @@ export function safeAppBaseUrl(req: {
 }): string {
   const rawOrigin = req?.headers?.origin;
   const origin = typeof rawOrigin === "string" ? rawOrigin.trim() : "";
-  if (origin && isTrustedOrigin(origin)) {
+  if (origin && isTrustedWebOrigin(origin)) {
     return origin.replace(/\/+$/, "");
   }
   return configuredAppBaseUrl();

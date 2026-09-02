@@ -18870,9 +18870,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          INNER JOIN live_projects lp ON lp.id = casting_candidates.project_id`),
       safeCount(`${liveProjectsCTE}
          SELECT COUNT(*) AS n
-         FROM schedules
-         INNER JOIN live_projects lp ON lp.id = schedules.project_id
-         WHERE LOWER(COALESCE(schedules.status, '')) IN ('confirmed', 'completed')`),
+         FROM casting_schedules
+         INNER JOIN live_projects lp ON lp.id = casting_schedules.project_id
+         WHERE LOWER(COALESCE(casting_schedules.status, '')) IN ('confirmed', 'completed')`),
       safeCount(`${liveProjectsCTE}
          SELECT COUNT(*) AS n
          FROM crew

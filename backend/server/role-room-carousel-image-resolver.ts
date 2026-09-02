@@ -183,17 +183,37 @@ export function makeBrandAssetLookup(pool: Pool): BrandAssetLookup {
         url: string;
         alt_text: string | null;
       }>(
-        `SELECT id, url, alt_text
-           FROM brand_assets
-          WHERE user_id = $1
-            AND is_active = true
-            AND (
-              tags && $2
-              OR keyword_match($1, alt_text, $3)
+        `SELECT asset.id,
+                asset.data_url AS url,
+                asset.name AS alt_text
+           FROM role_room_brand_assets asset
+          WHERE (
+              asset.created_by = $1
+              OR EXISTS (
+                SELECT 1
+                  FROM casting_projects project
+                 WHERE project.id = asset.project_id
+                   AND project.created_by = $1
+              )
+              OR EXISTS (
+                SELECT 1
+                  FROM casting_user_roles membership
+                 WHERE membership.project_id = asset.project_id
+                   AND membership.user_id = $1
+                   AND membership.deactivated_at IS NULL
+              )
             )
-          ORDER BY relevance_score DESC NULLS LAST
+            AND (
+              COALESCE(asset.tags, '{}'::text[]) && $2::text[]
+              OR asset.name ILIKE ANY($3::text[])
+            )
+          ORDER BY CARDINALITY(
+                     ARRAY(SELECT UNNEST(COALESCE(asset.tags, '{}'::text[]))
+                           INTERSECT SELECT UNNEST($2::text[]))
+                   ) DESC,
+                   asset.created_at DESC
           LIMIT 1`,
-        [userId, tags, tags.join(" ")],
+        [userId, tags, tags.map((tag) => `%${tag}%`)],
       );
       const row = result.rows[0];
       if (!row) return null;
@@ -204,7 +224,7 @@ export function makeBrandAssetLookup(pool: Pool): BrandAssetLookup {
         alt: row.alt_text ?? "",
       };
     } catch {
-      // Schema may not exist yet (brand_assets tabell ikke ferdig);
+      // Schema may not exist yet; resolver tolerates this and falls through.
       // resolver tolerates this and falls through to next strategy.
       return null;
     }
