@@ -22,6 +22,7 @@ export type ResearchStageKey =
   | 'website'
   | 'googlePlacesBusiness'
   | 'googlePlacesCompetitors'
+  | 'webCompetitors'
   | 'googlePlacesLocal'
   | 'competitorAnalysis'
   | 'localPresence'

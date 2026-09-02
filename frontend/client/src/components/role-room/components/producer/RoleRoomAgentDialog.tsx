@@ -2532,6 +2532,8 @@ export default function RoleRoomAgentDialog({
                                   ? `Brreg NACE ${(competitor as any).naceCode}`
                                   : (competitor as any).source === 'brreg_nace'
                                     ? 'Brreg-bekreftet'
+                                    : competitor.source === 'web_search'
+                                      ? 'Websøk'
                                     : null,
                                 competitor.primaryTypeDisplayName,
                                 typeof competitor.rating === 'number' && typeof competitor.userRatingCount === 'number'

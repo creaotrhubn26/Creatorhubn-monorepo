@@ -42,7 +42,7 @@ import {
   fetchBrregCompany,
   fetchWebsiteInsights,
   fetchGooglePlacesBusinessSignals,
-  fetchGooglePlacesCompetitorAnalysis,
+  fetchCombinedCompetitorAnalysis,
   fetchGooglePlacesLocalPresencePlan,
   fetchMerchSuppliersAnalysis,
   extractBrandColorsFromLogo,
@@ -153,6 +153,8 @@ export function setupRoleRoomAgentCoreRoutes(
       providerConfigured: runtimeConfig.providerConfigured,
       defaultModel: runtimeConfig.defaultModel,
       googlePlacesConfigured: runtimeConfig.googlePlacesConfigured,
+      webSearchConfigured: runtimeConfig.webSearchConfigured,
+      webSearchProvider: runtimeConfig.webSearchProvider,
       cohereConfigured: runtimeConfig.cohereConfigured,
       cohereRerankModel: runtimeConfig.cohereRerankModel,
       brregConfigured: runtimeConfig.brregConfigured,
@@ -827,7 +829,7 @@ export function setupRoleRoomAgentCoreRoutes(
       let payload: Record<string, unknown> = {};
       if (section === "competitors") {
         payload = {
-          competitorAnalysis: await fetchGooglePlacesCompetitorAnalysis(input, websiteInsights, businessSignals, brreg),
+          competitorAnalysis: await fetchCombinedCompetitorAnalysis(input, websiteInsights, businessSignals, brreg),
         };
       } else if (section === "local") {
         payload = {
