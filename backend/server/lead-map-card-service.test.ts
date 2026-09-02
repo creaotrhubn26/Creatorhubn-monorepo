@@ -60,6 +60,13 @@ describe("createCardLead", () => {
     expect(replay).toMatchObject({ id: "lead-a", created: false, idempotentReplay: true });
     expect(query.mock.calls.filter(([sql]) => String(sql).includes("INSERT INTO crm_customers"))).toHaveLength(1);
     expect(query.mock.calls.filter(([sql]) => String(sql).includes("INSERT INTO crm_lead_activities"))).toHaveLength(1);
+    const insertSql = String(
+      query.mock.calls.find(([sql]) =>
+        String(sql).includes("INSERT INTO crm_customers"),
+      )?.[0] ?? "",
+    );
+    expect(insertSql).toContain("$9::text, $10::uuid, $9::text");
+    expect(insertSql).toContain("NOW(), $9::text, $11");
   });
 
   it("rejects reuse of an idempotency key for a different payload", async () => {

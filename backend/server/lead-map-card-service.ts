@@ -157,8 +157,8 @@ export async function createCardLead(
          gen_random_uuid(), $1, $2, $1, $3,
          $4, $5, $6, $7,
          'unvisited', $8, $8, 'lead',
-         $9, $10::uuid, $9,
-         NOW(), $9, $11, $12,
+         $9::text, $10::uuid, $9::text,
+         NOW(), $9::text, $11, $12,
          $13, $14::uuid, $15,
          NOW(), NOW()
        )

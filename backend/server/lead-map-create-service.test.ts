@@ -105,6 +105,10 @@ describe('createLeadFromPin', () => {
     expect(sql).toContain(
       'ON CONFLICT (organization_id, creation_idempotency_key)',
     );
+    expect(sql).toContain(
+      '$28::text, $29::uuid, $28::text',
+    );
+    expect(sql).toContain('NOW(), $28::text, $30');
     expect(params[12]).toBe('nordic.example');
     expect(params[14]).toBe('places/nordic-elektro');
     expect(params[28]).toBe(ORGANIZATION_ID);

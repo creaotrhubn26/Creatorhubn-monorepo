@@ -535,8 +535,8 @@ export async function createLeadFromPin(
          $21, $22, $23,
          $24::timestamptz, $25, $26,
          $27, 'lead', $27,
-         $28, $29::uuid, $28,
-         NOW(), $28, $30,
+         $28::text, $29::uuid, $28::text,
+         NOW(), $28::text, $30,
          $31::uuid, $32,
          NOW(), NOW()
        )
