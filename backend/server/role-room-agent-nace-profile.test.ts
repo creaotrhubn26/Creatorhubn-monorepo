@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   businessModelForNace,
   classifyByNace,
+  classifyWebsiteSpecialization,
 } from './role-room-agent-nace-profile.js';
 
 describe('classifyByNace — B2C-koder', () => {
@@ -98,5 +99,26 @@ describe('businessModelForNace', () => {
     expect(businessModelForNace('56.101')).toBe('B2C');
     expect(businessModelForNace('62.010')).toBe('B2B');
     expect(businessModelForNace('64.202')).toBeNull();
+  });
+});
+
+describe('classifyWebsiteSpecialization', () => {
+  it('recognizes health software only when vertical and product evidence coexist', () => {
+    const profile = classifyWebsiteSpecialization([
+      'GDPR-sikker AI-plattform for medisinsk transkripsjon og journalnotat',
+      'Bygget for norske leger og helsepersonell',
+    ]);
+    expect(profile).toMatchObject({
+      industry: 'Helseteknologi og programvare',
+      businessModel: 'B2B',
+    });
+  });
+
+  it('does not reclassify an ordinary clinic from health words alone', () => {
+    expect(classifyWebsiteSpecialization(['Klinikk for leger og pasienter'])).toBeNull();
+  });
+
+  it('does not reclassify a generic software vendor from platform words alone', () => {
+    expect(classifyWebsiteSpecialization(['AI-plattform og SaaS for prosjektstyring'])).toBeNull();
   });
 });

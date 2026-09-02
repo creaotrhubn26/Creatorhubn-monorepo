@@ -286,6 +286,30 @@ function hasText(value: unknown): value is string {
 }
 
 /**
+ * Refine broad registry categories with first-party website evidence. This is
+ * intentionally conservative: both the vertical and the digital-product
+ * signal must be present, so an ordinary clinic or generic software company
+ * is not reclassified by a single ambiguous word.
+ */
+export function classifyWebsiteSpecialization(signals: ReadonlyArray<string | null | undefined>): NaceProfile | null {
+  const corpus = signals.filter(hasText).join(" ").toLowerCase();
+  const hasHealthVertical = /\b(?:lege|leger|helsepersonell|klinisk|medisinsk|pasient|journalnotat|journaldokumentasjon)\b/.test(corpus);
+  const hasDigitalProduct = /\b(?:ai|programvare|plattform|skyløsning|transkripsjon|journalsystem|videokonsultasjon|saas)\b/.test(corpus);
+
+  if (hasHealthVertical && hasDigitalProduct) {
+    return {
+      industry: "Helseteknologi og programvare",
+      subIndustry: "Klinisk dokumentasjon og digitale verktøy for helsepersonell",
+      businessModel: "B2B",
+      contentCategory: "Fagformidling, produktdemo, tillit og salgsstøtte",
+      productionApproach: "Trygghets- og produktdrevet helseteknologiinnhold",
+      customerJourneyFocus: "Dokumentasjonsbehov, tillit, utprøving og avtale",
+    };
+  }
+  return null;
+}
+
+/**
  * Klassifiser en Brreg NACE-kode (SN2007, f.eks. "56.101") til en trygg
  * forretningsprofil. Velger det MEST SPESIFIKKE prefikset som matcher.
  * Returnerer null når koden mangler eller ikke er i den konservative tabellen
