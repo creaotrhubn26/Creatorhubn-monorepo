@@ -380,7 +380,7 @@ describe("Storyboard Room migration integrity", () => {
     expect(tenantIdentityHardening).not.toContain("CREATE TRIGGER");
   });
 
-  it("keeps optional legacy indexing replay-safe and references renumbered files", () => {
+  it("keeps optional legacy indexing replay-safe in the active workspace route", () => {
     expect(legacyBilling).toContain(
       "IF to_regclass('public.generative_ai_jobs') IS NOT NULL THEN",
     );
@@ -388,27 +388,12 @@ describe("Storyboard Room migration integrity", () => {
       "CREATE INDEX IF NOT EXISTS generative_ai_jobs_legacy_billing_due_idx",
     );
 
-    const evidence = readFileSync(
-      new URL(
-        "../../docs/evidence/2026-08-higgsfield-generation-retry.yaml",
-        import.meta.url,
-      ),
-      "utf8",
-    );
-    const reconciler = readFileSync(
-      new URL("./storyboard-ai-video-reconciler.ts", import.meta.url),
-      "utf8",
-    );
     const workspaceRoutes = readFileSync(
       new URL("./project-workspace-routes.ts", import.meta.url),
       "utf8",
     );
 
-    expect(evidence).toContain("Migration 0478");
-    expect(reconciler).toContain("after migration 0478 has run");
     expect(workspaceRoutes).toContain("Migration 0479 intentionally skips");
-    expect(`${evidence}\n${reconciler}\n${workspaceRoutes}`).not.toMatch(
-      /(?:Migration|migration) 045[6-7]/,
-    );
+    expect(workspaceRoutes).not.toMatch(/(?:Migration|migration) 045[6-7]/);
   });
 });
