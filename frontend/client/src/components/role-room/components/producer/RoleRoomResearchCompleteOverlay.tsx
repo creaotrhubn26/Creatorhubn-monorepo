@@ -80,6 +80,7 @@ const SERVICE_LABELS: Record<keyof RoleRoomAgentServiceLatencies, { label: strin
   website: { label: 'Nettsidescraping', source: 'kundens domene' },
   googlePlacesBusiness: { label: 'Google Places (bedrift)', source: 'places.googleapis.com' },
   googlePlacesCompetitors: { label: 'Google Places (konkurrenter)', source: 'places.googleapis.com' },
+  webCompetitors: { label: 'Websøk (produktkonkurrenter)', source: 'Claude web search / Google CSE' },
   googlePlacesLocal: { label: 'Google Places (nærområde)', source: 'places.googleapis.com' },
   competitorAnalysis: { label: 'Konkurrentanalyse', source: 'aggregert' },
   localPresence: { label: 'Lokal tilstedeværelse', source: 'aggregert' },

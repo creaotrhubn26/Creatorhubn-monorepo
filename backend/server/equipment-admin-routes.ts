@@ -19,16 +19,16 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { asc, eq, sql } from "drizzle-orm";
 import * as schema from "../migrations/schema.js";
 import { EQUIPMENT_CATALOG } from "./equipment-catalog.js";
+import {
+  googleCustomSearchConfigured,
+  searchGoogleCustom,
+} from "./google-custom-search.js";
 
 export interface EquipmentAdminRoutesDeps {
   app: express.Application;
   requireAdminSession: (req: express.Request, res: express.Response) => any;
   db: NodePgDatabase<typeof schema>;
 }
-
-const CSE_API_KEY = () => process.env.GOOGLE_SEARCH_API_KEY || "";
-const CSE_ENGINE_ID = () => process.env.GOOGLE_SEARCH_ENGINE_ID || "";
-const cseConfigured = () => Boolean(CSE_API_KEY() && CSE_ENGINE_ID());
 
 function slugify(value: string): string {
   return value
@@ -56,30 +56,6 @@ function parseTechnicalSpecs(value: unknown): unknown {
     }
   }
   return null;
-}
-
-type CseItem = {
-  link?: string;
-  snippet?: string;
-  pagemap?: { cse_image?: Array<{ src?: string }> };
-};
-
-async function cseSearch(query: string): Promise<CseItem[]> {
-  const url =
-    "https://www.googleapis.com/customsearch/v1?" +
-    new URLSearchParams({
-      key: CSE_API_KEY(),
-      cx: CSE_ENGINE_ID(),
-      q: query,
-      num: "3",
-    }).toString();
-  const response = await fetch(url);
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(`Google Custom Search ${response.status}: ${body.slice(0, 200)}`);
-  }
-  const json = (await response.json()) as { items?: CseItem[] };
-  return Array.isArray(json.items) ? json.items : [];
 }
 
 export function setupEquipmentAdminRoutes(deps: EquipmentAdminRoutesDeps): void {
@@ -339,14 +315,14 @@ export function setupEquipmentAdminRoutes(deps: EquipmentAdminRoutesDeps): void 
   app.get("/api/equipment-admin/search-service-status", async (req, res) => {
     if (!requireAdminSession(req, res)) return;
     const missing: string[] = [];
-    if (!CSE_API_KEY()) missing.push("GOOGLE_SEARCH_API_KEY");
-    if (!CSE_ENGINE_ID()) missing.push("GOOGLE_SEARCH_ENGINE_ID");
-    res.json({ success: true, data: { configured: cseConfigured(), missing } });
+    if (!process.env.GOOGLE_SEARCH_API_KEY) missing.push("GOOGLE_SEARCH_API_KEY");
+    if (!process.env.GOOGLE_SEARCH_ENGINE_ID) missing.push("GOOGLE_SEARCH_ENGINE_ID");
+    res.json({ success: true, data: { configured: googleCustomSearchConfigured(), missing } });
   });
 
   app.post("/api/equipment-admin/search-product-info", async (req, res) => {
     if (!requireAdminSession(req, res)) return;
-    if (!cseConfigured()) {
+    if (!googleCustomSearchConfigured()) {
       res.status(503).json({
         error: "Google Search API er ikke konfigurert (GOOGLE_SEARCH_API_KEY + GOOGLE_SEARCH_ENGINE_ID)",
       });
@@ -361,7 +337,10 @@ export function setupEquipmentAdminRoutes(deps: EquipmentAdminRoutesDeps): void 
       return;
     }
     try {
-      const items = await cseSearch([brand, model, type, "specifications"].filter(Boolean).join(" "));
+      const items = await searchGoogleCustom(
+        [brand, model, type, "specifications"].filter(Boolean).join(" "),
+        { num: 3 },
+      );
       const first = items[0];
       res.json({
         success: true,
@@ -382,7 +361,7 @@ export function setupEquipmentAdminRoutes(deps: EquipmentAdminRoutesDeps): void 
 
   app.post("/api/equipment-admin/enrich-existing-products", async (req, res) => {
     if (!requireAdminSession(req, res)) return;
-    if (!cseConfigured()) {
+    if (!googleCustomSearchConfigured()) {
       res.status(503).json({
         error: "Google Search API er ikke konfigurert (GOOGLE_SEARCH_API_KEY + GOOGLE_SEARCH_ENGINE_ID)",
       });
@@ -404,7 +383,7 @@ export function setupEquipmentAdminRoutes(deps: EquipmentAdminRoutesDeps): void 
       let enriched = 0;
       for (const candidate of candidates) {
         try {
-          const items = await cseSearch(`${candidate.brand} ${candidate.model} specifications`);
+          const items = await searchGoogleCustom(`${candidate.brand} ${candidate.model} specifications`, { num: 3 });
           const first = items[0];
           if (!first?.link) continue;
           await db

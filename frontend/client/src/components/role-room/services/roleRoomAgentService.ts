@@ -46,6 +46,8 @@ export interface RoleRoomAgentAccess {
   providerConfigured?: boolean;
   defaultModel?: string;
   googlePlacesConfigured?: boolean;
+  webSearchConfigured?: boolean;
+  webSearchProvider?: 'google_cse' | 'anthropic' | null;
   cohereConfigured?: boolean;
   cohereRerankModel?: string;
   brregConfigured?: boolean;
@@ -168,18 +170,25 @@ export interface RoleRoomAgentSocialProfileCandidate {
 export interface RoleRoomAgentCompetitorEvidence {
   type:
     | 'google_places_result'
+    | 'web_search_result'
+    | 'specialized_product_match'
+    | 'norwegian_market'
     | 'same_category'
     | 'location_overlap'
     | 'website_available'
     | 'review_signal'
-    | 'manual_review_needed';
+    | 'manual_review_needed'
+    | 'same_nace_code'
+    | 'same_municipality';
   label: string;
   weight: number;
 }
 
 export interface RoleRoomAgentCompetitorCandidate {
-  source: 'google_places';
+  source: 'google_places' | 'web_search' | 'brreg_nace';
   placeId?: string | null;
+  naceCode?: string | null;
+  organizationNumber?: string | null;
   name: string;
   websiteUrl?: string | null;
   googleMapsUri?: string | null;
@@ -203,7 +212,7 @@ export interface RoleRoomAgentCompetitorCandidate {
 
 export interface RoleRoomAgentCompetitorAnalysis {
   status: 'ready' | 'limited' | 'unavailable';
-  source: 'google_places' | 'fallback';
+  source: 'google_places' | 'web_search' | 'brreg_nace' | 'combined' | 'fallback';
   generatedAt: string;
   marketContext: string;
   competitors: RoleRoomAgentCompetitorCandidate[];
@@ -350,6 +359,8 @@ export interface RoleRoomAgentMerchSuppliers {
   productCounts: Record<RoleRoomAgentMerchProductCategory, number>;
   cooperationAngles: string[];
   outreachChecklist: string[];
+  partial?: boolean;
+  timedOutSourceCount?: number;
   limitations: string[];
 }
 
@@ -358,6 +369,7 @@ export interface RoleRoomAgentServiceLatencies {
   website?: number;
   googlePlacesBusiness?: number;
   googlePlacesCompetitors?: number;
+  webCompetitors?: number;
   googlePlacesLocal?: number;
   competitorAnalysis?: number;
   localPresence?: number;
@@ -400,6 +412,7 @@ export interface RoleRoomAgentProducerBootstrapResult {
       | 'brreg'
       | 'website'
       | 'google_places'
+      | 'web_search'
       | 'claude_synthesis'
       | 'openai_synthesis'
       | 'fallback_rules'
