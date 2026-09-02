@@ -316,9 +316,22 @@ export function isGooglePlaceCompetitorSemanticallyRelevant(
     return true;
   }
 
-  const corpus = buildGooglePlaceSemanticCorpus(candidate);
+  const name = readGooglePlaceSemanticText(candidate.displayName).toLowerCase();
+  const category = normalizeWhitespace([
+    readGooglePlaceSemanticText(candidate.primaryType),
+    readGooglePlaceSemanticText(candidate.primaryTypeDisplayName),
+  ].filter(Boolean).join(" ")).toLowerCase();
+  const corpus = normalizeWhitespace(`${name} ${category}`);
   const hasHealthEvidence = /helse|health|medic|klinisk|clinic|journal|lege|doctor|pasient|patient|care/.test(corpus);
-  const hasDigitalProductEvidence = /teknologi|tech|software|programvare|digital|\bai\b|transkr|dokumentasjon|documentation|saas|plattform|platform|journalsystem/.test(corpus);
+  const isNonProductCategory = /association|organization|organisation|forening|organisasjon|government|offentlig|kommune|etat|ombud|hospital|sykehus|legevakt|doctor|legekontor|clinic|klinikk|medical center|home care|hjemmetjeneste|physio|fysio/.test(category);
+  if (isNonProductCategory) return false;
+
+  // Generic words such as "Health Tech" in a company/cluster name do not
+  // prove a competing product. Digital evidence must come from Google's
+  // business category, or the name itself must identify a clinical product.
+  const hasDigitalProductCategory = /software|programvare|technology company|teknologiselskap|digital tjeneste|digital service|saas|plattform|platform/.test(category);
+  const hasSpecificProductName = /clinical\s+ai|klinisk\s+ai|medical\s+transcription|medisinsk\s+transkripsjon|clinical\s+documentation|klinisk\s+dokumentasjon|health\s+software|helseprogramvare|journalsystem|journalnotat/.test(name);
+  const hasDigitalProductEvidence = hasDigitalProductCategory || hasSpecificProductName;
   return hasHealthEvidence && hasDigitalProductEvidence;
 }
 

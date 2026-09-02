@@ -224,6 +224,14 @@ describe('isGooglePlaceCompetitorSemanticallyRelevant', () => {
     )).toBe(false);
   });
 
+  it('rejects a healthtech industry association without a competing software product', () => {
+    expect(isGooglePlaceCompetitorSemanticallyRelevant(
+      { displayName: { text: 'Norway Health Tech' }, primaryType: 'association_or_organization', primaryTypeDisplayName: { text: 'Forening eller organisasjon' } },
+      industry,
+      subIndustry,
+    )).toBe(false);
+  });
+
   it('accepts a candidate only when both health and digital-product evidence exist', () => {
     expect(isGooglePlaceCompetitorSemanticallyRelevant(
       { displayName: { text: 'Nordic Clinical AI' }, primaryTypeDisplayName: { text: 'Programvareselskap for helse' } },
