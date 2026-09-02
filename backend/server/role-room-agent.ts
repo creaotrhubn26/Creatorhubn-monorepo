@@ -10,7 +10,10 @@ import {
   orchestratorEnabled,
   runOrchestratedBootstrap,
 } from "./role-room-agent-bootstrap-orchestrator.js";
-import { makeStructuredLogger } from "./role-room-agent-llm-util.js";
+import {
+  BOOTSTRAP_SYNTH_TIMEOUT_MS,
+  makeStructuredLogger,
+} from "./role-room-agent-llm-util.js";
 import {
   BOOTSTRAP_CONSTRAINTS,
   BOOTSTRAP_OUTPUT_SCHEMA_HINTS,
@@ -2590,41 +2593,49 @@ export async function fetchWebsiteInsights(
       },
     ];
 
-    for (const link of discoveredLinks) {
-      if (link.url === finalUrl) {
-        continue;
-      }
-      try {
-        const pageResponse = await fetch(link.url, {
-          headers: {
-            "User-Agent": "CreatorHub Role Room Agent/1.0 (+https://theroleroom.com)",
-            Accept: "text/html,application/xhtml+xml",
-          },
-          signal: AbortSignal.timeout(10_000),
-        });
-        if (!pageResponse.ok) {
-          continue;
+    const linkedPages = await Promise.all(
+      discoveredLinks.map(async (link) => {
+        if (link.url === finalUrl) return null;
+        try {
+          const pageResponse = await fetch(link.url, {
+            headers: {
+              "User-Agent": "CreatorHub Role Room Agent/1.0 (+https://theroleroom.com)",
+              Accept: "text/html,application/xhtml+xml",
+            },
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (!pageResponse.ok) return null;
+          return {
+            link,
+            pageHtml: await pageResponse.text(),
+            resolvedPageUrl: pageResponse.url || link.url,
+          };
+        } catch {
+          return null;
         }
-        const pageHtml = await pageResponse.text();
-        const resolvedPageUrl = pageResponse.url || link.url;
-        const pageIdentity = extractWebsiteLegalIdentityFromHtml(pageHtml);
-        websiteIdentity.organizationNumber ||= pageIdentity.organizationNumber;
-        websiteIdentity.legalName ||= pageIdentity.legalName;
-        collectSocialCandidatesFromHtml(pageHtml, resolvedPageUrl, link.sourceLabel || extractTitle(pageHtml), socialCandidateMap);
-        const snippet = extractTextSnippet(pageHtml);
-        if (!snippet) {
-          continue;
-        }
-        pageCandidates.push({
-          url: resolvedPageUrl,
-          title: extractTitle(pageHtml),
-          snippet,
-          sourceLabel: link.sourceLabel,
-          relevanceScore: null,
-        });
-      } catch {
-        continue;
-      }
+      }),
+    );
+    for (const page of linkedPages) {
+      if (!page) continue;
+      const { link, pageHtml, resolvedPageUrl } = page;
+      const pageIdentity = extractWebsiteLegalIdentityFromHtml(pageHtml);
+      websiteIdentity.organizationNumber ||= pageIdentity.organizationNumber;
+      websiteIdentity.legalName ||= pageIdentity.legalName;
+      collectSocialCandidatesFromHtml(
+        pageHtml,
+        resolvedPageUrl,
+        link.sourceLabel || extractTitle(pageHtml),
+        socialCandidateMap,
+      );
+      const snippet = extractTextSnippet(pageHtml);
+      if (!snippet) continue;
+      pageCandidates.push({
+        url: resolvedPageUrl,
+        title: extractTitle(pageHtml),
+        snippet,
+        sourceLabel: link.sourceLabel,
+        relevanceScore: null,
+      });
     }
 
     const rerankedPages = await rerankWithCohere(
@@ -2721,46 +2732,42 @@ export async function fetchGooglePlacesBusinessSignals(
     "places.id,places.displayName,places.formattedAddress,places.location,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri";
 
   console.log(`[places-business] queries=${JSON.stringify(searchQueries)}`);
-  const candidates: Array<Record<string, unknown>> = [];
-
-  for (const query of searchQueries) {
-    try {
-      const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": apiKey,
-          "X-Goog-FieldMask": fieldMask,
-        },
-        body: JSON.stringify({
-          textQuery: query,
-          pageSize: 5,
-          languageCode: "nb",
-          regionCode: "NO",
-        }),
-        signal: AbortSignal.timeout(12_000),
-      });
-
-      if (!response.ok) {
-        const body = await response.text().catch(() => "");
-        console.error(`[places-business] query="${query}" status=${response.status} body=${body.replace(/\s+/g, " ").slice(0, 500)}`);
-        continue;
+  const resultSets = await Promise.all(
+    searchQueries.map(async (query): Promise<Array<Record<string, unknown>>> => {
+      try {
+        const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": apiKey,
+            "X-Goog-FieldMask": fieldMask,
+          },
+          body: JSON.stringify({
+            textQuery: query,
+            pageSize: 5,
+            languageCode: "nb",
+            regionCode: "NO",
+          }),
+          signal: AbortSignal.timeout(12_000),
+        });
+        if (!response.ok) {
+          const body = await response.text().catch(() => "");
+          console.error(`[places-business] query="${query}" status=${response.status} body=${body.replace(/\s+/g, " ").slice(0, 500)}`);
+          return [];
+        }
+        const payload = (await response.json().catch(() => null)) as
+          | { places?: Array<Record<string, unknown>> }
+          | null;
+        const places = Array.isArray(payload?.places) ? payload.places : [];
+        console.log(`[places-business] query="${query}" returnedCount=${places.length}`);
+        return places;
+      } catch (err) {
+        console.error(`[places-business] query="${query}" threw: ${err instanceof Error ? err.message : String(err)}`);
+        return [];
       }
-
-      const payload = (await response.json().catch(() => null)) as
-        | { places?: Array<Record<string, unknown>> }
-        | null;
-      const places = Array.isArray(payload?.places) ? payload.places : [];
-      console.log(`[places-business] query="${query}" returnedCount=${places.length}`);
-      candidates.push(...places);
-      if (places.length > 0) {
-        break;
-      }
-    } catch (err) {
-      console.error(`[places-business] query="${query}" threw: ${err instanceof Error ? err.message : String(err)}`);
-      continue;
-    }
-  }
+    }),
+  );
+  const candidates = resultSets.flat();
   console.log(`[places-business] totalCandidates=${candidates.length}`);
 
   if (candidates.length === 0) {
@@ -5248,7 +5255,7 @@ async function requestOpenAiBootstrap(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(45_000),
+      signal: AbortSignal.timeout(BOOTSTRAP_SYNTH_TIMEOUT_MS),
     });
 
     if (!response.ok) {

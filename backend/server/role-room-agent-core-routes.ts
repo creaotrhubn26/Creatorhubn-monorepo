@@ -74,6 +74,7 @@ import {
   detectMaterialChanges,
   evaluateContentStoryLogicVagueness,
 } from "./role-room-research-validation.js";
+import { BOOTSTRAP_POSTPROCESS_TIMEOUT_MS, withTimeout } from "./role-room-agent-llm-util.js";
 import { readString } from "./_shared";
 
 interface AdminSession {
@@ -96,6 +97,22 @@ export interface RoleRoomAgentCoreRoutesDeps {
   ) => AdminSession | null;
   isCompatAdminFeatureEnabled: (featureId: string) => boolean;
   getCompatAdminFeature: (featureId: string) => Record<string, unknown> | null;
+}
+
+async function optionalPostprocessWithin<T>(
+  promise: Promise<T>,
+  fallback: T,
+  label: string,
+): Promise<T> {
+  try {
+    return await withTimeout(promise, BOOTSTRAP_POSTPROCESS_TIMEOUT_MS, label);
+  } catch (error) {
+    console.warn("[role-room-agent] optional postprocess skipped", {
+      label,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return fallback;
+  }
 }
 
 export function setupRoleRoomAgentCoreRoutes(
@@ -206,7 +223,11 @@ export function setupRoleRoomAgentCoreRoutes(
               model: result.model ?? null,
             })
           : Promise.resolve(null),
-        generateExecutiveSummary(result),
+        optionalPostprocessWithin(
+          generateExecutiveSummary(result),
+          null,
+          "executive_summary_timeout",
+        ),
       ]);
       // Attach the summary + validation flags onto the result so the
       // frontend overlay can render everything without extra round-trips.
@@ -219,7 +240,11 @@ export function setupRoleRoomAgentCoreRoutes(
         result.researchId
           ? loadPreviousResearchResult(pool, projectId, result.researchId)
           : Promise.resolve(null),
-        evaluateContentStoryLogicVagueness(result),
+        optionalPostprocessWithin(
+          evaluateContentStoryLogicVagueness(result),
+          [],
+          "vagueness_validation_timeout",
+        ),
       ]);
       const changeFlags = previousResult ? detectMaterialChanges(result, previousResult) : [];
       const validationFlags = [...syncFlags, ...changeFlags, ...vaguenessFlags];
@@ -331,14 +356,22 @@ export function setupRoleRoomAgentCoreRoutes(
               model: result.model ?? null,
             })
           : Promise.resolve(null),
-        generateExecutiveSummary(result),
+        optionalPostprocessWithin(
+          generateExecutiveSummary(result),
+          null,
+          "executive_summary_timeout",
+        ),
       ]);
       const syncFlags = validateResearchResult(result);
       const [previousResult, vaguenessFlags] = await Promise.all([
         result.researchId
           ? loadPreviousResearchResult(pool, projectId, result.researchId)
           : Promise.resolve(null),
-        evaluateContentStoryLogicVagueness(result),
+        optionalPostprocessWithin(
+          evaluateContentStoryLogicVagueness(result),
+          [],
+          "vagueness_validation_timeout",
+        ),
       ]);
       const changeFlags = previousResult ? detectMaterialChanges(result, previousResult) : [];
       const validationFlags = [...syncFlags, ...changeFlags, ...vaguenessFlags];

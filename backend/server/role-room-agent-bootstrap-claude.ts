@@ -23,6 +23,7 @@ import {
 } from './role-room-agent-bootstrap-constraints.js';
 import {
   BOOTSTRAP_SYNTH_MAX_TOKENS,
+  BOOTSTRAP_SYNTH_TIMEOUT_MS,
   extractJsonFromText,
   makeStructuredLogger,
   withTimeout,
@@ -183,7 +184,7 @@ export async function requestClaudeBootstrap(
           },
         ],
       }),
-      60_000,
+      BOOTSTRAP_SYNTH_TIMEOUT_MS,
       'claude_bootstrap_timeout',
     );
 
