@@ -7,7 +7,7 @@
  *
  * Hele modulen er gated på den nye RBAC-permission'en `lead_research.run`
  * (default: admin + salgssjef + teamleder). Organisasjonen kan skru av
- * for hele rollen, eller per bruker via user_permission_overrides.
+ * for hele rollen, eller per bruker via leadgrid_user_permission_overrides.
  *
  * Endepunkter (alle under /api/admin-room/lead-map/research/):
  *   POST   /start          { industry, region, target_audience?, goal? }

@@ -48,4 +48,13 @@ describe("Leadgrid data-flow migrations", () => {
       "uq_mote_logg_request",
     ]) expect(sql).toContain(fragment);
   });
+
+  it("isolates Leadgrid permission overrides from the legacy feature table", () => {
+    const sql = migration("0501_leadgrid_permission_overrides.sql");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS leadgrid_user_permission_overrides");
+    expect(sql).toContain("organization_id UUID NOT NULL");
+    expect(sql).toContain("permission_key VARCHAR(80) NOT NULL");
+    expect(sql).toContain("effect VARCHAR(10) NOT NULL");
+    expect(sql).not.toContain("ALTER TABLE user_permission_overrides");
+  });
 });
