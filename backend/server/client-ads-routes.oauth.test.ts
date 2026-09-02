@@ -131,7 +131,9 @@ describe("client Ads LinkedIn OAuth state", () => {
     const before = Date.now();
 
     const started = await request(app)
-      .get("/api/admin-room/agent/ads/oauth/linkedin/start?configId=config-1")
+      .get(
+        "/api/admin-room/agent/ads/oauth/linkedin/start?configId=config-1&browserOrigin=https%3A%2F%2Fwww.theroleroom.com",
+      )
       .expect(200);
     const state = stateFromAuthUrl(started.body.authUrl);
 
@@ -146,17 +148,21 @@ describe("client Ads LinkedIn OAuth state", () => {
       configId: "config-1",
       redirectUri:
         "https://theroleroom.com/api/admin-room/agent/ads/oauth/linkedin/callback",
+      browserOrigin: "https://www.theroleroom.com",
       createdAt: expect.any(Number),
     });
     expect((expiresAt as Date).getTime()).toBeGreaterThanOrEqual(
       before + 10 * 60 * 1000,
     );
 
-    await request(app)
+    const callbackResponse = await request(app)
       .get(
         `/api/admin-room/agent/ads/oauth/linkedin/callback?code=one-time-code&state=${encodeURIComponent(state)}`,
       )
       .expect(302);
+    expect(callbackResponse.headers.location).toBe(
+      "https://www.theroleroom.com/admin-room?adminTab=role-room-agent&oauth_success=linkedin&config=config-1",
+    );
 
     expect(mocks.exchangeAdsCodeForToken).toHaveBeenCalledWith(
       "linkedin",
@@ -172,6 +178,30 @@ describe("client Ads LinkedIn OAuth state", () => {
         userId: "producer-1",
         scopes: expect.arrayContaining(["rw_dmp_segments"]),
       }),
+    );
+  });
+
+  it("falls back to the Role Room origin for an untrusted browser origin", async () => {
+    const { app } = buildApp();
+    const started = await request(app)
+      .get(
+        "/api/admin-room/agent/ads/oauth/linkedin/start?browserOrigin=https%3A%2F%2Fevil.example",
+      )
+      .expect(200);
+    const state = stateFromAuthUrl(started.body.authUrl);
+    const [, , payload] = mocks.persistOauthState.mock.calls[0];
+
+    expect(payload).toMatchObject({
+      browserOrigin: "https://theroleroom.com",
+    });
+
+    const callbackResponse = await request(app)
+      .get(
+        `/api/admin-room/agent/ads/oauth/linkedin/callback?code=oauth-code&state=${encodeURIComponent(state)}`,
+      )
+      .expect(302);
+    expect(callbackResponse.headers.location).toBe(
+      "https://theroleroom.com/admin-room?adminTab=role-room-agent&oauth_success=linkedin",
     );
   });
 
@@ -198,11 +228,14 @@ describe("client Ads LinkedIn OAuth state", () => {
       .expect(200);
     const state = stateFromAuthUrl(started.body.authUrl);
 
-    await request(app)
+    const denied = await request(app)
       .get(
         `/api/admin-room/agent/ads/oauth/linkedin/callback?error=user_cancelled&state=${encodeURIComponent(state)}`,
       )
-      .expect(400);
+      .expect(302);
+    expect(denied.headers.location).toBe(
+      "https://theroleroom.com/admin-room?adminTab=role-room-agent&oauth_error=linkedin_consent_denied",
+    );
     await request(app)
       .get(
         `/api/admin-room/agent/ads/oauth/linkedin/callback?code=late-code&state=${encodeURIComponent(state)}`,
