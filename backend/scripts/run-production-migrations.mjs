@@ -2915,7 +2915,7 @@ async function runSelfTest() {
   assert.deepEqual(
     [...productionManifest.legacyAppliedFilenames],
     expectedLegacyAppliedFilenames,
-    "the versioned production baseline must contain exactly the 25 reviewed ledger-only tombstones",
+    "the versioned production baseline must contain exactly the 25 explicit ledger-only tombstones",
   );
   const productionInventory = await loadMigrationInventory(
     DEFAULT_MIGRATIONS_DIR,
