@@ -178,9 +178,10 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
   // «Forstå siden først»: Claudes forståelse av produkt + målgruppe, vist som
   // en brief før noe lages — grunnlag for diskusjon/justering.
   const [understanding, setUnderstanding] = useState<SiteUnderstanding | null>(null);
-  const [showTools, setShowTools] = useState(false); // sammenleggbare sekundære verktøy
+  const [showTools, setShowTools] = useState(true); // sammenleggbare sekundære verktøy — default åpen (var skjult, funnet i e2e-arbeid at Klikk-capture/Critic/Fullfør demoen sjelden ble oppdaget)
   const [showAdvanced, setShowAdvanced] = useState(false); // sammenleggbart «Avansert» i Beskriv-steget
-  const [generated, setGenerated] = useState(false); // har vi generert en demo i denne sesjonen?
+  // NB: om AI faktisk har generert scener spores nå på project.generated
+  // (persistert), ikke lokal state — se demoStudioModel.ts sin kommentar.
   // «Generér ferdig demo» (autonom): TTS → Playwright-opptak → mux til ferdig mp4.
   const [demoVidBusy, setDemoVidBusy] = useState(false);
   const [demoVidMsg, setDemoVidMsg] = useState<string | null>(null);
@@ -317,7 +318,8 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     prevProjectId.current = project?.id;
     committedHost.current = hostOf(project?.url ?? '');
     setUnderstanding(null);
-    setGenerated(false);
+    // project.generated trenger ikke resettes her — det leses direkte fra det
+    // (nye) prosjektet, som allerede har riktig verdi for seg selv.
     setDemoVidResult(null); setDemoVidQa(null); setDemoVidScriptQa(null); setDemoVidScene(null); setDemoVidMsg(null);
     // Backfill: eldre prosjekter kan ha scener uten scenesUrl-stempel. Stemple
     // det til gjeldende url ved innlasting (scenene ble laget for denne url-en),
@@ -335,7 +337,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
     if (!h || h === committedHost.current) return;
     committedHost.current = h;
     setUnderstanding(null);
-    setGenerated(false);
+    setProjectField('generated', false); // nytt nettsted → forrige generering er stale
     if (useDemoStudio.getState().project?.scanShots?.length) setProjectField('scanShots', undefined);
     if (useDemoStudio.getState().project?.scanShotsMobile?.length) setProjectField('scanShotsMobile', undefined);
   };
@@ -824,7 +826,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
       if (jobChanged(job)) return; // prosjekt/url byttet under generering — ikke skriv scener til feil prosjekt
       replaceScenes(scenes);
       setProjectField('scenesUrl', project.url); // stemple hvilken URL manuset gjelder
-      setGenerated(true);
+      setProjectField('generated', true);
       setDirectorMsg(`✓ ${scenes.length} scener generert`);
       setNav('script'); // samarbeid: åpne resultatet i Script Builder
     } catch (e) {
@@ -971,7 +973,10 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
         {saveStatus === 'error' ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#dc2626', fontWeight: 600 }} title="localStorage er full — siste endringer er ikke persistert. Eksporter eller slett gamle demoer.">Ikke lagret</div>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: C.inkSoft }}><span style={{ color: saveStatus === 'saved_partial' ? '#f59e0b' : C.green }}>✓</span> {saveStatus === 'saved_partial' ? 'Delvis lagret' : 'Lagret'}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: C.inkSoft }}
+            title={lastSavedAt ? `Sist lagret ${new Date(lastSavedAt).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : undefined}>
+            <span style={{ color: saveStatus === 'saved_partial' ? '#f59e0b' : C.green }}>✓</span> {saveStatus === 'saved_partial' ? 'Delvis lagret' : 'Lagret'}
+          </div>
         )}
         <button style={recording ? { ...btn, background: '#ef4444', color: '#fff', borderColor: '#ef4444' } : btn}
           onClick={async () => {
@@ -1019,6 +1024,12 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
 
         {/* ── AI Director — modal som hentes frem fra status-stripen ── */}
         {aiModalOpen && (
+        <>
+        {/* Usynlig backdrop: klikk utenfor lukker panelet (det overlapper
+            scene-kortene i Flow Builder, og har ingen annen lukk-vei enn ✕).
+            zIndex under andre modaler (VisualBeatsModal m.fl. bruker 50) så
+            resultat-dialoger som åpnes FRA AI Director fortsatt er klikkbare. */}
+        <div onClick={() => setAiModalOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 10 }} />
         <div onClick={(e) => e.stopPropagation()}
           style={{ position: 'fixed', left: 16, bottom: 62, width: 372, maxWidth: '92vw', maxHeight: '72vh', background: C.panel, borderRadius: 16, boxShadow: '0 20px 50px rgba(31,27,23,0.26), 0 0 0 1px rgba(31,27,23,0.07)', overflowY: 'auto', padding: '16px 16px 20px', zIndex: 60 }}>
           <div onClick={() => setAiModalOpen(false)} title="Lukk"
@@ -1033,7 +1044,11 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             </h4>
             {/* Stegvis flyt: Beskriv → Diskutér → Forfin (progressive disclosure) */}
             {(() => {
-              const hasGenerated = generated || scenes.some((s) => !!s.narration?.trim());
+              // project.generated er den ekte kilden (satt av generateDemo()).
+              // Eldre lagrede prosjekter fra FØR dette feltet fantes har
+              // undefined — fall tilbake til narrasjons-sniffing KUN for dem,
+              // så de ikke plutselig "mister" allerede generert innhold.
+              const hasGenerated = project.generated ?? scenes.some((s) => !!s.narration?.trim());
               const stage: 'describe' | 'discuss' | 'refine' = !understanding && !hasGenerated ? 'describe' : hasGenerated ? 'refine' : 'discuss';
               const stepNum = stage === 'describe' ? 1 : stage === 'discuss' ? 2 : 3;
               const stageName = stage === 'describe' ? 'Beskriv' : stage === 'discuss' ? 'Diskutér' : 'Forfin';
@@ -1235,7 +1250,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                       {replyLine}
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button style={{ ...btn, justifyContent: 'center', background: '#fff', borderColor: C.lineStrong, padding: '0 13px' }}
-                          onClick={() => { setUnderstanding(null); setGenerated(false); }} title="Endre beskrivelse / forstå på nytt">←</button>
+                          onClick={() => { setUnderstanding(null); setProjectField('generated', false); }} title="Endre beskrivelse / forstå på nytt">←</button>
                         <button style={{ ...btn, flex: 1, justifyContent: 'center', background: C.accent, color: '#fff', borderColor: C.accent, fontWeight: 600, padding: '10px 13px', boxShadow: '0 1px 3px rgba(239,138,93,0.35)', opacity: directorBusy ? 0.6 : 1 }}
                           disabled={directorBusy} onClick={() => void generateDemo()}>
                           {directorBusy ? 'Lager demo…' : '② Generér demoen'}
@@ -1251,9 +1266,15 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
                       {understanding && (
                         <div style={{ fontSize: 11, color: C.inkSoft, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={understanding.summary}>{project.scriptMeta?.audience || understanding.audience} · {understanding.summary}</span>
-                          <span onClick={() => { setUnderstanding(null); setGenerated(false); }} style={{ cursor: 'pointer', color: C.accent, fontSize: 10.5, whiteSpace: 'nowrap' }}>endre</span>
+                          <span onClick={() => { setUnderstanding(null); setProjectField('generated', false); }} style={{ cursor: 'pointer', color: C.accent, fontSize: 10.5, whiteSpace: 'nowrap' }}>endre</span>
                         </div>
                       )}
+                      {/* Mål er kun redigerbart i Beskriv-steget (over) inntil scenene har
+                          narrasjon — som skjer med det samme for maler med forhåndsutfylt
+                          manus. Duplisert her så målet forblir redigerbart etter det steget. */}
+                      <div style={fldLabel}>Mål</div>
+                      <input style={{ ...field, marginBottom: 10 }} value={project.goal ?? ''} placeholder="f.eks. «få flere til å booke demo»"
+                        onChange={(e) => setProjectField('goal', e.target.value)} />
                       {cmdRow('Si til AI: «lag en voiceover»…')}
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
                         {['Lag en voiceover', 'Responsive check', 'Lag veiledning for innlogging'].map((q) => (
@@ -1319,7 +1340,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             })()}
 
             {/* Læring & presisjon (menneske-loop A/C/D) — kun i Forfin-steget */}
-            {(generated || scenes.some((s) => !!s.narration?.trim())) && (
+            {(project.generated ?? scenes.some((s) => !!s.narration?.trim())) && (
             <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 12, paddingTop: 10 }}>
               <div style={{ fontSize: 10.5, color: C.inkFaint, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Læring & presisjon</div>
               {(() => {
@@ -1348,6 +1369,7 @@ export function DemoStudioShell({ onClose }: { onClose?: () => void } = {}) {
             )}
           </div>
         </div>
+        </>
         )}
 
         {/* ── STORY-modus: gjenbruk StoryView ── */}
