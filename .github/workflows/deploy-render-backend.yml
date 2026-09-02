@@ -1,8 +1,8 @@
 name: Deploy shared Render backend
 
 # Manual releases must pass through the same migration, ownership, concurrency,
-# exact-SHA and smoke-test gates as automatic main releases. This workflow does
-# not contain a second Render deploy path.
+# exact-SHA and smoke-test gates as automatic main releases. This workflow only
+# dispatches the canonical workflow; it does not contain a second deploy path.
 
 on:
   workflow_dispatch:
@@ -26,14 +26,14 @@ jobs:
           fi
 
   release:
-    name: Run the production migration and backend release gate
+    name: Dispatch the canonical production release gate
     needs: guard
     permissions:
-      contents: write
-    uses: ./.github/workflows/auto-migrate-on-push.yml
-    with:
-      commit: ${{ github.sha }}
-    # Deliberately forward no caller secrets. The reusable workflow's only
-    # secret-consuming job binds `environment: Production`, so GitHub resolves
-    # only PRODUCTION_MIGRATION_DATABASE_URL and RENDER_API_KEY from that
-    # protected environment at execution time.
+      contents: read
+      actions: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start canonical workflow on current main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run auto-migrate-on-push.yml --repo "$GITHUB_REPOSITORY" --ref main
