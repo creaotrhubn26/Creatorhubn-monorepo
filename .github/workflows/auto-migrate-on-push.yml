@@ -35,6 +35,7 @@ on:
       - "backend/render.yaml"
   push:
     branches: [main]
+  workflow_dispatch:
   workflow_call:
     inputs:
       commit:
