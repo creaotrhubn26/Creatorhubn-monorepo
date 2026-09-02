@@ -21,10 +21,10 @@ export const BOOTSTRAP_SYNTH_MAX_TOKENS = 8192;
 
 /** Synthesis is optional enrichment. The deterministic payload is already
  * complete, so a slow model must never consume the whole request. */
-export const BOOTSTRAP_SYNTH_TIMEOUT_MS = 10_000;
+export const BOOTSTRAP_SYNTH_TIMEOUT_MS = 7_500;
 
 /** Post-processing must leave time to persist and flush the final SSE event. */
-export const BOOTSTRAP_POSTPROCESS_TIMEOUT_MS = 2_500;
+export const BOOTSTRAP_POSTPROCESS_TIMEOUT_MS = 1_500;
 
 /**
  * Parse a JSON object out of an LLM text response. Strips a leading/trailing
@@ -84,4 +84,21 @@ export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): 
       setTimeout(() => reject(new Error(label)), ms),
     ),
   ]);
+}
+
+/**
+ * Optional enrichment must never block the deterministic research payload.
+ * Resolve with a typed fallback on timeout or provider failure.
+ */
+export async function withTimeoutFallback<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string,
+  fallback: T,
+): Promise<T> {
+  try {
+    return await withTimeout(promise, ms, label);
+  } catch {
+    return fallback;
+  }
 }

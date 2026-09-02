@@ -3,6 +3,7 @@ import {
   BOOTSTRAP_POSTPROCESS_TIMEOUT_MS,
   BOOTSTRAP_SYNTH_TIMEOUT_MS,
   withTimeout,
+  withTimeoutFallback,
 } from './role-room-agent-llm-util.js';
 
 afterEach(() => {
@@ -11,10 +12,10 @@ afterEach(() => {
 
 describe('Role Room response time budgets', () => {
   it('keeps optional model work well below the public proxy ceiling', () => {
-    expect(BOOTSTRAP_SYNTH_TIMEOUT_MS).toBe(10_000);
-    expect(BOOTSTRAP_POSTPROCESS_TIMEOUT_MS).toBe(2_500);
+    expect(BOOTSTRAP_SYNTH_TIMEOUT_MS).toBe(7_500);
+    expect(BOOTSTRAP_POSTPROCESS_TIMEOUT_MS).toBe(1_500);
     expect(BOOTSTRAP_SYNTH_TIMEOUT_MS + BOOTSTRAP_POSTPROCESS_TIMEOUT_MS)
-      .toBeLessThan(15_000);
+      .toBeLessThan(10_000);
   });
 
   it('rejects stalled optional work at the configured boundary', async () => {
@@ -26,5 +27,15 @@ describe('Role Room response time budgets', () => {
     await vi.advanceTimersByTimeAsync(100);
 
     await rejection;
+  });
+
+  it('returns a typed fallback when optional enrichment stalls', async () => {
+    vi.useFakeTimers();
+    const stalled = new Promise<string[]>(() => undefined);
+    const result = withTimeoutFallback(stalled, 100, 'optional_timeout', ['fallback']);
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    await expect(result).resolves.toEqual(['fallback']);
   });
 });

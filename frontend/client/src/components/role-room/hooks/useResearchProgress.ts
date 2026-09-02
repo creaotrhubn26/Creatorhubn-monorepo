@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
-import roleRoomAgentService, { roleRoomAgentDefaultHeaders } from '../services/roleRoomAgentService';
+import { roleRoomAgentDefaultHeaders } from '../services/roleRoomAgentService';
 import type { RoleRoomAgentProducerBootstrapResult } from '../services/roleRoomAgentService';
 
 export type ResearchStageKey =
@@ -187,32 +187,14 @@ export function useResearchProgress(): UseResearchProgressReturn {
         }
       } catch (err) {
         if ((err as DOMException)?.name === 'AbortError') return;
-        // SSE failed (proxy buffered, network, server 500). Fall back to
-        // the regular non-streaming endpoint so the user still gets a
-        // research result — they just won't see per-stage ticks. The
-        // overlay will open as if everything went normally.
-        console.warn('[useResearchProgress] SSE failed, falling back to non-streaming bootstrap:', err);
-        try {
-          const fallbackResult = await roleRoomAgentService.generateProducerBootstrap({
-            projectId: input.projectId,
-            projectName: input.projectName,
-            websiteUrl: input.websiteUrl,
-            organizationNumber: input.organizationNumber,
-            companyName: input.companyName,
-            extraContext: input.extraContext,
-          });
-          if (controller.signal.aborted) return;
-          setResult(fallbackResult);
-          setStatus('done');
-          // Surface the SSE failure as a soft warning so devs/admins
-          // know the proxy/server isn't streaming. UI doesn't show this
-          // by default; visible in console + setError-aware components.
-          setError(`Live progress utilgjengelig (fallback brukt): ${err instanceof Error ? err.message : String(err)}`);
-        } catch (fallbackErr) {
-          if (controller.signal.aborted) return;
-          setError(fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr));
-          setStatus('error');
-        }
+        // Never replay the full bootstrap automatically. A proxy can return
+        // 504 after the backend has already persisted the research version;
+        // retrying through the non-stream endpoint created duplicate versions
+        // for one click. The user may retry explicitly after the visible error.
+        console.warn('[useResearchProgress] SSE request failed without automatic replay:', err);
+        if (controller.signal.aborted) return;
+        setError(err instanceof Error ? err.message : String(err));
+        setStatus('error');
       }
     })();
   }, [reset, status]);

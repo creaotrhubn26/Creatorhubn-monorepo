@@ -13,6 +13,8 @@ import {
 import {
   BOOTSTRAP_SYNTH_TIMEOUT_MS,
   makeStructuredLogger,
+  withTimeout,
+  withTimeoutFallback,
 } from "./role-room-agent-llm-util.js";
 import {
   BOOTSTRAP_CONSTRAINTS,
@@ -2122,12 +2124,16 @@ async function rerankWithCohere<T extends { snippet: string }>(
   }
 
   try {
-    const response = await client.rerank({
-      model: DEFAULT_ROLE_ROOM_AGENT_COHERE_RERANK_MODEL,
-      query,
-      topN: Math.min(topN, entries.length),
-      documents: entries.map((entry) => renderDocument(entry).slice(0, 3500)),
-    });
+    const response = await withTimeout(
+      client.rerank({
+        model: DEFAULT_ROLE_ROOM_AGENT_COHERE_RERANK_MODEL,
+        query,
+        topN: Math.min(topN, entries.length),
+        documents: entries.map((entry) => renderDocument(entry).slice(0, 3500)),
+      }),
+      2_500,
+      "cohere_rerank_timeout",
+    );
 
     const results = Array.isArray(response.results) ? response.results : [];
     const ranked = results
@@ -2512,9 +2518,13 @@ export async function fetchWebsiteInsights(
 
   // F1-audit (doc 14) kjøres parallelt med hovedskanningen — den gjør egne,
   // SSRF-validerte kall (bot-UA-diff, robots, sitemap) og feiler aldri hardt.
-  const siteAuditPromise: Promise<SiteSetupAudit | null> = runSiteSetupAudit(websiteUrl)
-    .then((r) => ("audit" in r ? r.audit : null))
-    .catch(() => null);
+  const siteAuditPromise: Promise<SiteSetupAudit | null> = withTimeoutFallback(
+    runSiteSetupAudit(websiteUrl)
+      .then((r) => ("audit" in r ? r.audit : null)),
+    3_000,
+    "site_setup_audit_timeout",
+    null,
+  );
 
   try {
     const response = await fetch(websiteUrl, {
@@ -2522,7 +2532,7 @@ export async function fetchWebsiteInsights(
         "User-Agent": "CreatorHub Role Room Agent/1.0 (+https://theroleroom.com)",
         Accept: "text/html,application/xhtml+xml",
       },
-      signal: AbortSignal.timeout(12_000),
+      signal: AbortSignal.timeout(8_000),
     });
 
     if (!response.ok) {
@@ -2602,7 +2612,7 @@ export async function fetchWebsiteInsights(
               "User-Agent": "CreatorHub Role Room Agent/1.0 (+https://theroleroom.com)",
               Accept: "text/html,application/xhtml+xml",
             },
-            signal: AbortSignal.timeout(10_000),
+            signal: AbortSignal.timeout(4_000),
           });
           if (!pageResponse.ok) return null;
           return {
@@ -5776,11 +5786,25 @@ export async function generateRoleRoomAgentProducerBootstrap(
     websiteUrl: websiteUrl || initialBrregCompany?.website || preWebsiteInput.websiteUrl || null,
   };
   const businessSignals = await time("googlePlacesBusiness",
-      () => fetchGooglePlacesBusinessSignals(enrichedInput, websiteInsights, initialBrregCompany),
+      () => withTimeoutFallback(
+        fetchGooglePlacesBusinessSignals(enrichedInput, websiteInsights, initialBrregCompany),
+        6_000,
+        "google_places_business_timeout",
+        null,
+      ),
     { emptyFallbackLabel: "google_places_no_business_match", isEmpty: (v) => !v },
   );
-  const placesCompetitorAnalysis = await time("googlePlacesCompetitors",
-      () => fetchGooglePlacesCompetitorAnalysis(enrichedInput, websiteInsights, businessSignals, initialBrregCompany),
+  const placesCompetitorAnalysisPromise = time("googlePlacesCompetitors",
+      () => withTimeoutFallback(
+        fetchGooglePlacesCompetitorAnalysis(enrichedInput, websiteInsights, businessSignals, initialBrregCompany),
+        6_000,
+        "google_places_competitors_timeout",
+        buildLimitedCompetitorAnalysis(
+          "Konkurrentoppslag brukte for lang tid. Ingen kandidater vises uten verifisering.",
+          enrichedInput,
+          initialBrregCompany,
+        ),
+      ),
     { emptyFallbackLabel: "google_places_competitors_empty", isEmpty: (v) => v.competitors.length === 0 },
   );
   // Brreg same-NACE competitors: pulls verified Norwegian companies in
@@ -5798,12 +5822,61 @@ export async function generateRoleRoomAgentProducerBootstrap(
     websiteInsights.metaDescription,
     websiteInsights.textSnippet,
   ]);
-  const brregNaceCompetitors = websiteSpecialization
-    ? []
-    : await fetchBrregCompetitorsByNace(initialBrregCompany, {
-        limit: 25,
-        municipalityNumber: initialBrregCompany?.municipalityNumber ?? null,
-      });
+  const brregNaceCompetitorsPromise = websiteSpecialization
+    ? Promise.resolve([])
+    : withTimeoutFallback(
+        fetchBrregCompetitorsByNace(initialBrregCompany, {
+          limit: 25,
+          municipalityNumber: initialBrregCompany?.municipalityNumber ?? null,
+        }),
+        6_000,
+        "brreg_competitors_timeout",
+        [],
+      );
+  const classification = detectBusinessClassification(enrichedInput, websiteInsights, businessSignals, initialBrregCompany);
+  const marketArea =
+    extractMarketLocation(businessSignals?.formattedAddress || initialBrregCompany?.businessAddress || "")
+    || initialBrregCompany?.municipality
+    || "";
+  const localPresencePlanPromise = time("googlePlacesLocal",
+      () => withTimeoutFallback(
+        fetchGooglePlacesLocalPresencePlan(enrichedInput, websiteInsights, businessSignals, initialBrregCompany),
+        6_000,
+        "google_places_local_timeout",
+        buildLimitedLocalPresencePlan(
+          "Lokalt oppslag brukte for lang tid. Ingen steder eller tiltak vises uten geografisk verifisering.",
+          enrichedInput,
+          classification,
+          marketArea,
+        ),
+      ),
+    { emptyFallbackLabel: "local_presence_no_opportunities", isEmpty: (v) => v.nearbyOpportunities.length === 0 },
+  );
+  const merchSuppliersPromise = time("merchSuppliers",
+      () => withTimeoutFallback(
+        fetchMerchSuppliersAnalysis(enrichedInput, websiteInsights, businessSignals, initialBrregCompany),
+        6_000,
+        "merch_suppliers_timeout",
+        buildLimitedMerchSuppliers("Leverandøroppslaget brukte for lang tid. Ingen leverandører vises uten verifisering."),
+      ),
+    { emptyFallbackLabel: "merch_suppliers_empty", isEmpty: (v) => !v || v.suppliers.length === 0 },
+  );
+  const brandColorsPromise = time("colorExtraction",
+      () => withTimeoutFallback(
+        extractBrandColorsFromLogo(websiteInsights.probableLogoUrl),
+        4_000,
+        "color_extraction_timeout",
+        [],
+      ),
+    { emptyFallbackLabel: "logo_palette_extraction_failed_no_colors", isEmpty: (v) => v.length === 0 },
+  );
+  const [placesCompetitorAnalysis, brregNaceCompetitors, localPresencePlan, merchSuppliers, brandColors] = await Promise.all([
+    placesCompetitorAnalysisPromise,
+    brregNaceCompetitorsPromise,
+    localPresencePlanPromise,
+    merchSuppliersPromise,
+    brandColorsPromise,
+  ]);
   const competitorAnalysis = mergeCompetitorAnalyses(placesCompetitorAnalysis, brregNaceCompetitors);
   // Meta Pages Public Metadata enrichment: for each verified/likely
   // competitor, try to resolve their public Facebook Page and attach
@@ -5811,23 +5884,12 @@ export async function generateRoleRoomAgentProducerBootstrap(
   // is unavailable or the Page can't be resolved, the competitor is
   // returned as-is without metaPage data.
   await time("metaPagesEnrichment",
-      () => enrichCompetitorsWithMetaPages(competitorAnalysis),
-  );
-  const localPresencePlan = await time("googlePlacesLocal",
-      () => fetchGooglePlacesLocalPresencePlan(enrichedInput, websiteInsights, businessSignals, initialBrregCompany),
-    { emptyFallbackLabel: "local_presence_no_opportunities", isEmpty: (v) => v.nearbyOpportunities.length === 0 },
-  );
-  // Merch suppliers (Slice 1) — Brreg same-NACE for printing/apparel/promo
-  // codes + Google Places shop search, deduped by host/orgnr/name.
-  // Independent of competitorAnalysis: a customer can have lots of
-  // competitors and zero merch suppliers (or vice versa).
-  const merchSuppliers = await time("merchSuppliers",
-      () => fetchMerchSuppliersAnalysis(enrichedInput, websiteInsights, businessSignals, initialBrregCompany),
-    { emptyFallbackLabel: "merch_suppliers_empty", isEmpty: (v) => !v || v.suppliers.length === 0 },
-  );
-  const brandColors = await time("colorExtraction",
-      () => extractBrandColorsFromLogo(websiteInsights.probableLogoUrl),
-    { emptyFallbackLabel: "logo_palette_extraction_failed_no_colors", isEmpty: (v) => v.length === 0 },
+      () => withTimeoutFallback(
+        enrichCompetitorsWithMetaPages(competitorAnalysis),
+        4_000,
+        "meta_pages_enrichment_timeout",
+        undefined,
+      ),
   );
   const fallback = buildFallbackBootstrap(
     {
@@ -5896,7 +5958,10 @@ export async function generateRoleRoomAgentProducerBootstrap(
   if (!synthesisPayload) {
     // If Claude was the primary and returned null (e.g. Anthropic outage),
     // try OpenAI as a fallback so the user still gets a first-pass bootstrap.
-    if (useClaude) {
+    // A website-based run already has a complete, grounded deterministic
+    // payload. Do not spend another model timeout retrying it through a second
+    // provider and risk crossing the public proxy ceiling.
+    if (useClaude && !normalizedInputWebsiteUrl) {
       fallbacksUsed.push("claude_failed_retrying_openai");
       const openAiFallback = await time("openaiSynthesis",
       () => requestOpenAiBootstrap(
