@@ -2308,8 +2308,123 @@ function extractProbableLogoUrlRegexFallback(html: string, websiteUrl: string): 
  * role-room-website-analyzer.ts for a similar purpose). Result flows
  * into `buildFallbackBootstrap` → `brandGuide.colors`, which is consumed
  * by feedPlanner.ts, FeedPostTile, the PDF exporter, and the BrandSummary
- * strip. SVG/ICO are skipped because Vibrant only handles rasters.
+ * strip. Raster logos use Vibrant. SVG logos are read as inert text and only
+ * explicit fill/stroke/color values are considered; scripts, imports and
+ * external resources are never evaluated.
  */
+const normalizeSvgColorToken = (rawValue: string): string | null => {
+  const value = rawValue.trim();
+  const hexMatch = value.match(/^#([0-9a-f]{3,8})$/i);
+  if (hexMatch) {
+    const source = hexMatch[1];
+    if (source.length === 4 && source[3].toLowerCase() === "0") return null;
+    if (source.length === 8 && source.slice(6).toLowerCase() === "00") return null;
+    const rgb = source.length === 3 || source.length === 4
+      ? source.slice(0, 3).split("").map((character) => character.repeat(2)).join("")
+      : source.slice(0, 6);
+    return `#${rgb.toUpperCase()}`;
+  }
+
+  const rgbMatch = value.match(/^rgba?\(([^)]+)\)$/i);
+  if (!rgbMatch) return null;
+  const parts = rgbMatch[1].replace("/", " ").split(/[\s,]+/).filter(Boolean);
+  if (parts.length < 3) return null;
+  if (parts.length >= 4) {
+    const alpha = parts[3].endsWith("%")
+      ? Number(parts[3].slice(0, -1)) / 100
+      : Number(parts[3]);
+    if (Number.isFinite(alpha) && alpha <= 0) return null;
+  }
+  const channels = parts.slice(0, 3).map((part) => {
+    const numeric = part.endsWith("%")
+      ? (Number(part.slice(0, -1)) / 100) * 255
+      : Number(part);
+    return Number.isFinite(numeric) ? Math.max(0, Math.min(255, Math.round(numeric))) : Number.NaN;
+  });
+  if (channels.some((channel) => Number.isNaN(channel))) return null;
+  return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+};
+
+const svgColorRgb = (hex: string): [number, number, number] => [
+  Number.parseInt(hex.slice(1, 3), 16),
+  Number.parseInt(hex.slice(3, 5), 16),
+  Number.parseInt(hex.slice(5, 7), 16),
+];
+
+const svgColorLuminance = (hex: string): number => {
+  const [red, green, blue] = svgColorRgb(hex);
+  return (red * 299 + green * 587 + blue * 114) / 1000;
+};
+
+const svgColorDistance = (left: string, right: string): number => {
+  const [leftRed, leftGreen, leftBlue] = svgColorRgb(left);
+  const [rightRed, rightGreen, rightBlue] = svgColorRgb(right);
+  return Math.sqrt(
+    (leftRed - rightRed) ** 2
+      + (leftGreen - rightGreen) ** 2
+      + (leftBlue - rightBlue) ** 2,
+  );
+};
+
+export function extractBrandColorsFromSvg(svg: string): RoleRoomAgentBrandColor[] {
+  if (!/<svg\b/i.test(svg)) return [];
+  const inertSvg = svg
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "");
+  const candidates = new Map<string, { count: number; firstIndex: number }>();
+  const colorPropertyPattern =
+    /\b(?:fill|stroke|stop-color|flood-color|lighting-color|color)\s*(?:=|:)\s*["']?\s*(#[0-9a-f]{3,8}\b|rgba?\([^)]+\))/gi;
+
+  for (const match of inertSvg.matchAll(colorPropertyPattern)) {
+    const hex = normalizeSvgColorToken(match[1]);
+    if (!hex) continue;
+    const existing = candidates.get(hex);
+    candidates.set(hex, {
+      count: (existing?.count ?? 0) + 1,
+      firstIndex: existing?.firstIndex ?? match.index,
+    });
+  }
+
+  const remaining = Array.from(candidates, ([hex, metadata]) => ({
+    hex,
+    ...metadata,
+  }));
+  remaining.sort(
+    (left, right) =>
+      right.count - left.count
+      || svgColorLuminance(left.hex) - svgColorLuminance(right.hex)
+      || left.firstIndex - right.firstIndex,
+  );
+
+  const selected: typeof remaining = [];
+  const first = remaining.shift();
+  if (first) selected.push(first);
+  while (remaining.length > 0 && selected.length < 5) {
+    remaining.sort((left, right) => {
+      const leftDistance = Math.min(
+        ...selected.map((selectedColor) => svgColorDistance(left.hex, selectedColor.hex)),
+      );
+      const rightDistance = Math.min(
+        ...selected.map((selectedColor) => svgColorDistance(right.hex, selectedColor.hex)),
+      );
+      return right.count * rightDistance - left.count * leftDistance
+        || right.count - left.count
+        || left.firstIndex - right.firstIndex;
+    });
+    selected.push(remaining.shift()!);
+  }
+
+  return selected.map((entry, index) => ({
+    label: index === 0 ? "Primær" : index === 1 ? "Aksent" : `Sekundær ${index - 1}`,
+    hex: entry.hex,
+    usage: index === 0
+      ? "Hovedfarge for overskrifter, bakgrunner og tydelig merkevareforankring."
+      : index === 1
+        ? "Kontrastfarge for CTA, detaljer og brand-aksenter."
+        : "Støttefarge hentet direkte fra logoen.",
+  }));
+}
+
 export async function extractBrandColorsFromLogo(
   logoUrl: string | null | undefined,
 ): Promise<RoleRoomAgentBrandColor[]> {
@@ -2323,14 +2438,18 @@ export async function extractBrandColorsFromLogo(
     });
     if (!response.ok) return [];
     const contentType = (response.headers.get("content-type") || "").toLowerCase();
-    if (!/^image\/(?:png|jpe?g|webp|avif)/.test(contentType)) {
-      // SVG and ICO are common but Vibrant can't decode them reliably.
-      return [];
-    }
+    const isSvg = contentType.includes("image/svg+xml");
+    const isSupportedRaster = /^image\/(?:png|jpe?g|webp|avif)/.test(contentType);
+    if (!isSvg && !isSupportedRaster) return [];
+    const declaredLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > 5 * 1024 * 1024) return [];
     const arrayBuffer = await response.arrayBuffer();
-    if (arrayBuffer.byteLength < 200) return [];
     if (arrayBuffer.byteLength > 5 * 1024 * 1024) return [];
     const buffer = Buffer.from(arrayBuffer);
+    if (isSvg) {
+      return extractBrandColorsFromSvg(buffer.toString("utf8"));
+    }
+    if (arrayBuffer.byteLength < 200) return [];
     const palette = await Vibrant.from(buffer).getPalette();
 
     const colors: RoleRoomAgentBrandColor[] = [];

@@ -85,7 +85,7 @@ const SERVICE_LABELS: Record<keyof RoleRoomAgentServiceLatencies, { label: strin
   localPresence: { label: 'Lokal tilstedeværelse', source: 'aggregert' },
   merchSuppliers: { label: 'Merch-leverandører', source: 'Brreg + Google Places' },
   metaPagesEnrichment: { label: 'Meta Pages-berikelse', source: 'graph.facebook.com' },
-  colorExtraction: { label: 'Logo-paletten', source: 'node-vibrant' },
+  colorExtraction: { label: 'Logo-paletten', source: 'SVG / node-vibrant' },
   claudeSynthesis: { label: 'CI-syntese', source: 'Creatorhub Intelligence' },
   openaiSynthesis: { label: 'OpenAI-syntese', source: 'api.openai.com' },
   totalMs: { label: 'Totaltid', source: 'wall clock' },
