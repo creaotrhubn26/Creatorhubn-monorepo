@@ -19,6 +19,13 @@
  */
 export const BOOTSTRAP_SYNTH_MAX_TOKENS = 8192;
 
+/** Synthesis is optional enrichment. The deterministic payload is already
+ * complete, so a slow model must never consume the whole request. */
+export const BOOTSTRAP_SYNTH_TIMEOUT_MS = 10_000;
+
+/** Post-processing must leave time to persist and flush the final SSE event. */
+export const BOOTSTRAP_POSTPROCESS_TIMEOUT_MS = 2_500;
+
 /**
  * Parse a JSON object out of an LLM text response. Strips a leading/trailing
  * markdown fence (```json … ```), then falls back to the first `{` … last `}`
