@@ -36,6 +36,11 @@ export const ROLE_ROOM_AGENT_RESEARCH_SKILLS = [
       'Geografisk relevans: anmeldelser, konkurrenter, lokale muligheter, merch og eventpartnere skal forkastes hvis adresse eller koordinater ikke matcher kundens verifiserte kommune/radius. Region-bias og popularitet er aldri bevis.',
   },
   {
+    id: 'verify_semantic_relevance',
+    instruction:
+      'Semantisk relevans: et navn i riktig by er ikke nok. Konkurrenter må dokumentere samme produktkategori, og lokale partnere må ha en kategori som faktisk matcher den foreslåtte partnerrollen. Forkast generiske tjenester, offentlige etater, lagring, eiendomsmegling og andre kategorifeil.',
+  },
+  {
     id: 'propagate_verified_profile',
     instruction:
       'Dataflyt: juridisk identitet, bransje, underbransje, forretningsmodell, målgruppe og adresse fra den deterministiske analysen skal gjenbrukes uendret i brief, markedsplan, lokale forslag og story-logikk.',

@@ -116,6 +116,8 @@ describe('Role Room local-presence fail-closed policy', () => {
             id: 'oslo',
             displayName: { text: 'Oslo Helsehub' },
             formattedAddress: 'Forskningsveien 1, 0373 Oslo, Norge',
+            primaryType: 'coworking_space',
+            primaryTypeDisplayName: { text: 'Kontorfellesskap' },
           },
         ],
       }), { status: 200, headers: { 'content-type': 'application/json' } });

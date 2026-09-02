@@ -28,7 +28,9 @@ import {
 import {
   buildSearchQueries,
   isGooglePlaceBusinessIdentityMatch,
+  isGooglePlaceCompetitorSemanticallyRelevant,
   isGooglePlaceLocalOpportunityInMarket,
+  isGooglePlaceOpportunityTypeMatch,
   scoreBrregNameCandidate,
   scoreGooglePlaceCandidate,
 } from "./role-room-agent-match-scoring.js";
@@ -1271,12 +1273,22 @@ function buildCompetitorSearchQueries(
   // fall back to websiteInsights.siteName here. siteName is the customer's
   // own brand — querying "<Customer Name> Oslo" returns the customer
   // themselves, who is then filtered out, leaving zero competitors.
-  const category = businessSignals?.primaryTypeDisplayName
-    || websiteSpecialization?.subIndustry
+  const category = websiteSpecialization?.subIndustry
+    || businessSignals?.primaryTypeDisplayName
     || brregCompany?.industryCode?.description
     || "";
   const location = extractMarketLocation(businessSignals?.formattedAddress || brregCompany?.businessAddress || "");
   const municipality = brregCompany?.municipality || "";
+
+  if (websiteSpecialization?.industry === "Helseteknologi og programvare") {
+    const market = location || municipality || "Norge";
+    return [
+      `medisinsk transkripsjon programvare ${market}`,
+      `klinisk dokumentasjon programvare ${market}`,
+      `journalsystem for leger ${market}`,
+      `helseteknologi programvare ${market}`,
+    ].map((entry) => normalizeWhitespace(entry));
+  }
 
   // For SMBs without a clear municipality, "i Norge" anchors the query
   // to the local market; bare-category Google Places queries with
@@ -3470,6 +3482,7 @@ export async function fetchGooglePlacesCompetitorAnalysis(
     marketLocation,
     brregCompany?.municipality || "",
   ].map((value) => normalizeWhitespace(value)).filter(Boolean)));
+  const classification = detectBusinessClassification(input, websiteInsights, businessSignals, brregCompany);
   const searchQueries = buildCompetitorSearchQueries(input, websiteInsights, businessSignals, brregCompany);
 
   if (!hasText(apiKey)) {
@@ -3532,6 +3545,13 @@ export async function fetchGooglePlacesCompetitorAnalysis(
         marketHints,
         businessSignals?.location ?? null,
         50,
+      )) {
+        return null;
+      }
+      if (!isGooglePlaceCompetitorSemanticallyRelevant(
+        candidate,
+        classification.industry,
+        classification.subIndustry,
       )) {
         return null;
       }
@@ -4677,6 +4697,9 @@ export async function fetchGooglePlacesLocalPresencePlan(
             businessSignals?.location ?? null,
             definition.radiusKm,
           )) {
+            continue;
+          }
+          if (!isGooglePlaceOpportunityTypeMatch(place, definition.type)) {
             continue;
           }
           const websiteUrl = hasText(place.websiteUri) ? normalizeWebsiteUrl(place.websiteUri) : null;
