@@ -7,6 +7,7 @@ import ReactDOM from 'react-dom/client';
 import { initSentry } from './utils/sentry';
 import { runLegacyStorageMigration } from './components/role-room/utils/legacyStorageMigrator';
 import { bootstrapCreatorHubGoogleLoginRedirect } from './lib/creatorhubGoogleAuth';
+import { getStoredAuthToken } from './lib/queryClient';
 
 // Stabilitetsaudit § 7.2 — kjør idempotent migrasjon av sårbare
 // localStorage-keys FØR React rendrer. Etter første call markeres systemet
@@ -212,7 +213,7 @@ import('./utils/installFrontendErrorReporter').then(m => m.installFrontendErrorR
         || url.startsWith(window.location.origin + '/api/')
         || (url.startsWith('http') && url.includes('/api/') && new URL(url).host === window.location.host);
       if (isInternalApi) {
-        const token = localStorage.getItem('creatorhub_auth_token');
+        const token = getStoredAuthToken();
         if (token) {
           const headers = new Headers(init?.headers ?? (typeof input !== 'string' && !(input instanceof URL) ? input.headers : undefined));
           if (!headers.has('Authorization')) {

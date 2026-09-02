@@ -14,7 +14,8 @@
  * Denne komponenten dekker steg 1-4. B2/B3/B5/B6 hekker på senere.
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { apiFetch } from '@/lib/queryClient';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider,
   IconButton, Stack, TextField, Tooltip, Typography,
@@ -102,6 +103,43 @@ interface DiscoveryResult {
   warnings: string[];
 }
 
+interface StoredAdsConfig {
+  id: string;
+  client_project_id: string;
+  client_name: string;
+  client_website_url: string;
+  business_type?: string | null;
+  business_subcategory?: string | null;
+  claude_analysis?: Partial<DiscoveryResult> | null;
+}
+
+function restoreDiscoveryResult(config: StoredAdsConfig): DiscoveryResult {
+  const stored = config.claude_analysis ?? {};
+  return {
+    url: stored.url ?? config.client_website_url,
+    fetched_at: stored.fetched_at ?? new Date().toISOString(),
+    business_type: stored.business_type ?? config.business_type ?? 'unknown',
+    business_subcategory: stored.business_subcategory ?? config.business_subcategory ?? 'unknown',
+    business_summary: stored.business_summary ?? '',
+    detected_gtag_id: stored.detected_gtag_id ?? null,
+    detected_gtm_id: stored.detected_gtm_id ?? null,
+    page_snapshot: stored.page_snapshot ?? {
+      url: config.client_website_url,
+      finalUrl: config.client_website_url,
+      httpStatus: 0,
+      title: config.client_name,
+      metaDescription: null,
+      detectedGtagIds: [],
+      formCount: 0,
+      cta_phrases: [],
+      htmlBytes: 0,
+    },
+    suggested_actions: stored.suggested_actions ?? [],
+    notes: stored.notes ?? [],
+    warnings: stored.warnings ?? [],
+  };
+}
+
 const GOAL_CATEGORIES = [
   { value: 'purchase', label: 'Purchase (kjøp)' },
   { value: 'add_to_cart', label: 'Add to cart' },
@@ -158,6 +196,7 @@ export default function AgentAdsPanel({
   // Approval — send til klient
   const [sendingForApproval, setSendingForApproval] = useState(false);
   const [approvalMessage, setApprovalMessage] = useState('');
+  const [restoringConfig, setRestoringConfig] = useState(false);
   const [approvalSent, setApprovalSent] = useState(false);
   const [approvalDeadline, setApprovalDeadline] = useState<string | null>(null);
   const [approvalError, setApprovalError] = useState<string | null>(null);
@@ -176,7 +215,33 @@ export default function AgentAdsPanel({
   const [syncResult, setSyncResult] = useState<{ created: number; failed: number; details?: any } | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
 
-  // Parse OAuth-callback-resultat fra URL hvis vi nettopp kom tilbake
+  const restoreConfig = useCallback(async (configId: string) => {
+    setRestoringConfig(true);
+    try {
+      const r = await apiFetch(`/api/admin-room/agent/ads/configs/${encodeURIComponent(configId)}`, {
+        credentials: 'include',
+      });
+      const data = await r.json();
+      if (!r.ok || !data.config) throw new Error(data.error || `HTTP ${r.status}`);
+      const config = data.config as StoredAdsConfig;
+      const restoredActions = ((data.actions ?? []) as SuggestedAction[]).map((action) => ({
+        ...action,
+        default_value: Number(action.default_value ?? 0),
+      }));
+      setClientName(config.client_name);
+      setClientUrl(config.client_website_url);
+      setDiscoveryResult(restoreDiscoveryResult(config));
+      setActions(restoredActions);
+      setSavedConfigId(config.id);
+      setStage('saved');
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Kunne ikke hente Ads-oppsettet');
+    } finally {
+      setRestoringConfig(false);
+    }
+  }, []);
+
+  // Parse OAuth-callback-resultat fra URL hvis vi nettopp kom tilbake.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
@@ -193,7 +258,7 @@ export default function AgentAdsPanel({
         msg,
       });
       const cfg = url.searchParams.get('config');
-      if (cfg) setSavedConfigId(cfg);
+      if (cfg) void restoreConfig(cfg);
       // Rydd querystring så banneret ikke vises igjen ved refresh
       url.searchParams.delete('oauth_success');
       url.searchParams.delete('config');
@@ -201,14 +266,36 @@ export default function AgentAdsPanel({
     } else if (errParam) {
       setOauthBanner({ kind: 'error', msg: `OAuth feilet: ${errParam}` });
       url.searchParams.delete('oauth_error');
+      url.searchParams.delete('roleRoomAgentTab');
       window.history.replaceState({}, '', url.toString());
     }
-  }, []);
+  }, [restoreConfig]);
+
+  // Reopen an existing per-project Ads setup on normal Agent visits too.
+  useEffect(() => {
+    if (!clientProjectId) return undefined;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await apiFetch('/api/admin-room/agent/ads/configs', { credentials: 'include' });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        const match = ((data.configs ?? []) as StoredAdsConfig[]).find(
+          (config) => config.client_project_id === clientProjectId,
+        );
+        if (!cancelled && match?.id) await restoreConfig(match.id);
+      } catch (err) {
+        if (!cancelled) setSaveError(err instanceof Error ? err.message : 'Kunne ikke hente Ads-oppsettet');
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [clientProjectId, restoreConfig]);
 
   const startGoogleOAuth = async () => {
     if (!savedConfigId) return;
     try {
-      const r = await fetch(`/api/admin-room/agent/ads/oauth/google/start?configId=${encodeURIComponent(savedConfigId)}`, {
+      const r = await apiFetch(`/api/admin-room/agent/ads/oauth/google/start?configId=${encodeURIComponent(savedConfigId)}`, {
         credentials: 'include',
       });
       const data = await r.json();
@@ -228,7 +315,7 @@ export default function AgentAdsPanel({
     }
     setSavingCustomerId(true);
     try {
-      const r = await fetch(`/api/admin-room/agent/ads/configs/${savedConfigId}`, {
+      const r = await apiFetch(`/api/admin-room/agent/ads/configs/${savedConfigId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -251,7 +338,7 @@ export default function AgentAdsPanel({
     setSyncError(null);
     setSyncResult(null);
     try {
-      const r = await fetch(`/api/admin-room/agent/ads/configs/${savedConfigId}/sync-to-google`, {
+      const r = await apiFetch(`/api/admin-room/agent/ads/configs/${savedConfigId}/sync-to-google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -275,7 +362,7 @@ export default function AgentAdsPanel({
     setSendingForApproval(true);
     setApprovalError(null);
     try {
-      const r = await fetch(`/api/admin-room/agent/ads/configs/${savedConfigId}/request-approval`, {
+      const r = await apiFetch(`/api/admin-room/agent/ads/configs/${savedConfigId}/request-approval`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -301,7 +388,7 @@ export default function AgentAdsPanel({
     setDiscoveryError(null);
     setDiscoveryResult(null);
     try {
-      const r = await fetch('/api/admin-room/agent/ads/analyze', {
+      const r = await apiFetch('/api/admin-room/agent/ads/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -333,7 +420,7 @@ export default function AgentAdsPanel({
     setSaving(true);
     setSaveError(null);
     try {
-      const r = await fetch('/api/admin-room/agent/ads/configs', {
+      const r = await apiFetch('/api/admin-room/agent/ads/configs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -363,6 +450,11 @@ export default function AgentAdsPanel({
 
   return (
     <Box sx={{ color: palette.textPrimary }}>
+      {restoringConfig ? (
+        <Alert severity="info" icon={<CircularProgress size={16} />} sx={{ mb: 2 }}>
+          Henter Ads-oppsettet for prosjektet…
+        </Alert>
+      ) : null}
       <Stack direction="row" alignItems="center" spacing={1.4} sx={{ mb: 2.4 }}>
         <Box
           sx={{

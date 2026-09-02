@@ -132,7 +132,7 @@ describe("client Ads LinkedIn OAuth state", () => {
 
     const started = await request(app)
       .get(
-        "/api/admin-room/agent/ads/oauth/linkedin/start?configId=config-1&browserOrigin=https%3A%2F%2Fwww.theroleroom.com",
+        "/api/admin-room/agent/ads/oauth/linkedin/start?configId=config-1&browserOrigin=https%3A%2F%2Fwww.theroleroom.com&returnPath=%2Frole-room%3Fproject%3Dkunde-1%26roleRoomAgentTab%3Dads-setup",
       )
       .expect(200);
     const state = stateFromAuthUrl(started.body.authUrl);
@@ -149,6 +149,7 @@ describe("client Ads LinkedIn OAuth state", () => {
       redirectUri:
         "https://theroleroom.com/api/admin-room/agent/ads/oauth/linkedin/callback",
       browserOrigin: "https://www.theroleroom.com",
+      returnPath: "/role-room?project=kunde-1&roleRoomAgentTab=ads-setup",
       createdAt: expect.any(Number),
     });
     expect((expiresAt as Date).getTime()).toBeGreaterThanOrEqual(
@@ -161,7 +162,7 @@ describe("client Ads LinkedIn OAuth state", () => {
       )
       .expect(302);
     expect(callbackResponse.headers.location).toBe(
-      "https://www.theroleroom.com/admin-room?adminTab=role-room-agent&oauth_success=linkedin&config=config-1",
+      "https://www.theroleroom.com/role-room?project=kunde-1&roleRoomAgentTab=ads-setup&oauth_success=linkedin&config=config-1",
     );
 
     expect(mocks.exchangeAdsCodeForToken).toHaveBeenCalledWith(
@@ -193,6 +194,29 @@ describe("client Ads LinkedIn OAuth state", () => {
 
     expect(payload).toMatchObject({
       browserOrigin: "https://theroleroom.com",
+    });
+
+    const callbackResponse = await request(app)
+      .get(
+        `/api/admin-room/agent/ads/oauth/linkedin/callback?code=oauth-code&state=${encodeURIComponent(state)}`,
+      )
+      .expect(302);
+    expect(callbackResponse.headers.location).toBe(
+      "https://theroleroom.com/admin-room?adminTab=role-room-agent&oauth_success=linkedin",
+    );
+  });
+
+  it("rejects an external OAuth return path", async () => {
+    const { app } = buildApp();
+    const started = await request(app)
+      .get(
+        "/api/admin-room/agent/ads/oauth/linkedin/start?returnPath=%2F%2Fevil.example%2Fsteal",
+      )
+      .expect(200);
+    const state = stateFromAuthUrl(started.body.authUrl);
+    const [, , payload] = mocks.persistOauthState.mock.calls[0];
+    expect(payload).toMatchObject({
+      returnPath: "/admin-room?adminTab=role-room-agent",
     });
 
     const callbackResponse = await request(app)

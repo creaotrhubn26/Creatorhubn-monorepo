@@ -56,7 +56,7 @@ const PHASES: Array<{
     label: 'Leads',
     caption: 'Få + følg opp kunder',
     icon: <LeadsIcon fontSize="small" />,
-    tabs: ['leads', 'events'],
+    tabs: ['leads', 'events', 'ads-setup'],
   },
   {
     id: 'measure',
