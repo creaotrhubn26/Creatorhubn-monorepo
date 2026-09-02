@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSearchQueries,
   isGooglePlaceBusinessIdentityMatch,
+  isGooglePlaceLocalOpportunityInMarket,
   scoreBrregNameCandidate,
   scoreGooglePlaceCandidate,
 } from './role-room-agent-match-scoring.js';
@@ -138,5 +139,63 @@ describe('isGooglePlaceBusinessIdentityMatch', () => {
       'medside.no',
       'Oslo',
     )).toBe(true);
+  });
+});
+
+describe('isGooglePlaceLocalOpportunityInMarket', () => {
+  it('rejects Atlanta and Jamaica results for a Brreg-verified Oslo company', () => {
+    expect(isGooglePlaceLocalOpportunityInMarket(
+      { formattedAddress: '1120 Hope Rd, Sandy Springs, GA 30350, USA' },
+      ['Oslo'],
+      null,
+      15,
+    )).toBe(false);
+    expect(isGooglePlaceLocalOpportunityInMarket(
+      { formattedAddress: 'Hope Road, Kingston, Jamaica' },
+      ['Oslo'],
+      null,
+      15,
+    )).toBe(false);
+  });
+
+  it('accepts an address in the verified Brreg locality', () => {
+    expect(isGooglePlaceLocalOpportunityInMarket(
+      { formattedAddress: 'Oslo Drive, Atlanta, GA 30350, USA' },
+      ['Oslo'],
+      null,
+      8,
+    )).toBe(false);
+
+    expect(isGooglePlaceLocalOpportunityInMarket(
+      { formattedAddress: 'Karl Johans gate 1, 0154 Oslo, Norge' },
+      ['Oslo'],
+      null,
+      8,
+    )).toBe(true);
+  });
+
+  it('uses verified coordinates as a hard radius when both points exist', () => {
+    const oslo = { latitude: 59.9139, longitude: 10.7522 };
+    expect(isGooglePlaceLocalOpportunityInMarket(
+      { location: { latitude: 59.92, longitude: 10.76 }, formattedAddress: 'Oslo' },
+      ['Oslo'],
+      oslo,
+      3,
+    )).toBe(true);
+    expect(isGooglePlaceLocalOpportunityInMarket(
+      { location: { latitude: 33.93, longitude: -84.35 }, formattedAddress: 'Oslo Coffee, Atlanta, USA' },
+      ['Oslo'],
+      oslo,
+      15,
+    )).toBe(false);
+  });
+
+  it('fails closed without a verified coordinate or locality match', () => {
+    expect(isGooglePlaceLocalOpportunityInMarket(
+      { formattedAddress: 'Unknown address' },
+      [],
+      null,
+      15,
+    )).toBe(false);
   });
 });

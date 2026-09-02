@@ -23,6 +23,7 @@ import {
 import {
   buildSearchQueries,
   isGooglePlaceBusinessIdentityMatch,
+  isGooglePlaceLocalOpportunityInMarket,
   scoreBrregNameCandidate,
   scoreGooglePlaceCandidate,
 } from "./role-room-agent-match-scoring.js";
@@ -1612,8 +1613,6 @@ function buildLimitedLocalPresencePlan(
   classification: RoleRoomAgentBusinessClassification,
   marketArea: string,
 ): RoleRoomAgentLocalPresencePlan {
-  const companyName = hasText(input.companyName) ? normalizeWhitespace(input.companyName) : "kunden";
-  const definitions = buildGenericLocalOpportunityDefinitions(companyName, classification);
   return {
     status: "limited",
     source: "fallback",
@@ -1622,18 +1621,13 @@ function buildLimitedLocalPresencePlan(
     marketArea: marketArea || "Må avklares",
     radiusStrategy: buildRadiusStrategy(classification),
     nearbyOpportunities: [],
-    recommendedEventConcepts: definitions.slice(0, 4).map((entry) => entry.eventIdea),
-    contentActivationPlan: [
-      "Lag pre-event teaser med tydelig lokal partner og enkel CTA.",
-      "Dokumenter selve eventet med foto, korte intervjuer og behind-the-scenes.",
-      "Publiser recap, kunde-/partnerreaksjoner og tilbud innen 24 timer.",
-    ],
-    outreachSequence: [
-      "Bekreft riktig kontaktperson hos lokal partner.",
-      "Send kort forslag med hva partneren får igjen, ikke bare hva kunden vil selge.",
-      "Foreslå pilot med lav risiko og tydelig måling.",
-    ],
-    kpis: ["Påmeldinger/oppmøte", "QR-skanninger", "Leads", "Salg/booking", "Innhold produsert", "Gjenkjøp/oppfølging"],
+    // No verified local entity means no event/outreach/content plan. Keeping
+    // these empty prevents a ranking hint or LLM guess from becoming an
+    // operational recommendation downstream.
+    recommendedEventConcepts: [],
+    contentActivationPlan: [],
+    outreachSequence: [],
+    kpis: [],
     limitations: [reason],
   };
 }
@@ -3455,6 +3449,10 @@ export async function fetchGooglePlacesCompetitorAnalysis(
   const websiteUrl = normalizeWebsiteUrl(input.websiteUrl) || websiteInsights.finalUrl || brregCompany?.website || null;
   const websiteHost = normalizeHost(websiteUrl);
   const marketLocation = extractMarketLocation(businessSignals?.formattedAddress || brregCompany?.businessAddress || "");
+  const marketHints = Array.from(new Set([
+    marketLocation,
+    brregCompany?.municipality || "",
+  ].map((value) => normalizeWhitespace(value)).filter(Boolean)));
   const searchQueries = buildCompetitorSearchQueries(input, websiteInsights, businessSignals, brregCompany);
 
   if (!hasText(apiKey)) {
@@ -3468,10 +3466,10 @@ export async function fetchGooglePlacesCompetitorAnalysis(
 
   console.log(`[places-competitors] queries=${JSON.stringify(searchQueries)}`);
   const fieldMask =
-    "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri";
+    "places.id,places.displayName,places.formattedAddress,places.location,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri";
   const rawCandidates: Array<Record<string, unknown>> = [];
 
-  for (const query of searchQueries) {
+  await Promise.all(searchQueries.map(async (query) => {
     try {
       const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
         method: "POST",
@@ -3492,7 +3490,7 @@ export async function fetchGooglePlacesCompetitorAnalysis(
       if (!response.ok) {
         const body = await response.text().catch(() => "");
         console.error(`[places-competitors] query="${query}" status=${response.status} body=${body.replace(/\s+/g, " ").slice(0, 500)}`);
-        continue;
+        return;
       }
 
       const payload = (await response.json().catch(() => null)) as
@@ -3503,15 +3501,23 @@ export async function fetchGooglePlacesCompetitorAnalysis(
       rawCandidates.push(...places);
     } catch (err) {
       console.error(`[places-competitors] query="${query}" threw: ${err instanceof Error ? err.message : String(err)}`);
-      continue;
+      return;
     }
-  }
+  }));
   console.log(`[places-competitors] totalRawCandidates=${rawCandidates.length}`);
 
   const seenKeys = new Set<string>();
   const competitors = rawCandidates
     .map((candidate): RoleRoomAgentCompetitorCandidate | null => {
       const name = readGooglePlaceDisplayName(candidate);
+      if (!isGooglePlaceLocalOpportunityInMarket(
+        candidate,
+        marketHints,
+        businessSignals?.location ?? null,
+        50,
+      )) {
+        return null;
+      }
       if (!name || isSameCompanyPlace(candidate, companyName, websiteHost)) {
         return null;
       }
@@ -3857,7 +3863,7 @@ async function fetchBrregMerchSuppliers(
   const all: RoleRoomAgentMerchSupplier[] = [];
   const seenOrgs = new Set<string>();
 
-  for (const naceEntry of MERCH_NACE_CODES) {
+  await Promise.all(MERCH_NACE_CODES.map(async (naceEntry) => {
     const params = new URLSearchParams();
     params.set("naeringskode", naceEntry.code);
     params.set("size", String(perCodeLimit));
@@ -3877,12 +3883,12 @@ async function fetchBrregMerchSuppliers(
       });
       if (!response.ok) {
         console.error(`[brreg-merch] nace=${naceEntry.code} status=${response.status}`);
-        continue;
+        return;
       }
       payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
     } catch (err) {
       console.error(`[brreg-merch] nace=${naceEntry.code} threw: ${err instanceof Error ? err.message : String(err)}`);
-      continue;
+      return;
     }
 
     const embedded = payload && typeof payload === "object" && !Array.isArray(payload)
@@ -3979,7 +3985,7 @@ async function fetchBrregMerchSuppliers(
         requiresManualConfirmation: status !== "verified",
       });
     }
-  }
+  }));
 
   return all;
 }
@@ -3999,14 +4005,17 @@ async function fetchGooglePlacesMerchSuppliers(
   // act on. When neither is known we fall back to the bare query, which
   // (with regionCode=NO) still biases toward Norwegian results.
   const anchor = marketLocation || municipality || "";
+  const marketHints = Array.from(new Set(
+    [marketLocation, municipality].map((value) => normalizeWhitespace(value)).filter(Boolean),
+  ));
 
   const fieldMask =
-    "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri";
+    "places.id,places.displayName,places.formattedAddress,places.location,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri";
 
   const all: RoleRoomAgentMerchSupplier[] = [];
   const seen = new Set<string>();
 
-  for (const queryEntry of MERCH_PLACES_QUERIES) {
+  await Promise.all(MERCH_PLACES_QUERIES.map(async (queryEntry) => {
     const textQuery = anchor ? `${queryEntry.query} ${anchor}` : queryEntry.query;
     let payload: { places?: Array<Record<string, unknown>> } | null = null;
     try {
@@ -4027,18 +4036,26 @@ async function fetchGooglePlacesMerchSuppliers(
       });
       if (!response.ok) {
         console.error(`[places-merch] query="${textQuery}" status=${response.status}`);
-        continue;
+        return;
       }
       payload = (await response.json().catch(() => null)) as
         | { places?: Array<Record<string, unknown>> }
         | null;
     } catch (err) {
       console.error(`[places-merch] query="${textQuery}" threw: ${err instanceof Error ? err.message : String(err)}`);
-      continue;
+      return;
     }
 
     const places = Array.isArray(payload?.places) ? payload.places : [];
     for (const place of places) {
+      if (!isGooglePlaceLocalOpportunityInMarket(
+        place,
+        marketHints,
+        businessSignals?.location ?? null,
+        50,
+      )) {
+        continue;
+      }
       const placeId = hasText(place.id) ? normalizeWhitespace(place.id) : null;
       const name = readGooglePlaceDisplayName(place);
       if (!name || !placeId || seen.has(placeId)) continue;
@@ -4101,7 +4118,7 @@ async function fetchGooglePlacesMerchSuppliers(
         requiresManualConfirmation: status !== "verified",
       });
     }
-  }
+  }));
 
   return all;
 }
@@ -4580,14 +4597,20 @@ export async function fetchGooglePlacesLocalPresencePlan(
   const fieldMask =
     "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri,places.location";
   const customerWebsiteHost = normalizeHost(normalizeWebsiteUrl(input.websiteUrl) || websiteInsights.finalUrl || brregCompany?.website || null);
+  const localityHints = Array.from(new Set([
+    marketArea,
+    brregCompany?.municipality || "",
+  ].map((value) => normalizeWhitespace(value)).filter(Boolean)));
   const seenKeys = new Set<string>();
   const opportunities: RoleRoomAgentLocalPresenceOpportunity[] = [];
 
-  for (const definition of definitions.slice(0, 7)) {
-    for (const searchTerm of definition.searchTerms.slice(0, 2)) {
+  const searches = definitions.slice(0, 7).flatMap((definition) =>
+    definition.searchTerms.slice(0, 2).map((searchTerm) => ({ definition, searchTerm })),
+  );
+  await Promise.all(searches.map(async ({ definition, searchTerm }) => {
       const query = normalizeWhitespace([searchTerm, marketArea].filter(Boolean).join(" "));
       if (!query) {
-        continue;
+        return;
       }
 
       try {
@@ -4618,7 +4641,7 @@ export async function fetchGooglePlacesLocalPresencePlan(
         });
 
         if (!response.ok) {
-          continue;
+          return;
         }
 
         const payload = (await response.json().catch(() => null)) as
@@ -4629,6 +4652,14 @@ export async function fetchGooglePlacesLocalPresencePlan(
         for (const place of places) {
           const name = readGooglePlaceDisplayName(place);
           if (!name || isSameCompanyPlace(place, companyName, customerWebsiteHost)) {
+            continue;
+          }
+          if (!isGooglePlaceLocalOpportunityInMarket(
+            place,
+            localityHints,
+            businessSignals?.location ?? null,
+            definition.radiusKm,
+          )) {
             continue;
           }
           const websiteUrl = hasText(place.websiteUri) ? normalizeWebsiteUrl(place.websiteUri) : null;
@@ -4660,13 +4691,11 @@ export async function fetchGooglePlacesLocalPresencePlan(
             },
           ];
 
-          if (marketArea && formattedAddress?.toLowerCase().includes(marketArea.toLowerCase())) {
-            evidence.push({
-              type: "same_area",
-              label: `Samme lokale marked: ${marketArea}`,
-              weight: 20,
-            });
-          }
+          evidence.push({
+            type: "same_area",
+            label: `Geografisk verifisert i ${marketArea || brregCompany?.municipality || "kundens marked"}`,
+            weight: 20,
+          });
           if (websiteUrl) {
             evidence.push({
               type: "website_available",
@@ -4718,10 +4747,9 @@ export async function fetchGooglePlacesLocalPresencePlan(
           });
         }
       } catch {
-        continue;
+        return;
       }
-    }
-  }
+  }));
 
   const selected = opportunities
     .sort((left, right) => right.confidence - left.confidence || left.radiusKm - right.radiusKm)
@@ -5272,7 +5300,7 @@ async function requestOpenAiBootstrap(
   }
 }
 
-function normalizeBootstrapPayload(
+export function normalizeBootstrapPayload(
   raw: unknown,
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
@@ -5314,6 +5342,18 @@ function normalizeBootstrapPayload(
     !Array.isArray(storyLogicDraftRaw.classification)
       ? (storyLogicDraftRaw.classification as Record<string, unknown>)
       : {};
+  const storyLogicConcept =
+    storyLogicDraftRaw.concept &&
+    typeof storyLogicDraftRaw.concept === "object" &&
+    !Array.isArray(storyLogicDraftRaw.concept)
+      ? (storyLogicDraftRaw.concept as Record<string, unknown>)
+      : {};
+  const storyContentLogic =
+    storyLogicDraftRaw.contentStoryLogic &&
+    typeof storyLogicDraftRaw.contentStoryLogic === "object" &&
+    !Array.isArray(storyLogicDraftRaw.contentStoryLogic)
+      ? (storyLogicDraftRaw.contentStoryLogic as Record<string, unknown>)
+      : {};
 
   return {
     ...fallback,
@@ -5332,39 +5372,24 @@ function normalizeBootstrapPayload(
     merchSuppliers: fallback.merchSuppliers,
     retrievalMeta: fallback.retrievalMeta,
     companyProfile: {
-      companyName: hasText(companyProfile.companyName)
-        ? normalizeWhitespace(companyProfile.companyName)
-        : fallback.companyProfile.companyName,
-      websiteUrl: hasText(companyProfile.websiteUrl)
-        ? normalizeWebsiteUrl(companyProfile.websiteUrl)
-        : fallback.companyProfile.websiteUrl,
-      organizationNumber: hasText(companyProfile.organizationNumber)
-        ? normalizeWhitespace(companyProfile.organizationNumber)
-        : fallback.companyProfile.organizationNumber,
+      companyName: fallback.companyProfile.companyName,
+      websiteUrl: fallback.companyProfile.websiteUrl,
+      organizationNumber: fallback.companyProfile.organizationNumber,
       summary: hasText(companyProfile.summary)
         ? toSentenceCase(companyProfile.summary)
         : fallback.companyProfile.summary,
       offerings: normalizeStringArray(companyProfile.offerings, fallback.companyProfile.offerings),
-      targetAudience: normalizeStringArray(companyProfile.targetAudience, fallback.companyProfile.targetAudience),
+      targetAudience: fallback.companyProfile.targetAudience,
       toneAndBrandSignals: normalizeStringArray(companyProfile.toneAndBrandSignals, fallback.companyProfile.toneAndBrandSignals),
-      industry: hasText(companyProfile.industry)
-        ? normalizeWhitespace(companyProfile.industry)
-        : fallback.companyProfile.industry,
-      subIndustry: hasText(companyProfile.subIndustry)
-        ? normalizeWhitespace(companyProfile.subIndustry)
-        : fallback.companyProfile.subIndustry,
-      businessModel: hasText(companyProfile.businessModel)
-        ? normalizeWhitespace(companyProfile.businessModel)
-        : fallback.companyProfile.businessModel,
-      contentCategory: hasText(companyProfile.contentCategory)
-        ? normalizeWhitespace(companyProfile.contentCategory)
-        : fallback.companyProfile.contentCategory,
-      productionApproach: hasText(companyProfile.productionApproach)
-        ? normalizeWhitespace(companyProfile.productionApproach)
-        : fallback.companyProfile.productionApproach,
-      probableLocationAddress: hasText(companyProfile.probableLocationAddress)
-        ? normalizeWhitespace(companyProfile.probableLocationAddress)
-        : (businessSignals?.formattedAddress || null),
+      // Identity, audience, classification and location are operational facts.
+      // They come from the deterministic website/Brreg/Places pass and may
+      // never be overwritten by synthesis prose.
+      industry: fallback.companyProfile.industry,
+      subIndustry: fallback.companyProfile.subIndustry,
+      businessModel: fallback.companyProfile.businessModel,
+      contentCategory: fallback.companyProfile.contentCategory,
+      productionApproach: fallback.companyProfile.productionApproach,
+      probableLocationAddress: fallback.companyProfile.probableLocationAddress,
       logoUrl: hasText(companyProfile.logoUrl)
         ? resolveUrl(websiteInsights.finalUrl || normalizeWebsiteUrl(input.websiteUrl) || "", companyProfile.logoUrl)
         : fallback.companyProfile.logoUrl,
@@ -5372,7 +5397,7 @@ function normalizeBootstrapPayload(
     intakeDraft: {
       projectGoal: hasText(intakeDraft.projectGoal) ? normalizeWhitespace(intakeDraft.projectGoal) : fallback.intakeDraft.projectGoal,
       deliverables: hasText(intakeDraft.deliverables) ? normalizeWhitespace(intakeDraft.deliverables) : fallback.intakeDraft.deliverables,
-      targetAudience: hasText(intakeDraft.targetAudience) ? normalizeWhitespace(intakeDraft.targetAudience) : fallback.intakeDraft.targetAudience,
+      targetAudience: fallback.intakeDraft.targetAudience,
       keyMessage: hasText(intakeDraft.keyMessage) ? normalizeWhitespace(intakeDraft.keyMessage) : fallback.intakeDraft.keyMessage,
       timingConstraints: hasText(intakeDraft.timingConstraints) ? normalizeWhitespace(intakeDraft.timingConstraints) : fallback.intakeDraft.timingConstraints,
       brandNotes: hasText(intakeDraft.brandNotes) ? normalizeWhitespace(intakeDraft.brandNotes) : fallback.intakeDraft.brandNotes,
@@ -5388,31 +5413,21 @@ function normalizeBootstrapPayload(
         direction: hasText(activationPlan.direction) ? normalizeWhitespace(activationPlan.direction) : fallback.planningDraft.activationPlan.direction,
         idea: hasText(activationPlan.idea) ? normalizeWhitespace(activationPlan.idea) : fallback.planningDraft.activationPlan.idea,
         activation: hasText(activationPlan.activation) ? normalizeWhitespace(activationPlan.activation) : fallback.planningDraft.activationPlan.activation,
-        targetAudience: hasText(activationPlan.targetAudience) ? normalizeWhitespace(activationPlan.targetAudience) : fallback.planningDraft.activationPlan.targetAudience,
+        targetAudience: fallback.planningDraft.activationPlan.targetAudience,
         businessGoal: hasText(activationPlan.businessGoal) ? normalizeWhitespace(activationPlan.businessGoal) : fallback.planningDraft.activationPlan.businessGoal,
         coreMessage: hasText(activationPlan.coreMessage) ? normalizeWhitespace(activationPlan.coreMessage) : fallback.planningDraft.activationPlan.coreMessage,
         successSignals: normalizeStringArray(activationPlan.successSignals, fallback.planningDraft.activationPlan.successSignals as string[]),
       },
       contentLogic: {
         objective: hasText(contentLogic.objective) ? normalizeWhitespace(contentLogic.objective) : fallback.planningDraft.contentLogic.objective,
-        audience: hasText(contentLogic.audience) ? normalizeWhitespace(contentLogic.audience) : fallback.planningDraft.contentLogic.audience,
+        audience: fallback.planningDraft.contentLogic.audience,
         hook: hasText(contentLogic.hook) ? normalizeWhitespace(contentLogic.hook) : fallback.planningDraft.contentLogic.hook,
         coreMessage: hasText(contentLogic.coreMessage) ? normalizeWhitespace(contentLogic.coreMessage) : fallback.planningDraft.contentLogic.coreMessage,
-        industry: hasText(contentLogic.industry)
-          ? normalizeWhitespace(contentLogic.industry)
-          : fallback.planningDraft.contentLogic.industry,
-        subIndustry: hasText(contentLogic.subIndustry)
-          ? normalizeWhitespace(contentLogic.subIndustry)
-          : fallback.planningDraft.contentLogic.subIndustry,
-        businessModel: hasText(contentLogic.businessModel)
-          ? normalizeWhitespace(contentLogic.businessModel)
-          : fallback.planningDraft.contentLogic.businessModel,
-        contentCategory: hasText(contentLogic.contentCategory)
-          ? normalizeWhitespace(contentLogic.contentCategory)
-          : fallback.planningDraft.contentLogic.contentCategory,
-        productionApproach: hasText(contentLogic.productionApproach)
-          ? normalizeWhitespace(contentLogic.productionApproach)
-          : fallback.planningDraft.contentLogic.productionApproach,
+        industry: fallback.planningDraft.contentLogic.industry,
+        subIndustry: fallback.planningDraft.contentLogic.subIndustry,
+        businessModel: fallback.planningDraft.contentLogic.businessModel,
+        contentCategory: fallback.planningDraft.contentLogic.contentCategory,
+        productionApproach: fallback.planningDraft.contentLogic.productionApproach,
         proofPoints: normalizeStringArray(contentLogic.proofPoints, fallback.planningDraft.contentLogic.proofPoints as string[]),
         callToAction: hasText(contentLogic.callToAction) ? normalizeWhitespace(contentLogic.callToAction) : fallback.planningDraft.contentLogic.callToAction,
         distributionPlan: hasText(contentLogic.distributionPlan) ? normalizeWhitespace(contentLogic.distributionPlan) : fallback.planningDraft.contentLogic.distributionPlan,
@@ -5437,24 +5452,23 @@ function normalizeBootstrapPayload(
         ? {
             ...fallback.storyLogicDraft,
             ...storyLogicDraftRaw,
+            concept: {
+              ...(fallback.storyLogicDraft.concept as Record<string, unknown>),
+              ...storyLogicConcept,
+              subGenre: (fallback.storyLogicDraft.concept as Record<string, unknown>).subGenre,
+              targetAudience: (fallback.storyLogicDraft.concept as Record<string, unknown>).targetAudience,
+            },
+            contentStoryLogic: {
+              ...(fallback.storyLogicDraft.contentStoryLogic as Record<string, unknown>),
+              ...storyContentLogic,
+              industry: (fallback.storyLogicDraft.contentStoryLogic as Record<string, unknown>).industry,
+              subIndustry: (fallback.storyLogicDraft.contentStoryLogic as Record<string, unknown>).subIndustry,
+              businessModel: (fallback.storyLogicDraft.contentStoryLogic as Record<string, unknown>).businessModel,
+              contentCategory: (fallback.storyLogicDraft.contentStoryLogic as Record<string, unknown>).contentCategory,
+              productionApproach: (fallback.storyLogicDraft.contentStoryLogic as Record<string, unknown>).productionApproach,
+            },
             classification: {
               ...(fallback.storyLogicDraft.classification as Record<string, unknown>),
-              ...storyLogicClassification,
-              industry: hasText(storyLogicClassification.industry)
-                ? normalizeWhitespace(storyLogicClassification.industry)
-                : (fallback.storyLogicDraft.classification as Record<string, unknown>).industry,
-              subIndustry: hasText(storyLogicClassification.subIndustry)
-                ? normalizeWhitespace(storyLogicClassification.subIndustry)
-                : (fallback.storyLogicDraft.classification as Record<string, unknown>).subIndustry,
-              businessModel: hasText(storyLogicClassification.businessModel)
-                ? normalizeWhitespace(storyLogicClassification.businessModel)
-                : (fallback.storyLogicDraft.classification as Record<string, unknown>).businessModel,
-              contentCategory: hasText(storyLogicClassification.contentCategory)
-                ? normalizeWhitespace(storyLogicClassification.contentCategory)
-                : (fallback.storyLogicDraft.classification as Record<string, unknown>).contentCategory,
-              productionApproach: hasText(storyLogicClassification.productionApproach)
-                ? normalizeWhitespace(storyLogicClassification.productionApproach)
-                : (fallback.storyLogicDraft.classification as Record<string, unknown>).productionApproach,
               customerJourneyFocus: hasText(storyLogicClassification.customerJourneyFocus)
                 ? normalizeWhitespace(storyLogicClassification.customerJourneyFocus)
                 : (fallback.storyLogicDraft.classification as Record<string, unknown>).customerJourneyFocus,
@@ -5654,7 +5668,10 @@ export async function generateRoleRoomAgentProducerBootstrap(
   // the tool loop, and returns a synthesized payload. If anything fails
   // (no synthesis, SDK unavailable, timeout), fall through to the
   // deterministic pipeline below so the user always gets a result.
-  if (orchestratorEnabled()) {
+  // Website-based research always uses the deterministic identity-first path:
+  // allowing an LLM tool loop before website -> Brreg can both misidentify a
+  // brand and consume the frontend proxy's entire request budget.
+  if (orchestratorEnabled() && !normalizeWebsiteUrl(input.websiteUrl)) {
     const orch = await time("claudeSynthesis", () => runOrchestratedBootstrap(input), { emptyFallbackLabel: "orchestrator_returned_no_synthesis", isEmpty: (v) => !v?.synthesis });
     if (orch?.synthesis) {
       const orchWebsiteInsights: RoleRoomAgentWebsiteInsights =

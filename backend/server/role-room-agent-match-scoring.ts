@@ -47,6 +47,39 @@ function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+type GeoPoint = { latitude: number; longitude: number };
+
+function readGeoPoint(value: unknown): GeoPoint | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const latitude = asNumber(record.latitude);
+  const longitude = asNumber(record.longitude);
+  return latitude !== null && longitude !== null ? { latitude, longitude } : null;
+}
+
+function distanceKm(left: GeoPoint, right: GeoPoint): number {
+  const radians = (degrees: number) => degrees * Math.PI / 180;
+  const earthRadiusKm = 6371;
+  const latitudeDelta = radians(right.latitude - left.latitude);
+  const longitudeDelta = radians(right.longitude - left.longitude);
+  const a = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(radians(left.latitude))
+      * Math.cos(radians(right.latitude))
+      * Math.sin(longitudeDelta / 2) ** 2;
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function matchesAddressLocality(address: string, locality: string): boolean {
+  const escapedLocality = locality.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Require a city/address segment, optionally introduced by a postal code.
+  // A bare substring would accept e.g. "Oslo Drive, Atlanta" for Oslo.
+  const localitySegment = new RegExp(
+    `(?:^|,\\s*|\\b\\d{4,6}\\s+)${escapedLocality}(?=\\s*(?:,|$))`,
+    "i",
+  );
+  return localitySegment.test(address);
+}
+
 interface SearchQueryInput {
   companyName?: string | null;
   websiteUrl?: string | null;
@@ -220,4 +253,33 @@ export function isGooglePlaceBusinessIdentityMatch(
     return Boolean(address && address.includes(normalizeWhitespace(localityHint).toLowerCase()));
   }
   return true;
+}
+
+/**
+ * Fail-closed geographic gate for local opportunities. Google regionCode and
+ * locationBias are ranking hints, not filters, so an unrelated result from
+ * another country can still be returned. A candidate must therefore either
+ * be inside the requested radius of a verified customer coordinate, or carry
+ * one of the verified Brreg locality tokens in its formatted address.
+ */
+export function isGooglePlaceLocalOpportunityInMarket(
+  candidate: Record<string, unknown>,
+  localityHints: readonly string[],
+  customerLocation: GeoPoint | null,
+  radiusKm: number,
+): boolean {
+  const candidateLocation = readGeoPoint(candidate.location);
+  if (customerLocation && candidateLocation) {
+    return distanceKm(customerLocation, candidateLocation) <= Math.max(1, radiusKm);
+  }
+
+  const address = hasText(candidate.formattedAddress)
+    ? normalizeWhitespace(candidate.formattedAddress).toLowerCase()
+    : "";
+  if (!address) return false;
+  return localityHints.some((hint) => {
+    const normalizedHint = normalizeWhitespace(hint).toLowerCase();
+    return normalizedHint.length >= 2
+      && matchesAddressLocality(address, normalizedHint);
+  });
 }

@@ -18,12 +18,42 @@
 export const BOOTSTRAP_SYSTEM_PROMPT =
   'Du er The Role Room Agent for The Role Room. Lag norske JSON-utkast for innholdsproduksjon. Returner kun gyldig JSON med feltene companyProfile, intakeDraft, planningDraft, storyLogicDraft og nextRecommendedSteps. Svar kun med JSON. Vær konkret, kommersiell og nyttig for en innholdsprodusent som bygger brief, story logikk og produksjonsgrunnlag for en kunde. Bruk Brreg-data som juridisk kilde når den finnes, og ikke finn på organisasjonsnummer eller selskapsstatus.';
 
+/** Explicit research skills shared by every Role Room bootstrap model. */
+export const ROLE_ROOM_AGENT_RESEARCH_SKILLS = [
+  {
+    id: 'resolve_legal_identity',
+    instruction:
+      'Juridisk identitet: les kundens eget nettsted først når URL finnes. Bruk organisasjonsnummer eller legalName fra nettstedet til nøyaktig Brreg-oppslag. Merkenavn alene er ikke juridisk fasit.',
+  },
+  {
+    id: 'enforce_source_precedence',
+    instruction:
+      'Kildeprioritet: bruk kundens førstegangskilde for tilbud/målgruppe og Brreg for juridisk navn/org.nr/adresse/NACE. Google Places kan berike kundeprofil og anmeldelser bare ved navn- eller domenematch; lokale kandidater krever separat geografisk bevis.',
+  },
+  {
+    id: 'verify_geographic_relevance',
+    instruction:
+      'Geografisk relevans: anmeldelser, konkurrenter, lokale muligheter, merch og eventpartnere skal forkastes hvis adresse eller koordinater ikke matcher kundens verifiserte kommune/radius. Region-bias og popularitet er aldri bevis.',
+  },
+  {
+    id: 'propagate_verified_profile',
+    instruction:
+      'Dataflyt: juridisk identitet, bransje, underbransje, forretningsmodell, målgruppe og adresse fra den deterministiske analysen skal gjenbrukes uendret i brief, markedsplan, lokale forslag og story-logikk.',
+  },
+  {
+    id: 'fail_closed_without_evidence',
+    instruction:
+      'Manglende bevis: når en ekstern kilde ikke gir et sikkert treff, returner tomme kandidatlister og forklar begrensningen. Ikke lag eventkonsepter, outreach, anmeldelser eller lokale planer fra antakelser.',
+  },
+] as const;
+
 /** Delt constraint-liste — unionen av det de to banene tidligere hadde hver
  *  for seg, så begge modeller får samme region-regler OG samme
  *  provenance-krav. */
 export const BOOTSTRAP_CONSTRAINTS: readonly string[] = [
   'Vær konkret og bruk forretningsspråk som passer norsk produksjonsarbeid.',
   'Ikke finn på kontaktinfo som ikke finnes.',
+  ...ROLE_ROOM_AGENT_RESEARCH_SKILLS.map((skill) => skill.instruction),
   'Hvis informasjon mangler, marker det forsiktig i forslagene uten å være vag.',
   'Story logic skal passe innholdsproduksjon og kunde-brief, ikke filmmanus for kinofilm.',
   'Klassifiser alltid hvilken bransje innholdet lages for, underbransje, om kunden er B2B eller B2C, hvilken innholdskategori som passer, og hvilket produksjonsgrep som anbefales.',
@@ -31,7 +61,7 @@ export const BOOTSTRAP_CONSTRAINTS: readonly string[] = [
   'For restaurant og matkonsepter skal story logic handle om meny, fristelse, bestilling, lokasjon og konvertering, ikke generell bedriftsprofil.',
   'Legg inn en contentStoryLogic-del som er lett for klienten å fylle ut og godkjenne i et innholdsproduksjonsprosjekt.',
   'Hvis businessSignals finnes, bruk reviews, rating, lokasjon og tjenestesignalene aktivt i brief, bevispunkter, CTA og story logic.',
-  'Hvis brregCompany.lookupStatus er verified, bruk juridisk navn, organisasjonsnummer, bransjekode, adresse, MVA-status og alder i kundeprofilen. Bruk det juridiske navnet fra Brreg som selskapsnavn KUN når brregCompany.matchedBy er "organization_number"; ved navnesøk-treff (matchedBy "company_name") kan det være feil enhet, så behold da navnet brukeren oppga og marker at det bør bekreftes.',
+  'Hvis brregCompany.lookupStatus er verified, bruk juridisk navn, organisasjonsnummer, bransjekode, adresse, MVA-status og alder i kundeprofilen. Bruk det juridiske navnet fra Brreg når brregCompany.matchedBy er "organization_number", eller når et legalName fra kundens eget nettsted ga et eksakt Brreg-navnetreff. Andre treff med matchedBy "company_name" må markeres for bekreftelse.',
   'Hvis agreementSuggestions finnes, bruk dem som avtalerisiko og praktiske anbefalinger, men formuler det som produksjonsråd, ikke juridisk rådgivning.',
   'Hvis socialProfileCandidates finnes, bruk kun kontoer med verified eller likely som kanalinnsikt, og marker kontoer som må bekreftes av produsent eller kunde før publisering.',
   'Hvis competitorAnalysis finnes, bruk kun konkurrenter med verified eller likely som markedsføringsinnsikt. Ikke påstå at en kandidat er konkurrent uten manuell bekreftelse fra kunden.',
