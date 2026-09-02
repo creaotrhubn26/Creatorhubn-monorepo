@@ -97,4 +97,6 @@ struct LeadModel: Identifiable, Codable, Hashable {
     /// «Bare mine bransjer»-filter på kartet. Backwards-compat: optional
     /// så eldre cached payloads fortsatt decodes.
     let industryId: String?
+    /// Personlig favoritt, persistert per bruker og workspace.
+    var isFavorite: Bool? = nil
 }

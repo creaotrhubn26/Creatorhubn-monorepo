@@ -16,6 +16,9 @@ actor APIClient {
     private let token: String
     private let baseURL: URL
     private let session: URLSession
+    /// Request-local tenant context. Sent on every authenticated Leadgrid call
+    /// so legacy endpoint families resolve the same workspace as the UI.
+    private var activeOrganizationId: String?
 
     init(token: String, baseURL: URL = URL(string: "https://creatorhub-backend-rtbl.onrender.com")!) {
         self.token = token
@@ -26,40 +29,53 @@ actor APIClient {
         self.session = URLSession(configuration: config)
     }
 
-    // MARK: - GET-endepunkter
-
-    /// Bygg ?projectId=… query-string når aktivt prosjekt er satt.
-    private func projectQuery(_ projectId: String?, sep: String = "?") -> String {
-        guard let p = projectId, !p.isEmpty else { return "" }
-        let encoded = p.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? p
-        return "\(sep)projectId=\(encoded)"
+    func setActiveOrganizationId(_ organizationId: String?) {
+        let value = organizationId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        activeOrganizationId = value?.isEmpty == false ? value : nil
     }
 
-    func fetchLeads(projectId: String? = nil) async throws -> [LeadModel] {
-        let resp: LeadsResponse = try await get("/api/admin-room/lead-map/leads\(projectQuery(projectId))")
+    // MARK: - GET-endepunkter
+
+    /// Felles workspace-/prosjektscope for alle Leadgrid-leseflyter.
+    private func scopeQuery(projectId: String?, organizationId: String?) -> String {
+        var components = URLComponents()
+        var items: [URLQueryItem] = []
+        if let projectId, !projectId.isEmpty {
+            items.append(URLQueryItem(name: "projectId", value: projectId))
+        }
+        if let organizationId, !organizationId.isEmpty {
+            items.append(URLQueryItem(name: "organization_id", value: organizationId))
+        }
+        components.queryItems = items.isEmpty ? nil : items
+        guard let query = components.percentEncodedQuery, !query.isEmpty else { return "" }
+        return "?\(query)"
+    }
+
+    func fetchLeads(projectId: String? = nil, organizationId: String? = nil) async throws -> [LeadModel] {
+        let resp: LeadsResponse = try await get("/api/admin-room/lead-map/leads\(scopeQuery(projectId: projectId, organizationId: organizationId))")
         return resp.leads
     }
 
-    func fetchLead(id: String) async throws -> LeadModel {
-        try await get("/api/admin-room/lead-map/leads/\(id)")
+    func fetchLead(id: String, organizationId: String? = nil) async throws -> LeadModel {
+        try await get("/api/admin-room/lead-map/leads/\(id)\(scopeQuery(projectId: nil, organizationId: organizationId))")
     }
 
-    func fetchCompetitors(projectId: String? = nil) async throws -> [CompetitorModel] {
-        let resp: CompetitorsResponse = try await get("/api/admin-room/lead-map/competitors\(projectQuery(projectId))")
+    func fetchCompetitors(projectId: String? = nil, organizationId: String? = nil) async throws -> [CompetitorModel] {
+        let resp: CompetitorsResponse = try await get("/api/admin-room/lead-map/competitors\(scopeQuery(projectId: projectId, organizationId: organizationId))")
         return resp.competitors
     }
 
-    func fetchMetrics(projectId: String? = nil) async throws -> MetricsModel {
-        try await get("/api/admin-room/lead-map/metrics\(projectQuery(projectId))")
+    func fetchMetrics(projectId: String? = nil, organizationId: String? = nil) async throws -> MetricsModel {
+        try await get("/api/admin-room/lead-map/metrics\(scopeQuery(projectId: projectId, organizationId: organizationId))")
     }
 
-    func fetchCalendar(projectId: String? = nil) async throws -> [CalendarEvent] {
-        let resp: CalendarResponse = try await get("/api/admin-room/lead-map/calendar\(projectQuery(projectId))")
+    func fetchCalendar(projectId: String? = nil, organizationId: String? = nil) async throws -> [CalendarEvent] {
+        let resp: CalendarResponse = try await get("/api/admin-room/lead-map/calendar\(scopeQuery(projectId: projectId, organizationId: organizationId))")
         return resp.events
     }
 
-    func fetchReminders(projectId: String? = nil) async throws -> RemindersResponse {
-        try await get("/api/admin-room/lead-map/reminders\(projectQuery(projectId))")
+    func fetchReminders(projectId: String? = nil, organizationId: String? = nil) async throws -> RemindersResponse {
+        try await get("/api/admin-room/lead-map/reminders\(scopeQuery(projectId: projectId, organizationId: organizationId))")
     }
 
     /// Leadgrid-uavhengighet: opprett prosjekt UTEN Role Room.
@@ -93,42 +109,80 @@ actor APIClient {
         try await get("/api/admin-room/lead-map/projects/\(id)/summary")
     }
 
-    func fetchEnrichment(leadId: String) async throws -> EnrichmentModel? {
+    func fetchEnrichment(leadId: String, organizationId: String?) async throws -> EnrichmentModel? {
         let resp: EnrichmentEnvelope = try await get(
-            "/api/admin-room/lead-map/leads/\(leadId)/enrichment"
+            "/api/admin-room/lead-map/leads/\(leadId)/enrichment\(scopeQuery(projectId: nil, organizationId: organizationId))"
         )
         return resp.enrichment
     }
 
-    func fetchDemographics(leadId: String) async throws -> DemographicsModel? {
+    func fetchDemographics(leadId: String, organizationId: String?) async throws -> DemographicsModel? {
         let resp: DemographicsEnvelope = try await get(
-            "/api/admin-room/lead-map/leads/\(leadId)/demographics"
+            "/api/admin-room/lead-map/leads/\(leadId)/demographics\(scopeQuery(projectId: nil, organizationId: organizationId))"
         )
         return resp.demographics
     }
 
+    func fetchLeadNotes(leadId: String, organizationId: String?) async throws -> [LeadNoteModel] {
+        let response: LeadNotesResponse = try await get(
+            "/api/admin-room/lead-map/leads/\(leadId)/notes\(scopeQuery(projectId: nil, organizationId: organizationId))"
+        )
+        return response.notes
+    }
+
+    func fetchLeadFiles(leadId: String, organizationId: String?) async throws -> [LeadStoredFileModel] {
+        let response: LeadFilesResponse = try await get(
+            "/api/admin-room/lead-map/leads/\(leadId)/files\(scopeQuery(projectId: nil, organizationId: organizationId))"
+        )
+        return response.files
+    }
+
+    func createLeadNote(leadId: String, body: String, pinned: Bool, organizationId: String?) async throws -> LeadNoteModel {
+        var payload: [String: Any] = ["body": body, "pinned": pinned]
+        if let organizationId, !organizationId.isEmpty { payload["organization_id"] = organizationId }
+        let response: LeadNoteResponse = try await post(
+            "/api/admin-room/lead-map/leads/\(leadId)/notes", body: payload
+        )
+        return response.note
+    }
+
+    func setLeadFavorite(leadId: String, favorite: Bool, organizationId: String?) async throws -> Bool {
+        var payload: [String: Any] = ["favorite": favorite]
+        if let organizationId, !organizationId.isEmpty { payload["organization_id"] = organizationId }
+        let response: LeadFavoriteResponse = try await put(
+            "/api/admin-room/lead-map/leads/\(leadId)/favorite", body: payload
+        )
+        return response.favorite
+    }
+
     // MARK: - PATCH/POST
 
-    func updateStatus(leadId: String, status: String) async throws {
+    func updateStatus(leadId: String, status: String, organizationId: String? = nil) async throws {
+        var body: [String: Any] = ["status": status]
+        if let organizationId, !organizationId.isEmpty { body["organization_id"] = organizationId }
         try await patch(
             "/api/admin-room/lead-map/leads/\(leadId)/status",
-            body: ["status": status]
+            body: body
         )
     }
 
     /// Workflow-QA 2026-07-05: temperatur var kun settbar ved opprettelse
     /// — nå PATCH-bar, og backend fyrer lead.temperature_changed-workflows.
-    func updateTemperature(leadId: String, temperature: String) async throws {
+    func updateTemperature(leadId: String, temperature: String, organizationId: String? = nil) async throws {
+        var body: [String: Any] = ["temperature": temperature]
+        if let organizationId, !organizationId.isEmpty { body["organization_id"] = organizationId }
         try await patch(
             "/api/admin-room/lead-map/leads/\(leadId)/temperature",
-            body: ["temperature": temperature]
+            body: body
         )
     }
 
-    func logVisit(leadId: String, body: [String: Any]) async throws {
+    func logVisit(leadId: String, body: [String: Any], organizationId: String? = nil) async throws {
+        var scopedBody = body
+        if let organizationId, !organizationId.isEmpty { scopedBody["organization_id"] = organizationId }
         try await post(
             "/api/admin-room/lead-map/leads/\(leadId)/visits",
-            body: body
+            body: scopedBody
         )
     }
 
@@ -140,16 +194,20 @@ actor APIClient {
         try Self.validate(response)
     }
 
-    func generateStrategy(leadId: String) async throws -> StrategyModel {
+    func generateStrategy(leadId: String, organizationId: String?) async throws -> StrategyModel {
+        var body: [String: Any] = [:]
+        if let organizationId, !organizationId.isEmpty { body["organization_id"] = organizationId }
         let resp: StrategyEnvelope = try await post(
-            "/api/admin-room/lead-map/leads/\(leadId)/strategy"
+            "/api/admin-room/lead-map/leads/\(leadId)/strategy", body: body
         )
         return resp.strategy
     }
 
-    func triggerEnrichment(leadId: String) async throws -> EnrichmentModel? {
+    func triggerEnrichment(leadId: String, organizationId: String?) async throws -> EnrichmentModel? {
+        var body: [String: Any] = [:]
+        if let organizationId, !organizationId.isEmpty { body["organization_id"] = organizationId }
         let resp: EnrichmentEnvelope = try await post(
-            "/api/admin-room/lead-map/leads/\(leadId)/enrich"
+            "/api/admin-room/lead-map/leads/\(leadId)/enrich", body: body
         )
         return resp.enrichment
     }
@@ -1091,9 +1149,10 @@ actor APIClient {
     /// Oppdater status på et rute-stopp (innsjekk i felt).
     func updateRouteStop(
         routeId: String, stopId: String, status: String,
+        organizationId: String,
         outcome: String? = nil, notes: String? = nil
     ) async throws {
-        var body: [String: Any] = ["status": status]
+        var body: [String: Any] = ["status": status, "organization_id": organizationId]
         if let o = outcome { body["outcome"] = o }
         if let n = notes { body["notes"] = n }
         try await patch("/api/leadgrid/routes/\(routeId)/stops/\(stopId)", body: body)
@@ -1133,18 +1192,28 @@ actor APIClient {
         let ok: Bool
         let id: String
         let brreg: FromCardBrregLink?
+        let replayed: Bool?
     }
 
     @discardableResult
-    func createLeadFromCard(extracted: ExtractedBusinessCard) async throws -> FromCardResponse {
+    func createLeadFromCard(
+        extracted: ExtractedBusinessCard,
+        organizationId: String?,
+        idempotencyKey: UUID
+    ) async throws -> FromCardResponse {
         var body: [String: Any] = ["name": extracted.name]
+        if let organizationId, !organizationId.isEmpty { body["organization_id"] = organizationId }
         if !extracted.company.isEmpty { body["company"] = extracted.company }
         if !extracted.title.isEmpty { body["title"] = extracted.title }
         if !extracted.email.isEmpty { body["email"] = extracted.email }
         if !extracted.phone.isEmpty { body["phone"] = extracted.phone }
         if !extracted.website.isEmpty { body["website"] = extracted.website }
         if !extracted.raw.isEmpty { body["raw_text"] = extracted.raw }
-        return try await post("/api/admin-room/lead-map/leads/from-card", body: body)
+        return try await post(
+            "/api/admin-room/lead-map/leads/from-card",
+            body: body,
+            headers: ["Idempotency-Key": idempotencyKey.uuidString.lowercased()]
+        )
     }
 
     // MARK: - Company lookup for «Legg til lead» (2026-08-16)
@@ -1307,14 +1376,16 @@ actor APIClient {
     }
 
     /// Fullfelt-kontrakt for manuell, BRREG-beriket og kartbasert lead.
-    func createLeadAtPin(_ request: CreateLeadAtPinRequest) async throws -> String {
+    func createLeadAtPin(_ request: CreateLeadAtPinRequest, organizationId: String? = nil) async throws -> String {
         struct CreateResponse: Decodable, Sendable {
             let ok: Bool
             let id: String
         }
+        var body = request.makeBody()
+        if let organizationId, !organizationId.isEmpty { body["organization_id"] = organizationId }
         let response: CreateResponse = try await post(
             "/api/admin-room/lead-map/leads/from-pin",
-            body: request.makeBody(),
+            body: body,
             headers: ["Idempotency-Key": request.idempotencyKey.uuidString.lowercased()]
         )
         return response.id
@@ -2094,6 +2165,44 @@ actor APIClient {
         return resp.forecast
     }
 
+    func uploadLeadFile(
+        leadId: String,
+        organizationId: String?,
+        data: Data,
+        fileName: String,
+        mimeType: String,
+        displayName: String,
+        description: String,
+        tags: [String]
+    ) async throws -> LeadStoredFileModel {
+        let boundary = "Leadgrid-\(UUID().uuidString)"
+        let path = "/api/admin-room/lead-map/leads/\(leadId)/files\(scopeQuery(projectId: nil, organizationId: organizationId))"
+        var request = makeRequest(path, method: "POST")
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var body = Data()
+        let newline = "\r\n"
+        func appendField(_ name: String, _ value: String) {
+            body.append("--\(boundary)\(newline)".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\(newline)\(newline)".data(using: .utf8)!)
+            body.append(value.data(using: .utf8)!)
+            body.append(newline.data(using: .utf8)!)
+        }
+        appendField("displayName", displayName)
+        appendField("description", description)
+        appendField("tags", tags.joined(separator: ","))
+        let safeName = fileName.replacingOccurrences(of: "\"", with: "")
+            .replacingOccurrences(of: "\r", with: "")
+            .replacingOccurrences(of: "\n", with: "")
+        body.append("--\(boundary)\(newline)".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(safeName)\"\(newline)".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\(newline)\(newline)".data(using: .utf8)!)
+        body.append(data)
+        body.append("\(newline)--\(boundary)--\(newline)".data(using: .utf8)!)
+        let (responseData, response) = try await session.upload(for: request, from: body)
+        try Self.validate(response, data: responseData)
+        return try Self.decoder.decode(LeadFileUploadResponse.self, from: responseData).file
+    }
+
     // MARK: - Leadgrid Import (CSV/Excel + URL) — mig 328
 
     /// Last opp en CSV- eller XLSX-fil og få tilbake preview-data
@@ -2107,6 +2216,9 @@ actor APIClient {
         var req = URLRequest(url: baseURL.appendingPathComponent("/api/leadgrid/import/csv/preview"))
         req.httpMethod = "POST"
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let activeOrganizationId {
+            req.setValue(activeOrganizationId, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
+        }
         req.setValue(
             "multipart/form-data; boundary=\(boundary)",
             forHTTPHeaderField: "Content-Type"
@@ -2399,6 +2511,9 @@ actor APIClient {
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let activeOrganizationId {
+            req.setValue(activeOrganizationId, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
+        }
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         return req
     }
@@ -2586,6 +2701,9 @@ actor APIClient {
             req.httpMethod = method
             req.timeoutInterval = 30
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let activeOrganizationId {
+            req.setValue(activeOrganizationId, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
+        }
             for (name, value) in headers {
                 req.setValue(value, forHTTPHeaderField: name)
             }
@@ -3133,6 +3251,9 @@ extension APIClient {
     func fetchMyDataExport() async throws -> String {
         var req = URLRequest(url: baseURL.appendingPathComponent("/api/leadgrid/me/export"))
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let activeOrganizationId {
+            req.setValue(activeOrganizationId, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
+        }
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse else { throw APIError.invalidResponse }
         guard http.statusCode == 200 else { throw APIError.statusCode(http.statusCode) }
@@ -3878,6 +3999,11 @@ enum APIError: Error, LocalizedError {
 // MARK: - Response envelopes
 
 private struct LeadsResponse: Decodable { let leads: [LeadModel] }
+private struct LeadNotesResponse: Decodable { let notes: [LeadNoteModel] }
+private struct LeadFilesResponse: Decodable { let files: [LeadStoredFileModel] }
+private struct LeadFileUploadResponse: Decodable { let file: LeadStoredFileModel }
+private struct LeadNoteResponse: Decodable { let note: LeadNoteModel }
+private struct LeadFavoriteResponse: Decodable { let favorite: Bool }
 private struct ProjectsResponse: Decodable { let projects: [ProjectListItem] }
 private struct CompetitorsResponse: Decodable { let competitors: [CompetitorModel] }
 private struct CalendarResponse: Decodable { let events: [CalendarEvent] }
@@ -3993,12 +4119,14 @@ extension APIClient {
     /// Planlegg dagsrute uten å trenge organizationId — backend velger basert
     /// på selgerens in-grid leads. Returnerer nil hvis ingen aktuelle leads.
     func planRoute(
+        organizationId: String,
         startLat: Double,
         startLng: Double,
         limit: Int = 12,
         plannedDate: String? = nil
     ) async throws -> LeadgridRouteDetail? {
         var body: [String: Any] = [
+            "organization_id": organizationId,
             "start_lat": startLat,
             "start_lng": startLng,
             "limit": limit,
@@ -4011,8 +4139,9 @@ extension APIClient {
     }
 
     /// Hent en lagret rute med oppdaterte stopp-statuser (for innsjekk-flyt).
-    func fetchRoute(_ id: String) async throws -> LeadgridRouteFullResponse {
-        try await get("/api/leadgrid/routes/\(id)")
+    func fetchRoute(_ id: String, organizationId: String) async throws -> LeadgridRouteFullResponse {
+        let org = organizationId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? organizationId
+        return try await get("/api/leadgrid/routes/\(id)?organization_id=\(org)")
     }
 
     /// 2026-08-19: flerdagers "Dagsrute" — planlegger `days` dager i strekk,
@@ -4020,6 +4149,7 @@ extension APIClient {
     /// in-grid-utvelgelse som planRoute(), bare loopet med ekskludering av
     /// tidligere dagers leads server-side.
     func planRouteTrip(
+        organizationId: String,
         startDate: String,
         days: Int,
         startLat: Double,
@@ -4029,6 +4159,7 @@ extension APIClient {
         try await post(
             "/api/leadgrid/routes/plan-trip",
             body: [
+                "organization_id": organizationId,
                 "start_date": startDate,
                 "days": days,
                 "start_lat": startLat,
@@ -4660,13 +4791,14 @@ extension APIClient {
     /// Stream-events leveres som AgentStreamEvent. Stream avsluttes
     /// rent på `.done` eller `.error` — caller kan også cancel'e via
     /// AsyncThrowingStream.Continuation.onTermination.
-    nonisolated func streamAgentMessage(
+    func streamAgentMessage(
         threadId: String,
         content: String,
         requiredScope: String? = nil,
     ) -> AsyncThrowingStream<AgentStreamEvent, Error> {
         let token = self.token
         let base = self.baseURL
+        let organizationId = self.activeOrganizationId
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -4676,6 +4808,9 @@ extension APIClient {
                     var req = URLRequest(url: url)
                     req.httpMethod = "POST"
                     req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                    if let organizationId {
+                        req.setValue(organizationId, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
+                    }
                     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
                     var body: [String: Any] = ["content": content]
@@ -4833,7 +4968,8 @@ extension APIClient {
         _ path: String,
         method: String = "GET",
         body: Data? = nil,
-        contentType: String = "application/json"
+        contentType: String = "application/json",
+        headers: [String: String] = [:]
     ) async throws -> Data {
         // Fix (2026-07-02): `baseURL.appendingPathComponent(path)` percent-koder
         // `?` og `&` i path (behandler hele strengen som én path-segment) — så
@@ -4851,7 +4987,13 @@ extension APIClient {
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let activeOrganizationId {
+            req.setValue(activeOrganizationId, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
+        }
         req.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        for (name, value) in headers {
+            req.setValue(value, forHTTPHeaderField: name)
+        }
         req.httpBody = body
         let (data, response) = try await session.data(for: req)
         try Self.validate(response, data: data)
@@ -4870,9 +5012,11 @@ extension APIClient {
         return try Self._sharedDecoder.decode(R.self, from: data)
     }
 
-    func _post<B: Encodable, R: Decodable>(_ path: String, body: B) async throws -> R {
+    func _post<B: Encodable, R: Decodable>(
+        _ path: String, body: B, headers: [String: String] = [:]
+    ) async throws -> R {
         let payload = try Self._sharedEncoder.encode(body)
-        let data = try await _request(path, method: "POST", body: payload)
+        let data = try await _request(path, method: "POST", body: payload, headers: headers)
         return try Self._sharedDecoder.decode(R.self, from: data)
     }
 

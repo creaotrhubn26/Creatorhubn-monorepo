@@ -576,6 +576,8 @@ import { setupMarketScansSuperAdminRoutes } from "./market-scans-superadmin-rout
 import { setupControlCenterRoutes } from "./control-center-routes.js";
 import { setupAdminLeadMapPricingRoutes } from "./admin-lead-map-pricing-routes.js";
 import { setupLeadMapRoutes } from "./lead-map-routes.js";
+import { registerLeadMapCollaborationRoutes } from "./lead-map-collaboration-routes.js";
+import { registerLeadMapFileRoutes } from "./lead-map-file-routes.js";
 import { createLeadMapSessionHydrator } from "./lead-map-session-helper.js";
 import { registerLeadMapCompetitorRoutes } from "./lead-map-competitor-routes.js";
 import { registerIpadPairRoutes } from "./ipad-pair-routes.js";
@@ -915,6 +917,7 @@ import { registerLeadgridEnturRoutes } from "./leadgrid-entur-routes";
 import { registerLeadgridNvdbRoutes } from "./leadgrid-nvdb-routes";
 import { registerLeadgridVehicleRoutes } from "./leadgrid-vehicle-routes";
 import { registerLeadgridTripsRoutes } from "./leadgrid-trips-routes";
+import { leadgridOrganizationContextMiddleware } from "./leadgrid-org-resolver";
 import { registerLeadgridQualityRoutes } from "./leadgrid-quality-routes";
 import { registerLeadgridDoffinRoutes } from "./leadgrid-doffin-routes";
 import { registerLeadgridRuteRoutes } from "./leadgrid-rute-routes";
@@ -2124,6 +2127,9 @@ app.use((req, _res, next) => {
 setupWorkspaceParticipantDocumentBodyParserBoundary(app);
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
+// Propagate the selected Leadgrid workspace through legacy module helpers.
+// AsyncLocalStorage keeps concurrent devices/windows isolated.
+app.use(leadgridOrganizationContextMiddleware);
 
 // All /api responses must never be cached — prevents stale sensitive data
 // being served from browser cache or shared proxies.
@@ -25430,6 +25436,8 @@ registerLeadgridTestimonialsRoutes({
 });
 // Lead Map (Phase 1 — Marketing Cockpit-utvidelse)
 setupLeadMapRoutes({ app, pool, activeSessions });
+registerLeadMapCollaborationRoutes({ app, pool, activeSessions });
+registerLeadMapFileRoutes({ app, pool, activeSessions });
 // Lead Map ↔ Konkurrent-management (manuell add, Claude threat-assessment,
 // lead-rangering, kombinert /market-points-endepunkt)
 registerLeadMapCompetitorRoutes({ app, pool, activeSessions });

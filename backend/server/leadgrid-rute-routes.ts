@@ -93,8 +93,9 @@ export function registerLeadgridRuteRoutes(deps: {
         res.status(400).json({ error: "bad_request", message: "Ugyldig stopp-liste (1–20 stopp med koordinater)." });
         return;
       }
-      const assigned = typeof b.assigned_user_id === "string" && b.assigned_user_id
-        ? String(b.assigned_user_id) : null;
+      const assignedRaw = b.assignedUserId ?? b.assigned_user_id;
+      const assigned = typeof assignedRaw === "string" && assignedRaw
+        ? assignedRaw : null;
       // Tildeling kun til medlemmer av samme org.
       if (assigned) {
         const medlem = await pool.query(

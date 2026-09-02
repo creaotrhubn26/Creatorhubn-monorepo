@@ -78,6 +78,7 @@ export async function recommendOutreachStrategy(
   args: {
     leadId: string;
     workspaceOwnerUserId: string;
+    organizationId?: string | null;
     apiKey?: string;
   },
 ): Promise<OutreachStrategy> {
@@ -86,14 +87,16 @@ export async function recommendOutreachStrategy(
     throw new Error("ANTHROPIC_API_KEY mangler — kan ikke generere strategi");
   }
 
+  const scopeColumn = args.organizationId ? "organization_id" : "owner_user_id";
+  const scopeValue = args.organizationId ?? args.workspaceOwnerUserId;
   const lr = await pool.query<LeadRow>(
     `SELECT id::text, name, company, lead_category, lead_status,
             city, country, phone, email, website_url, instagram_url,
             linkedin_url, google_rating, ai_opportunity_score, notes,
             last_visit_at::text, updated_at::text
        FROM crm_customers
-      WHERE id = $1 AND owner_user_id = $2`,
-    [args.leadId, args.workspaceOwnerUserId],
+      WHERE id = $1 AND ${scopeColumn} = $2`,
+    [args.leadId, scopeValue],
   );
   if (lr.rows.length === 0) {
     throw new Error("lead_not_found");

@@ -42,6 +42,7 @@ export async function assessCompetitorThreat(
   args: {
     competitorId: string;
     workspaceOwnerUserId: string;
+    organizationId?: string | null;
     apiKey?: string;
   },
 ): Promise<CompetitorThreatAssessment> {
@@ -50,12 +51,14 @@ export async function assessCompetitorThreat(
     throw new Error("ANTHROPIC_API_KEY mangler — kan ikke kjøre threat-vurdering");
   }
 
+  const scopeColumn = args.organizationId ? "organization_id" : "workspace_owner_user_id";
+  const scopeValue = args.organizationId ?? args.workspaceOwnerUserId;
   // 1. Hent konkurrent + scope-sjekk
   const cr = await pool.query<CompetitorRow>(
     `SELECT id::text, name, domain, category, positioning, primary_offer
        FROM market_scan_competitors
-      WHERE id = $1 AND workspace_owner_user_id = $2`,
-    [args.competitorId, args.workspaceOwnerUserId],
+      WHERE id = $1 AND ${scopeColumn} = $2`,
+    [args.competitorId, scopeValue],
   );
   if (cr.rows.length === 0) {
     throw new Error("competitor_not_found");
@@ -130,10 +133,10 @@ Returner strengt JSON:
             claude_what_to_worry_about = $6,
             claude_what_to_ignore = $7,
             claude_assessed_at = NOW()
-      WHERE id = $1 AND workspace_owner_user_id = $2`,
+      WHERE id = $1 AND ${scopeColumn} = $2`,
     [
       comp.id,
-      args.workspaceOwnerUserId,
+      scopeValue,
       parsed.threat_level,
       parsed.threat_score,
       parsed.threat_summary,

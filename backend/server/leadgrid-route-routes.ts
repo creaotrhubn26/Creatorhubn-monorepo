@@ -87,9 +87,8 @@ async function planSingleDayRoute(
   const territories = await loadUserTerritories(pool, args.orgId, args.userId);
 
   // Kandidater: mine tildelte leads med koordinater som er forfalt/høy-score.
-  // FIX (2026-06-22): crm_customers har ikke organization_id-kolonne —
-  // filtrer org via owner_user_id IN organization_members (PR #837/#848).
-  // Beholder cp.organization_id OR-alternativ for legacy casting-prosjekter.
+  // organization_id er autoritativ workspace-grense. Prosjektkoblingen beholdes
+  // kun som kompatibilitetsfallback for eldre rader som migrasjonen backfiller.
   const cand = await pool.query<CandidateLead & { latitude: any; longitude: any }>(
     `SELECT c.id::text, c.name, c.latitude, c.longitude,
             c.postal_code AS "postalCode", c.municipality_code AS "municipalityCode",
@@ -97,10 +96,8 @@ async function planSingleDayRoute(
        FROM crm_customers c
        LEFT JOIN casting_projects cp ON cp.id = c.project_id
       WHERE c.assigned_user_id = $1
-        AND (c.owner_user_id IN (
-                SELECT user_id::text FROM organization_members WHERE organization_id = $2::uuid
-             )
-             OR cp.organization_id = $2::uuid)
+        AND (c.organization_id = $2::uuid
+             OR (c.organization_id IS NULL AND cp.organization_id = $2::uuid))
         AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL
         AND c.lead_status NOT IN ('won','lost','do_not_contact')
         AND (COALESCE(c.follow_up_priority,0) >= 50
@@ -278,18 +275,26 @@ export function registerLeadgridRouteRoutes(deps: Deps): void {
 
   // ─── GET /api/leadgrid/routes/trip/:tripId ─────────────────────────
   app.get("/api/leadgrid/routes/trip/:tripId", permView, async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "Innlogging kreves" });
+    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
+    if (!orgId) return res.status(400).json({ error: "mangler_organization_id" });
     try {
       const tripR = await pool.query(
         `SELECT id::text, name, start_date, end_date, status, created_at
-           FROM lead_route_trips WHERE id = $1::uuid LIMIT 1`,
-        [req.params.tripId],
+           FROM lead_route_trips
+          WHERE id = $1::uuid AND organization_id = $2::uuid
+          LIMIT 1`,
+        [req.params.tripId, orgId],
       );
       if (!tripR.rows.length) return res.status(404).json({ error: "ikke_funnet" });
       const routesR = await pool.query(
         `SELECT id::text, day_index, planned_date, status, total_distance_meters,
                 total_drive_seconds, expected_route_value
-           FROM lead_routes WHERE trip_id = $1::uuid ORDER BY day_index ASC`,
-        [req.params.tripId],
+           FROM lead_routes
+          WHERE trip_id = $1::uuid AND organization_id = $2::uuid
+          ORDER BY day_index ASC`,
+        [req.params.tripId, orgId],
       );
       return res.json({ trip: tripR.rows[0], routes: routesR.rows });
     } catch (err) {
@@ -309,12 +314,18 @@ export function registerLeadgridRouteRoutes(deps: Deps): void {
     "/api/leadgrid/routes/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})",
     permView,
     async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "Innlogging kreves" });
+    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
+    if (!orgId) return res.status(400).json({ error: "mangler_organization_id" });
     try {
       const r = await pool.query(
         `SELECT id::text, name, planned_date, status, start_lat, start_lng,
                 total_distance_meters, total_drive_seconds, expected_route_value,
                 created_at, started_at, completed_at
-           FROM lead_routes WHERE id = $1::uuid LIMIT 1`, [req.params.id]);
+           FROM lead_routes
+          WHERE id = $1::uuid AND organization_id = $2::uuid
+          LIMIT 1`, [req.params.id, orgId]);
       if (!r.rows.length) return res.status(404).json({ error: "ikke_funnet" });
       const stops = await pool.query(
         `SELECT s.id::text, s.position, s.lead_id::text, s.status, s.outcome, s.notes,
@@ -323,8 +334,9 @@ export function registerLeadgridRouteRoutes(deps: Deps): void {
                 c.name, c.latitude, c.longitude
            FROM lead_route_stops s
            JOIN crm_customers c ON c.id = s.lead_id
-          WHERE s.route_id = $1::uuid
-          ORDER BY s.position ASC`, [req.params.id]);
+          JOIN lead_routes r ON r.id = s.route_id
+          WHERE s.route_id = $1::uuid AND r.organization_id = $2::uuid
+          ORDER BY s.position ASC`, [req.params.id, orgId]);
       return res.json({ route: r.rows[0], stops: stops.rows });
     } catch (err) {
       return res.status(500).json({ error: "read_failed", detail: "internal_error" });
@@ -333,6 +345,10 @@ export function registerLeadgridRouteRoutes(deps: Deps): void {
 
   // ─── PATCH /api/leadgrid/routes/:id/stops/:stopId ─────────────────
   app.patch("/api/leadgrid/routes/:id/stops/:stopId", permExecute, async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "Innlogging kreves" });
+    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
+    if (!orgId) return res.status(400).json({ error: "mangler_organization_id" });
     const b = req.body as { status?: string; outcome?: string; notes?: string };
     const valid = ["pending", "arrived", "visited", "skipped", "no_answer"];
     if (!b.status || !valid.includes(b.status)) {
@@ -347,8 +363,12 @@ export function registerLeadgridRouteRoutes(deps: Deps): void {
                 arrived_at = CASE WHEN $1 = 'arrived' AND arrived_at IS NULL THEN NOW() ELSE arrived_at END,
                 completed_at = CASE WHEN $1 IN ('visited','skipped','no_answer') THEN NOW() ELSE completed_at END
           WHERE id = $4::uuid AND route_id = $5::uuid
+            AND EXISTS (
+              SELECT 1 FROM lead_routes r
+               WHERE r.id = $5::uuid AND r.organization_id = $6::uuid
+            )
           RETURNING id::text`,
-        [b.status, b.outcome ?? null, b.notes ?? null, req.params.stopId, req.params.id]);
+        [b.status, b.outcome ?? null, b.notes ?? null, req.params.stopId, req.params.id, orgId]);
       if (r.rowCount === 0) return res.status(404).json({ error: "stopp_ikke_funnet" });
       return res.json({ ok: true });
     } catch (err) {

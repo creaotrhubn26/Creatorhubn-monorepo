@@ -38,6 +38,7 @@ struct EtterMoteSheet: View {
     /// Møte-id: analysen merker møtet som LOGGET (slukker «Logg møtet»-
     /// CTA/badge) og avlyser det planlagte etter-møte-varselet.
     var moteId: UUID? = nil
+    var meetingAt: Date? = nil
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
@@ -51,6 +52,8 @@ struct EtterMoteSheet: View {
     /// Status-forslaget er tatt i bruk (PATCH på leaden gikk gjennom).
     @State private var statusSatt = false
     @State private var statusSetter = false
+    /// Stabil gjennom alle retry-forsøk mens arket er åpent.
+    @State private var requestId = UUID()
 
     var body: some View {
         NavigationStack {
@@ -420,8 +423,10 @@ struct EtterMoteSheet: View {
             resultat = try await api.sendMoteEtterarbeid(
                 selskap: selskap, tekst: samletTekst,
                 kontakt: kontakt, moteMaal: moteMaal,
-                leadId: moteId?.uuidString.lowercased())
+                leadId: moteId?.uuidString.lowercased(),
+                meetingAt: meetingAt, requestId: requestId)
             merkSomLogget()
+            await appState.refreshAll()
         } catch {
             feil = "Analysen feilet — sjekk nettet, og at «Møter · AI-møtebrief» er aktivert for organisasjonen."
         }
@@ -448,7 +453,8 @@ struct EtterMoteSheet: View {
         defer { statusSetter = false }
         do {
             try await api.updateStatus(leadId: moteId.uuidString.lowercased(),
-                                       status: raw)
+                                       status: raw,
+                                       organizationId: appState.activeOrganizationId)
             statusSatt = true
             await appState.refreshAll()
         } catch {

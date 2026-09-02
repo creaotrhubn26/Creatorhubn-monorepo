@@ -36,6 +36,9 @@ struct CalendarEvent: Identifiable, Codable, Hashable {
     let phone: String?
     let email: String?
     let assignedUserName: String?
+    let durationMinutes: Int?
+    let meetingStatus: String?
+    let meetingLogged: Bool?
     let eventType: String // "meeting" eller "follow_up"
 }
 
