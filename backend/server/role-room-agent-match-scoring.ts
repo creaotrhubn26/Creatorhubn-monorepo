@@ -283,3 +283,67 @@ export function isGooglePlaceLocalOpportunityInMarket(
       && matchesAddressLocality(address, normalizedHint);
   });
 }
+
+function readGooglePlaceSemanticText(value: unknown): string {
+  if (hasText(value)) return normalizeWhitespace(value);
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+  const record = value as Record<string, unknown>;
+  return hasText(record.text) ? normalizeWhitespace(record.text) : "";
+}
+
+function buildGooglePlaceSemanticCorpus(candidate: Record<string, unknown>): string {
+  return normalizeWhitespace([
+    readGooglePlaceSemanticText(candidate.displayName),
+    readGooglePlaceSemanticText(candidate.primaryType),
+    readGooglePlaceSemanticText(candidate.primaryTypeDisplayName),
+  ].filter(Boolean).join(" ")).toLowerCase();
+}
+
+/**
+ * Product-category gate for specialized businesses. A Google result in the
+ * correct city is not automatically a competitor: health providers, public
+ * bodies and generic agencies are not competitors to clinical software.
+ * Broad industries keep their existing behavior until they have a dedicated
+ * high-precision vocabulary.
+ */
+export function isGooglePlaceCompetitorSemanticallyRelevant(
+  candidate: Record<string, unknown>,
+  customerIndustry: string,
+  customerSubIndustry = "",
+): boolean {
+  const customerContext = `${customerIndustry} ${customerSubIndustry}`.toLowerCase();
+  if (!/helseteknologi|health\s*tech|clinical software|klinisk dokumentasjon/.test(customerContext)) {
+    return true;
+  }
+
+  const corpus = buildGooglePlaceSemanticCorpus(candidate);
+  const hasHealthEvidence = /helse|health|medic|klinisk|clinic|journal|lege|doctor|pasient|patient|care/.test(corpus);
+  const hasDigitalProductEvidence = /teknologi|tech|software|programvare|digital|\bai\b|transkr|dokumentasjon|documentation|saas|plattform|platform|journalsystem/.test(corpus);
+  return hasHealthEvidence && hasDigitalProductEvidence;
+}
+
+/**
+ * Category gate for local partner searches. Google Text Search can answer a
+ * coworking query with storage or real-estate results; those must not inherit
+ * the requested partner type or its event recommendation.
+ */
+export function isGooglePlaceOpportunityTypeMatch(
+  candidate: Record<string, unknown>,
+  opportunityType: string,
+): boolean {
+  const corpus = buildGooglePlaceSemanticCorpus(candidate);
+  const patterns: Record<string, RegExp> = {
+    school: /school|skole|education|utdanning|university|universitet|college|barnehage|preschool/,
+    sports_club: /sport|idrett|athletic|stadium|fotball|football|fitness|gym|treningssenter/,
+    workplace: /cowork|kontorfellesskap|business center|business_center|office|kontor|workspace|arbeidsplass|næringspark|næringsforening/,
+    hotel: /hotel|lodging|overnatting|gjestehus|conference|konferanse|møterom|resort/,
+    culture: /culture|kultur|library|bibliotek|event venue|event_venue|arrangement|performing arts|performing_arts|museum|kino|movie theater|community center|community_center/,
+    retail: /retail|butikk|store|shopping|kjøpesenter|mall|handel/,
+    fitness: /fitness|gym|treningssenter|health club|health_club/,
+    community: /community|nærmiljø|frivillig|borettslag|grendehus|forening|civic/,
+    venue: /venue|arrangement|event|conference|konferanse|møterom|hall|scene/,
+    tourism: /tourism|turisme|tourist|visitor|attraksjon|museum|hotel/,
+  };
+  const pattern = patterns[opportunityType];
+  return Boolean(pattern && pattern.test(corpus));
+}

@@ -11,7 +11,6 @@ import React from 'react';
 import { Box, Chip, Stack, Tooltip, Typography } from '@mui/material';
 import {
   Add as AddIcon,
-  Remove as RemoveIcon,
   CompareArrows as CompareArrowsIcon,
 } from '@mui/icons-material';
 import type { ResearchDiff } from '../../utils/researchDiff';
@@ -33,36 +32,33 @@ const ListRow: React.FC<ListRowProps> = ({ label, added, removed }) => {
       <Typography sx={{ color: '#cbd5e1', fontSize: '0.78rem', fontWeight: 700, mb: 0.4 }}>
         {label}
       </Typography>
-      <Stack direction="row" spacing={0.4} flexWrap="wrap" useFlexGap>
-        {added.map((value) => (
-          <Chip
-            key={`add-${value}`}
-            size="small"
-            icon={<AddIcon sx={{ fontSize: 12 }} />}
-            label={value}
-            sx={{
-              bgcolor: 'rgba(52,211,153,0.16)',
-              color: '#bbf7d0',
-              fontSize: '0.74rem',
-              '& .MuiChip-icon': { color: '#34d399' },
-            }}
-          />
-        ))}
-        {removed.map((value) => (
-          <Chip
-            key={`rm-${value}`}
-            size="small"
-            icon={<RemoveIcon sx={{ fontSize: 12 }} />}
-            label={value}
-            sx={{
-              bgcolor: 'rgba(239,68,68,0.14)',
-              color: '#fecaca',
-              fontSize: '0.74rem',
-              textDecoration: 'line-through',
-              '& .MuiChip-icon': { color: '#f87171' },
-            }}
-          />
-        ))}
+      <Stack spacing={0.45}>
+        {added.length > 0 ? (
+          <Stack direction="row" spacing={0.4} flexWrap="wrap" useFlexGap>
+            {added.map((value) => (
+              <Chip
+                key={`add-${value}`}
+                size="small"
+                icon={<AddIcon sx={{ fontSize: 12 }} />}
+                label={value}
+                sx={{
+                  bgcolor: 'rgba(52,211,153,0.16)',
+                  color: '#bbf7d0',
+                  fontSize: '0.74rem',
+                  '& .MuiChip-icon': { color: '#34d399' },
+                }}
+              />
+            ))}
+          </Stack>
+        ) : null}
+        {removed.length > 0 ? (
+          <Typography
+            data-testid={`research-diff-removed-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+            sx={{ color: 'rgba(226,232,240,0.58)', fontSize: '0.72rem' }}
+          >
+            {removed.length} tidligere treff er fjernet og vises ikke som aktive.
+          </Typography>
+        ) : null}
       </Stack>
     </Box>
   );
@@ -113,22 +109,22 @@ const ResearchDiffSection: React.FC<ResearchDiffSectionProps> = ({ diff }) => {
           {diff.industry ? (
             <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '0.82rem' }}>
               <strong style={{ color: '#cbd5e1' }}>Bransje:</strong>{' '}
-              <span style={{ color: '#f87171', textDecoration: 'line-through' }}>{diff.industry.from}</span>{' '}
-              → <span style={{ color: '#34d399' }}>{diff.industry.to}</span>
+              <span style={{ color: '#34d399' }}>{diff.industry.to}</span>{' '}
+              <span style={{ color: 'rgba(226,232,240,0.55)' }}>(tidligere verdi fjernet)</span>
             </Typography>
           ) : null}
           {diff.subIndustry ? (
             <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '0.82rem' }}>
               <strong style={{ color: '#cbd5e1' }}>Underbransje:</strong>{' '}
-              <span style={{ color: '#f87171', textDecoration: 'line-through' }}>{diff.subIndustry.from}</span>{' '}
-              → <span style={{ color: '#34d399' }}>{diff.subIndustry.to}</span>
+              <span style={{ color: '#34d399' }}>{diff.subIndustry.to}</span>{' '}
+              <span style={{ color: 'rgba(226,232,240,0.55)' }}>(tidligere verdi fjernet)</span>
             </Typography>
           ) : null}
           {diff.businessModel ? (
             <Typography sx={{ color: 'rgba(226,232,240,0.78)', fontSize: '0.82rem' }}>
               <strong style={{ color: '#cbd5e1' }}>Forretningsmodell:</strong>{' '}
-              <span style={{ color: '#f87171', textDecoration: 'line-through' }}>{diff.businessModel.from}</span>{' '}
-              → <span style={{ color: '#34d399' }}>{diff.businessModel.to}</span>
+              <span style={{ color: '#34d399' }}>{diff.businessModel.to}</span>{' '}
+              <span style={{ color: 'rgba(226,232,240,0.55)' }}>(tidligere verdi fjernet)</span>
             </Typography>
           ) : null}
 

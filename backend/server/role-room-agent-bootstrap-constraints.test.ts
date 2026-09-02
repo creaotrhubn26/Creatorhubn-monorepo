@@ -42,6 +42,7 @@ describe('shared bootstrap constraints (F7)', () => {
       'resolve_legal_identity',
       'enforce_source_precedence',
       'verify_geographic_relevance',
+      'verify_semantic_relevance',
       'propagate_verified_profile',
       'fail_closed_without_evidence',
     ]);
