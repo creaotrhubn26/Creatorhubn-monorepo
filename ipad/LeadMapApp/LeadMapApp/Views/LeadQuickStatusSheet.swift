@@ -251,7 +251,7 @@ struct LeadQuickStatusSheet: View {
         updating = true
         defer { updating = false }
         do {
-            try await api.updateStatus(leadId: lead.id, status: newStatus.rawValue)
+            try await api.updateStatus(leadId: lead.id, status: newStatus.rawValue, organizationId: appState.activeOrganizationId)
             withAnimation { lastStatus = newStatus }
             await appState.refreshAll()
             // Lukker sheet automatisk etter en kort fade så feltsalg

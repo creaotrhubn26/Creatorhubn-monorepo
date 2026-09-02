@@ -43,6 +43,7 @@ struct AnbudView: View {
     // via from-card-løypa (BRREG-kobling på org.nr + full berikelse).
     @State private var creatingLeadId: String?
     @State private var createdLeadIds: Set<String> = []
+    @State private var leadCreationKeys: [String: UUID] = [:]
     @State private var leadErrorText: String?
     // Les gjennom (2026-08-03): tap på kort → fullt lese-ark. Alt innhold
     // ligger allerede i søkesvaret (Doffin v2 har ikke detalj-endepunkt).
@@ -1496,9 +1497,13 @@ struct AnbudView: View {
         creatingLeadId = k.id
         leadErrorText = nil
         do {
+            let idempotencyKey = leadCreationKeys[k.id] ?? UUID()
+            leadCreationKeys[k.id] = idempotencyKey
             _ = try await api.createLeadFromAnbud(
                 navn: og.navn, orgnr: og.orgnr,
-                tittel: k.tittel, url: k.url, frist: k.frist)
+                tittel: k.tittel, url: k.url, frist: k.frist,
+                organizationId: appState.activeOrganizationId,
+                idempotencyKey: idempotencyKey)
             withAnimation { _ = createdLeadIds.insert(k.id) }
         } catch {
             leadErrorText = "Kunne ikke opprette lead — prøv igjen. (\(error.localizedDescription))"

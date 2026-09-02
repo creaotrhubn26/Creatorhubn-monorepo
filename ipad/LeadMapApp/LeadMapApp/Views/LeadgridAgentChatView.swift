@@ -538,7 +538,7 @@ struct LeadgridAgentChatView: View {
         sending = true
 
         streamingTask?.cancel()
-        let stream = api.streamAgentMessage(
+        let stream = await api.streamAgentMessage(
             threadId: thread.id,
             content: trimmed,
         )

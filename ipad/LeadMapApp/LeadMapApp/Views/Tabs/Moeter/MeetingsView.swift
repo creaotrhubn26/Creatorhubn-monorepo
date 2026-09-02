@@ -48,6 +48,7 @@ struct Meeting: Identifiable, Hashable {
     let location: String        // "Oslo, Norge"
     let contactName: String
     let contactRole: String
+    var contactEmail: String? = nil
     let status: Status
     let icon: String            // company-icon
     let iconColor: Color
@@ -61,6 +62,9 @@ struct Meeting: Identifiable, Hashable {
     let driveTimeMin: Int
     let driveDistanceKm: Int
     let trafficStatus: String   // "Lett trafikk"
+    /// Serverens kanoniske tidspunkt og ferdigstatus for denne møtesesjonen.
+    var scheduledAt: Date? = nil
+    var isLogged: Bool = false
 
     enum Status: String, Hashable {
         case confirmed, onTheWay, followUp, pending, cancelled
@@ -71,6 +75,24 @@ struct Meeting: Identifiable, Hashable {
             case .followUp:  return "Oppfølging"
             case .pending:   return "Venter"
             case .cancelled: return "Avlyst"
+            }
+        }
+        var backendValue: String {
+            switch self {
+            case .confirmed: return "confirmed"
+            case .onTheWay:  return "on_the_way"
+            case .followUp:  return "follow_up"
+            case .pending:   return "pending"
+            case .cancelled: return "cancelled"
+            }
+        }
+        static func fromBackend(_ value: String?) -> Status {
+            switch value {
+            case "on_the_way": return .onTheWay
+            case "follow_up":  return .followUp
+            case "pending":    return .pending
+            case "cancelled":  return .cancelled
+            default:           return .confirmed
             }
         }
         var color: Color {
@@ -145,7 +167,7 @@ struct UpcomingMeetingMini: Identifiable, Hashable {
             leadScore: leadScore, leadType: leadType, valueNok: valueNok,
             lat: lat, lon: lon,
             driveTimeMin: driveTimeMin, driveDistanceKm: driveDistanceKm,
-            trafficStatus: trafficStatus
+            trafficStatus: trafficStatus, scheduledAt: date
         )
     }
 }
@@ -349,27 +371,37 @@ extension Meeting {
     init(from event: CalendarEvent, lead: LeadModel?) {
         let start = event.datetime ?? Date()
         let score = lead?.leadScore ?? lead?.aiOpportunityScore ?? 0
+        let duration = max(15, event.durationMinutes ?? 60)
+        let meetingId = UUID(uuidString: event.id) ?? UUID()
+        let startTime = MeetingMapping.timeString(start)
+        let endTime = MeetingMapping.timeString(start.addingTimeInterval(Double(duration) * 60))
+        let location = event.city ?? lead?.city ?? ""
+        let address = lead?.address ?? event.city ?? ""
+        let valueNok = Int(lead?.estimatedValue ?? 0)
         self.init(
-            id: UUID(uuidString: event.id) ?? UUID(),
-            startTime: MeetingMapping.timeString(start),
-            endTime: MeetingMapping.timeString(start.addingTimeInterval(3600)),
+            id: meetingId,
+            startTime: startTime,
+            endTime: endTime,
             company: event.leadName,
-            location: event.city ?? lead?.city ?? "",
+            location: location,
             contactName: "",
             contactRole: "",
-            status: .confirmed,
+            contactEmail: event.email,
+            status: .fromBackend(event.meetingStatus),
             icon: "building.2.fill",
             iconColor: MeetingMapping.stableColor(for: event.leadName),
-            address: lead?.address ?? event.city ?? "",
+            address: address,
             meetingRoom: nil,
             leadScore: score,
             leadType: MeetingMapping.leadType(for: score),
-            valueNok: Int(lead?.estimatedValue ?? 0),
+            valueNok: valueNok,
             lat: lead?.latitude ?? 0,
             lon: lead?.longitude ?? 0,
             driveTimeMin: 0,
             driveDistanceKm: 0,
-            trafficStatus: ""
+            trafficStatus: "",
+            scheduledAt: start,
+            isLogged: event.meetingLogged ?? false
         )
     }
 }
@@ -378,11 +410,12 @@ extension UpcomingMeetingMini {
     init(from event: CalendarEvent, lead: LeadModel?) {
         let start = event.datetime ?? Date()
         let score = lead?.leadScore ?? lead?.aiOpportunityScore ?? 0
+        let duration = max(15, event.durationMinutes ?? 60)
         self.init(
             id: UUID(uuidString: event.id) ?? UUID(),
             dayLabel: MeetingMapping.dayLabel(start),
             time: MeetingMapping.timeString(start),
-            endTime: MeetingMapping.timeString(start.addingTimeInterval(3600)),
+            endTime: MeetingMapping.timeString(start.addingTimeInterval(Double(duration) * 60)),
             company: event.leadName,
             location: event.city ?? lead?.city ?? "",
             address: lead?.address ?? event.city ?? "",
@@ -575,7 +608,7 @@ struct MeetingsView: View {
     /// Ferdig + ikke logget = etterarbeids-gjeld (CTA + badge + varsel).
     private func trengerLogg(_ m: Meeting) -> Bool {
         guard let slutt = sluttDatoIDag(m.endTime) else { return false }
-        return naa > slutt && !MoteLoggStatus.erLogget(m.id)
+        return naa > slutt && !(m.isLogged || MoteLoggStatus.erLogget(m.id))
     }
 
     /// Lagre ny møtetid: demo → flytt blokka i minnet; ekte → PATCH
@@ -592,7 +625,9 @@ struct MeetingsView: View {
         }
         Task { @MainActor in
             do {
-                try await appState.api?.flyttMoteTid(leadId: m.id.uuidString.lowercased(), til: start)
+                try await appState.api?.oppdaterMote(
+                    leadId: m.id.uuidString.lowercased(),
+                    tidspunkt: start, varighetMin: varighetMin)
                 await appState.refreshAll()
             } catch {
                 print("[Møter] flytting feilet: \(error)")
@@ -811,8 +846,8 @@ struct MeetingsView: View {
         return kopi
     }
 
-    /// Varighet-drag (bunnkant av blokk): endre sluttiden ±30 min-snap.
-    /// Varighet persisteres ikke i backend — lokal visning i begge moduser.
+    /// Varighet-drag (bunnkant av blokk): optimistisk visning, deretter
+    /// persistens og read-back fra den delte kalenderkontrakten.
     private func endreVarighet(_ m: Meeting, deltaMin: Int) {
         let sd = m.startTime.split(separator: ":")
         let ed = m.endTime.split(separator: ":")
@@ -822,8 +857,22 @@ struct MeetingsView: View {
         let startMin = st * 60 + sm
         let nySluttMin = min(max(et * 60 + em + deltaMin, startMin + 30), 20 * 60)
         let nySlutt = String(format: "%02d:%02d", nySluttMin / 60, nySluttMin % 60)
-        let dagKol = demoTidOverstyringer[m.id]?.2
+        let forrige = demoTidOverstyringer[m.id]
+        let dagKol = forrige?.2
         demoTidOverstyringer[m.id] = (m.startTime, nySlutt, dagKol)
+        guard !isDemo else { return }
+        let nyVarighet = nySluttMin - startMin
+        Task { @MainActor in
+            do {
+                try await appState.api?.oppdaterMote(
+                    leadId: m.id.uuidString.lowercased(), varighetMin: nyVarighet)
+                await appState.refreshAll()
+                demoTidOverstyringer[m.id] = nil
+            } catch {
+                demoTidOverstyringer[m.id] = forrige
+                konfliktMelding = "Varigheten ble ikke lagret. Prøv igjen."
+            }
+        }
     }
 
     private var sourceAgenda: [Meeting] {
@@ -832,8 +881,7 @@ struct MeetingsView: View {
                 .sorted { $0.startTime < $1.startTime }
         }
         let cal = Calendar.current
-        // Ekte modus: varighet finnes ikke server-side (kalenderen er
-        // avledet av next_follow_up_at) — varighet-endringer vises lokalt.
+        // Ekte modus: både tidspunkt og varighet kommer fra serveren.
         return meetingEvents
             .filter { cal.isDateInToday($0.datetime ?? .distantPast) }
             .sorted { ($0.datetime ?? .distantPast) < ($1.datetime ?? .distantPast) }
@@ -875,7 +923,7 @@ struct MeetingsView: View {
         }
         .sheet(item: $etterMoteFraVarsel) { m in
             EtterMoteSheet(selskap: m.company, kontakt: m.contactName,
-                           moteId: m.id)
+                           moteId: m.id, meetingAt: m.scheduledAt)
         }
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { t in
             naa = t
@@ -923,7 +971,7 @@ struct MeetingsView: View {
         // idempotent — samme identifier erstatter).
         .task(id: sourceAgenda.count) {
             let moter = sourceAgenda.compactMap { m -> (UUID, String, Date)? in
-                guard let slutt = sluttDatoIDag(m.endTime) else { return nil }
+                guard !m.isLogged, let slutt = sluttDatoIDag(m.endTime) else { return nil }
                 return (m.id, m.company, slutt)
             }
             MoteVarsler.planlegg(moter: moter.map { (id: $0.0, selskap: $0.1, slutt: $0.2) })
@@ -984,7 +1032,9 @@ struct MeetingsView: View {
         // iPhone (compact): samme MeetingDetailSidebar som iPad viser til
         // høyre, presentert som sheet (sidebar-en eier sine egne under-ark).
         .sheet(isPresented: $phoneDetailOpen) {
-            MeetingDetailSidebar(meeting: selectedMeeting, calMode: $calMode)
+            MeetingDetailSidebar(
+                meeting: selectedMeeting, calMode: $calMode,
+                onReschedule: { m in reschedulingMeeting = m }, naa: naa)
                 .background(MtBrand.bg.ignoresSafeArea())
                 .preferredColorScheme(.dark)
                 .presentationDetents([.large])
@@ -2013,20 +2063,6 @@ struct MeetingDetailEmptyState: View {
     }
 }
 
-/// Favoritt-persistering pr møte-id (UserDefaults). Backend-møter har stabil
-/// uuid avledet fra event-id, så favoritten overlever re-mapping og relaunch.
-enum MeetingFavorites {
-    private static let key = "meetings.favorites"
-    static func isFavorite(_ id: UUID) -> Bool {
-        (UserDefaults.standard.stringArray(forKey: key) ?? []).contains(id.uuidString)
-    }
-    static func set(_ id: UUID, favorite: Bool) {
-        var ids = Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
-        if favorite { ids.insert(id.uuidString) } else { ids.remove(id.uuidString) }
-        UserDefaults.standard.set(Array(ids), forKey: key)
-    }
-}
-
 struct MeetingDetailSidebar: View {
     let meeting: Meeting
     @Binding var calMode: CalendarMode
@@ -2044,11 +2080,12 @@ struct MeetingDetailSidebar: View {
         comps.hour = t
         comps.minute = mn
         guard let slutt = Calendar.current.date(from: comps) else { return false }
-        return naa > slutt && !MoteLoggStatus.erLogget(meeting.id)
+        return naa > slutt && !(meeting.isLogged || MoteLoggStatus.erLogget(meeting.id))
     }
     @Environment(AppState.self) private var appState
 
     @State private var favorited: Bool = false
+    @State private var savingFavorite = false
     @State private var showStartMeeting = false
     @State private var showLogNote = false
     @State private var showOpenLead = false
@@ -2114,7 +2151,7 @@ struct MeetingDetailSidebar: View {
         .sheet(isPresented: $showEtterMote) {
             EtterMoteSheet(selskap: meeting.company,
                            kontakt: meeting.contactName,
-                           moteId: meeting.id)
+                           moteId: meeting.id, meetingAt: meeting.scheduledAt)
         }
         .sheet(isPresented: $showMoteBrief) {
             MoteBriefSheet(selskap: meeting.company,
@@ -2127,6 +2164,36 @@ struct MeetingDetailSidebar: View {
         .sheet(isPresented: $showPrepCore)            { PrepCoreModal(meetingCompany: meeting.company) }
         .sheet(isPresented: $showStakeholders)        { PrepStakeholdersModal(meetingCompany: meeting.company) }
         .sheet(isPresented: $showChecklist)           { PrepChecklistModal(meetingCompany: meeting.company) }
+    }
+
+    private func loadFavoriteFromLead() {
+        let leadId = meeting.id.uuidString.lowercased()
+        favorited = appState.leads.first {
+            $0.id.lowercased() == leadId
+        }?.isFavorite ?? false
+    }
+
+    private func toggleFavorite() {
+        guard !savingFavorite, let api = appState.api else { return }
+        let leadId = meeting.id.uuidString.lowercased()
+        let previous = favorited
+        favorited.toggle()
+        savingFavorite = true
+        Task { @MainActor in
+            defer { savingFavorite = false }
+            do {
+                favorited = try await api.setLeadFavorite(
+                    leadId: leadId,
+                    favorite: favorited,
+                    organizationId: appState.activeOrganizationId
+                )
+                await appState.refreshLeads()
+                flashToast(favorited ? "Markert som favoritt" : "Favoritt fjernet")
+            } catch {
+                favorited = previous
+                flashToast("Kunne ikke endre favoritt")
+            }
+        }
     }
 
     private func flashToast(_ text: String) {
@@ -2156,17 +2223,14 @@ struct MeetingDetailSidebar: View {
                         Text(meeting.company)
                             .font(.appScaled(size: 15, weight: .bold))
                             .foregroundStyle(.white)
-                        Button {
-                            favorited.toggle()
-                            MeetingFavorites.set(meeting.id, favorite: favorited)
-                            flashToast(favorited ? "Markert som favoritt" : "Favoritt fjernet")
-                        } label: {
+                        Button { toggleFavorite() } label: {
                             Image(systemName: favorited ? "star.fill" : "star")
                                 .font(.appScaled(size: 12))
                                 .foregroundStyle(favorited ? MtBrand.yellow : MtBrand.textTertiary)
                         }
                         .buttonStyle(.plain)
-                        .task(id: meeting.id) { favorited = MeetingFavorites.isFavorite(meeting.id) }
+                        .disabled(savingFavorite)
+                        .task(id: meeting.id) { loadFavoriteFromLead() }
                     }
                 }
                 Spacer()
@@ -2246,17 +2310,21 @@ struct MeetingDetailSidebar: View {
                 Button { showAssignSeller = true } label: {
                     Label("Tilordne selger", systemImage: "person.badge.plus")
                 }
-                Button { showAddCampaign = true } label: {
-                    Label("Legg til i kampanje", systemImage: "megaphone.fill")
+                if DemoModeManager.isActiveNonisolated {
+                    Button { showAddCampaign = true } label: {
+                        Label("Legg til i kampanje (demo)", systemImage: "megaphone.fill")
+                    }
                 }
             }
             Section("Del") {
-                Button {
-                    let link = "https://leadgrid.app/m/\(meeting.id.uuidString.prefix(8))"
-                    UIPasteboard.general.string = link
-                    flashToast("Møtelenke kopiert")
-                } label: {
-                    Label("Kopier møtelenke", systemImage: "link")
+                if DemoModeManager.isActiveNonisolated {
+                    Button {
+                        let link = "https://leadgrid.app/m/\(meeting.id.uuidString.prefix(8))"
+                        UIPasteboard.general.string = link
+                        flashToast("Demo-møtelenke kopiert")
+                    } label: {
+                        Label("Kopier demo-møtelenke", systemImage: "link")
+                    }
                 }
                 Menu {
                     Button { calMode = .agenda; flashToast("Byttet til Agenda") } label: {
@@ -2293,13 +2361,19 @@ struct MeetingDetailSidebar: View {
             .overlay(Capsule().stroke(color.opacity(0.4), lineWidth: 1))
     }
 
+    private var meetingDateLabel: String {
+        if DemoModeManager.isActiveNonisolated { return "Tirsdag 20. mai 2026" }
+        guard let scheduledAt = meeting.scheduledAt else { return "Tidspunkt ikke satt" }
+        return scheduledAt.formatted(.dateTime.weekday(.wide).day().month(.wide).year())
+    }
+
     private var meta: some View {
         VStack(alignment: .leading, spacing: 11) {
             HStack(spacing: 9) {
                 ZStack { Circle().fill(MtBrand.purple.opacity(0.18)); Image(systemName: "calendar").font(.appScaled(size: 11)).foregroundStyle(MtBrand.purpleLight) }
                 .frame(width: 26, height: 26)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Tirsdag 20. mai 2026")
+                    Text(meetingDateLabel)
                         .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Text("\(meeting.startTime) – \(meeting.endTime)")

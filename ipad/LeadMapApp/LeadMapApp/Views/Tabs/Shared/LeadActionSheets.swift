@@ -545,12 +545,14 @@ struct LeadSeller: Identifiable, Hashable {
 struct LeadNoteSheet: View {
     let companyName: String
     let companyColor: Color
-    var onSave: ((String, LeadNoteCategory, Bool) -> Void)? = nil
+    var onSave: (@MainActor (String, LeadNoteCategory, Bool) async throws -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var note: String = ""
     @State private var category: LeadNoteCategory = .general
     @State private var pinned: Bool = false
+    @State private var isSaving: Bool = false
+    @State private var saveError: String?
 
     enum LeadNoteCategory: String, CaseIterable, Identifiable {
         case general = "Generelt"
@@ -636,6 +638,11 @@ struct LeadNoteSheet: View {
                                         .allowsHitTesting(false)
                                 }
                             }
+                        if let saveError {
+                            Label(saveError, systemImage: "exclamationmark.triangle.fill")
+                                .font(.appScaled(size: 11, weight: .semibold))
+                                .foregroundStyle(LaBrand.red)
+                        }
                         Toggle(isOn: $pinned) {
                             HStack(spacing: 7) {
                                 Image(systemName: "pin.fill")
@@ -662,10 +669,20 @@ struct LeadNoteSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        onSave?(note, category, pinned)
-                        dismiss()
+                        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+                        Task { @MainActor in
+                            isSaving = true
+                            saveError = nil
+                            defer { isSaving = false }
+                            do {
+                                try await onSave?(trimmed, category, pinned)
+                                dismiss()
+                            } catch {
+                                saveError = error.localizedDescription
+                            }
+                        }
                     } label: {
-                        Text("Lagre")
+                        Text(isSaving ? "Lagrer…" : "Lagre")
                             .font(.appScaled(size: 13, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14).padding(.vertical, 7)
@@ -676,8 +693,8 @@ struct LeadNoteSheet: View {
                             )
                     }
                     .buttonStyle(.plain)
-                    .disabled(note.trimmingCharacters(in: .whitespaces).isEmpty)
-                    .opacity(note.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1)
+                    .disabled(isSaving || note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .opacity(isSaving || note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1)
                 }
             }
             .toolbarBackground(LaBrand.bg, for: .navigationBar)

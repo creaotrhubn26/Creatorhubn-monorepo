@@ -93,6 +93,7 @@ struct BusinessCardScannerView: View {
     @StateObject private var coordinator = ScannerCoordinator()
     @State private var saving = false
     @State private var error: String?
+    @State private var idempotencyKey = UUID()
     /// «Fant: X AS (org.nr …)» fra BRREG-koblingen — vises et øyeblikk
     /// etter lagring så selgeren ser at leaden ble beriket.
     @State private var brregMessage: String?
@@ -224,7 +225,11 @@ struct BusinessCardScannerView: View {
         saving = true; error = nil
         defer { saving = false }
         do {
-            let response = try await api.createLeadFromCard(extracted: extracted)
+            let response = try await api.createLeadFromCard(
+                extracted: extracted,
+                organizationId: state.activeOrganizationId,
+                idempotencyKey: idempotencyKey
+            )
             // Refresh workload for å vise nylig opprettet
             await state.refreshAll()
             if let brreg = response.brreg {

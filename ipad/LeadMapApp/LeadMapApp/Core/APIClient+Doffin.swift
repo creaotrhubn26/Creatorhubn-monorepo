@@ -352,7 +352,8 @@ extension APIClient {
     /// full berikelse (adresse/NACE/daglig leder) i jobbkøen.
     /// lead_source = doffin_anbud så kilden spores i CRM-et.
     func createLeadFromAnbud(
-        navn: String, orgnr: String, tittel: String, url: String, frist: String?
+        navn: String, orgnr: String, tittel: String, url: String, frist: String?,
+        organizationId: String?, idempotencyKey: UUID
     ) async throws -> String {
         var raw = "Org.nr: \(orgnr)\nAnbud: \(tittel)"
         if let frist, !frist.isEmpty { raw += "\nFrist: \(frist)" }
@@ -362,12 +363,14 @@ extension APIClient {
             let company: String
             let raw_text: String
             let lead_source: String
+            let organization_id: String?
         }
         struct Resp: Decodable { let ok: Bool; let id: String }
         let r: Resp = try await _post(
             "/api/admin-room/lead-map/leads/from-card",
             body: Payload(name: navn, company: navn, raw_text: raw,
-                          lead_source: "doffin_anbud"))
+                          lead_source: "doffin_anbud", organization_id: organizationId),
+            headers: ["Idempotency-Key": idempotencyKey.uuidString.lowercased()])
         return r.id
     }
 }

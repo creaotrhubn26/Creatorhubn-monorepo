@@ -109,8 +109,8 @@ extension APIClient {
     /// NESTE brief åpner med «hva vi lovte sist».
     func sendMoteEtterarbeid(selskap: String, tekst: String,
                              kontakt: String? = nil, moteMaal: String? = nil,
-                             orgnr: String? = nil,
-                             leadId: String? = nil) async throws -> EtterarbeidDTO {
+                             orgnr: String? = nil, leadId: String? = nil,
+                             meetingAt: Date? = nil, requestId: UUID) async throws -> EtterarbeidDTO {
         struct Body: Encodable {
             let selskap: String
             let tekst: String
@@ -118,12 +118,16 @@ extension APIClient {
             let moteMaal: String?
             let orgnr: String?
             let leadId: String?
+            let meetingAt: String?
+            let requestId: String
         }
         struct Resp: Decodable { let resultat: EtterarbeidDTO }
         let r: Resp = try await _post(
             "/api/leadgrid/moter/etterarbeid",
             body: Body(selskap: selskap, tekst: tekst, kontakt: kontakt,
-                       moteMaal: moteMaal, orgnr: orgnr, leadId: leadId))
+                       moteMaal: moteMaal, orgnr: orgnr, leadId: leadId,
+                       meetingAt: meetingAt.map { ISO8601DateFormatter().string(from: $0) },
+                       requestId: requestId.uuidString.lowercased()))
         return r.resultat
     }
 
@@ -179,14 +183,27 @@ extension APIClient {
             body: Body(selskap: selskap, maal: maal, behov: behov))
     }
 
-    /// Flytt et møte (= leadens next_follow_up_at) til nytt tidspunkt.
-    func flyttMoteTid(leadId: String, til dato: Date) async throws {
-        struct Body: Encodable { let datetime: String }
-        let iso = ISO8601DateFormatter().string(from: dato)
-        let data = try JSONEncoder().encode(Body(datetime: iso))
+    /// Oppdater kalenderens delte møtetid og/eller varighet.
+    func oppdaterMote(leadId: String, tidspunkt: Date? = nil,
+                      varighetMin: Int? = nil, meetingStatus: String? = nil,
+                      note: String? = nil) async throws {
+        struct Body: Encodable {
+            let datetime: String?
+            let durationMinutes: Int?
+            let meetingStatus: String?
+            let note: String?
+        }
+        guard tidspunkt != nil || varighetMin != nil || meetingStatus != nil else { return }
+        let data = try JSONEncoder().encode(Body(
+            datetime: tidspunkt.map { ISO8601DateFormatter().string(from: $0) },
+            durationMinutes: varighetMin, meetingStatus: meetingStatus, note: note))
         _ = try await _request(
             "/api/admin-room/lead-map/calendar/\(leadId)",
             method: "PATCH", body: data)
+    }
+
+    func flyttMoteTid(leadId: String, til dato: Date) async throws {
+        try await oppdaterMote(leadId: leadId, tidspunkt: dato)
     }
 
     /// Hent AI-møtebrief for et selskap/møte. Orgnr er valgfritt — backend

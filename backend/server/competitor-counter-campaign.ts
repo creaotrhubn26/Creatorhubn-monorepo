@@ -61,6 +61,7 @@ export async function generateCounterCampaign(
   args: {
     competitorId: string;
     workspaceOwnerUserId: string;
+    organizationId?: string | null;
     apiKey?: string;
   },
 ): Promise<CounterCampaign> {
@@ -69,13 +70,15 @@ export async function generateCounterCampaign(
     throw new Error("ANTHROPIC_API_KEY mangler — kan ikke generere kampanje");
   }
 
+  const scopeColumn = args.organizationId ? "organization_id" : "workspace_owner_user_id";
+  const scopeValue = args.organizationId ?? args.workspaceOwnerUserId;
   // 1. Konkurrent m/ scope-sjekk
   const cr = await pool.query<CompetitorRow>(
     `SELECT id::text, name, domain, category, positioning, primary_offer,
             threat_level, claude_threat_summary, claude_what_to_worry_about
        FROM market_scan_competitors
-      WHERE id = $1 AND workspace_owner_user_id = $2`,
-    [args.competitorId, args.workspaceOwnerUserId],
+      WHERE id = $1 AND ${scopeColumn} = $2`,
+    [args.competitorId, scopeValue],
   );
   if (cr.rows.length === 0) {
     throw new Error("competitor_not_found");
@@ -219,9 +222,20 @@ export async function saveCounterCampaignToWorkflow(
   args: {
     workspaceOwnerUserId: string;
     competitorId: string;
+    organizationId?: string | null;
     campaign: CounterCampaign;
   },
 ): Promise<{ workflowId: string }> {
+  const scopeColumn = args.organizationId ? "organization_id" : "workspace_owner_user_id";
+  const scopeValue = args.organizationId ?? args.workspaceOwnerUserId;
+  const competitor = await pool.query(
+    `SELECT 1 FROM market_scan_competitors
+      WHERE id = $1::uuid AND ${scopeColumn} = $2
+      LIMIT 1`,
+    [args.competitorId, scopeValue],
+  );
+  if (!competitor.rows.length) throw new Error("competitor_not_found");
+
   // Sjekk om marketing_workflows finnes (mig 276)
   const hasWorkflows = await pool.query<{ exists: boolean }>(
     `SELECT EXISTS (

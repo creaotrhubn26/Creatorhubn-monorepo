@@ -270,7 +270,7 @@ struct StrategySheet: View {
         errorMessage = nil
         strategy = nil
         do {
-            self.strategy = try await api.generateStrategy(leadId: lead.id)
+            self.strategy = try await api.generateStrategy(leadId: lead.id, organizationId: appState.activeOrganizationId)
         } catch {
             errorMessage = "Uventet feil: \(error.localizedDescription)"
         }

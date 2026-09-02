@@ -302,8 +302,11 @@ struct RescheduleSheet: View {
 struct StatusPickerSheet: View {
     let meeting: Meeting
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var status: Meeting.Status
     @State private var note: String = ""
+    @State private var saving = false
+    @State private var saveError: String?
 
     init(meeting: Meeting) {
         self.meeting = meeting
@@ -323,6 +326,12 @@ struct StatusPickerSheet: View {
                         }
                     }
                     noteCard
+                    if let saveError {
+                        Text(saveError)
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(MABrand.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     Color.clear.frame(height: 90)
                 }
                 .padding(20)
@@ -416,7 +425,7 @@ struct StatusPickerSheet: View {
     private func statusDescription(_ s: Meeting.Status) -> String {
         switch s {
         case .confirmed: return "Møtet er bekreftet av begge parter"
-        case .onTheWay:  return "På vei — kontakten er informert"
+        case .onTheWay:  return "Selger er på vei til møtet"
         case .followUp:  return "Krever oppfølging etter forrige interaksjon"
         case .pending:   return "Venter på bekreftelse"
         case .cancelled: return "Møtet er avlyst"
@@ -449,7 +458,7 @@ struct StatusPickerSheet: View {
     }
 
     private var confirmBar: some View {
-        Button { dismiss() } label: {
+        Button { Task { await saveStatus() } } label: {
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.appScaled(size: 14, weight: .bold))
@@ -466,8 +475,35 @@ struct StatusPickerSheet: View {
             )
         }
         .buttonStyle(.plain)
+        .disabled(saving)
+        .opacity(saving ? 0.65 : 1)
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(MABrand.bg.opacity(0.95).overlay(Rectangle().fill(MABrand.stroke).frame(height: 1), alignment: .top))
+    }
+
+    @MainActor
+    private func saveStatus() async {
+        guard !saving else { return }
+        if DemoModeManager.isActiveNonisolated { dismiss(); return }
+        guard let api = appState.api else {
+            saveError = "Ingen aktiv tilkobling. Status ble ikke endret."
+            return
+        }
+        saving = true
+        saveError = nil
+        defer { saving = false }
+        do {
+            let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+            try await api.oppdaterMote(
+                leadId: meeting.id.uuidString.lowercased(),
+                meetingStatus: status.backendValue,
+                note: trimmedNote.isEmpty ? nil : trimmedNote
+            )
+            await appState.refreshAll()
+            dismiss()
+        } catch {
+            saveError = "Kunne ikke endre status. Prøv igjen."
+        }
     }
 }
 
@@ -476,10 +512,13 @@ struct StatusPickerSheet: View {
 struct CancelMeetingSheet: View {
     let meeting: Meeting
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var reason: CancelReason = .conflict
     @State private var customReason: String = ""
     @State private var notify: Bool = true
     @State private var suggestNew: Bool = true
+    @State private var saving = false
+    @State private var saveError: String?
 
     enum CancelReason: String, CaseIterable, Hashable {
         case conflict = "Konflikt med annet møte"
@@ -507,6 +546,18 @@ struct CancelMeetingSheet: View {
                     reasonsCard
                     if reason == .other { customReasonCard }
                     optionsCard
+                    if notify && meeting.contactEmail == nil {
+                        Text("Kontakten mangler e-post. Møtet lagres som avlyst, men varslingsutkast kan ikke åpnes.")
+                            .font(.appScaled(size: 10, weight: .semibold))
+                            .foregroundStyle(MABrand.yellow)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if let saveError {
+                        Text(saveError)
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(MABrand.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     Color.clear.frame(height: 90)
                 }
                 .padding(20)
@@ -532,10 +583,10 @@ struct CancelMeetingSheet: View {
                 .font(.appScaled(size: 16, weight: .bold))
                 .foregroundStyle(MABrand.red)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Dette kan ikke angres")
+                Text("Møtet blir markert som avlyst")
                     .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
-                Text("Møtet flyttes til avlyste og prep-status nullstilles")
+                Text("Status og avlysningsgrunn lagres i workspace-historikken")
                     .font(.appScaled(size: 10))
                     .foregroundStyle(MABrand.textSecondary)
             }
@@ -559,7 +610,7 @@ struct CancelMeetingSheet: View {
                 Text(meeting.company)
                     .font(.appScaled(size: 13, weight: .bold))
                     .foregroundStyle(.white)
-                Text("Tir 20. mai · \(meeting.startTime)–\(meeting.endTime) · \(meeting.contactName)")
+                Text("\(meeting.startTime)–\(meeting.endTime) · \(meeting.contactName)")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(MABrand.textSecondary)
             }
@@ -634,7 +685,7 @@ struct CancelMeetingSheet: View {
                     Image(systemName: "envelope.fill")
                         .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(MABrand.blue)
-                    Text("Varsle \(meeting.contactName)")
+                    Text("Åpne varslingsutkast etter lagring")
                         .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                 }
@@ -646,7 +697,7 @@ struct CancelMeetingSheet: View {
                     Image(systemName: "calendar.badge.plus")
                         .font(.appScaled(size: 12, weight: .bold))
                         .foregroundStyle(MABrand.green)
-                    Text("Foreslå nytt tidspunkt automatisk")
+                    Text("Ta med forslag om nytt tidspunkt i utkast")
                         .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                 }
@@ -659,7 +710,7 @@ struct CancelMeetingSheet: View {
     }
 
     private var confirmBar: some View {
-        Button { dismiss() } label: {
+        Button { Task { await cancelMeeting() } } label: {
             HStack(spacing: 6) {
                 Image(systemName: "xmark.octagon.fill")
                     .font(.appScaled(size: 14, weight: .bold))
@@ -676,8 +727,53 @@ struct CancelMeetingSheet: View {
             )
         }
         .buttonStyle(.plain)
+        .disabled(saving || (reason == .other && customReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+        .opacity(saving ? 0.65 : 1)
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(MABrand.bg.opacity(0.95).overlay(Rectangle().fill(MABrand.stroke).frame(height: 1), alignment: .top))
+    }
+
+    private var resolvedReason: String {
+        let custom = customReason.trimmingCharacters(in: .whitespacesAndNewlines)
+        return reason == .other ? custom : reason.rawValue
+    }
+
+    @MainActor
+    private func cancelMeeting() async {
+        guard !saving, !resolvedReason.isEmpty else { return }
+        if DemoModeManager.isActiveNonisolated { dismiss(); return }
+        guard let api = appState.api else {
+            saveError = "Ingen aktiv tilkobling. Møtet ble ikke avlyst."
+            return
+        }
+        saving = true
+        saveError = nil
+        defer { saving = false }
+        do {
+            try await api.oppdaterMote(
+                leadId: meeting.id.uuidString.lowercased(),
+                meetingStatus: Meeting.Status.cancelled.backendValue,
+                note: "Avlyst: \(resolvedReason)"
+            )
+            await appState.refreshAll()
+            if notify { openCancellationDraft() }
+            dismiss()
+        } catch {
+            saveError = "Kunne ikke avlyse møtet. Prøv igjen."
+        }
+    }
+
+    private func openCancellationDraft() {
+        guard let email = meeting.contactEmail, !email.isEmpty else { return }
+        var components = URLComponents()
+        components.scheme = "mailto"
+        components.path = email
+        let proposal = suggestNew ? " Jeg foreslår at vi finner et nytt tidspunkt." : ""
+        components.queryItems = [
+            URLQueryItem(name: "subject", value: "Endring av møte med \(meeting.company)"),
+            URLQueryItem(name: "body", value: "Hei \(meeting.contactName), møtet må dessverre avlyses. Grunn: \(resolvedReason).\(proposal)")
+        ]
+        if let url = components.url { UIApplication.shared.open(url) }
     }
 }
 
@@ -686,11 +782,15 @@ struct CancelMeetingSheet: View {
 struct AssignSellerSheet: View {
     let meeting: Meeting
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var search: String = ""
     @State private var selectedID: UUID?
+    @State private var saving = false
+    @State private var saveError: String?
 
     struct Seller: Identifiable, Hashable {
         let id = UUID()
+        let userId: String?
         let name: String
         let role: String
         let initials: String
@@ -705,18 +805,22 @@ struct AssignSellerSheet: View {
     /// datakilde enda → 0/false.
     private var sellers: [Seller] {
         if DemoModeManager.isActiveNonisolated { return Self.mockSellers }
-        return TeamLiveStore.shared.members.map { m in
-            Seller(name: m.name, role: "Selger", initials: m.initials,
-                   color: m.color, load: m.meetings, winRate: 0, online: false)
+        let team = TeamLiveStore.shared
+        return team.memberDTOs.map { dto in
+            let visual = team.members.first { $0.name == dto.name }
+            return Seller(userId: dto.userId, name: dto.name, role: dto.title ?? "Selger",
+                          initials: visual?.initials ?? String(dto.name.prefix(2)).uppercased(),
+                          color: visual?.color ?? MABrand.purple,
+                          load: visual?.meetings ?? 0, winRate: 0, online: false)
         }
     }
 
     private static let mockSellers: [Seller] = [
-        Seller(name: "Lars Kristensen", role: "Salgssjef",         initials: "LK", color: MABrand.purple,      load: 12, winRate: 64, online: true),
-        Seller(name: "Anna Berg",       role: "Senior selger",     initials: "AB", color: MABrand.green,       load: 8,  winRate: 71, online: true),
-        Seller(name: "Erik Nilsen",     role: "Account Executive", initials: "EN", color: MABrand.blue,        load: 15, winRate: 58, online: false),
-        Seller(name: "Maja Solberg",    role: "Senior selger",     initials: "MS", color: MABrand.orange,      load: 6,  winRate: 78, online: true),
-        Seller(name: "Tobias Wiig",     role: "SDR",               initials: "TW", color: MABrand.pink,        load: 22, winRate: 45, online: false),
+        Seller(userId: nil, name: "Lars Kristensen", role: "Salgssjef",         initials: "LK", color: MABrand.purple,      load: 12, winRate: 64, online: true),
+        Seller(userId: nil, name: "Anna Berg",       role: "Senior selger",     initials: "AB", color: MABrand.green,       load: 8,  winRate: 71, online: true),
+        Seller(userId: nil, name: "Erik Nilsen",     role: "Account Executive", initials: "EN", color: MABrand.blue,        load: 15, winRate: 58, online: false),
+        Seller(userId: nil, name: "Maja Solberg",    role: "Senior selger",     initials: "MS", color: MABrand.orange,      load: 6,  winRate: 78, online: true),
+        Seller(userId: nil, name: "Tobias Wiig",     role: "SDR",               initials: "TW", color: MABrand.pink,        load: 22, winRate: 45, online: false),
     ]
 
     private var filtered: [Seller] {
@@ -742,6 +846,12 @@ struct AssignSellerSheet: View {
                             sellerRow(s)
                         }
                     }
+                    if let saveError {
+                        Text(saveError)
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(MABrand.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     Color.clear.frame(height: 90)
                 }
                 .padding(20)
@@ -758,6 +868,9 @@ struct AssignSellerSheet: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .safeAreaInset(edge: .bottom, spacing: 0) { assignBar }
+        }
+        .task {
+            if let api = appState.api { TeamLiveStore.shared.attach(api: api, appState: appState) }
         }
     }
 
@@ -865,7 +978,7 @@ struct AssignSellerSheet: View {
     }
 
     private var assignBar: some View {
-        Button { dismiss() } label: {
+        Button { Task { await assignSeller() } } label: {
             HStack(spacing: 6) {
                 Image(systemName: "person.badge.plus.fill")
                     .font(.appScaled(size: 13, weight: .bold))
@@ -885,9 +998,31 @@ struct AssignSellerSheet: View {
             .opacity(selectedID == nil ? 0.5 : 1)
         }
         .buttonStyle(.plain)
-        .disabled(selectedID == nil)
+        .disabled(selectedID == nil || saving)
+        .opacity(saving ? 0.65 : 1)
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(MABrand.bg.opacity(0.95).overlay(Rectangle().fill(MABrand.stroke).frame(height: 1), alignment: .top))
+    }
+
+    @MainActor
+    private func assignSeller() async {
+        guard !saving, let selectedID,
+              let seller = sellers.first(where: { $0.id == selectedID }) else { return }
+        if DemoModeManager.isActiveNonisolated { dismiss(); return }
+        guard let api = appState.api, let userId = seller.userId else {
+            saveError = "Selgeren mangler en gyldig workspace-bruker."
+            return
+        }
+        saving = true
+        saveError = nil
+        defer { saving = false }
+        do {
+            try await api.assignLead(meeting.id.uuidString.lowercased(), toUserId: userId)
+            await appState.refreshAll()
+            dismiss()
+        } catch {
+            saveError = "Kunne ikke tilordne selger. Prøv igjen."
+        }
     }
 }
 

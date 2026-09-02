@@ -39,10 +39,18 @@ import {
   searchPlaces,
   setLeadGeo,
   updateLeadStatus,
+  type ActivityKind,
+  type ActivityOutcome,
   type LeadStatus,
   type VisitType,
 } from "./lead-map-service.js";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+import {
+  requestedLeadMapOrganizationId,
+  resolveAuthorizedLeadMapOrganization,
+  resolveLeadOrganizationScope,
+  sendLeadMapOrganizationScopeError,
+} from "./lead-map-org-scope.js";
 import { resolveLeadMapSession } from "./lead-map-session-helper.js";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import {
@@ -51,6 +59,7 @@ import {
   parseLeadCreationBody,
   parseLeadCreationIdempotencyKey,
 } from "./lead-map-create-contract.js";
+import { CardLeadProjectScopeError, createCardLead } from "./lead-map-card-service.js";
 
 /** Bygger notes-feltet for crm_customers fra visittkort-payload */
 function buildNotes(body: {
@@ -95,6 +104,14 @@ const VALID_VISIT_TYPES: ReadonlySet<VisitType> = new Set([
   'physical', 'phone', 'email', 'online_meeting', 'research',
 ]);
 
+const VALID_ACTIVITY_KINDS: ReadonlySet<ActivityKind> = new Set([
+  'call', 'email', 'meeting', 'note', 'visit', 'demo', 'proposal', 'deal_close',
+]);
+const VALID_ACTIVITY_OUTCOMES: ReadonlySet<ActivityOutcome> = new Set([
+  'no_answer', 'spoke', 'meeting_booked', 'proposal_sent',
+  'interested', 'not_interested', 'won', 'lost',
+]);
+
 let stripeClient: Stripe | null = null;
 function getStripe(): Stripe | null {
   if (stripeClient) return stripeClient;
@@ -106,6 +123,15 @@ function getStripe(): Stripe | null {
 
 export function setupLeadMapRoutes(deps: Deps): void {
   const { app, pool, activeSessions } = deps;
+
+  async function organizationScope(
+    req: Request, userId: string, leadId?: string,
+  ): Promise<string | null> {
+    const requested = requestedLeadMapOrganizationId(req);
+    return leadId
+      ? resolveLeadOrganizationScope(pool, userId, leadId, requested)
+      : resolveAuthorizedLeadMapOrganization(pool, userId, requested);
+  }
 
   // Helper: krev aktiv entitlement (returnerer 402 hvis ikke)
   async function requireEntitlement(req: Request, res: Response, configId: string) {
@@ -150,11 +176,13 @@ export function setupLeadMapRoutes(deps: Deps): void {
       ? req.query.projectId
       : null;
     try {
+      const organizationId = await organizationScope(req, session.userId);
       const leads = await listLeadsInBounds(pool, {
-        ownerUserId: session.userId, projectId, bounds, statusFilter, categoryFilter,
+        ownerUserId: session.userId, organizationId, projectId, bounds, statusFilter, categoryFilter,
       });
       return res.json({ leads });
     } catch (err) {
+      if (sendLeadMapOrganizationScopeError(err, res)) return;
       return res.status(500).json({ error: "leads_failed", detail: "internal_error" });
     }
   });
@@ -164,10 +192,12 @@ export function setupLeadMapRoutes(deps: Deps): void {
     const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     try {
-      const lead = await getLeadById(pool, { ownerUserId: session.userId }, req.params.id);
+      const organizationId = await organizationScope(req, session.userId, req.params.id);
+      const lead = await getLeadById(pool, { ownerUserId: session.userId, organizationId }, req.params.id);
       if (!lead) return res.status(404).json({ error: "not_found" });
       return res.json(lead);
     } catch (err) {
+      if (sendLeadMapOrganizationScopeError(err, res)) return;
       return res.status(500).json({ error: "lead_failed", detail: "internal_error" });
     }
   });
@@ -217,20 +247,16 @@ export function setupLeadMapRoutes(deps: Deps): void {
       return res.status(400).json({ error: "ugyldig_status" });
     }
     try {
-      // Hent gammel status FØR oppdatering (for å varsle om endring)
-      const prev = await pool.query<{ lead_status: string | null }>(
-        `SELECT lead_status FROM crm_customers WHERE id = $1`,
-        [req.params.id],
-      );
-      const oldStatus = prev.rows[0]?.lead_status ?? null;
-
+      const organizationId = await organizationScope(req, session.userId, req.params.id);
       const r = await updateLeadStatus(pool, {
         ownerUserId: session.userId,
+        organizationId,
         leadId: req.params.id,
         status: body.status as LeadStatus,
         notes: body.notes,
       });
       if (!r.ok) return res.status(404).json({ error: "not_found" });
+      const oldStatus = r.previous ?? null;
 
       // Varsle eier hvis status faktisk endret seg + ikke samme bruker
       if (oldStatus !== body.status) {
@@ -252,6 +278,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
       return res.json(r);
     } catch (err) {
+      if (sendLeadMapOrganizationScopeError(err, res)) return;
       return res.status(500).json({ error: "status_failed", detail: "internal_error" });
     }
   });
@@ -273,9 +300,14 @@ export function setupLeadMapRoutes(deps: Deps): void {
       return res.status(400).json({ error: "ugyldig_temperatur" });
     }
     try {
+      const organizationId = await organizationScope(req, session.userId, req.params.id);
+      const scopeParams: unknown[] = [req.params.id];
+      const scopeClause = organizationId
+        ? (scopeParams.push(organizationId), `organization_id = $${scopeParams.length}::uuid`)
+        : (scopeParams.push(session.userId), `owner_user_id = $${scopeParams.length}`);
       const prev = await pool.query<{ lead_temperature: string | null }>(
-        `SELECT lead_temperature FROM crm_customers WHERE id = $1`,
-        [req.params.id],
+        `SELECT lead_temperature FROM crm_customers WHERE id = $1::uuid AND ${scopeClause}`,
+        scopeParams,
       );
       if (!prev.rows.length) return res.status(404).json({ error: "not_found" });
       const oldTemp = prev.rows[0].lead_temperature ?? null;
@@ -283,8 +315,8 @@ export function setupLeadMapRoutes(deps: Deps): void {
       await pool.query(
         `UPDATE crm_customers
             SET lead_temperature = $1, updated_at = NOW()
-          WHERE id = $2`,
-        [body.temperature, req.params.id],
+          WHERE id = $2::uuid AND ${scopeClause.replace(/\$(\d+)/g, (_, n) => `$${Number(n) + 1}`)}`,
+        [body.temperature, ...scopeParams],
       );
 
       if (oldTemp !== body.temperature) {
@@ -292,7 +324,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
           try {
             const { resolveOrgIdForUser } = await import("./leadgrid-org-resolver.js");
             const { publishEvent } = await import("./leadgrid-workflow-engine.js");
-            const orgId = await resolveOrgIdForUser(pool, session.userId);
+            const orgId = organizationId ?? await resolveOrgIdForUser(pool, session.userId);
             await publishEvent({
               pool,
               organizationId: orgId,
@@ -313,6 +345,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
       return res.json({ ok: true, temperature: body.temperature });
     } catch (err) {
+      if (sendLeadMapOrganizationScopeError(err, res)) return;
       return res.status(500).json({ error: "temperature_failed", detail: "internal_error" });
     }
   });
@@ -332,8 +365,10 @@ export function setupLeadMapRoutes(deps: Deps): void {
       return res.status(400).json({ error: "mangler_koordinater" });
     }
     try {
+      const organizationId = await organizationScope(req, session.userId, req.params.id);
       const r = await setLeadGeo(pool, {
         ownerUserId: session.userId,
+        organizationId,
         leadId: req.params.id,
         latitude: body.latitude, longitude: body.longitude,
         address: body.address, postalCode: body.postalCode,
@@ -342,6 +377,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
       if (!r.ok) return res.status(404).json({ error: "not_found" });
       return res.json(r);
     } catch (err) {
+      if (sendLeadMapOrganizationScopeError(err, res)) return;
       return res.status(500).json({ error: "geo_failed", detail: "internal_error" });
     }
   });
@@ -364,6 +400,10 @@ export function setupLeadMapRoutes(deps: Deps): void {
       nextFollowUpAt?: string;
       visitLatitude?: number;
       visitLongitude?: number;
+      visitDatetime?: string;
+      activityKind?: string;
+      outcome?: string;
+      durationMinutes?: number;
     };
 
     if (!body.visitType || !VALID_VISIT_TYPES.has(body.visitType as VisitType)) {
@@ -372,21 +412,25 @@ export function setupLeadMapRoutes(deps: Deps): void {
     if (body.newStatus && !VALID_STATUSES.has(body.newStatus as LeadStatus)) {
       return res.status(400).json({ error: "ugyldig_status" });
     }
+    if (body.activityKind && !VALID_ACTIVITY_KINDS.has(body.activityKind as ActivityKind)) {
+      return res.status(400).json({ error: "ugyldig_activity_kind" });
+    }
+    if (body.outcome && !VALID_ACTIVITY_OUTCOMES.has(body.outcome as ActivityOutcome)) {
+      return res.status(400).json({ error: "ugyldig_outcome" });
+    }
+    if (body.durationMinutes !== undefined &&
+        (!Number.isInteger(body.durationMinutes) || body.durationMinutes < 0 || body.durationMinutes > 1440)) {
+      return res.status(400).json({ error: "ugyldig_varighet" });
+    }
+    if (body.visitDatetime && Number.isNaN(new Date(body.visitDatetime).getTime())) {
+      return res.status(400).json({ error: "ugyldig_aktivitetstid" });
+    }
 
     try {
-      // Gammel status FØR logVisit — besøk kan sette newStatus, og da
-      // skal lead.status_changed-workflows fyre (QA 2026-07-05).
-      let oldStatus: string | null = null;
-      if (body.newStatus) {
-        const prev = await pool.query<{ lead_status: string | null }>(
-          `SELECT lead_status FROM crm_customers WHERE id = $1`,
-          [req.params.id],
-        );
-        oldStatus = prev.rows[0]?.lead_status ?? null;
-      }
-
+      const organizationId = await organizationScope(req, session.userId, req.params.id);
       const r = await logVisit(pool, {
         ownerUserId: session.userId,
+        organizationId,
         leadId: req.params.id,
         visitType: body.visitType as VisitType,
         contactPerson: body.contactPerson,
@@ -398,9 +442,14 @@ export function setupLeadMapRoutes(deps: Deps): void {
         nextFollowUpAt: body.nextFollowUpAt,
         visitLatitude: body.visitLatitude,
         visitLongitude: body.visitLongitude,
+        visitDatetime: body.visitDatetime,
+        activityKind: body.activityKind as ActivityKind | undefined,
+        outcome: body.outcome as ActivityOutcome | undefined,
+        durationMinutes: body.durationMinutes,
       });
       if (!r.ok) return res.status(404).json({ error: "not_found" });
 
+      const oldStatus = r.previousStatus ?? null;
       if (body.newStatus && oldStatus !== body.newStatus) {
         publishLeadStatusChanged({
           leadId: req.params.id,
@@ -412,6 +461,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
 
       return res.json(r);
     } catch (err) {
+      if (sendLeadMapOrganizationScopeError(err, res)) return;
       return res.status(500).json({ error: "visit_failed", detail: "internal_error" });
     }
   });
@@ -421,9 +471,11 @@ export function setupLeadMapRoutes(deps: Deps): void {
     const session = await getUser(req, pool, activeSessions);
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     try {
-      const visits = await listVisits(pool, { ownerUserId: session.userId }, req.params.id, 50);
+      const organizationId = await organizationScope(req, session.userId, req.params.id);
+      const visits = await listVisits(pool, { ownerUserId: session.userId, organizationId }, req.params.id, 50);
       return res.json({ visits });
     } catch (err) {
+      if (sendLeadMapOrganizationScopeError(err, res)) return;
       return res.status(500).json({ error: "visits_failed", detail: "internal_error" });
     }
   });
@@ -434,9 +486,11 @@ export function setupLeadMapRoutes(deps: Deps): void {
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
     try {
-      const activities = await listRecentActivities(pool, { ownerUserId: session.userId }, limit);
+      const organizationId = await organizationScope(req, session.userId);
+      const activities = await listRecentActivities(pool, { ownerUserId: session.userId, organizationId }, limit);
       return res.json({ activities });
     } catch (err) {
+      if (sendLeadMapOrganizationScopeError(err, res)) return;
       return res.status(500).json({ error: "activities_failed", detail: "internal_error" });
     }
   });
@@ -449,9 +503,11 @@ export function setupLeadMapRoutes(deps: Deps): void {
       const projectId = typeof req.query.projectId === 'string' && req.query.projectId.length > 0
         ? req.query.projectId
         : null;
-      const metrics = await getLeadMapMetrics(pool, { ownerUserId: session.userId, projectId });
+      const organizationId = await organizationScope(req, session.userId);
+      const metrics = await getLeadMapMetrics(pool, { ownerUserId: session.userId, organizationId, projectId });
       return res.json(metrics);
     } catch (err) {
+      if (sendLeadMapOrganizationScopeError(err, res)) return;
       return res.status(500).json({ error: "metrics_failed", detail: "internal_error" });
     }
   });
@@ -464,13 +520,15 @@ export function setupLeadMapRoutes(deps: Deps): void {
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
     const body = (req.body ?? {}) as { serviceFocus?: string };
     try {
+      const organizationId = await organizationScope(req, session.userId, req.params.id);
       const r = await generateLeadPitch(pool, {
-        ownerUserId: session.userId, leadId: req.params.id,
+        ownerUserId: session.userId, organizationId, leadId: req.params.id,
         serviceFocus: body.serviceFocus,
       });
       if (!r) return res.status(503).json({ error: "ai_unavailable_or_lead_not_found" });
       return res.json(r);
     } catch (err) {
+      if (sendLeadMapOrganizationScopeError(err, res)) return;
       return res.status(500).json({ error: "pitch_failed", detail: "internal_error" });
     }
   });
@@ -487,8 +545,10 @@ export function setupLeadMapRoutes(deps: Deps): void {
     if (!body.query) return res.status(400).json({ error: "mangler_query" });
 
     try {
+      const organizationId = await organizationScope(req, session.userId);
       const r = await searchPlaces(pool, {
         ownerUserId: session.userId,
+        organizationId,
         query: body.query,
         latitude: body.latitude, longitude: body.longitude,
         radiusMeters: body.radiusMeters ?? 5000,
@@ -542,10 +602,22 @@ export function setupLeadMapRoutes(deps: Deps): void {
       // sender org.nr i raw_text (→ sikker BRREG-kobling + full berikelse
       // via samme løype) men skal spores som egen kilde.
       const leadSource = ["business_card_scan", "doffin_anbud"].includes(body.lead_source ?? "")
-        ? (body.lead_source as string)
+        ? (body.lead_source as "business_card_scan" | "doffin_anbud")
         : "business_card_scan";
+      let idempotencyKey: string | null;
+      try {
+        idempotencyKey = parseLeadCreationIdempotencyKey(req.get("Idempotency-Key"));
+      } catch (error) {
+        if (error instanceof LeadCreationValidationError) {
+          return res.status(400).json({ error: error.code });
+        }
+        return res.status(400).json({ error: "ugyldig_idempotency_key" });
+      }
 
       try {
+        const organizationId =
+          (await organizationScope(req, session.userId))
+          ?? (await resolveOrgIdForUser(pool, session.userId));
         // BRREG-kobling FØR insert: org.nr fra OCR-teksten (mod11-validert,
         // sikrest) eller navnesøk på FIRMANAVNET m/ match-vakt. Person-
         // navnet brukes aldri — enrichLeadWithBrreg søker på lead.name,
@@ -563,43 +635,30 @@ export function setupLeadMapRoutes(deps: Deps): void {
           notes += `\n---\nBRREG-forslag (ikke koblet automatisk): ${brregLink.matchedName} (org.nr ${brregLink.orgNr}) — bekreft i lead-kortet.`;
         }
 
-        const r = await pool.query<{ id: string }>(
-          `INSERT INTO crm_customers (
-             id, name, company,
-             phone, email, website_url,
-             lead_status, lead_source,
-             owner_user_id, assigned_user_id,
-             assigned_at, assigned_by_user_id,
-             project_id, notes, enrichment_org_nr,
-             created_at, updated_at
-           ) VALUES (
-             gen_random_uuid(), $1, $2, $3, $4, $5,
-             'unvisited', $10,
-             $6::text, $6::text, NOW(), $6::text, $7, $8, $9,
-             NOW(), NOW()
-           ) RETURNING id::text`,
-          [
-            body.name.trim(),
-            body.company?.trim() ?? null,
-            body.phone?.trim() ?? null,
-            body.email?.trim() ?? null,
-            body.website?.trim() ?? null,
-            session.userId,
-            body.project_id ?? null,
-            notes,
-            brregLink.status === "linked" ? brregLink.orgNr : null,
-            leadSource,
-          ],
-        );
+        const creation = await createCardLead(pool, {
+          name: body.name.trim(),
+          title: body.title?.trim() || null,
+          company: body.company?.trim() || null,
+          email: body.email?.trim() || null,
+          phone: body.phone?.trim() || null,
+          website: body.website?.trim() || null,
+          notes,
+          projectId: body.project_id ?? null,
+          leadSource,
+          organizationNumber: brregLink.status === "linked" ? brregLink.orgNr : null,
+          ownerUserId: session.userId,
+          organizationId,
+          idempotencyKey,
+        });
         // Hvis title satt, lagre som notat (vi har ikke felt for kontakt-tittel
         // separat — på crm_customers er notes-feltet tilstrekkelig)
         // Workflow-event (2026-07-04): visittkort-skannede leads skal
         // også fyre lead.created (welcome/intro-workflows) — samme
         // mønster som pin-drop-ruten. Fire-and-forget.
-        const cardLeadId = r.rows[0].id;
+        const cardLeadId = creation.id;
         // Full berikelse (adresse, NACE, daglig leder, regnskap) i bakgrunnen
         // når org.nr er sikkert koblet — pipeline hopper over navnesøket.
-        if (brregLink.status === "linked") {
+        if (creation.created && brregLink.status === "linked") {
           // Via jobb-køen (0400): overlever deploy-restart, retry m/
           // backoff, og feil blir synlige i /api/admin-room/jobs i stedet
           // for en stille console.warn.
@@ -611,18 +670,16 @@ export function setupLeadMapRoutes(deps: Deps): void {
             console.warn("[from-card] kunne ikke køe BRREG-berikelse:", String(err).slice(0, 120));
           });
         }
-        void (async () => {
+        if (creation.created) void (async () => {
           try {
-            const { resolveOrgIdForUser } = await import("./leadgrid-org-resolver.js");
             const { publishEvent } = await import("./leadgrid-workflow-engine.js");
-            const orgId = await resolveOrgIdForUser(pool, session.userId);
             await publishEvent({
               pool,
-              organizationId: orgId,
+              organizationId,
               type: "lead.created",
               leadId: cardLeadId,
               actorUserId: session.userId,
-              data: { source: "business_card_scan", occurred_at: new Date().toISOString() },
+              data: { source: leadSource, occurred_at: new Date().toISOString() },
             });
           } catch (err) {
             console.warn("[lead-map] from-card lead.created feilet:", (err as Error).message);
@@ -633,8 +690,17 @@ export function setupLeadMapRoutes(deps: Deps): void {
           id: cardLeadId,
           // iOS-appen kan vise koblingen med en gang («Fant: X AS, org.nr …»)
           brreg: brregLink.status === "no_match" ? null : brregLink,
+          replayed: creation.idempotentReplay,
+          duplicate_match: creation.duplicateMatch,
         });
       } catch (err) {
+        if (sendLeadMapOrganizationScopeError(err, res)) return;
+        if (err instanceof LeadCreationIdempotencyConflictError) {
+          return res.status(409).json({ error: "idempotency_key_conflict" });
+        }
+        if (err instanceof CardLeadProjectScopeError) {
+          return res.status(400).json({ error: "project_not_in_organization" });
+        }
         return res.status(500).json({ error: "create_failed", detail: "internal_error" });
       }
     },
@@ -668,7 +734,9 @@ export function setupLeadMapRoutes(deps: Deps): void {
       }
 
       try {
-        const organizationId = await resolveOrgIdForUser(pool, session.userId);
+        const organizationId =
+          (await organizationScope(req, session.userId))
+          ?? (await resolveOrgIdForUser(pool, session.userId));
         const creation = await createLeadFromPin(pool, {
           ...body,
           ownerUserId: session.userId,
@@ -715,6 +783,7 @@ export function setupLeadMapRoutes(deps: Deps): void {
           replayed: creation.idempotentReplay,
         });
       } catch (err) {
+        if (sendLeadMapOrganizationScopeError(err, res)) return;
         if (err instanceof DuplicateLeadError) {
           return res.status(409).json({
             error: "duplicate_lead",
@@ -752,8 +821,10 @@ export function setupLeadMapRoutes(deps: Deps): void {
     if (!body.place?.placeId) return res.status(400).json({ error: "mangler_place" });
 
     try {
+      const organizationId = await organizationScope(req, session.userId);
       const r = await importPlaceAsLead(pool, {
         ownerUserId: session.userId,
+        organizationId,
         place: body.place,
         leadCategory: body.leadCategory,
         projectId: body.projectId ?? null,
