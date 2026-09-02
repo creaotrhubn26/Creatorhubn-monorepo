@@ -1,6 +1,6 @@
 {
   "formatVersion": 2,
-  "baselineId": "creatorhub-production-ledger-2026-08-31-v2",
+  "baselineId": "creatorhub-production-ledger-2026-09-02-v3",
   "legacyAppliedFilenames": [
     "0000b_missing_columns.sql",
     "0000c_missing_tables.sql",
@@ -23,7 +23,10 @@
     "0464_users_auth_session_version.sql",
     "0465_leadgrid_canvas_integrity.sql",
     "0470_role_room_linkedin_publish_queue.sql",
-    "0471_project_pricing_and_time_tracking.sql"
+    "0471_project_pricing_and_time_tracking.sql",
+    "0490_leadgrid_core_dataflow.sql",
+    "0491_leadgrid_lead_files.sql",
+    "0492_leadgrid_runtime_schema_backfill.sql"
   ],
   "legacyAppliedChecksums": {
     "0000b_missing_columns.sql": "22fc5b363ad5d0c4949c92b195031435c6a683b846489ac2e65b492ceac17714",
@@ -47,6 +50,9 @@
     "0464_users_auth_session_version.sql": null,
     "0465_leadgrid_canvas_integrity.sql": "450083790b10381abbab386eae63fd56ec48c0ac011d2a82dc5e87362b322d45",
     "0470_role_room_linkedin_publish_queue.sql": "d36e7aa5cafed8df4e1909061a6842ff6fa3616562464728d5c1c09350e9907a",
-    "0471_project_pricing_and_time_tracking.sql": "981ea9e0b70850a05abe7c90ddba30eb246c15cf1cd6e1bf62450f5b9a614649"
+    "0471_project_pricing_and_time_tracking.sql": "981ea9e0b70850a05abe7c90ddba30eb246c15cf1cd6e1bf62450f5b9a614649",
+    "0490_leadgrid_core_dataflow.sql": null,
+    "0491_leadgrid_lead_files.sql": null,
+    "0492_leadgrid_runtime_schema_backfill.sql": null
   }
 }
