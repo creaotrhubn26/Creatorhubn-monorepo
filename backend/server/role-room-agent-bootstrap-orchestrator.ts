@@ -35,6 +35,7 @@ import {
 const ORCHESTRATOR_SYSTEM_PROMPT = `Du er The Role Room Agents research-orchestrator. Målet ditt er å samle akkurat nok informasjon til å lage et godt første utkast for et innholdsproduksjons-prosjekt. Tenk strategisk:
 
 - Start med lookup_website_insights hvis det er en URL og vi ikke allerede har nok tekst.
+- Hvis nettsiden oppgir legalName eller organisasjonsnummer, bruk den verifiserte juridiske identiteten videre — aldri bare merkenavnet.
 - Bruk lookup_brreg ÉN gang når selskapet virker norsk og vi har organisasjonsnummer eller selskapsnavn.
 - Bruk lookup_google_places når vi har selskapsnavn eller adresse, og bedriftens fysiske tilstedeværelse er relevant (butikk, restaurant, klinikk).
 - Ikke kall alle verktøy blindt. Hvis brukerens extraContext allerede har svarene, hopp over fetch og gå rett til syntese.
@@ -154,16 +155,40 @@ export async function runOrchestratedBootstrap(
         if (!url) return { error: 'no_website_url' };
         websiteInsights = await fetchWebsiteInsights(url, input, brregCompany);
         toolCallsLog.push({ tool: name, ok: true });
-        return websiteInsights;
+        // The customer's own structured legal identity is stronger than its
+        // consumer-facing brand. Resolve it once here so every later tool and
+        // the synthesis receive the same verified entity.
+        const extractedOrgNumber = websiteInsights.extractedOrgNumber ?? null;
+        const extractedLegalName = websiteInsights.extractedLegalName ?? null;
+        if ((extractedOrgNumber || extractedLegalName) && brregCompany?.lookupStatus !== 'verified') {
+          brregCompany = await fetchBrregCompany({
+            ...input,
+            organizationNumber: extractedOrgNumber,
+            companyName: extractedLegalName,
+            websiteUrl: websiteInsights.finalUrl ?? input.websiteUrl,
+          });
+          toolCallsLog.push({
+            tool: 'lookup_brreg',
+            ok: brregCompany?.lookupStatus === 'verified',
+          });
+        }
+        return { ...websiteInsights, verifiedLegalEntity: brregCompany };
       }
       if (name === 'lookup_brreg') {
-        const orgNumber = toolInput.organizationNumber ?? input.organizationNumber;
-        const company = toolInput.companyName ?? input.companyName;
-        brregCompany = await fetchBrregCompany({
-          ...input,
-          organizationNumber: orgNumber ?? null,
-          companyName: company ?? null,
-        });
+        const orgNumber = websiteInsights?.extractedOrgNumber
+          ?? toolInput.organizationNumber
+          ?? input.organizationNumber;
+        const company = websiteInsights?.extractedLegalName
+          ?? toolInput.companyName
+          ?? input.companyName;
+        if (brregCompany?.lookupStatus !== 'verified') {
+          brregCompany = await fetchBrregCompany({
+            ...input,
+            organizationNumber: orgNumber ?? null,
+            companyName: company ?? null,
+            websiteUrl: websiteInsights?.finalUrl ?? input.websiteUrl,
+          });
+        }
         toolCallsLog.push({ tool: name, ok: true });
         return brregCompany;
       }
@@ -172,8 +197,16 @@ export async function runOrchestratedBootstrap(
         // yet, call it with minimal hints.
         const hinted = websiteInsights ?? { finalUrl: input.websiteUrl ?? '' };
         businessSignals = await fetchGooglePlacesBusinessSignals(
-          { ...input, companyName: toolInput.companyName ?? input.companyName },
+          {
+            ...input,
+            companyName: brregCompany?.name
+              ?? websiteInsights?.extractedLegalName
+              ?? toolInput.companyName
+              ?? input.companyName,
+            organizationNumber: brregCompany?.organizationNumber ?? input.organizationNumber,
+          },
           hinted as RoleRoomAgentWebsiteInsights,
+          brregCompany,
         );
         toolCallsLog.push({ tool: name, ok: true });
         return businessSignals;

@@ -16,9 +16,13 @@ import {
   BOOTSTRAP_OUTPUT_SCHEMA_HINTS,
   BOOTSTRAP_SYSTEM_PROMPT,
 } from "./role-room-agent-bootstrap-constraints.js";
-import { classifyByNace } from "./role-room-agent-nace-profile.js";
+import {
+  classifyByNace,
+  classifyWebsiteSpecialization,
+} from "./role-room-agent-nace-profile.js";
 import {
   buildSearchQueries,
+  isGooglePlaceBusinessIdentityMatch,
   scoreBrregNameCandidate,
   scoreGooglePlaceCandidate,
 } from "./role-room-agent-match-scoring.js";
@@ -39,6 +43,7 @@ import {
   type RoleRoomAgentGroundingSources,
 } from "./role-room-agent-grounding.js";
 import { enrichCompetitorWithMetaPage } from "./role-room-meta-pages.js";
+import { extractWebsiteLegalIdentityFromHtml } from "./role-room-agent-website-identity.js";
 
 export type RoleRoomAgentProducerBootstrapInput = {
   projectId: string;
@@ -262,6 +267,9 @@ export type RoleRoomAgentWebsiteInsights = {
    *  Bootstrap uses this to look up Brreg even when the user only
    *  knows the consumer-facing brand name. */
   extractedOrgNumber?: string | null;
+  /** High-trust legal entity name from schema.org Organization JSON-LD or
+   *  conservative copyright/ownership copy on the customer's own site. */
+  extractedLegalName?: string | null;
 };
 
 // =============================================================================
@@ -1247,11 +1255,18 @@ function buildCompetitorSearchQueries(
   businessSignals: RoleRoomAgentBusinessSignals | null,
   brregCompany: RoleRoomAgentBrregCompany | null,
 ): string[] {
+  const websiteSpecialization = classifyWebsiteSpecialization([
+    input.extraContext,
+    websiteInsights.pageTitle,
+    websiteInsights.metaDescription,
+    websiteInsights.textSnippet,
+  ]);
   // Category sources, in order of trust. Note: we deliberately do NOT
   // fall back to websiteInsights.siteName here. siteName is the customer's
   // own brand — querying "<Customer Name> Oslo" returns the customer
   // themselves, who is then filtered out, leaving zero competitors.
   const category = businessSignals?.primaryTypeDisplayName
+    || websiteSpecialization?.subIndustry
     || brregCompany?.industryCode?.description
     || "";
   const location = extractMarketLocation(businessSignals?.formattedAddress || brregCompany?.businessAddress || "");
@@ -1268,7 +1283,7 @@ function buildCompetitorSearchQueries(
       [
         category && location ? `${category} ${location}` : "",
         category && municipality && municipality !== location ? `${category} ${municipality}` : "",
-        brregCompany?.industryCode?.description && location
+        !websiteSpecialization && brregCompany?.industryCode?.description && location
           ? `${brregCompany.industryCode.description} ${location}`
           : "",
         // Anchor a national-scope fallback when neither municipality nor
@@ -1621,57 +1636,6 @@ function buildLimitedLocalPresencePlan(
     kpis: ["Påmeldinger/oppmøte", "QR-skanninger", "Leads", "Salg/booking", "Innhold produsert", "Gjenkjøp/oppfølging"],
     limitations: [reason],
   };
-}
-
-/** Validate a 9-digit Norwegian organization number with the mod-11
- *  checksum. Filters out any random 9-digit sequence (phone numbers,
- *  postal codes glued together) that happens to match the regex. */
-function isValidNorwegianOrgNumber(digits: string): boolean {
-  if (!/^\d{9}$/.test(digits)) return false;
-  const weights = [3, 2, 7, 6, 5, 4, 3, 2];
-  let sum = 0;
-  for (let i = 0; i < 8; i++) {
-    sum += Number(digits[i]) * weights[i];
-  }
-  const remainder = sum % 11;
-  const checksum = remainder === 0 ? 0 : 11 - remainder;
-  if (checksum === 10) return false; // not a valid orgnr — would be 10
-  return checksum === Number(digits[8]);
-}
-
-/** Extract a Norwegian 9-digit organization number from raw HTML.
- *  Looks first for explicit "Org.nr"/"Organisasjonsnummer"/"MVA"
- *  contexts (high precision), then falls back to any mod-11-valid
- *  9-digit sequence (catches footers that just print the number).
- *  Returns null when nothing valid found. */
-function extractOrgNumberFromHtml(html: string): string | null {
-  if (!html) return null;
-  const stripped = html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ");
-  // High-precision: explicit label.
-  const labelled = stripped.match(
-    /(?:org\.?\s*nr\.?|organisasjonsnummer|orgnr|mva)\s*[:.]?\s*(?:no)?\s*((?:\d[\s.-]?){9})/i,
-  );
-  if (labelled) {
-    const digits = labelled[1].replace(/\D/g, "");
-    if (digits.length === 9 && isValidNorwegianOrgNumber(digits)) {
-      return digits;
-    }
-  }
-  // Lower-precision fallback: scan all 9-digit groups (allowing space
-  // separators), validate each with mod-11. Take the first valid hit.
-  const candidates = stripped.match(/\b\d{3}[\s.-]?\d{3}[\s.-]?\d{3}\b/g) ?? [];
-  for (const c of candidates) {
-    const digits = c.replace(/\D/g, "");
-    if (digits.length === 9 && isValidNorwegianOrgNumber(digits)) {
-      return digits;
-    }
-  }
-  return null;
 }
 
 function extractTextSnippet(html: string): string {
@@ -2395,6 +2359,19 @@ function detectBusinessClassification(
   businessSignals?: RoleRoomAgentBusinessSignals | null,
   brregCompany?: RoleRoomAgentBrregCompany | null,
 ): RoleRoomAgentBusinessClassification {
+  // A specific first-party website profile may safely refine a broad NACE
+  // bucket. Requiring both vertical and product signals prevents a clinic or
+  // generic software vendor from matching on a single ambiguous word.
+  const websiteSpecialization = classifyWebsiteSpecialization([
+    input.extraContext,
+    websiteInsights.siteName,
+    websiteInsights.pageTitle,
+    websiteInsights.metaDescription,
+    websiteInsights.textSnippet,
+    brregCompany?.industryCode?.description,
+  ]);
+  if (websiteSpecialization) return websiteSpecialization;
+
   // NACE-koden fra Brreg er den mest pålitelige, strukturerte kilden til
   // bransje og forretningsmodell (B2B/B2C). Bruk den FØRST når den finnes og
   // er i den konservative NACE→profil-tabellen; ellers fall tilbake til
@@ -2495,6 +2472,10 @@ function detectBusinessClassification(
 function deriveAudienceFromClassification(
   classification: RoleRoomAgentBusinessClassification,
 ): string[] {
+  if (classification.industry === "Helseteknologi og programvare") {
+    return ["Leger og helsepersonell", "Legekontor og klinikker", "Helsefaglige beslutningstakere"];
+  }
+
   if (classification.businessModel === "B2C") {
     return ["Primære kunder", "Lokale gjester", "Digitale bestillere"];
   }
@@ -2561,6 +2542,7 @@ export async function fetchWebsiteInsights(
     const parsedBase = new URL(finalUrl);
     const $ = load(html);
     const socialCandidateMap = new Map<string, RoleRoomAgentSocialProfileCandidate>();
+    const websiteIdentity = extractWebsiteLegalIdentityFromHtml(html);
     collectSocialCandidatesFromHtml(html, finalUrl, "Forside", socialCandidateMap);
     const discoveredLinks = Array.from(
       new Map(
@@ -2631,6 +2613,9 @@ export async function fetchWebsiteInsights(
         }
         const pageHtml = await pageResponse.text();
         const resolvedPageUrl = pageResponse.url || link.url;
+        const pageIdentity = extractWebsiteLegalIdentityFromHtml(pageHtml);
+        websiteIdentity.organizationNumber ||= pageIdentity.organizationNumber;
+        websiteIdentity.legalName ||= pageIdentity.legalName;
         collectSocialCandidatesFromHtml(pageHtml, resolvedPageUrl, link.sourceLabel || extractTitle(pageHtml), socialCandidateMap);
         const snippet = extractTextSnippet(pageHtml);
         if (!snippet) {
@@ -2699,12 +2684,10 @@ export async function fetchWebsiteInsights(
         brregCompany,
       ),
       selectedPageSnippets,
-      // Pull a real, validated orgnr off the page when present. Catches
-      // brand-vs-legal-entity gaps (e.g. holycrust.no's footer prints
-      // "Macks Invest AS, 933 469 395" — the actual entity to look up
-      // in Brreg, not the brand "Holy Crust"). Bootstrap uses this when
-      // the user didn't supply an explicit organizationNumber.
-      extractedOrgNumber: extractOrgNumberFromHtml(html),
+      // Feed homepage or linked legal-page identity back into Brreg before
+      // any downstream location or competitor lookup.
+      extractedOrgNumber: websiteIdentity.organizationNumber,
+      extractedLegalName: websiteIdentity.legalName,
       siteSetupAudit: await siteAuditPromise,
     };
   } catch {
@@ -2797,6 +2780,17 @@ export async function fetchGooglePlacesBusinessSignals(
         scoreGooglePlaceCandidate(left, companyName, websiteHost, localityHint)
       );
     })[0];
+
+  if (!isGooglePlaceBusinessIdentityMatch(bestCandidate, companyName, websiteHost, localityHint)) {
+    console.warn("[places-business] rejected best candidate because legal identity/domain/locality did not match", {
+      companyName,
+      websiteHost,
+      localityHint,
+      candidateName: readGooglePlaceDisplayName(bestCandidate),
+      candidateAddress: hasText(bestCandidate.formattedAddress) ? normalizeWhitespace(bestCandidate.formattedAddress) : null,
+    });
+    return null;
+  }
 
   const placeId = hasText(bestCandidate.id) ? normalizeWhitespace(bestCandidate.id) : null;
   const detailsFieldMask = [
@@ -4899,7 +4893,7 @@ function buildFallbackBootstrap(
       ], proofPoints.length > 0 ? proofPoints : ["Tjenester og leveranser må verifiseres manuelt"]),
       targetAudience: audience,
       toneAndBrandSignals,
-      industry: brregCompany?.industryCode?.description || classification.industry,
+      industry: classification.industry,
       subIndustry: classification.subIndustry,
       businessModel: classification.businessModel,
       contentCategory: classification.contentCategory,
@@ -4947,7 +4941,7 @@ function buildFallbackBootstrap(
         audience: audience.join(", "),
         hook: `Hvorfor skal målgruppen bry seg om ${companyName} akkurat nå?`,
         coreMessage: summary,
-        industry: brregCompany?.industryCode?.description || classification.industry,
+        industry: classification.industry,
         subIndustry: classification.subIndustry,
         businessModel: classification.businessModel,
         contentCategory: classification.contentCategory,
@@ -5035,7 +5029,7 @@ function buildFallbackBootstrap(
         moralArgument: "Klar kommunikasjon gir bedre beslutninger.",
       },
       contentStoryLogic: {
-        industry: brregCompany?.industryCode?.description || classification.industry,
+        industry: classification.industry,
         subIndustry: classification.subIndustry,
         businessModel: classification.businessModel,
         contentCategory: classification.contentCategory,
@@ -5073,7 +5067,7 @@ function buildFallbackBootstrap(
       },
       classification: {
         ...classification,
-        industry: brregCompany?.industryCode?.description || classification.industry,
+        industry: classification.industry,
       },
       currentPhase: 1,
       phaseStatus: {
@@ -5707,31 +5701,56 @@ export async function generateRoleRoomAgentProducerBootstrap(
     fallbacksUsed.push("orchestrator_unusable_fell_through_to_deterministic");
   }
 
-  const initialBrregCompany = await time("brreg",
-      () => fetchBrregCompany(input),
+  // When a website is the only trustworthy identifier, read it before Brreg.
+  // This prevents a brand/project label from producing a low-quality registry
+  // lookup and guarantees exactly one Brreg request for the resolved identity.
+  const normalizedInputWebsiteUrl = normalizeWebsiteUrl(input.websiteUrl);
+  const shouldResolveIdentityFromWebsite = Boolean(normalizedInputWebsiteUrl)
+    && !normalizeOrganizationNumber(input.organizationNumber);
+  const preWebsiteBrregCompany = shouldResolveIdentityFromWebsite
+    ? null
+    : await time("brreg",
+        () => fetchBrregCompany(input),
+        { emptyFallbackLabel: "brreg_no_match", isEmpty: (v) => !v || v.lookupStatus !== "verified" },
+      );
+  const preWebsiteInput: RoleRoomAgentProducerBootstrapInput = {
+    ...input,
+    companyName: preWebsiteBrregCompany?.name || input.companyName || null,
+    organizationNumber: preWebsiteBrregCompany?.organizationNumber
+      || normalizeOrganizationNumber(input.organizationNumber)
+      || input.organizationNumber
+      || null,
+    websiteUrl: normalizedInputWebsiteUrl
+      || preWebsiteBrregCompany?.website
+      || input.websiteUrl
+      || null,
+  };
+  const websiteUrl = normalizeWebsiteUrl(preWebsiteInput.websiteUrl);
+  const websiteInsights = await time("website",
+      () => fetchWebsiteInsights(websiteUrl, preWebsiteInput, preWebsiteBrregCompany),
+    { emptyFallbackLabel: "website_unavailable", isEmpty: (v) => !v.finalUrl },
+  );
+  const initialBrregCompany = preWebsiteBrregCompany ?? await time("brreg",
+      () => fetchBrregCompany({
+        ...preWebsiteInput,
+        organizationNumber: websiteInsights.extractedOrgNumber || preWebsiteInput.organizationNumber || null,
+        companyName: websiteInsights.extractedLegalName || preWebsiteInput.companyName || null,
+      }),
     { emptyFallbackLabel: "brreg_no_match", isEmpty: (v) => !v || v.lookupStatus !== "verified" },
   );
   const companyAge = calculateCompanyAge(initialBrregCompany);
   const agreementSuggestions = buildAgreementSuggestions(initialBrregCompany, companyAge);
   const enrichedInput: RoleRoomAgentProducerBootstrapInput = {
-    ...input,
-    companyName: hasText(input.companyName)
-      ? input.companyName
-      : initialBrregCompany?.name || input.companyName || null,
+    ...preWebsiteInput,
+    companyName: initialBrregCompany?.lookupStatus === "verified"
+      ? initialBrregCompany.name
+      : websiteInsights.extractedLegalName || preWebsiteInput.companyName || null,
     organizationNumber: initialBrregCompany?.organizationNumber
-      || normalizeOrganizationNumber(input.organizationNumber)
-      || input.organizationNumber
+      || websiteInsights.extractedOrgNumber
+      || preWebsiteInput.organizationNumber
       || null,
-    websiteUrl: normalizeWebsiteUrl(input.websiteUrl)
-      || initialBrregCompany?.website
-      || input.websiteUrl
-      || null,
+    websiteUrl: websiteUrl || initialBrregCompany?.website || preWebsiteInput.websiteUrl || null,
   };
-  const websiteUrl = normalizeWebsiteUrl(enrichedInput.websiteUrl);
-  const websiteInsights = await time("website",
-      () => fetchWebsiteInsights(websiteUrl, enrichedInput, initialBrregCompany),
-    { emptyFallbackLabel: "website_unavailable", isEmpty: (v) => !v.finalUrl },
-  );
   const businessSignals = await time("googlePlacesBusiness",
       () => fetchGooglePlacesBusinessSignals(enrichedInput, websiteInsights, initialBrregCompany),
     { emptyFallbackLabel: "google_places_no_business_match", isEmpty: (v) => !v },
@@ -5745,10 +5764,22 @@ export async function generateRoleRoomAgentProducerBootstrap(
   // available. This is the most reliable competitor signal for SMBs and
   // is merged with the Google Places list (deduped by website host /
   // org-nr / normalized name; higher-confidence record wins).
-  const brregNaceCompetitors = await fetchBrregCompetitorsByNace(initialBrregCompany, {
-    limit: 25,
-    municipalityNumber: initialBrregCompany?.municipalityNumber ?? null,
-  });
+  // A first-party specialization can be much narrower than a broad registry
+  // code (e.g. clinical SaaS vs all programmers). In that case, do not label
+  // arbitrary same-NACE entities as competitors; Places uses the specialized
+  // category above and returns reviewable candidates instead.
+  const websiteSpecialization = classifyWebsiteSpecialization([
+    enrichedInput.extraContext,
+    websiteInsights.pageTitle,
+    websiteInsights.metaDescription,
+    websiteInsights.textSnippet,
+  ]);
+  const brregNaceCompetitors = websiteSpecialization
+    ? []
+    : await fetchBrregCompetitorsByNace(initialBrregCompany, {
+        limit: 25,
+        municipalityNumber: initialBrregCompany?.municipalityNumber ?? null,
+      });
   const competitorAnalysis = mergeCompetitorAnalyses(placesCompetitorAnalysis, brregNaceCompetitors);
   // Meta Pages Public Metadata enrichment: for each verified/likely
   // competitor, try to resolve their public Facebook Page and attach

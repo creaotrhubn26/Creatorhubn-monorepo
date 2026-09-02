@@ -176,3 +176,48 @@ export function scoreGooglePlaceCandidate(
 
   return score;
 }
+
+function normalizeCompanyIdentity(value: string): string {
+  return normalizeWhitespace(value)
+    .toLowerCase()
+    .replace(/\b(?:as|asa|ans|da|sa|nuf|enk)\b/g, "")
+    .replace(/[^a-z0-9æøå]+/gi, "");
+}
+
+/**
+ * High-precision gate for selecting a customer's own Google Places record.
+ * Popularity can rank already-plausible records, but can never turn an
+ * unrelated or wrong-locality result into an identity match.
+ */
+export function isGooglePlaceBusinessIdentityMatch(
+  candidate: Record<string, unknown>,
+  companyName: string,
+  websiteHost: string | null,
+  localityHint: string | null = null,
+): boolean {
+  const candidateHost = normalizeHost(hasText(candidate.websiteUri) ? candidate.websiteUri : null);
+  if (websiteHost && candidateHost === websiteHost) return true;
+
+  const displayNameRecord =
+    candidate.displayName && typeof candidate.displayName === "object" && !Array.isArray(candidate.displayName)
+      ? (candidate.displayName as Record<string, unknown>)
+      : {};
+  const candidateName = normalizeCompanyIdentity(hasText(displayNameRecord.text) ? displayNameRecord.text : "");
+  const expectedName = normalizeCompanyIdentity(companyName);
+  const nameMatches = Boolean(
+    candidateName
+      && expectedName
+      && (candidateName === expectedName
+        || (candidateName.length > 6 && expectedName.length > 6
+          && (candidateName.includes(expectedName) || expectedName.includes(candidateName)))),
+  );
+  if (!nameMatches) return false;
+
+  if (hasText(localityHint)) {
+    const address = hasText(candidate.formattedAddress)
+      ? normalizeWhitespace(candidate.formattedAddress).toLowerCase()
+      : "";
+    return Boolean(address && address.includes(normalizeWhitespace(localityHint).toLowerCase()));
+  }
+  return true;
+}
