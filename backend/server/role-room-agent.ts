@@ -707,9 +707,13 @@ export function getRoleRoomAgentRuntimeConfig() {
     webSearchConfigured: specializedWebSearchConfigured(),
     webSearchProvider: googleCustomSearchConfigured()
       ? "google_cse"
-      : hasText(process.env.ANTHROPIC_API_KEY)
-        ? "anthropic"
-        : null,
+      : hasText(process.env.ANTHROPIC_API_KEY) && hasText(process.env.OPENAI_API_KEY)
+        ? "anthropic_openai"
+        : hasText(process.env.ANTHROPIC_API_KEY)
+          ? "anthropic"
+          : hasText(process.env.OPENAI_API_KEY)
+            ? "openai"
+            : null,
     cohereConfigured: hasText(process.env.COHERE_API_KEY),
     cohereRerankModel: DEFAULT_ROLE_ROOM_AGENT_COHERE_RERANK_MODEL,
     brregConfigured: true,
@@ -3593,14 +3597,16 @@ function webCompetitorName(item: GoogleCustomSearchItem, host: string): string {
 
 type SpecializedWebSearchOutcome = {
   items: GoogleCustomSearchItem[];
-  provider: "google_cse" | "anthropic_web_search";
+  provider: "google_cse" | "anthropic_web_search" | "openai_web_search";
 };
 
 function specializedWebSearchConfigured(): boolean {
-  return googleCustomSearchConfigured() || hasText(process.env.ANTHROPIC_API_KEY);
+  return googleCustomSearchConfigured()
+    || hasText(process.env.ANTHROPIC_API_KEY)
+    || hasText(process.env.OPENAI_API_KEY);
 }
 
-async function searchSpecializedCompetitorWeb(
+async function searchSpecializedCompetitorWebPrimary(
   customerHost: string | null,
 ): Promise<SpecializedWebSearchOutcome> {
   const query = '("AI journalnotat" OR "medisinsk transkripsjon" OR "klinisk dokumentasjon") programvare lege Norge';
@@ -3690,6 +3696,136 @@ Svar til slutt kun med JSON:
   return { provider: "anthropic_web_search", items };
 }
 
+async function searchSpecializedCompetitorsWithOpenAi(
+  customerHost: string | null,
+): Promise<GoogleCustomSearchItem[]> {
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: process.env.ROLE_ROOM_WEB_SEARCH_OPENAI_MODEL || "gpt-5",
+      max_output_tokens: 1_200,
+      tools: [{ type: "web_search", search_context_size: "medium" }],
+      include: ["web_search_call.action.sources"],
+      input: `Finn norske produktkonkurrenter til en GDPR-sikker AI-plattform for medisinsk transkripsjon, journalnotat og digitale verktøy for leger.
+
+Krav:
+- Finn leverandørens egen produktside, ikke klinikker, kataloger, nyhetsartikler eller kundens domene ${customerHost || "(ukjent)"}.
+- Returner bare kandidater der kilden eksplisitt viser både klinisk/medisinsk målgruppe og et digitalt produkt.
+- Ikke gjett navn, URL eller funksjoner.
+
+Svar til slutt kun med JSON:
+{"competitors":[{"name":"produktnavn","url":"https://kilde","evidence":"kort kildebelagt setning om produkt og målgruppe"}]}`,
+    }),
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!response.ok) {
+    throw new Error(`openai_web_search_http_${response.status}`);
+  }
+
+  const payload = await response.json().catch(() => null) as {
+    output_text?: string;
+    output?: Array<{
+      type?: string;
+      action?: {
+        url?: string;
+        sources?: Array<{ type?: string; url?: string }>;
+      };
+      content?: Array<{
+        type?: string;
+        text?: string;
+        annotations?: Array<{ type?: string; title?: string; url?: string }>;
+      }>;
+    }>;
+  } | null;
+  const citations: Array<{ title?: string; url: string }> = [];
+  const textParts: string[] = [];
+  for (const block of payload?.output || []) {
+    if (block?.type === "web_search_call") {
+      if (hasText(block.action?.url)) {
+        citations.push({ url: normalizeWhitespace(block.action.url) });
+      }
+      for (const source of block.action?.sources || []) {
+        if (source?.type === "url" && hasText(source.url)) {
+          citations.push({ url: normalizeWhitespace(source.url) });
+        }
+      }
+    }
+    for (const content of block?.content || []) {
+      if (content?.type === "output_text" && hasText(content.text)) {
+        textParts.push(content.text);
+      }
+      for (const annotation of content?.annotations || []) {
+        if (annotation?.type === "url_citation" && hasText(annotation.url)) {
+          citations.push({
+            title: hasText(annotation.title) ? normalizeWhitespace(annotation.title) : undefined,
+            url: normalizeWhitespace(annotation.url),
+          });
+        }
+      }
+    }
+  }
+
+  const citedByHost = new Map<string, { title?: string; url: string }>();
+  for (const citation of citations) {
+    const host = normalizeHost(citation.url);
+    if (host && !citedByHost.has(host)) citedByHost.set(host, citation);
+  }
+  const responseText = textParts.join("\n")
+    || (hasText(payload?.output_text) ? payload.output_text : "");
+  const parsed = extractJsonFromText(responseText) as Record<string, unknown> | null;
+  const candidates = Array.isArray(parsed?.competitors)
+    ? parsed!.competitors as Array<Record<string, unknown>>
+    : [];
+  const items: GoogleCustomSearchItem[] = [];
+  for (const candidate of candidates) {
+    if (!hasText(candidate.url)) continue;
+    const host = normalizeHost(candidate.url);
+    const citation = host ? citedByHost.get(host) : null;
+    // A model-written URL is never enough. It must match a URL returned by
+    // OpenAI's web-search call or an output-text citation.
+    if (!host || !citation) continue;
+    items.push({
+      title: hasText(candidate.name) ? normalizeWhitespace(candidate.name) : citation.title,
+      link: citation.url,
+      displayLink: host,
+      snippet: hasText(candidate.evidence) ? normalizeWhitespace(candidate.evidence) : citation.title,
+    });
+  }
+  return items;
+}
+
+async function searchSpecializedCompetitorWeb(
+  customerHost: string | null,
+): Promise<SpecializedWebSearchOutcome> {
+  const failures: string[] = [];
+  try {
+    const primary = await searchSpecializedCompetitorWebPrimary(customerHost);
+    if (primary.items.length > 0 || !hasText(process.env.OPENAI_API_KEY)) return primary;
+    failures.push(`${primary.provider}_empty`);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    failures.push(`primary_error:${reason}`);
+    console.warn(`[web-competitors:primary] ${reason}`);
+  }
+
+  if (hasText(process.env.OPENAI_API_KEY)) {
+    try {
+      const items = await searchSpecializedCompetitorsWithOpenAi(customerHost);
+      if (items.length > 0) return { provider: "openai_web_search", items };
+      failures.push("openai_web_search_empty");
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      failures.push(`openai_error:${reason}`);
+      console.warn(`[web-competitors:openai] ${reason}`);
+    }
+  }
+  throw new Error(failures.join("|") || "specialized_web_search_not_configured");
+}
+
 /**
  * Finds national, product-level competitors for first-party specializations
  * that Google Places cannot model safely (currently clinical SaaS). Results
@@ -3733,7 +3869,7 @@ export async function fetchWebCompetitorAnalysis(
   } catch (error) {
     console.error(`[web-competitors] ${error instanceof Error ? error.message : String(error)}`);
     return buildLimitedCompetitorAnalysis(
-      "Websøk svarte ikke innen tidsbudsjettet. Ingen webkandidater vises uten kilde.",
+      "Websøk var utilgjengelig eller ble avvist av leverandøren. Ingen webkandidater vises uten kilde.",
       input,
       brregCompany,
     );
@@ -3756,7 +3892,11 @@ export async function fetchWebCompetitorAnalysis(
     const evidence: RoleRoomAgentCompetitorEvidence[] = [
       {
         type: "web_search_result",
-        label: searchOutcome.provider === "google_cse" ? "Funnet via Google websøk" : "Funnet via Claude websøk",
+        label: searchOutcome.provider === "google_cse"
+          ? "Funnet via Google websøk"
+          : searchOutcome.provider === "openai_web_search"
+            ? "Funnet via OpenAI websøk"
+            : "Funnet via Claude websøk",
         weight: 30,
       },
       { type: "specialized_product_match", label: "Matcher klinisk programvare, journalnotat eller medisinsk transkripsjon", weight: 30 },
