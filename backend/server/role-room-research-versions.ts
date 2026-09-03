@@ -159,6 +159,46 @@ export async function loadPreviousResearchResult(
   }
 }
 
+/** Loads the newest durable bootstrap result for a project. This is the
+ * recovery path when the per-user active snapshot was not written (for
+ * example, an older SSE client disconnected after the version insert).
+ * Reading the existing version must never allocate a new version. */
+export async function loadLatestResearchVersion(
+  pool: Pool,
+  projectId: string,
+): Promise<{
+  researchId: string;
+  versionNumber: number;
+  generatedAt: string;
+  serializedResult: unknown;
+} | null> {
+  try {
+    const row = await pool.query<{
+      research_id: string;
+      version_number: number;
+      generated_at: Date;
+      serialized_result: unknown;
+    }>(
+      `SELECT research_id, version_number, generated_at, serialized_result
+         FROM role_room_research_versions
+        WHERE project_id = $1
+        ORDER BY version_number DESC
+        LIMIT 1`,
+      [projectId],
+    );
+    const latest = row.rows[0];
+    if (!latest?.serialized_result) return null;
+    return {
+      researchId: latest.research_id,
+      versionNumber: latest.version_number,
+      generatedAt: latest.generated_at.toISOString(),
+      serializedResult: latest.serialized_result,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Lists all versions for a project — used by the version picker /
  *  cross-version diff UI. Newest first. */
 export async function listResearchVersions(

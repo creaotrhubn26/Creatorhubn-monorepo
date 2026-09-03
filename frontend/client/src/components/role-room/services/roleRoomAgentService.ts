@@ -1477,9 +1477,34 @@ export const roleRoomAgentService = {
   },
 
   async getSnapshot(projectId: string): Promise<RoleRoomAgentProducerBootstrapResult | null> {
-    return settingsService.getSetting<RoleRoomAgentProducerBootstrapResult>(AGENT_SNAPSHOT_NAMESPACE, {
+    const snapshot = await settingsService.getSetting<RoleRoomAgentProducerBootstrapResult>(AGENT_SNAPSHOT_NAMESPACE, {
       projectId,
     });
+    if (snapshot) return snapshot;
+
+    // Older streaming clients persisted the immutable research version but
+    // skipped the active settings snapshot. Restore that exact version rather
+    // than generating a duplicate research run.
+    try {
+      const params = new URLSearchParams({ projectId });
+      const response = await fetch(`/api/role-room/agent/research/latest?${params.toString()}`, {
+        cache: 'no-store',
+        headers: readRoleRoomAgentHeaders(),
+      });
+      const payload = await response.json().catch(() => null) as {
+        success?: boolean;
+        result?: RoleRoomAgentProducerBootstrapResult;
+      } | null;
+      if (!response.ok || !payload?.success || !payload.result) return null;
+      await settingsService.setSetting<RoleRoomAgentProducerBootstrapResult>(
+        AGENT_SNAPSHOT_NAMESPACE,
+        payload.result,
+        { projectId },
+      );
+      return payload.result;
+    } catch {
+      return null;
+    }
   },
 
   async saveSnapshot(

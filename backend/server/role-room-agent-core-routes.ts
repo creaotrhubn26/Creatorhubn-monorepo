@@ -51,6 +51,7 @@ import {
   persistResearchVersion,
   lookupResearchVersion,
   listResearchVersions,
+  loadLatestResearchVersion,
   loadPreviousResearchResult,
 } from "./role-room-research-versions.js";
 import { generateExecutiveSummary } from "./role-room-research-summary.js";
@@ -749,6 +750,34 @@ export function setupRoleRoomAgentCoreRoutes(
     const limit = Number.isFinite(limitRaw) && limitRaw > 0 && limitRaw <= 200 ? Math.round(limitRaw) : 50;
     const versions = await listResearchVersions(pool, projectId, limit);
     return res.json({ success: true, versions });
+  });
+
+  // Recovery endpoint for a missing active snapshot. It returns the newest
+  // already-persisted result and never runs research or allocates a version.
+  app.get("/api/role-room/agent/research/latest", async (req, res) => {
+    const featureId = "role-room-agent-producer";
+    if (!isCompatAdminFeatureEnabled(featureId)) {
+      return res.status(403).json({ success: false, error: "The Role Room Agent er ikke aktivert." });
+    }
+    const session = requireAdminSession(req, res);
+    if (!session) return;
+    const projectId = readString(req.query.projectId);
+    if (!projectId) {
+      return res.status(400).json({ success: false, error: "projectId er påkrevd." });
+    }
+    const latest = await loadLatestResearchVersion(pool, projectId);
+    if (!latest) {
+      return res.status(404).json({ success: false, error: "Fant ingen lagret research for prosjektet." });
+    }
+    return res.json({
+      success: true,
+      result: latest.serializedResult,
+      version: {
+        researchId: latest.researchId,
+        versionNumber: latest.versionNumber,
+        generatedAt: latest.generatedAt,
+      },
+    });
   });
 
   // Per-seksjon re-research — item #10. Lar UI bare oppdatere én bit av
