@@ -318,6 +318,31 @@ export type RoleRoomAgentMerchProductCategory =
   | "signage"
   | "unknown";
 
+export type RoleRoomAgentMerchProductId =
+  | "tshirt"
+  | "hoodie"
+  | "polo"
+  | "cap"
+  | "totebag"
+  | "mug";
+
+export type RoleRoomAgentMerchRecommendation = {
+  productId: RoleRoomAgentMerchProductId;
+  productLabel: string;
+  productCategory: RoleRoomAgentMerchProductCategory;
+  priority: "primary" | "secondary" | "experimental";
+  purpose: string;
+  rationale: string;
+  recommendedTechnique: RoleRoomAgentMerchTechnique;
+  supplierMatch?: {
+    name: string;
+    organizationNumber?: string | null;
+    placeId?: string | null;
+    confidence: number;
+  } | null;
+  requiresManualConfirmation: true;
+};
+
 export type RoleRoomAgentMerchSupplierEvidence = {
   type:
     | "brreg_nace_match"
@@ -384,6 +409,10 @@ export type RoleRoomAgentMerchSuppliers = {
   techniqueCounts: Record<RoleRoomAgentMerchTechnique, number>;
   /** Counts per inferred product category for the same purpose. */
   productCounts: Record<RoleRoomAgentMerchProductCategory, number>;
+  /** Company-specific products ranked from the verified business profile.
+   *  Stored with the research snapshot; never inferred from a supplier alone. */
+  recommendations: RoleRoomAgentMerchRecommendation[];
+
   /** Cooperation-deal angles (sponsorship / kit-supplier / give-aways)
    *  the producer can offer to a partner — generated heuristically in
    *  Slice 1; Claude-powered version comes in Slice 3. */
@@ -3708,7 +3737,18 @@ async function searchSpecializedCompetitorsWithOpenAi(
     body: JSON.stringify({
       model: process.env.ROLE_ROOM_WEB_SEARCH_OPENAI_MODEL || "gpt-5",
       max_output_tokens: 1_200,
-      tools: [{ type: "web_search", search_context_size: "medium" }],
+      tools: [{
+        type: "web_search",
+        search_context_size: "medium",
+        user_location: {
+          type: "approximate",
+          country: "NO",
+          city: "Oslo",
+          region: "Oslo",
+          timezone: "Europe/Oslo",
+        },
+      }],
+      tool_choice: "required",
       include: ["web_search_call.action.sources"],
       input: `Finn norske produktkonkurrenter til en GDPR-sikker AI-plattform for medisinsk transkripsjon, journalnotat og digitale verktøy for leger.
 
@@ -3826,6 +3866,27 @@ async function searchSpecializedCompetitorWeb(
   throw new Error(failures.join("|") || "specialized_web_search_not_configured");
 }
 
+function specializedWebSearchFailureLimitation(error: unknown): string {
+  const reason = error instanceof Error ? error.message : String(error);
+  const openAiHttpStatus = reason.match(/openai_web_search_http_(\d{3})/)?.[1];
+  if (openAiHttpStatus === "401" || openAiHttpStatus === "403") {
+    return `OpenAI websøk avviste tilgang (HTTP ${openAiHttpStatus}). Ingen webkandidater vises uten kilde.`;
+  }
+  if (openAiHttpStatus === "429") {
+    return "OpenAI websøk traff leverandørens kapasitets- eller kvotegrense (HTTP 429). Ingen webkandidater vises uten kilde.";
+  }
+  if (openAiHttpStatus) {
+    return `OpenAI websøk svarte med HTTP ${openAiHttpStatus}. Ingen webkandidater vises uten kilde.`;
+  }
+  if (/openai_web_search_empty/.test(reason)) {
+    return "Websøk svarte uten et verifiserbart kildesett. Ingen modellskrevne kandidater vises uten kilde.";
+  }
+  if (/abort|timeout|timed out/i.test(reason)) {
+    return "Websøk nådde tidsgrensen. Ingen webkandidater vises uten kilde.";
+  }
+  return "Websøk var utilgjengelig eller ble avvist av leverandøren. Ingen webkandidater vises uten kilde.";
+}
+
 /**
  * Finds national, product-level competitors for first-party specializations
  * that Google Places cannot model safely (currently clinical SaaS). Results
@@ -3869,7 +3930,7 @@ export async function fetchWebCompetitorAnalysis(
   } catch (error) {
     console.error(`[web-competitors] ${error instanceof Error ? error.message : String(error)}`);
     return buildLimitedCompetitorAnalysis(
-      "Websøk var utilgjengelig eller ble avvist av leverandøren. Ingen webkandidater vises uten kilde.",
+      specializedWebSearchFailureLimitation(error),
       input,
       brregCompany,
     );
@@ -4866,6 +4927,131 @@ function buildMerchOutreachChecklist(): string[] {
   ];
 }
 
+type MerchRecommendationTemplate = {
+  productId: RoleRoomAgentMerchProductId;
+  productLabel: string;
+  productCategory: RoleRoomAgentMerchProductCategory;
+  purpose: string;
+  rationale: string;
+  recommendedTechnique: RoleRoomAgentMerchTechnique;
+};
+
+function buildCompanyMerchRecommendations(
+  input: RoleRoomAgentProducerBootstrapInput,
+  websiteInsights: RoleRoomAgentWebsiteInsights,
+  businessSignals: RoleRoomAgentBusinessSignals | null,
+  brregCompany: RoleRoomAgentBrregCompany | null,
+  suppliers: RoleRoomAgentMerchSupplier[],
+): RoleRoomAgentMerchRecommendation[] {
+  const classification = detectBusinessClassification(input, websiteInsights, businessSignals, brregCompany);
+  const companyName = normalizeWhitespace(input.companyName || brregCompany?.name || websiteInsights.siteName || "kunden");
+  const industry = classification.industry.toLowerCase();
+  let templates: MerchRecommendationTemplate[];
+
+  if (/helseteknologi|helse|medisinsk|klinisk/.test(industry)) {
+    templates = [
+      {
+        productId: "polo",
+        productLabel: "Brodert polo",
+        productCategory: "apparel",
+        purpose: "Kundemøter, klinikkdemoer og messestand",
+        rationale: "Et diskret brystbroder gir et profesjonelt uttrykk uten å ligne pasient- eller behandlingsutstyr.",
+        recommendedTechnique: "embroidery",
+      },
+      {
+        productId: "mug",
+        productLabel: "Krus til pilot-/onboardingpakke",
+        productCategory: "drinkware",
+        purpose: "Pilotkunder, legekontor og intern produktopplæring",
+        rationale: "Et nyttig skrivebordsprodukt gir jevn merkevareeksponering i en digital arbeidsflyt.",
+        recommendedTechnique: "sublimation",
+      },
+      {
+        productId: "totebag",
+        productLabel: "Kongress-totebag",
+        productCategory: "bags",
+        purpose: "Fagkongresser, demo-dager og materiellpakker",
+        rationale: "Samler demoark og materiell i et synlig produkt som kan brukes videre etter arrangementet.",
+        recommendedTechnique: "screen_print",
+      },
+      {
+        productId: "hoodie",
+        productLabel: "Team-hoodie",
+        productCategory: "apparel",
+        purpose: "Internt team, onboarding og employer branding",
+        rationale: "Passer best som intern kulturmerch og bør holdes visuelt enklere enn kundevendt materiell.",
+        recommendedTechnique: "embroidery",
+      },
+    ];
+  } else if (/restaurant|servering|mat|kaf/.test(industry)) {
+    templates = [
+      { productId: "tshirt", productLabel: "Crew T-skjorte", productCategory: "apparel", purpose: "Ansatte, pop-up og arrangement", rationale: "Synlig, uformell profilering tett på produktet og gjesten.", recommendedTechnique: "screen_print" },
+      { productId: "cap", productLabel: "Crew-caps", productCategory: "headwear", purpose: "Kjøkken, pop-up og takeaway", rationale: "Gjenkjennelig teamprofil med liten logo og lav visuell støy.", recommendedTechnique: "embroidery" },
+      { productId: "totebag", productLabel: "Takeaway-totebag", productCategory: "bags", purpose: "Lojalitetskampanje og gjenbrukbar emballasje", rationale: "Kobler praktisk bruk til gjentatt lokal eksponering.", recommendedTechnique: "screen_print" },
+      { productId: "mug", productLabel: "Profilkrus", productCategory: "drinkware", purpose: "Kontor, gavekortpakke og partnerleveranse", rationale: "Et lavterskelprodukt som fungerer i både kundegave og intern bruk.", recommendedTechnique: "sublimation" },
+    ];
+  } else if (/industri|energi|bygg|anlegg/.test(industry)) {
+    templates = [
+      { productId: "polo", productLabel: "Brodert arbeidspolo", productCategory: "apparel", purpose: "Kundebesøk, befaring og messe", rationale: "Tydelig firmaprofil som fortsatt ser profesjonell ut i operative miljøer.", recommendedTechnique: "embroidery" },
+      { productId: "cap", productLabel: "Brodert caps", productCategory: "headwear", purpose: "Feltteam og arrangement", rationale: "Robust profilprodukt med høy brukshyppighet og liten logoeksponering.", recommendedTechnique: "embroidery" },
+      { productId: "hoodie", productLabel: "Team-hoodie", productCategory: "apparel", purpose: "Internt team og rekruttering", rationale: "Bygger tilhørighet og fungerer godt i dokumentarisk employer-branding-innhold.", recommendedTechnique: "embroidery" },
+      { productId: "mug", productLabel: "Kontorkrus", productCategory: "drinkware", purpose: "Prosjektkontor og kundegave", rationale: "Praktisk, langsiktig eksponering uten å kreve størrelseslager.", recommendedTechnique: "sublimation" },
+    ];
+  } else if (/rekrutter|employer|kultur/.test(industry)) {
+    templates = [
+      { productId: "hoodie", productLabel: "Kultur-hoodie", productCategory: "apparel", purpose: "Team, onboarding og medarbeiderinnhold", rationale: "Gjør intern kultur synlig i autentiske arbeidssituasjoner.", recommendedTechnique: "embroidery" },
+      { productId: "totebag", productLabel: "Karrieredag-totebag", productCategory: "bags", purpose: "Karrieredager og kandidatpakker", rationale: "Gir kandidaten et nyttig minne med lang eksponeringstid.", recommendedTechnique: "screen_print" },
+      { productId: "mug", productLabel: "Onboardingkrus", productCategory: "drinkware", purpose: "Nyansatte og kontormiljø", rationale: "Lavterskel kulturmarkør som kan inngå i en velkomstpakke.", recommendedTechnique: "sublimation" },
+      { productId: "tshirt", productLabel: "Event T-skjorte", productCategory: "apparel", purpose: "Karrieredag, konferanse og frivillig team", rationale: "Skaper en tydelig, samlet avsender i publikumsnære situasjoner.", recommendedTechnique: "screen_print" },
+    ];
+  } else {
+    templates = classification.businessModel.includes("B2B")
+      ? [
+          { productId: "polo", productLabel: "Brodert polo", productCategory: "apparel", purpose: "Kundemøter og arrangement", rationale: "Profesjonell profilering med lav visuell støy.", recommendedTechnique: "embroidery" },
+          { productId: "mug", productLabel: "Profilkrus", productCategory: "drinkware", purpose: "Kundegave og kontor", rationale: "Nyttig produkt med gjentatt eksponering og ingen størrelseslogistikk.", recommendedTechnique: "sublimation" },
+          { productId: "totebag", productLabel: "Event-totebag", productCategory: "bags", purpose: "Messe og materiellpakke", rationale: "Samler materiell og forlenger synligheten etter arrangementet.", recommendedTechnique: "screen_print" },
+          { productId: "hoodie", productLabel: "Team-hoodie", productCategory: "apparel", purpose: "Internt team og employer branding", rationale: "Egner seg for tilhørighet og uformelt innhold.", recommendedTechnique: "embroidery" },
+        ]
+      : [
+          { productId: "tshirt", productLabel: "Profil T-skjorte", productCategory: "apparel", purpose: "Kampanje og arrangement", rationale: "Synlig og tilgjengelig hovedprodukt for publikumsrettet aktivering.", recommendedTechnique: "screen_print" },
+          { productId: "cap", productLabel: "Profilcaps", productCategory: "headwear", purpose: "Ambassadører og event", rationale: "Lett å bruke og enkel å produsere med diskret broderi.", recommendedTechnique: "embroidery" },
+          { productId: "totebag", productLabel: "Profil-totebag", productCategory: "bags", purpose: "Give-away og lojalitet", rationale: "Praktisk gjenbruk gir lang levetid per utdeling.", recommendedTechnique: "screen_print" },
+          { productId: "mug", productLabel: "Profilkrus", productCategory: "drinkware", purpose: "Gave og partnerpakke", rationale: "Et trygt testprodukt uten størrelser eller passform.", recommendedTechnique: "sublimation" },
+        ];
+  }
+
+  const usedSupplierKeys = new Set<string>();
+  return templates.map((template, index) => {
+    const candidates = suppliers
+      .filter((supplier) => supplier.status !== "rejected" && supplier.productCategories.includes(template.productCategory))
+      .sort((a, b) => {
+        const score = (supplier: RoleRoomAgentMerchSupplier) => supplier.confidence
+          + (supplier.techniques.includes(template.recommendedTechnique) ? 20 : 0)
+          + (supplier.websiteSignalsEnriched ? 10 : 0)
+          + (usedSupplierKeys.has(supplier.placeId || supplier.organizationNumber || supplier.name) ? 0 : 5);
+        return score(b) - score(a);
+      });
+    const supplier = candidates.find((candidate) => !usedSupplierKeys.has(candidate.placeId || candidate.organizationNumber || candidate.name))
+      || candidates[0]
+      || null;
+    if (supplier) usedSupplierKeys.add(supplier.placeId || supplier.organizationNumber || supplier.name);
+    return {
+      ...template,
+      priority: index === 0 ? "primary" : index === 1 ? "secondary" : "experimental",
+      rationale: `${template.rationale} Anbefalt for ${companyName} basert på ${classification.industry.toLowerCase()} og ${classification.businessModel}.`,
+      supplierMatch: supplier
+        ? {
+            name: supplier.name,
+            organizationNumber: supplier.organizationNumber ?? null,
+            placeId: supplier.placeId ?? null,
+            confidence: supplier.confidence,
+          }
+        : null,
+      requiresManualConfirmation: true as const,
+    };
+  });
+}
+
 function buildLimitedMerchSuppliers(reason: string): RoleRoomAgentMerchSuppliers {
   return {
     status: "limited",
@@ -4876,6 +5062,7 @@ function buildLimitedMerchSuppliers(reason: string): RoleRoomAgentMerchSuppliers
     verifiedSupplierCount: 0,
     techniqueCounts: emptyTechniqueCounts(),
     productCounts: emptyProductCounts(),
+    recommendations: [],
     cooperationAngles: [
       "Be kunden navngi 1-2 leverandører de allerede bruker — start med dem før vi automatiserer søket.",
       "Tilby en sponsor- eller kit-supplier-avtale med en lokal klubb eller event for å åpne første samarbeid.",
@@ -5185,6 +5372,7 @@ export async function fetchMerchSuppliersAnalysis(
     );
     return {
       ...limited,
+      recommendations: buildCompanyMerchRecommendations(input, websiteInsights, businessSignals, brregCompany, []),
       partial: diagnostics.timedOutRequests > 0,
       timedOutSourceCount: diagnostics.timedOutRequests,
     };
@@ -5269,6 +5457,7 @@ export async function fetchMerchSuppliersAnalysis(
     verifiedSupplierCount: verifiedCount,
     techniqueCounts,
     productCounts,
+    recommendations: buildCompanyMerchRecommendations(input, websiteInsights, businessSignals, brregCompany, suppliers),
     cooperationAngles: buildMerchCooperationAngles(suppliers.length, techniqueCounts),
     outreachChecklist: buildMerchOutreachChecklist(),
     partial: diagnostics.timedOutRequests > 0,

@@ -441,9 +441,52 @@ describe('Role Room local-presence fail-closed policy', () => {
     expect(JSON.stringify(result)).not.toContain('Uten kilde');
     expect(requestBodies[1]).toMatchObject({
       model: 'gpt-5',
-      tools: [{ type: 'web_search', search_context_size: 'medium' }],
+      tools: [{
+        type: 'web_search',
+        search_context_size: 'medium',
+        user_location: {
+          type: 'approximate',
+          country: 'NO',
+          city: 'Oslo',
+          region: 'Oslo',
+          timezone: 'Europe/Oslo',
+        },
+      }],
+      tool_choice: 'required',
       include: ['web_search_call.action.sources'],
     });
+  });
+
+  it('exposes a safe OpenAI web-search status without leaking provider error text', async () => {
+    delete process.env.GOOGLE_SEARCH_API_KEY;
+    delete process.env.GOOGLE_SEARCH_ENGINE_ID;
+    delete process.env.ANTHROPIC_API_KEY;
+    process.env.OPENAI_API_KEY = 'openai-test-key';
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({
+      error: { message: 'sensitive upstream detail' },
+    }), { status: 429, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+
+    const result = await fetchWebCompetitorAnalysis(
+      {
+        projectId: 'medside-openai-web-status-test',
+        websiteUrl: 'https://medside.no',
+        companyName: 'MEDINNOVA AS',
+      },
+      {
+        finalUrl: 'https://medside.no/',
+        metaDescription: 'GDPR-sikker AI-plattform for medisinsk transkripsjon og journalnotat.',
+        textSnippet: 'Bygget for norske leger og helsepersonell.',
+        selectedPageSnippets: [],
+        socialProfileCandidates: [],
+      },
+      verifiedMedinnova(),
+    );
+
+    expect(result.status).toBe('limited');
+    expect(result.limitations).toContain(
+      'OpenAI websøk traff leverandørens kapasitets- eller kvotegrense (HTTP 429). Ingen webkandidater vises uten kilde.',
+    );
+    expect(JSON.stringify(result)).not.toContain('sensitive upstream detail');
   });
 
   it('filters wrong-country Places candidates from merch discovery', async () => {
@@ -466,6 +509,7 @@ describe('Role Room local-presence fail-closed policy', () => {
           {
             id: 'oslo-merch',
             displayName: { text: 'Oslo Profil' },
+            primaryTypeDisplayName: { text: 'Profilklær og broderi' },
             formattedAddress: 'Storgata 1, 0155 Oslo, Norge',
           },
         ],
@@ -475,7 +519,13 @@ describe('Role Room local-presence fail-closed policy', () => {
     const startedAt = Date.now();
     const result = await fetchMerchSuppliersAnalysis(
       { projectId: 'medside-merch-test', websiteUrl: 'https://medside.no', companyName: 'MEDINNOVA AS' },
-      { finalUrl: 'https://medside.no/', selectedPageSnippets: [], socialProfileCandidates: [] },
+      {
+        finalUrl: 'https://medside.no/',
+        metaDescription: 'GDPR-sikker AI-plattform for medisinsk transkripsjon og journalnotat.',
+        textSnippet: 'Bygget for norske leger og helsepersonell.',
+        selectedPageSnippets: [],
+        socialProfileCandidates: [],
+      },
       null,
       verifiedMedinnova(),
     );
@@ -483,6 +533,17 @@ describe('Role Room local-presence fail-closed policy', () => {
     expect(Date.now() - startedAt).toBeLessThan(180);
     expect(result.suppliers.map((entry) => entry.name)).toEqual(['Oslo Profil']);
     expect(JSON.stringify(result)).not.toMatch(/Atlanta|Glenlake|Sandy Springs/i);
+    expect(result.recommendations.map((entry) => entry.productId)).toEqual([
+      'polo', 'mug', 'totebag', 'hoodie',
+    ]);
+    expect(new Set(result.recommendations.map((entry) => entry.productId)).size).toBe(
+      result.recommendations.length,
+    );
+    expect(result.recommendations[0]).toMatchObject({
+      productLabel: 'Brodert polo',
+      supplierMatch: { name: 'Oslo Profil' },
+    });
+    expect(result.recommendations[0]?.rationale).toMatch(/MEDINNOVA AS.*helseteknologi/i);
   });
 
   it('retains fast merch results and reports partial provider timeouts', async () => {
