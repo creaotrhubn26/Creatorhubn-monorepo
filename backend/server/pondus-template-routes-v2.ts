@@ -213,9 +213,10 @@ export function registerPondusTemplateRoutesV2(deps: PondusTemplateRoutesV2Deps)
         `INSERT INTO pondus_templates
           (name, description, category, kind, score, steps, objections, analysis,
            analysis_meta, created_by, org_id, is_published, published_at, published_by, version)
-         VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb,$10,$11::uuid,$12,
-                 CASE WHEN $12 THEN NOW() ELSE NULL END,
-                 CASE WHEN $12 THEN $10 ELSE NULL END,1)
+         VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb,
+                 $10::varchar(255),$11::uuid,$12::boolean,
+                 CASE WHEN $12::boolean THEN NOW() ELSE NULL END,
+                 CASE WHEN $12::boolean THEN $10::varchar(255) ELSE NULL END,1)
          RETURNING ${TEMPLATE_COLUMNS}`,
         [
           input.name, input.description ?? null, input.category, input.kind, analysis.score,
