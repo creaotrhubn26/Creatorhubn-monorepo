@@ -1,4 +1,4 @@
--- Pondus integrity: explainable scoring, recoverable templates, exact usage
+-- Migration 0503: Pondus integrity with explainable scoring, recoverable templates and exact usage.
 -- sessions and server-versioned quiz scoring. Additive and backfill-safe.
 BEGIN;
 
