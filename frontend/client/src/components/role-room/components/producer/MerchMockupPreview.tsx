@@ -34,6 +34,7 @@ import {
 } from '../../services/roleRoomAgentClaudeApi';
 import type {
   RoleRoomAgentMerchProductCategory,
+  RoleRoomAgentMerchRecommendation,
   RoleRoomAgentMerchSupplier,
   RoleRoomAgentProducerBootstrapResult,
 } from '../../services/roleRoomAgentService';
@@ -76,6 +77,21 @@ const TECHNIQUE_LABEL = {
   promo_products: 'Promo-produkt',
   unknown: 'Teknikk må avklares',
 } as const;
+function hasWebsiteDocumentedSupplierMatch(
+  recommendation: RoleRoomAgentMerchRecommendation,
+  suppliers: RoleRoomAgentMerchSupplier[],
+): boolean {
+  const match = recommendation.supplierMatch;
+  if (!match) return false;
+  const supplier = suppliers.find((candidate) => (
+    (Boolean(match.organizationNumber) && candidate.organizationNumber === match.organizationNumber)
+    || (Boolean(match.placeId) && candidate.placeId === match.placeId)
+    || candidate.name === match.name
+  ));
+  return supplier?.websiteSignalsEnriched === true
+    && supplier.websiteConfirmedProductCategories?.includes(recommendation.productCategory) === true
+    && supplier.websiteConfirmedTechniques?.includes(recommendation.recommendedTechnique) === true;
+}
 
 function MerchConceptVisual({
   productId,
@@ -88,73 +104,114 @@ function MerchConceptVisual({
   baseColor: string;
   companyName: string | null;
 }) {
-  const isCap = productId === 'cap';
-  const isBag = productId === 'totebag';
-  const isMug = productId === 'mug';
+  const gradientId = `merch-fabric-${productId}`;
+  const shadowId = `merch-shadow-${productId}`;
   const isGarment = productId === 'tshirt' || productId === 'hoodie' || productId === 'polo';
+  const logoPlacement = productId === 'cap'
+    ? { x: 159, y: 126, width: 105, height: 48 }
+    : productId === 'mug'
+      ? { x: 147, y: 125, width: 112, height: 72 }
+      : productId === 'totebag'
+        ? { x: 145, y: 155, width: 130, height: 82 }
+        : productId === 'polo'
+          ? { x: 166, y: 132, width: 88, height: 64 }
+          : { x: 152, y: 132, width: 116, height: 76 };
+
   return (
     <Box
+      component="svg"
+      viewBox="0 0 420 360"
+      role="img"
       aria-label={`Konseptvisning av ${productId} for ${companyName ?? 'kunden'}`}
       sx={{
-        position: 'relative',
-        width: isMug ? 190 : isCap ? 250 : isBag ? 220 : 270,
-        height: isMug ? 190 : isCap ? 145 : isBag ? 250 : 280,
-        bgcolor: baseColor,
-        border: '2px solid rgba(255,255,255,0.2)',
-        boxShadow: '0 28px 60px rgba(2,6,23,0.38)',
-        borderRadius: isMug ? '16px 16px 28px 28px' : isCap ? '50% 50% 38% 38%' : isBag ? 2 : 3,
-        clipPath: isGarment
-          ? 'polygon(25% 0, 38% 0, 42% 7%, 58% 7%, 62% 0, 75% 0, 100% 18%, 85% 38%, 75% 31%, 75% 100%, 25% 100%, 25% 31%, 15% 38%, 0 18%)'
-          : undefined,
-        '&::before': isBag ? {
-          content: '""',
-          position: 'absolute',
-          width: '46%',
-          height: 58,
-          left: '27%',
-          top: -35,
-          border: `12px solid ${baseColor}`,
-          borderBottom: 0,
-          borderRadius: '40px 40px 0 0',
-        } : isCap ? {
-          content: '""',
-          position: 'absolute',
-          width: '58%',
-          height: 34,
-          right: -54,
-          bottom: 3,
-          bgcolor: baseColor,
-          borderRadius: '0 100% 80% 0',
-          transform: 'rotate(7deg)',
-        } : undefined,
-        '&::after': isMug ? {
-          content: '""',
-          position: 'absolute',
-          width: 68,
-          height: 88,
-          right: -54,
-          top: 42,
-          border: `18px solid ${baseColor}`,
-          borderLeft: 0,
-          borderRadius: '0 50px 50px 0',
-        } : undefined,
+        width: 'min(100%, 420px)',
+        height: 'auto',
+        overflow: 'visible',
+        filter: 'drop-shadow(0 28px 28px rgba(2,6,23,0.38))',
       }}
     >
-      <Box
-        component="img"
-        src={logoUrl}
-        alt=""
-        sx={{
-          position: 'absolute',
-          zIndex: 2,
-          width: isCap ? '38%' : isMug ? '58%' : '52%',
-          maxHeight: isCap ? 55 : 105,
-          objectFit: 'contain',
-          left: '50%',
-          top: isCap ? '44%' : isGarment ? '35%' : '43%',
-          transform: 'translate(-50%, -50%)',
-          filter: 'drop-shadow(0 2px 3px rgba(255,255,255,0.18))',
-        }}
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.2" />
+          <stop offset="25%" stopColor={baseColor} />
+          <stop offset="76%" stopColor={baseColor} />
+          <stop offset="100%" stopColor="#020617" stopOpacity="0.45" />
+        </linearGradient>
+        <filter id={shadowId} x="-30%" y="-30%" width="160%" height="160%">
+          <feDropShadow dx="0" dy="5" stdDeviation="5" floodColor="#020617" floodOpacity="0.45" />
+        </filter>
+      </defs>
+
+      <ellipse cx="210" cy="332" rx="125" ry="15" fill="#020617" opacity="0.3" />
+
+      {productId === 'mug' ? (
+        <g filter={`url(#${shadowId})`}>
+          <path d="M108 84 H287 V278 Q287 310 255 316 H143 Q108 311 108 278 Z" fill={`url(#${gradientId})`} stroke="#fff" strokeOpacity="0.22" strokeWidth="2" />
+          <path d="M286 126 H313 Q360 126 360 181 V219 Q360 273 313 273 H286" fill="none" stroke={baseColor} strokeWidth="27" strokeLinecap="round" />
+          <ellipse cx="198" cy="85" rx="89" ry="15" fill="#f8fafc" opacity="0.2" />
+          <path d="M121 104 V272" stroke="#fff" strokeOpacity="0.14" strokeWidth="7" strokeLinecap="round" />
+        </g>
+      ) : productId === 'cap' ? (
+        <g filter={`url(#${shadowId})`}>
+          <path d="M91 206 Q91 86 209 76 Q328 88 329 211 Q259 231 91 206 Z" fill={`url(#${gradientId})`} stroke="#fff" strokeOpacity="0.22" strokeWidth="2" />
+          <path d="M207 78 V210" stroke="#fff" strokeOpacity="0.16" strokeWidth="2" />
+          <path d="M102 200 Q205 224 326 204 Q368 207 389 231 Q315 266 205 236 Q133 218 102 200 Z" fill={baseColor} stroke="#fff" strokeOpacity="0.18" strokeWidth="2" />
+          <circle cx="209" cy="77" r="7" fill={baseColor} stroke="#fff" strokeOpacity="0.25" />
+        </g>
+      ) : productId === 'totebag' ? (
+        <g filter={`url(#${shadowId})`}>
+          <path d="M112 98 H308 L329 316 H91 Z" fill={`url(#${gradientId})`} stroke="#fff" strokeOpacity="0.22" strokeWidth="2" />
+          <path d="M154 112 V73 Q154 35 210 35 Q266 35 266 73 V112" fill="none" stroke={baseColor} strokeWidth="16" strokeLinecap="round" />
+          <path d="M154 112 V73 Q154 35 210 35 Q266 35 266 73 V112" fill="none" stroke="#fff" strokeOpacity="0.17" strokeWidth="2" />
+          <path d="M112 99 H308 M105 278 H315" stroke="#fff" strokeOpacity="0.13" strokeWidth="2" />
+        </g>
+      ) : (
+        <g filter={`url(#${shadowId})`}>
+          <path
+            d={productId === 'hoodie'
+              ? 'M132 79 L164 55 Q210 76 256 55 L288 79 L347 118 L316 172 L285 151 L282 320 H138 L135 151 L104 172 L73 118 Z'
+              : 'M145 65 L178 45 Q210 68 242 45 L275 65 L343 107 L313 163 L282 143 L280 320 H140 L138 143 L107 163 L77 107 Z'}
+            fill={`url(#${gradientId})`}
+            stroke="#fff"
+            strokeOpacity="0.22"
+            strokeWidth="2"
+          />
+          {productId === 'hoodie' ? (
+            <>
+              <path d="M164 56 Q171 17 210 17 Q249 17 256 56 Q242 91 210 96 Q178 91 164 56 Z" fill={baseColor} stroke="#fff" strokeOpacity="0.2" strokeWidth="2" />
+              <path d="M196 84 L191 142 M224 84 L229 142" stroke="#e2e8f0" strokeOpacity="0.55" strokeWidth="3" strokeLinecap="round" />
+              <circle cx="191" cy="143" r="4" fill="#e2e8f0" opacity="0.62" />
+              <circle cx="229" cy="143" r="4" fill="#e2e8f0" opacity="0.62" />
+              <path d="M167 270 Q210 246 253 270 V310 H167 Z" fill="#020617" opacity="0.12" stroke="#fff" strokeOpacity="0.12" />
+            </>
+          ) : (
+            <path d="M178 46 Q210 82 242 46 Q237 89 210 94 Q183 89 178 46 Z" fill="#020617" opacity="0.2" stroke="#fff" strokeOpacity="0.18" />
+          )}
+          {productId === 'polo' ? (
+            <>
+              <path d="M178 46 L210 92 L194 111 L165 60 Z M242 46 L210 92 L226 111 L255 60 Z" fill="#f8fafc" opacity="0.16" stroke="#fff" strokeOpacity="0.18" />
+              <path d="M210 92 V145" stroke="#020617" strokeOpacity="0.28" strokeWidth="5" />
+              <circle cx="210" cy="109" r="3" fill="#e2e8f0" opacity="0.75" />
+              <circle cx="210" cy="127" r="3" fill="#e2e8f0" opacity="0.75" />
+            </>
+          ) : null}
+          {isGarment ? (
+            <>
+              <path d="M140 298 H280" stroke="#fff" strokeOpacity="0.15" strokeWidth="2" />
+              <path d="M139 143 Q210 169 281 143" stroke="#fff" strokeOpacity="0.06" strokeWidth="2" />
+            </>
+          ) : null}
+        </g>
+      )}
+
+      <image
+        href={logoUrl}
+        x={logoPlacement.x}
+        y={logoPlacement.y}
+        width={logoPlacement.width}
+        height={logoPlacement.height}
+        preserveAspectRatio="xMidYMid meet"
+        style={{ filter: 'drop-shadow(0 1px 3px rgba(255,255,255,0.72)) drop-shadow(0 2px 4px rgba(2,6,23,0.28))' }}
       />
     </Box>
   );
@@ -176,6 +233,7 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
   const companyName = bootstrap?.companyProfile?.companyName ?? null;
   const recommendations = bootstrap?.merchSuppliers?.recommendations ?? [];
   const brandColors = bootstrap?.planningDraft?.brandGuide?.colors ?? [];
+  const suppliers = bootstrap?.merchSuppliers?.suppliers ?? [];
   const validBrandColors = brandColors.filter((color) => /^#[0-9a-f]{6}$/i.test(color.hex));
   const conceptColor = validBrandColors.find((color) => /mørk|dark/i.test(color.label))?.hex
     || validBrandColors.find((color) => /primær|primary/i.test(color.label))?.hex
@@ -198,10 +256,11 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
     // supplier if the catalog mismatch is real.
     return filtered.length > 0 ? filtered : PRODUCT_OPTIONS;
   }, [selectedSupplier]);
+  const preferredProductId = recommendations.find((entry) => entry.priority === 'primary')?.productId;
+  const initialProductId = availableProducts.find((entry) => entry.id === preferredProductId)?.id
+    ?? availableProducts[0]?.id ?? 'tshirt';
 
-  const [productId, setProductId] = useState<MerchMockupProductId>(
-    availableProducts[0]?.id ?? 'tshirt',
-  );
+  const [productId, setProductId] = useState<MerchMockupProductId>(initialProductId);
 
   // Reset to the first available product when the selected supplier
   // changes and the current product is no longer in the catalog.
@@ -384,6 +443,7 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={0.8} flexWrap="wrap" useFlexGap>
               {recommendations.map((recommendation) => {
                 const active = productId === recommendation.productId;
+                const hasDocumentedMatch = hasWebsiteDocumentedSupplierMatch(recommendation, suppliers);
                 return (
                   <Box
                     component="button"
@@ -418,7 +478,9 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
                       </Typography>
                       <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.68rem' }}>
                         {TECHNIQUE_LABEL[recommendation.recommendedTechnique]}
-                        {recommendation.supplierMatch ? ` · Match: ${recommendation.supplierMatch.name} (${recommendation.supplierMatch.confidence}%)` : ' · Leverandør må matches manuelt'}
+                        {hasDocumentedMatch && recommendation.supplierMatch
+                          ? ` · Nettsidebekreftet: ${recommendation.supplierMatch.name} (${recommendation.supplierMatch.confidence}%)`
+                          : ' · Leverandør må matches manuelt'}
                       </Typography>
                     </Stack>
                   </Box>
@@ -523,11 +585,13 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
           sx={{
             position: 'relative',
             overflow: 'hidden',
-            minHeight: 360,
+            minHeight: 390,
             p: 2,
             borderRadius: 2,
             border: '1px solid rgba(34,211,238,0.2)',
-            background: 'radial-gradient(circle at 50% 20%, rgba(34,211,238,0.14), transparent 48%), rgba(15,23,42,0.68)',
+            backgroundColor: 'rgba(15,23,42,0.82)',
+            backgroundImage: 'radial-gradient(circle at 50% 15%, rgba(99,102,241,0.3), transparent 42%), linear-gradient(rgba(148,163,184,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.045) 1px, transparent 1px)',
+            backgroundSize: 'auto, 28px 28px, 28px 28px',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -537,7 +601,7 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
         >
           <Chip
             size="small"
-            label="Konsept · ikke produksjonsbevis"
+            label="Konseptskisse · ikke produksjonsklar"
             sx={{ position: 'absolute', top: 12, left: 12, color: '#a5f3fc', bgcolor: 'rgba(8,47,73,0.72)', fontWeight: 700 }}
           />
           <MerchConceptVisual
@@ -639,10 +703,18 @@ const MerchMockupPreview: React.FC<MerchMockupPreviewProps> = ({
           )}
         </Box>
 
-        <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.72rem', lineHeight: 1.5 }}>
-          Generisk plagg fra Printful-katalogen — leverandørens faktiske produkt kan være tykkere stoff,
-          annen passform eller annen trykk-teknikk. Bruk dette som visuell pitch, ikke som endelig spesifikasjon.
-        </Typography>
+        <Alert
+          severity="info"
+          icon={false}
+          sx={{ bgcolor: 'rgba(14,116,144,0.09)', color: '#cbd5e1', border: '1px solid rgba(34,211,238,0.18)' }}
+        >
+          <Typography sx={{ color: '#e0f2fe', fontWeight: 800, fontSize: '0.78rem', mb: 0.25 }}>
+            Hva Printful-visningen faktisk viser
+          </Typography>
+          <Typography sx={{ fontSize: '0.72rem', lineHeight: 1.55 }}>
+            Renderen viser logo og farge på ett generisk katalogprodukt. Den er ikke et tilbud, prøvetrykk eller en produktspesifikasjon fra valgt leverandør. Før bestilling må artikkelnummer, materiale og stoffvekt, passform og størrelser, faktisk farge, dekorflate og produksjonsteknikk bekreftes skriftlig — og med prøvetrykk.
+          </Typography>
+        </Alert>
       </Stack>
     </Box>
   );

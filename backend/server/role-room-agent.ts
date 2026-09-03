@@ -382,6 +382,13 @@ export type RoleRoomAgentMerchSupplier = {
    *  classified — the techniques/productCategories above include
    *  signal beyond the company name alone. */
   websiteSignalsEnriched?: boolean;
+  /** Technique signals found on the supplier's own website. These stay
+   *  separate from name, NACE and search-query inference so product
+   *  recommendations can fail closed when the website does not prove the
+   *  production method. */
+  websiteConfirmedTechniques?: RoleRoomAgentMerchTechnique[];
+  /** Product-category signals found on the supplier's own website. */
+  websiteConfirmedProductCategories?: RoleRoomAgentMerchProductCategory[];
   /** Contact info scraped from the supplier's homepage and/or
    *  /kontakt page. All best-effort; nulls when nothing found. */
   contact?: {
@@ -5023,16 +5030,18 @@ function buildCompanyMerchRecommendations(
   const usedSupplierKeys = new Set<string>();
   return templates.map((template, index) => {
     const candidates = suppliers
-      .filter((supplier) => supplier.status !== "rejected" && supplier.productCategories.includes(template.productCategory))
+      .filter((supplier) => (
+        (supplier.status === "verified" || supplier.status === "likely")
+        && supplier.websiteSignalsEnriched === true
+        && supplier.websiteConfirmedProductCategories?.includes(template.productCategory) === true
+        && supplier.websiteConfirmedTechniques?.includes(template.recommendedTechnique) === true
+      ))
       .sort((a, b) => {
         const score = (supplier: RoleRoomAgentMerchSupplier) => supplier.confidence
-          + (supplier.techniques.includes(template.recommendedTechnique) ? 20 : 0)
-          + (supplier.websiteSignalsEnriched ? 10 : 0)
           + (usedSupplierKeys.has(supplier.placeId || supplier.organizationNumber || supplier.name) ? 0 : 5);
         return score(b) - score(a);
       });
     const supplier = candidates.find((candidate) => !usedSupplierKeys.has(candidate.placeId || candidate.organizationNumber || candidate.name))
-      || candidates[0]
       || null;
     if (supplier) usedSupplierKeys.add(supplier.placeId || supplier.organizationNumber || supplier.name);
     return {
@@ -5275,6 +5284,8 @@ async function enrichMerchSuppliersWithWebsiteSignals(
           supplier.productCategories = mergedProducts.length > 0 ? mergedProducts : supplier.productCategories;
           supplier.offerings = offerings;
           supplier.websiteSignalsEnriched = true;
+          supplier.websiteConfirmedTechniques = techniques;
+          supplier.websiteConfirmedProductCategories = productCategories;
           // Slice 4: extract contact info from the same scraped HTML.
           // Looks at body text + meta + structured data; if the homepage
           // has no email but links to /kontakt, falls through to that
@@ -5465,6 +5476,7 @@ export async function fetchMerchSuppliersAnalysis(
     limitations: [
       "Tekniker og produktkategorier er heuristisk klassifisert fra navn/kategori — bekreft med leverandøren.",
       "Brreg-treff er ikke garanti for at leverandøren leverer merch til volum/tidsfrist du trenger.",
+      "En leverandør kobles til en produktanbefaling først når leverandørens nettside bekrefter både produktkategori og produksjonsteknikk.",
       diagnostics.timedOutRequests > 0
         ? `${diagnostics.timedOutRequests} leverandørkall nådde tidsbudsjettet; raske, verifiserte delresultater er beholdt.`
         : "",

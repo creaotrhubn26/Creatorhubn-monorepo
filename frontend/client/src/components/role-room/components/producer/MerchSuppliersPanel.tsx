@@ -17,11 +17,17 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  IconButton,
   Stack,
   Typography,
 } from '@mui/material';
 import {
   Business as BusinessIcon,
+  Close as CloseIcon,
+  Refresh as RefreshIcon,
   CheckCircleOutline as CheckIcon,
   Handshake as HandshakeIcon,
   Language as WebIcon,
@@ -29,11 +35,12 @@ import {
   Mail as MailIcon,
   Send as SendIcon,
 } from '@mui/icons-material';
-import type {
-  RoleRoomAgentMerchProductCategory,
-  RoleRoomAgentMerchSupplier,
-  RoleRoomAgentMerchTechnique,
-  RoleRoomAgentProducerBootstrapResult,
+import roleRoomAgentService, {
+  roleRoomAgentDefaultHeaders,
+  type RoleRoomAgentMerchProductCategory,
+  type RoleRoomAgentMerchSupplier,
+  type RoleRoomAgentMerchTechnique,
+  type RoleRoomAgentProducerBootstrapResult,
 } from '../../services/roleRoomAgentService';
 import MerchMockupPreview from './MerchMockupPreview';
 import MerchOutreachDialog from './MerchOutreachDialog';
@@ -91,8 +98,38 @@ const STATUS_PILL: Record<RoleRoomAgentMerchSupplier['status'], { label: string;
   rejected: { label: 'Avvist', bg: 'rgba(148,163,184,0.16)', fg: '#cbd5e1' },
 };
 
+type MerchSupplierData = NonNullable<RoleRoomAgentProducerBootstrapResult['merchSuppliers']>;
+
+function hasDocumentedSupplierCapabilities(supplier: RoleRoomAgentMerchSupplier): boolean {
+  return supplier.websiteSignalsEnriched === true
+    && (supplier.websiteConfirmedTechniques?.length ?? 0) > 0
+    && (supplier.websiteConfirmedProductCategories?.length ?? 0) > 0;
+}
+
+function supplierDisplayScore(supplier: RoleRoomAgentMerchSupplier): number {
+  const statusScore = supplier.status === 'verified'
+    ? 200
+    : supplier.status === 'likely'
+      ? 100
+      : supplier.status === 'needs_review'
+        ? 20
+        : 0;
+  return (hasDocumentedSupplierCapabilities(supplier) ? 1_000 : 0)
+    + statusScore
+    + supplier.confidence
+    + Math.min(25, supplier.userRatingCount ?? 0) / 5;
+}
+
 const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bootstrap, onRequestBootstrap }) => {
-  const merch = bootstrap?.merchSuppliers ?? null;
+  const [refreshedMerch, setRefreshedMerch] = useState<MerchSupplierData | null>(null);
+  const merch = refreshedMerch ?? bootstrap?.merchSuppliers ?? null;
+  const [allSuppliersOpen, setAllSuppliersOpen] = useState(false);
+  const [merchRefreshBusy, setMerchRefreshBusy] = useState(false);
+  const [merchRefreshNotice, setMerchRefreshNotice] = useState<string | null>(null);
+  const [merchRefreshError, setMerchRefreshError] = useState<string | null>(null);
+  const effectiveBootstrap = useMemo(() => (
+    bootstrap && merch ? { ...bootstrap, merchSuppliers: merch } : bootstrap
+  ), [bootstrap, merch]);
   const [techniqueFilter, setTechniqueFilter] = useState<RoleRoomAgentMerchTechnique | null>(null);
   const [productFilter, setProductFilter] = useState<RoleRoomAgentMerchProductCategory | null>(null);
   const [selectedSupplierKey, setSelectedSupplierKey] = useState<string | null>(null);
@@ -107,6 +144,13 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
   React.useEffect(() => {
     setConfirmedEntity(loadConfirmedCustomerEntity(projectId));
   }, [projectId]);
+  React.useEffect(() => {
+    setRefreshedMerch(null);
+    setMerchRefreshNotice(null);
+    setMerchRefreshError(null);
+    setAllSuppliersOpen(false);
+  }, [projectId, bootstrap?.generatedAt]);
+
 
   // Fetch the project's send-history once so each supplier card can
   // surface "Sendt 4. mai" badges. Refreshes whenever a cooperation
@@ -160,19 +204,91 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
     }
   }, [projectId, reloadEmailHistory]);
 
+  const handleRefreshMerch = React.useCallback(async () => {
+    if (!projectId || !bootstrap) return;
+    setMerchRefreshBusy(true);
+    setMerchRefreshNotice(null);
+    setMerchRefreshError(null);
+    try {
+      const response = await fetch('/api/role-room/agent/producer-bootstrap/refresh-section', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...roleRoomAgentDefaultHeaders() },
+        body: JSON.stringify({
+          projectId,
+          section: 'merch',
+          websiteUrl: bootstrap.companyProfile?.websiteUrl ?? undefined,
+          organizationNumber: bootstrap.brregCompany?.organizationNumber
+            ?? bootstrap.companyProfile?.organizationNumber
+            ?? undefined,
+          companyName: bootstrap.brregCompany?.name
+            ?? bootstrap.companyProfile?.companyName
+            ?? undefined,
+        }),
+      });
+      const payload = await response.json().catch(() => null) as {
+        success?: boolean;
+        error?: string;
+        data?: { merchSuppliers?: MerchSupplierData };
+      } | null;
+      const nextMerch = payload?.data?.merchSuppliers;
+      if (!response.ok || !payload?.success || !nextMerch || !Array.isArray(nextMerch.suppliers)) {
+        throw new Error(payload?.error || `Oppdatering feilet (${response.status}).`);
+      }
+
+      const nextSnapshot: RoleRoomAgentProducerBootstrapResult = {
+        ...bootstrap,
+        merchSuppliers: nextMerch,
+      };
+      await roleRoomAgentService.saveSnapshot(projectId, nextSnapshot);
+      setRefreshedMerch(nextMerch);
+      const documentedCount = nextMerch.suppliers.filter(hasDocumentedSupplierCapabilities).length;
+      setMerchRefreshNotice(
+        `Oppdatert og lagret uten ny research-versjon: ${documentedCount} leverandører har nettsidedokumenterte produksjonssignaler.`,
+      );
+    } catch (error) {
+      setMerchRefreshError(
+        error instanceof Error ? error.message : 'Kunne ikke oppdatere merch-leverandørene.',
+      );
+    } finally {
+      setMerchRefreshBusy(false);
+    }
+  }, [bootstrap, projectId]);
+
   const selectedSupplier = useMemo(() => {
     if (!merch || !selectedSupplierKey) return null;
     return merch.suppliers.find((s) => supplierKeyOf(s) === selectedSupplierKey) ?? null;
   }, [merch, selectedSupplierKey]);
 
-  const filteredSuppliers = useMemo(() => {
+  const recommendedSupplierKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const recommendation of merch?.recommendations ?? []) {
+      const match = recommendation.supplierMatch;
+      if (match) keys.add(match.placeId || match.organizationNumber || match.name);
+    }
+    return keys;
+  }, [merch]);
+
+  const rankedSuppliers = useMemo(() => {
     if (!merch) return [];
-    return merch.suppliers.filter((s) => {
-      if (techniqueFilter && !s.techniques.includes(techniqueFilter)) return false;
-      if (productFilter && !s.productCategories.includes(productFilter)) return false;
-      return true;
+    return [...merch.suppliers].sort((a, b) => {
+      const aScore = supplierDisplayScore(a) + (recommendedSupplierKeys.has(supplierKeyOf(a)) ? 500 : 0);
+      const bScore = supplierDisplayScore(b) + (recommendedSupplierKeys.has(supplierKeyOf(b)) ? 500 : 0);
+      return bScore - aScore || a.name.localeCompare(b.name, 'nb');
     });
-  }, [merch, techniqueFilter, productFilter]);
+  }, [merch, recommendedSupplierKeys]);
+
+  const filteredSuppliers = useMemo(() => rankedSuppliers.filter((supplier) => {
+    if (techniqueFilter && !supplier.techniques.includes(techniqueFilter)) return false;
+    if (productFilter && !supplier.productCategories.includes(productFilter)) return false;
+    return true;
+  }), [productFilter, rankedSuppliers, techniqueFilter]);
+
+  const topSuppliers = useMemo(
+    () => filteredSuppliers.filter(hasDocumentedSupplierCapabilities).slice(0, 5),
+    [filteredSuppliers],
+  );
+  const documentedSupplierCount = merch?.suppliers.filter(hasDocumentedSupplierCapabilities).length ?? 0;
 
   if (!bootstrap) {
     return (
@@ -277,9 +393,19 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
           <Stack direction="row" spacing={0.7} alignItems="center" flexWrap="wrap" useFlexGap>
             <Chip
               size="small"
-              label={`${merch.verifiedSupplierCount}/${merch.suppliers.length} klare for forespørsel`}
+              label={`${documentedSupplierCount}/${merch.suppliers.length} med nettsidebevis`}
               sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#bbf7d0', fontWeight: 700 }}
             />
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={merchRefreshBusy ? <CircularProgress size={12} /> : <RefreshIcon fontSize="small" />}
+              onClick={() => void handleRefreshMerch()}
+              disabled={merchRefreshBusy}
+              sx={{ textTransform: 'none', fontWeight: 700 }}
+            >
+              {merchRefreshBusy ? 'Verifiserer …' : 'Oppdater og verifiser'}
+            </Button>
             {emailHistory.length > 0 ? (
               <Button
                 size="small"
@@ -313,6 +439,16 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
             {pollResultMessage}
           </Alert>
         ) : null}
+        {merchRefreshNotice ? (
+          <Alert severity="success" onClose={() => setMerchRefreshNotice(null)} sx={{ mt: 1, fontSize: '0.82rem' }}>
+            {merchRefreshNotice}
+          </Alert>
+        ) : null}
+        {merchRefreshError ? (
+          <Alert severity="error" onClose={() => setMerchRefreshError(null)} sx={{ mt: 1, fontSize: '0.82rem' }}>
+            {merchRefreshError}
+          </Alert>
+        ) : null}
       </Box>
 
       {/* Mockup-preview — fotorealistisk render via Printful. Shows logo
@@ -321,7 +457,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
           carries (apparel/headwear/bags/drinkware). */}
       <MerchMockupPreview
         projectId={projectId}
-        bootstrap={bootstrap}
+        bootstrap={effectiveBootstrap}
         selectedSupplier={selectedSupplier}
       />
 
@@ -379,6 +515,25 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
         </Stack>
       ) : null}
 
+
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} alignItems={{ sm: 'center' }} justifyContent="space-between">
+        <Box>
+          <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>Topp 5 leverandører med nettsidebevis</Typography>
+          <Typography sx={{ color: 'rgba(226,232,240,0.56)', fontSize: '0.76rem' }}>
+            Rangert etter dokumenterte tilbud, status, tillitsscore og anmeldelser.
+          </Typography>
+        </Box>
+        {rankedSuppliers.length > 0 ? (
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={() => setAllSuppliersOpen(true)}
+            sx={{ textTransform: 'none', fontWeight: 700, flexShrink: 0 }}
+          >
+            Se alle ({rankedSuppliers.length})
+          </Button>
+        ) : null}
+      </Stack>
       {/* Supplier cards */}
       <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1} flexWrap="wrap" useFlexGap>
         {filteredSuppliers.length === 0 ? (
@@ -386,7 +541,13 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
             Ingen leverandører matcher de valgte filtrene. Klikk på en chip for å fjerne filteret.
           </Alert>
         ) : null}
-        {filteredSuppliers.map((supplier) => {
+        {filteredSuppliers.length > 0 && topSuppliers.length === 0 ? (
+          <Alert severity="warning" sx={{ width: '100%' }}>
+            Ingen leverandører har ennå nettsidebevis for både produktkategori og produksjonsteknikk.
+            Bruk «Oppdater og verifiser», eller åpne «Se alle» for kandidater som må kontrolleres manuelt.
+          </Alert>
+        ) : null}
+        {topSuppliers.map((supplier) => {
           const pill = STATUS_PILL[supplier.status];
           const key = supplierKeyOf(supplier);
           const isSelected = selectedSupplierKey === key;
@@ -667,12 +828,117 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
         })}
       </Stack>
 
+      <Dialog
+        open={allSuppliersOpen}
+        onClose={() => setAllSuppliersOpen(false)}
+        fullWidth
+        maxWidth="md"
+        PaperProps={{
+          sx: {
+            bgcolor: '#0f172a',
+            color: '#e2e8f0',
+            border: '1px solid rgba(148,163,184,0.22)',
+            maxHeight: '88vh',
+          },
+        }}
+      >
+        <DialogTitle sx={{ borderBottom: '1px solid rgba(148,163,184,0.16)' }}>
+          <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+            <Box>
+              <Typography sx={{ color: '#f8fafc', fontWeight: 850 }}>Alle merch-leverandører</Typography>
+              <Typography sx={{ color: 'rgba(226,232,240,0.58)', fontSize: '0.78rem' }}>
+                {rankedSuppliers.length} kandidater. Kun «Nettsidebevis»-merkede leverandører brukes som automatisk produktmatch.
+              </Typography>
+            </Box>
+            <IconButton aria-label="Lukk leverandøroversikt" onClick={() => setAllSuppliersOpen(false)} sx={{ color: '#cbd5e1' }}>
+              <CloseIcon />
+            </IconButton>
+          </Stack>
+        </DialogTitle>
+        <DialogContent dividers sx={{ borderColor: 'rgba(148,163,184,0.14)' }}>
+          <Stack spacing={0.8}>
+            {rankedSuppliers.map((supplier, index) => {
+              const key = supplierKeyOf(supplier);
+              const documented = hasDocumentedSupplierCapabilities(supplier);
+              const pill = STATUS_PILL[supplier.status];
+              const selected = selectedSupplierKey === key;
+              return (
+                <Box
+                  key={key}
+                  sx={{
+                    p: 1.1,
+                    borderRadius: 2,
+                    border: selected
+                      ? '1px solid rgba(99,102,241,0.7)'
+                      : '1px solid rgba(148,163,184,0.16)',
+                    bgcolor: selected ? 'rgba(49,46,129,0.3)' : 'rgba(15,23,42,0.62)',
+                  }}
+                >
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} justifyContent="space-between">
+                    <Stack spacing={0.45} sx={{ minWidth: 0 }}>
+                      <Stack direction="row" spacing={0.55} alignItems="center" flexWrap="wrap" useFlexGap>
+                        <Typography sx={{ color: 'rgba(226,232,240,0.45)', fontSize: '0.72rem', minWidth: 22 }}>
+                          {index + 1}.
+                        </Typography>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>{supplier.name}</Typography>
+                        <Chip
+                          size="small"
+                          label={documented ? 'Nettsidebevis' : 'Manuell kontroll'}
+                          sx={{
+                            height: 21,
+                            bgcolor: documented ? 'rgba(34,197,94,0.14)' : 'rgba(250,204,21,0.12)',
+                            color: documented ? '#bbf7d0' : '#fde68a',
+                            fontSize: '0.66rem',
+                          }}
+                        />
+                        <Chip size="small" label={pill.label} sx={{ height: 21, bgcolor: pill.bg, color: pill.fg, fontSize: '0.66rem' }} />
+                      </Stack>
+                      <Typography sx={{ color: 'rgba(226,232,240,0.58)', fontSize: '0.74rem' }}>
+                        {supplier.formattedAddress || 'Adresse må bekreftes'} · Tillitsscore {supplier.confidence}%
+                      </Typography>
+                      {supplier.offerings && supplier.offerings.length > 0 ? (
+                        <Typography sx={{ color: '#a7f3d0', fontSize: '0.72rem' }}>
+                          Fra nettsiden: {supplier.offerings.join(', ')}
+                        </Typography>
+                      ) : null}
+                    </Stack>
+                    <Stack direction="row" spacing={0.6} alignItems="center" flexWrap="wrap" useFlexGap sx={{ flexShrink: 0 }}>
+                      {supplier.websiteUrl ? (
+                        <Button href={supplier.websiteUrl} target="_blank" rel="noreferrer" size="small" startIcon={<WebIcon />} sx={{ textTransform: 'none' }}>
+                          Nettside
+                        </Button>
+                      ) : null}
+                      {supplier.googleMapsUri ? (
+                        <Button href={supplier.googleMapsUri} target="_blank" rel="noreferrer" size="small" startIcon={<MapIcon />} sx={{ textTransform: 'none' }}>
+                          Google
+                        </Button>
+                      ) : null}
+                      <Button
+                        size="small"
+                        variant={selected ? 'outlined' : 'contained'}
+                        onClick={() => {
+                          setSelectedSupplierKey(selected ? null : key);
+                          setAllSuppliersOpen(false);
+                        }}
+                        sx={{ textTransform: 'none', fontWeight: 700 }}
+                      >
+                        {selected ? 'Fjern valg' : 'Velg'}
+                      </Button>
+                    </Stack>
+                  </Stack>
+                </Box>
+              );
+            })}
+          </Stack>
+        </DialogContent>
+      </Dialog>
+
       {/* Outreach modal — pre-filled tilbudsforespørsel */}
       <MerchOutreachDialog
         open={Boolean(outreachSupplier)}
         onClose={() => setOutreachSupplier(null)}
         supplier={outreachSupplier}
-        bootstrap={bootstrap}
+        bootstrap={effectiveBootstrap}
         productCategory={
           outreachSupplier?.productCategories.find((c) => c !== 'unknown') ?? null
         }
@@ -683,7 +949,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
         open={cooperationOpen}
         onClose={() => setCooperationOpen(false)}
         projectId={projectId}
-        bootstrap={bootstrap}
+        bootstrap={effectiveBootstrap}
         supplier={selectedSupplier}
         confirmedEntity={confirmedEntity}
       />
@@ -693,7 +959,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
         open={confirmEntityOpen}
         onClose={() => setConfirmEntityOpen(false)}
         projectId={projectId}
-        bootstrap={bootstrap}
+        bootstrap={effectiveBootstrap}
         onConfirm={(entity) => setConfirmedEntity(entity)}
       />
 
