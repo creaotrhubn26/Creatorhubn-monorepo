@@ -234,7 +234,7 @@ export async function acceptScopePermissions(
        config_id, client_project_id, accepted_by_user_id,
        accepted_by_name, accepted_by_email,
        terms_version, permissions_snapshot, ip_address, user_agent
-     ) VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7::jsonb, $8, $9)
+     ) VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, $7::jsonb, $8, $9)
      RETURNING id::text`,
     [
       opts.configId,

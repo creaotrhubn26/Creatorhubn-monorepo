@@ -48,6 +48,12 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+export function currentWhatsAppBillingPeriod(now: Date = new Date()): string {
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
 export interface RecordWhatsAppUsageInput {
   pool: Pool;
   projectId: string;
@@ -76,8 +82,8 @@ export async function recordWhatsAppUsage(
          (project_id, schedule_id, candidate_id, sent_at, threshold, brand,
           template_name, whatsapp_message_id, conversation_id,
           unit_price_nok_ex_vat, vat_rate,
-          total_nok_ex_vat, total_nok_incl_vat)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+          total_nok_ex_vat, total_nok_incl_vat, billing_period)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
       [
         input.projectId,
         input.scheduleId,
@@ -92,6 +98,7 @@ export async function recordWhatsAppUsage(
         pricing.vatRate,
         totalExVat,
         totalInclVat,
+        currentWhatsAppBillingPeriod(sentAt),
       ],
     );
   } catch (error) {

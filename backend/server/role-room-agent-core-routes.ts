@@ -42,7 +42,7 @@ import {
   fetchBrregCompany,
   fetchWebsiteInsights,
   fetchGooglePlacesBusinessSignals,
-  fetchGooglePlacesCompetitorAnalysis,
+  fetchCombinedCompetitorAnalysis,
   fetchGooglePlacesLocalPresencePlan,
   fetchMerchSuppliersAnalysis,
   extractBrandColorsFromLogo,
@@ -68,11 +68,13 @@ import { runGscSetup } from "./role-room-agent-gsc-setup.js";
 import { runMetaPixelSetup } from "./role-room-agent-meta-pixel-setup.js";
 import multer from "multer";
 import { getLatestContractScan, MAX_PDF_BYTES, scanContract, transcribeContractPdf } from "./role-room-agent-contract-scan.js";
+import { upsertProducerProjectNotification } from "./role-room-producer-notifications.js";
 import {
   validateResearchResult,
   detectMaterialChanges,
   evaluateContentStoryLogicVagueness,
 } from "./role-room-research-validation.js";
+import { BOOTSTRAP_POSTPROCESS_TIMEOUT_MS, withTimeout } from "./role-room-agent-llm-util.js";
 import { readString } from "./_shared";
 
 interface AdminSession {
@@ -95,6 +97,22 @@ export interface RoleRoomAgentCoreRoutesDeps {
   ) => AdminSession | null;
   isCompatAdminFeatureEnabled: (featureId: string) => boolean;
   getCompatAdminFeature: (featureId: string) => Record<string, unknown> | null;
+}
+
+async function optionalPostprocessWithin<T>(
+  promise: Promise<T>,
+  fallback: T,
+  label: string,
+): Promise<T> {
+  try {
+    return await withTimeout(promise, BOOTSTRAP_POSTPROCESS_TIMEOUT_MS, label);
+  } catch (error) {
+    console.warn("[role-room-agent] optional postprocess skipped", {
+      label,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return fallback;
+  }
 }
 
 export function setupRoleRoomAgentCoreRoutes(
@@ -135,6 +153,8 @@ export function setupRoleRoomAgentCoreRoutes(
       providerConfigured: runtimeConfig.providerConfigured,
       defaultModel: runtimeConfig.defaultModel,
       googlePlacesConfigured: runtimeConfig.googlePlacesConfigured,
+      webSearchConfigured: runtimeConfig.webSearchConfigured,
+      webSearchProvider: runtimeConfig.webSearchProvider,
       cohereConfigured: runtimeConfig.cohereConfigured,
       cohereRerankModel: runtimeConfig.cohereRerankModel,
       brregConfigured: runtimeConfig.brregConfigured,
@@ -205,7 +225,11 @@ export function setupRoleRoomAgentCoreRoutes(
               model: result.model ?? null,
             })
           : Promise.resolve(null),
-        generateExecutiveSummary(result),
+        optionalPostprocessWithin(
+          generateExecutiveSummary(result),
+          null,
+          "executive_summary_timeout",
+        ),
       ]);
       // Attach the summary + validation flags onto the result so the
       // frontend overlay can render everything without extra round-trips.
@@ -218,7 +242,11 @@ export function setupRoleRoomAgentCoreRoutes(
         result.researchId
           ? loadPreviousResearchResult(pool, projectId, result.researchId)
           : Promise.resolve(null),
-        evaluateContentStoryLogicVagueness(result),
+        optionalPostprocessWithin(
+          evaluateContentStoryLogicVagueness(result),
+          [],
+          "vagueness_validation_timeout",
+        ),
       ]);
       const changeFlags = previousResult ? detectMaterialChanges(result, previousResult) : [];
       const validationFlags = [...syncFlags, ...changeFlags, ...vaguenessFlags];
@@ -330,14 +358,22 @@ export function setupRoleRoomAgentCoreRoutes(
               model: result.model ?? null,
             })
           : Promise.resolve(null),
-        generateExecutiveSummary(result),
+        optionalPostprocessWithin(
+          generateExecutiveSummary(result),
+          null,
+          "executive_summary_timeout",
+        ),
       ]);
       const syncFlags = validateResearchResult(result);
       const [previousResult, vaguenessFlags] = await Promise.all([
         result.researchId
           ? loadPreviousResearchResult(pool, projectId, result.researchId)
           : Promise.resolve(null),
-        evaluateContentStoryLogicVagueness(result),
+        optionalPostprocessWithin(
+          evaluateContentStoryLogicVagueness(result),
+          [],
+          "vagueness_validation_timeout",
+        ),
       ]);
       const changeFlags = previousResult ? detectMaterialChanges(result, previousResult) : [];
       const validationFlags = [...syncFlags, ...changeFlags, ...vaguenessFlags];
@@ -559,9 +595,8 @@ export function setupRoleRoomAgentCoreRoutes(
   // catch swallow'er query-feil så app starter selv om migrasjonen ikke
   // har kjørt enda (cachen blir bare alltid en miss da).
   // Item #39 — team-notifikasjon når research er ferdig. Skriver én row
-  // i producer_project_notifications som dukker opp i prosjektets inbox
-  // (allerede koblet til frontend via useProducerNotifications). Best-
-  // effort: tabellen kan mangle i noen miljøer; vi swallow'er feil.
+  // i den kanoniske Role Room-inboxen. Hjelperen gjør atomisk deduplisering
+  // mot samme tabell som frontend leser.
   const notifyResearchCompleted = async (params: {
     projectId: string;
     userId: string;
@@ -573,18 +608,19 @@ export function setupRoleRoomAgentCoreRoutes(
     try {
       const versionLabel = params.versionNumber !== null ? ` (v${params.versionNumber})` : '';
       const timeLabel = typeof params.totalMs === 'number' ? ` på ${(params.totalMs / 1000).toFixed(1)}s` : '';
-      await pool.query(
-        `INSERT INTO producer_project_notifications (
-           project_id, assigned_to_user_id, inbox_type, event_type,
-           title, message, read, created_at, updated_at
-         ) VALUES ($1, $2, 'ai_research', 'research_completed', $3, $4, FALSE, now(), now())`,
-        [
-          params.projectId,
-          params.userId,
-          `Research ferdig${versionLabel}`,
-          `Bootstrap fant ${params.datapoints} datapunkter${timeLabel}. Klar for marketing plan.`,
-        ],
-      );
+      await upsertProducerProjectNotification(pool, {
+        projectId: params.projectId,
+        audience: 'producer_team',
+        eventType: 'research_completed',
+        title: `Research ferdig${versionLabel}`,
+        message: `Bootstrap fant ${params.datapoints} datapunkter${timeLabel}. Klar for marketing plan.`,
+        linkedEntityType: 'research_version',
+        linkedEntityId: params.researchId ?? `${params.projectId}:${params.versionNumber ?? 'latest'}`,
+        assignedToUserId: params.userId,
+        createdByUserId: params.userId,
+        createdByRole: 'producer',
+        metadata: { inboxType: 'ai_research', datapoints: params.datapoints },
+      });
     } catch {
       // notifications er advisory
     }
@@ -793,7 +829,7 @@ export function setupRoleRoomAgentCoreRoutes(
       let payload: Record<string, unknown> = {};
       if (section === "competitors") {
         payload = {
-          competitorAnalysis: await fetchGooglePlacesCompetitorAnalysis(input, websiteInsights, businessSignals, brreg),
+          competitorAnalysis: await fetchCombinedCompetitorAnalysis(input, websiteInsights, businessSignals, brreg),
         };
       } else if (section === "local") {
         payload = {

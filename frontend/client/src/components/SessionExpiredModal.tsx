@@ -27,27 +27,10 @@ import {
   Login as LoginIcon,
 } from '@mui/icons-material';
 
+import { clearClientAuthState } from '../lib/queryClient';
+
 const COOLDOWN_MS = 30_000;
 const RETURN_URL_STORAGE_KEY = 'creatorhub:session-expired:return-url';
-
-function clearStaleTokens(): void {
-  try {
-    if (typeof window === 'undefined') return;
-    // CreatorHub-spesifikke token-keys
-    const keysToClear = [
-      'creatorhub-auth-token',
-      'creatorhub-session-token',
-      'role-room-auth-session',
-      'authToken',
-    ];
-    for (const k of keysToClear) {
-      window.localStorage.removeItem(k);
-    }
-    // Cookies: la backend slette via /logout
-  } catch {
-    /* noop */
-  }
-}
 
 export const SessionExpiredModal: React.FC = () => {
   const [open, setOpen] = useState(false);
@@ -96,7 +79,7 @@ export const SessionExpiredModal: React.FC = () => {
   }, []);
 
   const handleReLogin = () => {
-    clearStaleTokens();
+    clearClientAuthState();
     setOpen(false);
     // Redirect til login med return-URL som query-param
     let returnUrl = '/';
@@ -106,8 +89,8 @@ export const SessionExpiredModal: React.FC = () => {
     } catch {
       /* noop */
     }
-    const loginUrl = `/login?returnUrl=${encodeURIComponent(returnUrl)}`;
-    window.location.href = loginUrl;
+    const loginUrl = `/login?redirect=${encodeURIComponent(returnUrl)}`;
+    window.location.assign(loginUrl);
   };
 
   const handleDismiss = () => {

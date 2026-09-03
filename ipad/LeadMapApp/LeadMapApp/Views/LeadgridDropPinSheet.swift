@@ -283,13 +283,13 @@ struct LeadgridDropPinSheet: View {
                 address: resolvedAddress,
                 locationConfidence: "exact",
                 leadSource: "manual_pin_drop"
-            ))
+            ), organizationId: appState.activeOrganizationId)
             // Success-haptic
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             // Fetch det ferskt opprettede leadet og append til AppState så
             // pin dukker opp umiddelbart uten å vente på neste full refresh.
             do {
-                let lead = try await api.fetchLead(id: newId)
+                let lead = try await api.fetchLead(id: newId, organizationId: appState.activeOrganizationId)
                 if !appState.leads.contains(where: { $0.id == lead.id }) {
                     appState.leads.append(lead)
                 }

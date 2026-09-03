@@ -285,6 +285,7 @@ const NewMeetingDialog: React.FC<{ open: boolean; onClose: () => void; projectId
     try {
       await apiRequest(`/api/projects/${encodeURIComponent(projectId)}/meetings`, {
         method: 'POST',
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
         body: { title: title.trim(), scheduledAt: new Date(when).toISOString(), durationMinutes: Number(duration) || 60, generateMeet: genMeet },
       });
       setTitle(''); setWhen('');

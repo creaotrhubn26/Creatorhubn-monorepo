@@ -65,6 +65,9 @@ async function ensureSchema(pool: Pool): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS idx_totp_backup_codes_user
       ON user_totp_backup_codes(user_id, used_at);
+
+    ALTER TABLE user_totp_secrets
+      ADD COLUMN IF NOT EXISTS last_used_window BIGINT;
   `);
   schemaReady = true;
 }
@@ -160,6 +163,8 @@ export async function startSetup(
      ON CONFLICT (user_id) DO UPDATE
        SET secret_encrypted = EXCLUDED.secret_encrypted,
            enabled_at = NULL,
+           last_used_at = NULL,
+           last_used_window = NULL,
            updated_at = NOW()`,
     [input.userId, encrypt(secret.base32)],
   );

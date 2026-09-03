@@ -27,9 +27,10 @@
  */
 
 import type { Express, Request, Response } from "express";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 import { callClaudeForJson, ClaudeJsonParseError } from "./claude-json-helper.js";
+import { resolveLeadMapSession } from "./lead-map-session-helper.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -57,7 +58,7 @@ interface LeadContext {
 }
 
 async function loadLeadContext(
-  pool: Pool, leadId: string,
+  pool: Pool, leadId: string, organizationId: string,
 ): Promise<LeadContext | null> {
   const leadRes = await pool.query<{
     name: string;
@@ -71,8 +72,9 @@ async function loadLeadContext(
     `SELECT name, lead_category, city, website_url, google_rating,
             estimated_value,
             COALESCE(category, lead_category) AS industry_text
-       FROM crm_customers WHERE id = $1`,
-    [leadId],
+       FROM crm_customers
+      WHERE id = $1::uuid AND organization_id = $2::uuid`,
+    [leadId, organizationId],
   );
   if (leadRes.rows.length === 0) return null;
   const lead = leadRes.rows[0];
@@ -299,7 +301,11 @@ interface FinalizeActions {
 }
 
 async function applyOutcomeActions(
-  pool: Pool, leadId: string, outcome: string, userId: string,
+  client: PoolClient,
+  leadId: string,
+  outcome: string,
+  userId: string,
+  organizationId: string,
 ): Promise<FinalizeActions> {
   const result: FinalizeActions = {
     lead_status_set: null,
@@ -309,54 +315,51 @@ async function applyOutcomeActions(
   const now = new Date();
 
   if (outcome === "demo_booked") {
-    // Set lead_status til 'meeting_booked'. Selgeren bekrefter dato selv.
-    try {
-      await pool.query(
-        `UPDATE crm_customers SET lead_status = 'meeting_booked',
-                                  next_follow_up_at = $2
-          WHERE id = $1`,
-        [leadId, new Date(now.getTime() + 24 * 3600_000)],
-      );
-      result.lead_status_set = "meeting_booked";
-      result.next_follow_up_at = new Date(now.getTime() + 24 * 3600_000).toISOString();
-      result.calendar_event_hint = {
-        title: "Demo m/ kunden (avtalt i Pitch Deck)",
-        suggested_at: new Date(now.getTime() + 7 * 24 * 3600_000).toISOString(),
-      };
-    } catch { /* swallow */ }
+    const followUp = new Date(now.getTime() + 24 * 3600_000);
+    await client.query(
+      `UPDATE crm_customers
+          SET lead_status = 'meeting_booked', next_follow_up_at = $3,
+              updated_at = NOW()
+        WHERE id = $1::uuid AND organization_id = $2::uuid`,
+      [leadId, organizationId, followUp],
+    );
+    result.lead_status_set = "meeting_booked";
+    result.next_follow_up_at = followUp.toISOString();
+    result.calendar_event_hint = {
+      title: "Demo m/ kunden (avtalt i Pitch Deck)",
+      suggested_at: new Date(now.getTime() + 7 * 24 * 3600_000).toISOString(),
+    };
   } else if (outcome === "follow_up" || outcome === "interested") {
-    // +7 dager for follow_up, +3 dager for interested
     const days = outcome === "follow_up" ? 7 : 3;
     const nextDate = new Date(now.getTime() + days * 24 * 3600_000);
-    try {
-      await pool.query(
-        `UPDATE crm_customers SET next_follow_up_at = $2 WHERE id = $1`,
-        [leadId, nextDate],
-      );
-      result.next_follow_up_at = nextDate.toISOString();
-    } catch { /* swallow */ }
-  } else if (outcome === "lost") {
-    try {
-      await pool.query(
-        `UPDATE crm_customers SET lead_status = 'lost' WHERE id = $1`,
-        [leadId],
-      );
-      result.lead_status_set = "lost";
-    } catch { /* swallow */ }
-  }
-  // 'more_info' har ingen auto-aksjon — selger noterer selv hva de skal
-  // sende.
-
-  // Audit i lead_activities hvis tabellen finnes
-  try {
-    await pool.query(
-      `INSERT INTO crm_lead_activities
-         (customer_id, actor_user_id, activity_type, details)
-       VALUES ($1, $2, 'pitch_outcome', $3::jsonb)`,
-      [leadId, userId, JSON.stringify({ outcome, applied: result })],
+    await client.query(
+      `UPDATE crm_customers
+          SET next_follow_up_at = $3, updated_at = NOW()
+        WHERE id = $1::uuid AND organization_id = $2::uuid`,
+      [leadId, organizationId, nextDate],
     );
-  } catch { /* tabell mangler i noen miljøer */ }
+    result.next_follow_up_at = nextDate.toISOString();
+  } else if (outcome === "lost") {
+    await client.query(
+      `UPDATE crm_customers
+          SET lead_status = 'lost', updated_at = NOW()
+        WHERE id = $1::uuid AND organization_id = $2::uuid`,
+      [leadId, organizationId],
+    );
+    result.lead_status_set = "lost";
+  }
 
+  await client.query(
+    `INSERT INTO crm_lead_activities
+       (customer_id, user_id, activity_type, description, metadata)
+     VALUES ($1::uuid, $2, 'pitch_outcome', $3, $4::jsonb)`,
+    [
+      leadId,
+      userId,
+      `Pitch-resultat: ${outcome}`,
+      JSON.stringify({ outcome, applied: result }),
+    ],
+  );
   return result;
 }
 
@@ -367,10 +370,38 @@ async function applyOutcomeActions(
 export function registerPitchDeckBriefRoutes({ app, pool, activeSessions }: Deps): void {
   const ROOT = "/api/admin-room/lead-map/pitch-deck";
 
+  const orgFromDeckBody = async (req: Request, p: Pool): Promise<string | null> => {
+    const deckId = typeof req.body?.deck_id === "string" ? req.body.deck_id : null;
+    if (!deckId) return null;
+    const result = await p.query<{ org_id: string }>(
+      `SELECT org_id::text FROM pitch_decks WHERE id = $1::uuid LIMIT 1`,
+      [deckId],
+    );
+    return result.rows[0]?.org_id ?? null;
+  };
+  const orgFromDeckParam = async (req: Request, p: Pool): Promise<string | null> => {
+    const result = await p.query<{ org_id: string }>(
+      `SELECT org_id::text FROM pitch_decks WHERE id = $1::uuid LIMIT 1`,
+      [req.params.id],
+    );
+    return result.rows[0]?.org_id ?? null;
+  };
+  const orgFromPresentationParam = async (req: Request, p: Pool): Promise<string | null> => {
+    const result = await p.query<{ org_id: string }>(
+      `SELECT d.org_id::text
+         FROM pitch_deck_presentations pr
+         JOIN pitch_decks d ON d.id = pr.deck_id
+        WHERE pr.id = $1::uuid
+        LIMIT 1`,
+      [req.params.id],
+    );
+    return result.rows[0]?.org_id ?? null;
+  };
+
   // ─── POST /presentations/brief ─────────────────────────────────
   app.post(
     `${ROOT}/presentations/brief`,
-    requireLeadMapPermission("pitch_deck.access", { pool, activeSessions }),
+    requireLeadMapPermission("pitch_deck.access", { pool, activeSessions, resolveOrgId: orgFromDeckBody }),
     async (req: Request, res: Response) => {
       const deckId = typeof req.body?.deck_id === "string" ? req.body.deck_id : null;
       const leadId = typeof req.body?.lead_id === "string" ? req.body.lead_id : null;
@@ -378,7 +409,9 @@ export function registerPitchDeckBriefRoutes({ app, pool, activeSessions }: Deps
         return res.status(400).json({ error: "deck_id_og_lead_id_påkrevd" });
       }
       try {
-        const leadCtx = await loadLeadContext(pool, leadId);
+        const organizationId = await orgFromDeckBody(req, pool);
+        if (!organizationId) return res.status(404).json({ error: "deck_not_found" });
+        const leadCtx = await loadLeadContext(pool, leadId, organizationId);
         if (!leadCtx) return res.status(404).json({ error: "lead_not_found" });
         // Bare aktive (ikke-slettet) + inkluderte slides — org har
         // eksplisitt valgt vekk det som er is_included=false, og
@@ -412,14 +445,16 @@ export function registerPitchDeckBriefRoutes({ app, pool, activeSessions }: Deps
   // ─── POST /decks/:id/value-slide/for-lead ──────────────────────
   app.post(
     `${ROOT}/decks/:id/value-slide/for-lead`,
-    requireLeadMapPermission("pitch_deck.access", { pool, activeSessions }),
+    requireLeadMapPermission("pitch_deck.access", { pool, activeSessions, resolveOrgId: orgFromDeckParam }),
     async (req: Request, res: Response) => {
       const leadId = typeof req.body?.lead_id === "string" ? req.body.lead_id : null;
       const presentationId = typeof req.body?.presentation_id === "string"
         ? req.body.presentation_id : null;
       if (!leadId) return res.status(400).json({ error: "lead_id_påkrevd" });
       try {
-        const leadCtx = await loadLeadContext(pool, leadId);
+        const organizationId = await orgFromDeckParam(req, pool);
+        if (!organizationId) return res.status(404).json({ error: "deck_not_found" });
+        const leadCtx = await loadLeadContext(pool, leadId, organizationId);
         if (!leadCtx) return res.status(404).json({ error: "lead_not_found" });
 
         const deckRes = await pool.query<{ generated_from: unknown }>(
@@ -450,8 +485,8 @@ export function registerPitchDeckBriefRoutes({ app, pool, activeSessions }: Deps
           await pool.query(
             `UPDATE pitch_deck_presentations
                 SET value_slide_override = $2::jsonb
-              WHERE id = $1`,
-            [presentationId, JSON.stringify(override)],
+              WHERE id = $1::uuid AND deck_id = $3::uuid`,
+            [presentationId, JSON.stringify(override), req.params.id],
           );
         }
         return res.json({ override, applied_to_presentation: presentationId });
@@ -468,35 +503,77 @@ export function registerPitchDeckBriefRoutes({ app, pool, activeSessions }: Deps
   );
 
   // ─── POST /presentations/:id/finalize ──────────────────────────
-  // Post-møte-loop: triggrer outcome-aksjoner. Kalles av PresentView
-  // etter at outcome-arket er sendt og selgeren går tilbake til
-  // lead-flyten. Idempotent — kan kalles flere ganger trygt.
   app.post(
     `${ROOT}/presentations/:id/finalize`,
-    requireLeadMapPermission("pitch_deck.access", { pool, activeSessions }),
+    requireLeadMapPermission("pitch_deck.access", {
+      pool,
+      activeSessions,
+      resolveOrgId: orgFromPresentationParam,
+    }),
     async (req: Request, res: Response) => {
-      const session = activeSessions.get(
-        (req.headers.authorization ?? "").replace("Bearer ", ""),
-      );
+      const session = await resolveLeadMapSession(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const client = await pool.connect();
       try {
-        const presRes = await pool.query<{
-          lead_id: string | null; outcome: string | null;
+        await client.query("BEGIN");
+        const presRes = await client.query<{
+          lead_id: string | null;
+          outcome: string | null;
+          org_id: string;
+          outcome_applied_at: Date | null;
+          outcome_applied: FinalizeActions | null;
         }>(
-          `SELECT lead_id, outcome FROM pitch_deck_presentations WHERE id = $1`,
+          `SELECT pr.lead_id, pr.outcome, d.org_id::text,
+                  pr.outcome_applied_at, pr.outcome_applied
+             FROM pitch_deck_presentations pr
+             JOIN pitch_decks d ON d.id = pr.deck_id
+            WHERE pr.id = $1::uuid
+            FOR UPDATE OF pr`,
           [req.params.id],
         );
         if (presRes.rows.length === 0) {
+          await client.query("ROLLBACK");
           return res.status(404).json({ error: "presentation_not_found" });
         }
-        const { lead_id, outcome } = presRes.rows[0];
-        if (!lead_id || !outcome) {
+        const presentation = presRes.rows[0];
+        if (!presentation.lead_id || !presentation.outcome) {
+          await client.query("ROLLBACK");
           return res.json({ ok: true, applied: null, reason: "no_lead_or_outcome" });
         }
-        const applied = await applyOutcomeActions(pool, lead_id, outcome, session.userId);
-        return res.json({ ok: true, applied });
-      } catch (err) {
+        if (presentation.outcome_applied_at) {
+          await client.query("COMMIT");
+          return res.json({ ok: true, applied: presentation.outcome_applied, replayed: true });
+        }
+        const ownedLead = await client.query(
+          `SELECT 1 FROM crm_customers
+            WHERE id = $1::uuid AND organization_id = $2::uuid
+            FOR UPDATE`,
+          [presentation.lead_id, presentation.org_id],
+        );
+        if (!ownedLead.rows.length) {
+          await client.query("ROLLBACK");
+          return res.status(409).json({ error: "lead_deck_workspace_mismatch" });
+        }
+        const applied = await applyOutcomeActions(
+          client,
+          presentation.lead_id,
+          presentation.outcome,
+          session.userId,
+          presentation.org_id,
+        );
+        await client.query(
+          `UPDATE pitch_deck_presentations
+              SET outcome_applied_at = NOW(), outcome_applied = $2::jsonb
+            WHERE id = $1::uuid`,
+          [req.params.id, JSON.stringify(applied)],
+        );
+        await client.query("COMMIT");
+        return res.json({ ok: true, applied, replayed: false });
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
         return res.status(500).json({ error: "finalize_failed" });
+      } finally {
+        client.release();
       }
     },
   );

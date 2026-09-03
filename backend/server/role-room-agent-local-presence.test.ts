@@ -1,0 +1,441 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  fetchGooglePlacesCompetitorAnalysis,
+  fetchWebCompetitorAnalysis,
+  fetchGooglePlacesLocalPresencePlan,
+  fetchMerchSuppliersAnalysis,
+  type RoleRoomAgentBrregCompany,
+  type RoleRoomAgentProducerBootstrapInput,
+  type RoleRoomAgentWebsiteInsights,
+} from './role-room-agent.js';
+
+const previousPlacesKey = process.env.GOOGLE_PLACES_API_KEY;
+const previousSearchKey = process.env.GOOGLE_SEARCH_API_KEY;
+const previousSearchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
+const previousAnthropicKey = process.env.ANTHROPIC_API_KEY;
+const originalFetch = globalThis.fetch;
+
+function verifiedMedinnova(): RoleRoomAgentBrregCompany {
+  return {
+    source: 'brreg',
+    lookupStatus: 'verified',
+    lookupInput: 'MedInnova AS',
+    matchedBy: 'company_name',
+    organizationNumber: '936564046',
+    name: 'MEDINNOVA AS',
+    organizationForm: { code: 'AS', description: 'Aksjeselskap' },
+    industryCode: { code: '62.100', description: 'Dataprogrammeringstjenester' },
+    registrationDate: null,
+    foundationDate: null,
+    vatRegistered: true,
+    businessRegisterRegistered: true,
+    employeeCount: null,
+    businessAddress: 'Olasrudveien 23, 1284 OSLO',
+    postalAddress: null,
+    municipality: 'OSLO',
+    municipalityNumber: '0301',
+    website: null,
+    statusFlags: {},
+    statusMessage: null,
+  };
+}
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  if (previousPlacesKey === undefined) {
+    delete process.env.GOOGLE_PLACES_API_KEY;
+  } else {
+    process.env.GOOGLE_PLACES_API_KEY = previousPlacesKey;
+  }
+  if (previousSearchKey === undefined) {
+    delete process.env.GOOGLE_SEARCH_API_KEY;
+  } else {
+    process.env.GOOGLE_SEARCH_API_KEY = previousSearchKey;
+  }
+  if (previousSearchEngineId === undefined) {
+    delete process.env.GOOGLE_SEARCH_ENGINE_ID;
+  } else {
+    process.env.GOOGLE_SEARCH_ENGINE_ID = previousSearchEngineId;
+  if (previousAnthropicKey === undefined) {
+    delete process.env.ANTHROPIC_API_KEY;
+  } else {
+    process.env.ANTHROPIC_API_KEY = previousAnthropicKey;
+  }
+  }
+});
+
+describe('Role Room local-presence fail-closed policy', () => {
+  it('does not invent event, content or outreach plans without verified Places candidates', async () => {
+    delete process.env.GOOGLE_PLACES_API_KEY;
+    const input: RoleRoomAgentProducerBootstrapInput = {
+      projectId: 'medside-policy-test',
+      websiteUrl: 'https://medside.no',
+      companyName: 'MEDINNOVA AS',
+    };
+    const websiteInsights: RoleRoomAgentWebsiteInsights = {
+      finalUrl: 'https://medside.no/',
+      pageTitle: 'MedSide',
+      metaDescription: 'GDPR-sikker AI-plattform for medisinsk transkripsjon og journalnotat.',
+      textSnippet: 'Bygget for norske leger og helsepersonell.',
+      selectedPageSnippets: [],
+      socialProfileCandidates: [],
+    };
+    const brregCompany: RoleRoomAgentBrregCompany = {
+      source: 'brreg',
+      lookupStatus: 'verified',
+      lookupInput: 'MedInnova AS',
+      matchedBy: 'company_name',
+      organizationNumber: '936564046',
+      name: 'MEDINNOVA AS',
+      organizationForm: { code: 'AS', description: 'Aksjeselskap' },
+      industryCode: { code: '62.100', description: 'Dataprogrammeringstjenester' },
+      registrationDate: null,
+      foundationDate: null,
+      vatRegistered: true,
+      businessRegisterRegistered: true,
+      employeeCount: null,
+      businessAddress: 'Olasrudveien 23, 1284 OSLO',
+      postalAddress: null,
+      municipality: 'OSLO',
+      municipalityNumber: '0301',
+      website: null,
+      statusFlags: {},
+      statusMessage: null,
+    };
+
+    const result = await fetchGooglePlacesLocalPresencePlan(
+      input,
+      websiteInsights,
+      null,
+      brregCompany,
+    );
+
+    expect(result.status).toBe('limited');
+    expect(result.marketArea).toBe('OSLO');
+    expect(result.industryContext).toContain('Helseteknologi og programvare');
+    expect(result.nearbyOpportunities).toEqual([]);
+    expect(result.recommendedEventConcepts).toEqual([]);
+    expect(result.contentActivationPlan).toEqual([]);
+    expect(result.outreachSequence).toEqual([]);
+    expect(result.kpis).toEqual([]);
+  });
+
+  it('runs the Places searches concurrently and filters wrong-country results before planning', async () => {
+    process.env.GOOGLE_PLACES_API_KEY = 'test-key';
+    globalThis.fetch = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      return new Response(JSON.stringify({
+        places: [
+          {
+            id: 'atlanta',
+            displayName: { text: 'Hub 33 ATL' },
+            formattedAddress: '1145 Hightower Trail, Atlanta, GA 30350, USA',
+          },
+          {
+            id: 'oslo',
+            displayName: { text: 'Oslo Helsehub' },
+            formattedAddress: 'Forskningsveien 1, 0373 Oslo, Norge',
+            primaryType: 'coworking_space',
+            primaryTypeDisplayName: { text: 'Kontorfellesskap' },
+          },
+        ],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+
+    const startedAt = Date.now();
+    const result = await fetchGooglePlacesLocalPresencePlan(
+      {
+        projectId: 'medside-parallel-test',
+        websiteUrl: 'https://medside.no',
+        companyName: 'MEDINNOVA AS',
+      },
+      {
+        finalUrl: 'https://medside.no/',
+        metaDescription: 'GDPR-sikker AI-plattform for medisinsk transkripsjon og journalnotat.',
+        textSnippet: 'Bygget for norske leger og helsepersonell.',
+        selectedPageSnippets: [],
+        socialProfileCandidates: [],
+      },
+      null,
+      verifiedMedinnova(),
+    );
+
+    expect(Date.now() - startedAt).toBeLessThan(180);
+    expect(result.nearbyOpportunities.map((entry) => entry.name)).toEqual(['Oslo Helsehub']);
+    expect(JSON.stringify(result)).not.toMatch(/Atlanta|Hightower|Hub 33/i);
+    expect(result.recommendedEventConcepts.every((entry) => !/Hub 33/i.test(entry))).toBe(true);
+  });
+
+  it('filters wrong-country Places candidates from competitor analysis', async () => {
+    process.env.GOOGLE_PLACES_API_KEY = 'test-key';
+    globalThis.fetch = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      return new Response(JSON.stringify({
+        places: [
+          {
+            id: 'atlanta-competitor',
+            displayName: { text: 'MedSide Georgia' },
+            formattedAddress: '1120 Hope Rd, Sandy Springs, GA 30350, USA',
+            rating: 4.8,
+            userRatingCount: 524,
+          },
+          {
+            id: 'oslo-competitor',
+            displayName: { text: 'Oslo Klinisk AI' },
+            formattedAddress: 'Gaustadalléen 21, 0349 Oslo, Norge',
+            primaryTypeDisplayName: { text: 'Programvareselskap' },
+          },
+        ],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+
+    const startedAt = Date.now();
+    const result = await fetchGooglePlacesCompetitorAnalysis(
+      {
+        projectId: 'medside-competitor-test',
+        websiteUrl: 'https://medside.no',
+        companyName: 'MEDINNOVA AS',
+      },
+      {
+        finalUrl: 'https://medside.no/',
+        metaDescription: 'GDPR-sikker AI-plattform for medisinsk transkripsjon og journalnotat.',
+        textSnippet: 'Bygget for norske leger og helsepersonell.',
+        selectedPageSnippets: [],
+        socialProfileCandidates: [],
+      },
+      null,
+      verifiedMedinnova(),
+    );
+
+    expect(Date.now() - startedAt).toBeLessThan(180);
+    expect(result.competitors.map((entry) => entry.name)).toEqual(['Oslo Klinisk AI']);
+    expect(JSON.stringify(result)).not.toMatch(/Atlanta|Hope Rd|MedSide Georgia/i);
+  });
+
+  it('finds specialized Norwegian software competitors from web results without duplicates or self matches', async () => {
+    process.env.GOOGLE_SEARCH_API_KEY = 'search-key';
+    process.env.GOOGLE_SEARCH_ENGINE_ID = 'engine-id';
+    let requestUrl = '';
+    globalThis.fetch = vi.fn(async (input) => {
+      requestUrl = String(input);
+      return new Response(JSON.stringify({
+        items: [
+          {
+            title: 'MedSide – AI journalnotat for leger',
+            link: 'https://medside.no/',
+            snippet: 'AI-plattform for medisinsk transkripsjon og journalnotat.',
+          },
+          {
+            title: 'Notamed – AI-drevet journalskriving',
+            link: 'https://notamed.no/produkt',
+            snippet: 'Programvare for leger med medisinsk transkripsjon og klinisk journalnotat.',
+          },
+          {
+            title: 'Notamed demo',
+            link: 'https://www.notamed.no/demo',
+            snippet: 'AI journalnotat og transkripsjon for leger.',
+          },
+          {
+            title: 'Oversikt over AI i helsetjenesten',
+            link: 'https://www.dagensmedisin.no/ai-journalnotat',
+            snippet: 'Artikkel om programvare for klinisk dokumentasjon og leger.',
+          },
+          {
+            title: 'MedSide Georgia fysioterapi',
+            link: 'https://care.example.com/',
+            snippet: 'Fysioterapi, ergoterapi og rehabilitering for pasienter.',
+          },
+        ],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+
+    const result = await fetchWebCompetitorAnalysis(
+      {
+        projectId: 'medside-web-competitor-test',
+        websiteUrl: 'https://medside.no',
+        companyName: 'MEDINNOVA AS',
+      },
+      {
+        finalUrl: 'https://medside.no/',
+        metaDescription: 'GDPR-sikker AI-plattform for medisinsk transkripsjon og journalnotat.',
+        textSnippet: 'Bygget for norske leger og helsepersonell.',
+        selectedPageSnippets: [],
+        socialProfileCandidates: [],
+      },
+      verifiedMedinnova(),
+    );
+
+    expect(result.status).toBe('ready');
+    expect(result.competitors).toHaveLength(1);
+    expect(result.competitors[0]).toMatchObject({
+      source: 'web_search',
+      name: 'Notamed',
+      status: 'likely',
+      requiresManualConfirmation: true,
+    });
+    expect(JSON.stringify(result)).not.toMatch(/MedSide Georgia|dagensmedisin/i);
+    const url = new URL(requestUrl);
+
+    expect(url.origin).toBe('https://customsearch.googleapis.com');
+    expect(url.searchParams.get('siteSearch')).toBe('medside.no');
+    expect(url.searchParams.get('siteSearchFilter')).toBe('e');
+    expect(url.searchParams.get('lr')).toBe('lang_no');
+    expect(url.searchParams.get('cr')).toBe('countryNO');
+  });
+  it('uses only Anthropic web-search candidates that match an actual cited result URL', async () => {
+    delete process.env.GOOGLE_SEARCH_API_KEY;
+    delete process.env.GOOGLE_SEARCH_ENGINE_ID;
+    process.env.ANTHROPIC_API_KEY = 'anthropic-test-key';
+    let requestBody: Record<string, unknown> | null = null;
+    globalThis.fetch = vi.fn(async (input, init) => {
+      expect(String(input)).toContain('api.anthropic.com/v1/messages');
+      requestBody = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>;
+      return new Response(JSON.stringify({
+        id: 'msg_role_room_test',
+        type: 'message',
+        role: 'assistant',
+        model: 'claude-sonnet-4-6',
+        content: [
+          {
+            type: 'web_search_tool_result',
+            tool_use_id: 'srvtoolu_role_room_test',
+            content: [{
+              type: 'web_search_result',
+              title: 'Journalia – KI-assistent for helsepersonell',
+              url: 'https://journalia.no/produkt',
+              encrypted_content: 'grounded-result',
+            }],
+          },
+          {
+            type: 'text',
+            text: JSON.stringify({
+              competitors: [
+                {
+                  name: 'Journalia',
+                  url: 'https://journalia.no/produkt',
+                  evidence: 'KI-programvare for klinisk journalnotat og medisinsk dokumentasjon for helsepersonell.',
+                },
+                {
+                  name: 'Oppdiktet klinikk',
+                  url: 'https://uncited.example/produkt',
+                  evidence: 'Medisinsk AI-programvare for leger.',
+                },
+              ],
+            }),
+          },
+        ],
+        stop_reason: 'end_turn',
+        stop_sequence: null,
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+
+    const result = await fetchWebCompetitorAnalysis(
+      {
+        projectId: 'medside-anthropic-web-test',
+        websiteUrl: 'https://medside.no',
+        companyName: 'MEDINNOVA AS',
+      },
+      {
+        finalUrl: 'https://medside.no/',
+        metaDescription: 'GDPR-sikker AI-plattform for medisinsk transkripsjon og journalnotat.',
+        textSnippet: 'Bygget for norske leger og helsepersonell.',
+        selectedPageSnippets: [],
+        socialProfileCandidates: [],
+      },
+      verifiedMedinnova(),
+    );
+
+    expect(result.competitors).toHaveLength(1);
+    expect(result.competitors[0]).toMatchObject({ name: 'Journalia', source: 'web_search' });
+    expect(JSON.stringify(result)).not.toContain('Oppdiktet klinikk');
+    expect(requestBody).toMatchObject({
+      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }],
+    });
+  });
+
+  it('filters wrong-country Places candidates from merch discovery', async () => {
+    process.env.GOOGLE_PLACES_API_KEY = 'test-key';
+    globalThis.fetch = vi.fn(async (input) => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      if (String(input).includes('data.brreg.no')) {
+        return new Response(JSON.stringify({ _embedded: { enheter: [] } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({
+        places: [
+          {
+            id: 'atlanta-merch',
+            displayName: { text: 'Atlanta Promo' },
+            formattedAddress: '1 Glenlake Pkwy, Sandy Springs, GA 30328, USA',
+          },
+          {
+            id: 'oslo-merch',
+            displayName: { text: 'Oslo Profil' },
+            formattedAddress: 'Storgata 1, 0155 Oslo, Norge',
+          },
+        ],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+
+    const startedAt = Date.now();
+    const result = await fetchMerchSuppliersAnalysis(
+      { projectId: 'medside-merch-test', websiteUrl: 'https://medside.no', companyName: 'MEDINNOVA AS' },
+      { finalUrl: 'https://medside.no/', selectedPageSnippets: [], socialProfileCandidates: [] },
+      null,
+      verifiedMedinnova(),
+    );
+
+    expect(Date.now() - startedAt).toBeLessThan(180);
+    expect(result.suppliers.map((entry) => entry.name)).toEqual(['Oslo Profil']);
+    expect(JSON.stringify(result)).not.toMatch(/Atlanta|Glenlake|Sandy Springs/i);
+  });
+
+  it('retains fast merch results and reports partial provider timeouts', async () => {
+    process.env.GOOGLE_PLACES_API_KEY = 'test-key';
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('data.brreg.no') && url.includes('naeringskode=18.12')) {
+        return new Response(JSON.stringify({
+          _embedded: {
+            enheter: [{
+              organisasjonsnummer: '999111222',
+              navn: 'Oslo Profil AS',
+              hjemmeside: 'https://osloprofil.example',
+              forretningsadresse: {
+                adresse: ['Storgata 1'],
+                postnummer: '0155',
+                poststed: 'OSLO',
+                kommunenummer: '0301',
+              },
+            }],
+          },
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      const timeout = new Error('request timed out');
+      timeout.name = 'TimeoutError';
+      throw timeout;
+    }) as typeof fetch;
+
+    const result = await fetchMerchSuppliersAnalysis(
+      { projectId: 'medside-merch-partial-test', websiteUrl: 'https://medside.no', companyName: 'MEDINNOVA AS' },
+      { finalUrl: 'https://medside.no/', selectedPageSnippets: [], socialProfileCandidates: [] },
+      null,
+      verifiedMedinnova(),
+      { requestTimeoutMs: 300, enrichWebsiteSignals: false },
+    );
+
+    expect(result.status).toBe('ready');
+    expect(result.suppliers).toHaveLength(1);
+    expect(result.suppliers[0]).toMatchObject({
+      name: 'Oslo Profil AS',
+      organizationNumber: '999111222',
+      source: 'brreg_nace',
+    });
+    expect(result.partial).toBe(true);
+    expect(result.timedOutSourceCount).toBeGreaterThan(0);
+    expect(result.limitations.join(' ')).toContain('delresultater er beholdt');
+  });
+});

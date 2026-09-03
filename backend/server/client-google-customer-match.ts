@@ -142,7 +142,7 @@ export async function createGoogleCustomerMatchAudience(
     `INSERT INTO google_customer_match_audiences (
        config_id, producer_user_id, customer_id, user_list_resource,
        audience_name, source_description, upload_count, status
-     ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, 'processing')
+     ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, 'processing')
      ON CONFLICT (user_list_resource) DO NOTHING`,
     [
       opts.configId ?? null,
@@ -303,7 +303,7 @@ export async function sendGoogleOfflineConversion(
        event_name, event_time, event_source, external_user_id, gclid,
        event_value, event_currency, enhanced_conversions, custom_properties,
        delivery_status, attempt_count
-     ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, 'pending', 1)
+     ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, 'pending', 1)
      RETURNING id`,
     [
       opts.configId ?? null,
@@ -413,7 +413,7 @@ export async function listGoogleOfflineConversions(
             external_user_id, gclid, event_value, event_currency, enhanced_conversions,
             delivery_status, delivered_at, attempt_count, last_error
      FROM google_offline_conversion_log
-     WHERE producer_user_id = $1::uuid
+     WHERE producer_user_id = $1
        AND ($2::uuid IS NULL OR config_id = $2::uuid)
      ORDER BY event_time DESC
      LIMIT $3`,

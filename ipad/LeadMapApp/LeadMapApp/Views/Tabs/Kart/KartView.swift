@@ -1403,7 +1403,8 @@ struct KartView: View {
                         throw AddLeadSaveError(message: "Du må være innlogget for å lagre leaden")
                     }
                     let newId = try await api.createLeadAtPin(
-                        newLead.makeCreateRequest(idempotencyKey: session.idempotencyKey)
+                        newLead.makeCreateRequest(idempotencyKey: session.idempotencyKey),
+                        organizationId: appState.activeOrganizationId
                     )
                     showToast("«\(newLead.companyName)» lagt til")
                     // Først etter bekreftet backend-lagring blir utkastet til
@@ -1496,7 +1497,7 @@ struct KartView: View {
             // Gjenbruker Leads-fanens rike UploadFileSheet (Pakke 10.1) —
             // «Fra iPad / Fra skyen / Skann dokument»-katalog med samme
             // UX på tvers av alle faner.
-            UploadFileSheet(companyName: selectedLead.name, companyColor: selectedLead.status.color)
+            UploadFileSheet(companyName: selectedLead.name, companyColor: selectedLead.status.color, backendLeadId: selectedLead.id)
         }
         .sheet(isPresented: $showStatusChange) {
             // Workflow-QA 2026-07-05: onSave var toast-fasade — nå ekte
@@ -1511,7 +1512,7 @@ struct KartView: View {
                     } else if let api = appState.api {
                         Task {
                             do {
-                                try await api.updateStatus(leadId: leadId, status: newStatus.apiValue)
+                                try await api.updateStatus(leadId: leadId, status: newStatus.apiValue, organizationId: appState.activeOrganizationId)
                                 showToast("Status endret til \(newStatus.label)")
                                 await appState.refreshLeads()
                             } catch {
@@ -1527,7 +1528,7 @@ struct KartView: View {
                     } else if let api = appState.api {
                         Task {
                             do {
-                                try await api.updateTemperature(leadId: leadId, temperature: temp)
+                                try await api.updateTemperature(leadId: leadId, temperature: temp, organizationId: appState.activeOrganizationId)
                                 showToast("Temperatur endret")
                                 await appState.refreshLeads()
                             } catch {
@@ -1578,15 +1579,21 @@ struct KartView: View {
             LeadNoteSheet(
                 companyName: selectedLead.name,
                 companyColor: selectedLead.status.color
-            ) { note, category, pinned in
-                // 2026-07-17: var toast-fasade — lagres nå i samme lokale
-                // notat-lager som Leads-fanen (nøkkel = lead-id; for ekte
-                // leads er det crm-uuiden → notatet synes begge steder).
-                if !DemoModeManager.isActiveNonisolated {
-                    LeadLocalNotes.add(body: note, pinned: pinned,
-                                       author: appState.displayName,
-                                       to: selectedLead.id)
+            ) { note, _, pinned in
+                if DemoModeManager.isActiveNonisolated {
+                    showToast("Demo-notat er ikke lagret")
+                    return
                 }
+                guard let api = appState.api else {
+                    throw NSError(
+                        domain: "Leadgrid", code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "Du må være innlogget"]
+                    )
+                }
+                _ = try await api.createLeadNote(
+                    leadId: selectedLead.id, body: note, pinned: pinned,
+                    organizationId: appState.activeOrganizationId
+                )
                 showToast("Notat lagret\(pinned ? " (festet)" : "")")
             }
         }

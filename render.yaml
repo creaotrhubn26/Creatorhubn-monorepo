@@ -16,6 +16,12 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
+      # The login is switched by a database-bound default role configured by
+      # the one-time ownership bootstrap. Backend boot verifies both values.
+      - key: DATABASE_LOGIN_ROLE
+        value: creatorhub_runtime_login
+      - key: DATABASE_OWNER_ROLE
+        value: creatorhub_schema_owner
       # Internal URL for the existing Render Key Value instance named "redis"
       # in the same Production environment and Oregon region. Configure the
       # value in Render; never commit its connection credentials.

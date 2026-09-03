@@ -6,10 +6,16 @@ const AUTH_STORAGE_KEYS = [
   'creatorhub_auth_user',
   'userId',
   'userEmail',
+  'role_room_auth_token',
+  'role_room_auth_session',
   'token',
+  'authToken',
+  'creatorhub-auth-token',
+  'creatorhub-session-token',
+  'role-room-auth-session',
 ] as const;
 
-function clearClientAuthState() {
+export function clearClientAuthState(): void {
   if (typeof window === 'undefined') {
     return;
   }
@@ -19,6 +25,7 @@ function clearClientAuthState() {
       window.localStorage.removeItem(key);
     }
     window.dispatchEvent(new Event('auth-changed'));
+    window.dispatchEvent(new Event('auth-session-updated'));
   } catch {
     // Ignore storage cleanup errors.
   }
@@ -99,6 +106,7 @@ export function getStoredAuthToken(): string {
       localStorage.getItem('creatorhub_auth_token') ||
       localStorage.getItem('role_room_auth_token') ||
       localStorage.getItem('token') ||
+      localStorage.getItem('authToken') ||
       ''
     ).trim();
   } catch {
@@ -110,16 +118,8 @@ export async function getAuthHeader(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
 
   try {
-    // Role Room logger inn via Google Workspace og lagrer tokenet i
-    // role_room_auth_token (TOKEN_STORAGE_KEY i authSessionService).
-    // Uten denne fallback-en sender apiRequest fetch UTEN Bearer-token
-    // når brukeren kom inn via Role Room-flowen → 401-flom på alle
-    // /api/casting/projects + /api/settings-kall.
-    const token =
-      localStorage.getItem('creatorhub_auth_token') ||
-      localStorage.getItem('role_room_auth_token') ||
-      localStorage.getItem('token') ||
-      '';
+    // Hold token-oppslaget identisk for React Query, raw fetch og Admin Room.
+    const token = getStoredAuthToken();
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }

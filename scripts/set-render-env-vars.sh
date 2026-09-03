@@ -49,20 +49,34 @@ declare -A ENV_VARS=(
   ["STRIPE_DRIFT_CRON_SECRET"]="${STRIPE_DRIFT_CRON_SECRET:-}"
 )
 
-# Bygg JSON-array av env-vars som er satt
-echo "→ Setter env-vars på service $SERVICE_ID:"
-items=()
+# Oppdater kun eksplisitt valgte nøkler. Collection-PUT er forbudt fordi det
+# erstatter hele produksjonsmiljøet. Verdiene sendes via stdin og skrives aldri
+# til logg eller en mellomfil.
+echo "→ Setter env-vars per nøkkel på service $SERVICE_ID:"
+updated_count=0
 for key in "${!ENV_VARS[@]}"; do
   value="${ENV_VARS[$key]}"
   if [ -z "$value" ]; then
     echo "  ⊘ $key (skipper — ikke satt i miljøet)"
     continue
   fi
+
   echo "  + $key"
-  items+=("{\"key\":\"$key\",\"value\":\"$value\"}")
+  if ! jq -cn --arg value "$value" '{value: $value}' |
+    curl -fsS --connect-timeout 5 --max-time 30 \
+      -X PUT \
+      -H "Authorization: Bearer $RENDER_API_KEY" \
+      -H "Content-Type: application/json" \
+      --data-binary @- \
+      -o /dev/null \
+      "https://api.render.com/v1/services/$SERVICE_ID/env-vars/$key"; then
+    echo "✗ Klarte ikke å oppdatere $key; ingen produksjonsdeploy er startet." >&2
+    exit 1
+  fi
+  updated_count=$((updated_count + 1))
 done
 
-if [ ${#items[@]} -eq 0 ]; then
+if [ "$updated_count" -eq 0 ]; then
   echo "✗ Ingen env-vars å sette. Eksporter f.eks.:"
   echo "  export GA4_MEASUREMENT_ID=G-XXXXXXXXXX"
   echo "  export GA4_API_SECRET=..."
@@ -70,39 +84,7 @@ if [ ${#items[@]} -eq 0 ]; then
   exit 1
 fi
 
-# Slå sammen til JSON-array
-JSON_BODY="[$(IFS=,; echo "${items[*]}")]"
-
-# Render API: PUT /v1/services/:id/env-vars overskriver alle env-vars,
-# så vi må først hente eksisterende + merge med våre
-echo "→ Henter eksisterende env-vars…"
-EXISTING=$(curl -s -H "Authorization: Bearer $RENDER_API_KEY" \
-  "https://api.render.com/v1/services/$SERVICE_ID/env-vars?limit=200")
-
-# Merge: legg til våre vars til eksisterende, overstyr hvis duplikat
-MERGED=$(python3 -c "
-import sys, json
-existing = json.loads('''$EXISTING''')
-ours = json.loads('''$JSON_BODY''')
-our_keys = {v['key'] for v in ours}
-merged = [v['envVar'] for v in existing if v.get('envVar', {}).get('key') not in our_keys]
-merged.extend(ours)
-print(json.dumps(merged))
-")
-
-echo "→ PUT-er merged env-vars (${#items[@]} nye + eksisterende)…"
-RESULT=$(curl -s -X PUT \
-  -H "Authorization: Bearer $RENDER_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d "$MERGED" \
-  "https://api.render.com/v1/services/$SERVICE_ID/env-vars")
-
-if echo "$RESULT" | grep -q "error"; then
-  echo "✗ Feil ved API-kall:"
-  echo "$RESULT" | python3 -m json.tool
-  exit 1
-fi
-
 echo ""
-echo "✓ Env-vars satt. Render redeployer automatisk."
-echo "  Følg deploy-status på https://dashboard.render.com/web/$SERVICE_ID"
+echo "✓ Env-vars satt uten å starte produksjonsdeploy."
+echo "  Kjør GitHub Actions-workflowen 'Deploy shared Render backend' fra current main."
+echo "  Den kanoniske workflowen må eie migrering, eksakt commit og smoke-test."

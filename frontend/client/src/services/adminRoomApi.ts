@@ -5,18 +5,12 @@
  * (kun tilgjengelig for daniel@creatorhubn.com).
  */
 
+import { getStoredAuthToken } from '../lib/queryClient';
+
 const BASE = '/api/admin-room';
 
-function getAuthToken(): string {
-  return (
-    localStorage.getItem('creatorhub_auth_token')
-    || localStorage.getItem('authToken')
-    || ''
-  );
-}
-
 async function jsonFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = getAuthToken();
+  const token = getStoredAuthToken();
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -1579,7 +1573,7 @@ export const newsletterAiApi = {
     newsletterIntro: string;
     quoteCards: Array<{ quote: string; attribution: string }>;
   }> => {
-    const token = getAuthToken();
+    const token = getStoredAuthToken();
     const form = new FormData();
     form.append('audio', audio, filename);
     const response = await fetch(`${BASE}/newsletter/role-room/ai/voice-draft`, {

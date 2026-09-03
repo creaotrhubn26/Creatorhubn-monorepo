@@ -24,6 +24,10 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import crypto from "crypto";
+import {
+  decryptInstagramToken,
+  encryptInstagramToken,
+} from "./role-room-instagram-oauth.js";
 
 const BASE_URL = process.env.PUBLIC_BACKEND_URL
   ?? "https://creatorhub-backend-rtbl.onrender.com";
@@ -69,21 +73,37 @@ function callbackUrl(p: Plattform): string {
 }
 
 /** Signert state så callbacken ikke kan forfalskes (HMAC av payload). */
-const STATE_SECRET = process.env.SESSION_SECRET
-  ?? process.env.TIKTOK_CLIENT_SECRET ?? "publish-state";
-function lagState(projectId: string, userId: string): string {
+function stateSecret(): string | null {
+  const value = (
+    process.env.ROLE_ROOM_PUBLISH_STATE_SECRET
+    ?? process.env.SESSION_SECRET
+    ?? process.env.ROLE_ROOM_TOKEN_ENCRYPTION_KEY
+    ?? process.env.AUTH_SECRET
+    ?? ""
+  ).trim();
+  return value.length >= 32 ? value : null;
+}
+function lagState(projectId: string, userId: string): string | null {
+  const secret = stateSecret();
+  if (!secret) return null;
   const payload = Buffer.from(JSON.stringify({ projectId, userId, t: Date.now() }))
     .toString("base64url");
-  const sig = crypto.createHmac("sha256", STATE_SECRET)
+  const sig = crypto.createHmac("sha256", secret)
     .update(payload).digest("base64url");
   return `${payload}.${sig}`;
 }
 function lesState(state: string): { projectId: string; userId: string } | null {
+  const secret = stateSecret();
+  if (!secret) return null;
   const [payload, sig] = state.split(".");
   if (!payload || !sig) return null;
-  const riktig = crypto.createHmac("sha256", STATE_SECRET)
+  const riktig = crypto.createHmac("sha256", secret)
     .update(payload).digest("base64url");
-  if (sig !== riktig) return null;
+  const supplied = Buffer.from(sig);
+  const expected = Buffer.from(riktig);
+  if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) {
+    return null;
+  }
   try {
     const d = JSON.parse(Buffer.from(payload, "base64url").toString());
     // Stale states avvises (30 min vindu).
@@ -99,20 +119,21 @@ async function ensureSchema(pool: Pool): Promise<void> {
     CREATE TABLE IF NOT EXISTS role_room_publish_connections (
       project_id TEXT NOT NULL,
       platform TEXT NOT NULL,
-      access_token TEXT NOT NULL,
-      refresh_token TEXT,
+      access_token_encrypted TEXT NOT NULL,
+      refresh_token_encrypted TEXT,
       expires_at TIMESTAMPTZ,
       remote_name TEXT,
       created_by TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       PRIMARY KEY (project_id, platform)
     )`);
   schemaReady = true;
 }
 
 type Tilkobling = {
-  access_token: string;
-  refresh_token: string | null;
+  access_token_encrypted: string;
+  refresh_token_encrypted: string | null;
   expires_at: Date | null;
 };
 
@@ -121,19 +142,22 @@ async function hentToken(
   pool: Pool, projectId: string, p: Plattform,
 ): Promise<string | null> {
   const r = await pool.query<Tilkobling>(
-    `SELECT access_token, refresh_token, expires_at
+    `SELECT access_token_encrypted, refresh_token_encrypted, expires_at
        FROM role_room_publish_connections
       WHERE project_id = $1 AND platform = $2`,
     [projectId, p]);
   const rad = r.rows[0];
   if (!rad) return null;
+  const accessToken = decryptInstagramToken(rad.access_token_encrypted);
+  const refreshToken = decryptInstagramToken(rad.refresh_token_encrypted);
+  if (!accessToken) return null;
   const utlopt = rad.expires_at && rad.expires_at.getTime() < Date.now() + 60_000;
-  if (!utlopt) return rad.access_token;
-  if (!rad.refresh_token) return null;
+  if (!utlopt) return accessToken;
+  if (!refreshToken) return null;
   const k = KONFIG[p];
   const body = new URLSearchParams({
     grant_type: "refresh_token",
-    refresh_token: rad.refresh_token,
+    refresh_token: refreshToken,
     ...(p === "tiktok"
       ? { client_key: k.clientId ?? "", client_secret: k.clientSecret ?? "" }
       : { client_id: k.clientId ?? "", client_secret: k.clientSecret ?? "" }),
@@ -148,13 +172,19 @@ async function hentToken(
   const d = (await res.json()) as Record<string, unknown>;
   const token = String(d.access_token ?? "");
   if (!token) return null;
+  const encryptedToken = encryptInstagramToken(token);
+  const encryptedRefresh = d.refresh_token
+    ? encryptInstagramToken(String(d.refresh_token))
+    : null;
+  if (!encryptedToken || (d.refresh_token && !encryptedRefresh)) return null;
   await pool.query(
     `UPDATE role_room_publish_connections
-        SET access_token = $1,
-            refresh_token = COALESCE($2, refresh_token),
-            expires_at = $3
+        SET access_token_encrypted = $1,
+            refresh_token_encrypted = COALESCE($2, refresh_token_encrypted),
+            expires_at = $3,
+            updated_at = NOW()
       WHERE project_id = $4 AND platform = $5`,
-    [token, d.refresh_token ? String(d.refresh_token) : null,
+    [encryptedToken, encryptedRefresh,
      d.expires_in ? new Date(Date.now() + Number(d.expires_in) * 1000) : null,
      projectId, p]);
   return token;
@@ -317,6 +347,13 @@ export function setupRoleRoomPublishProviderRoutes(deps: {
       if (!projectId) { res.status(400).json({ error: "projectId kreves" }); return; }
       const k = KONFIG[p];
       const state = lagState(projectId, session.userId);
+      if (!state) {
+        res.status(503).json({
+          error: "state_secret_mangler",
+          message: "ROLE_ROOM_PUBLISH_STATE_SECRET eller en delt auth-secret må konfigureres.",
+        });
+        return;
+      }
       const q = new URLSearchParams({
         response_type: "code",
         redirect_uri: callbackUrl(p),
@@ -364,19 +401,31 @@ export function setupRoleRoomPublishProviderRoutes(deps: {
         res.status(502).send("Token-bytte feilet — prøv igjen.");
         return;
       }
+      const encryptedToken = encryptInstagramToken(token);
+      const encryptedRefresh = d.refresh_token
+        ? encryptInstagramToken(String(d.refresh_token))
+        : null;
+      if (!encryptedToken || (d.refresh_token && !encryptedRefresh)) {
+        res.status(503).send("Token-kryptering er ikke konfigurert.");
+        return;
+      }
       await ensureSchema(pool);
       await pool.query(
         `INSERT INTO role_room_publish_connections
-           (project_id, platform, access_token, refresh_token, expires_at, created_by)
+           (project_id, platform, access_token_encrypted, refresh_token_encrypted,
+            expires_at, created_by)
          VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (project_id, platform)
-         DO UPDATE SET access_token = EXCLUDED.access_token,
-                       refresh_token = COALESCE(EXCLUDED.refresh_token,
-                                                role_room_publish_connections.refresh_token),
+         DO UPDATE SET access_token_encrypted = EXCLUDED.access_token_encrypted,
+                       refresh_token_encrypted = COALESCE(
+                         EXCLUDED.refresh_token_encrypted,
+                         role_room_publish_connections.refresh_token_encrypted
+                       ),
                        expires_at = EXCLUDED.expires_at,
-                       created_by = EXCLUDED.created_by`,
-        [state.projectId, p, token,
-         d.refresh_token ? String(d.refresh_token) : null,
+                       created_by = EXCLUDED.created_by,
+                       updated_at = NOW()`,
+        [state.projectId, p, encryptedToken,
+         encryptedRefresh,
          d.expires_in ? new Date(Date.now() + Number(d.expires_in) * 1000) : null,
          state.userId]);
       res.send(`<html><body style="font-family:-apple-system;padding:40px">

@@ -132,13 +132,6 @@ import {
 import { isTrustedWebOrigin } from "./web-origin-allowlist.js";
 import crypto from "node:crypto";
 
-// Role Room-casting-prosjekter har slug-IDer (f.eks. `medside-1784364797337`),
-// mens `client_ads_configs.client_project_id` er en UUID-kolonne. Brukes til å
-// kort-slutte UUID-castede spørringer for ikke-UUID-prosjektid-er (unngår
-// «invalid input syntax for type uuid» → 500).
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 const CLIENT_ADS_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const CLIENT_ADS_OAUTH_STATE_RE = /^[A-Za-z0-9_-]{32}$/;
 const LINKEDIN_OAUTH_DEFAULT_BROWSER_ORIGIN = "https://theroleroom.com";
@@ -151,6 +144,7 @@ type ClientAdsOauthState = {
   configId: string;
   redirectUri: string;
   browserOrigin?: string;
+  returnPath?: string;
   createdAt: number;
 };
 
@@ -168,12 +162,28 @@ function _safeLinkedinBrowserOrigin(value: unknown): string {
   }
 }
 
+function _safeLinkedinReturnPath(value: unknown): string {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+    return "/admin-room?adminTab=role-room-agent";
+  }
+  try {
+    const base = new URL(LINKEDIN_OAUTH_DEFAULT_BROWSER_ORIGIN);
+    const parsed = new URL(value, base);
+    if (parsed.origin !== base.origin || parsed.username || parsed.password) {
+      return "/admin-room?adminTab=role-room-agent";
+    }
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return "/admin-room?adminTab=role-room-agent";
+  }
+}
+
 function _linkedinOauthReturnUrl(
   browserOrigin: unknown,
+  returnPath: unknown,
   result: { success: true; configId: string } | { success: false; error: string },
 ): string {
-  const url = new URL("/admin-room", _safeLinkedinBrowserOrigin(browserOrigin));
-  url.searchParams.set("adminTab", "role-room-agent");
+  const url = new URL(_safeLinkedinReturnPath(returnPath), _safeLinkedinBrowserOrigin(browserOrigin));
   if ("configId" in result) {
     url.searchParams.set("oauth_success", "linkedin");
     if (result.configId) url.searchParams.set("config", result.configId);
@@ -221,6 +231,7 @@ async function _consumeAdsOauthState(
     configId: state.configId,
     redirectUri: state.redirectUri,
     browserOrigin: _safeLinkedinBrowserOrigin(state.browserOrigin),
+    returnPath: _safeLinkedinReturnPath(state.returnPath),
   };
 }
 
@@ -320,11 +331,11 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
         error: "client_project_id, client_name, client_website_url og actions er påkrevd",
       });
     }
-    // `client_project_id` er en UUID-kolonne. En slug (f.eks. casting-prosjekt-
-    // ID `medside-…`) kaster «invalid input syntax for type uuid» i INSERTen
-    // ($1::uuid) → 500. Returner heller en tydelig 400 for ikke-UUID.
-    if (!UUID_RE.test(clientProjectId)) {
-      return res.status(400).json({ error: "client_project_id må være en gyldig UUID" });
+    if (!(await canAccessProjectAds(pool, clientProjectId, {
+      userId: session.userId,
+      email: session.email ?? null,
+    }))) {
+      return res.status(403).json({ error: "forbidden_project" });
     }
 
     try {
@@ -335,7 +346,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
            business_type, business_subcategory, claude_analysis, detected_gtag_id,
            detected_gtm_id, site_analyzed_at
          ) VALUES (
-           $1::uuid, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, now()
+           $1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, now()
          )
          ON CONFLICT (client_project_id, content_producer_user_id) DO UPDATE
            SET client_name = EXCLUDED.client_name,
@@ -498,7 +509,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
             `SELECT DISTINCT u.id FROM users u
                WHERE u.id IN (
                  SELECT user_id FROM casting_user_roles
-                  WHERE project_id = $1::uuid AND role IN ('client','client_reviewer')
+                  WHERE project_id = $1 AND role IN ('client','client_reviewer')
                )`,
             [cfg.client_project_id],
           ).catch(() => ({ rows: [] }));
@@ -710,7 +721,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
                     approval_status, sent_for_approval_at, approval_message, review_deadline,
                     claude_analysis, management_fee_pct, management_fee_negotiated
                FROM client_ads_configs
-              WHERE client_project_id = $1::uuid
+              WHERE client_project_id = $1
                 AND approval_status IN ('awaiting_client','revision_requested')
               ORDER BY sent_for_approval_at DESC`,
             [projectId],
@@ -766,7 +777,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
         `SELECT id::text, client_name, management_fee_pct, management_fee_negotiated, approval_status,
                 google_ads_conversion_id, google_ads_customer_id
            FROM client_ads_configs
-          WHERE client_project_id = $1::uuid
+          WHERE client_project_id = $1
             AND is_active = TRUE
             AND approval_status = 'approved'
           ORDER BY created_at DESC`,
@@ -1162,12 +1173,14 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     const redirectUri = `${baseUrl}/api/admin-room/agent/ads/oauth/linkedin/callback`;
     const configId = typeof req.query.configId === "string" ? req.query.configId : "";
     const browserOrigin = _safeLinkedinBrowserOrigin(req.query.browserOrigin);
+    const returnPath = _safeLinkedinReturnPath(req.query.returnPath);
     const state = await _buildAdsOauthState(pool, {
       flow: "client_ads_linkedin",
       userId: session.userId,
       configId,
       redirectUri,
       browserOrigin,
+      returnPath,
     });
     if (!state) {
       return res.status(503).json({ error: "OAuth state-lager er utilgjengelig" });
@@ -1191,10 +1204,10 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       "client_ads_linkedin",
     );
     if (!stateParts) return res.status(400).send("Invalid or expired state");
-    const { userId, configId, redirectUri, browserOrigin } = stateParts;
+    const { userId, configId, redirectUri, browserOrigin, returnPath } = stateParts;
     if (!code) {
       return res.redirect(
-        _linkedinOauthReturnUrl(browserOrigin, {
+        _linkedinOauthReturnUrl(browserOrigin, returnPath, {
           success: false,
           error: typeof req.query.error === "string"
             ? "linkedin_consent_denied"
@@ -1206,7 +1219,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     const creds = adsOauthClientCreds("linkedin");
     if (!creds) {
       return res.redirect(
-        _linkedinOauthReturnUrl(browserOrigin, {
+        _linkedinOauthReturnUrl(browserOrigin, returnPath, {
           success: false,
           error: "linkedin_configuration_error",
         }),
@@ -1217,7 +1230,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
       const tokenResult = await exchangeAdsCodeForToken("linkedin", { ...creds, code, redirectUri });
       if (!tokenResult.refreshToken || !tokenResult.accessToken) {
         return res.redirect(
-          _linkedinOauthReturnUrl(browserOrigin, {
+          _linkedinOauthReturnUrl(browserOrigin, returnPath, {
             success: false,
             error: "linkedin_missing_refresh_token",
           }),
@@ -1232,12 +1245,12 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
         scopes: [...(ADS_OAUTH_SCOPES.linkedin ?? [])],
       });
       return res.redirect(
-        _linkedinOauthReturnUrl(browserOrigin, { success: true, configId }),
+        _linkedinOauthReturnUrl(browserOrigin, returnPath, { success: true, configId }),
       );
     } catch (err) {
       console.error("[linkedin-oauth] callback failed", err);
       return res.redirect(
-        _linkedinOauthReturnUrl(browserOrigin, {
+        _linkedinOauthReturnUrl(browserOrigin, returnPath, {
           success: false,
           error: "linkedin_internal_error",
         }),
@@ -2287,13 +2300,6 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
     if (!(await canAccessProjectAds(pool, projectId, { userId: session.userId, email: session.email ?? null }))) {
       return res.status(403).json({ error: "forbidden_project" });
     }
-    // `client_ads_configs.client_project_id` er en UUID-kolonne, men Role Room-
-    // casting-prosjekter har slug-IDer (f.eks. `medside-1784364797337`). En
-    // slug kan aldri matche en UUID-nøkkel, så `$1::uuid`-castet kastet «invalid
-    // input syntax for type uuid» → 500. Kort-slutt til tom liste for ikke-UUID.
-    if (!UUID_RE.test(projectId)) {
-      return res.json({ configs: [] });
-    }
     try {
       const r = await pool.query(
         `SELECT id::text, tiktok_pixel_id, tiktok_advertiser_id,
@@ -2301,7 +2307,7 @@ export function setupClientAdsRoutes(deps: ClientAdsRoutesDeps): void {
                 google_ads_customer_id, ga4_property_id,
                 linkedin_insight_tag_id
            FROM client_ads_configs
-          WHERE client_project_id = $1::uuid
+          WHERE client_project_id = $1
           ORDER BY created_at DESC`,
         [projectId],
       );

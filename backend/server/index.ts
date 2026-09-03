@@ -54,8 +54,9 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import { Pool, type PoolConfig } from "pg";
 import * as schema from "../migrations/schema.js";
+import { verifyDatabaseOwnerSession } from "./database-owner-role.js";
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { createRoleRoomRouter } from "./role-room-routes.js";
 import { registerRoleRoomProfileRoutes } from "./role-room-profile-routes.js";
@@ -575,6 +576,8 @@ import { setupMarketScansSuperAdminRoutes } from "./market-scans-superadmin-rout
 import { setupControlCenterRoutes } from "./control-center-routes.js";
 import { setupAdminLeadMapPricingRoutes } from "./admin-lead-map-pricing-routes.js";
 import { setupLeadMapRoutes } from "./lead-map-routes.js";
+import { registerLeadMapCollaborationRoutes } from "./lead-map-collaboration-routes.js";
+import { registerLeadMapFileRoutes } from "./lead-map-file-routes.js";
 import { createLeadMapSessionHydrator } from "./lead-map-session-helper.js";
 import { registerLeadMapCompetitorRoutes } from "./lead-map-competitor-routes.js";
 import { registerIpadPairRoutes } from "./ipad-pair-routes.js";
@@ -914,6 +917,7 @@ import { registerLeadgridEnturRoutes } from "./leadgrid-entur-routes";
 import { registerLeadgridNvdbRoutes } from "./leadgrid-nvdb-routes";
 import { registerLeadgridVehicleRoutes } from "./leadgrid-vehicle-routes";
 import { registerLeadgridTripsRoutes } from "./leadgrid-trips-routes";
+import { leadgridOrganizationContextMiddleware } from "./leadgrid-org-resolver";
 import { registerLeadgridQualityRoutes } from "./leadgrid-quality-routes";
 import { registerLeadgridDoffinRoutes } from "./leadgrid-doffin-routes";
 import { registerLeadgridRuteRoutes } from "./leadgrid-rute-routes";
@@ -1174,14 +1178,21 @@ validateEnvOrExit();
 // Database connection
 // PERF (skalering nivå 2): tunet pool for å håndtere cron-batches (100 leads
 // samtidig) + concurrent web requests. Default pg.Pool max=10 var for lavt.
-const pool = new Pool({
+const databasePoolConfig: PoolConfig & { enableChannelBinding: boolean } = {
   connectionString: process.env.DATABASE_URL,
+  // node-postgres does not map channel_binding from a connection URI.
+  // Enable SCRAM-SHA-256-PLUS explicitly for every production connection.
+  enableChannelBinding: true,
   max: parseInt(process.env.PG_POOL_MAX ?? "30", 10),
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
-  // Statement timeout per query — beskytter mot runaway queries (30s)
-  statement_timeout: 30_000,
-});
+  // The ownership bootstrap persists statement_timeout=30s on the runtime
+  // role. Neon transaction pooling can ignore unsupported startup parameters,
+  // so the boot audit below verifies the active server-side value instead.
+};
+const pool = new Pool(databasePoolConfig);
+
+await verifyDatabaseOwnerSession(pool);
 
 // Logger pool-health hvert 5. min for observability (Render-logs)
 setInterval(() => {
@@ -2116,6 +2127,9 @@ app.use((req, _res, next) => {
 setupWorkspaceParticipantDocumentBodyParserBoundary(app);
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
+// Propagate the selected Leadgrid workspace through legacy module helpers.
+// AsyncLocalStorage keeps concurrent devices/windows isolated.
+app.use(leadgridOrganizationContextMiddleware);
 
 // All /api responses must never be cached — prevents stale sensitive data
 // being served from browser cache or shared proxies.
@@ -25422,6 +25436,8 @@ registerLeadgridTestimonialsRoutes({
 });
 // Lead Map (Phase 1 — Marketing Cockpit-utvidelse)
 setupLeadMapRoutes({ app, pool, activeSessions });
+registerLeadMapCollaborationRoutes({ app, pool, activeSessions });
+registerLeadMapFileRoutes({ app, pool, activeSessions });
 // Lead Map ↔ Konkurrent-management (manuell add, Claude threat-assessment,
 // lead-rangering, kombinert /market-points-endepunkt)
 registerLeadMapCompetitorRoutes({ app, pool, activeSessions });

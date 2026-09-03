@@ -33,6 +33,7 @@ export interface UpsertProducerNotificationInput {
   metadata?: Record<string, unknown>;
   createdByUserId?: string | null;
   createdByRole?: string | null;
+  assignedToUserId?: string | null;
   /** Bruker-IDer som er @nevnt — lagres på raden så UI kan markere den for dem. */
   mentionUserIds?: string[];
   mentionEmails?: string[];
@@ -91,7 +92,8 @@ export async function upsertProducerProjectNotification(
     const {
       projectId, audience, eventType, title, message,
       linkedEntityType, linkedEntityId, metadata,
-      createdByUserId, createdByRole, mentionUserIds, mentionEmails,
+      createdByUserId, createdByRole, assignedToUserId,
+      mentionUserIds, mentionEmails,
     } = input;
     const meta = metadata ?? {};
     const inboxType = inferInboxType(eventType, linkedEntityType, meta);
@@ -104,58 +106,54 @@ export async function upsertProducerProjectNotification(
     const cleanTitle = title.trim();
     const cleanMessage = typeof message === 'string' && message.trim().length > 0 ? message.trim() : null;
 
-    const existing = await pool.query(
-      `SELECT id
-         FROM role_room_project_notifications
-        WHERE project_id = $1
-          AND audience = $2
-          AND event_type = $3
-          AND COALESCE(linked_entity_type, '') = COALESCE($4, '')
-          AND COALESCE(linked_entity_id, '') = COALESCE($5, '')
-        ORDER BY updated_at DESC
-        LIMIT 1`,
-      [projectId, audience, eventType.trim(), linkedEntityType ?? null, linkedEntityId ?? null],
-    );
-
-    if ((existing.rowCount ?? 0) > 0) {
-      const id = String(existing.rows[0]?.id ?? '');
-      await pool.query(
-        `UPDATE role_room_project_notifications
-            SET title = $1, message = $2, metadata = $3::jsonb,
-                created_by_user_id = $4, created_by_role = $5, inbox_type = $6,
-                client_name = $7, client_email = $8,
-                mention_user_ids = $9::jsonb, mention_emails = $10::jsonb,
-                resolved_at = NULL, resolved_by_user_id = NULL,
-                archived_at = NULL, archived_by_user_id = NULL,
-                updated_at = NOW()
-          WHERE id = $11`,
-        [cleanTitle, cleanMessage, serializedMeta, createdByUserId ?? null,
-          createdByRole ?? null, inboxType, clientName, clientEmail,
-          mentionUserIdsJson, mentionEmailsJson, id],
-      );
-      // Nullstill lest-status så det dukker opp som ulest igjen.
-      await pool.query(
-        `DELETE FROM role_room_project_notification_reads WHERE notification_id = $1`,
-        [id],
-      );
-      return;
-    }
-
-    await pool.query(
+    const persisted = await pool.query<{ id: string }>(
       `INSERT INTO role_room_project_notifications (
          id, project_id, audience, event_type, title, message,
          linked_entity_type, linked_entity_id, inbox_type, client_name, client_email,
          mention_user_ids, mention_emails, metadata, created_by_user_id, created_by_role,
-         created_at, updated_at
+         assigned_to_user_id, created_at, updated_at
        ) VALUES (
          $1, $2, $3, $4, $5, $6,
          $7, $8, $9, $10, $11,
-         $12::jsonb, $13::jsonb, $14::jsonb, $15, $16, NOW(), NOW()
-       )`,
+         $12::jsonb, $13::jsonb, $14::jsonb, $15, $16,
+         $17, NOW(), NOW()
+       )
+       ON CONFLICT (
+         project_id, audience, event_type,
+         (COALESCE(linked_entity_type, '')),
+         (COALESCE(linked_entity_id, ''))
+       ) DO UPDATE SET
+         title = EXCLUDED.title,
+         message = EXCLUDED.message,
+         metadata = EXCLUDED.metadata,
+         created_by_user_id = EXCLUDED.created_by_user_id,
+         created_by_role = EXCLUDED.created_by_role,
+         assigned_to_user_id = EXCLUDED.assigned_to_user_id,
+         inbox_type = EXCLUDED.inbox_type,
+         client_name = EXCLUDED.client_name,
+         client_email = EXCLUDED.client_email,
+         mention_user_ids = EXCLUDED.mention_user_ids,
+         mention_emails = EXCLUDED.mention_emails,
+         resolved_at = NULL,
+         resolved_by_user_id = NULL,
+         archived_at = NULL,
+         archived_by_user_id = NULL,
+         updated_at = NOW()
+       RETURNING id`,
       [randomUUID(), projectId, audience, eventType.trim(), cleanTitle, cleanMessage,
         linkedEntityType ?? null, linkedEntityId ?? null, inboxType, clientName, clientEmail,
-        mentionUserIdsJson, mentionEmailsJson, serializedMeta, createdByUserId ?? null, createdByRole ?? null],
+        mentionUserIdsJson, mentionEmailsJson, serializedMeta, createdByUserId ?? null,
+        createdByRole ?? null, assignedToUserId ?? null],
     );
+    const persistedId = persisted.rows[0]?.id;
+    if (persistedId) {
+      // Nullstill lest-status også ved konfliktoppdatering, så ny aktivitet
+      // på samme logiske varsel dukker opp som ulest igjen.
+      await pool.query(
+        `DELETE FROM role_room_project_notification_reads WHERE notification_id = $1`,
+        [persistedId],
+      );
+    }
   } catch (error) {
     console.warn('[producer-notifications] upsert skipped:', error);
   }

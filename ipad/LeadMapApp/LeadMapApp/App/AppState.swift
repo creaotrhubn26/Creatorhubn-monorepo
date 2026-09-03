@@ -342,7 +342,7 @@ final class AppState {
     func refreshLeads() async {
         guard let api else { return }
         do {
-            let fresh = try await api.fetchLeads(projectId: activeProjectId)
+            let fresh = try await api.fetchLeads(projectId: activeProjectId, organizationId: activeOrganizationId)
             self.leads = fresh
             self.leadsLoadState = .loaded
         } catch {
@@ -446,6 +446,7 @@ final class AppState {
                     projectsLoadState = .loading
                 }
                 Task {
+                    await api?.setActiveOrganizationId(selectedOrganizationId)
                     await loadOrgContext()
                     guard generation == organizationSelectionGeneration,
                           selectedOrganizationId == activeOrganizationId else { return }
@@ -676,9 +677,11 @@ final class AppState {
 
     /// Innsjekk i felt: oppdater stopp-status (optimistisk lokalt).
     func updateRouteStop(stopId: String, status: String) async {
-        guard let api, let route = dayRoute else { return }
+        guard let api, let route = dayRoute, let organizationId = activeOrganizationId else { return }
         do {
-            try await api.updateRouteStop(routeId: route.id, stopId: stopId, status: status)
+            try await api.updateRouteStop(
+                routeId: route.id, stopId: stopId, status: status,
+                organizationId: organizationId)
         } catch {
             print("[AppState] route stop update failed: \(error)")
         }
@@ -753,6 +756,7 @@ func configureDiscovery() async {
             self.authToken = token
             self.userEmail = AuthClient.loadEmail()
             self.api = APIClient(token: token)
+            await self.api?.setActiveOrganizationId(activeOrganizationId)
             // Rolle + identitet FØRST — de gater UI (SuperAdmin-inngangen,
             // avatar-navn) og er ett billig kall. Lå sist i kjeden før →
             // super_admin så «Gjest/Salgssjef» til hele refreshen var
@@ -998,6 +1002,7 @@ func configureDiscovery() async {
         self.authToken = token
         self.userEmail = email
         self.api = APIClient(token: token)
+        await self.api?.setActiveOrganizationId(activeOrganizationId)
         self.sessionExpired = false
         // Last user-role FØR refreshAll så SuperAdminHub-section i
         // LeadgridHubView låses opp umiddelbart for super_admin. Uten
@@ -1020,6 +1025,7 @@ func configureDiscovery() async {
         self.api = APIClient(token: token)
         self.sessionExpired = false
         Task {
+            await self.api?.setActiveOrganizationId(activeOrganizationId)
             await loadOrganizations()
             await loadOrgContext()
             await loadUserRole()
@@ -1081,11 +1087,11 @@ func configureDiscovery() async {
         if case .loaded = leadsLoadState {} else { leadsLoadState = .loading }
         if case .loaded = calendarLoadState {} else { calendarLoadState = .loading }
         let proj = activeProjectId
-        async let leadsTask = api.fetchLeads(projectId: proj)
-        async let competitorsTask = api.fetchCompetitors(projectId: proj)
-        async let metricsTask = api.fetchMetrics(projectId: proj)
-        async let calendarTask = api.fetchCalendar(projectId: proj)
-        async let remindersTask = api.fetchReminders(projectId: proj)
+        async let leadsTask = api.fetchLeads(projectId: proj, organizationId: refreshOrganizationId)
+        async let competitorsTask = api.fetchCompetitors(projectId: proj, organizationId: refreshOrganizationId)
+        async let metricsTask = api.fetchMetrics(projectId: proj, organizationId: refreshOrganizationId)
+        async let calendarTask = api.fetchCalendar(projectId: proj, organizationId: refreshOrganizationId)
+        async let remindersTask = api.fetchReminders(projectId: proj, organizationId: refreshOrganizationId)
         async let projectsTask = api.fetchProjects(organizationId: refreshOrganizationId)
 
         // Vent FØRST på projects-listen så vi kan validere activeProjectId

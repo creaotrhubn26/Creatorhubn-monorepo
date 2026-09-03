@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildSearchQueries,
+  isGooglePlaceBusinessIdentityMatch,
+  isGooglePlaceCompetitorSemanticallyRelevant,
+  isGooglePlaceLocalOpportunityInMarket,
+  isGooglePlaceOpportunityTypeMatch,
   scoreBrregNameCandidate,
   scoreGooglePlaceCandidate,
 } from './role-room-agent-match-scoring.js';
@@ -103,5 +107,168 @@ describe('scoreGooglePlaceCandidate (F3)', () => {
       'bellapizza.no',
     );
     expect(score).toBeGreaterThanOrEqual(120);
+  });
+});
+
+describe('isGooglePlaceBusinessIdentityMatch', () => {
+  it('rejects an exact-name business outside the verified Brreg locality', () => {
+    expect(isGooglePlaceBusinessIdentityMatch(
+      {
+        displayName: { text: 'MedInnova' },
+        formattedAddress: 'Hope Road, Kingston, Jamaica',
+        rating: 4.9,
+        userRatingCount: 900,
+      },
+      'MEDINNOVA AS',
+      'medside.no',
+      'Oslo',
+    )).toBe(false);
+  });
+
+  it('accepts a legal-name match in the verified locality after stripping AS', () => {
+    expect(isGooglePlaceBusinessIdentityMatch(
+      { displayName: { text: 'MedInnova' }, formattedAddress: 'Olasrudveien 23, 1284 Oslo, Norge' },
+      'MEDINNOVA AS',
+      'medside.no',
+      'Oslo',
+    )).toBe(true);
+  });
+
+  it('accepts an exact customer-domain match even when Places uses the brand name', () => {
+    expect(isGooglePlaceBusinessIdentityMatch(
+      { displayName: { text: 'MedSide' }, websiteUri: 'https://www.medside.no/' },
+      'MEDINNOVA AS',
+      'medside.no',
+      'Oslo',
+    )).toBe(true);
+  });
+});
+
+describe('isGooglePlaceLocalOpportunityInMarket', () => {
+  it('rejects Atlanta and Jamaica results for a Brreg-verified Oslo company', () => {
+    expect(isGooglePlaceLocalOpportunityInMarket(
+      { formattedAddress: '1120 Hope Rd, Sandy Springs, GA 30350, USA' },
+      ['Oslo'],
+      null,
+      15,
+    )).toBe(false);
+    expect(isGooglePlaceLocalOpportunityInMarket(
+      { formattedAddress: 'Hope Road, Kingston, Jamaica' },
+      ['Oslo'],
+      null,
+      15,
+    )).toBe(false);
+  });
+
+  it('accepts an address in the verified Brreg locality', () => {
+    expect(isGooglePlaceLocalOpportunityInMarket(
+      { formattedAddress: 'Oslo Drive, Atlanta, GA 30350, USA' },
+      ['Oslo'],
+      null,
+      8,
+    )).toBe(false);
+
+    expect(isGooglePlaceLocalOpportunityInMarket(
+      { formattedAddress: 'Karl Johans gate 1, 0154 Oslo, Norge' },
+      ['Oslo'],
+      null,
+      8,
+    )).toBe(true);
+  });
+
+  it('uses verified coordinates as a hard radius when both points exist', () => {
+    const oslo = { latitude: 59.9139, longitude: 10.7522 };
+    expect(isGooglePlaceLocalOpportunityInMarket(
+      { location: { latitude: 59.92, longitude: 10.76 }, formattedAddress: 'Oslo' },
+      ['Oslo'],
+      oslo,
+      3,
+    )).toBe(true);
+    expect(isGooglePlaceLocalOpportunityInMarket(
+      { location: { latitude: 33.93, longitude: -84.35 }, formattedAddress: 'Oslo Coffee, Atlanta, USA' },
+      ['Oslo'],
+      oslo,
+      15,
+    )).toBe(false);
+  });
+
+  it('fails closed without a verified coordinate or locality match', () => {
+    expect(isGooglePlaceLocalOpportunityInMarket(
+      { formattedAddress: 'Unknown address' },
+      [],
+      null,
+      15,
+    )).toBe(false);
+  });
+});
+
+describe('isGooglePlaceCompetitorSemanticallyRelevant', () => {
+  const industry = 'Helseteknologi og programvare';
+  const subIndustry = 'Klinisk dokumentasjon og digitale verktøy for helsepersonell';
+
+  it('rejects generic services, public bodies and physical care providers for health software', () => {
+    expect(isGooglePlaceCompetitorSemanticallyRelevant(
+      { displayName: { text: 'Andersen SEO Tjenester' }, primaryTypeDisplayName: { text: 'Tjenester' } },
+      industry,
+      subIndustry,
+    )).toBe(false);
+    expect(isGooglePlaceCompetitorSemanticallyRelevant(
+      { displayName: { text: 'Næringsetaten' }, primaryTypeDisplayName: { text: 'Offentlig kontor' } },
+      industry,
+      subIndustry,
+    )).toBe(false);
+    expect(isGooglePlaceCompetitorSemanticallyRelevant(
+      { displayName: { text: 'Legevakta i Oslo' }, primaryTypeDisplayName: { text: 'Sykehus' } },
+      industry,
+      subIndustry,
+    )).toBe(false);
+  });
+
+  it('rejects a healthtech industry association without a competing software product', () => {
+    expect(isGooglePlaceCompetitorSemanticallyRelevant(
+      { displayName: { text: 'Norway Health Tech' }, primaryType: 'association_or_organization', primaryTypeDisplayName: { text: 'Forening eller organisasjon' } },
+      industry,
+      subIndustry,
+    )).toBe(false);
+  });
+
+  it('accepts a candidate only when both health and digital-product evidence exist', () => {
+    expect(isGooglePlaceCompetitorSemanticallyRelevant(
+      { displayName: { text: 'Nordic Clinical AI' }, primaryTypeDisplayName: { text: 'Programvareselskap for helse' } },
+      industry,
+      subIndustry,
+    )).toBe(true);
+  });
+
+  it('does not tighten unrelated broad industries', () => {
+    expect(isGooglePlaceCompetitorSemanticallyRelevant(
+      { displayName: { text: 'Bella Pizza' }, primaryTypeDisplayName: { text: 'Restaurant' } },
+      'Restaurant og servering',
+      'Restaurant',
+    )).toBe(true);
+  });
+});
+
+describe('isGooglePlaceOpportunityTypeMatch', () => {
+  it('rejects search-result category drift for workplace searches', () => {
+    expect(isGooglePlaceOpportunityTypeMatch(
+      { displayName: { text: 'Skullerud Park' }, primaryType: 'real_estate_agency', primaryTypeDisplayName: { text: 'Eiendomsmegler' } },
+      'workplace',
+    )).toBe(false);
+    expect(isGooglePlaceOpportunityTypeMatch(
+      { displayName: { text: 'Xstorage Rosenholm' }, primaryType: 'storage', primaryTypeDisplayName: { text: 'Lagring' } },
+      'workplace',
+    )).toBe(false);
+  });
+
+  it('accepts categories that match the intended partner role', () => {
+    expect(isGooglePlaceOpportunityTypeMatch(
+      { displayName: { text: 'Spaces Kvadraturen' }, primaryType: 'coworking_space', primaryTypeDisplayName: { text: 'Kontorfellesskap' } },
+      'workplace',
+    )).toBe(true);
+    expect(isGooglePlaceOpportunityTypeMatch(
+      { displayName: { text: 'Deichman Bjørvika' }, primaryType: 'library', primaryTypeDisplayName: { text: 'Bibliotek' } },
+      'culture',
+    )).toBe(true);
   });
 });

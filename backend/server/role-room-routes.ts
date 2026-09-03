@@ -28,6 +28,7 @@ import {
   type RoleRoomGoogleNativeClient,
 } from './role-room-native-google-oauth.js';
 import { resolveClientPortalSession } from './role-room-client-portal.js';
+import { ROLE_ROOM_LINKEDIN_OAUTH_SCOPES } from './role-room-linkedin-oauth-scopes.js';
 import { resolveOrgIdForUser, invalidateOrgCache } from './leadgrid-org-resolver.js';
 import { resolveEducationProductionRole, listEducationProductionProjectIds } from './role-room-education-production-access.js';
 import { notifyProducerOfClientPlatformConnection } from './role-room-producer-notifications.js';
@@ -987,11 +988,6 @@ const ROLE_ROOM_GOOGLE_LOGIN_SCOPES = [
   'openid',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
-] as const;
-const ROLE_ROOM_LINKEDIN_SCOPES = [
-  'openid',
-  'profile',
-  'email',
 ] as const;
 const ROLE_ROOM_GOOGLE_DRIVE_FOLDERS = [
   { key: 'brief', label: '01 Brief' },
@@ -10029,7 +10025,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           response_type: 'code',
           client_id: config.clientId,
           redirect_uri: config.redirectUri,
-          scope: [...ROLE_ROOM_LINKEDIN_SCOPES].join(' '),
+          scope: [...ROLE_ROOM_LINKEDIN_OAUTH_SCOPES].join(' '),
           state: stateId,
         }).toString()
       }`;
@@ -10085,7 +10081,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           response_type: 'code',
           client_id: config.clientId,
           redirect_uri: config.redirectUri,
-          scope: [...ROLE_ROOM_LINKEDIN_SCOPES].join(' '),
+          scope: [...ROLE_ROOM_LINKEDIN_OAUTH_SCOPES].join(' '),
           state: stateId,
         }).toString()
       }`;
@@ -10212,7 +10208,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
             expiryDate,
             scopes: rawScopes
               ? rawScopes.split(' ').filter((entry) => entry.trim().length > 0)
-              : [...ROLE_ROOM_LINKEDIN_SCOPES],
+              : [...ROLE_ROOM_LINKEDIN_OAUTH_SCOPES],
           },
           oauthState.projectId ?? null,
         );
@@ -10248,7 +10244,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           expiryDate,
           scopes: rawScopes
             ? rawScopes.split(' ').filter((entry) => entry.trim().length > 0)
-            : [...ROLE_ROOM_LINKEDIN_SCOPES],
+            : [...ROLE_ROOM_LINKEDIN_OAUTH_SCOPES],
         },
       });
 
@@ -18870,9 +18866,9 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
          INNER JOIN live_projects lp ON lp.id = casting_candidates.project_id`),
       safeCount(`${liveProjectsCTE}
          SELECT COUNT(*) AS n
-         FROM schedules
-         INNER JOIN live_projects lp ON lp.id = schedules.project_id
-         WHERE LOWER(COALESCE(schedules.status, '')) IN ('confirmed', 'completed')`),
+         FROM casting_schedules
+         INNER JOIN live_projects lp ON lp.id = casting_schedules.project_id
+         WHERE LOWER(COALESCE(casting_schedules.status, '')) IN ('confirmed', 'completed')`),
       safeCount(`${liveProjectsCTE}
          SELECT COUNT(*) AS n
          FROM crew

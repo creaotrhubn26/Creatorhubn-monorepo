@@ -34,6 +34,32 @@ struct VisitModel: Identifiable, Codable, Hashable {
     let notes: String?
     let nextAction: String?
     let nextFollowUpAt: Date?
+    var activityKind: String? = nil
+    var outcome: String? = nil
+    var durationMinutes: Int? = nil
+}
+
+struct LeadStoredFileModel: Identifiable, Codable, Hashable {
+    let id: String
+    let displayName: String
+    let sizeBytes: Int
+    let contentType: String?
+    let uploadedAt: Date
+    var description: String? = nil
+    var tags: [String]? = nil
+    var uploaderUserId: String? = nil
+    var uploaderName: String? = nil
+}
+
+struct LeadNoteModel: Identifiable, Codable, Hashable {
+    let id: String
+    let leadId: String
+    let authorUserId: String?
+    let authorName: String
+    let body: String
+    let pinned: Bool
+    let createdAt: Date
+    let updatedAt: Date
 }
 
 struct VisitDraft {

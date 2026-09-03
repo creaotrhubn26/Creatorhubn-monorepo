@@ -82,19 +82,22 @@ export async function snapshotIntakeVersion(
     );
     if (rows.length === 0) return null;
 
-    // Neste versjons-nummer
-    const { rows: nRows } = await pool.query<{ next_n: number }>(
-      `SELECT COALESCE(MAX(version_number), 0) + 1 AS next_n
-         FROM role_room_client_intake_versions
-        WHERE project_id = $1`,
-      [projectId],
-    );
-    const versionNumber = nRows[0]?.next_n ?? 1;
-
-    // Deaktiver gamle aktiv-versjoner + insert ny som aktiv (samme tx)
+    // Lås, tildel nummer og bytt aktiv versjon i samme transaksjon. Uten
+    // prosjektlåsen kan to samtidige snapshots få samme version_number.
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      await client.query(
+        `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+        [`role-room:intake-version:${projectId}`],
+      );
+      const { rows: nRows } = await client.query<{ next_n: number }>(
+        `SELECT COALESCE(MAX(version_number), 0) + 1 AS next_n
+           FROM role_room_client_intake_versions
+          WHERE project_id = $1`,
+        [projectId],
+      );
+      const versionNumber = nRows[0]?.next_n ?? 1;
       await client.query(
         `UPDATE role_room_client_intake_versions
             SET is_active = FALSE

@@ -116,7 +116,8 @@ export function registerLeadgridOversiktRoutes(deps: {
         res.status(400).json({ error: "bad_request", message: "malgruppe må være selger eller leder" });
         return;
       }
-      const skjulte = (Array.isArray(b.skjulte_kort) ? b.skjulte_kort : [])
+      const skjulteRaw = b.skjulteKort ?? b.skjulte_kort;
+      const skjulte = (Array.isArray(skjulteRaw) ? skjulteRaw : [])
         .map(String).filter((k) => GYLDIGE_KORT.has(k)).slice(0, 10);
       const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
       if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }
@@ -180,7 +181,8 @@ export function registerLeadgridOversiktRoutes(deps: {
         res.status(400).json({ error: "bad_request" });
         return;
       }
-      const skjulte = (Array.isArray(b.skjulte_funksjoner) ? b.skjulte_funksjoner : [])
+      const skjulteRaw = b.skjulteFunksjoner ?? b.skjulte_funksjoner;
+      const skjulte = (Array.isArray(skjulteRaw) ? skjulteRaw : [])
         .map(String).filter((k) => GYLDIGE_CANVAS_FUNKSJONER.has(k)).slice(0, 12);
       const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
       if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }

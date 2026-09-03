@@ -1,62 +1,39 @@
 name: Deploy shared Render backend
 
+# Manual releases must pass through the same migration, ownership, concurrency,
+# exact-SHA and smoke-test gates as automatic main releases. This workflow only
+# dispatches the canonical workflow; it does not contain a second deploy path.
+
 on:
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: deploy-shared-render-backend
-  cancel-in-progress: false
-
-env:
-  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
-  RENDER_SERVICE_ID: srv-d76ob60ule4c73dv2p60
-
 jobs:
-  deploy:
-    name: Deploy exact main commit to Render
+  guard:
+    name: Require current main workflow ref
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 10
     steps:
-      - name: Resolve and validate current main HEAD
-        id: target
+      - name: Reject non-main dispatches
+        env:
+          SELECTED_REF: ${{ github.ref }}
+        run: |
+          if [ "$SELECTED_REF" != "refs/heads/main" ]; then
+            echo "::error::Production releases must be dispatched from the current main branch"
+            exit 1
+          fi
+
+  release:
+    name: Dispatch the canonical production release gate
+    needs: guard
+    permissions:
+      contents: read
+      actions: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start canonical workflow on current main
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-            echo "::error::This production workflow must be dispatched from main"
-            exit 1
-          fi
-          main_json=$(curl -fsS --connect-timeout 3 -m 15 \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/ref/heads/main")
-          target_sha=$(printf '%s' "$main_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["object"]["sha"])')
-          if [ "$GITHUB_SHA" != "$target_sha" ]; then
-            echo "::error::Selected workflow ref is stale: selected=$GITHUB_SHA currentMain=$target_sha"
-            exit 1
-          fi
-          echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"
-          echo "Validated main commit: $target_sha"
-
-      - name: Checkout exact deploy commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ steps.target.outputs.target_sha }}
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "24"
-          package-manager-cache: false
-
-      - name: Deploy exact commit and verify production
-        env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          TARGET_SHA: ${{ steps.target.outputs.target_sha }}
-        run: node scripts/deploy/render-backend.mjs deploy-and-verify "$TARGET_SHA"
+        run: gh workflow run auto-migrate-on-push.yml --repo "$GITHUB_REPOSITORY" --ref main

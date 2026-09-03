@@ -40,6 +40,8 @@ function getAnthropic(): Anthropic | null {
 interface TenantScope {
   ownerUserId: string;
   agentConfigId?: string | null;
+  /** Active Leadgrid workspace. When present, team rows are shared by org. */
+  organizationId?: string | null;
   /**
    * Lead Map prosjekt-filter. Når satt, returneres kun rader hvor
    * crm_customers.project_id matcher. null/undefined = alle leads
@@ -54,10 +56,15 @@ function buildTenantConditions(scope: TenantScope, params: unknown[]): string[] 
         params.push(scope.agentConfigId);
         return [`agent_config_id = $${params.length}::uuid`];
       })()
-    : (() => {
-        params.push(scope.ownerUserId);
-        return [`owner_user_id = $${params.length}`, `agent_config_id IS NULL`];
-      })();
+    : scope.organizationId
+      ? (() => {
+          params.push(scope.organizationId);
+          return [`organization_id = $${params.length}::uuid`, `agent_config_id IS NULL`];
+        })()
+      : (() => {
+          params.push(scope.ownerUserId);
+          return [`owner_user_id = $${params.length}`, `agent_config_id IS NULL`];
+        })();
   if (scope.projectId) {
     params.push(scope.projectId);
     base.push(`project_id = $${params.length}`);
@@ -71,6 +78,8 @@ export type LeadStatus =
   | 'do_not_contact';
 
 export type VisitType = 'physical' | 'phone' | 'email' | 'online_meeting' | 'research';
+export type ActivityKind = 'call' | 'email' | 'meeting' | 'note' | 'visit' | 'demo' | 'proposal' | 'deal_close';
+export type ActivityOutcome = 'no_answer' | 'spoke' | 'meeting_booked' | 'proposal_sent' | 'interested' | 'not_interested' | 'won' | 'lost';
 
 export interface MapLead {
   cpvKoder: string[];
@@ -117,6 +126,7 @@ export interface MapLead {
   updatedAt: string;
   /** Bransje-id (mig 329). null hvis ikke klassifisert ennå. */
   industryId: string | null;
+  isFavorite: boolean;
 }
 
 export interface VisitRow {
@@ -133,6 +143,9 @@ export interface VisitRow {
   notes: string | null;
   nextAction: string | null;
   nextFollowUpAt: string | null;
+  activityKind: ActivityKind | null;
+  outcome: ActivityOutcome | null;
+  durationMinutes: number | null;
 }
 
 export interface ActivityRow {
@@ -201,6 +214,7 @@ function rowToLead(row: any): MapLead {
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     industryId: row.industry_id ?? null,
+    isFavorite: Boolean(row.is_favorite),
   };
 }
 
@@ -209,6 +223,7 @@ export async function listLeadsInBounds(
   pool: Pool, opts: {
     ownerUserId: string;
     agentConfigId?: string | null;
+    organizationId?: string | null;
     projectId?: string | null;
     bounds?: { minLat: number; maxLat: number; minLng: number; maxLng: number };
     statusFilter?: LeadStatus[];
@@ -218,9 +233,9 @@ export async function listLeadsInBounds(
 ): Promise<MapLead[]> {
   const params: unknown[] = [];
   const tenantConds = buildTenantConditions(
-    { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId, projectId: opts.projectId },
+    { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId, organizationId: opts.organizationId, projectId: opts.projectId },
     params,
-  );
+  ).map((condition) => condition.replace(/(\w+_id|agent_config_id)/, 'c.$1'));
   // Bug-fiks 2026-06-28: arkiverte leads ble vist på kartet og i lister
   // (Daniel arkiverte 45 garbage-leads, men de fortsatte å vises i UI).
   // Filtrer ut `archived_at IS NOT NULL` her — alle kart-views skal
@@ -246,6 +261,8 @@ export async function listLeadsInBounds(
     params.push(opts.categoryFilter); conditions.push(`lead_category = ANY($${params.length}::text[])`);
   }
 
+  params.push(opts.ownerUserId);
+  const favoriteUserParam = params.length;
   params.push(opts.limit ?? 500);
   const r = await pool.query(
     `SELECT c.id, c.name, c.company, c.lead_category, c.lead_status, c.address, c.postal_code,
@@ -260,7 +277,13 @@ export async function listLeadsInBounds(
             NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS assigned_user_name, u.email AS assigned_user_email,
             c.project_id,
             c.industry_id::text AS industry_id,
-            c.cpv_koder
+            c.cpv_koder,
+            EXISTS (
+              SELECT 1 FROM leadgrid_lead_favorites f
+               WHERE f.organization_id = c.organization_id
+                 AND f.lead_id = c.id
+                 AND f.user_id = $${favoriteUserParam}
+            ) AS is_favorite
      FROM crm_customers c
      LEFT JOIN users u ON u.id = c.owner_user_id
      WHERE ${conditions.join(' AND ')}
@@ -275,8 +298,11 @@ export async function getLeadById(
   pool: Pool, scope: TenantScope, leadId: string,
 ): Promise<MapLead | null> {
   const params: unknown[] = [leadId];
-  const tenantConds = buildTenantConditions(scope, params);
+  const tenantConds = buildTenantConditions(scope, params)
+    .map((condition) => condition.replace(/(\w+_id|agent_config_id)/, 'c.$1'));
   tenantConds.push("(draft_status IS NULL OR draft_status = 'lead')");
+  params.push(scope.ownerUserId);
+  const favoriteUserParam = params.length;
   const r = await pool.query(
     `SELECT c.id, c.name, c.company, c.lead_category, c.lead_status, c.address, c.postal_code,
             c.city, c.country, c.latitude, c.longitude, c.phone, c.email, c.website_url,
@@ -290,7 +316,13 @@ export async function getLeadById(
             NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS assigned_user_name, u.email AS assigned_user_email,
             c.project_id,
             c.industry_id::text AS industry_id,
-            c.cpv_koder
+            c.cpv_koder,
+            EXISTS (
+              SELECT 1 FROM leadgrid_lead_favorites f
+               WHERE f.organization_id = c.organization_id
+                 AND f.lead_id = c.id
+                 AND f.user_id = $${favoriteUserParam}
+            ) AS is_favorite
      FROM crm_customers c
      LEFT JOIN users u ON u.id = c.owner_user_id
      WHERE c.id = $1::uuid AND ${tenantConds.join(' AND ')}`,
@@ -503,8 +535,8 @@ export async function createLeadFromPin(
          $21, $22, $23,
          $24::timestamptz, $25, $26,
          $27, 'lead', $27,
-         $28, $29::uuid, $28,
-         NOW(), $28, $30,
+         $28::text, $29::uuid, $28::text,
+         NOW(), $28::text, $30,
          $31::uuid, $32,
          NOW(), NOW()
        )
@@ -576,46 +608,58 @@ export async function createLeadFromPin(
  * Oppdater lead-status. Logger automatisk i crm_lead_activities.
  */
 export async function updateLeadStatus(
-  pool: Pool, opts: { ownerUserId: string; agentConfigId?: string | null; leadId: string; status: LeadStatus; notes?: string },
+  pool: Pool, opts: { ownerUserId: string; agentConfigId?: string | null; organizationId?: string | null; leadId: string; status: LeadStatus; notes?: string },
 ): Promise<{ ok: boolean; previous?: string }> {
-  const scope: TenantScope = { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId };
-  const checkParams: unknown[] = [opts.leadId];
-  const checkConds = buildTenantConditions(scope, checkParams);
-  const current = await pool.query<{ lead_status: string }>(
-    `SELECT lead_status FROM crm_customers
-     WHERE id = $1::uuid AND ${checkConds.join(' AND ')}`,
-    checkParams,
-  );
-  if (!current.rows.length) return { ok: false };
+  const client = await pool.connect();
+  const scope: TenantScope = { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId, organizationId: opts.organizationId };
+  try {
+    await client.query("BEGIN");
+    const checkParams: unknown[] = [opts.leadId];
+    const checkConds = buildTenantConditions(scope, checkParams);
+    const current = await client.query<{ lead_status: string }>(
+      `SELECT lead_status FROM crm_customers
+       WHERE id = $1::uuid AND ${checkConds.join(' AND ')}
+       FOR UPDATE`,
+      checkParams,
+    );
+    if (!current.rows.length) {
+      await client.query("ROLLBACK");
+      return { ok: false };
+    }
 
-  const previous = current.rows[0].lead_status;
-
-  const upParams: unknown[] = [opts.status, opts.leadId];
-  const upConds = buildTenantConditions(scope, upParams);
-  await pool.query(
-    `UPDATE crm_customers
-       SET lead_status = $1, updated_at = NOW()
-     WHERE id = $2::uuid AND ${upConds.join(' AND ')}`,
-    upParams,
-  );
-
-  await pool.query(
-    `INSERT INTO crm_lead_activities (
-       customer_id, user_id, activity_type, old_value, new_value, description
-     ) VALUES ($1::uuid, $2, 'status_changed', $3, $4, $5)`,
-    [
-      opts.leadId, opts.ownerUserId, previous, opts.status,
-      opts.notes ?? `Status: ${previous} → ${opts.status}`,
-    ],
-  );
-
-  return { ok: true, previous };
+    const previous = current.rows[0].lead_status;
+    const upParams: unknown[] = [opts.status, opts.leadId];
+    const upConds = buildTenantConditions(scope, upParams);
+    await client.query(
+      `UPDATE crm_customers
+         SET lead_status = $1, updated_at = NOW()
+       WHERE id = $2::uuid AND ${upConds.join(' AND ')}`,
+      upParams,
+    );
+    await client.query(
+      `INSERT INTO crm_lead_activities (
+         customer_id, user_id, activity_type, old_value, new_value, description
+       ) VALUES ($1::uuid, $2, 'status_changed', $3, $4, $5)`,
+      [
+        opts.leadId, opts.ownerUserId, previous, opts.status,
+        opts.notes ?? `Status: ${previous} → ${opts.status}`,
+      ],
+    );
+    await client.query("COMMIT");
+    return { ok: true, previous };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function logVisit(
   pool: Pool, opts: {
     ownerUserId: string;
     agentConfigId?: string | null;
+    organizationId?: string | null;
     leadId: string;
     visitType: VisitType;
     contactPerson?: string;
@@ -627,29 +671,44 @@ export async function logVisit(
     nextFollowUpAt?: string;
     visitLatitude?: number;
     visitLongitude?: number;
+    visitDatetime?: string;
+    activityKind?: ActivityKind;
+    outcome?: ActivityOutcome;
+    durationMinutes?: number;
   },
-): Promise<{ ok: boolean; visitId?: string }> {
+): Promise<{ ok: boolean; visitId?: string; previousStatus?: string }> {
+  const client = await pool.connect();
+  let visitId: string;
+  let previousStatus: string;
+  try {
+    await client.query("BEGIN");
   // Verifiser eierskap (tenant-aware)
   const verifyParams: unknown[] = [opts.leadId];
   const verifyConds = buildTenantConditions(
-    { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId },
+    { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId, organizationId: opts.organizationId },
     verifyParams,
   );
-  const c = await pool.query<{ lead_status: string }>(
+  const c = await client.query<{ lead_status: string }>(
     `SELECT lead_status FROM crm_customers
-     WHERE id = $1::uuid AND ${verifyConds.join(' AND ')}`,
+     WHERE id = $1::uuid AND ${verifyConds.join(' AND ')}
+     FOR UPDATE`,
     verifyParams,
   );
-  if (!c.rows.length) return { ok: false };
-  const previousStatus = c.rows[0].lead_status;
+  if (!c.rows.length) {
+    await client.query("ROLLBACK");
+    return { ok: false };
+  }
+  previousStatus = c.rows[0].lead_status;
 
-  const v = await pool.query<{ id: string }>(
+  const v = await client.query<{ id: string }>(
     `INSERT INTO crm_visits (
        customer_id, user_id, visit_type, previous_status, new_status,
        contact_person, conversation_summary, objection_reason, notes,
-       next_action, next_follow_up_at, visit_latitude, visit_longitude
+       next_action, next_follow_up_at, visit_latitude, visit_longitude,
+       visit_datetime, activity_kind, outcome, duration_minutes
      ) VALUES (
-       $1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+       $1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+       COALESCE($14::timestamptz, NOW()), $15, $16, $17
      )
      RETURNING id::text`,
     [
@@ -659,6 +718,8 @@ export async function logVisit(
       opts.objectionReason ?? null, opts.notes ?? null,
       opts.nextAction ?? null, opts.nextFollowUpAt ?? null,
       opts.visitLatitude ?? null, opts.visitLongitude ?? null,
+      opts.visitDatetime ?? null, opts.activityKind ?? null,
+      opts.outcome ?? null, opts.durationMinutes ?? null,
     ],
   );
 
@@ -668,14 +729,15 @@ export async function logVisit(
     opts.nextFollowUpAt ?? null,
     opts.newStatus ?? null,
     opts.leadId,
+    opts.visitDatetime ?? null,
   ];
   const upConds = buildTenantConditions(
-    { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId },
+    { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId, organizationId: opts.organizationId },
     upParams,
   );
-  await pool.query(
+  await client.query(
     `UPDATE crm_customers
-       SET last_visit_at = NOW(),
+       SET last_visit_at = COALESCE($5::timestamptz, NOW()),
            next_action = COALESCE($1, next_action),
            next_follow_up_at = COALESCE($2::timestamptz, next_follow_up_at),
            lead_status = COALESCE($3, lead_status),
@@ -685,18 +747,32 @@ export async function logVisit(
   );
 
   // Audit
-  await pool.query(
+  await client.query(
     `INSERT INTO crm_lead_activities (
        customer_id, user_id, activity_type, new_value, description, metadata
      ) VALUES ($1::uuid, $2, 'visit_logged', $3, $4, $5::jsonb)`,
     [
       opts.leadId, opts.ownerUserId, opts.visitType,
       `Visit ${opts.visitType}${opts.contactPerson ? ` med ${opts.contactPerson}` : ''}`,
-      JSON.stringify({ newStatus: opts.newStatus, conversationSummary: opts.conversationSummary }),
+      JSON.stringify({
+        newStatus: opts.newStatus,
+        conversationSummary: opts.conversationSummary,
+        activityKind: opts.activityKind,
+        outcome: opts.outcome,
+        durationMinutes: opts.durationMinutes,
+        visitDatetime: opts.visitDatetime,
+      }),
     ],
   );
 
-  const visitId = v.rows[0].id;
+  visitId = v.rows[0].id;
+  await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 
   // Territorie-håndheving (myk): et fysisk besøk med GPS utenfor selgerens
   // grid flagges på besøket og logges/varsles. Aldri kastende.
@@ -707,7 +783,7 @@ export async function logVisit(
   ) {
     void (async () => {
       try {
-        const orgRes = await pool.query<{ organization_id: string | null }>(
+        const orgRes = await client.query<{ organization_id: string | null }>(
           `SELECT organization_id::text FROM crm_customers WHERE id = $1::uuid LIMIT 1`,
           [opts.leadId],
         );
@@ -719,7 +795,7 @@ export async function logVisit(
           opts.visitLatitude as number, opts.visitLongitude as number,
         );
         if (inside) return;
-        await pool.query(
+        await client.query(
           `UPDATE crm_visits SET out_of_grid = TRUE WHERE id = $1::uuid`,
           [visitId],
         );
@@ -734,7 +810,7 @@ export async function logVisit(
     })();
   }
 
-  return { ok: true, visitId };
+  return { ok: true, visitId, previousStatus };
 }
 
 export async function listVisits(
@@ -747,7 +823,8 @@ export async function listVisits(
     `SELECT v.id::text, v.customer_id::text, v.user_id, v.visit_type,
             v.visit_datetime, v.previous_status, v.new_status,
             v.contact_person, v.conversation_summary, v.objection_reason,
-            v.notes, v.next_action, v.next_follow_up_at
+            v.notes, v.next_action, v.next_follow_up_at,
+            v.activity_kind, v.outcome, v.duration_minutes
      FROM crm_visits v
      JOIN crm_customers c ON c.id = v.customer_id
      WHERE v.customer_id = $1::uuid AND ${tenantConds.join(' AND ')}
@@ -768,6 +845,9 @@ export async function listVisits(
     notes: row.notes,
     nextAction: row.next_action,
     nextFollowUpAt: row.next_follow_up_at?.toISOString() ?? null,
+    activityKind: row.activity_kind as ActivityKind | null,
+    outcome: row.outcome as ActivityOutcome | null,
+    durationMinutes: row.duration_minutes === null ? null : Number(row.duration_minutes),
   }));
 }
 
@@ -859,6 +939,9 @@ export async function getLeadMapMetrics(
   // Ekte data fra crm_customers + crm_lead_activities. Hvis ingen rader → null.
   const histParams: unknown[] = [];
   const histConds = buildTenantConditions(scope, histParams);
+  const activityHistParams: unknown[] = [];
+  const activityHistConds = buildTenantConditions(scope, activityHistParams)
+    .map((condition) => condition.replace(/(\w+_id|agent_config_id)/, 'c.$1'));
 
   // 1) New leads per dag (siste 14 dager) — basert på created_at
   const newLeadsHist = await pool.query<{ d: string; n: number }>(
@@ -892,7 +975,7 @@ export async function getLeadMapMetrics(
        )::date AS d
      )
      SELECT days.d::text AS d,
-            COUNT(a.id)::int AS n
+            COUNT(c.id)::int AS n
        FROM days
        LEFT JOIN crm_lead_activities a
          ON DATE(a.created_at) = days.d
@@ -900,8 +983,12 @@ export async function getLeadMapMetrics(
           a.activity_type = 'meeting_scheduled'
           OR (a.activity_type = 'status_changed' AND a.new_value = 'meeting_booked')
         )
+       LEFT JOIN crm_customers c
+         ON c.id = a.customer_id
+        AND ${activityHistConds.join(' AND ')}
       GROUP BY days.d
       ORDER BY days.d`,
+    activityHistParams,
   );
 
   // 3) Wins per dag (siste 14 dager) — for conversion-trend
@@ -914,14 +1001,18 @@ export async function getLeadMapMetrics(
        )::date AS d
      )
      SELECT days.d::text AS d,
-            COUNT(a.id)::int AS n
+            COUNT(c.id)::int AS n
        FROM days
        LEFT JOIN crm_lead_activities a
          ON DATE(a.created_at) = days.d
         AND a.activity_type = 'status_changed'
         AND a.new_value = 'won'
+       LEFT JOIN crm_customers c
+         ON c.id = a.customer_id
+        AND ${activityHistConds.join(' AND ')}
       GROUP BY days.d
       ORDER BY days.d`,
+    activityHistParams,
   );
 
   // 4) Follow-ups due per dag (siste 14 dager) — snapshot pr dag
@@ -1000,7 +1091,7 @@ export async function getLeadMapMetrics(
 
 export async function setLeadGeo(
   pool: Pool, opts: {
-    ownerUserId: string; agentConfigId?: string | null; leadId: string;
+    ownerUserId: string; agentConfigId?: string | null; organizationId?: string | null; leadId: string;
     latitude: number; longitude: number;
     address?: string; postalCode?: string; city?: string; country?: string;
   },
@@ -1014,7 +1105,7 @@ export async function setLeadGeo(
            country = COALESCE($6, country),
            updated_at = NOW()
      WHERE id = $7::uuid AND ${(() => {
-       const _p: unknown[] = []; return buildTenantConditions({ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId}, _p).join(' AND ').replace(/\$(\d+)/g, (_, n) => `$${7 + Number(n)}`);
+       const _p: unknown[] = []; return buildTenantConditions({ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId, organizationId: opts.organizationId}, _p).join(' AND ').replace(/\$(\d+)/g, (_, n) => `$${7 + Number(n)}`);
      })()}`,
     [
       opts.latitude, opts.longitude,
@@ -1022,7 +1113,7 @@ export async function setLeadGeo(
       opts.city ?? null, opts.country ?? null,
       opts.leadId, ...((): unknown[] => {
         const _p: unknown[] = [];
-        buildTenantConditions({ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId}, _p);
+        buildTenantConditions({ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId, organizationId: opts.organizationId}, _p);
         return _p;
       })(),
     ],
@@ -1048,9 +1139,9 @@ export interface PitchSuggestion {
  * Persisteres i activity-log + crm_customers.ai_opportunity_score.
  */
 export async function generateLeadPitch(
-  pool: Pool, opts: { ownerUserId: string; agentConfigId?: string | null; leadId: string; serviceFocus?: string },
+  pool: Pool, opts: { ownerUserId: string; agentConfigId?: string | null; organizationId?: string | null; leadId: string; serviceFocus?: string },
 ): Promise<PitchSuggestion | null> {
-  const lead = await getLeadById(pool, { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId }, opts.leadId);
+  const lead = await getLeadById(pool, { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId, organizationId: opts.organizationId }, opts.leadId);
   if (!lead) return null;
 
   const client = getAnthropic();
@@ -1105,7 +1196,7 @@ Returner KUN JSON (ingen markdown, ingen kommentarer):
     // Persister score + audit
     const upParams: unknown[] = [score, opts.leadId];
     const upConds = buildTenantConditions(
-      { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId },
+      { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId, organizationId: opts.organizationId },
       upParams,
     );
     await pool.query(
@@ -1148,6 +1239,7 @@ Returner KUN JSON (ingen markdown, ingen kommentarer):
 interface PlacesSearchOpts {
   ownerUserId: string;
   agentConfigId?: string | null;
+  organizationId?: string | null;
   query: string;                   // f.eks. "skuespiller-byrå Oslo"
   latitude?: number;
   longitude?: number;
@@ -1234,7 +1326,7 @@ export async function searchPlaces(
     if (placeIds.length > 0) {
       const dupParams: unknown[] = [];
       const dupConds = buildTenantConditions(
-        { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId },
+        { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId, organizationId: opts.organizationId },
         dupParams,
       );
       dupParams.push(placeIds);
@@ -1270,6 +1362,7 @@ export async function importPlaceAsLead(
   pool: Pool, opts: {
     ownerUserId: string;
     agentConfigId?: string | null;
+    organizationId?: string | null;
     place: PlaceResult;
     leadCategory?: string;
     /** Auto-tildel prosjekt ved import — gjør at Places-discovery
@@ -1277,31 +1370,35 @@ export async function importPlaceAsLead(
     projectId?: string | null;
   },
 ): Promise<{ ok: true; leadId: string } | { ok: false; reason: string }> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
   // Sjekk om allerede importert (tenant-aware)
   const dupParams: unknown[] = [];
   const dupConds = buildTenantConditions(
-    { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId },
+    { ownerUserId: opts.ownerUserId, agentConfigId: opts.agentConfigId, organizationId: opts.organizationId },
     dupParams,
   );
   dupParams.push(opts.place.placeId);
-  const dup = await pool.query<{ id: string }>(
+  const dup = await client.query<{ id: string }>(
     `SELECT id FROM crm_customers
      WHERE ${dupConds.join(' AND ')} AND google_place_id = $${dupParams.length} LIMIT 1`,
     dupParams,
   );
   if (dup.rowCount && dup.rowCount > 0) {
+    await client.query("ROLLBACK");
     return { ok: false, reason: 'already_imported' };
   }
 
-  const r = await pool.query<{ id: string }>(
+  const r = await client.query<{ id: string }>(
     `INSERT INTO crm_customers (
-       id, name, phone, email, company, status, source, owner_user_id, agent_config_id,
+       id, name, phone, email, company, status, source, owner_user_id, agent_config_id, organization_id,
        latitude, longitude, address, google_place_id, google_rating,
        website_url, lead_category, lead_status, lead_source,
        project_id,
        created_at, updated_at
      ) VALUES (
-       gen_random_uuid(), $1, $2, NULL, $3, 'lead', 'google_places', $4, $5::uuid,
+       gen_random_uuid(), $1, $2, NULL, $3, 'lead', 'google_places', $4, $5::uuid, $14::uuid,
        $6::numeric, $7::numeric, $8, $9, $10::numeric, $11, $12, 'unvisited',
        'google_places', $13,
        NOW(), NOW()
@@ -1315,17 +1412,25 @@ export async function importPlaceAsLead(
       opts.place.websiteUrl,
       opts.leadCategory ?? opts.place.category,
       opts.projectId ?? null,
+      opts.organizationId ?? null,
     ],
   );
   const leadId = r.rows[0].id;
 
   // Audit
-  await pool.query(
+  await client.query(
     `INSERT INTO crm_lead_activities (
        customer_id, user_id, activity_type, new_value, description
      ) VALUES ($1::uuid, $2, 'lead_imported', 'google_places', $3)`,
     [leadId, opts.ownerUserId, `Imported "${opts.place.name}" from Google Places`],
   );
 
+  await client.query("COMMIT");
   return { ok: true, leadId };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }

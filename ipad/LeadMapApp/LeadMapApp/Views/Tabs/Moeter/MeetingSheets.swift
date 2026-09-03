@@ -32,7 +32,10 @@ struct StartMeetingSheet: View {
     /// «Avslutt & logg»: hopp rett i etterarbeidet (eies av sidebar-en).
     var onAvsluttOgLogg: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var mode: Mode = .checkIn
+    @State private var starting = false
+    @State private var startError: String?
 
     enum Mode: String, CaseIterable, Hashable {
         case checkIn = "Sjekk inn (fysisk)"
@@ -65,7 +68,14 @@ struct StartMeetingSheet: View {
         }
     }
 
+    private var availableModes: [Mode] {
+        DemoModeManager.isActiveNonisolated ? Mode.allCases : [.checkIn]
+    }
+
+    /// Eksterne møte-/telefonlenker har foreløpig ingen sann datakilde.
+    /// De er derfor kun tilgjengelige i eksplisitt demo-modus.
     private func link(for mode: Mode) -> String? {
+        guard DemoModeManager.isActiveNonisolated else { return nil }
         let short = String(UUID().uuidString.prefix(8)).lowercased()
         switch mode {
         case .facetime:   return "https://facetime.apple.com/join#v=1&p=\(short)"
@@ -82,6 +92,12 @@ struct StartMeetingSheet: View {
                     meetingHeader
                     modeGrid
                     if mode == .checkIn { checkInCard } else if let l = link(for: mode) { linkCard(l) }
+                    if let startError {
+                        Text(startError)
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(SBrand.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     Color.clear.frame(height: 90)
                 }
                 .padding(20)
@@ -133,7 +149,7 @@ struct StartMeetingSheet: View {
                 .font(.appScaled(size: 12, weight: .semibold))
                 .foregroundStyle(SBrand.textSecondary)
             VStack(spacing: 8) {
-                ForEach(Mode.allCases, id: \.self) { m in
+                ForEach(availableModes, id: \.self) { m in
                     modeRow(m)
                 }
             }
@@ -197,7 +213,7 @@ struct StartMeetingSheet: View {
                 }
                 .frame(width: 26, height: 26)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Du er innenfor 50m av adressen")
+                    Text("Oppmøte logges på leadet")
                         .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                     Text(meeting.address)
@@ -270,10 +286,7 @@ struct StartMeetingSheet: View {
             .buttonStyle(.plain)
         }
         Button {
-            if let l = link(for: mode), let url = URL(string: l) {
-                UIApplication.shared.open(url)
-            }
-            dismiss()
+            Task { await startMeeting() }
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "play.circle.fill")
@@ -291,12 +304,56 @@ struct StartMeetingSheet: View {
             )
         }
         .buttonStyle(.plain)
+        .disabled(starting)
+        .opacity(starting ? 0.65 : 1)
         }
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(
             SBrand.bg.opacity(0.95)
                 .overlay(Rectangle().fill(SBrand.stroke).frame(height: 1), alignment: .top)
         )
+    }
+
+    @MainActor
+    private func startMeeting() async {
+        guard !starting else { return }
+        if DemoModeManager.isActiveNonisolated {
+            if let link = link(for: mode), let url = URL(string: link) {
+                await UIApplication.shared.open(url)
+            }
+            dismiss()
+            return
+        }
+        guard let api = appState.api else {
+            startError = "Ingen aktiv tilkobling. Oppmøtet ble ikke logget."
+            return
+        }
+        starting = true
+        startError = nil
+        defer { starting = false }
+        let visitType: String = switch mode {
+        case .checkIn: "physical"
+        case .phone: "phone"
+        case .facetime, .googleMeet: "online_meeting"
+        }
+        do {
+            try await api.logVisit(
+                leadId: meeting.id.uuidString.lowercased(),
+                body: [
+                    "visitType": visitType,
+                    "activityKind": "meeting",
+                    "outcome": "spoke",
+                    "contactPerson": meeting.contactName,
+                    "notes": "Møte startet fra møteoversikten",
+                    "visitDatetime": ISO8601DateFormatter().string(from: Date())
+                ],
+                organizationId: appState.activeOrganizationId
+            )
+            await appState.refreshAll()
+            dismiss()
+        } catch {
+            startError = "Kunne ikke logge møtestart. Prøv igjen."
+        }
     }
 
     private var actionLabel: String {
@@ -314,9 +371,12 @@ struct StartMeetingSheet: View {
 struct LogNoteSheet: View {
     let meeting: Meeting
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var note: String = ""
     @State private var category: NoteCategory = .general
     @State private var pinned: Bool = false
+    @State private var saving = false
+    @State private var saveError: String?
 
     enum NoteCategory: String, CaseIterable, Hashable {
         case general = "Generelt"
@@ -355,6 +415,12 @@ struct LogNoteSheet: View {
                     // var død knapp — transkribering finnes i Leadbook (LiveTranscription),
                     // kobles hit når flyten er klar.
                     pinToggle
+                    if let saveError {
+                        Text(saveError)
+                            .font(.appScaled(size: 11, weight: .semibold))
+                            .foregroundStyle(SBrand.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     Color.clear.frame(height: 90)
                 }
                 .padding(20)
@@ -493,7 +559,7 @@ struct LogNoteSheet: View {
                     .overlay(RoundedRectangle(cornerRadius: 11).stroke(SBrand.stroke, lineWidth: 1))
             }
             .buttonStyle(.plain)
-            Button { dismiss() } label: {
+            Button { Task { await saveNote() } } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.appScaled(size: 13, weight: .bold))
@@ -510,11 +576,37 @@ struct LogNoteSheet: View {
                 )
             }
             .buttonStyle(.plain)
-            .disabled(note.isEmpty)
-            .opacity(note.isEmpty ? 0.5 : 1)
+            .disabled(note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving)
+            .opacity(note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving ? 0.5 : 1)
         }
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(SBrand.bg.opacity(0.95).overlay(Rectangle().fill(SBrand.stroke).frame(height: 1), alignment: .top))
+    }
+
+    @MainActor
+    private func saveNote() async {
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !saving else { return }
+        if DemoModeManager.isActiveNonisolated { dismiss(); return }
+        guard let api = appState.api else {
+            saveError = "Ingen aktiv tilkobling. Notatet ble ikke lagret."
+            return
+        }
+        saving = true
+        saveError = nil
+        defer { saving = false }
+        do {
+            _ = try await api.createLeadNote(
+                leadId: meeting.id.uuidString.lowercased(),
+                body: "[\(category.rawValue)] \(trimmed)",
+                pinned: pinned,
+                organizationId: appState.activeOrganizationId
+            )
+            await appState.refreshAll()
+            dismiss()
+        } catch {
+            saveError = "Kunne ikke lagre notatet. Prøv igjen."
+        }
     }
 }
 

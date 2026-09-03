@@ -62,6 +62,7 @@ struct LeadRow: Identifiable, Hashable {
     var nextAction: String? = nil
     var lastVisitAt: Date? = nil
     var nextFollowUpAt: Date? = nil
+    var isFavorite: Bool = false
 
     /// Telefon/e-post m/ demo-fallback: mock-rader (backendId == nil) viser
     /// demo-kontakten; ekte leads uten data gir nil → knappen skjules i
@@ -162,8 +163,8 @@ extension LeadRow {
             id: UUID(uuidString: lead.id) ?? UUID(),
             company: lead.name,
             category: lead.category ?? "—",
-            contactName: lead.company ?? "",
-            contactRole: "",
+            contactName: lead.contactName ?? "",
+            contactRole: lead.contactRole ?? "",
             leadScore: lead.leadScore ?? lead.aiOpportunityScore ?? 0,
             status: rowStatus,
             ownerName: owner,
@@ -179,7 +180,8 @@ extension LeadRow {
             notes: lead.notes,
             nextAction: lead.nextAction,
             lastVisitAt: lead.lastVisitAt,
-            nextFollowUpAt: lead.nextFollowUpAt
+            nextFollowUpAt: lead.nextFollowUpAt,
+            isFavorite: lead.isFavorite ?? false
         )
     }
 }
@@ -203,62 +205,13 @@ struct LeadNoteItem: Identifiable, Hashable {
     let pinned: Bool
 }
 
-/// Lokale lead-notater (UserDefaults per enhet, nøklet på backendId ?? company).
-/// Det finnes ingen backend-flate for lead-notater enda — lagres lokalt slik at
-/// «Notat lagret» faktisk er sant og notatene dukker opp i Notater-fanen.
-enum LeadLocalNotes {
-    struct Stored: Codable {
-        let author: String
-        let body: String
-        let dateISO: String
-        let pinned: Bool
-    }
-    private static let key = "leadLokaleNotater"
-
-    private static func all() -> [String: [Stored]] {
-        guard let data = UserDefaults.standard.data(forKey: key),
-              let dict = try? JSONDecoder().decode([String: [Stored]].self, from: data)
-        else { return [:] }
-        return dict
-    }
-
-    static func notes(for token: String) -> [LeadNoteItem] {
-        let df = DateFormatter()
-        df.locale = Locale(identifier: "nb_NO")
-        df.dateFormat = "d. MMM HH:mm"
-        return (all()[token] ?? []).reversed().map { s in
-            LeadNoteItem(
-                author: s.author,
-                initials: s.author.split(separator: " ").prefix(2)
-                    .map { String($0.prefix(1)) }.joined().uppercased(),
-                authorColor: Color(red: 0.75, green: 0.45, blue: 1.0),
-                body: s.body,
-                timestamp: ISO8601DateFormatter().date(from: s.dateISO)
-                    .map { df.string(from: $0) } ?? "",
-                pinned: s.pinned
-            )
-        }
-    }
-
-    static func add(body: String, pinned: Bool, author: String, to token: String) {
-        var dict = all()
-        dict[token, default: []].append(Stored(
-            author: author, body: body,
-            dateISO: ISO8601DateFormatter().string(from: Date()),
-            pinned: pinned
-        ))
-        if let data = try? JSONEncoder().encode(dict) {
-            UserDefaults.standard.set(data, forKey: key)
-        }
-    }
-}
-
 struct LeadFileItem: Identifiable, Hashable {
     let id = UUID()
     let name: String
     let kind: FileKind
     let size: String
     let uploadedAt: String
+    var backendId: String? = nil
     enum FileKind: Hashable {
         case pdf, image, doc, spreadsheet, video
         var icon: String {
@@ -459,7 +412,7 @@ struct LeadsView: View {
                 guard let api = appState.api else {
                     throw AddLeadSaveError(message: "Du må være innlogget for å lagre leaden")
                 }
-                _ = try await api.createLeadAtPin(newLead.makeCreateRequest())
+                _ = try await api.createLeadAtPin(newLead.makeCreateRequest(), organizationId: appState.activeOrganizationId)
                 addLeadToast = "«\(newLead.companyName)» lagt til"
             }
         }
@@ -1539,9 +1492,9 @@ struct LeadTableRow: View {
         Task {
             do {
                 if let temp = choice.temperature {
-                    try await api.updateTemperature(leadId: backendId, temperature: temp)
+                    try await api.updateTemperature(leadId: backendId, temperature: temp, organizationId: appState.activeOrganizationId)
                 } else if let st = choice.backendStatus {
-                    try await api.updateStatus(leadId: backendId, status: st)
+                    try await api.updateStatus(leadId: backendId, status: st, organizationId: appState.activeOrganizationId)
                 }
                 await appState.refreshLeads()
             } catch {
@@ -1572,23 +1525,22 @@ struct LeadTableRow: View {
         }
     }
 
-    /// Favoritter lagres som Set av (backendId ?? company) i UserDefaults
-    /// under «leadFavoritter».
-    private static let favoritesKey = "leadFavoritter"
-    private var favoriteToken: String { lead.backendId ?? lead.company }
-    private var isFavorite: Bool {
-        let favs = UserDefaults.standard.stringArray(forKey: Self.favoritesKey) ?? []
-        return favs.contains(favoriteToken)
-    }
+    private var isFavorite: Bool { lead.isFavorite }
     private func toggleFavorite() {
-        var favs = Set(UserDefaults.standard.stringArray(forKey: Self.favoritesKey) ?? [])
-        if favs.contains(favoriteToken) {
-            favs.remove(favoriteToken)
-        } else {
-            favs.insert(favoriteToken)
+        guard let leadId = lead.backendId, let api = appState.api else { return }
+        let desired = !lead.isFavorite
+        Task {
+            do {
+                _ = try await api.setLeadFavorite(
+                    leadId: leadId, favorite: desired,
+                    organizationId: appState.activeOrganizationId
+                )
+                favoriteTick += 1
+                await appState.refreshLeads()
+            } catch {
+                print("[LeadTableRow] favoritt-endring feilet: \(error)")
+            }
         }
-        UserDefaults.standard.set(Array(favs).sorted(), forKey: Self.favoritesKey)
-        favoriteTick += 1
     }
 
     private func call(_ number: String) {
@@ -1737,6 +1689,7 @@ struct LeadDetailSidebar: View {
     @State private var actionToast: String?
     // Lokale notater for denne leaden (Notater-fanen i ekte modus).
     @State private var localNotes: [LeadNoteItem] = []
+    @State private var leadFiles: [LeadFileItem] = []
     // Re-evaluer favoritt-label/stjerne etter toggle.
     @State private var favoriteTick = 0
 
@@ -1772,7 +1725,7 @@ struct LeadDetailSidebar: View {
                     } else if let api = appState.api {
                         Task {
                             do {
-                                try await api.updateStatus(leadId: leadId, status: newStatus.apiValue)
+                                try await api.updateStatus(leadId: leadId, status: newStatus.apiValue, organizationId: appState.activeOrganizationId)
                                 actionToast = "Status endret til \(newStatus.label)"
                                 await appState.refreshLeads()
                             } catch {
@@ -1788,7 +1741,7 @@ struct LeadDetailSidebar: View {
                     } else if let api = appState.api {
                         Task {
                             do {
-                                try await api.updateTemperature(leadId: leadId, temperature: temp)
+                                try await api.updateTemperature(leadId: leadId, temperature: temp, organizationId: appState.activeOrganizationId)
                                 actionToast = "Temperatur endret"
                                 await appState.refreshLeads()
                             } catch {
@@ -1839,17 +1792,27 @@ struct LeadDetailSidebar: View {
                 companyName: lead.company,
                 companyColor: lead.companyColor
             ) { text, _, pinned in
-                // 2026-07-17: var toast-fasade — nå faktisk lagret (lokalt;
-                // ingen backend-flate for lead-notater enda) og synlig i
-                // Notater-fanen.
-                LeadLocalNotes.add(body: text, pinned: pinned,
-                                   author: appState.displayName,
-                                   to: lead.backendId ?? lead.company)
-                localNotes = LeadLocalNotes.notes(for: lead.backendId ?? lead.company)
+                if DemoModeManager.isActiveNonisolated {
+                    actionToast = "Demo-notat er ikke lagret"
+                    return
+                }
+                guard let api = appState.api, let leadId = lead.backendId else {
+                    throw NSError(
+                        domain: "Leadgrid", code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "Du må være innlogget og leaden må være lagret"]
+                    )
+                }
+                _ = try await api.createLeadNote(
+                    leadId: leadId, body: text, pinned: pinned,
+                    organizationId: appState.activeOrganizationId
+                )
+                await loadNotes()
                 actionToast = "Notat lagret\(pinned ? " (festet)" : "")"
             }
         }
-        .sheet(isPresented: $showLeadUploadFile) {
+        .sheet(isPresented: $showLeadUploadFile, onDismiss: {
+            Task { await loadFiles() }
+        }) {
             UploadFileSheet(lead: lead)
         }
         .sheet(isPresented: $showSendProposal) {
@@ -1877,6 +1840,10 @@ struct LeadDetailSidebar: View {
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: actionToast)
+        .task(id: lead.id) {
+            await loadNotes()
+            await loadFiles()
+        }
         .onChange(of: actionToast) { _, new in
             if new != nil {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
@@ -2110,9 +2077,9 @@ struct LeadDetailSidebar: View {
         Task {
             do {
                 if let temp = choice.temperature {
-                    try await api.updateTemperature(leadId: backendId, temperature: temp)
+                    try await api.updateTemperature(leadId: backendId, temperature: temp, organizationId: appState.activeOrganizationId)
                 } else if let st = choice.backendStatus {
-                    try await api.updateStatus(leadId: backendId, status: st)
+                    try await api.updateStatus(leadId: backendId, status: st, organizationId: appState.activeOrganizationId)
                 }
                 actionToast = "Status endret til \(choice.status.label)"
                 await appState.refreshLeads()
@@ -2126,7 +2093,7 @@ struct LeadDetailSidebar: View {
         guard let api = appState.api else { return }
         Task {
             do {
-                try await api.updateStatus(leadId: backendId, status: "won")
+                try await api.updateStatus(leadId: backendId, status: "won", organizationId: appState.activeOrganizationId)
                 actionToast = "\(lead.company) markert som vunnet 🏆"
                 await appState.refreshLeads()
             } catch {
@@ -2135,17 +2102,22 @@ struct LeadDetailSidebar: View {
         }
     }
 
-    /// Delt favoritt-lager med radmenyen («leadFavoritter», backendId ?? company).
-    private var favoriteToken: String { lead.backendId ?? lead.company }
-    private var isFavorite: Bool {
-        (UserDefaults.standard.stringArray(forKey: "leadFavoritter") ?? [])
-            .contains(favoriteToken)
-    }
+    private var isFavorite: Bool { lead.isFavorite }
     private func toggleFavorite() {
-        var favs = Set(UserDefaults.standard.stringArray(forKey: "leadFavoritter") ?? [])
-        if favs.contains(favoriteToken) { favs.remove(favoriteToken) } else { favs.insert(favoriteToken) }
-        UserDefaults.standard.set(Array(favs).sorted(), forKey: "leadFavoritter")
-        favoriteTick += 1
+        guard let leadId = lead.backendId, let api = appState.api else { return }
+        let desired = !lead.isFavorite
+        Task {
+            do {
+                _ = try await api.setLeadFavorite(
+                    leadId: leadId, favorite: desired,
+                    organizationId: appState.activeOrganizationId
+                )
+                favoriteTick += 1
+                await appState.refreshLeads()
+            } catch {
+                actionToast = "Kunne ikke endre favoritt"
+            }
+        }
     }
 
     private var kontaktSection: some View {
@@ -2452,7 +2424,7 @@ struct LeadDetailSidebar: View {
 
     // MARK: Notater-tab
 
-    /// Demo: mock-notater. Ekte: lokalt lagrede notater for denne leaden.
+    /// Demo viser eksempeldata. Ekte modus leser workspace-notater fra backend.
     private var displayNotes: [LeadNoteItem] {
         DemoModeManager.isActiveNonisolated ? LeadsData.notes : localNotes
     }
@@ -2491,8 +2463,32 @@ struct LeadDetailSidebar: View {
                 }
             }
         }
-        .task(id: lead.id) {
-            localNotes = LeadLocalNotes.notes(for: lead.backendId ?? lead.company)
+        .task(id: lead.id) { await loadNotes() }
+    }
+
+
+    private func loadNotes() async {
+        guard !DemoModeManager.isActiveNonisolated,
+              let api = appState.api, let leadId = lead.backendId else { return }
+        do {
+            let notes = try await api.fetchLeadNotes(
+                leadId: leadId, organizationId: appState.activeOrganizationId
+            )
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "nb_NO")
+            formatter.dateFormat = "d. MMM HH:mm"
+            localNotes = notes.map { note in
+                LeadNoteItem(
+                    author: note.authorName,
+                    initials: LeadRow.initials(for: note.authorName),
+                    authorColor: LdBrand.purpleLight,
+                    body: note.body,
+                    timestamp: formatter.string(from: note.createdAt),
+                    pinned: note.pinned
+                )
+            }
+        } catch {
+            actionToast = "Kunne ikke hente notater"
         }
     }
 
@@ -2537,14 +2533,18 @@ struct LeadDetailSidebar: View {
 
     // MARK: Filer-tab
 
+    private var displayFiles: [LeadFileItem] {
+        DemoModeManager.isActiveNonisolated ? LeadsData.files : leadFiles
+    }
+
     private var filesTab: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("\(LeadsData.files.count) filer")
+                Text("\(displayFiles.count) filer")
                     .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(LdBrand.textSecondary)
                 Spacer()
-                Button { onUploadFile() } label: {
+                Button { showLeadUploadFile = true } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "plus.circle.fill")
                             .font(.appScaled(size: 10, weight: .bold))
@@ -2555,13 +2555,44 @@ struct LeadDetailSidebar: View {
                 }
                 .buttonStyle(.plain)
             }
-            if LeadsData.files.isEmpty {
+            if displayFiles.isEmpty {
                 detailEmptyState(icon: "tray", text: "Ingen filer lastet opp enda")
             } else {
-                ForEach(LeadsData.files) { f in
+                ForEach(displayFiles) { f in
                     fileRow(f)
                 }
             }
+        }
+    }
+
+    private func loadFiles() async {
+        guard !DemoModeManager.isActiveNonisolated,
+              let api = appState.api, let leadId = lead.backendId else { return }
+        do {
+            let files = try await api.fetchLeadFiles(
+                leadId: leadId, organizationId: appState.activeOrganizationId
+            )
+            let dateFormatter = DateFormatter()
+            dateFormatter.locale = Locale(identifier: "nb_NO")
+            dateFormatter.dateFormat = "d. MMM HH:mm"
+            leadFiles = files.map { file in
+                let value = (file.contentType ?? file.displayName).lowercased()
+                let kind: LeadFileItem.FileKind
+                if value.contains("pdf") { kind = .pdf }
+                else if value.contains("image") || value.contains("jpg") || value.contains("png") { kind = .image }
+                else if value.contains("sheet") || value.contains("excel") || value.contains("xlsx") { kind = .spreadsheet }
+                else if value.contains("video") || value.contains("mov") || value.contains("mp4") { kind = .video }
+                else { kind = .doc }
+                return LeadFileItem(
+                    name: file.displayName,
+                    kind: kind,
+                    size: ByteCountFormatter.string(fromByteCount: Int64(file.sizeBytes), countStyle: .file),
+                    uploadedAt: dateFormatter.string(from: file.uploadedAt),
+                    backendId: file.id
+                )
+            }
+        } catch {
+            actionToast = "Kunne ikke hente filer"
         }
     }
 

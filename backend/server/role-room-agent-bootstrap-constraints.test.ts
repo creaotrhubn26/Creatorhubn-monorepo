@@ -3,6 +3,7 @@ import {
   BOOTSTRAP_CONSTRAINTS,
   BOOTSTRAP_OUTPUT_SCHEMA_HINTS,
   BOOTSTRAP_SYSTEM_PROMPT,
+  ROLE_ROOM_AGENT_RESEARCH_SKILLS,
 } from './role-room-agent-bootstrap-constraints.js';
 
 // F7: the OpenAI and Claude synthesis paths previously duplicated these lists
@@ -34,5 +35,19 @@ describe('shared bootstrap constraints (F7)', () => {
     expect(BOOTSTRAP_SYSTEM_PROMPT.length).toBeGreaterThan(0);
     expect(BOOTSTRAP_OUTPUT_SCHEMA_HINTS.companyProfile).toContain('businessModel');
     expect(BOOTSTRAP_OUTPUT_SCHEMA_HINTS.companyProfile).toContain('probableLocationAddress');
+  });
+
+  it('shares explicit identity, geography, propagation and fail-closed skills across providers', () => {
+    expect(ROLE_ROOM_AGENT_RESEARCH_SKILLS.map((skill) => skill.id)).toEqual([
+      'resolve_legal_identity',
+      'enforce_source_precedence',
+      'verify_geographic_relevance',
+      'verify_semantic_relevance',
+      'propagate_verified_profile',
+      'fail_closed_without_evidence',
+    ]);
+    for (const skill of ROLE_ROOM_AGENT_RESEARCH_SKILLS) {
+      expect(BOOTSTRAP_CONSTRAINTS).toContain(skill.instruction);
+    }
   });
 });

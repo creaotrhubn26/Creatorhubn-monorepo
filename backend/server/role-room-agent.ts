@@ -10,15 +10,28 @@ import {
   orchestratorEnabled,
   runOrchestratedBootstrap,
 } from "./role-room-agent-bootstrap-orchestrator.js";
-import { makeStructuredLogger } from "./role-room-agent-llm-util.js";
+import {
+  BOOTSTRAP_SYNTH_TIMEOUT_MS,
+  extractJsonFromText,
+  makeStructuredLogger,
+  withTimeout,
+  withTimeoutFallback,
+} from "./role-room-agent-llm-util.js";
 import {
   BOOTSTRAP_CONSTRAINTS,
   BOOTSTRAP_OUTPUT_SCHEMA_HINTS,
   BOOTSTRAP_SYSTEM_PROMPT,
 } from "./role-room-agent-bootstrap-constraints.js";
-import { classifyByNace } from "./role-room-agent-nace-profile.js";
+import {
+  classifyByNace,
+  classifyWebsiteSpecialization,
+} from "./role-room-agent-nace-profile.js";
 import {
   buildSearchQueries,
+  isGooglePlaceBusinessIdentityMatch,
+  isGooglePlaceCompetitorSemanticallyRelevant,
+  isGooglePlaceLocalOpportunityInMarket,
+  isGooglePlaceOpportunityTypeMatch,
   scoreBrregNameCandidate,
   scoreGooglePlaceCandidate,
 } from "./role-room-agent-match-scoring.js";
@@ -39,6 +52,12 @@ import {
   type RoleRoomAgentGroundingSources,
 } from "./role-room-agent-grounding.js";
 import { enrichCompetitorWithMetaPage } from "./role-room-meta-pages.js";
+import { extractWebsiteLegalIdentityFromHtml } from "./role-room-agent-website-identity.js";
+import {
+  googleCustomSearchConfigured,
+  searchGoogleCustom,
+  type GoogleCustomSearchItem,
+} from "./google-custom-search.js";
 
 export type RoleRoomAgentProducerBootstrapInput = {
   projectId: string;
@@ -94,6 +113,9 @@ type RoleRoomAgentSocialProfileCandidate = {
 type RoleRoomAgentCompetitorEvidence = {
   type:
     | "google_places_result"
+    | "web_search_result"
+    | "specialized_product_match"
+    | "norwegian_market"
     | "same_category"
     | "location_overlap"
     | "website_available"
@@ -121,7 +143,7 @@ type RoleRoomAgentCompetitorMetaPage = {
 };
 
 type RoleRoomAgentCompetitorCandidate = {
-  source: "google_places" | "brreg_nace";
+  source: "google_places" | "web_search" | "brreg_nace";
   placeId?: string | null;
   /** Norwegian NACE/SBB industry code (Brregs `naeringskode1.kode`). Set
    *  for both Brreg-sourced competitors AND Google Places competitors
@@ -153,7 +175,7 @@ type RoleRoomAgentCompetitorCandidate = {
 
 export type RoleRoomAgentCompetitorAnalysis = {
   status: "ready" | "limited" | "unavailable";
-  source: "google_places" | "fallback";
+  source: "google_places" | "web_search" | "brreg_nace" | "combined" | "fallback";
   generatedAt: string;
   marketContext: string;
   competitors: RoleRoomAgentCompetitorCandidate[];
@@ -262,6 +284,9 @@ export type RoleRoomAgentWebsiteInsights = {
    *  Bootstrap uses this to look up Brreg even when the user only
    *  knows the consumer-facing brand name. */
   extractedOrgNumber?: string | null;
+  /** High-trust legal entity name from schema.org Organization JSON-LD or
+   *  conservative copyright/ownership copy on the customer's own site. */
+  extractedLegalName?: string | null;
 };
 
 // =============================================================================
@@ -364,6 +389,10 @@ export type RoleRoomAgentMerchSuppliers = {
    *  Slice 1; Claude-powered version comes in Slice 3. */
   cooperationAngles: string[];
   outreachChecklist: string[];
+  /** True when one or more provider calls hit the section deadline while
+   *  faster, verified results were retained. */
+  partial?: boolean;
+  timedOutSourceCount?: number;
   limitations: string[];
 };
 
@@ -509,6 +538,7 @@ export type RoleRoomAgentServiceLatencies = {
   website?: number;
   googlePlacesBusiness?: number;
   googlePlacesCompetitors?: number;
+  webCompetitors?: number;
   googlePlacesLocal?: number;
   competitorAnalysis?: number;
   localPresence?: number;
@@ -528,6 +558,7 @@ export type RoleRoomAgentDataSource =
   | "brreg"
   | "website"
   | "google_places"
+  | "web_search"
   | "claude_synthesis"
   | "openai_synthesis"
   | "fallback_rules"
@@ -673,6 +704,12 @@ export function getRoleRoomAgentRuntimeConfig() {
     providerConfigured: hasText(process.env.OPENAI_API_KEY),
     defaultModel: DEFAULT_ROLE_ROOM_AGENT_MODEL,
     googlePlacesConfigured: hasText(process.env.GOOGLE_PLACES_API_KEY),
+    webSearchConfigured: specializedWebSearchConfigured(),
+    webSearchProvider: googleCustomSearchConfigured()
+      ? "google_cse"
+      : hasText(process.env.ANTHROPIC_API_KEY)
+        ? "anthropic"
+        : null,
     cohereConfigured: hasText(process.env.COHERE_API_KEY),
     cohereRerankModel: DEFAULT_ROLE_ROOM_AGENT_COHERE_RERANK_MODEL,
     brregConfigured: true,
@@ -1247,15 +1284,32 @@ function buildCompetitorSearchQueries(
   businessSignals: RoleRoomAgentBusinessSignals | null,
   brregCompany: RoleRoomAgentBrregCompany | null,
 ): string[] {
+  const websiteSpecialization = classifyWebsiteSpecialization([
+    input.extraContext,
+    websiteInsights.pageTitle,
+    websiteInsights.metaDescription,
+    websiteInsights.textSnippet,
+  ]);
   // Category sources, in order of trust. Note: we deliberately do NOT
   // fall back to websiteInsights.siteName here. siteName is the customer's
   // own brand — querying "<Customer Name> Oslo" returns the customer
   // themselves, who is then filtered out, leaving zero competitors.
-  const category = businessSignals?.primaryTypeDisplayName
+  const category = websiteSpecialization?.subIndustry
+    || businessSignals?.primaryTypeDisplayName
     || brregCompany?.industryCode?.description
     || "";
   const location = extractMarketLocation(businessSignals?.formattedAddress || brregCompany?.businessAddress || "");
   const municipality = brregCompany?.municipality || "";
+
+  if (websiteSpecialization?.industry === "Helseteknologi og programvare") {
+    const market = location || municipality || "Norge";
+    return [
+      `medisinsk transkripsjon programvare ${market}`,
+      `klinisk dokumentasjon programvare ${market}`,
+      `journalsystem for leger ${market}`,
+      `helseteknologi programvare ${market}`,
+    ].map((entry) => normalizeWhitespace(entry));
+  }
 
   // For SMBs without a clear municipality, "i Norge" anchors the query
   // to the local market; bare-category Google Places queries with
@@ -1268,7 +1322,7 @@ function buildCompetitorSearchQueries(
       [
         category && location ? `${category} ${location}` : "",
         category && municipality && municipality !== location ? `${category} ${municipality}` : "",
-        brregCompany?.industryCode?.description && location
+        !websiteSpecialization && brregCompany?.industryCode?.description && location
           ? `${brregCompany.industryCode.description} ${location}`
           : "",
         // Anchor a national-scope fallback when neither municipality nor
@@ -1597,8 +1651,6 @@ function buildLimitedLocalPresencePlan(
   classification: RoleRoomAgentBusinessClassification,
   marketArea: string,
 ): RoleRoomAgentLocalPresencePlan {
-  const companyName = hasText(input.companyName) ? normalizeWhitespace(input.companyName) : "kunden";
-  const definitions = buildGenericLocalOpportunityDefinitions(companyName, classification);
   return {
     status: "limited",
     source: "fallback",
@@ -1607,71 +1659,15 @@ function buildLimitedLocalPresencePlan(
     marketArea: marketArea || "Må avklares",
     radiusStrategy: buildRadiusStrategy(classification),
     nearbyOpportunities: [],
-    recommendedEventConcepts: definitions.slice(0, 4).map((entry) => entry.eventIdea),
-    contentActivationPlan: [
-      "Lag pre-event teaser med tydelig lokal partner og enkel CTA.",
-      "Dokumenter selve eventet med foto, korte intervjuer og behind-the-scenes.",
-      "Publiser recap, kunde-/partnerreaksjoner og tilbud innen 24 timer.",
-    ],
-    outreachSequence: [
-      "Bekreft riktig kontaktperson hos lokal partner.",
-      "Send kort forslag med hva partneren får igjen, ikke bare hva kunden vil selge.",
-      "Foreslå pilot med lav risiko og tydelig måling.",
-    ],
-    kpis: ["Påmeldinger/oppmøte", "QR-skanninger", "Leads", "Salg/booking", "Innhold produsert", "Gjenkjøp/oppfølging"],
+    // No verified local entity means no event/outreach/content plan. Keeping
+    // these empty prevents a ranking hint or LLM guess from becoming an
+    // operational recommendation downstream.
+    recommendedEventConcepts: [],
+    contentActivationPlan: [],
+    outreachSequence: [],
+    kpis: [],
     limitations: [reason],
   };
-}
-
-/** Validate a 9-digit Norwegian organization number with the mod-11
- *  checksum. Filters out any random 9-digit sequence (phone numbers,
- *  postal codes glued together) that happens to match the regex. */
-function isValidNorwegianOrgNumber(digits: string): boolean {
-  if (!/^\d{9}$/.test(digits)) return false;
-  const weights = [3, 2, 7, 6, 5, 4, 3, 2];
-  let sum = 0;
-  for (let i = 0; i < 8; i++) {
-    sum += Number(digits[i]) * weights[i];
-  }
-  const remainder = sum % 11;
-  const checksum = remainder === 0 ? 0 : 11 - remainder;
-  if (checksum === 10) return false; // not a valid orgnr — would be 10
-  return checksum === Number(digits[8]);
-}
-
-/** Extract a Norwegian 9-digit organization number from raw HTML.
- *  Looks first for explicit "Org.nr"/"Organisasjonsnummer"/"MVA"
- *  contexts (high precision), then falls back to any mod-11-valid
- *  9-digit sequence (catches footers that just print the number).
- *  Returns null when nothing valid found. */
-function extractOrgNumberFromHtml(html: string): string | null {
-  if (!html) return null;
-  const stripped = html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ");
-  // High-precision: explicit label.
-  const labelled = stripped.match(
-    /(?:org\.?\s*nr\.?|organisasjonsnummer|orgnr|mva)\s*[:.]?\s*(?:no)?\s*((?:\d[\s.-]?){9})/i,
-  );
-  if (labelled) {
-    const digits = labelled[1].replace(/\D/g, "");
-    if (digits.length === 9 && isValidNorwegianOrgNumber(digits)) {
-      return digits;
-    }
-  }
-  // Lower-precision fallback: scan all 9-digit groups (allowing space
-  // separators), validate each with mod-11. Take the first valid hit.
-  const candidates = stripped.match(/\b\d{3}[\s.-]?\d{3}[\s.-]?\d{3}\b/g) ?? [];
-  for (const c of candidates) {
-    const digits = c.replace(/\D/g, "");
-    if (digits.length === 9 && isValidNorwegianOrgNumber(digits)) {
-      return digits;
-    }
-  }
-  return null;
 }
 
 function extractTextSnippet(html: string): string {
@@ -2161,12 +2157,16 @@ async function rerankWithCohere<T extends { snippet: string }>(
   }
 
   try {
-    const response = await client.rerank({
-      model: DEFAULT_ROLE_ROOM_AGENT_COHERE_RERANK_MODEL,
-      query,
-      topN: Math.min(topN, entries.length),
-      documents: entries.map((entry) => renderDocument(entry).slice(0, 3500)),
-    });
+    const response = await withTimeout(
+      client.rerank({
+        model: DEFAULT_ROLE_ROOM_AGENT_COHERE_RERANK_MODEL,
+        query,
+        topN: Math.min(topN, entries.length),
+        documents: entries.map((entry) => renderDocument(entry).slice(0, 3500)),
+      }),
+      2_500,
+      "cohere_rerank_timeout",
+    );
 
     const results = Array.isArray(response.results) ? response.results : [];
     const ranked = results
@@ -2329,8 +2329,123 @@ function extractProbableLogoUrlRegexFallback(html: string, websiteUrl: string): 
  * role-room-website-analyzer.ts for a similar purpose). Result flows
  * into `buildFallbackBootstrap` → `brandGuide.colors`, which is consumed
  * by feedPlanner.ts, FeedPostTile, the PDF exporter, and the BrandSummary
- * strip. SVG/ICO are skipped because Vibrant only handles rasters.
+ * strip. Raster logos use Vibrant. SVG logos are read as inert text and only
+ * explicit fill/stroke/color values are considered; scripts, imports and
+ * external resources are never evaluated.
  */
+const normalizeSvgColorToken = (rawValue: string): string | null => {
+  const value = rawValue.trim();
+  const hexMatch = value.match(/^#([0-9a-f]{3,8})$/i);
+  if (hexMatch) {
+    const source = hexMatch[1];
+    if (source.length === 4 && source[3].toLowerCase() === "0") return null;
+    if (source.length === 8 && source.slice(6).toLowerCase() === "00") return null;
+    const rgb = source.length === 3 || source.length === 4
+      ? source.slice(0, 3).split("").map((character) => character.repeat(2)).join("")
+      : source.slice(0, 6);
+    return `#${rgb.toUpperCase()}`;
+  }
+
+  const rgbMatch = value.match(/^rgba?\(([^)]+)\)$/i);
+  if (!rgbMatch) return null;
+  const parts = rgbMatch[1].replace("/", " ").split(/[\s,]+/).filter(Boolean);
+  if (parts.length < 3) return null;
+  if (parts.length >= 4) {
+    const alpha = parts[3].endsWith("%")
+      ? Number(parts[3].slice(0, -1)) / 100
+      : Number(parts[3]);
+    if (Number.isFinite(alpha) && alpha <= 0) return null;
+  }
+  const channels = parts.slice(0, 3).map((part) => {
+    const numeric = part.endsWith("%")
+      ? (Number(part.slice(0, -1)) / 100) * 255
+      : Number(part);
+    return Number.isFinite(numeric) ? Math.max(0, Math.min(255, Math.round(numeric))) : Number.NaN;
+  });
+  if (channels.some((channel) => Number.isNaN(channel))) return null;
+  return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+};
+
+const svgColorRgb = (hex: string): [number, number, number] => [
+  Number.parseInt(hex.slice(1, 3), 16),
+  Number.parseInt(hex.slice(3, 5), 16),
+  Number.parseInt(hex.slice(5, 7), 16),
+];
+
+const svgColorLuminance = (hex: string): number => {
+  const [red, green, blue] = svgColorRgb(hex);
+  return (red * 299 + green * 587 + blue * 114) / 1000;
+};
+
+const svgColorDistance = (left: string, right: string): number => {
+  const [leftRed, leftGreen, leftBlue] = svgColorRgb(left);
+  const [rightRed, rightGreen, rightBlue] = svgColorRgb(right);
+  return Math.sqrt(
+    (leftRed - rightRed) ** 2
+      + (leftGreen - rightGreen) ** 2
+      + (leftBlue - rightBlue) ** 2,
+  );
+};
+
+export function extractBrandColorsFromSvg(svg: string): RoleRoomAgentBrandColor[] {
+  if (!/<svg\b/i.test(svg)) return [];
+  const inertSvg = svg
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "");
+  const candidates = new Map<string, { count: number; firstIndex: number }>();
+  const colorPropertyPattern =
+    /\b(?:fill|stroke|stop-color|flood-color|lighting-color|color)\s*(?:=|:)\s*["']?\s*(#[0-9a-f]{3,8}\b|rgba?\([^)]+\))/gi;
+
+  for (const match of inertSvg.matchAll(colorPropertyPattern)) {
+    const hex = normalizeSvgColorToken(match[1]);
+    if (!hex) continue;
+    const existing = candidates.get(hex);
+    candidates.set(hex, {
+      count: (existing?.count ?? 0) + 1,
+      firstIndex: existing?.firstIndex ?? match.index,
+    });
+  }
+
+  const remaining = Array.from(candidates, ([hex, metadata]) => ({
+    hex,
+    ...metadata,
+  }));
+  remaining.sort(
+    (left, right) =>
+      right.count - left.count
+      || svgColorLuminance(left.hex) - svgColorLuminance(right.hex)
+      || left.firstIndex - right.firstIndex,
+  );
+
+  const selected: typeof remaining = [];
+  const first = remaining.shift();
+  if (first) selected.push(first);
+  while (remaining.length > 0 && selected.length < 5) {
+    remaining.sort((left, right) => {
+      const leftDistance = Math.min(
+        ...selected.map((selectedColor) => svgColorDistance(left.hex, selectedColor.hex)),
+      );
+      const rightDistance = Math.min(
+        ...selected.map((selectedColor) => svgColorDistance(right.hex, selectedColor.hex)),
+      );
+      return right.count * rightDistance - left.count * leftDistance
+        || right.count - left.count
+        || left.firstIndex - right.firstIndex;
+    });
+    selected.push(remaining.shift()!);
+  }
+
+  return selected.map((entry, index) => ({
+    label: index === 0 ? "Primær" : index === 1 ? "Aksent" : `Sekundær ${index - 1}`,
+    hex: entry.hex,
+    usage: index === 0
+      ? "Hovedfarge for overskrifter, bakgrunner og tydelig merkevareforankring."
+      : index === 1
+        ? "Kontrastfarge for CTA, detaljer og brand-aksenter."
+        : "Støttefarge hentet direkte fra logoen.",
+  }));
+}
+
 export async function extractBrandColorsFromLogo(
   logoUrl: string | null | undefined,
 ): Promise<RoleRoomAgentBrandColor[]> {
@@ -2344,14 +2459,18 @@ export async function extractBrandColorsFromLogo(
     });
     if (!response.ok) return [];
     const contentType = (response.headers.get("content-type") || "").toLowerCase();
-    if (!/^image\/(?:png|jpe?g|webp|avif)/.test(contentType)) {
-      // SVG and ICO are common but Vibrant can't decode them reliably.
-      return [];
-    }
+    const isSvg = contentType.includes("image/svg+xml");
+    const isSupportedRaster = /^image\/(?:png|jpe?g|webp|avif)/.test(contentType);
+    if (!isSvg && !isSupportedRaster) return [];
+    const declaredLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > 5 * 1024 * 1024) return [];
     const arrayBuffer = await response.arrayBuffer();
-    if (arrayBuffer.byteLength < 200) return [];
     if (arrayBuffer.byteLength > 5 * 1024 * 1024) return [];
     const buffer = Buffer.from(arrayBuffer);
+    if (isSvg) {
+      return extractBrandColorsFromSvg(buffer.toString("utf8"));
+    }
+    if (arrayBuffer.byteLength < 200) return [];
     const palette = await Vibrant.from(buffer).getPalette();
 
     const colors: RoleRoomAgentBrandColor[] = [];
@@ -2395,6 +2514,19 @@ function detectBusinessClassification(
   businessSignals?: RoleRoomAgentBusinessSignals | null,
   brregCompany?: RoleRoomAgentBrregCompany | null,
 ): RoleRoomAgentBusinessClassification {
+  // A specific first-party website profile may safely refine a broad NACE
+  // bucket. Requiring both vertical and product signals prevents a clinic or
+  // generic software vendor from matching on a single ambiguous word.
+  const websiteSpecialization = classifyWebsiteSpecialization([
+    input.extraContext,
+    websiteInsights.siteName,
+    websiteInsights.pageTitle,
+    websiteInsights.metaDescription,
+    websiteInsights.textSnippet,
+    brregCompany?.industryCode?.description,
+  ]);
+  if (websiteSpecialization) return websiteSpecialization;
+
   // NACE-koden fra Brreg er den mest pålitelige, strukturerte kilden til
   // bransje og forretningsmodell (B2B/B2C). Bruk den FØRST når den finnes og
   // er i den konservative NACE→profil-tabellen; ellers fall tilbake til
@@ -2495,6 +2627,10 @@ function detectBusinessClassification(
 function deriveAudienceFromClassification(
   classification: RoleRoomAgentBusinessClassification,
 ): string[] {
+  if (classification.industry === "Helseteknologi og programvare") {
+    return ["Leger og helsepersonell", "Legekontor og klinikker", "Helsefaglige beslutningstakere"];
+  }
+
   if (classification.businessModel === "B2C") {
     return ["Primære kunder", "Lokale gjester", "Digitale bestillere"];
   }
@@ -2534,9 +2670,13 @@ export async function fetchWebsiteInsights(
 
   // F1-audit (doc 14) kjøres parallelt med hovedskanningen — den gjør egne,
   // SSRF-validerte kall (bot-UA-diff, robots, sitemap) og feiler aldri hardt.
-  const siteAuditPromise: Promise<SiteSetupAudit | null> = runSiteSetupAudit(websiteUrl)
-    .then((r) => ("audit" in r ? r.audit : null))
-    .catch(() => null);
+  const siteAuditPromise: Promise<SiteSetupAudit | null> = withTimeoutFallback(
+    runSiteSetupAudit(websiteUrl)
+      .then((r) => ("audit" in r ? r.audit : null)),
+    3_000,
+    "site_setup_audit_timeout",
+    null,
+  );
 
   try {
     const response = await fetch(websiteUrl, {
@@ -2544,7 +2684,7 @@ export async function fetchWebsiteInsights(
         "User-Agent": "CreatorHub Role Room Agent/1.0 (+https://theroleroom.com)",
         Accept: "text/html,application/xhtml+xml",
       },
-      signal: AbortSignal.timeout(12_000),
+      signal: AbortSignal.timeout(8_000),
     });
 
     if (!response.ok) {
@@ -2561,6 +2701,7 @@ export async function fetchWebsiteInsights(
     const parsedBase = new URL(finalUrl);
     const $ = load(html);
     const socialCandidateMap = new Map<string, RoleRoomAgentSocialProfileCandidate>();
+    const websiteIdentity = extractWebsiteLegalIdentityFromHtml(html);
     collectSocialCandidatesFromHtml(html, finalUrl, "Forside", socialCandidateMap);
     const discoveredLinks = Array.from(
       new Map(
@@ -2614,38 +2755,49 @@ export async function fetchWebsiteInsights(
       },
     ];
 
-    for (const link of discoveredLinks) {
-      if (link.url === finalUrl) {
-        continue;
-      }
-      try {
-        const pageResponse = await fetch(link.url, {
-          headers: {
-            "User-Agent": "CreatorHub Role Room Agent/1.0 (+https://theroleroom.com)",
-            Accept: "text/html,application/xhtml+xml",
-          },
-          signal: AbortSignal.timeout(10_000),
-        });
-        if (!pageResponse.ok) {
-          continue;
+    const linkedPages = await Promise.all(
+      discoveredLinks.map(async (link) => {
+        if (link.url === finalUrl) return null;
+        try {
+          const pageResponse = await fetch(link.url, {
+            headers: {
+              "User-Agent": "CreatorHub Role Room Agent/1.0 (+https://theroleroom.com)",
+              Accept: "text/html,application/xhtml+xml",
+            },
+            signal: AbortSignal.timeout(4_000),
+          });
+          if (!pageResponse.ok) return null;
+          return {
+            link,
+            pageHtml: await pageResponse.text(),
+            resolvedPageUrl: pageResponse.url || link.url,
+          };
+        } catch {
+          return null;
         }
-        const pageHtml = await pageResponse.text();
-        const resolvedPageUrl = pageResponse.url || link.url;
-        collectSocialCandidatesFromHtml(pageHtml, resolvedPageUrl, link.sourceLabel || extractTitle(pageHtml), socialCandidateMap);
-        const snippet = extractTextSnippet(pageHtml);
-        if (!snippet) {
-          continue;
-        }
-        pageCandidates.push({
-          url: resolvedPageUrl,
-          title: extractTitle(pageHtml),
-          snippet,
-          sourceLabel: link.sourceLabel,
-          relevanceScore: null,
-        });
-      } catch {
-        continue;
-      }
+      }),
+    );
+    for (const page of linkedPages) {
+      if (!page) continue;
+      const { link, pageHtml, resolvedPageUrl } = page;
+      const pageIdentity = extractWebsiteLegalIdentityFromHtml(pageHtml);
+      websiteIdentity.organizationNumber ||= pageIdentity.organizationNumber;
+      websiteIdentity.legalName ||= pageIdentity.legalName;
+      collectSocialCandidatesFromHtml(
+        pageHtml,
+        resolvedPageUrl,
+        link.sourceLabel || extractTitle(pageHtml),
+        socialCandidateMap,
+      );
+      const snippet = extractTextSnippet(pageHtml);
+      if (!snippet) continue;
+      pageCandidates.push({
+        url: resolvedPageUrl,
+        title: extractTitle(pageHtml),
+        snippet,
+        sourceLabel: link.sourceLabel,
+        relevanceScore: null,
+      });
     }
 
     const rerankedPages = await rerankWithCohere(
@@ -2699,12 +2851,10 @@ export async function fetchWebsiteInsights(
         brregCompany,
       ),
       selectedPageSnippets,
-      // Pull a real, validated orgnr off the page when present. Catches
-      // brand-vs-legal-entity gaps (e.g. holycrust.no's footer prints
-      // "Macks Invest AS, 933 469 395" — the actual entity to look up
-      // in Brreg, not the brand "Holy Crust"). Bootstrap uses this when
-      // the user didn't supply an explicit organizationNumber.
-      extractedOrgNumber: extractOrgNumberFromHtml(html),
+      // Feed homepage or linked legal-page identity back into Brreg before
+      // any downstream location or competitor lookup.
+      extractedOrgNumber: websiteIdentity.organizationNumber,
+      extractedLegalName: websiteIdentity.legalName,
       siteSetupAudit: await siteAuditPromise,
     };
   } catch {
@@ -2744,46 +2894,42 @@ export async function fetchGooglePlacesBusinessSignals(
     "places.id,places.displayName,places.formattedAddress,places.location,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri";
 
   console.log(`[places-business] queries=${JSON.stringify(searchQueries)}`);
-  const candidates: Array<Record<string, unknown>> = [];
-
-  for (const query of searchQueries) {
-    try {
-      const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": apiKey,
-          "X-Goog-FieldMask": fieldMask,
-        },
-        body: JSON.stringify({
-          textQuery: query,
-          pageSize: 5,
-          languageCode: "nb",
-          regionCode: "NO",
-        }),
-        signal: AbortSignal.timeout(12_000),
-      });
-
-      if (!response.ok) {
-        const body = await response.text().catch(() => "");
-        console.error(`[places-business] query="${query}" status=${response.status} body=${body.replace(/\s+/g, " ").slice(0, 500)}`);
-        continue;
+  const resultSets = await Promise.all(
+    searchQueries.map(async (query): Promise<Array<Record<string, unknown>>> => {
+      try {
+        const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": apiKey,
+            "X-Goog-FieldMask": fieldMask,
+          },
+          body: JSON.stringify({
+            textQuery: query,
+            pageSize: 5,
+            languageCode: "nb",
+            regionCode: "NO",
+          }),
+          signal: AbortSignal.timeout(12_000),
+        });
+        if (!response.ok) {
+          const body = await response.text().catch(() => "");
+          console.error(`[places-business] query="${query}" status=${response.status} body=${body.replace(/\s+/g, " ").slice(0, 500)}`);
+          return [];
+        }
+        const payload = (await response.json().catch(() => null)) as
+          | { places?: Array<Record<string, unknown>> }
+          | null;
+        const places = Array.isArray(payload?.places) ? payload.places : [];
+        console.log(`[places-business] query="${query}" returnedCount=${places.length}`);
+        return places;
+      } catch (err) {
+        console.error(`[places-business] query="${query}" threw: ${err instanceof Error ? err.message : String(err)}`);
+        return [];
       }
-
-      const payload = (await response.json().catch(() => null)) as
-        | { places?: Array<Record<string, unknown>> }
-        | null;
-      const places = Array.isArray(payload?.places) ? payload.places : [];
-      console.log(`[places-business] query="${query}" returnedCount=${places.length}`);
-      candidates.push(...places);
-      if (places.length > 0) {
-        break;
-      }
-    } catch (err) {
-      console.error(`[places-business] query="${query}" threw: ${err instanceof Error ? err.message : String(err)}`);
-      continue;
-    }
-  }
+    }),
+  );
+  const candidates = resultSets.flat();
   console.log(`[places-business] totalCandidates=${candidates.length}`);
 
   if (candidates.length === 0) {
@@ -2797,6 +2943,17 @@ export async function fetchGooglePlacesBusinessSignals(
         scoreGooglePlaceCandidate(left, companyName, websiteHost, localityHint)
       );
     })[0];
+
+  if (!isGooglePlaceBusinessIdentityMatch(bestCandidate, companyName, websiteHost, localityHint)) {
+    console.warn("[places-business] rejected best candidate because legal identity/domain/locality did not match", {
+      companyName,
+      websiteHost,
+      localityHint,
+      candidateName: readGooglePlaceDisplayName(bestCandidate),
+      candidateAddress: hasText(bestCandidate.formattedAddress) ? normalizeWhitespace(bestCandidate.formattedAddress) : null,
+    });
+    return null;
+  }
 
   const placeId = hasText(bestCandidate.id) ? normalizeWhitespace(bestCandidate.id) : null;
   const detailsFieldMask = [
@@ -3385,8 +3542,286 @@ async function fetchBrregCompetitorsByNace(
   return competitors;
 }
 
+const GOOGLE_WEB_COMPETITOR_EXCLUDED_HOSTS = [
+  "brreg.no",
+  "proff.no",
+  "purehelp.no",
+  "linkedin.com",
+  "facebook.com",
+  "instagram.com",
+  "youtube.com",
+  "wikipedia.org",
+  "nrk.no",
+  "vg.no",
+  "dagensmedisin.no",
+  "legeforeningen.no",
+];
+
+function isExcludedWebCompetitorHost(host: string): boolean {
+  return GOOGLE_WEB_COMPETITOR_EXCLUDED_HOSTS.some(
+    (excluded) => host === excluded || host.endsWith(`.${excluded}`),
+  );
+}
+
+function isSpecializedHealthProductResult(item: GoogleCustomSearchItem): boolean {
+  const corpus = normalizeWhitespace([
+    item.title,
+    item.snippet,
+    item.displayLink,
+    item.link,
+  ].filter(hasText).join(" ")).toLowerCase();
+  const hasHealthContext = /\b(?:lege|leger|medisinsk|klinisk|helsepersonell|pasient|journal|journalnotat|journaldokumentasjon|transkripsjon)\b/.test(corpus);
+  const hasDigitalProduct = /\b(?:ai|kunstig intelligens|programvare|plattform|app|saas|journalsystem|journalnotat|transkripsjon|diktering|tale[ -]til[ -]tekst|videokonsultasjon)\b/.test(corpus);
+  const looksLikeCareProvider = /\b(?:fysioterapi|ergoterapi|hjemmesykepleie|legevakt|sykehus|behandlingsklinikk|rehabilitering)\b/.test(corpus)
+    && !/\b(?:programvare|plattform|saas|journalsystem|journalnotat|transkripsjon)\b/.test(corpus);
+  return hasHealthContext && hasDigitalProduct && !looksLikeCareProvider;
+}
+
+function webCompetitorName(item: GoogleCustomSearchItem, host: string): string {
+  const domainLabel = host.replace(/^www\./, "").split(".")[0] || host;
+  const titleParts = normalizeWhitespace(item.title || "")
+    .split(/\s+(?:\||–|—|-)\s+/)
+    .map((part) => normalizeWhitespace(part))
+    .filter(Boolean);
+  const matchingTitlePart = titleParts.find((part) =>
+    normalizeIdentity(part).includes(normalizeIdentity(domainLabel)),
+  );
+  const candidate = matchingTitlePart || (titleParts[0]?.length <= 40 ? titleParts[0] : "");
+  if (candidate && !/^(?:hjem|forside|produkt|løsning)$/i.test(candidate)) return candidate;
+  return domainLabel.charAt(0).toUpperCase() + domainLabel.slice(1);
+}
+
+type SpecializedWebSearchOutcome = {
+  items: GoogleCustomSearchItem[];
+  provider: "google_cse" | "anthropic_web_search";
+};
+
+function specializedWebSearchConfigured(): boolean {
+  return googleCustomSearchConfigured() || hasText(process.env.ANTHROPIC_API_KEY);
+}
+
+async function searchSpecializedCompetitorWeb(
+  customerHost: string | null,
+): Promise<SpecializedWebSearchOutcome> {
+  const query = '("AI journalnotat" OR "medisinsk transkripsjon" OR "klinisk dokumentasjon") programvare lege Norge';
+  if (googleCustomSearchConfigured()) {
+    return {
+      provider: "google_cse",
+      items: await searchGoogleCustom(query, {
+        num: 10,
+        timeoutMs: 4_000,
+        languageRestriction: "lang_no",
+        countryRestriction: "countryNO",
+        excludedSite: customerHost,
+      }),
+    };
+  }
+  if (!hasText(process.env.ANTHROPIC_API_KEY)) {
+    throw new Error("specialized_web_search_not_configured");
+  }
+
+  const mod = await import("@anthropic-ai/sdk");
+  const AnthropicCtor = mod.default ?? mod.Anthropic;
+  const client = new AnthropicCtor({
+    apiKey: process.env.ANTHROPIC_API_KEY,
+    fetch: globalThis.fetch,
+    maxRetries: 0,
+    timeout: 8_000,
+  });
+  const response = await client.messages.create({
+    model: process.env.ROLE_ROOM_AGENT_CLAUDE_MODEL || "claude-sonnet-4-6",
+    max_tokens: 1_200,
+    messages: [{
+      role: "user",
+      content: `Bruk web_search. Finn norske produktkonkurrenter til en GDPR-sikker AI-plattform for medisinsk transkripsjon, journalnotat og digitale verktøy for leger.
+
+Krav:
+- Finn leverandørens egen produktside, ikke klinikker, kataloger, nyhetsartikler eller kundens domene ${customerHost || "(ukjent)"}.
+- Returner bare kandidater der kilden eksplisitt viser både klinisk/medisinsk målgruppe og et digitalt produkt.
+- Ikke gjett navn, URL eller funksjoner.
+
+Svar til slutt kun med JSON:
+{"competitors":[{"name":"produktnavn","url":"https://kilde","evidence":"kort kildebelagt setning om produkt og målgruppe"}]}`,
+    }],
+    tools: [{
+      type: "web_search_20250305",
+      name: "web_search",
+      max_uses: 2,
+    }] as any,
+  });
+  const content = (response.content || []) as any[];
+  const citedByHost = new Map<string, { title?: string; url: string }>();
+  for (const block of content) {
+    if (block?.type !== "web_search_tool_result" || !Array.isArray(block.content)) continue;
+    for (const result of block.content) {
+      if (result?.type !== "web_search_result" || !hasText(result.url)) continue;
+      const host = normalizeHost(result.url);
+      if (host && !citedByHost.has(host)) {
+        citedByHost.set(host, {
+          title: hasText(result.title) ? normalizeWhitespace(result.title) : undefined,
+          url: normalizeWhitespace(result.url),
+        });
+      }
+    }
+  }
+  const text = content
+    .filter((block) => block?.type === "text" && hasText(block.text))
+    .map((block) => block.text)
+    .join("\n");
+  const parsed = extractJsonFromText(text) as Record<string, unknown> | null;
+  const candidates = Array.isArray(parsed?.competitors)
+    ? parsed!.competitors as Array<Record<string, unknown>>
+    : [];
+  const items: GoogleCustomSearchItem[] = [];
+  for (const candidate of candidates) {
+    if (!hasText(candidate.url)) continue;
+    const host = normalizeHost(candidate.url);
+    const citation = host ? citedByHost.get(host) : null;
+    // Model text alone is not evidence. Every emitted candidate must match a
+    // URL returned by the server-side web-search tool.
+    if (!host || !citation) continue;
+    items.push({
+      title: hasText(candidate.name) ? normalizeWhitespace(candidate.name) : citation.title,
+      link: citation.url,
+      displayLink: host,
+      snippet: hasText(candidate.evidence) ? normalizeWhitespace(candidate.evidence) : citation.title,
+    });
+  }
+  return { provider: "anthropic_web_search", items };
+}
+
 /**
- * Merges Google-Places- and Brreg-sourced competitor candidates,
+ * Finds national, product-level competitors for first-party specializations
+ * that Google Places cannot model safely (currently clinical SaaS). Results
+ * are intentionally `likely`, never `verified`: a public search result proves
+ * a relevant product page, not company ownership or a commercial relationship.
+ */
+export async function fetchWebCompetitorAnalysis(
+  input: RoleRoomAgentProducerBootstrapInput,
+  websiteInsights: RoleRoomAgentWebsiteInsights,
+  brregCompany: RoleRoomAgentBrregCompany | null,
+): Promise<RoleRoomAgentCompetitorAnalysis> {
+  const specialization = classifyWebsiteSpecialization([
+    input.extraContext,
+    websiteInsights.pageTitle,
+    websiteInsights.metaDescription,
+    websiteInsights.textSnippet,
+  ]);
+  if (specialization?.industry !== "Helseteknologi og programvare") {
+    return buildLimitedCompetitorAnalysis(
+      "Spesialisert websøk er ikke aktivert fordi nettsiden ikke ga et tilstrekkelig presist produktsegment.",
+      input,
+      brregCompany,
+    );
+  }
+  if (!specializedWebSearchConfigured()) {
+    return buildLimitedCompetitorAnalysis(
+      "Websøk er ikke konfigurert. Google Places-resultater beholdes, men nasjonale programvarekonkurrenter kan mangle.",
+      input,
+      brregCompany,
+    );
+  }
+
+  const customerUrl = normalizeWebsiteUrl(input.websiteUrl)
+    || normalizeWebsiteUrl(websiteInsights.finalUrl)
+    || normalizeWebsiteUrl(brregCompany?.website)
+    || null;
+  const customerHost = normalizeHost(customerUrl);
+  let searchOutcome: SpecializedWebSearchOutcome;
+  try {
+    searchOutcome = await searchSpecializedCompetitorWeb(customerHost);
+  } catch (error) {
+    console.error(`[web-competitors] ${error instanceof Error ? error.message : String(error)}`);
+    return buildLimitedCompetitorAnalysis(
+      "Websøk svarte ikke innen tidsbudsjettet. Ingen webkandidater vises uten kilde.",
+      input,
+      brregCompany,
+    );
+  }
+
+  const byHost = new Map<string, RoleRoomAgentCompetitorCandidate>();
+  for (const item of searchOutcome.items) {
+    if (!hasText(item.link) || !isSpecializedHealthProductResult(item)) continue;
+    let url: URL;
+    try {
+      url = new URL(item.link);
+    } catch {
+      continue;
+    }
+    if (url.protocol !== "https:" && url.protocol !== "http:") continue;
+    const host = normalizeHost(url.toString());
+    if (!host || host === customerHost || isExcludedWebCompetitorHost(host) || byHost.has(host)) continue;
+
+    const name = webCompetitorName(item, host);
+    const evidence: RoleRoomAgentCompetitorEvidence[] = [
+      {
+        type: "web_search_result",
+        label: searchOutcome.provider === "google_cse" ? "Funnet via Google websøk" : "Funnet via Claude websøk",
+        weight: 30,
+      },
+      { type: "specialized_product_match", label: "Matcher klinisk programvare, journalnotat eller medisinsk transkripsjon", weight: 30 },
+      { type: "website_available", label: "Har en kilde-URL som produsenten kan kontrollere", weight: 10 },
+    ];
+    if (host.endsWith(".no")) {
+      evidence.push({ type: "norwegian_market", label: "Norsk domene og norsk søkemarked", weight: 5 });
+    }
+    const confidence = Math.min(75, evidence.reduce((total, entry) => total + entry.weight, 0));
+    const candidate: RoleRoomAgentCompetitorCandidate = {
+      source: "web_search",
+      placeId: null,
+      naceCode: null,
+      organizationNumber: null,
+      name,
+      websiteUrl: url.toString(),
+      googleMapsUri: null,
+      formattedAddress: null,
+      primaryType: "clinical_software",
+      primaryTypeDisplayName: "Klinisk programvare",
+      rating: null,
+      userRatingCount: null,
+      confidence,
+      status: confidence >= 55 ? "likely" : "needs_review",
+      evidence,
+      relevanceReason: "Offentlig webresultat matcher kundens dokumenterte produktsegment. Juridisk enhet og funksjonsomfang må fortsatt bekreftes manuelt.",
+      marketingSignals: {
+        positionHint: `${name} har en synlig nettside i samme norske kliniske programvaresegment.`,
+        contentAngles: ["Sammenlign produktspråk, personvernbevis, demo og målgruppe før posisjoneringen låses"],
+        ctaOpportunities: ["Sammenlign prøveperiode, demo-booking og kontakt-CTA på den oppgitte kildesiden"],
+        riskNotes: ["Webresultatet er en kandidat, ikke en juridisk eller kommersiell verifisering"],
+      },
+      requiresManualConfirmation: true,
+    };
+    byHost.set(host, candidate);
+  }
+
+  const competitors = Array.from(byHost.values()).slice(0, 8);
+  if (competitors.length === 0) {
+    return buildLimitedCompetitorAnalysis(
+      "Websøk ga ingen trygge produktkonkurrenter etter semantisk filtrering og ekskludering av kunden selv.",
+      input,
+      brregCompany,
+    );
+  }
+
+  return {
+    status: "ready",
+    source: "web_search",
+    generatedAt: new Date().toISOString(),
+    marketContext: `${competitors.length} kildebelagte produktkandidater i det norske markedet er klare for manuell kontroll.`,
+    competitors,
+    verifiedCompetitorCount: competitors.filter((entry) => entry.status === "likely").length,
+    averageRating: null,
+    averageReviewCount: null,
+    marketingOpportunities: ["Sammenlign produktløfte, GDPR-bevis, arbeidsflyt og prøve/demo-CTA på de oppgitte kildesidene."],
+    positioningRecommendations: ["Skill tydelig mellom dokumentert produktfunksjon og antakelser før konkurrentmatrisen brukes i pitch."],
+    contentGapSuggestions: ["Kartlegg hvilke konkurrenter som viser produktdemo, klinisk arbeidsflyt og konkrete tidsbesparelser."],
+    producerQuestions: ["Hvilke av disse produktene møter kunden faktisk i salgsprosessen?"],
+    limitations: ["Webresultater bekrefter synlig produktrelevans, men ikke juridisk enhet, markedsandel eller funksjonsparitet."],
+  };
+}
+
+/**
+ * Merges Places, web-search and Brreg competitor candidates,
  * preferring the higher-confidence record when both surface the same
  * company (matched by website host or normalized name).
  *
@@ -3394,26 +3829,34 @@ async function fetchBrregCompetitorsByNace(
  * verifiedCompetitorCount + averageRating + averageReviewCount over the
  * merged set.
  */
-function mergeCompetitorAnalyses(
+export function mergeCompetitorAnalyses(
   primary: RoleRoomAgentCompetitorAnalysis,
-  brregCompetitors: RoleRoomAgentCompetitorCandidate[],
+  ...supplements: Array<RoleRoomAgentCompetitorAnalysis | RoleRoomAgentCompetitorCandidate[]>
 ): RoleRoomAgentCompetitorAnalysis {
-  if (brregCompetitors.length === 0) return primary;
+  const supplementalAnalyses = supplements.filter(
+    (entry): entry is RoleRoomAgentCompetitorAnalysis => !Array.isArray(entry),
+  );
+  const supplementalCompetitors = supplements.flatMap((entry) =>
+    Array.isArray(entry) ? entry : entry.competitors,
+  );
+  if (supplementalCompetitors.length === 0 && supplementalAnalyses.length === 0) return primary;
 
   const byKey = new Map<string, RoleRoomAgentCompetitorCandidate>();
-  const keyFor = (c: RoleRoomAgentCompetitorCandidate): string => {
+  const keysFor = (c: RoleRoomAgentCompetitorCandidate): string[] => {
+    const keys: string[] = [];
     const host = normalizeHost(c.websiteUrl ?? null);
-    if (host) return `host:${host}`;
-    if (c.organizationNumber) return `orgnr:${c.organizationNumber}`;
-    return `name:${normalizeIdentity(c.name)}`;
+    if (host) keys.push(`host:${host}`);
+    if (c.organizationNumber) keys.push(`orgnr:${c.organizationNumber}`);
+    if (c.placeId) keys.push(`placeId:${c.placeId}`);
+    keys.push(`name:${normalizeIdentity(c.name)}`);
+    return keys;
   };
 
-  for (const c of primary.competitors) byKey.set(keyFor(c), c);
-  for (const c of brregCompetitors) {
-    const key = keyFor(c);
-    const existing = byKey.get(key);
+  for (const c of [...primary.competitors, ...supplementalCompetitors]) {
+    const keys = keysFor(c);
+    const existing = keys.map((key) => byKey.get(key)).find(Boolean);
     if (!existing) {
-      byKey.set(key, c);
+      for (const key of keys) byKey.set(key, c);
       continue;
     }
     // Same company found via both sources — keep whichever is more
@@ -3425,18 +3868,37 @@ function mergeCompetitorAnalyses(
     if (!winner.organizationNumber && loser.organizationNumber) {
       winner.organizationNumber = loser.organizationNumber;
     }
-    byKey.set(key, winner);
+    winner.evidence = Array.from(
+      new Map([...winner.evidence, ...loser.evidence].map((entry) => [`${entry.type}:${entry.label}`, entry])).values(),
+    );
+    const mergedKeys = new Set([...keys, ...keysFor(existing), ...keysFor(winner)]);
+    for (const key of mergedKeys) byKey.set(key, winner);
   }
 
-  const merged = Array.from(byKey.values()).sort((a, b) => b.confidence - a.confidence);
+  const merged = Array.from(new Set(byKey.values())).sort((a, b) => b.confidence - a.confidence);
   const verified = merged.filter((c) => c.status === "verified" || c.status === "likely");
   const ratings = merged.map((c) => c.rating).filter((r): r is number => typeof r === "number");
   const reviewCounts = merged
     .map((c) => c.userRatingCount)
     .filter((r): r is number => typeof r === "number");
+  const candidateSources = new Set(merged.map((entry) => entry.source));
+  const source = (candidateSources.size > 1
+    ? "combined"
+    : candidateSources.values().next().value || primary.source) as RoleRoomAgentCompetitorAnalysis["source"];
+  const leadingAnalysis = primary.competitors.length > 0
+    ? primary
+    : supplementalAnalyses.find((entry) => entry.competitors.length > 0) || primary;
+  const mergeText = (
+    key: "marketingOpportunities" | "positioningRecommendations" | "contentGapSuggestions" | "producerQuestions" | "limitations",
+  ): string[] => Array.from(new Set(
+    [primary, ...supplementalAnalyses].flatMap((analysis) => analysis[key]),
+  ));
 
   return {
     ...primary,
+    status: verified.length > 0 ? "ready" : primary.status,
+    source,
+    marketContext: leadingAnalysis.marketContext,
     competitors: merged,
     verifiedCompetitorCount: verified.length,
     averageRating:
@@ -3445,6 +3907,11 @@ function mergeCompetitorAnalyses(
       reviewCounts.length > 0
         ? Math.round(reviewCounts.reduce((a, b) => a + b, 0) / reviewCounts.length)
         : null,
+    marketingOpportunities: mergeText("marketingOpportunities"),
+    positioningRecommendations: mergeText("positioningRecommendations"),
+    contentGapSuggestions: mergeText("contentGapSuggestions"),
+    producerQuestions: mergeText("producerQuestions"),
+    limitations: mergeText("limitations"),
   };
 }
 
@@ -3461,6 +3928,11 @@ export async function fetchGooglePlacesCompetitorAnalysis(
   const websiteUrl = normalizeWebsiteUrl(input.websiteUrl) || websiteInsights.finalUrl || brregCompany?.website || null;
   const websiteHost = normalizeHost(websiteUrl);
   const marketLocation = extractMarketLocation(businessSignals?.formattedAddress || brregCompany?.businessAddress || "");
+  const marketHints = Array.from(new Set([
+    marketLocation,
+    brregCompany?.municipality || "",
+  ].map((value) => normalizeWhitespace(value)).filter(Boolean)));
+  const classification = detectBusinessClassification(input, websiteInsights, businessSignals, brregCompany);
   const searchQueries = buildCompetitorSearchQueries(input, websiteInsights, businessSignals, brregCompany);
 
   if (!hasText(apiKey)) {
@@ -3474,10 +3946,10 @@ export async function fetchGooglePlacesCompetitorAnalysis(
 
   console.log(`[places-competitors] queries=${JSON.stringify(searchQueries)}`);
   const fieldMask =
-    "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri";
+    "places.id,places.displayName,places.formattedAddress,places.location,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri";
   const rawCandidates: Array<Record<string, unknown>> = [];
 
-  for (const query of searchQueries) {
+  await Promise.all(searchQueries.map(async (query) => {
     try {
       const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
         method: "POST",
@@ -3498,7 +3970,7 @@ export async function fetchGooglePlacesCompetitorAnalysis(
       if (!response.ok) {
         const body = await response.text().catch(() => "");
         console.error(`[places-competitors] query="${query}" status=${response.status} body=${body.replace(/\s+/g, " ").slice(0, 500)}`);
-        continue;
+        return;
       }
 
       const payload = (await response.json().catch(() => null)) as
@@ -3509,15 +3981,30 @@ export async function fetchGooglePlacesCompetitorAnalysis(
       rawCandidates.push(...places);
     } catch (err) {
       console.error(`[places-competitors] query="${query}" threw: ${err instanceof Error ? err.message : String(err)}`);
-      continue;
+      return;
     }
-  }
+  }));
   console.log(`[places-competitors] totalRawCandidates=${rawCandidates.length}`);
 
   const seenKeys = new Set<string>();
   const competitors = rawCandidates
     .map((candidate): RoleRoomAgentCompetitorCandidate | null => {
       const name = readGooglePlaceDisplayName(candidate);
+      if (!isGooglePlaceLocalOpportunityInMarket(
+        candidate,
+        marketHints,
+        businessSignals?.location ?? null,
+        50,
+      )) {
+        return null;
+      }
+      if (!isGooglePlaceCompetitorSemanticallyRelevant(
+        candidate,
+        classification.industry,
+        classification.subIndustry,
+      )) {
+        return null;
+      }
       if (!name || isSameCompanyPlace(candidate, companyName, websiteHost)) {
         return null;
       }
@@ -3649,6 +4136,40 @@ export async function fetchGooglePlacesCompetitorAnalysis(
       "Nettsider og sosiale kanaler for konkurrenter bør åpnes manuelt før endelig strategi.",
     ],
   };
+}
+
+/** Shared refresh-path composition. The bootstrap uses the same three
+ * providers with separate timing stages; this helper prevents the explicit
+ * competitors refresh from silently falling back to Places-only behavior. */
+export async function fetchCombinedCompetitorAnalysis(
+  input: RoleRoomAgentProducerBootstrapInput,
+  websiteInsights: RoleRoomAgentWebsiteInsights,
+  businessSignals: RoleRoomAgentBusinessSignals | null,
+  brregCompany: RoleRoomAgentBrregCompany | null,
+): Promise<RoleRoomAgentCompetitorAnalysis> {
+  const specialization = classifyWebsiteSpecialization([
+    input.extraContext,
+    websiteInsights.pageTitle,
+    websiteInsights.metaDescription,
+    websiteInsights.textSnippet,
+  ]);
+  const [places, web, brreg] = await Promise.all([
+    fetchGooglePlacesCompetitorAnalysis(input, websiteInsights, businessSignals, brregCompany),
+    specialization
+      ? fetchWebCompetitorAnalysis(input, websiteInsights, brregCompany)
+      : Promise.resolve(null),
+    specialization
+      ? Promise.resolve([])
+      : fetchBrregCompetitorsByNace(brregCompany, {
+          limit: 25,
+          municipalityNumber: brregCompany?.municipalityNumber ?? null,
+        }),
+  ]);
+  return mergeCompetitorAnalyses(
+    places,
+    ...(web ? [web] : []),
+    brreg,
+  );
 }
 
 // =============================================================================
@@ -3850,9 +4371,24 @@ function emptyProductCounts(): Record<RoleRoomAgentMerchProductCategory, number>
   };
 }
 
+type MerchDiscoveryDiagnostics = {
+  timedOutRequests: number;
+  failedRequests: number;
+};
+
+function isRequestTimeout(error: unknown): boolean {
+  return error instanceof Error
+    && (error.name === "TimeoutError" || /timeout|timed out/i.test(error.message));
+}
+
 async function fetchBrregMerchSuppliers(
   brregCompany: RoleRoomAgentBrregCompany | null,
-  options?: { limit?: number; municipalityNumber?: string | null },
+  options?: {
+    limit?: number;
+    municipalityNumber?: string | null;
+    requestTimeoutMs?: number;
+    diagnostics?: MerchDiscoveryDiagnostics;
+  },
 ): Promise<RoleRoomAgentMerchSupplier[]> {
   const municipalityNumber = hasText(options?.municipalityNumber)
     ? normalizeWhitespace(options!.municipalityNumber as string)
@@ -3863,7 +4399,7 @@ async function fetchBrregMerchSuppliers(
   const all: RoleRoomAgentMerchSupplier[] = [];
   const seenOrgs = new Set<string>();
 
-  for (const naceEntry of MERCH_NACE_CODES) {
+  await Promise.all(MERCH_NACE_CODES.map(async (naceEntry) => {
     const params = new URLSearchParams();
     params.set("naeringskode", naceEntry.code);
     params.set("size", String(perCodeLimit));
@@ -3879,16 +4415,21 @@ async function fetchBrregMerchSuppliers(
     try {
       const response = await fetch(url, {
         headers: { Accept: "application/json" },
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(options?.requestTimeoutMs ?? 10_000),
       });
       if (!response.ok) {
+        if (options?.diagnostics) options.diagnostics.failedRequests += 1;
         console.error(`[brreg-merch] nace=${naceEntry.code} status=${response.status}`);
-        continue;
+        return;
       }
       payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
     } catch (err) {
+      if (options?.diagnostics) {
+        if (isRequestTimeout(err)) options.diagnostics.timedOutRequests += 1;
+        else options.diagnostics.failedRequests += 1;
+      }
       console.error(`[brreg-merch] nace=${naceEntry.code} threw: ${err instanceof Error ? err.message : String(err)}`);
-      continue;
+      return;
     }
 
     const embedded = payload && typeof payload === "object" && !Array.isArray(payload)
@@ -3985,7 +4526,7 @@ async function fetchBrregMerchSuppliers(
         requiresManualConfirmation: status !== "verified",
       });
     }
-  }
+  }));
 
   return all;
 }
@@ -3995,6 +4536,10 @@ async function fetchGooglePlacesMerchSuppliers(
   websiteInsights: RoleRoomAgentWebsiteInsights,
   businessSignals: RoleRoomAgentBusinessSignals | null,
   brregCompany: RoleRoomAgentBrregCompany | null,
+  options?: {
+    requestTimeoutMs?: number;
+    diagnostics?: MerchDiscoveryDiagnostics;
+  },
 ): Promise<RoleRoomAgentMerchSupplier[]> {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!hasText(apiKey)) return [];
@@ -4005,14 +4550,17 @@ async function fetchGooglePlacesMerchSuppliers(
   // act on. When neither is known we fall back to the bare query, which
   // (with regionCode=NO) still biases toward Norwegian results.
   const anchor = marketLocation || municipality || "";
+  const marketHints = Array.from(new Set(
+    [marketLocation, municipality].map((value) => normalizeWhitespace(value)).filter(Boolean),
+  ));
 
   const fieldMask =
-    "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri";
+    "places.id,places.displayName,places.formattedAddress,places.location,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri";
 
   const all: RoleRoomAgentMerchSupplier[] = [];
   const seen = new Set<string>();
 
-  for (const queryEntry of MERCH_PLACES_QUERIES) {
+  await Promise.all(MERCH_PLACES_QUERIES.map(async (queryEntry) => {
     const textQuery = anchor ? `${queryEntry.query} ${anchor}` : queryEntry.query;
     let payload: { places?: Array<Record<string, unknown>> } | null = null;
     try {
@@ -4029,22 +4577,35 @@ async function fetchGooglePlacesMerchSuppliers(
           languageCode: "nb",
           regionCode: "NO",
         }),
-        signal: AbortSignal.timeout(12_000),
+        signal: AbortSignal.timeout(options?.requestTimeoutMs ?? 12_000),
       });
       if (!response.ok) {
+        if (options?.diagnostics) options.diagnostics.failedRequests += 1;
         console.error(`[places-merch] query="${textQuery}" status=${response.status}`);
-        continue;
+        return;
       }
       payload = (await response.json().catch(() => null)) as
         | { places?: Array<Record<string, unknown>> }
         | null;
     } catch (err) {
+      if (options?.diagnostics) {
+        if (isRequestTimeout(err)) options.diagnostics.timedOutRequests += 1;
+        else options.diagnostics.failedRequests += 1;
+      }
       console.error(`[places-merch] query="${textQuery}" threw: ${err instanceof Error ? err.message : String(err)}`);
-      continue;
+      return;
     }
 
     const places = Array.isArray(payload?.places) ? payload.places : [];
     for (const place of places) {
+      if (!isGooglePlaceLocalOpportunityInMarket(
+        place,
+        marketHints,
+        businessSignals?.location ?? null,
+        50,
+      )) {
+        continue;
+      }
       const placeId = hasText(place.id) ? normalizeWhitespace(place.id) : null;
       const name = readGooglePlaceDisplayName(place);
       if (!name || !placeId || seen.has(placeId)) continue;
@@ -4107,7 +4668,7 @@ async function fetchGooglePlacesMerchSuppliers(
         requiresManualConfirmation: status !== "verified",
       });
     }
-  }
+  }));
 
   return all;
 }
@@ -4445,42 +5006,68 @@ async function enrichMerchSuppliersWithWebsiteSignals(
   }
 }
 
+export type FetchMerchSuppliersOptions = {
+  /** Per-provider deadline. All discovery calls run concurrently, so the
+   *  section returns shortly after this deadline with any faster results. */
+  requestTimeoutMs?: number;
+  /** Website/contact enrichment is useful on explicit refresh, but skipped
+   *  in the bootstrap's tighter wall-clock budget. */
+  enrichWebsiteSignals?: boolean;
+};
+
 export async function fetchMerchSuppliersAnalysis(
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
   businessSignals: RoleRoomAgentBusinessSignals | null,
   brregCompany: RoleRoomAgentBrregCompany | null,
+  options: FetchMerchSuppliersOptions = {},
 ): Promise<RoleRoomAgentMerchSuppliers> {
+  const diagnostics: MerchDiscoveryDiagnostics = { timedOutRequests: 0, failedRequests: 0 };
+  const requestTimeoutMs = Math.max(250, options.requestTimeoutMs ?? 10_000);
   const [brregSuppliers, placesSuppliers] = await Promise.all([
     fetchBrregMerchSuppliers(brregCompany, {
       limit: 8,
       municipalityNumber: brregCompany?.municipalityNumber ?? null,
+      requestTimeoutMs,
+      diagnostics,
     }),
-    fetchGooglePlacesMerchSuppliers(input, websiteInsights, businessSignals, brregCompany),
+    fetchGooglePlacesMerchSuppliers(input, websiteInsights, businessSignals, brregCompany, {
+      requestTimeoutMs,
+      diagnostics,
+    }),
   ]);
 
   if (brregSuppliers.length === 0 && placesSuppliers.length === 0) {
-    return buildLimitedMerchSuppliers(
-      "Fant ingen merch-leverandører automatisk i kundens marked. Be kunden oppgi 1-2 trykkerier de allerede bruker før vi anbefaler nye.",
+    const limited = buildLimitedMerchSuppliers(
+      diagnostics.timedOutRequests > 0
+        ? "Leverandøroppslaget nådde tidsbudsjettet uten trygge treff. Ingen leverandører vises uten verifisering."
+        : "Fant ingen merch-leverandører automatisk i kundens marked. Be kunden oppgi 1-2 trykkerier de allerede bruker før vi anbefaler nye.",
     );
+    return {
+      ...limited,
+      partial: diagnostics.timedOutRequests > 0,
+      timedOutSourceCount: diagnostics.timedOutRequests,
+    };
   }
 
   // Dedupe across sources by website host / orgnr / normalized name —
   // same shop sometimes shows up in both Brreg and Google Places.
   const byKey = new Map<string, RoleRoomAgentMerchSupplier>();
-  const keyFor = (s: RoleRoomAgentMerchSupplier): string => {
+  const keysFor = (s: RoleRoomAgentMerchSupplier): string[] => {
+    const keys: string[] = [];
     const host = normalizeHost(s.websiteUrl ?? null);
-    if (host) return `host:${host}`;
-    if (s.organizationNumber) return `orgnr:${s.organizationNumber}`;
-    if (s.placeId) return `placeId:${s.placeId}`;
-    return `name:${normalizeIdentity(s.name)}`;
+    if (host) keys.push(`host:${host}`);
+    if (s.organizationNumber) keys.push(`orgnr:${s.organizationNumber}`);
+    if (s.placeId) keys.push(`placeId:${s.placeId}`);
+    keys.push(`name:${normalizeIdentity(s.name)}`);
+    return keys;
   };
 
   for (const s of [...brregSuppliers, ...placesSuppliers]) {
-    const key = keyFor(s);
-    const existing = byKey.get(key);
+    const keys = keysFor(s);
+    const existing = keys.map((key) => byKey.get(key)).find(Boolean);
     if (!existing) {
-      byKey.set(key, s);
+      for (const key of keys) byKey.set(key, s);
       continue;
     }
     const winner = s.confidence >= existing.confidence ? s : existing;
@@ -4501,14 +5088,17 @@ export async function fetchMerchSuppliersAnalysis(
     winner.productCategories = Array.from(
       new Set([...winner.productCategories, ...loser.productCategories]),
     ).filter((c) => !(c === "unknown" && winner.productCategories.length > 1));
-    byKey.set(key, winner);
+    const mergedKeys = new Set([...keys, ...keysFor(existing), ...keysFor(winner)]);
+    for (const key of mergedKeys) byKey.set(key, winner);
   }
 
-  let suppliers = Array.from(byKey.values()).sort((a, b) => b.confidence - a.confidence);
+  let suppliers = Array.from(new Set(byKey.values())).sort((a, b) => b.confidence - a.confidence);
   // Slice 2: scrape verified/likely suppliers' websites to confirm
   // technique/product offerings beyond name+NACE alone. Mutates the
   // supplier records in place — best-effort, never throws.
-  await enrichMerchSuppliersWithWebsiteSignals(suppliers);
+  if (options.enrichWebsiteSignals !== false) {
+    await enrichMerchSuppliersWithWebsiteSignals(suppliers);
+  }
   // Re-sort in case enrichment bumped some suppliers' confidence.
   suppliers = suppliers.sort((a, b) => b.confidence - a.confidence);
   const verifiedCount = suppliers.filter(
@@ -4541,10 +5131,18 @@ export async function fetchMerchSuppliersAnalysis(
     productCounts,
     cooperationAngles: buildMerchCooperationAngles(suppliers.length, techniqueCounts),
     outreachChecklist: buildMerchOutreachChecklist(),
+    partial: diagnostics.timedOutRequests > 0,
+    timedOutSourceCount: diagnostics.timedOutRequests,
     limitations: [
       "Tekniker og produktkategorier er heuristisk klassifisert fra navn/kategori — bekreft med leverandøren.",
       "Brreg-treff er ikke garanti for at leverandøren leverer merch til volum/tidsfrist du trenger.",
-    ],
+      diagnostics.timedOutRequests > 0
+        ? `${diagnostics.timedOutRequests} leverandørkall nådde tidsbudsjettet; raske, verifiserte delresultater er beholdt.`
+        : "",
+      options.enrichWebsiteSignals === false
+        ? "Nettside- og kontaktberikelse kjøres ved eksplisitt oppdatering av merch-seksjonen."
+        : "",
+    ].filter(Boolean),
   };
 }
 
@@ -4586,14 +5184,20 @@ export async function fetchGooglePlacesLocalPresencePlan(
   const fieldMask =
     "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.googleMapsUri,places.location";
   const customerWebsiteHost = normalizeHost(normalizeWebsiteUrl(input.websiteUrl) || websiteInsights.finalUrl || brregCompany?.website || null);
+  const localityHints = Array.from(new Set([
+    marketArea,
+    brregCompany?.municipality || "",
+  ].map((value) => normalizeWhitespace(value)).filter(Boolean)));
   const seenKeys = new Set<string>();
   const opportunities: RoleRoomAgentLocalPresenceOpportunity[] = [];
 
-  for (const definition of definitions.slice(0, 7)) {
-    for (const searchTerm of definition.searchTerms.slice(0, 2)) {
+  const searches = definitions.slice(0, 7).flatMap((definition) =>
+    definition.searchTerms.slice(0, 2).map((searchTerm) => ({ definition, searchTerm })),
+  );
+  await Promise.all(searches.map(async ({ definition, searchTerm }) => {
       const query = normalizeWhitespace([searchTerm, marketArea].filter(Boolean).join(" "));
       if (!query) {
-        continue;
+        return;
       }
 
       try {
@@ -4624,7 +5228,7 @@ export async function fetchGooglePlacesLocalPresencePlan(
         });
 
         if (!response.ok) {
-          continue;
+          return;
         }
 
         const payload = (await response.json().catch(() => null)) as
@@ -4635,6 +5239,17 @@ export async function fetchGooglePlacesLocalPresencePlan(
         for (const place of places) {
           const name = readGooglePlaceDisplayName(place);
           if (!name || isSameCompanyPlace(place, companyName, customerWebsiteHost)) {
+            continue;
+          }
+          if (!isGooglePlaceLocalOpportunityInMarket(
+            place,
+            localityHints,
+            businessSignals?.location ?? null,
+            definition.radiusKm,
+          )) {
+            continue;
+          }
+          if (!isGooglePlaceOpportunityTypeMatch(place, definition.type)) {
             continue;
           }
           const websiteUrl = hasText(place.websiteUri) ? normalizeWebsiteUrl(place.websiteUri) : null;
@@ -4666,13 +5281,11 @@ export async function fetchGooglePlacesLocalPresencePlan(
             },
           ];
 
-          if (marketArea && formattedAddress?.toLowerCase().includes(marketArea.toLowerCase())) {
-            evidence.push({
-              type: "same_area",
-              label: `Samme lokale marked: ${marketArea}`,
-              weight: 20,
-            });
-          }
+          evidence.push({
+            type: "same_area",
+            label: `Geografisk verifisert i ${marketArea || brregCompany?.municipality || "kundens marked"}`,
+            weight: 20,
+          });
           if (websiteUrl) {
             evidence.push({
               type: "website_available",
@@ -4724,10 +5337,9 @@ export async function fetchGooglePlacesLocalPresencePlan(
           });
         }
       } catch {
-        continue;
+        return;
       }
-    }
-  }
+  }));
 
   const selected = opportunities
     .sort((left, right) => right.confidence - left.confidence || left.radiusKm - right.radiusKm)
@@ -4899,7 +5511,7 @@ function buildFallbackBootstrap(
       ], proofPoints.length > 0 ? proofPoints : ["Tjenester og leveranser må verifiseres manuelt"]),
       targetAudience: audience,
       toneAndBrandSignals,
-      industry: brregCompany?.industryCode?.description || classification.industry,
+      industry: classification.industry,
       subIndustry: classification.subIndustry,
       businessModel: classification.businessModel,
       contentCategory: classification.contentCategory,
@@ -4947,7 +5559,7 @@ function buildFallbackBootstrap(
         audience: audience.join(", "),
         hook: `Hvorfor skal målgruppen bry seg om ${companyName} akkurat nå?`,
         coreMessage: summary,
-        industry: brregCompany?.industryCode?.description || classification.industry,
+        industry: classification.industry,
         subIndustry: classification.subIndustry,
         businessModel: classification.businessModel,
         contentCategory: classification.contentCategory,
@@ -5035,7 +5647,7 @@ function buildFallbackBootstrap(
         moralArgument: "Klar kommunikasjon gir bedre beslutninger.",
       },
       contentStoryLogic: {
-        industry: brregCompany?.industryCode?.description || classification.industry,
+        industry: classification.industry,
         subIndustry: classification.subIndustry,
         businessModel: classification.businessModel,
         contentCategory: classification.contentCategory,
@@ -5073,7 +5685,7 @@ function buildFallbackBootstrap(
       },
       classification: {
         ...classification,
-        industry: brregCompany?.industryCode?.description || classification.industry,
+        industry: classification.industry,
       },
       currentPhase: 1,
       phaseStatus: {
@@ -5226,7 +5838,7 @@ async function requestOpenAiBootstrap(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(45_000),
+      signal: AbortSignal.timeout(BOOTSTRAP_SYNTH_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -5278,7 +5890,7 @@ async function requestOpenAiBootstrap(
   }
 }
 
-function normalizeBootstrapPayload(
+export function normalizeBootstrapPayload(
   raw: unknown,
   input: RoleRoomAgentProducerBootstrapInput,
   websiteInsights: RoleRoomAgentWebsiteInsights,
@@ -5320,6 +5932,18 @@ function normalizeBootstrapPayload(
     !Array.isArray(storyLogicDraftRaw.classification)
       ? (storyLogicDraftRaw.classification as Record<string, unknown>)
       : {};
+  const storyLogicConcept =
+    storyLogicDraftRaw.concept &&
+    typeof storyLogicDraftRaw.concept === "object" &&
+    !Array.isArray(storyLogicDraftRaw.concept)
+      ? (storyLogicDraftRaw.concept as Record<string, unknown>)
+      : {};
+  const storyContentLogic =
+    storyLogicDraftRaw.contentStoryLogic &&
+    typeof storyLogicDraftRaw.contentStoryLogic === "object" &&
+    !Array.isArray(storyLogicDraftRaw.contentStoryLogic)
+      ? (storyLogicDraftRaw.contentStoryLogic as Record<string, unknown>)
+      : {};
 
   return {
     ...fallback,
@@ -5338,39 +5962,24 @@ function normalizeBootstrapPayload(
     merchSuppliers: fallback.merchSuppliers,
     retrievalMeta: fallback.retrievalMeta,
     companyProfile: {
-      companyName: hasText(companyProfile.companyName)
-        ? normalizeWhitespace(companyProfile.companyName)
-        : fallback.companyProfile.companyName,
-      websiteUrl: hasText(companyProfile.websiteUrl)
-        ? normalizeWebsiteUrl(companyProfile.websiteUrl)
-        : fallback.companyProfile.websiteUrl,
-      organizationNumber: hasText(companyProfile.organizationNumber)
-        ? normalizeWhitespace(companyProfile.organizationNumber)
-        : fallback.companyProfile.organizationNumber,
+      companyName: fallback.companyProfile.companyName,
+      websiteUrl: fallback.companyProfile.websiteUrl,
+      organizationNumber: fallback.companyProfile.organizationNumber,
       summary: hasText(companyProfile.summary)
         ? toSentenceCase(companyProfile.summary)
         : fallback.companyProfile.summary,
       offerings: normalizeStringArray(companyProfile.offerings, fallback.companyProfile.offerings),
-      targetAudience: normalizeStringArray(companyProfile.targetAudience, fallback.companyProfile.targetAudience),
+      targetAudience: fallback.companyProfile.targetAudience,
       toneAndBrandSignals: normalizeStringArray(companyProfile.toneAndBrandSignals, fallback.companyProfile.toneAndBrandSignals),
-      industry: hasText(companyProfile.industry)
-        ? normalizeWhitespace(companyProfile.industry)
-        : fallback.companyProfile.industry,
-      subIndustry: hasText(companyProfile.subIndustry)
-        ? normalizeWhitespace(companyProfile.subIndustry)
-        : fallback.companyProfile.subIndustry,
-      businessModel: hasText(companyProfile.businessModel)
-        ? normalizeWhitespace(companyProfile.businessModel)
-        : fallback.companyProfile.businessModel,
-      contentCategory: hasText(companyProfile.contentCategory)
-        ? normalizeWhitespace(companyProfile.contentCategory)
-        : fallback.companyProfile.contentCategory,
-      productionApproach: hasText(companyProfile.productionApproach)
-        ? normalizeWhitespace(companyProfile.productionApproach)
-        : fallback.companyProfile.productionApproach,
-      probableLocationAddress: hasText(companyProfile.probableLocationAddress)
-        ? normalizeWhitespace(companyProfile.probableLocationAddress)
-        : (businessSignals?.formattedAddress || null),
+      // Identity, audience, classification and location are operational facts.
+      // They come from the deterministic website/Brreg/Places pass and may
+      // never be overwritten by synthesis prose.
+      industry: fallback.companyProfile.industry,
+      subIndustry: fallback.companyProfile.subIndustry,
+      businessModel: fallback.companyProfile.businessModel,
+      contentCategory: fallback.companyProfile.contentCategory,
+      productionApproach: fallback.companyProfile.productionApproach,
+      probableLocationAddress: fallback.companyProfile.probableLocationAddress,
       logoUrl: hasText(companyProfile.logoUrl)
         ? resolveUrl(websiteInsights.finalUrl || normalizeWebsiteUrl(input.websiteUrl) || "", companyProfile.logoUrl)
         : fallback.companyProfile.logoUrl,
@@ -5378,7 +5987,7 @@ function normalizeBootstrapPayload(
     intakeDraft: {
       projectGoal: hasText(intakeDraft.projectGoal) ? normalizeWhitespace(intakeDraft.projectGoal) : fallback.intakeDraft.projectGoal,
       deliverables: hasText(intakeDraft.deliverables) ? normalizeWhitespace(intakeDraft.deliverables) : fallback.intakeDraft.deliverables,
-      targetAudience: hasText(intakeDraft.targetAudience) ? normalizeWhitespace(intakeDraft.targetAudience) : fallback.intakeDraft.targetAudience,
+      targetAudience: fallback.intakeDraft.targetAudience,
       keyMessage: hasText(intakeDraft.keyMessage) ? normalizeWhitespace(intakeDraft.keyMessage) : fallback.intakeDraft.keyMessage,
       timingConstraints: hasText(intakeDraft.timingConstraints) ? normalizeWhitespace(intakeDraft.timingConstraints) : fallback.intakeDraft.timingConstraints,
       brandNotes: hasText(intakeDraft.brandNotes) ? normalizeWhitespace(intakeDraft.brandNotes) : fallback.intakeDraft.brandNotes,
@@ -5394,31 +6003,21 @@ function normalizeBootstrapPayload(
         direction: hasText(activationPlan.direction) ? normalizeWhitespace(activationPlan.direction) : fallback.planningDraft.activationPlan.direction,
         idea: hasText(activationPlan.idea) ? normalizeWhitespace(activationPlan.idea) : fallback.planningDraft.activationPlan.idea,
         activation: hasText(activationPlan.activation) ? normalizeWhitespace(activationPlan.activation) : fallback.planningDraft.activationPlan.activation,
-        targetAudience: hasText(activationPlan.targetAudience) ? normalizeWhitespace(activationPlan.targetAudience) : fallback.planningDraft.activationPlan.targetAudience,
+        targetAudience: fallback.planningDraft.activationPlan.targetAudience,
         businessGoal: hasText(activationPlan.businessGoal) ? normalizeWhitespace(activationPlan.businessGoal) : fallback.planningDraft.activationPlan.businessGoal,
         coreMessage: hasText(activationPlan.coreMessage) ? normalizeWhitespace(activationPlan.coreMessage) : fallback.planningDraft.activationPlan.coreMessage,
         successSignals: normalizeStringArray(activationPlan.successSignals, fallback.planningDraft.activationPlan.successSignals as string[]),
       },
       contentLogic: {
         objective: hasText(contentLogic.objective) ? normalizeWhitespace(contentLogic.objective) : fallback.planningDraft.contentLogic.objective,
-        audience: hasText(contentLogic.audience) ? normalizeWhitespace(contentLogic.audience) : fallback.planningDraft.contentLogic.audience,
+        audience: fallback.planningDraft.contentLogic.audience,
         hook: hasText(contentLogic.hook) ? normalizeWhitespace(contentLogic.hook) : fallback.planningDraft.contentLogic.hook,
         coreMessage: hasText(contentLogic.coreMessage) ? normalizeWhitespace(contentLogic.coreMessage) : fallback.planningDraft.contentLogic.coreMessage,
-        industry: hasText(contentLogic.industry)
-          ? normalizeWhitespace(contentLogic.industry)
-          : fallback.planningDraft.contentLogic.industry,
-        subIndustry: hasText(contentLogic.subIndustry)
-          ? normalizeWhitespace(contentLogic.subIndustry)
-          : fallback.planningDraft.contentLogic.subIndustry,
-        businessModel: hasText(contentLogic.businessModel)
-          ? normalizeWhitespace(contentLogic.businessModel)
-          : fallback.planningDraft.contentLogic.businessModel,
-        contentCategory: hasText(contentLogic.contentCategory)
-          ? normalizeWhitespace(contentLogic.contentCategory)
-          : fallback.planningDraft.contentLogic.contentCategory,
-        productionApproach: hasText(contentLogic.productionApproach)
-          ? normalizeWhitespace(contentLogic.productionApproach)
-          : fallback.planningDraft.contentLogic.productionApproach,
+        industry: fallback.planningDraft.contentLogic.industry,
+        subIndustry: fallback.planningDraft.contentLogic.subIndustry,
+        businessModel: fallback.planningDraft.contentLogic.businessModel,
+        contentCategory: fallback.planningDraft.contentLogic.contentCategory,
+        productionApproach: fallback.planningDraft.contentLogic.productionApproach,
         proofPoints: normalizeStringArray(contentLogic.proofPoints, fallback.planningDraft.contentLogic.proofPoints as string[]),
         callToAction: hasText(contentLogic.callToAction) ? normalizeWhitespace(contentLogic.callToAction) : fallback.planningDraft.contentLogic.callToAction,
         distributionPlan: hasText(contentLogic.distributionPlan) ? normalizeWhitespace(contentLogic.distributionPlan) : fallback.planningDraft.contentLogic.distributionPlan,
@@ -5443,24 +6042,23 @@ function normalizeBootstrapPayload(
         ? {
             ...fallback.storyLogicDraft,
             ...storyLogicDraftRaw,
+            concept: {
+              ...(fallback.storyLogicDraft.concept as Record<string, unknown>),
+              ...storyLogicConcept,
+              subGenre: (fallback.storyLogicDraft.concept as Record<string, unknown>).subGenre,
+              targetAudience: (fallback.storyLogicDraft.concept as Record<string, unknown>).targetAudience,
+            },
+            contentStoryLogic: {
+              ...(fallback.storyLogicDraft.contentStoryLogic as Record<string, unknown>),
+              ...storyContentLogic,
+              industry: (fallback.storyLogicDraft.contentStoryLogic as Record<string, unknown>).industry,
+              subIndustry: (fallback.storyLogicDraft.contentStoryLogic as Record<string, unknown>).subIndustry,
+              businessModel: (fallback.storyLogicDraft.contentStoryLogic as Record<string, unknown>).businessModel,
+              contentCategory: (fallback.storyLogicDraft.contentStoryLogic as Record<string, unknown>).contentCategory,
+              productionApproach: (fallback.storyLogicDraft.contentStoryLogic as Record<string, unknown>).productionApproach,
+            },
             classification: {
               ...(fallback.storyLogicDraft.classification as Record<string, unknown>),
-              ...storyLogicClassification,
-              industry: hasText(storyLogicClassification.industry)
-                ? normalizeWhitespace(storyLogicClassification.industry)
-                : (fallback.storyLogicDraft.classification as Record<string, unknown>).industry,
-              subIndustry: hasText(storyLogicClassification.subIndustry)
-                ? normalizeWhitespace(storyLogicClassification.subIndustry)
-                : (fallback.storyLogicDraft.classification as Record<string, unknown>).subIndustry,
-              businessModel: hasText(storyLogicClassification.businessModel)
-                ? normalizeWhitespace(storyLogicClassification.businessModel)
-                : (fallback.storyLogicDraft.classification as Record<string, unknown>).businessModel,
-              contentCategory: hasText(storyLogicClassification.contentCategory)
-                ? normalizeWhitespace(storyLogicClassification.contentCategory)
-                : (fallback.storyLogicDraft.classification as Record<string, unknown>).contentCategory,
-              productionApproach: hasText(storyLogicClassification.productionApproach)
-                ? normalizeWhitespace(storyLogicClassification.productionApproach)
-                : (fallback.storyLogicDraft.classification as Record<string, unknown>).productionApproach,
               customerJourneyFocus: hasText(storyLogicClassification.customerJourneyFocus)
                 ? normalizeWhitespace(storyLogicClassification.customerJourneyFocus)
                 : (fallback.storyLogicDraft.classification as Record<string, unknown>).customerJourneyFocus,
@@ -5660,7 +6258,10 @@ export async function generateRoleRoomAgentProducerBootstrap(
   // the tool loop, and returns a synthesized payload. If anything fails
   // (no synthesis, SDK unavailable, timeout), fall through to the
   // deterministic pipeline below so the user always gets a result.
-  if (orchestratorEnabled()) {
+  // Website-based research always uses the deterministic identity-first path:
+  // allowing an LLM tool loop before website -> Brreg can both misidentify a
+  // brand and consume the frontend proxy's entire request budget.
+  if (orchestratorEnabled() && !normalizeWebsiteUrl(input.websiteUrl)) {
     const orch = await time("claudeSynthesis", () => runOrchestratedBootstrap(input), { emptyFallbackLabel: "orchestrator_returned_no_synthesis", isEmpty: (v) => !v?.synthesis });
     if (orch?.synthesis) {
       const orchWebsiteInsights: RoleRoomAgentWebsiteInsights =
@@ -5707,37 +6308,76 @@ export async function generateRoleRoomAgentProducerBootstrap(
     fallbacksUsed.push("orchestrator_unusable_fell_through_to_deterministic");
   }
 
-  const initialBrregCompany = await time("brreg",
-      () => fetchBrregCompany(input),
+  // When a website is the only trustworthy identifier, read it before Brreg.
+  // This prevents a brand/project label from producing a low-quality registry
+  // lookup and guarantees exactly one Brreg request for the resolved identity.
+  const normalizedInputWebsiteUrl = normalizeWebsiteUrl(input.websiteUrl);
+  const shouldResolveIdentityFromWebsite = Boolean(normalizedInputWebsiteUrl)
+    && !normalizeOrganizationNumber(input.organizationNumber);
+  const preWebsiteBrregCompany = shouldResolveIdentityFromWebsite
+    ? null
+    : await time("brreg",
+        () => fetchBrregCompany(input),
+        { emptyFallbackLabel: "brreg_no_match", isEmpty: (v) => !v || v.lookupStatus !== "verified" },
+      );
+  const preWebsiteInput: RoleRoomAgentProducerBootstrapInput = {
+    ...input,
+    companyName: preWebsiteBrregCompany?.name || input.companyName || null,
+    organizationNumber: preWebsiteBrregCompany?.organizationNumber
+      || normalizeOrganizationNumber(input.organizationNumber)
+      || input.organizationNumber
+      || null,
+    websiteUrl: normalizedInputWebsiteUrl
+      || preWebsiteBrregCompany?.website
+      || input.websiteUrl
+      || null,
+  };
+  const websiteUrl = normalizeWebsiteUrl(preWebsiteInput.websiteUrl);
+  const websiteInsights = await time("website",
+      () => fetchWebsiteInsights(websiteUrl, preWebsiteInput, preWebsiteBrregCompany),
+    { emptyFallbackLabel: "website_unavailable", isEmpty: (v) => !v.finalUrl },
+  );
+  const initialBrregCompany = preWebsiteBrregCompany ?? await time("brreg",
+      () => fetchBrregCompany({
+        ...preWebsiteInput,
+        organizationNumber: websiteInsights.extractedOrgNumber || preWebsiteInput.organizationNumber || null,
+        companyName: websiteInsights.extractedLegalName || preWebsiteInput.companyName || null,
+      }),
     { emptyFallbackLabel: "brreg_no_match", isEmpty: (v) => !v || v.lookupStatus !== "verified" },
   );
   const companyAge = calculateCompanyAge(initialBrregCompany);
   const agreementSuggestions = buildAgreementSuggestions(initialBrregCompany, companyAge);
   const enrichedInput: RoleRoomAgentProducerBootstrapInput = {
-    ...input,
-    companyName: hasText(input.companyName)
-      ? input.companyName
-      : initialBrregCompany?.name || input.companyName || null,
+    ...preWebsiteInput,
+    companyName: initialBrregCompany?.lookupStatus === "verified"
+      ? initialBrregCompany.name
+      : websiteInsights.extractedLegalName || preWebsiteInput.companyName || null,
     organizationNumber: initialBrregCompany?.organizationNumber
-      || normalizeOrganizationNumber(input.organizationNumber)
-      || input.organizationNumber
+      || websiteInsights.extractedOrgNumber
+      || preWebsiteInput.organizationNumber
       || null,
-    websiteUrl: normalizeWebsiteUrl(input.websiteUrl)
-      || initialBrregCompany?.website
-      || input.websiteUrl
-      || null,
+    websiteUrl: websiteUrl || initialBrregCompany?.website || preWebsiteInput.websiteUrl || null,
   };
-  const websiteUrl = normalizeWebsiteUrl(enrichedInput.websiteUrl);
-  const websiteInsights = await time("website",
-      () => fetchWebsiteInsights(websiteUrl, enrichedInput, initialBrregCompany),
-    { emptyFallbackLabel: "website_unavailable", isEmpty: (v) => !v.finalUrl },
-  );
   const businessSignals = await time("googlePlacesBusiness",
-      () => fetchGooglePlacesBusinessSignals(enrichedInput, websiteInsights, initialBrregCompany),
+      () => withTimeoutFallback(
+        fetchGooglePlacesBusinessSignals(enrichedInput, websiteInsights, initialBrregCompany),
+        6_000,
+        "google_places_business_timeout",
+        null,
+      ),
     { emptyFallbackLabel: "google_places_no_business_match", isEmpty: (v) => !v },
   );
-  const placesCompetitorAnalysis = await time("googlePlacesCompetitors",
-      () => fetchGooglePlacesCompetitorAnalysis(enrichedInput, websiteInsights, businessSignals, initialBrregCompany),
+  const placesCompetitorAnalysisPromise = time("googlePlacesCompetitors",
+      () => withTimeoutFallback(
+        fetchGooglePlacesCompetitorAnalysis(enrichedInput, websiteInsights, businessSignals, initialBrregCompany),
+        6_000,
+        "google_places_competitors_timeout",
+        buildLimitedCompetitorAnalysis(
+          "Konkurrentoppslag brukte for lang tid. Ingen kandidater vises uten verifisering.",
+          enrichedInput,
+          initialBrregCompany,
+        ),
+      ),
     { emptyFallbackLabel: "google_places_competitors_empty", isEmpty: (v) => v.competitors.length === 0 },
   );
   // Brreg same-NACE competitors: pulls verified Norwegian companies in
@@ -5745,34 +6385,116 @@ export async function generateRoleRoomAgentProducerBootstrap(
   // available. This is the most reliable competitor signal for SMBs and
   // is merged with the Google Places list (deduped by website host /
   // org-nr / normalized name; higher-confidence record wins).
-  const brregNaceCompetitors = await fetchBrregCompetitorsByNace(initialBrregCompany, {
-    limit: 25,
-    municipalityNumber: initialBrregCompany?.municipalityNumber ?? null,
-  });
-  const competitorAnalysis = mergeCompetitorAnalyses(placesCompetitorAnalysis, brregNaceCompetitors);
+  // A first-party specialization can be much narrower than a broad registry
+  // code (e.g. clinical SaaS vs all programmers). In that case, do not label
+  // arbitrary same-NACE entities as competitors; Places uses the specialized
+  // category above and returns reviewable candidates instead.
+  const websiteSpecialization = classifyWebsiteSpecialization([
+    enrichedInput.extraContext,
+    websiteInsights.pageTitle,
+    websiteInsights.metaDescription,
+    websiteInsights.textSnippet,
+  ]);
+  const webCompetitorAnalysisPromise = websiteSpecialization
+    ? time("webCompetitors",
+        () => withTimeoutFallback(
+          fetchWebCompetitorAnalysis(enrichedInput, websiteInsights, initialBrregCompany),
+          9_000,
+          "web_competitors_timeout",
+          buildLimitedCompetitorAnalysis(
+            "Websøk brukte for lang tid. Ingen webkandidater vises uten kilde.",
+            enrichedInput,
+            initialBrregCompany,
+          ),
+        ),
+        { emptyFallbackLabel: "web_competitors_empty", isEmpty: (v) => v.competitors.length === 0 },
+      )
+    : Promise.resolve(null);
+  const brregNaceCompetitorsPromise = websiteSpecialization
+    ? Promise.resolve([])
+    : withTimeoutFallback(
+        fetchBrregCompetitorsByNace(initialBrregCompany, {
+          limit: 25,
+          municipalityNumber: initialBrregCompany?.municipalityNumber ?? null,
+        }),
+        6_000,
+        "brreg_competitors_timeout",
+        [],
+      );
+  const classification = detectBusinessClassification(enrichedInput, websiteInsights, businessSignals, initialBrregCompany);
+  const marketArea =
+    extractMarketLocation(businessSignals?.formattedAddress || initialBrregCompany?.businessAddress || "")
+    || initialBrregCompany?.municipality
+    || "";
+  const localPresencePlanPromise = time("googlePlacesLocal",
+      () => withTimeoutFallback(
+        fetchGooglePlacesLocalPresencePlan(enrichedInput, websiteInsights, businessSignals, initialBrregCompany),
+        6_000,
+        "google_places_local_timeout",
+        buildLimitedLocalPresencePlan(
+          "Lokalt oppslag brukte for lang tid. Ingen steder eller tiltak vises uten geografisk verifisering.",
+          enrichedInput,
+          classification,
+          marketArea,
+        ),
+      ),
+    { emptyFallbackLabel: "local_presence_no_opportunities", isEmpty: (v) => v.nearbyOpportunities.length === 0 },
+  );
+  const merchSuppliersPromise = time("merchSuppliers",
+      () => withTimeoutFallback(
+        fetchMerchSuppliersAnalysis(
+          enrichedInput,
+          websiteInsights,
+          businessSignals,
+          initialBrregCompany,
+          { requestTimeoutMs: 3_200, enrichWebsiteSignals: false },
+        ),
+        6_000,
+        "merch_suppliers_timeout",
+        {
+          ...buildLimitedMerchSuppliers("Leverandøroppslaget brukte for lang tid. Ingen leverandører vises uten verifisering."),
+          partial: true,
+        },
+      ),
+    { emptyFallbackLabel: "merch_suppliers_empty", isEmpty: (v) => !v || v.suppliers.length === 0 },
+  );
+  const brandColorsPromise = time("colorExtraction",
+      () => withTimeoutFallback(
+        extractBrandColorsFromLogo(websiteInsights.probableLogoUrl),
+        4_000,
+        "color_extraction_timeout",
+        [],
+      ),
+    { emptyFallbackLabel: "logo_palette_extraction_failed_no_colors", isEmpty: (v) => v.length === 0 },
+  );
+  const [placesCompetitorAnalysis, webCompetitorAnalysis, brregNaceCompetitors, localPresencePlan, merchSuppliers, brandColors] = await Promise.all([
+    placesCompetitorAnalysisPromise,
+    webCompetitorAnalysisPromise,
+    brregNaceCompetitorsPromise,
+    localPresencePlanPromise,
+    merchSuppliersPromise,
+    brandColorsPromise,
+  ]);
+  const competitorAnalysis = mergeCompetitorAnalyses(
+    placesCompetitorAnalysis,
+    ...(webCompetitorAnalysis ? [webCompetitorAnalysis] : []),
+    brregNaceCompetitors,
+  );
+  if (merchSuppliers?.partial) {
+    fallbacksUsed.push("merch_suppliers_partial_timeout");
+  }
   // Meta Pages Public Metadata enrichment: for each verified/likely
   // competitor, try to resolve their public Facebook Page and attach
   // follower/category/about data. All calls are best-effort — if Meta
   // is unavailable or the Page can't be resolved, the competitor is
   // returned as-is without metaPage data.
   await time("metaPagesEnrichment",
-      () => enrichCompetitorsWithMetaPages(competitorAnalysis),
-  );
-  const localPresencePlan = await time("googlePlacesLocal",
-      () => fetchGooglePlacesLocalPresencePlan(enrichedInput, websiteInsights, businessSignals, initialBrregCompany),
-    { emptyFallbackLabel: "local_presence_no_opportunities", isEmpty: (v) => v.nearbyOpportunities.length === 0 },
-  );
-  // Merch suppliers (Slice 1) — Brreg same-NACE for printing/apparel/promo
-  // codes + Google Places shop search, deduped by host/orgnr/name.
-  // Independent of competitorAnalysis: a customer can have lots of
-  // competitors and zero merch suppliers (or vice versa).
-  const merchSuppliers = await time("merchSuppliers",
-      () => fetchMerchSuppliersAnalysis(enrichedInput, websiteInsights, businessSignals, initialBrregCompany),
-    { emptyFallbackLabel: "merch_suppliers_empty", isEmpty: (v) => !v || v.suppliers.length === 0 },
-  );
-  const brandColors = await time("colorExtraction",
-      () => extractBrandColorsFromLogo(websiteInsights.probableLogoUrl),
-    { emptyFallbackLabel: "logo_palette_extraction_failed_no_colors", isEmpty: (v) => v.length === 0 },
+      () => withTimeoutFallback(
+        enrichCompetitorsWithMetaPages(competitorAnalysis),
+        4_000,
+        "meta_pages_enrichment_timeout",
+        undefined,
+      ),
   );
   const fallback = buildFallbackBootstrap(
     {
@@ -5841,7 +6563,10 @@ export async function generateRoleRoomAgentProducerBootstrap(
   if (!synthesisPayload) {
     // If Claude was the primary and returned null (e.g. Anthropic outage),
     // try OpenAI as a fallback so the user still gets a first-pass bootstrap.
-    if (useClaude) {
+    // A website-based run already has a complete, grounded deterministic
+    // payload. Do not spend another model timeout retrying it through a second
+    // provider and risk crossing the public proxy ceiling.
+    if (useClaude && !normalizedInputWebsiteUrl) {
       fallbacksUsed.push("claude_failed_retrying_openai");
       const openAiFallback = await time("openaiSynthesis",
       () => requestOpenAiBootstrap(

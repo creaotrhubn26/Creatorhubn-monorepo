@@ -129,18 +129,19 @@ Produktspec: `docs/integration-audit/08`; tiltaksplan m/ baselines: `09`.
 ## Drift: det man MÅ vite
 
 1. **Frontend-produksjon kjører kun på Netlify.** CreatorHub-siten
-   `creatorhub-frontend-mig` autodeployer `main` til `creatorhubn.com`.
-   Leadgrid og Role Room deployes først når `Promoter merke` flytter ønsket
-   commit til henholdsvis `live/leadgrid` og `live/roleroom`. Render-backend
-   autodeployer fortsatt fra `main`.
-2. **Migrasjoner**: `SKIP_BOOT_MIGRATE=1` i prod — auto-migrate-workflowen
-   kjører dem via backend-endepunkt, men **feiler ofte i deploy-vinduer**.
-   Manuell fallback (idempotent, samme protokoll som migrate.sh):
-   `psql -v ON_ERROR_STOP=1 -f migrations/NNNN_x.sql` + INSERT i
-   `_migrations_applied`.
+   `creatorhub-frontend-mig` deployer `live/creatorhub`. Den kanoniske
+   produksjonsworkflowen flytter grenen først etter grønn migrering og eksakt
+   Render-backenddeploy av samme SHA. Leadgrid og Role Room bruker henholdsvis
+   `live/leadgrid` og `live/roleroom` via `Promoter merke`.
+2. **Migrasjoner og backenddeploy**: Render auto-deploy er av.
+   `auto-migrate-on-push.yml` bruker dedikert migrator, eierpreflight,
+   advisory lock, idempotenskontroll, eksakt SHA og smoke-test. Ikke kjør SQL
+   eller Render-deploy manuelt; bruk `Deploy shared Render backend` fra
+   current `main` ved kontrollert manuell release.
 3. **Render env-vars via API**: bruk ALLTID per-nøkkel
-   `PUT /v1/services/{id}/env-vars/{key}` (liste-PUT erstatter ALT), og
-   husk at env-endringer ikke laster før neste deploy (`POST /deploys`).
+   `PUT /v1/services/{id}/env-vars/{key}` (liste-PUT erstatter ALT).
+   Aktiver endringen via den kanoniske produksjonsworkflowen, aldri direkte
+   `POST /deploys`.
 4. **Pre-push-hook** sjekker at `backend/package-lock.json` er i synk med
    `backend/package.json` — fiks med
    `cd backend && npm install --workspaces=false --package-lock-only`.

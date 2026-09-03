@@ -2,7 +2,8 @@
 //
 // Alle «Eksporter CSV / Send rapport / Sammenlign / Marker som lest»-menyer
 // venter på backend-integrasjon (CSV-generator, PDF-eksport, Slack-webhook).
-// Denne helperen gir dem en synlig respons uten å bygge hele exporter-pipen.
+// Denne helperen markerer dem ærlig som utilgjengelige inntil en reell
+// backend-flyt er koblet på; den rapporterer aldri suksess for en no-op.
 //
 // UI-mønster: NotificationCenter → root-overlay-toast i TeamView.
 
@@ -26,28 +27,32 @@ enum TeamStubActions {
     static func performGated(
         _ feature: LeadgridFeature,
         actionName: String,
-        block: @escaping () -> Void = {}
+        block: (() -> Void)? = nil
     ) {
         let store = EntitlementStore.shared
         if store.canUse(feature) {
-            // Trigger backend-action (mock: bare toast)
-            let stateLabel: String
-            switch store.access(feature) {
-            case .included: stateLabel = "utført"
-            case .trial: stateLabel = "utført (trial)"
-            case .addOn: stateLabel = "utført (addon)"
-            case .locked: stateLabel = "låst"  // shouldn't reach
+            guard let block else {
+                NotificationCenter.default.post(
+                    name: .teamStubActionTriggered,
+                    object: nil,
+                    userInfo: [
+                        "action": "\(actionName) kommer snart — ingen data er endret",
+                        "state": "info",
+                        "feature": feature.rawValue
+                    ]
+                )
+                return
             }
+            block()
             NotificationCenter.default.post(
                 name: .teamStubActionTriggered,
                 object: nil,
                 userInfo: [
-                    "action": "\(actionName) — \(stateLabel)",
+                    "action": "\(actionName) — utført",
                     "state": "success",
                     "feature": feature.rawValue
                 ]
             )
-            block()
         } else {
             // Låst — vis upsell-hint
             NotificationCenter.default.post(

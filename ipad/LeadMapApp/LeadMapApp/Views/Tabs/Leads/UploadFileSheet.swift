@@ -40,16 +40,20 @@ struct UploadFileSheet: View {
     // Kart-fanen (MapLeadMock) uten type-adapter.
     let companyName: String
     let companyColor: Color
+    let backendLeadId: String?
     /// Convenience-init som beholder Leads-fanens LeadRow-signatur.
     init(lead: LeadRow) {
         self.companyName = lead.company
         self.companyColor = lead.companyColor
+        self.backendLeadId = lead.backendId
     }
-    init(companyName: String, companyColor: Color) {
+    init(companyName: String, companyColor: Color, backendLeadId: String? = nil) {
         self.companyName = companyName
         self.companyColor = companyColor
+        self.backendLeadId = backendLeadId
     }
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var stage: Stage = .selectSource
     @State private var selectedSource: UploadSource?
     @State private var fileName: String = ""
@@ -57,6 +61,9 @@ struct UploadFileSheet: View {
     @State private var tags: Set<String> = []
     @State private var uploadProgress: Double = 0
     @State private var filesPickerPresented: Bool = false
+    @State private var selectedFileData: Data?
+    @State private var selectedMimeType = "application/octet-stream"
+    @State private var uploadError: String?
 
     enum Stage { case selectSource, metadata, uploading, done }
 
@@ -158,9 +165,28 @@ struct UploadFileSheet: View {
                 allowedContentTypes: [.item],
                 allowsMultipleSelection: false
             ) { result in
-                if case .success(let urls) = result, let url = urls.first {
-                    fileName = url.lastPathComponent
-                    stage = .metadata
+                uploadError = nil
+                switch result {
+                case .success(let urls):
+                    guard let url = urls.first else { return }
+                    let accessing = url.startAccessingSecurityScopedResource()
+                    defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+                    do {
+                        let values = try url.resourceValues(forKeys: [.fileSizeKey])
+                        if let size = values.fileSize, size > 25 * 1024 * 1024 {
+                            throw NSError(domain: "Leadgrid", code: 2,
+                                          userInfo: [NSLocalizedDescriptionKey: "Filen er større enn 25 MB"])
+                        }
+                        selectedFileData = try Data(contentsOf: url, options: .mappedIfSafe)
+                        fileName = url.lastPathComponent
+                        selectedMimeType = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
+                            ?? "application/octet-stream"
+                        stage = .metadata
+                    } catch {
+                        uploadError = error.localizedDescription
+                    }
+                case .failure(let error):
+                    uploadError = error.localizedDescription
                 }
             }
         }
@@ -225,7 +251,7 @@ struct UploadFileSheet: View {
                 Text("Velg kilde")
                     .font(.appScaled(size: 12, weight: .bold))
                     .foregroundStyle(.white)
-                Text("Du kan laste opp én eller flere filer fra en av kildene under. Filer lagres kryptert i Leadgrid B2-storage.")
+                Text("Du kan laste opp én fil om gangen fra Files eller en installert skyleverandør. Filen knyttes til leaden i Leadgrid-filarkivet.")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(UfBrand.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -243,13 +269,13 @@ struct UploadFileSheet: View {
         return VStack(alignment: .leading, spacing: 14) {
             sectionLabel("Fra iPad", icon: "ipad")
             LazyVGrid(columns: cols, spacing: 10) {
-                ForEach([UploadSource.files, .photos, .camera, .video, .scan]) { src in
+                ForEach([UploadSource.files, .icloud]) { src in
                     sourceTile(src)
                 }
             }
             sectionLabel("Fra skyen", icon: "cloud.fill")
             LazyVGrid(columns: cols, spacing: 10) {
-                ForEach([UploadSource.icloud, .googleDrive, .dropbox, .onedrive, .pasteURL]) { src in
+                ForEach([UploadSource.googleDrive, .dropbox, .onedrive]) { src in
                     sourceTile(src)
                 }
             }
@@ -337,6 +363,12 @@ struct UploadFileSheet: View {
                 nameField
                 tagsCard
                 descriptionField
+                if let uploadError {
+                    Label(uploadError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(UfBrand.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 Color.clear.frame(height: 90)
             }
             .padding(20)
@@ -492,8 +524,8 @@ struct UploadFileSheet: View {
                 )
             }
             .buttonStyle(.plain)
-            .disabled(fileName.isEmpty)
-            .opacity(fileName.isEmpty ? 0.5 : 1)
+            .disabled(fileName.isEmpty || selectedFileData == nil || backendLeadId == nil)
+            .opacity(fileName.isEmpty || selectedFileData == nil || backendLeadId == nil ? 0.5 : 1)
         }
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(
@@ -503,14 +535,32 @@ struct UploadFileSheet: View {
     }
 
     private func startUpload() {
+        guard let data = selectedFileData,
+              let leadId = backendLeadId,
+              let api = appState.api else {
+            uploadError = "Filen kan ikke lastes opp før leaden er lagret og du er innlogget."
+            return
+        }
         stage = .uploading
-        uploadProgress = 0
-        // Mock upload-progress
-        Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { timer in
-            uploadProgress += 0.04
-            if uploadProgress >= 1 {
-                timer.invalidate()
+        uploadProgress = 0.15
+        uploadError = nil
+        Task {
+            do {
+                _ = try await api.uploadLeadFile(
+                    leadId: leadId,
+                    organizationId: appState.activeOrganizationId,
+                    data: data,
+                    fileName: fileName,
+                    mimeType: selectedMimeType,
+                    displayName: fileName,
+                    description: fileDescription,
+                    tags: tags.sorted()
+                )
+                uploadProgress = 1
                 stage = .done
+            } catch {
+                uploadError = error.localizedDescription
+                stage = .metadata
             }
         }
     }
@@ -541,7 +591,7 @@ struct UploadFileSheet: View {
                 Text("Laster opp \(fileName)")
                     .font(.appScaled(size: 14, weight: .bold))
                     .foregroundStyle(.white)
-                Text("Krypterer + lagrer i Leadgrid B2-storage")
+                Text("Sender filen sikkert til Leadgrid-filarkivet")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(UfBrand.textSecondary)
             }
@@ -583,6 +633,9 @@ struct UploadFileSheet: View {
                     fileName = ""
                     fileDescription = ""
                     tags.removeAll()
+                    selectedFileData = nil
+                    selectedMimeType = "application/octet-stream"
+                    uploadError = nil
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "plus.circle.fill")

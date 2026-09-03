@@ -23,6 +23,7 @@ const STAGE_LABELS: Record<ResearchStageKey, string> = {
   website: 'Nettsidescraping',
   googlePlacesBusiness: 'Google Places (bedrift)',
   googlePlacesCompetitors: 'Google Places (konkurrenter)',
+  webCompetitors: 'Websøk (produktkonkurrenter)',
   googlePlacesLocal: 'Google Places (nærområde)',
   competitorAnalysis: 'Konkurrentanalyse',
   localPresence: 'Lokal tilstedeværelse',

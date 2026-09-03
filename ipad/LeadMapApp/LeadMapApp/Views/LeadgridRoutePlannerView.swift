@@ -13,6 +13,7 @@ import UIKit
 
 struct LeadgridRoutePlannerView: View {
     let api: APIClient
+    @Environment(AppState.self) private var appState
     @State private var phase: Phase = .form
     @State private var startLocation: CLLocationCoordinate2D?
     @State private var routeDetail: LeadgridRouteDetail?
@@ -471,11 +472,16 @@ struct LeadgridRoutePlannerView: View {
     @MainActor
     private func planRoute() async {
         guard let start = startLocation else { return }
+        guard let organizationId = appState.activeOrganizationId else {
+            errorText = "Velg et workspace før du planlegger ruten."
+            return
+        }
         planning = true
         errorText = nil
         phase = .planning
         do {
             let route = try await api.planRoute(
+                organizationId: organizationId,
                 startLat: start.latitude,
                 startLng: start.longitude,
                 limit: 12
@@ -497,11 +503,16 @@ struct LeadgridRoutePlannerView: View {
     @MainActor
     private func planTrip() async {
         guard let start = startLocation else { return }
+        guard let organizationId = appState.activeOrganizationId else {
+            errorText = "Velg et workspace før du planlegger turen."
+            return
+        }
         planning = true
         errorText = nil
         phase = .planning
         do {
             let plan = try await api.planRouteTrip(
+                organizationId: organizationId,
                 startDate: Self.isoDateFormatter.string(from: tripStartDate),
                 days: tripDays,
                 startLat: start.latitude,
@@ -549,12 +560,17 @@ struct LeadgridRoutePlannerView: View {
     @MainActor
     private func updateStatus(_ stop: LeadgridRouteStop, status: String) async {
         guard let stopId = stop.stopId, let routeId = routeDetail?.id else { return }
+        guard let organizationId = appState.activeOrganizationId else {
+            errorText = "Velg et workspace før du oppdaterer ruten."
+            return
+        }
         do {
             try await api.updateRouteStop(
-                routeId: routeId, stopId: stopId, status: status
+                routeId: routeId, stopId: stopId, status: status,
+                organizationId: organizationId
             )
             // Refresh route detail
-            let full = try await api.fetchRoute(routeId)
+            let full = try await api.fetchRoute(routeId, organizationId: organizationId)
             routeDetail = LeadgridRouteDetail(
                 id: full.route.id,
                 name: full.route.name,

@@ -164,14 +164,32 @@ async function ensureLoggSchema(pool: Pool): Promise<void> {
       user_id TEXT NOT NULL,
       selskap TEXT NOT NULL,
       orgnr TEXT,
+      lead_id UUID REFERENCES crm_customers(id) ON DELETE SET NULL,
+      meeting_at TIMESTAMPTZ,
+      request_id UUID,
+      resultat JSONB,
       notat TEXT NOT NULL DEFAULT '',
       lofter JSONB NOT NULL DEFAULT '[]',
       oppgaver JSONB NOT NULL DEFAULT '[]',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )`);
   await pool.query(`
+    ALTER TABLE leadgrid_mote_logg
+      ADD COLUMN IF NOT EXISTS lead_id UUID REFERENCES crm_customers(id) ON DELETE SET NULL,
+      ADD COLUMN IF NOT EXISTS meeting_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS request_id UUID,
+      ADD COLUMN IF NOT EXISTS resultat JSONB`);
+  await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_mote_logg_selskap
       ON leadgrid_mote_logg (organization_id, lower(selskap), created_at DESC)`);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_mote_logg_meeting
+      ON leadgrid_mote_logg (organization_id, lead_id, meeting_at DESC)
+      WHERE lead_id IS NOT NULL`);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_mote_logg_request
+      ON leadgrid_mote_logg (organization_id, request_id)
+      WHERE request_id IS NOT NULL`);
   loggSchemaReady = true;
 }
 
@@ -316,10 +334,10 @@ export function registerLeadgridMotebriefRoutes(deps: {
       }
       const orgnr = typeof b.orgnr === "string" && /^\d{9}$/.test(b.orgnr) ? b.orgnr : null;
       const kontakt = String(b.kontakt ?? "").slice(0, 120);
-      const kontaktRolle = String(b.kontakt_rolle ?? "").slice(0, 120);
+      const kontaktRolle = String(b.kontaktRolle ?? b.kontakt_rolle ?? "").slice(0, 120);
       const motetid = String(b.motetid ?? "").slice(0, 60);
       const notater = String(b.notater ?? "").slice(0, 2000);
-      const leadStatus = String(b.lead_status ?? "").slice(0, 60);
+      const leadStatus = String(b.leadStatus ?? b.lead_status ?? "").slice(0, 60);
 
       const cacheKey = `${orgId ?? "-"}:${selskap.toLowerCase()}:${new Date().toISOString().slice(0, 10)}`;
       const cached = briefCache.get(cacheKey);
@@ -505,6 +523,7 @@ ${JSON.stringify(fakta)}`;
       if (!(await assertAnyEntitled(pool, session.userId, MOTE_BRIEF_FEATURE_KEYS, res))) return;
       if (!ANTHROPIC_API_KEY) { res.status(503).json({ error: "ai_unavailable" }); return; }
       const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      if (!orgId) { res.status(400).json({ error: "no_org" }); return; }
       const b = (req.body ?? {}) as Record<string, unknown>;
       const selskap = String(b.selskap ?? "").trim().slice(0, 200);
       const tekst = String(b.tekst ?? "").trim().slice(0, 20_000);
@@ -514,11 +533,46 @@ ${JSON.stringify(fakta)}`;
       }
       const kontakt = String(b.kontakt ?? "").slice(0, 120);
       const orgnr = typeof b.orgnr === "string" && /^\d{9}$/.test(b.orgnr) ? b.orgnr : null;
-      const leadId = typeof b.lead_id === "string" ? b.lead_id.slice(0, 64) : null;
+      const requestedLeadId = String(b.leadId ?? b.lead_id ?? "").trim();
+      const requestedMeetingAt = String(b.meetingAt ?? b.meeting_at ?? "").trim();
+      const requestedId = String(b.requestId ?? b.request_id ?? "").trim();
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const requestId = uuidPattern.test(requestedId) ? requestedId : randomUUID();
+      let leadId: string | null = null;
+      let meetingAt: string | null = null;
+      if (uuidPattern.test(requestedLeadId)) {
+        const lead = await pool.query<{ id: string; next_follow_up_at: string | null }>(
+          `SELECT id::text, next_follow_up_at::text
+             FROM crm_customers
+            WHERE id = $1::uuid AND organization_id = $2::uuid`,
+          [requestedLeadId, orgId],
+        );
+        if (lead.rowCount === 0) {
+          res.status(404).json({ error: "lead_not_found" });
+          return;
+        }
+        leadId = lead.rows[0].id;
+        const parsedMeetingAt = requestedMeetingAt ? new Date(requestedMeetingAt) : null;
+        meetingAt = parsedMeetingAt && !Number.isNaN(parsedMeetingAt.getTime())
+          ? parsedMeetingAt.toISOString()
+          : lead.rows[0].next_follow_up_at;
+      }
+      await ensureLoggSchema(pool);
+      const replay = await pool.query<{ resultat: unknown }>(
+        `SELECT resultat
+           FROM leadgrid_mote_logg
+          WHERE organization_id = $1 AND request_id = $2::uuid AND resultat IS NOT NULL
+          LIMIT 1`,
+        [orgId, requestId],
+      );
+      if ((replay.rowCount ?? 0) > 0) {
+        res.json({ resultat: replay.rows[0].resultat });
+        return;
+      }
       // Selgerens mål: innsendt verdi vinner, ellers det lagrede målet
       // fra Mål & behov — måloppnåelse vurderes mot dette.
-      const lagretMaal = orgId ? await hentMaalBehov(pool, orgId, selskap) : null;
-      const moteMaal = (String(b.mote_maal ?? "").slice(0, 400) || lagretMaal?.maal || "");
+      const lagretMaal = await hentMaalBehov(pool, orgId, selskap);
+      const moteMaal = (String(b.moteMaal ?? b.mote_maal ?? "").slice(0, 400) || lagretMaal?.maal || "");
 
       const prompt = `Du er etterarbeids-assistenten til en norsk B2B-feltselger. Under er rå notater/transkripsjon fra et kundemøte hos «${selskap}»${kontakt ? ` (kontakt: ${kontakt})` : ""}${moteMaal ? `. Selgerens mål med møtet var: ${moteMaal}` : ""}.
 
@@ -578,42 +632,62 @@ ${tekst}`;
                             (resultat.nye_behov as unknown[]).map(String).slice(0, 6));
       }
 
-      // Persistér møteloggen (fase 3-sløyfen) — best effort.
-      if (orgId) {
-        try {
-          await ensureLoggSchema(pool);
-          await pool.query(
-            `INSERT INTO leadgrid_mote_logg
-               (id, organization_id, user_id, selskap, orgnr, notat, lofter, oppgaver)
-             VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb)`,
-            [randomUUID(), orgId, session.userId, selskap, orgnr,
-             String(resultat.notat ?? "").slice(0, 2000),
-             JSON.stringify(Array.isArray(resultat.lofter) ? resultat.lofter : []),
-             JSON.stringify(Array.isArray(resultat.oppgaver) ? resultat.oppgaver : [])]);
-          // Ny logg = neste brief skal IKKE serveres fra dagens cache.
-          for (const key of briefCache.keys()) {
-            if (key.includes(`:${selskap.toLowerCase()}:`)) briefCache.delete(key);
-          }
-          // Oppgavene blir EKTE avhukbare rader (Oversikt/Neste handlinger)
-          // — ikke bare visning i etterarbeids-arket.
-          await ensureOppgaveSchema(pool);
+      // Logg og avledede oppgaver er én transaksjon. Klientens stabile
+      // requestId gjør retry etter tapt svar replay-sikker.
+      await ensureOppgaveSchema(pool);
+      const parsedResult = JSON.parse(match[0]) as Record<string, unknown>;
+      const db = await pool.connect();
+      let persistedResult: unknown = parsedResult;
+      try {
+        await db.query("BEGIN");
+        const inserted = await db.query<{ id: string }>(
+          `INSERT INTO leadgrid_mote_logg
+             (id, organization_id, user_id, selskap, orgnr, lead_id, meeting_at,
+              request_id, resultat, notat, lofter, oppgaver)
+           VALUES ($1,$2,$3,$4,$5,$6::uuid,$7::timestamptz,$8::uuid,$9::jsonb,$10,$11::jsonb,$12::jsonb)
+           ON CONFLICT (organization_id, request_id) WHERE request_id IS NOT NULL
+           DO NOTHING
+           RETURNING id::text`,
+          [randomUUID(), orgId, session.userId, selskap, orgnr, leadId, meetingAt,
+           requestId, JSON.stringify(parsedResult),
+           String(resultat.notat ?? "").slice(0, 2000),
+           JSON.stringify(Array.isArray(resultat.lofter) ? resultat.lofter : []),
+           JSON.stringify(Array.isArray(resultat.oppgaver) ? resultat.oppgaver : [])],
+        );
+        if ((inserted.rowCount ?? 0) > 0) {
           const oppgaveListe = (Array.isArray(resultat.oppgaver) ? resultat.oppgaver : [])
             .slice(0, 10) as Array<{ tittel?: unknown; frist?: unknown }>;
           for (const o of oppgaveListe) {
             const tittel = String(o?.tittel ?? "").trim().slice(0, 300);
             if (!tittel) continue;
-            await pool.query(
+            await db.query(
               `INSERT INTO leadgrid_oppgaver
                  (id, organization_id, user_id, selskap, lead_id, tittel, frist)
                VALUES ($1,$2,$3,$4,$5,$6,$7)`,
               [randomUUID(), orgId, session.userId, selskap, leadId, tittel,
-               String(o?.frist ?? "").slice(0, 80) || null]);
+               String(o?.frist ?? "").slice(0, 80) || null],
+            );
           }
-        } catch (e) {
-          console.warn("[motebrief] logg-lagring feilet:", String(e).slice(0, 120));
+        } else {
+          const existing = await db.query<{ resultat: unknown }>(
+            `SELECT resultat FROM leadgrid_mote_logg
+              WHERE organization_id = $1 AND request_id = $2::uuid
+              FOR UPDATE`,
+            [orgId, requestId],
+          );
+          persistedResult = existing.rows[0]?.resultat ?? parsedResult;
         }
+        await db.query("COMMIT");
+      } catch (error) {
+        await db.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      } finally {
+        db.release();
       }
-      res.json({ resultat: JSON.parse(match[0]) });
+      for (const key of briefCache.keys()) {
+        if (key.includes(`:${selskap.toLowerCase()}:`)) briefCache.delete(key);
+      }
+      res.json({ resultat: persistedResult });
     } catch (e) {
       console.error("[motebrief] etterarbeid failed:", e);
       res.status(500).json({ error: "internal_error" });
@@ -631,14 +705,34 @@ ${tekst}`;
       const session = await requireUserSession(req, res);
       if (!session) return;
       const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      if (!orgId) { res.status(400).json({ error: "no_org" }); return; }
       const b = (req.body ?? {}) as Record<string, unknown>;
       const selskap = String(b.selskap ?? "").trim().slice(0, 200);
       const tekst = String(b.tekst ?? "").trim().slice(0, 10_000);
-      const leadId = typeof b.lead_id === "string" ? b.lead_id.slice(0, 64) : null;
+      const requestedLeadId = String(b.leadId ?? b.lead_id ?? "").trim();
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      let leadId: string | null = null;
+      if (requestedLeadId) {
+        if (!uuidPattern.test(requestedLeadId)) {
+          res.status(400).json({ error: "invalid_lead_id" });
+          return;
+        }
+        const lead = await pool.query(
+          `SELECT 1 FROM crm_customers
+            WHERE id = $1::uuid AND organization_id = $2::uuid`,
+          [requestedLeadId, orgId],
+        );
+        if (lead.rowCount === 0) {
+          res.status(404).json({ error: "lead_not_found" });
+          return;
+        }
+        leadId = requestedLeadId;
+      }
       // Apple Intelligence-modus: analysen er alt gjort ON-DEVICE (gratis,
       // privat) — vi bare persisterer. Ingen AI-gate (koster ingenting).
-      const ferdig = b.ferdig_resultat && typeof b.ferdig_resultat === "object"
-        ? b.ferdig_resultat as { oppsummering?: unknown; oppgaver?: unknown; lofter?: unknown }
+      const finishedRaw = b.ferdigResultat ?? b.ferdig_resultat;
+      const ferdig = finishedRaw && typeof finishedRaw === "object"
+        ? finishedRaw as { oppsummering?: unknown; oppgaver?: unknown; lofter?: unknown }
         : null;
       if (!ferdig) {
         if (!(await assertAnyEntitled(pool, session.userId, CANVAS_ANALYSE_FEATURE_KEYS, res))) return;
@@ -709,45 +803,46 @@ ${tekst}`;
       const oppgaveListe = (Array.isArray(resultat.oppgaver) ? resultat.oppgaver : [])
         .slice(0, 10) as Array<{ tittel?: unknown; frist?: unknown }>;
 
-      // Oppgavene → leadgrid_oppgaver (Oversikt/Neste handlinger).
-      if (orgId) {
-        try {
-          await ensureOppgaveSchema(pool);
-          for (const o of oppgaveListe) {
-            const tittel = String(o?.tittel ?? "").trim().slice(0, 300);
-            if (!tittel) continue;
-            await pool.query(
-              `INSERT INTO leadgrid_oppgaver
-                 (id, organization_id, user_id, selskap, lead_id, tittel, frist, kilde)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,'canvas')`,
-              [randomUUID(), orgId, session.userId, selskap || "Canvas-notat",
-               leadId, tittel, String(o?.frist ?? "").slice(0, 80) || null]);
-          }
-        } catch (e) {
-          console.warn("[canvas-analyse] oppgave-lagring feilet:", String(e).slice(0, 120));
+      // Oppgaver og møtelogg må enten begge lagres eller ingen av dem.
+      await ensureOppgaveSchema(pool);
+      await ensureLoggSchema(pool);
+      const db = await pool.connect();
+      try {
+        await db.query("BEGIN");
+        for (const o of oppgaveListe) {
+          const tittel = String(o?.tittel ?? "").trim().slice(0, 300);
+          if (!tittel) continue;
+          await db.query(
+            `INSERT INTO leadgrid_oppgaver
+               (id, organization_id, user_id, selskap, lead_id, tittel, frist, kilde)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,'canvas')`,
+            [randomUUID(), orgId, session.userId, selskap || "Canvas-notat",
+             leadId, tittel, String(o?.frist ?? "").slice(0, 80) || null],
+          );
         }
-      }
-
-      // Møtelogg-sløyfa: neste brief for selskapet åpner med notatet.
-      if (orgId && selskap) {
-        try {
-          await ensureLoggSchema(pool);
-          await pool.query(
+        if (selskap) {
+          await db.query(
             `INSERT INTO leadgrid_mote_logg
-               (id, organization_id, user_id, selskap, orgnr, notat, lofter, oppgaver)
-             VALUES ($1,$2,$3,$4,NULL,$5,$6::jsonb,$7::jsonb)`,
-            [randomUUID(), orgId, session.userId, selskap,
+               (id, organization_id, user_id, selskap, orgnr, lead_id, notat, lofter, oppgaver)
+             VALUES ($1,$2,$3,$4,NULL,$5::uuid,$6,$7::jsonb,$8::jsonb)`,
+            [randomUUID(), orgId, session.userId, selskap, leadId,
              `[Canvas-notat] ${String(resultat.oppsummering ?? "").slice(0, 1900)}`,
              JSON.stringify(Array.isArray(resultat.lofter) ? resultat.lofter : []),
-             JSON.stringify(oppgaveListe)]);
-          for (const key of briefCache.keys()) {
-            if (key.includes(`:${selskap.toLowerCase()}:`)) briefCache.delete(key);
-          }
-        } catch (e) {
-          console.warn("[canvas-analyse] logg-lagring feilet:", String(e).slice(0, 120));
+             JSON.stringify(oppgaveListe)],
+          );
+        }
+        await db.query("COMMIT");
+      } catch (error) {
+        await db.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      } finally {
+        db.release();
+      }
+      if (selskap) {
+        for (const key of briefCache.keys()) {
+          if (key.includes(`:${selskap.toLowerCase()}:`)) briefCache.delete(key);
         }
       }
-
       res.json({ resultat });
     } catch (e) {
       console.error("[canvas-analyse] failed:", e);
@@ -797,12 +892,14 @@ ${tekst}`;
       const session = await requireUserSession(req, res);
       if (!session) return;
       const status = (req.body ?? {}).status === "done" ? "done" : "open";
+      const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
+      if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }
       await ensureOppgaveSchema(pool);
       const r = await pool.query(
         `UPDATE leadgrid_oppgaver
             SET status = $1, done_at = CASE WHEN $1 = 'done' THEN now() ELSE NULL END
-          WHERE id = $2 AND user_id = $3`,
-        [status, req.params.id, session.userId]);
+          WHERE id = $2 AND user_id = $3 AND organization_id = $4`,
+        [status, req.params.id, session.userId, orgId]);
       if (r.rowCount === 0) { res.status(404).json({ error: "not_found" }); return; }
       res.json({ ok: true, status });
     } catch (e) {

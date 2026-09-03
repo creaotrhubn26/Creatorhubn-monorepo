@@ -3,7 +3,7 @@
   "$doc": "Hvilken gren som deployer hvilket nettsted. Leses av CreatorHub Engineering (SessionStart-hook + deploy-routing-skill) slik at endringer havner på riktig merke. Oppdater denne når et merke får ny gren, nytt domene eller nye eierstier.",
   "repo": "Creatorhubn-monorepo",
   "backend": {
-    "$doc": "Felles for ALLE merker — deployes automatisk fra main via Render. Et frosset frontend-merke kan derfor likevel påvirkes av backend-endringer.",
+    "$doc": "Felles for ALLE merker — Render auto-deploy er av. Den kanoniske produksjonsworkflowen migrerer og deployer eksakt current-main-SHA før CreatorHub-frontenden promoteres.",
     "host": "Render",
     "branch": "main",
     "url": "https://creatorhub-backend-rtbl.onrender.com",
@@ -12,11 +12,11 @@
   "targets": [
     {
       "brand": "CreatorHub",
-      "branch": "main",
+      "branch": "live/creatorhub",
       "netlifySite": "creatorhub-frontend-mig",
       "domains": ["creatorhubn.com", "www.creatorhubn.com"],
       "autoDeploy": true,
-      "note": "Hovedproduktet. Merge til main går rett i produksjon.",
+      "note": "Hovedproduktet. main går ikke direkte i frontend-produksjon; produksjonsworkflowen fast-forward-promoterer eksakt verifisert backend-SHA til live/creatorhub.",
       "paths": [
         "frontend/client/src/components/workspace/",
         "frontend/client/src/components/admin/",

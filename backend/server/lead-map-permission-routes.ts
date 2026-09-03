@@ -72,7 +72,7 @@ export async function resolveEffectivePermissions(
   // Overstyringer
   const ovrRes = await pool.query<{ permission_key: string; effect: string }>(
     `SELECT permission_key, effect
-       FROM user_permission_overrides
+       FROM leadgrid_user_permission_overrides
       WHERE organization_id = $1 AND user_id = $2`,
     [organizationId, userId],
   );
@@ -199,7 +199,7 @@ export function registerLeadMapPermissionRoutes({ app, pool, activeSessions }: D
           granted_at: string;
         }>(
           `SELECT permission_key, effect, reason, granted_at::text
-             FROM user_permission_overrides
+             FROM leadgrid_user_permission_overrides
             WHERE organization_id = $1 AND user_id = $2`,
           [req.params.id, req.params.userId],
         );
@@ -264,7 +264,7 @@ export function registerLeadMapPermissionRoutes({ app, pool, activeSessions }: D
 
     try {
       await pool.query(
-        `INSERT INTO user_permission_overrides (
+        `INSERT INTO leadgrid_user_permission_overrides (
            organization_id, user_id, permission_key, effect,
            granted_by, reason
          ) VALUES ($1, $2, $3, $4, $5, $6)
@@ -319,7 +319,7 @@ export function registerLeadMapPermissionRoutes({ app, pool, activeSessions }: D
       }
       try {
         await pool.query(
-          `DELETE FROM user_permission_overrides
+          `DELETE FROM leadgrid_user_permission_overrides
             WHERE organization_id = $1 AND user_id = $2`,
           [req.params.id, req.params.userId],
         );

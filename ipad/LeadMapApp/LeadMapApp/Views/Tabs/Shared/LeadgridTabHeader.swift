@@ -231,7 +231,7 @@ struct LeadgridTabHeader<Extra: View>: View {
                     guard let api = state.api else {
                         throw AddLeadSaveError(message: "Du må være innlogget for å lagre leaden")
                     }
-                    _ = try await api.createLeadAtPin(newLead.makeCreateRequest())
+                    _ = try await api.createLeadAtPin(newLead.makeCreateRequest(), organizationId: state.activeOrganizationId)
                     addLeadToast = "«\(newLead.companyName)» lagt til"
                 }
             case .newFollowUp:

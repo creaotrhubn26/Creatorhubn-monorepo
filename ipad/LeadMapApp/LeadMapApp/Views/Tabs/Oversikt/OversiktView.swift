@@ -1855,7 +1855,7 @@ private struct LeadsInAreaCard: View {
                 guard let api = appState.api else {
                     throw AddLeadSaveError(message: "Du må være innlogget for å lagre leaden")
                 }
-                _ = try await api.createLeadAtPin(newLead.makeCreateRequest())
+                _ = try await api.createLeadAtPin(newLead.makeCreateRequest(), organizationId: appState.activeOrganizationId)
                 miniShowToast("«\(newLead.companyName)» lagt til")
             }
         }

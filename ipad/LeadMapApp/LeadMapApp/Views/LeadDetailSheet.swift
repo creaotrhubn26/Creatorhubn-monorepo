@@ -500,8 +500,8 @@ struct LeadDetailSheet: View {
 
     private func loadEnrichment() async {
         guard let api = appState.api else { return }
-        async let e = try? await api.fetchEnrichment(leadId: lead.id)
-        async let d = try? await api.fetchDemographics(leadId: lead.id)
+        async let e = try? await api.fetchEnrichment(leadId: lead.id, organizationId: appState.activeOrganizationId)
+        async let d = try? await api.fetchDemographics(leadId: lead.id, organizationId: appState.activeOrganizationId)
         self.enrichment = await e
         self.demographics = await d
     }
@@ -519,7 +519,7 @@ struct LeadDetailSheet: View {
         guard let api = appState.api else { return }
         updating = true
         do {
-            try await api.updateStatus(leadId: lead.id, status: newStatus.rawValue)
+            try await api.updateStatus(leadId: lead.id, status: newStatus.rawValue, organizationId: appState.activeOrganizationId)
             await appState.refreshAll()
         } catch {
             print("[LeadDetail] status update failed: \(error)")

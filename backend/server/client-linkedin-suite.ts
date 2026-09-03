@@ -537,7 +537,7 @@ async function persistLinkedInDmpAudience(
       `INSERT INTO linkedin_matched_audiences (
          config_id, producer_user_id, ad_account_urn, linkedin_segment_urn,
          audience_name, source_description, upload_count, status
-       ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8)
+       ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (linkedin_segment_urn) DO UPDATE
        SET upload_count = EXCLUDED.upload_count,
            status = EXCLUDED.status,
@@ -732,7 +732,7 @@ export async function sendLinkedinCapiEvent(
        config_id, producer_user_id, conversion_urn, event_name, event_time,
        event_source, external_user_id, event_value, event_currency,
        custom_properties, delivery_status, attempt_count
-     ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, 'pending', 1)
+     ) VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, 'pending', 1)
      RETURNING id`,
     [
       opts.configId ?? null,
@@ -829,7 +829,7 @@ export async function listLinkedinCapiEvents(
             event_value, event_currency, delivery_status, delivered_at,
             attempt_count, last_error
      FROM linkedin_capi_event_log
-     WHERE producer_user_id = $1::uuid
+     WHERE producer_user_id = $1
        AND ($2::uuid IS NULL OR config_id = $2::uuid)
      ORDER BY event_time DESC
      LIMIT $3`,

@@ -36,6 +36,8 @@ struct LogActivitySheet: View {
     @State private var scheduleFollowUp: Bool = true
     @State private var movePipelineStage: Bool = true
     @State private var followUpDate: Date = Calendar.current.date(byAdding: .day, value: 3, to: Date()) ?? Date()
+    @State private var isSaving = false
+    @State private var saveError: String?
 
     // Smart handlinger (Apple Intelligence / TranscriptIntelligence): analyser
     // notatet on-device (iOS 26+) eller via backend, og vis SmartTranscript-
@@ -82,6 +84,27 @@ struct LogActivitySheet: View {
         var needsDuration: Bool {
             self == .call || self == .meeting || self == .visit || self == .demo
         }
+        var backendKind: String {
+            switch self {
+            case .call: return "call"
+            case .email: return "email"
+            case .meeting: return "meeting"
+            case .note: return "note"
+            case .visit: return "visit"
+            case .demo: return "demo"
+            case .proposal: return "proposal"
+            case .dealClose: return "deal_close"
+            }
+        }
+        var visitType: String {
+            switch self {
+            case .call: return "phone"
+            case .email, .proposal: return "email"
+            case .meeting, .demo: return "online_meeting"
+            case .visit: return "physical"
+            case .note, .dealClose: return "research"
+            }
+        }
     }
 
     enum Outcome: String, CaseIterable, Hashable {
@@ -119,6 +142,30 @@ struct LogActivitySheet: View {
         }
         /// Hvilken pipeline-stage skal automatisk settes hvis brukeren
         /// har slått på "Flytt stage". Nil = ikke endre.
+        var backendValue: String {
+            switch self {
+            case .noAnswer: return "no_answer"
+            case .spoke: return "spoke"
+            case .meetingBooked: return "meeting_booked"
+            case .proposalSent: return "proposal_sent"
+            case .interested: return "interested"
+            case .notInterested: return "not_interested"
+            case .won: return "won"
+            case .lost: return "lost"
+            }
+        }
+        var backendStatus: String? {
+            switch self {
+            case .noAnswer: return nil
+            case .spoke: return "visited"
+            case .meetingBooked: return "meeting_booked"
+            case .proposalSent: return "proposal_sent"
+            case .interested: return "interested"
+            case .notInterested: return "declined"
+            case .won: return "won"
+            case .lost: return "lost"
+            }
+        }
         var movesToStage: String? {
             switch self {
             case .noAnswer:      return nil
@@ -536,6 +583,14 @@ struct LogActivitySheet: View {
 
     private var actionBar: some View {
         VStack(spacing: 0) {
+            if let saveError {
+                Label(saveError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.appScaled(size: 11, weight: .semibold))
+                    .foregroundStyle(LaBrand.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20).padding(.top, 8)
+                    .background(LaBrand.cardHi)
+            }
             // Sammendrag-rad
             HStack(spacing: 8) {
                 Image(systemName: type.icon)
@@ -576,8 +631,8 @@ struct LogActivitySheet: View {
                 }
                 .buttonStyle(.plain)
 
-                Button { dismiss() } label: {
-                    Text("Lagre + lag ny")
+                Button { Task { await save(dismissAfter: false) } } label: {
+                    Text(isSaving ? "Lagrer…" : "Lagre + lag ny")
                         .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(LaBrand.purpleLight)
                         .frame(maxWidth: .infinity)
@@ -586,12 +641,13 @@ struct LogActivitySheet: View {
                         .overlay(RoundedRectangle(cornerRadius: 11).stroke(LaBrand.purple.opacity(0.4), lineWidth: 1))
                 }
                 .buttonStyle(.plain)
+                .disabled(isSaving)
 
-                Button { dismiss() } label: {
+                Button { Task { await save(dismissAfter: true) } } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.appScaled(size: 13, weight: .bold))
-                        Text("Lagre")
+                        Text(isSaving ? "Lagrer…" : "Lagre")
                             .font(.appScaled(size: 14, weight: .bold))
                     }
                     .foregroundStyle(.white)
@@ -606,12 +662,69 @@ struct LogActivitySheet: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .disabled(isSaving)
             }
             .padding(.horizontal, 20).padding(.vertical, 12)
             .background(
                 LaBrand.bg.opacity(0.95)
                     .overlay(Rectangle().fill(LaBrand.stroke).frame(height: 1), alignment: .top)
             )
+        }
+    }
+
+    private func save(dismissAfter: Bool) async {
+        guard !isSaving else { return }
+        guard !DemoModeManager.isActiveNonisolated else {
+            saveError = "Demo-aktivitet lagres ikke"
+            return
+        }
+        guard let api = appState.api, let leadId = lead.backendId else {
+            saveError = "Du må være innlogget og leaden må være lagret"
+            return
+        }
+
+        isSaving = true
+        saveError = nil
+        defer { isSaving = false }
+
+        var body: [String: Any] = [
+            "visitType": type.visitType,
+            "visitDatetime": ISO8601DateFormatter().string(from: date),
+            "activityKind": type.backendKind,
+            "outcome": outcome.backendValue,
+        ]
+        if type.needsDuration { body["durationMinutes"] = durationMinutes }
+        let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedNote.isEmpty {
+            body["conversationSummary"] = trimmedNote
+            body["notes"] = trimmedNote
+        }
+        if movePipelineStage, let status = outcome.backendStatus {
+            body["newStatus"] = status
+        }
+        if scheduleFollowUp {
+            body["nextAction"] = "Følg opp etter \(type.rawValue.lowercased())"
+            body["nextFollowUpAt"] = ISO8601DateFormatter().string(from: followUpDate)
+        }
+
+        do {
+            try await api.logVisit(
+                leadId: leadId, body: body,
+                organizationId: appState.activeOrganizationId
+            )
+            await appState.refreshAll()
+            if dismissAfter {
+                dismiss()
+            } else {
+                type = .call
+                date = Date()
+                durationMinutes = 15
+                outcome = .spoke
+                note = ""
+                followUpDate = Calendar.current.date(byAdding: .day, value: 3, to: Date()) ?? Date()
+            }
+        } catch {
+            saveError = error.localizedDescription
         }
     }
 

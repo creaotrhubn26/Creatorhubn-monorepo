@@ -130,23 +130,37 @@ export async function sendVerificationCode(
     return { ok: false, expiresAt: new Date(0).toISOString(), reason: "invalid_email" };
   }
 
-  // Invalider eventuelle eksisterende ikke-brukte koder for (email, purpose).
-  await pool.query(
-    `UPDATE email_verification_codes
-        SET used_at = NOW()
-      WHERE LOWER(email) = $1 AND purpose = $2 AND used_at IS NULL`,
-    [email, input.purpose],
-  );
-
   const code = generateCode();
   const codeHash = await bcrypt.hash(code, 10);
   const expiresAt = new Date(Date.now() + CODE_TTL_MINUTES * 60 * 1000);
 
-  await pool.query(
-    `INSERT INTO email_verification_codes (email, purpose, code_hash, expires_at, ip_address)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [email, input.purpose, codeHash, expiresAt, input.ipAddress ?? null],
-  );
+  // Serialiser per e-post/formål slik at to samtidige send-kall aldri lager
+  // to aktive koder. 0494 håndhever samme invariant med en unik partialindeks.
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+      [`email-verification:${email}:${input.purpose}`],
+    );
+    await client.query(
+      `UPDATE email_verification_codes
+          SET used_at = NOW()
+        WHERE LOWER(email) = $1 AND purpose = $2 AND used_at IS NULL`,
+      [email, input.purpose],
+    );
+    await client.query(
+      `INSERT INTO email_verification_codes (email, purpose, code_hash, expires_at, ip_address)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [email, input.purpose, codeHash, expiresAt, input.ipAddress ?? null],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 
   // Send e-post
   const cfg = readGmailConfig();
