@@ -16,6 +16,7 @@ struct LeadbookMalerView: View {
     @State private var layout: Layout = .list
     @State private var toast: String?
     @State private var editingTemplate: LeadbookTemplate?
+    @State private var backendEditorTarget: PondusTemplateDTO?
     @State private var testingTemplate: LeadbookTemplate?
     @State private var showNewTemplate = false
     @State private var favorited: Bool = true
@@ -97,6 +98,10 @@ struct LeadbookMalerView: View {
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: toast)
         .sheet(isPresented: $showNewTemplate) { PondusTemplateEditor(store: appState.pondusStore) }
+        .sheet(item: $backendEditorTarget) { template in
+            PondusTemplateEditor(store: appState.pondusStore, existing: template)
+                .environment(appState)
+        }
         .fullScreenCover(item: $editingTemplate) { t in
             MalEditorSheet(
                 template: t,
@@ -118,6 +123,20 @@ struct LeadbookMalerView: View {
                 steps: seededSteps(for: t),
                 title: seededName(for: t)
             )
+        }
+    }
+
+    private var canManageLiveTemplates: Bool {
+        appState.isSuperAdmin
+            || ["admin", "owner", "salgssjef", "teamleder", "sales_manager"].contains(appState.roleInOrg ?? "")
+            || appState.can("pondus.manage")
+    }
+
+    private func beginEditing(_ template: LeadbookTemplate) {
+        if let dto = LeadbookLiveStore.shared.templateDTO(for: template) {
+            backendEditorTarget = dto
+        } else {
+            editingTemplate = template
         }
     }
 
@@ -487,7 +506,14 @@ struct LeadbookMalerView: View {
     private func templateCard(_ t: LeadbookTemplate, compact: Bool) -> some View {
         let isSelected = selected.id == t.id
         let cast = PondusCast.forLeadbookTemplate(t)
-        return Button { editingTemplate = t } label: {
+        return Button {
+            if t.backendId != nil, !canManageLiveTemplates {
+                selected = t
+                LeadbookLiveStore.shared.openCoach(for: t)
+            } else {
+                beginEditing(t)
+            }
+        } label: {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 12) {
                     // Portrett av "eieren" av malen + kanal-badge nederst-høyre
@@ -543,9 +569,16 @@ struct LeadbookMalerView: View {
                     }
                     Spacer(minLength: 4)
                     Menu {
-                        Button { editingTemplate = t } label: { Label("Rediger", systemImage: "pencil") }
+                        if t.backendId == nil || canManageLiveTemplates {
+                            Button { beginEditing(t) } label: { Label("Rediger", systemImage: "pencil") }
+                        }
                         Button { testingTemplate = t } label: { Label("Test-modus", systemImage: "play.circle.fill") }
-                        Button { selected = t; LeadbookLiveStore.shared.logUsage(t); flashToast("\(t.name) er valgt") } label: { Label("Bruk mal", systemImage: "play.fill") }
+                        Button {
+                            selected = t
+                            if !LeadbookLiveStore.shared.openCoach(for: t) {
+                                flashToast("\(t.name) er valgt")
+                            }
+                        } label: { Label("Bruk mal", systemImage: "play.fill") }
                         // «Dupliser» fjernet 2026-07-17: var død knapp — kun
                         // toast, ingen kopi ble opprettet.
                         Button {

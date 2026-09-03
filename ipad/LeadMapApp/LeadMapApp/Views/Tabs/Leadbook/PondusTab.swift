@@ -1872,7 +1872,12 @@ struct PondusTeamUsageModal: View {
                 // Eksport-menyen (CSV/PDF/Del rapport) fjernet 2026-07-17:
                 // var døde knapper — ingen eksport-flate for bruksrapporten.
             }
-            .task { await appState.pondusStore.load(api: appState.api) }
+            .task {
+                await appState.pondusStore.load(
+                    api: appState.api,
+                    organizationId: appState.activeOrganizationId
+                )
+            }
             .task(id: period) { await loadStats() }
             .sheet(item: $selectedTemplate) { t in
                 PondusDrillDownSheet(template: t, stat: stat(for: t))

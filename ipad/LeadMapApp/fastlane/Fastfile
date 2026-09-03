@@ -16,6 +16,8 @@
 
 require "base64"
 require "fileutils"
+require "shellwords"
+require "uri"
 
 default_platform(:ios)
 
@@ -63,6 +65,50 @@ platform :ios do
       skip_waiting_for_build_processing: true,
       changelog: File.exist?("changelog.txt") ? File.read("changelog.txt") : nil,
     )
+  end
+
+  desc "Archive + upload a staging-connected build to TestFlight"
+  lane :staging_beta do
+    staging_base_url = ENV["LEADGRID_STAGING_BASE_URL"].to_s.strip
+    begin
+      uri = URI.parse(staging_base_url)
+    rescue URI::InvalidURIError
+      UI.user_error!("LEADGRID_STAGING_BASE_URL er ikke en gyldig URL")
+    end
+    unless uri.is_a?(URI::HTTPS) && uri.host && !uri.host.empty?
+      UI.user_error!("LEADGRID_STAGING_BASE_URL må være en absolutt HTTPS-URL")
+    end
+    if staging_base_url == "https://creatorhub-backend-rtbl.onrender.com"
+      UI.user_error!("staging_beta nekter produksjons-URL")
+    end
+
+    setup_api_key
+    download_app_store_profiles
+    build_number = Time.now.utc.strftime("%Y%m%d%H%M")
+    staging_xcargs = [
+      xcodebuild_auth_xcargs,
+      "LEAD_MAP_API_BASE=#{Shellwords.escape(staging_base_url)}",
+      "CURRENT_PROJECT_VERSION=#{build_number}",
+    ].join(" ")
+
+    build_app(
+      project: PROJECT,
+      scheme: SCHEME,
+      configuration: "Release",
+      export_method: "app-store",
+      export_options: File.expand_path("ExportOptions.plist", __dir__),
+      clean: true,
+      output_directory: "build/staging",
+      output_name: "LeadMap-Staging.ipa",
+      xcargs: staging_xcargs,
+    )
+
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true,
+      distribute_external: false,
+      changelog: "Staging E2E — leads, BRREG, Pondus-økt og offline/reconnect",
+    )
+    UI.success("Staging TestFlight-build #{build_number} lastet opp")
   end
 
   desc "Archive + submit for App Store Review"

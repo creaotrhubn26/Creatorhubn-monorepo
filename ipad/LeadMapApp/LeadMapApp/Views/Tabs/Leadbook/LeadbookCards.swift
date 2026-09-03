@@ -335,7 +335,18 @@ struct TemplateLibraryModal: View {
                     }
                     Spacer(minLength: 4)
                     Menu {
-                        Button { selected = t; LeadbookLiveStore.shared.logUsage(t); flashToast("\(t.name) er valgt") } label: { Label("Bruk mal", systemImage: "play.fill") }
+                        Button {
+                            selected = t
+                            if t.backendId != nil {
+                                dismiss()
+                                Task { @MainActor in
+                                    try? await Task.sleep(for: .milliseconds(250))
+                                    LeadbookLiveStore.shared.openCoach(for: t)
+                                }
+                            } else {
+                                flashToast("\(t.name) er valgt")
+                            }
+                        } label: { Label("Bruk mal", systemImage: "play.fill") }
                         Button { menuTemplate = t } label: { Label("Forhåndsvis", systemImage: "eye") }
                         // «Rediger» + «Dupliser» fjernet 2026-07-17: var døde
                         // knapper — kun toast, ingen editor/kopi bak.
@@ -571,6 +582,7 @@ struct SelectedLeadbookCard: View {
     let template: LeadbookTemplate
     @Binding var currentStep: Int
     @State private var showUseMal = false
+    @State private var activeCoach: PondusTemplateDTO?
     @State private var showOutcomePrompt = false
     @State private var showNewTemplate = false
     @State private var showNewObjection = false
@@ -671,7 +683,9 @@ struct SelectedLeadbookCard: View {
                 }
                 .buttonStyle(.plain)
                 // Primær CTA
-                Button { showUseMal = true } label: {
+                Button {
+                    if let dto { activeCoach = dto } else { showUseMal = true }
+                } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "play.fill")
                             .font(.appScaled(size: 11, weight: .bold))
@@ -740,6 +754,10 @@ struct SelectedLeadbookCard: View {
                 // Prompten vises etter at sheeten er lukket.
                 showOutcomePrompt = true
             })
+        }
+        .sheet(item: $activeCoach) { template in
+            PondusCoachView(template: template, initialStep: max(0, currentStep - 1))
+                .environment(appState)
         }
         // Utfalls-prompt (2026-07-04): oppgraderer 'used'-raden i backend
         // → ekte møte-rate per mal i Leadbook-KPI-ene.

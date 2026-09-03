@@ -40,7 +40,7 @@ struct PairExchangeError: Error, LocalizedError {
 
 actor PairExchangeService {
     static let shared = PairExchangeService()
-    private let baseURL = URL(string: "https://creatorhub-backend-rtbl.onrender.com")!
+    private let baseURL = URL(string: APIClient.baseURL)!
 
     func exchange(shortCode: String) async throws -> PairExchangeResponse {
         let cleaned = shortCode

@@ -73,6 +73,7 @@ final class AppState {
     /// stabil id-basert routing (Watch-siden sender uuid).
     var deepLinkPondusTemplateId: String?
     var deepLinkPondusTemplateName: String?
+    var deepLinkPondusStepIndex: Int?
     /// Tid da deep-link ble satt — brukes til å ignorere gamle deep-links
     /// (>60s) som kan ha kommet fra en tidligere session-kø.
     var deepLinkPondusRequestedAt: Date?
@@ -90,9 +91,14 @@ final class AppState {
     /// Sett deep-link + tidsstempel. Kalles av AppStateBridge (og indirekte
     /// av App Intents). LeadbookView.onAppear/task/onChange plukker opp
     /// dette og switch-er til Pondus-fanen.
-    func setPondusDeepLink(templateId: String? = nil, templateName: String? = nil) {
+    func setPondusDeepLink(
+        templateId: String? = nil,
+        templateName: String? = nil,
+        stepIndex: Int? = nil
+    ) {
         self.deepLinkPondusTemplateId = templateId
         self.deepLinkPondusTemplateName = templateName
+        self.deepLinkPondusStepIndex = stepIndex
         self.deepLinkPondusRequestedAt = Date()
         self.selectedSidebarItem = .leadbook
     }
@@ -102,6 +108,7 @@ final class AppState {
     func clearPondusDeepLink() {
         self.deepLinkPondusTemplateId = nil
         self.deepLinkPondusTemplateName = nil
+        self.deepLinkPondusStepIndex = nil
         self.deepLinkPondusRequestedAt = nil
     }
 
@@ -341,10 +348,17 @@ final class AppState {
     /// pulse-flyten for å unngå å refreshe metrics/calendar samtidig.
     func refreshLeads() async {
         guard let api else { return }
+        let organizationId = activeOrganizationId
         do {
             let fresh = try await api.fetchLeads(projectId: activeProjectId, organizationId: activeOrganizationId)
+            // Et org-bytte mens requesten er i flight skal verken erstatte
+            // skjermdata eller feilmerke et Watch-snapshot med ny aktiv org.
+            guard activeOrganizationId == organizationId else { return }
             self.leads = fresh
             self.leadsLoadState = .loaded
+            if let organizationId {
+                WatchSession.shared.pushLeads(fresh, organizationId: organizationId)
+            }
         } catch {
             print("[AppState] refreshLeads failed: \(error)")
             if case .loaded = leadsLoadState {} else {
@@ -729,10 +743,31 @@ func configureDiscovery() async {
         // QA-hook (landing-videoer): QA_TOUR kjører på ren demo-data og
         // trenger ingen backend — hopp over pairing hvis sesjonen mangler.
         // Reverteres m/ task #59-følget.
-        if ProcessInfo.processInfo.environment["QA_TOUR"] != nil,
+        if let qaTour = ProcessInfo.processInfo.environment["QA_TOUR"],
            AuthClient.loadToken() == nil {
             self.authToken = "qa-tour-demo"
             self.userEmail = "demo@leadgrid.no"
+            self.activeOrganizationId = "qa-tour-organization"
+            if qaTour == "agent-skills" {
+                self.activeProjectId = "qa-agent-project"
+                self.permissions = ["leads.view", "leads.update", "visits.create"]
+                self.roleInOrg = "admin"
+            }
+            if qaTour == "pondus-coach" {
+                let orgId = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
+                self.activeOrganizationId = orgId.uuidString.lowercased()
+                self.permissions = ["pondus.manage", "analytics.view_overview"]
+                self.roleInOrg = "salgssjef"
+                self.api = APIClient(
+                    token: "qa-tour-demo",
+                    baseURL: URL(string: "http://127.0.0.1:9")!
+                )
+                self.pondusStore.seedForQACoach(organizationId: orgId)
+                self.setPondusDeepLink(
+                    templateId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                    stepIndex: 0
+                )
+            }
             return
         }
         #endif
@@ -793,6 +828,13 @@ func configureDiscovery() async {
         do {
             let orgs = try await api.fetchOrganizations()
             self.organizations = orgs
+            #if DEBUG
+            if let requested = ProcessInfo.processInfo.environment["QA_ORGANIZATION_ID"],
+               orgs.contains(where: { $0.id == requested }) {
+                self.activeOrganizationId = requested
+                return
+            }
+            #endif
             // FIX 4: Valider at activeOrganizationId fortsatt eksisterer i
             // medlemskapslista. Stale ID i UserDefaults (typisk: brukeren
             // ble fjernet fra orgen, eller orgen ble slettet) → alle
@@ -1074,7 +1116,6 @@ func configureDiscovery() async {
             return
         }
         let refreshOrganizationGeneration = organizationSelectionGeneration
-
         // Marker prosjekter som «laster» FØR vi fyrer av kall. Hvis kortet
         // er i .idle vil det ellers ende på empty-state i 1-2 sek mens
         // fetchProjects pågår — bug fra PR #993 som denne fixen løser.
@@ -1196,6 +1237,10 @@ func configureDiscovery() async {
             if let r = newRemOpt { self.reminders = r }
             self.lastSyncAt = Date()
             self.isUsingStaleCache = false
+
+            if let organizationId {
+                WatchSession.shared.pushLeads(newLeads, organizationId: organizationId)
+            }
 
             // Lagre snapshot til disk
             await OfflineCache.shared.save(newLeads, named: "leads")

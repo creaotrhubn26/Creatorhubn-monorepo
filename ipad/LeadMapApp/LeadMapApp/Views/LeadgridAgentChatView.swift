@@ -33,7 +33,7 @@ struct LeadgridAgentChatView: View {
     @State private var activeThread: AgentThread?
     @State private var messages: [AgentMessage] = []
     @State private var pendingAssistantText: String = ""
-    @State private var pendingToolUses: [ToolUseRecord] = []
+    @State private var pendingToolUses: [AgentToolUse] = []
     @State private var draftMessage: String = ""
     @State private var sending: Bool = false
     @State private var streamingTask: Task<Void, Never>?
@@ -41,13 +41,18 @@ struct LeadgridAgentChatView: View {
     @State private var showThreadList = false
     @State private var renamingThread: AgentThread?
     @State private var renameTitle: String = ""
+    @State private var consentState: ConsentState = .checking
+    @State private var selectedTool: AgentToolUse?
+    @State private var executingToolID: String?
+    @State private var toolResults: [String: LeadgridAgentSkillResult] = [:]
 
     private static let brandPurple = Color(red: 0.58, green: 0.20, blue: 0.92)
 
-    struct ToolUseRecord: Identifiable, Hashable {
-        let id: String
-        let name: String
-        let inputJSON: String
+    private enum ConsentState: Equatable {
+        case checking
+        case required
+        case granted
+        case failed(String)
     }
 
     private var resolvedProjectId: String? {
@@ -60,6 +65,14 @@ struct LeadgridAgentChatView: View {
             Divider()
             if resolvedProjectId == nil {
                 emptyProjectState
+            } else if consentState == .checking {
+                Spacer()
+                ProgressView("Kontrollerer AI-samtykke …")
+                    .controlSize(.large)
+                    .tint(Self.brandPurple)
+                Spacer()
+            } else if consentState != .granted {
+                consentView
             } else if loadingThreads {
                 Spacer()
                 ProgressView()
@@ -73,12 +86,21 @@ struct LeadgridAgentChatView: View {
             }
         }
         .background(Color(.systemBackground))
-        .task { await loadThreads() }
+        .task(id: resolvedProjectId) { await prepareAgent() }
         .sheet(isPresented: $showThreadList) {
             threadListSheet
         }
         .sheet(item: $renamingThread) { thread in
             renameSheet(for: thread)
+        }
+        .sheet(item: $selectedTool) { tool in
+            AgentSkillConfirmationSheet(
+                tool: tool,
+                leadName: leadName(in: tool),
+                isExecuting: executingToolID == tool.id,
+                onCancel: { selectedTool = nil },
+                onConfirm: { Task { await execute(tool) } }
+            )
         }
     }
 
@@ -104,6 +126,7 @@ struct LeadgridAgentChatView: View {
             }
             .buttonStyle(.borderless)
             .foregroundStyle(Self.brandPurple)
+            .disabled(consentState != .granted)
 
             Spacer()
 
@@ -122,6 +145,7 @@ struct LeadgridAgentChatView: View {
                     .foregroundStyle(Self.brandPurple)
             }
             .buttonStyle(.borderless)
+            .disabled(consentState != .granted)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -158,8 +182,8 @@ struct LeadgridAgentChatView: View {
                 .foregroundStyle(Self.brandPurple)
             Text("Start samtalen")
                 .font(.title3.bold())
-            Text("Spør Agenten om dette prosjektet — den kjenner brief, "
-                 + "tidslinjen og rollene.")
+            Text("Spør Agenten om leads i det aktive prosjektet. Alle forslag "
+                 + "må bekreftes før Leadgrid gjør noe.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -195,10 +219,48 @@ struct LeadgridAgentChatView: View {
     }
 
     private let starterPrompts = [
-        "Gi meg et sammendrag av prosjektets status",
-        "Hvilke leads bør jeg ringe i dag?",
-        "Foreslå en plan for neste 2 uker",
+        "Sjekk datakvaliteten i prosjektet",
+        "Hvilke leads bør jeg følge opp i dag?",
+        "Synkroniser ventende offline-handlinger",
     ]
+
+    @ViewBuilder
+    private var consentView: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "hand.raised.fill")
+                .font(.appScaled(size: 48))
+                .foregroundStyle(Self.brandPurple)
+            Text("Samtykke før Agenten brukes")
+                .font(.title3.bold())
+            Text("Agenten sender meldingen din og pseudonymiserte lead-navn, status og "
+                 + "oppfølgingsmetadata til Anthropic. Telefonnumre og e-postadresser "
+                 + "sendes ikke. Du kan trekke samtykket tilbake i prosjektets AI-innstillinger.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 520)
+            if case .failed(let message) = consentState {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+            }
+            Button {
+                Task { await grantConsent() }
+            } label: {
+                Label("Jeg samtykker og vil aktivere Agenten", systemImage: "checkmark.shield.fill")
+                    .font(.headline)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Self.brandPurple)
+            .accessibilityIdentifier("agent-consent-confirm")
+            Spacer()
+        }
+        .padding(24)
+    }
 
     // MARK: - Chat body
 
@@ -208,7 +270,16 @@ struct LeadgridAgentChatView: View {
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(messages) { msg in
-                        MessageBubble(message: msg)
+                        MessageBubble(
+                            message: msg,
+                            toolResults: toolResults,
+                            executingToolID: executingToolID,
+                            onToolTap: { tool in
+                                guard toolResults[tool.id] == nil,
+                                      executingToolID == nil else { return }
+                                selectedTool = tool
+                            }
+                        )
                             .id(msg.id)
                     }
                     if sending {
@@ -409,6 +480,82 @@ struct LeadgridAgentChatView: View {
     // MARK: - Actions
 
     @MainActor
+    private func prepareAgent() async {
+        streamingTask?.cancel()
+        activeThread = nil
+        messages = []
+        threads = []
+        toolResults = [:]
+        errorText = nil
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["QA_TOUR"] == "agent-skills" {
+            let thread = AgentThread(
+                id: "qa-agent-thread",
+                projectId: "qa-agent-project",
+                userId: "qa-user",
+                title: "Agent QA",
+                createdAt: "2026-09-03T10:00:00Z",
+                lastActiveAt: "2026-09-03T10:00:00Z",
+                archivedAt: nil
+            )
+            let proposal = AgentToolUse(
+                id: "qa-agent-data-quality",
+                name: LeadgridAgentSkill.dataQuality.rawValue,
+                inputJSON: #"{"limit":25}"#
+            )
+            threads = [thread]
+            activeThread = thread
+            messages = [
+                AgentMessage(
+                    id: "qa-agent-message",
+                    threadId: thread.id,
+                    role: "assistant",
+                    text: "Jeg foreslår en lokal datakvalitetskontroll.",
+                    response: AgentMessageResponse(toolUses: [proposal]),
+                    createdAt: "2026-09-03T10:00:00Z"
+                ),
+            ]
+            consentState = .granted
+            loadingThreads = false
+            return
+        }
+        #endif
+        guard let api = appState.api, let projectId = resolvedProjectId else {
+            loadingThreads = false
+            consentState = .required
+            return
+        }
+        consentState = .checking
+        loadingThreads = true
+        do {
+            let consent = try await api.fetchAgentAIConsent(projectId: projectId)
+            guard consent?.scope == "full_context", consent?.revokedAt == nil else {
+                consentState = .required
+                loadingThreads = false
+                return
+            }
+            consentState = .granted
+            await loadThreads()
+        } catch {
+            consentState = .failed("Kunne ikke kontrollere samtykket: \(error.localizedDescription)")
+            loadingThreads = false
+        }
+    }
+
+    @MainActor
+    private func grantConsent() async {
+        guard let api = appState.api, let projectId = resolvedProjectId else { return }
+        consentState = .checking
+        do {
+            _ = try await api.grantAgentAIConsent(projectId: projectId)
+            consentState = .granted
+            await loadThreads()
+        } catch {
+            consentState = .failed("Samtykket kunne ikke lagres: \(error.localizedDescription)")
+        }
+    }
+
+    @MainActor
     private func loadThreads() async {
         guard let api = appState.api, let pid = resolvedProjectId else {
             loadingThreads = false
@@ -541,6 +688,9 @@ struct LeadgridAgentChatView: View {
         let stream = await api.streamAgentMessage(
             threadId: thread.id,
             content: trimmed,
+            requiredScope: "full_context",
+            organizationId: appState.activeOrganizationId,
+            leads: agentLeadContext,
         )
         streamingTask = Task { @MainActor in
             do {
@@ -554,7 +704,7 @@ struct LeadgridAgentChatView: View {
                         pendingAssistantText += text
                     case .toolUse(let id, let name, let inputJSON):
                         pendingToolUses.append(
-                            ToolUseRecord(id: id, name: name, inputJSON: inputJSON)
+                            AgentToolUse(id: id, name: name, inputJSON: inputJSON)
                         )
                     case .done:
                         finalizeAssistant()
@@ -580,12 +730,13 @@ struct LeadgridAgentChatView: View {
     private func finalizeAssistant() {
         guard sending else { return }
         let text = pendingAssistantText
-        if !text.isEmpty {
+        if !text.isEmpty || !pendingToolUses.isEmpty {
             let asst = AgentMessage(
                 id: "local-\(UUID().uuidString)",
                 threadId: activeThread?.id ?? "",
                 role: "assistant",
                 text: text,
+                response: AgentMessageResponse(toolUses: pendingToolUses),
                 createdAt: ISO8601DateFormatter().string(from: Date()),
             )
             messages.append(asst)
@@ -606,6 +757,82 @@ struct LeadgridAgentChatView: View {
         messages.removeAll(where: { $0.id == lastUser.id })
         await sendDraft()
     }
+
+    private var agentLeadContext: [AgentLeadContext] {
+        let formatter = ISO8601DateFormatter()
+        return appState.leads.prefix(100).map { lead in
+            AgentLeadContext(
+                id: lead.id,
+                name: lead.name,
+                status: lead.status.rawValue,
+                hasPhone: lead.phone?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+                hasEmail: lead.email?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+                hasWebsite: lead.websiteUrl?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+                nextFollowUpAt: lead.nextFollowUpAt.map(formatter.string(from:)),
+                lastVisitAt: lead.lastVisitAt.map(formatter.string(from:))
+            )
+        }
+    }
+
+    private func leadName(in tool: AgentToolUse) -> String? {
+        guard let object = try? JSONSerialization.jsonObject(with: Data(tool.inputJSON.utf8)) as? [String: Any],
+              let leadId = object["lead_id"] as? String else { return nil }
+        return appState.leads.first(where: { $0.id == leadId })?.name
+    }
+
+    @MainActor
+    private func execute(_ tool: AgentToolUse) async {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["QA_TOUR"] == "agent-skills" {
+            executingToolID = tool.id
+            await Task.yield()
+            toolResults[tool.id] = .init(
+                state: .completed,
+                title: "Datakvalitet kontrollert",
+                detail: "QA-verifisering fullført uten endringer."
+            )
+            executingToolID = nil
+            selectedTool = nil
+            return
+        }
+        #endif
+        guard toolResults[tool.id] == nil,
+              executingToolID == nil,
+              let api = appState.api,
+              let organizationId = appState.activeOrganizationId,
+              let projectId = resolvedProjectId else { return }
+        let skill = LeadgridAgentSkill(rawValue: tool.name)
+        if skill?.isWrite == true,
+           LeadgridAgentExecutionStore.contains(organizationId: organizationId, toolID: tool.id) {
+            toolResults[tool.id] = .init(
+                state: .completed,
+                title: "Allerede utført",
+                detail: "Denne agenthandlingen er allerede behandlet på denne iPaden."
+            )
+            selectedTool = nil
+            return
+        }
+        executingToolID = tool.id
+        let result = await LeadgridAgentSkillExecutor(
+            api: api,
+            organizationId: organizationId,
+            projectId: projectId,
+            leads: appState.leads
+        ).execute(tool)
+        toolResults[tool.id] = result
+        executingToolID = nil
+        selectedTool = nil
+        if skill?.isWrite == true, result.state == .completed || result.state == .queued {
+            LeadgridAgentExecutionStore.markExecuted(
+                organizationId: organizationId,
+                toolID: tool.id
+            )
+        }
+        if result.state == .completed, skill?.isWrite == true,
+           skill != .syncOfflineActions {
+            await appState.refreshAll()
+        }
+    }
 }
 
 // MARK: - Bubbles
@@ -613,6 +840,9 @@ struct LeadgridAgentChatView: View {
 @MainActor
 private struct MessageBubble: View {
     let message: AgentMessage
+    let toolResults: [String: LeadgridAgentSkillResult]
+    let executingToolID: String?
+    let onToolTap: (AgentToolUse) -> Void
 
     private var isUser: Bool { message.role == "user" }
     private static let brandPurple = Color(red: 0.58, green: 0.20, blue: 0.92)
@@ -629,19 +859,32 @@ private struct MessageBubble: View {
                 Spacer()
             }
             VStack(alignment: isUser ? .trailing : .leading, spacing: 2) {
-                Text(message.text)
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
-                    .background(
-                        isUser
-                            ? Self.brandPurple
-                            : Color(.secondarySystemBackground),
-                        in: RoundedRectangle(cornerRadius: 14)
-                    )
-                    .foregroundStyle(isUser ? .white : .primary)
-                    .frame(maxWidth: 520, alignment: isUser ? .trailing : .leading)
+                if !message.text.isEmpty {
+                    Text(message.text)
+                        .font(.body)
+                        .textSelection(.enabled)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .background(
+                            isUser
+                                ? Self.brandPurple
+                                : Color(.secondarySystemBackground),
+                            in: RoundedRectangle(cornerRadius: 14)
+                        )
+                        .foregroundStyle(isUser ? .white : .primary)
+                        .frame(maxWidth: 520, alignment: isUser ? .trailing : .leading)
+                }
+                if !isUser {
+                    ForEach(message.response?.toolUses ?? []) { tool in
+                        AgentToolActionCard(
+                            tool: tool,
+                            result: toolResults[tool.id],
+                            isExecuting: executingToolID == tool.id,
+                            enabled: toolResults[tool.id] == nil && executingToolID == nil,
+                            onTap: { onToolTap(tool) }
+                        )
+                    }
+                }
             }
             if isUser {
                 Image(systemName: "person.fill")
@@ -659,7 +902,7 @@ private struct MessageBubble: View {
 @MainActor
 private struct StreamingAssistantBubble: View {
     let text: String
-    let toolUses: [LeadgridAgentChatView.ToolUseRecord]
+    let toolUses: [AgentToolUse]
 
     private static let brandPurple = Color(red: 0.58, green: 0.20, blue: 0.92)
 
@@ -697,38 +940,17 @@ private struct StreamingAssistantBubble: View {
                                  in: RoundedRectangle(cornerRadius: 14))
                 }
                 ForEach(toolUses) { tool in
-                    toolUseCard(tool)
+                    AgentToolActionCard(
+                        tool: tool,
+                        result: nil,
+                        isExecuting: false,
+                        enabled: false,
+                        onTap: {}
+                    )
                 }
             }
             Spacer()
         }
-    }
-
-    @ViewBuilder
-    private func toolUseCard(_ tool: LeadgridAgentChatView.ToolUseRecord) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Image(systemName: "wrench.and.screwdriver.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                Text("Agenten foreslår: \(tool.name)")
-                    .font(.caption.bold())
-                Spacer()
-            }
-            if !tool.inputJSON.isEmpty && tool.inputJSON != "{}" {
-                Text(tool.inputJSON)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(6)
-            }
-        }
-        .padding(8)
-        .background(Color.orange.opacity(0.10),
-                     in: RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.orange.opacity(0.30), lineWidth: 0.5)
-        )
     }
 
     @State private var typingPhase: CGFloat = 0
@@ -736,6 +958,133 @@ private struct StreamingAssistantBubble: View {
         let base: CGFloat = 0.7
         let amp: CGFloat = 0.6
         return base + amp * abs(sin((typingPhase + CGFloat(i) * 0.3) * .pi))
+    }
+}
+
+@MainActor
+private struct AgentToolActionCard: View {
+    let tool: AgentToolUse
+    let result: LeadgridAgentSkillResult?
+    let isExecuting: Bool
+    let enabled: Bool
+    let onTap: () -> Void
+
+    private var skill: LeadgridAgentSkill? { LeadgridAgentSkill(rawValue: tool.name) }
+
+    private var tint: Color {
+        guard let result else { return .orange }
+        switch result.state {
+        case .completed: return .green
+        case .queued: return .blue
+        case .failed: return .red
+        }
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 7) {
+                    if isExecuting {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: result == nil ? "sparkles" : statusIcon)
+                            .foregroundStyle(tint)
+                    }
+                    Text(result?.title ?? skill?.title ?? "Ukjent agenthandling")
+                        .font(.caption.bold())
+                    Spacer()
+                    if result == nil {
+                        Text(skill?.isWrite == true ? "Krever bekreftelse" : "Kjør analyse")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(tint)
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                if let result {
+                    Text(result.detail)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                } else if skill == nil {
+                    Text("Oppdater appen før dette forslaget kan brukes.")
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: 520, alignment: .leading)
+            .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(tint.opacity(0.35), lineWidth: 0.7)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled || skill == nil)
+        .accessibilityIdentifier("agent-skill-\(tool.name)")
+    }
+
+    private var statusIcon: String {
+        switch result?.state {
+        case .completed: return "checkmark.circle.fill"
+        case .queued: return "tray.and.arrow.down.fill"
+        case .failed: return "exclamationmark.triangle.fill"
+        case nil: return "sparkles"
+        }
+    }
+}
+
+@MainActor
+private struct AgentSkillConfirmationSheet: View {
+    let tool: AgentToolUse
+    let leadName: String?
+    let isExecuting: Bool
+    let onCancel: () -> Void
+    let onConfirm: () -> Void
+
+    private var skill: LeadgridAgentSkill? { LeadgridAgentSkill(rawValue: tool.name) }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Forslag") {
+                    LabeledContent("Handling", value: skill?.title ?? tool.name)
+                    if let leadName { LabeledContent("Lead", value: leadName) }
+                    LabeledContent(
+                        "Type",
+                        value: skill?.isWrite == true ? "Kan endre Leadgrid" : "Kun analyse"
+                    )
+                }
+                Section("Hva skjer") {
+                    Text(skill?.isWrite == true
+                         ? "Handlingen kjøres først etter at du trykker Bekreft. Ved nettverksbrudd lagres støttede skrivehandlinger i den tenant-avgrensede offline-køen."
+                         : "Analysen leser bare dataene i det aktive prosjektet og gjør ingen endringer.")
+                        .font(.callout)
+                }
+                Section("Detaljer fra Agenten") {
+                    Text(tool.inputJSON)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                }
+            }
+            .navigationTitle("Bekreft agenthandling")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Avbryt", action: onCancel).disabled(isExecuting)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Bekreft", action: onConfirm)
+                        .fontWeight(.semibold)
+                        .disabled(isExecuting || skill == nil)
+                        .accessibilityIdentifier("agent-skill-confirm")
+                }
+            }
+        }
+        .interactiveDismissDisabled(isExecuting)
+        .presentationDetents([.medium, .large])
     }
 }
 

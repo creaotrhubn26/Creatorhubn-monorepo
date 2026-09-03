@@ -11,6 +11,7 @@
 
 import XCTest
 
+@MainActor
 final class QASweepTests: XCTestCase {
 
     override func setUpWithError() throws {
@@ -101,6 +102,25 @@ final class QASweepTests: XCTestCase {
         ).firstMatch
     }
 
+    private func pondusUsageCount(
+        baseURL: URL,
+        token: String,
+        organizationID: String,
+        templateID: String
+    ) async throws -> Int {
+        var statsURL = baseURL.appendingPathComponent("api/leadgrid/pondus/usage/stats")
+        statsURL.append(queryItems: [URLQueryItem(name: "organization_id", value: organizationID)])
+        var request = URLRequest(url: statsURL)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue(organizationID, forHTTPHeaderField: "X-Organization-Id")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let templates = payload?["templates"] as? [[String: Any]] ?? []
+        let row = templates.first { ($0["template_id"] as? String) == templateID }
+        return row?["used_total"] as? Int ?? 0
+    }
+
     // MARK: - Fane-sveip m/ statistikk-modal
 
     /// iPhone-fanene: 0=Oversikt 1=Kart 2=Leads 3=Møter 4=Mer,
@@ -144,6 +164,321 @@ final class QASweepTests: XCTestCase {
         } else {
             snap(app, "leads-detalj-sheet-UTILGJENGELIG")
         }
+        app.terminate()
+    }
+
+    func testSharedLeadFormShowsInlineValidationErrors() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_TOUR"] = "lead-form"
+        app.launchEnvironment["QA_DEMO"] = "1"
+        app.launchEnvironment["QA_TAB"] = "2"
+        app.launch()
+
+        let newLead = app.buttons["lead-new"]
+        XCTAssertTrue(newLead.waitForExistence(timeout: 10))
+        newLead.tap()
+
+        let form = app.otherElements["lead-add-form"]
+        XCTAssertTrue(form.waitForExistence(timeout: 5))
+
+        let name = app.textFields["lead-field-name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 3))
+        name.tap()
+        name.typeText("Valideringstest AS")
+
+        let orgNumber = app.textFields["lead-field-organizationNumber"]
+        orgNumber.tap()
+        orgNumber.typeText("123456789")
+
+        let website = app.textFields["lead-field-website"]
+        website.tap()
+        website.typeText("javascript:alert(1)")
+
+        let email = app.textFields["lead-field-email"]
+        email.tap()
+        email.typeText("ugyldig-epost")
+
+        app.buttons["lead-submit"].tap()
+
+        XCTAssertTrue(app.staticTexts["lead-error-organizationNumber"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["lead-error-website"].exists)
+        XCTAssertTrue(app.staticTexts["lead-error-email"].exists)
+        XCTAssertFalse(app.alerts["Kunne ikke lagre lead"].exists)
+        app.terminate()
+    }
+
+    func testKartAndLeadsOpenTheSharedLeadForm() throws {
+        for tab in [1, 2] {
+            let app = XCUIApplication()
+            app.launchEnvironment["QA_TOUR"] = "shared-lead-form"
+            app.launchEnvironment["QA_DEMO"] = "1"
+            app.launchEnvironment["QA_TAB"] = "\(tab)"
+            app.launch()
+
+            if tab == 1 {
+                let actions = app.buttons["lead-actions-menu"]
+                XCTAssertTrue(actions.waitForExistence(timeout: 10))
+                actions.tap()
+                let newMapLead = app.buttons["lead-new-map"]
+                XCTAssertTrue(newMapLead.waitForExistence(timeout: 3))
+                newMapLead.tap()
+            } else {
+                let newLead = app.buttons["lead-new"]
+                XCTAssertTrue(newLead.waitForExistence(timeout: 10))
+                newLead.tap()
+            }
+            XCTAssertTrue(app.otherElements["lead-add-form"].waitForExistence(timeout: 5))
+            app.terminate()
+        }
+    }
+
+    func testLeadgridAgentProposalRequiresConfirmationBeforeExecution() throws {
+        #if !targetEnvironment(macCatalyst)
+        XCUIDevice.shared.orientation = .landscapeLeft
+        #endif
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_TOUR"] = "agent-skills"
+        app.launchEnvironment["QA_DEMO"] = "1"
+        app.launchEnvironment["QA_TAB"] = "12"
+        app.launch()
+
+        let proposal = app.buttons["agent-skill-leadgrid_data_quality"]
+        XCTAssertTrue(proposal.waitForExistence(timeout: 12))
+        proposal.tap()
+
+        XCTAssertTrue(app.navigationBars["Bekreft agenthandling"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.staticTexts.containing(
+                NSPredicate(format: "label CONTAINS[c] %@", "analyse")
+            ).firstMatch.exists
+        )
+        let cancel = app.buttons["Avbryt"]
+        XCTAssertTrue(cancel.exists)
+        cancel.tap()
+        XCTAssertTrue(proposal.waitForExistence(timeout: 3))
+
+        proposal.tap()
+        let confirm = app.buttons["agent-skill-confirm"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 3))
+        confirm.tap()
+
+        XCTAssertTrue(app.staticTexts["Datakvalitet kontrollert"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.navigationBars["Bekreft agenthandling"].exists)
+        app.terminate()
+    }
+
+    /// Kjører bare når CI/test-runneren har fått en ekte staging-token.
+    /// Testen beviser appens offline-kø, reconnect-drain og staging-persistens
+    /// uten å legge hemmeligheter i repoet eller XCTest-loggen.
+    func testStagingLeadCreationOfflineReconnect() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let stagingURL = environment["LEADGRID_STAGING_BASE_URL"],
+              let token = environment["LEADGRID_STAGING_BEARER_TOKEN"],
+              let organizationID = environment["LEADGRID_STAGING_ORG_ID"],
+              !stagingURL.isEmpty, !token.isEmpty, !organizationID.isEmpty
+        else {
+            throw XCTSkip(
+                "Krever LEADGRID_STAGING_BASE_URL, LEADGRID_STAGING_BEARER_TOKEN og LEADGRID_STAGING_ORG_ID"
+            )
+        }
+        guard let baseURL = URL(string: stagingURL),
+              baseURL.scheme == "https",
+              baseURL.host != "creatorhub-backend-rtbl.onrender.com"
+        else {
+            XCTFail("Staging-E2E nekter ugyldig eller produksjons-URL")
+            return
+        }
+
+        let uniqueName = "[E2E] iPad reconnect \(UUID().uuidString.prefix(8))"
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_BEARER_TOKEN"] = token
+        app.launchEnvironment["LEADGRID_API_BASE_URL"] = stagingURL
+        app.launchEnvironment["QA_NETWORK_CONTROLS"] = "1"
+        app.launchEnvironment["QA_ORGANIZATION_ID"] = organizationID
+        app.launchEnvironment["QA_TAB"] = "2"
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["staging-environment-badge"].waitForExistence(timeout: 12))
+        let offline = app.buttons["qa-network-offline"]
+        XCTAssertTrue(offline.waitForExistence(timeout: 3))
+        offline.tap()
+
+        let newLead = app.buttons["lead-new"]
+        XCTAssertTrue(newLead.waitForExistence(timeout: 10))
+        newLead.tap()
+
+        let name = app.textFields["lead-field-name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        name.tap()
+        name.typeText(uniqueName)
+        app.buttons["lead-submit"].tap()
+
+        XCTAssertTrue(
+            app.staticTexts.containing(
+                NSPredicate(format: "label CONTAINS[c] %@", "lagret offline")
+            ).firstMatch.waitForExistence(timeout: 8)
+        )
+        XCTAssertTrue(app.staticTexts["offline-queue-pending-count"].waitForExistence(timeout: 5))
+
+        app.buttons["qa-network-online"].tap()
+        let pendingGone = NSPredicate(format: "exists == false")
+        let drainExpectation = expectation(
+            for: pendingGone,
+            evaluatedWith: app.staticTexts["offline-queue-pending-count"]
+        )
+        await fulfillment(of: [drainExpectation], timeout: 20)
+
+        var request = URLRequest(
+            url: baseURL.appendingPathComponent("api/admin-room/lead-map/leads")
+        )
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue(organizationID, forHTTPHeaderField: "X-Organization-Id")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let leads = payload?["leads"] as? [[String: Any]] ?? []
+        XCTAssertEqual(leads.filter { ($0["name"] as? String) == uniqueName }.count, 1)
+        app.terminate()
+    }
+
+    /// Ekte Pondus-infrastrukturtest: staging-auth, publisert PostgreSQL-mal,
+    /// offline-kø, reconnect og serververifisert usage_session_id.
+    func testStagingPondusUsageOfflineReconnect() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let stagingURL = environment["LEADGRID_STAGING_BASE_URL"],
+              let token = environment["LEADGRID_STAGING_BEARER_TOKEN"],
+              let organizationID = environment["LEADGRID_STAGING_ORG_ID"],
+              !stagingURL.isEmpty, !token.isEmpty, !organizationID.isEmpty
+        else {
+            throw XCTSkip("Krever staging-URL, bearer-token og org-ID")
+        }
+        guard let baseURL = URL(string: stagingURL),
+              baseURL.scheme == "https",
+              baseURL.host != "creatorhub-backend-rtbl.onrender.com"
+        else {
+            XCTFail("Pondus-E2E nekter ugyldig eller produksjons-URL")
+            return
+        }
+
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_BEARER_TOKEN"] = token
+        app.launchEnvironment["LEADGRID_API_BASE_URL"] = stagingURL
+        app.launchEnvironment["QA_NETWORK_CONTROLS"] = "1"
+        app.launchEnvironment["QA_ORGANIZATION_ID"] = organizationID
+        app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "6" : "5"
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["staging-environment-badge"].waitForExistence(timeout: 12))
+        let useTemplate = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "pondus-use-")
+        ).firstMatch
+        XCTAssertTrue(useTemplate.waitForExistence(timeout: 15), "Staging må ha minst én publisert Pondus-mal")
+        let templateID = String(useTemplate.identifier.dropFirst("pondus-use-".count))
+        XCTAssertFalse(templateID.isEmpty)
+        let usageBefore = try await pondusUsageCount(
+            baseURL: baseURL,
+            token: token,
+            organizationID: organizationID,
+            templateID: templateID
+        )
+        app.buttons["qa-network-offline"].tap()
+        useTemplate.tap()
+        XCTAssertTrue(app.buttons["pondus-start-session"].waitForExistence(timeout: 5))
+
+        app.buttons["pondus-start-session"].tap()
+        XCTAssertTrue(app.staticTexts["pondus-active-coach"].waitForExistence(timeout: 8))
+        XCTAssertTrue(
+            app.staticTexts.containing(
+                NSPredicate(format: "label CONTAINS[c] %@", "offline")
+            ).firstMatch.exists
+        )
+        app.buttons["pondus-outcome-meeting_booked"].tap()
+        app.buttons["qa-network-online"].tap()
+
+        let pendingGone = NSPredicate(format: "exists == false")
+        let drained = expectation(
+            for: pendingGone,
+            evaluatedWith: app.staticTexts["offline-queue-pending-count"]
+        )
+        await fulfillment(of: [drained], timeout: 20)
+
+        let usageAfter = try await pondusUsageCount(
+            baseURL: baseURL,
+            token: token,
+            organizationID: organizationID,
+            templateID: templateID
+        )
+        XCTAssertEqual(usageAfter, usageBefore + 1, "Reconnect skal persistere nøyaktig én Pondus-økt")
+        app.terminate()
+    }
+
+    /// Lokal, hemmelighetsfri UI-smoke av den samme produksjonscoachen.
+    /// Køkontrakten testes separat; stagingtesten over beviser reconnect.
+    func testPondusCoachLocalSmoke() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["QA_TOUR"] = "pondus-coach"
+        app.launchEnvironment["QA_NETWORK_CONTROLS"] = "1"
+        app.launchEnvironment["QA_TAB"] = UIDevice.current.userInterfaceIdiom == .phone ? "6" : "5"
+        app.launch()
+
+        let useTemplate = app.buttons["pondus-use-bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"]
+        XCTAssertTrue(useTemplate.waitForExistence(timeout: 12))
+        app.buttons["qa-network-offline"].tap()
+        useTemplate.tap()
+        let start = app.buttons["pondus-start-session"]
+        XCTAssertTrue(start.waitForExistence(timeout: 5))
+        start.tap()
+        XCTAssertTrue(app.staticTexts["pondus-active-coach"].waitForExistence(timeout: 5))
+
+        let next = app.buttons["pondus-next-step"]
+        XCTAssertTrue(next.exists)
+        next.tap()
+        XCTAssertTrue(app.staticTexts["Steg 2 av 2"].waitForExistence(timeout: 3))
+
+        app.buttons["pondus-outcome-meeting_booked"].tap()
+        XCTAssertTrue(
+            app.staticTexts.containing(
+                NSPredicate(format: "label CONTAINS[c] %@", "lagret offline")
+            ).firstMatch.waitForExistence(timeout: 5)
+        )
+        app.terminate()
+    }
+
+    // MARK: - Canvas: editor + adaptiv rotasjon
+
+    func testCanvasAdaptiveEditorSmoke() throws {
+        #if !targetEnvironment(macCatalyst)
+        XCUIDevice.shared.orientation = .portrait
+        #endif
+        let app = XCUIApplication()
+        // QA_TOUR gir en prosesslokal testidentitet uten å opprette sesjon;
+        // QA_DEMO gjør at Canvas bruker deterministiske, lokale notater.
+        app.launchEnvironment["QA_TOUR"] = "canvas"
+        app.launchEnvironment["QA_DEMO"] = "1"
+        app.launchEnvironment["QA_TAB"] = "10"
+        app.launchEnvironment["QA_CAPTURE"] = "1"
+        app.launch()
+
+        let note = button(in: app, containing: "Ruteplan")
+        XCTAssertTrue(note.waitForExistence(timeout: 12))
+        note.tap()
+
+        let panorer = button(in: app, containing: "Panorer")
+        XCTAssertTrue(panorer.waitForExistence(timeout: 5))
+        panorer.tap()
+        let fit = app.buttons["Tilpass dokumentbredden"].firstMatch
+        XCTAssertTrue(fit.waitForExistence(timeout: 5))
+        XCTAssertTrue(fit.isHittable)
+        fit.tap()
+        snap(app, "canvas-editor-portrett")
+
+        #if !targetEnvironment(macCatalyst)
+        XCUIDevice.shared.orientation = .landscapeLeft
+        XCTAssertTrue(fit.waitForExistence(timeout: 5))
+        XCTAssertTrue(fit.isHittable)
+        snap(app, "canvas-editor-landskap")
+        XCUIDevice.shared.orientation = .portrait
+        #endif
         app.terminate()
     }
 
