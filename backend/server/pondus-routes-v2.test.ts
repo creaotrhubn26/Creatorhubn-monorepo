@@ -105,6 +105,35 @@ describe("Pondus usage v2", () => {
 });
 
 describe("Pondus template concurrency", () => {
+  it("uses explicit PostgreSQL types for reused create parameters", async () => {
+    const query = vi.fn(async (sql: string) => ({
+      rows: String(sql).includes("INSERT INTO pondus_templates")
+        ? [{
+            id: "22222222-2222-4222-8222-222222222222",
+            name: "E2E-mal",
+            category: "custom",
+            kind: "telephone",
+            score: 50,
+            steps: [],
+            objections: [],
+            analysis: {},
+            analysis_meta: {},
+            org_id: access.organizationId,
+            is_published: true,
+            version: 1,
+          }]
+        : [],
+    }));
+    const app = appWith(registerPondusTemplateRoutesV2, query);
+    const response = await request(app)
+      .post("/api/leadgrid/pondus/templates")
+      .send({ name: "E2E-mal", category: "custom", kind: "telephone", steps: [], objections: [] });
+    expect(response.status).toBe(201);
+    const insert = query.mock.calls.find(([sql]) => String(sql).includes("INSERT INTO pondus_templates"));
+    expect(String(insert?.[0])).toContain("$10::varchar(255)");
+    expect(String(insert?.[0])).toContain("$12::boolean");
+  });
+
   it("requires an expected version before publish", async () => {
     const query = vi.fn();
     const app = appWith(registerPondusTemplateRoutesV2, query);
