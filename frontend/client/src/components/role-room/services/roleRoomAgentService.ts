@@ -47,7 +47,7 @@ export interface RoleRoomAgentAccess {
   defaultModel?: string;
   googlePlacesConfigured?: boolean;
   webSearchConfigured?: boolean;
-  webSearchProvider?: 'google_cse' | 'anthropic' | null;
+  webSearchProvider?: 'google_cse' | 'anthropic_openai' | 'anthropic' | 'openai' | null;
   cohereConfigured?: boolean;
   cohereRerankModel?: string;
   brregConfigured?: boolean;
