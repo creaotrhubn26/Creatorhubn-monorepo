@@ -541,9 +541,60 @@ describe('Role Room local-presence fail-closed policy', () => {
     );
     expect(result.recommendations[0]).toMatchObject({
       productLabel: 'Brodert polo',
-      supplierMatch: { name: 'Oslo Profil' },
+      supplierMatch: null,
     });
     expect(result.recommendations[0]?.rationale).toMatch(/MEDINNOVA AS.*helseteknologi/i);
+  });
+
+  it('matches only website-documented category and technique and never reuses a supplier', async () => {
+    process.env.GOOGLE_PLACES_API_KEY = 'test-key';
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('data.brreg.no')) {
+        return new Response(JSON.stringify({ _embedded: { enheter: [] } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('osloprofil.example')) {
+        return new Response(`<!doctype html><html><head><title>Oslo Profil</title><meta name="description" content="Profilklær med broderi"></head><body>Vi leverer polo, skjorter og hoodies med broderi til bedrifter. Kontakt post@osloprofil.no eller 22 33 44 55 for tilbud.</body></html>`, {
+          status: 200,
+          headers: { 'content-type': 'text/html' },
+        });
+      }
+      return new Response(JSON.stringify({
+        places: [{
+          id: 'oslo-merch-documented',
+          displayName: { text: 'Oslo Profil' },
+          primaryTypeDisplayName: { text: 'Profilklær og broderi' },
+          formattedAddress: 'Storgata 1, 0155 Oslo, Norge',
+          websiteUri: 'https://osloprofil.example',
+        }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+
+    const result = await fetchMerchSuppliersAnalysis(
+      { projectId: 'medside-merch-proof-test', websiteUrl: 'https://medside.no', companyName: 'MEDINNOVA AS' },
+      {
+        finalUrl: 'https://medside.no/',
+        metaDescription: 'GDPR-sikker AI-plattform for medisinsk transkripsjon og journalnotat.',
+        textSnippet: 'Bygget for norske leger og helsepersonell.',
+        selectedPageSnippets: [],
+        socialProfileCandidates: [],
+      },
+      null,
+      verifiedMedinnova(),
+    );
+
+    expect(result.suppliers[0]).toMatchObject({
+      websiteSignalsEnriched: true,
+      websiteConfirmedTechniques: ['embroidery'],
+      websiteConfirmedProductCategories: ['apparel'],
+    });
+    expect(result.recommendations[0]?.supplierMatch).toMatchObject({ name: 'Oslo Profil' });
+    expect(result.recommendations[3]?.supplierMatch).toBeNull();
+    const matchedNames = result.recommendations.map((entry) => entry.supplierMatch?.name).filter(Boolean);
+    expect(new Set(matchedNames).size).toBe(matchedNames.length);
   });
 
   it('retains fast merch results and reports partial provider timeouts', async () => {
