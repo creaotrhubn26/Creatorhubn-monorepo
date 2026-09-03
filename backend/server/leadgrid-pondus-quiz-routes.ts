@@ -2,8 +2,8 @@
 //
 // Pondus-quiz (mig 0410): Akademiets kapittel 12 blir ekte. Selgeren tar en
 // 12-spørsmåls selvtest → score per Pondus-dimensjon (0-100) → profil.
-// Klienten regner ut dimensjons-scorene (spørsmålsbanken bor i appen);
-// backend validerer området, persisterer og serverer profiler.
+// Klienten sender kun rå svar. Backend eier den versjonerte fasiten,
+// beregner dimensjonsscorene og persisterer/serverer profilhistorikken.
 //
 // Endepunkter:
 //   POST /api/leadgrid/pondus/quiz        (selger: lagre gjennomføring)
@@ -15,7 +15,14 @@
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
-import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
+import { scorePondusQuizAnswers } from "./pondus-domain.js";
+import {
+  assertPondusEntitled,
+  canViewPondusAnalytics,
+  resolvePondusAccess,
+  sendPondusAccessError,
+  type PondusAccessContext,
+} from "./pondus-access.js";
 
 type SessionUser = { userId: string; email: string; name: string; role: string };
 
@@ -23,20 +30,6 @@ export interface LeadgridPondusQuizRoutesDeps {
   app: Express;
   pool: Pool;
   requireUserSession: (req: Request, res: Response) => SessionUser | null;
-}
-
-function isManagerRole(role: string | undefined): boolean {
-  if (!role) return false;
-  const r = role.toLowerCase();
-  return r === "admin" || r === "super_admin" || r === "owner" || r === "sales_manager";
-}
-
-const DIMENSIONS = ["autoritet", "klarhet", "troverdighet", "trygghet", "fremdrift"] as const;
-
-function clampScore(v: unknown): number {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(100, Math.round(n)));
 }
 
 function resultDTO(row: Record<string, unknown>) {
@@ -50,6 +43,7 @@ function resultDTO(row: Record<string, unknown>) {
     trygghet: Number(row.trygghet ?? 0),
     fremdrift: Number(row.fremdrift ?? 0),
     total: Number(row.total ?? 0),
+    scoringVersion: String(row.scoring_version ?? "legacy-client-v1"),
     createdAt: row.created_at ? new Date(String(row.created_at)).toISOString() : null,
   };
 }
@@ -67,11 +61,27 @@ export function registerLeadgridPondusQuizRoutes(deps: LeadgridPondusQuizRoutesD
         autoritet INT NOT NULL DEFAULT 0, klarhet INT NOT NULL DEFAULT 0,
         troverdighet INT NOT NULL DEFAULT 0, trygghet INT NOT NULL DEFAULT 0,
         fremdrift INT NOT NULL DEFAULT 0, total INT NOT NULL DEFAULT 0,
-        answers JSONB, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        answers JSONB,
+        scoring_version VARCHAR(80) NOT NULL DEFAULT 'legacy-client-v1',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )`);
+    await pool.query(`ALTER TABLE leadgrid_pondus_quiz_results
+      ADD COLUMN IF NOT EXISTS scoring_version VARCHAR(80) NOT NULL DEFAULT 'legacy-client-v1'`);
     await pool.query(`CREATE INDEX IF NOT EXISTS leadgrid_pondus_quiz_user_idx ON leadgrid_pondus_quiz_results (user_id, created_at DESC)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS leadgrid_pondus_quiz_org_idx ON leadgrid_pondus_quiz_results (organization_id, created_at DESC)`);
     ensured = true;
+  }
+
+  async function accessFor(
+    req: Request, res: Response, session: SessionUser,
+  ): Promise<PondusAccessContext | null> {
+    try {
+      const access = await resolvePondusAccess(pool, req, session);
+      return await assertPondusEntitled(pool, access, res) ? access : null;
+    } catch (error) {
+      if (sendPondusAccessError(res, error)) return null;
+      throw error;
+    }
   }
 
   // ── Selger: lagre gjennomføring ─────────────────────────────────────
@@ -80,23 +90,24 @@ export function registerLeadgridPondusQuizRoutes(deps: LeadgridPondusQuizRoutesD
     if (!session) return;
     try {
       await ensureTable();
-      const orgId = await resolveOrgIdForUser(pool, session.userId);
+      const access = await accessFor(req, res, session);
+      if (!access) return;
+      if (!access.organizationId) return res.status(400).json({ error: "organization_required" });
       const b = (req.body ?? {}) as Record<string, unknown>;
-      const scores: Record<string, number> = {};
-      for (const d of DIMENSIONS) scores[d] = clampScore(b[d]);
-      const total = clampScore(
-        b.total ?? DIMENSIONS.reduce((s, d) => s + scores[d], 0) / DIMENSIONS.length,
-      );
-      const answers =
-        b.answers && typeof b.answers === "object" ? JSON.stringify(b.answers) : null;
+      const scored = scorePondusQuizAnswers(b.answers);
+      if (scored.ok === false) {
+        return res.status(400).json({ error: "validation_failed", issues: scored.issues });
+      }
+      const scores = scored.value;
+      const answers = JSON.stringify(scores.answers);
       const { rows } = await pool.query(
         `INSERT INTO leadgrid_pondus_quiz_results
            (organization_id, user_id, user_name, autoritet, klarhet, troverdighet,
-            trygghet, fremdrift, total, answers)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb) RETURNING *`,
-        [orgId, session.userId, session.name || null,
+            trygghet, fremdrift, total, answers, scoring_version)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11) RETURNING *`,
+        [access.organizationId, session.userId, session.name || null,
          scores.autoritet, scores.klarhet, scores.troverdighet,
-         scores.trygghet, scores.fremdrift, total, answers],
+         scores.trygghet, scores.fremdrift, scores.total, answers, scores.scoringVersion],
       );
       return res.json({ result: resultDTO(rows[0]) });
     } catch (err) {
@@ -111,10 +122,13 @@ export function registerLeadgridPondusQuizRoutes(deps: LeadgridPondusQuizRoutesD
     if (!session) return;
     try {
       await ensureTable();
+      const access = await accessFor(req, res, session);
+      if (!access) return;
+      if (!access.organizationId) return res.status(400).json({ error: "organization_required" });
       const { rows } = await pool.query(
         `SELECT * FROM leadgrid_pondus_quiz_results
-          WHERE user_id = $1 ORDER BY created_at DESC LIMIT 20`,
-        [session.userId],
+          WHERE user_id = $1 AND organization_id = $2 ORDER BY created_at DESC LIMIT 20`,
+        [session.userId, access.organizationId],
       );
       return res.json({
         latest: rows.length > 0 ? resultDTO(rows[0]) : null,
@@ -131,19 +145,21 @@ export function registerLeadgridPondusQuizRoutes(deps: LeadgridPondusQuizRoutesD
   app.get("/api/leadgrid/pondus/quiz/org", async (req, res) => {
     const session = requireUserSession(req, res);
     if (!session) return;
-    if (!isManagerRole(session.role)) {
-      return res.status(403).json({ error: "manager_role_required" });
-    }
     try {
       await ensureTable();
-      const orgId = await resolveOrgIdForUser(pool, session.userId);
+      const access = await accessFor(req, res, session);
+      if (!access) return;
+      if (!access.organizationId) return res.status(400).json({ error: "organization_required" });
+      if (!canViewPondusAnalytics(access)) {
+        return res.status(403).json({ error: "manager_role_required" });
+      }
       // DISTINCT ON: nyeste rad per bruker.
       const { rows } = await pool.query(
         `SELECT DISTINCT ON (user_id) *
            FROM leadgrid_pondus_quiz_results
           WHERE organization_id = $1
           ORDER BY user_id, created_at DESC`,
-        [orgId],
+        [access.organizationId],
       );
       return res.json({ profiles: rows.map(resultDTO) });
     } catch (err) {
