@@ -315,6 +315,31 @@ export interface RoleRoomAgentMerchSupplierEvidence {
   weight: number;
 }
 
+export type RoleRoomAgentMerchProductId =
+  | 'tshirt'
+  | 'hoodie'
+  | 'polo'
+  | 'cap'
+  | 'totebag'
+  | 'mug';
+
+export interface RoleRoomAgentMerchRecommendation {
+  productId: RoleRoomAgentMerchProductId;
+  productLabel: string;
+  productCategory: RoleRoomAgentMerchProductCategory;
+  priority: 'primary' | 'secondary' | 'experimental';
+  purpose: string;
+  rationale: string;
+  recommendedTechnique: RoleRoomAgentMerchTechnique;
+  supplierMatch?: {
+    name: string;
+    organizationNumber?: string | null;
+    placeId?: string | null;
+    confidence: number;
+  } | null;
+  requiresManualConfirmation: true;
+}
+
 export interface RoleRoomAgentMerchSupplier {
   source: 'brreg_nace' | 'google_places';
   naceCode?: string | null;
@@ -357,6 +382,7 @@ export interface RoleRoomAgentMerchSuppliers {
   verifiedSupplierCount: number;
   techniqueCounts: Record<RoleRoomAgentMerchTechnique, number>;
   productCounts: Record<RoleRoomAgentMerchProductCategory, number>;
+  recommendations?: RoleRoomAgentMerchRecommendation[];
   cooperationAngles: string[];
   outreachChecklist: string[];
   partial?: boolean;
