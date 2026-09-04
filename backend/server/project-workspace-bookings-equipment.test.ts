@@ -11,7 +11,7 @@ function createWorkspaceDataflowApp(options: { conflict?: any } = {}) {
 
   const query = vi.fn(async (sql: string, params: unknown[] = []) => {
     queries.push({ sql, params });
-    if (sql.includes("SELECT 1 WHERE EXISTS")) {
+    if (sql.includes("SELECT 1 FROM projects")) {
       return { rows: [{ ok: 1 }], rowCount: 1 };
     }
     if (sql.includes("SELECT user_id::text AS user_id FROM projects")) {
