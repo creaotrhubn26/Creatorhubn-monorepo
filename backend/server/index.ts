@@ -897,6 +897,7 @@ import { setupDeliveriesRoutes } from "./deliveries-routes";
 import { setupAudioSettingsRoutes } from "./audio-settings-routes";
 import { setupSalesRoutes } from "./sales-routes";
 import { registerSalesLeadershipRoutes } from "./sales-leadership-routes";
+import { registerLeadgridSalesManagementRoutes } from "./leadgrid-sales-management-routes";
 import { registerLeadgridManualInvoiceRoutes } from "./leadgrid-manual-invoice-routes";
 import { registerLeadgridMileageApprovalRoutes } from "./leadgrid-mileage-approval-routes";
 import { registerLeadgridCockpitRoutes } from "./leadgrid-cockpit-routes";
@@ -67218,6 +67219,7 @@ setupSalesRoutes({
 
 // /api/leadgrid/sales-leadership/* — 18 endpoints (provisjons-modeller,
 // konkurranse-maler, premie-katalog, fulfillment). Forutsetter mig 0354.
+registerLeadgridSalesManagementRoutes({ app, pool, requireUserSession });
 registerSalesLeadershipRoutes({ app, pool, requireUserSession });
 
 // /api/leadgrid/manual-invoice — manuell faktura for org uten Stripe (mig 0407,

@@ -19,6 +19,7 @@ import type { Pool } from "pg";
 import { randomUUID } from "crypto";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import { assertAnyEntitled, LEADGRID_RUTEPLAN_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
+import { canManageLeadgridSales } from "./leadgrid-sales-management-auth.js";
 import { sendAPNs } from "./lead-map-apns-client.js";
 
 let schemaReady = false;
@@ -74,7 +75,7 @@ function parseStopp(raw: unknown): RuteStopp[] | null {
 export function registerLeadgridRuteRoutes(deps: {
   app: Express;
   pool: Pool;
-  requireUserSession: (req: Request, res: Response) => { userId: string } | null | Promise<{ userId: string } | null>;
+  requireUserSession: (req: Request, res: Response) => { userId: string; role?: string } | null | Promise<{ userId: string; role?: string } | null>;
 }): void {
   const { app, pool, requireUserSession } = deps;
 
@@ -106,6 +107,10 @@ export function registerLeadgridRuteRoutes(deps: {
           res.status(400).json({ error: "bad_request", message: "Mottakeren er ikke medlem av organisasjonen." });
           return;
         }
+      }
+      if (assigned && assigned !== session.userId && !await canManageLeadgridSales(pool, orgId, session.userId, session.role)) {
+        res.status(403).json({ error: "sales_leadership_manage_required" });
+        return;
       }
       const id = randomUUID();
       const navn = String(b.navn ?? "").slice(0, 120)

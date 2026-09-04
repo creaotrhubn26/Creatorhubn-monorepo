@@ -25,6 +25,22 @@ export function registerLeadgridDorsalgRoutes(deps: {
 }) {
   const { app, pool, requireUserSession } = deps;
 
+  // Bakoverkompatibilitet for eldre TestFlight-klienter som brukte den delte
+  // snake_case-encoderen. Ny klient sender camelCase, men begge kontrakter
+  // normaliseres før validering slik at en utrulling ikke skaper et write-gap.
+  app.use("/api/leadgrid/dorsalg", (req, _res, next) => {
+    const normalize = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(normalize);
+      if (!value || typeof value !== "object") return value;
+      return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+        key.replace(/_([a-z])/g, (_match, letter: string) => letter.toUpperCase()),
+        normalize(item),
+      ]));
+    };
+    if (req.body && typeof req.body === "object") req.body = normalize(req.body);
+    next();
+  });
+
   async function isLeader(orgId: string, userId: string): Promise<boolean> {
     try {
       const { role, permissions } = await resolveEffectivePermissions(pool, orgId, userId);

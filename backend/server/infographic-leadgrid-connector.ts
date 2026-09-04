@@ -11,7 +11,7 @@ import type { Pool } from 'pg';
 import { requireLeadMapPermission } from './lead-map-rbac-helper.js';
 import { computeTodayMomentum } from './leadgrid-momentum-service.js';
 import { resolveOrgIdForUser } from './leadgrid-org-resolver.js';
-import { getTeamLeaderboard, getCommissionEarnings } from './leadgrid-sales-data.js';
+import { getTeamLeaderboard, getCommissionEarnings } from './leadgrid-sales-management-data.js';
 import { assembleHtml } from './infographic-engine.js';
 import { INTER_FONT_CSS } from './infographic-fonts.js';
 import { renderHtmlToImage } from './render-engine.js';

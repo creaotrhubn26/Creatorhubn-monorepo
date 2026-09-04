@@ -636,6 +636,7 @@ struct KartView: View {
     @State private var navDismissedPOIAlerts: Set<String> = []
     /// Kjøregodtgjørelse-sheet (statens sats). Portert fra Møter-mocken.
     @State private var navShowMileage: Bool = false
+    @State private var navMileageIdempotencyKey = UUID().uuidString
     /// «Min bil»-ark (drivstoff/type + regnr-oppslag).
     @State private var navShowVehicle: Bool = false
     /// Ekte bom langs ruta (NVDB) — antall + sum takst per vei (liten bil).
@@ -1425,7 +1426,7 @@ struct KartView: View {
                 profile: appState.vehicleProfile,
                 realTollPerTrip: navTollPerTrip,
                 realTollCount: navTollCount,
-                onLog: { amount in
+                onLog: { _ in
                     // Kostnad→besøk (#73): kravet persisteres i godkjennings-
                     // flyten, attribuert til kunden det gjaldt.
                     let navn = navDestination?.name ?? "Reise"
@@ -1433,14 +1434,19 @@ struct KartView: View {
                     let km = max(1, Int(navRouteKm.rounded()))
                     if let api = appState.api,
                        !DemoModeManager.isActiveNonisolated {
-                        Task {
-                            try? await api.submitLeadgridMileageClaim(
-                                km: km, amountNok: Int(amount),
-                                routeText: "Besøk: \(navn) — \(adresse)",
-                                note: "Logget fra nav-motoren")
+                        Task { @MainActor in
+                            do {
+                                try await api.submitLeadgridMileageClaim(
+                                    km: km,
+                                    routeText: "Besøk: \(navn) — \(adresse)",
+                                    note: "Logget fra nav-motoren",
+                                    idempotencyKey: navMileageIdempotencyKey)
+                                showToast("Kjøregodtgjørelse sendt til godkjenning")
+                            } catch {
+                                showToast("Kunne ikke lagre kjøregodtgjørelsen")
+                            }
                         }
                     }
-                    showToast("Kjøregodtgjørelse logget: \(Int(amount)) kr")
                 })
         }
         // «Min bil»-profil (drivstoff/type + regnr-oppslag).
@@ -4254,7 +4260,10 @@ struct KartView: View {
             Spacer(minLength: 2)
             // Kjøregodtgjørelse hører til KJØRING — skjules i dørsalg-gange.
             if !dorsalgModus {
-                Button { navShowMileage = true } label: {
+                Button {
+                    navMileageIdempotencyKey = UUID().uuidString
+                    navShowMileage = true
+                } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "norwegiankronesign.circle.fill").font(.appScaled(size: 11, weight: .bold))
                         Text("Kjøregodtgjørelse").font(.appScaled(size: 11, weight: .bold))

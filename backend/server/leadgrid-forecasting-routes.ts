@@ -14,6 +14,7 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 import { getOrComputeForecast, computeAttribution } from "./leadgrid-forecasting-service.js";
+import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
@@ -36,17 +37,18 @@ async function resolveOrgIdSmart(
   pool: Pool,
   userId: string,
 ): Promise<string | null> {
+  // Native clients send the active workspace in X-Leadgrid-Organization-Id.
+  // The request-context resolver validates membership and prevents the old
+  // "first organization wins" behavior for users in several workspaces.
+  if (req.get("X-Leadgrid-Organization-Id")) {
+    return resolveOrgIdForUser(pool, userId);
+  }
   const explicit =
     (req.query?.organization_id ?? (req.body as { organization_id?: string } | undefined)?.organization_id) as
       | string
       | undefined;
   if (typeof explicit === "string" && explicit.length > 0) return explicit;
-  const r = await pool.query<{ organization_id: string }>(
-    `SELECT organization_id::text FROM organization_members
-      WHERE user_id = $1 ORDER BY joined_at ASC LIMIT 1`,
-    [userId],
-  );
-  return r.rows[0]?.organization_id ?? null;
+  return resolveOrgIdForUser(pool, userId);
 }
 
 export function registerLeadgridForecastingRoutes(deps: Deps): void {
