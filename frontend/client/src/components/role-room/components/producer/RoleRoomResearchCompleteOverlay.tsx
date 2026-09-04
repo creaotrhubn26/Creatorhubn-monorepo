@@ -19,7 +19,7 @@
  * doesn't reappear on every dialog open — only on a fresh bootstrap.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -27,7 +27,6 @@ import {
   Chip,
   Collapse,
   IconButton,
-  Modal,
   Stack,
   Tooltip,
   Typography,
@@ -221,6 +220,7 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
 
   const [open, setOpen] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
+  const overlayPanelRef = useRef<HTMLDivElement | null>(null);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
     try {
       return localStorage.getItem(SOUND_PREF_KEY) === '1';
@@ -291,6 +291,12 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
     playCompleteChime();
   }, [open, soundEnabled]);
 
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => overlayPanelRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
+
   const handleClose = (): void => {
     setOpen(false);
     // #25 smooth scroll: nudge the user toward the first actionable
@@ -319,26 +325,43 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
     }
   };
 
-  if (!result || !researchId) return null;
+  if (!result || !researchId || !open) return null;
 
-  // This overlay is rendered inside RoleRoomAgentDialog. Keeping it in that
-  // dialog's DOM prevents MUI's nested ModalManager from applying aria-hidden
-  // to the parent dialog while focus remains inside it.
+  // This overlay lives inside RoleRoomAgentDialog and deliberately does not
+  // mount another MUI Modal. A nested ModalManager marks the parent dialog
+  // aria-hidden while focus is still inside it, which is invalid and makes the
+  // research result disappear from the accessibility tree.
   return (
-    <Modal
-      open={open}
-      onClose={handleClose}
-      disablePortal
-      aria-labelledby="research-complete-title"
-      closeAfterTransition
+    <Box
+      data-testid="research-complete-overlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) handleClose();
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopPropagation();
+        handleClose();
+      }}
       sx={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: (theme) => theme.zIndex.modal + 1,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        p: { xs: 1, md: 2 },
+        bgcolor: 'rgba(2,6,23,0.72)',
         backdropFilter: 'blur(6px)',
       }}
     >
       <Box
+        ref={overlayPanelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="research-complete-title"
+        tabIndex={-1}
+        onMouseDown={(event) => event.stopPropagation()}
         sx={{
           position: 'relative',
           width: '94%',
@@ -855,7 +878,7 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
           </Stack>
         </Stack>
       </Box>
-    </Modal>
+    </Box>
   );
 };
 

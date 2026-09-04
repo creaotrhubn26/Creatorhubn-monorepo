@@ -29,7 +29,7 @@ function milestoneApp() {
   const pool = {
     query: async (sql: string, params: unknown[] = []) => {
       queries.push({ sql, params });
-      if (sql.includes("SELECT 1 WHERE EXISTS")) return { rows: [], rowCount: 0 };
+      if (sql.includes("SELECT 1 FROM projects")) return { rows: [], rowCount: 0 };
       if (sql.includes("SELECT role, permissions")) {
         const userId = String(params[1]);
         const canEdit = userId === "editor-user";
@@ -134,7 +134,7 @@ describe("team presence response", () => {
   it("counts the owner and exposes each active participant's current route", async () => {
     const pool = {
       query: async (sql: string) => {
-        if (sql.includes("SELECT 1 WHERE EXISTS")) return { rows: [{ ok: 1 }], rowCount: 1 };
+        if (sql.includes("SELECT 1 FROM projects")) return { rows: [{ ok: 1 }], rowCount: 1 };
         if (sql.includes("WITH participants AS")) {
           return {
             rows: [
@@ -188,7 +188,7 @@ describe("workspace mutation guard", () => {
   it("allows a viewer to read but rejects project-content mutations", async () => {
     const pool = {
       query: async (sql: string) => {
-        if (sql.includes("SELECT 1 WHERE EXISTS")) return { rows: [], rowCount: 0 };
+        if (sql.includes("SELECT 1 FROM projects")) return { rows: [], rowCount: 0 };
         if (sql.includes("SELECT role, permissions")) {
           return {
             rows: [{ role: "viewer", permissions: { canRead: true, canEdit: false } }],

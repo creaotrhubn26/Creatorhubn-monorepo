@@ -8,7 +8,11 @@ function accessPool(options: {
 }) {
   return {
     query: async (sql: string) => {
-      if (sql.includes("SELECT 1 WHERE EXISTS")) {
+      if (
+        sql.includes("SELECT 1 FROM projects")
+        || sql.includes("SELECT 1 FROM legacy.projects")
+        || sql.includes("SELECT 1 FROM casting_projects")
+      ) {
         return { rows: options.owner ? [{ ok: 1 }] : [], rowCount: options.owner ? 1 : 0 };
       }
       if (sql.includes("SELECT role, permissions")) {
@@ -28,6 +32,50 @@ describe("Team Workspace project access", () => {
   it("gives project owners read and edit access", async () => {
     const access = await getProjectAccess(accessPool({ owner: true }), "owner", "project");
     expect(access).toEqual({ canRead: true, canEdit: true, isOwner: true });
+  });
+
+  it("recognizes Role Room casting-project owners in the shared access gate", async () => {
+    const ownerSql: string[] = [];
+    const pool = {
+      query: async (sql: string) => {
+        if (sql.includes("SELECT 1 FROM casting_projects")) {
+          ownerSql.push(sql);
+          return { rows: [{ ok: 1 }], rowCount: 1 };
+        }
+        if (sql.includes("SELECT 1 FROM projects") || sql.includes("SELECT 1 FROM legacy.projects")) {
+          ownerSql.push(sql);
+        }
+        return { rows: [], rowCount: 0 };
+      },
+    };
+
+    await expect(getProjectAccess(pool, "role-room-owner", "casting-project")).resolves.toEqual({
+      canRead: true,
+      canEdit: true,
+      isOwner: true,
+    });
+    expect(ownerSql.some((sql) => sql.includes("FROM casting_projects"))).toBe(true);
+    expect(ownerSql.some((sql) => sql.includes("created_by = $2"))).toBe(true);
+  });
+
+  it("keeps casting ownership valid when the legacy schema denies SELECT", async () => {
+    const pool = {
+      query: async (sql: string) => {
+        if (sql.includes("SELECT 1 FROM legacy.projects")) {
+          throw Object.assign(new Error("permission denied for table projects"), { code: "42501" });
+        }
+        if (sql.includes("SELECT 1 FROM casting_projects")) {
+          return { rows: [{ ok: 1 }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      },
+    };
+
+    await expect(getProjectAccess(pool, "role-room-owner", "casting-project")).resolves.toEqual({
+      canRead: true,
+      canEdit: true,
+      isOwner: true,
+    });
   });
 
   it("keeps active viewers read-only even if malformed permissions claim edit", async () => {

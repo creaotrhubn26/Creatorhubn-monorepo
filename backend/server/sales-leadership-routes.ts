@@ -56,6 +56,9 @@ import crypto from "node:crypto";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { sendEmail } from "./casting-reminder-sender.js";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
+import { canManageLeadgridSales } from "./leadgrid-sales-management-auth.js";
+import { getCommissionEarnings, getTeamLeaderboard } from "./leadgrid-sales-management-data.js";
+import { refreshContestParticipants } from "./sales-leadership-engine.js";
 
 type SessionUser = {
   userId: string;
@@ -426,89 +429,21 @@ export function registerSalesLeadershipRoutes(
     const orgId = await resolveOrgIdForUser(pool, session.userId);
 
     try {
-      // Hent kandidat-user_ids. I solo-modus (orgId === session.userId) hopper
-      // vi enterprise_team_members og bruker bare den påloggede brukeren.
-      let userIds: string[] = [];
-      if (orgId !== session.userId) {
-        const teamRes = await pool.query<{ user_id: string }>(
-          `SELECT DISTINCT user_id
-             FROM enterprise_team_members
-            WHERE organization_id = $1
-              AND status = 'active'
-              AND user_id IS NOT NULL`,
-          [orgId],
-        ).catch(() => ({ rows: [] as Array<{ user_id: string }> }));
-        userIds = teamRes.rows.map((r) => String(r.user_id));
-      }
-      // Sørg for at den påloggede selv alltid er med (god UX for highlight)
-      if (!userIds.includes(session.userId)) userIds.push(session.userId);
+      const leaderboard = await getTeamLeaderboard(pool, orgId, session.userId);
+      return res.json({
+        members: leaderboard.map((member) => ({
+          user_id: member.userId,
+          name: member.name,
+          email: member.email,
+          title: member.title,
+          won: member.won,
+          leads: member.leads,
+          trend: member.trend,
+          total_value_nok: member.totalValueNok,
+        })),
+        current_user_id: session.userId,
+      });
 
-      if (userIds.length === 0) {
-        return res.json({ members: [], current_user_id: session.userId });
-      }
-
-      // Aggreger per bruker. crm_customers har INGEN organization_id (jf.
-      // leadgrid-intelligence-cron.ts kommentar), så vi filtrerer via
-      // assigned_user_id IN (...). sales_prize_awards har ingen direkte
-      // verdi-kolonne — verdien hentes via JOIN på sales_contest_prizes.
-      const r = await pool.query(
-        `SELECT
-            u.id                                                AS user_id,
-            COALESCE(
-              NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
-              u.email
-            )                                                   AS name,
-            u.email                                             AS email,
-            COALESCE(u.role, 'Selger')                          AS title,
-            COALESCE((
-              SELECT COUNT(*)::int FROM sales_prize_awards a
-               WHERE a.winner_user_id = u.id
-                 AND a.status <> 'cancelled'
-            ), 0)                                               AS won,
-            COALESCE((
-              SELECT COUNT(*)::int FROM crm_customers c
-               WHERE c.assigned_user_id = u.id
-                 AND c.archived_at IS NULL
-            ), 0)                                               AS leads,
-            COALESCE((
-              SELECT LEAST(999, GREATEST(-999, CASE
-                       WHEN prev.cnt = 0 AND cur.cnt = 0 THEN 0
-                       WHEN prev.cnt = 0 THEN 100
-                       ELSE ROUND(((cur.cnt - prev.cnt)::numeric / prev.cnt) * 100)::int
-                     END))
-                FROM (SELECT COUNT(*)::int AS cnt FROM crm_lead_activities la
-                       WHERE la.user_id = u.id
-                         AND la.created_at >= NOW() - INTERVAL '7 days') cur,
-                     (SELECT COUNT(*)::int AS cnt FROM crm_lead_activities la
-                       WHERE la.user_id = u.id
-                         AND la.created_at >= NOW() - INTERVAL '14 days'
-                         AND la.created_at <  NOW() - INTERVAL '7 days') prev
-            ), 0)                                               AS trend,
-            COALESCE((
-              SELECT SUM(p.estimated_value_nok)::bigint
-                FROM sales_prize_awards a
-                JOIN sales_contest_prizes p ON p.id = a.prize_id
-               WHERE a.winner_user_id = u.id
-                 AND a.status <> 'cancelled'
-            ), 0)                                               AS total_value_nok
-           FROM users u
-          WHERE u.id = ANY($1::varchar[])
-          ORDER BY total_value_nok DESC, won DESC, name ASC`,
-        [userIds],
-      );
-
-      const members = r.rows.map((row) => ({
-        user_id: String(row.user_id),
-        name: String(row.name ?? ""),
-        email: String(row.email ?? ""),
-        title: String(row.title ?? "Selger"),
-        won: Number(row.won ?? 0),
-        leads: Number(row.leads ?? 0),
-        trend: Number(row.trend ?? 0),
-        total_value_nok: Number(row.total_value_nok ?? 0),
-      }));
-
-      return res.json({ members, current_user_id: session.userId });
     } catch (err) {
       // Graceful fallback — returnér i hvert fall den påloggede brukeren
       // med null-stats, slik at iPad-UI kan rendre noe.
@@ -564,85 +499,24 @@ export function registerSalesLeadershipRoutes(
     const period = ["month", "quarter", "year"].includes(periodParam) ? periodParam : "month";
 
     try {
-      // 1. Sats fra org-config (eller default 10 %)
-      let rate = 0.10;
-      let preset = DEFAULT_COMMISSION_CONFIG.preset;
-      let isDefaultConfig = true;
-      try {
-        const cfg = await pool.query<{ preset: string; config: Record<string, unknown> }>(
-          `SELECT preset, config FROM sales_commission_configs
-            WHERE organization_id = $1::uuid LIMIT 1`,
-          [orgId],
-        );
-        const row = cfg.rows[0];
-        if (row) {
-          preset = row.preset;
-          isDefaultConfig = false;
-          const base = (row.config as { base_percentage?: { rate?: unknown } })?.base_percentage;
-          const r = Number(base?.rate);
-          if (Number.isFinite(r) && r > 0 && r <= 1) rate = r;
-        }
-      } catch {
-        // orgId kan være slug/user-id (ikke uuid) — behold default-sats.
-      }
-
-      // 2. Team-medlemmer (samme oppslag som /team-members)
-      let userIds: string[] = [];
-      if (orgId !== session.userId) {
-        const teamRes = await pool.query<{ user_id: string }>(
-          `SELECT DISTINCT user_id FROM enterprise_team_members
-            WHERE organization_id = $1 AND status = 'active' AND user_id IS NOT NULL`,
-          [orgId],
-        ).catch(() => ({ rows: [] as Array<{ user_id: string }> }));
-        userIds = teamRes.rows.map((r) => String(r.user_id));
-      }
-      if (!userIds.includes(session.userId)) userIds.push(session.userId);
-
-      // 3. Vunne deals i perioden per selger
-      const r = await pool.query(
-        `SELECT
-            u.id AS user_id,
-            COALESCE(
-              NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
-              u.email
-            ) AS name,
-            COALESCE(w.won_deals, 0)  AS won_deals,
-            COALESCE(w.revenue, 0)    AS revenue_nok
-           FROM users u
-           LEFT JOIN LATERAL (
-             SELECT COUNT(*)::int AS won_deals,
-                    SUM(COALESCE(h.amount_after, c.deal_amount, 0))::numeric AS revenue
-               FROM crm_deal_stage_history h
-               JOIN crm_customers c ON c.id = h.customer_id
-              WHERE h.to_stage = 'won'
-                AND h.changed_at >= date_trunc('${period}', NOW())
-                AND COALESCE(c.assigned_user_id, h.changed_by) = u.id
-           ) w ON TRUE
-          WHERE u.id = ANY($1::varchar[])
-          ORDER BY revenue_nok DESC, name ASC`,
-        [userIds],
-      );
-
-      const members = r.rows.map((row) => {
-        const revenue = Number(row.revenue_nok ?? 0);
-        return {
-          user_id: String(row.user_id),
-          name: String(row.name ?? ""),
-          won_deals: Number(row.won_deals ?? 0),
-          revenue_nok: revenue,
-          commission_rate: rate,
-          commission_nok: Math.round(revenue * rate),
-        };
-      });
-
+      const earnings = await getCommissionEarnings(pool, orgId, session.userId, period);
       return res.json({
-        period,
-        preset,
-        is_default_config: isDefaultConfig,
-        models_applied: ["base_percentage"],
-        members,
+        period: earnings.period,
+        preset: earnings.preset,
+        is_default_config: earnings.isDefaultConfig,
+        models_applied: earnings.modelsApplied,
+        models_ignored: earnings.modelsIgnored,
+        members: earnings.members.map((member) => ({
+          user_id: member.userId,
+          name: member.name,
+          won_deals: member.wonDeals,
+          revenue_nok: member.revenueNok,
+          commission_rate: earnings.rate,
+          commission_nok: member.commissionNok,
+        })),
         current_user_id: session.userId,
       });
+
     } catch (err) {
       console.error("[sales-leadership] commission-earnings failed:", err);
       return res.status(500).json({ error: "commission_earnings_failed", detail: "internal_error" });
@@ -845,7 +719,7 @@ export function registerSalesLeadershipRoutes(
       for (const raw of prizes) {
         const p = (raw ?? {}) as Record<string, unknown>;
         const rank = Number(p.rank) || 1;
-        const product = (p.product ?? {}) as Record<string, unknown>;
+        const product = (p.product ?? p.product_snapshot ?? p.productSnapshot ?? {}) as Record<string, unknown>;
         const productId = readString(product.id) || null;
         const productTitle = readString(product.title);
         const productCategory = readString(product.category, "physical");
@@ -921,7 +795,7 @@ export function registerSalesLeadershipRoutes(
       }
 
       return res.json({
-        contest,
+        contest: { ...contest, prizes: prizesRes.rows },
         prizes: prizesRes.rows,
         participants: participantsRes.rows,
         winners,
@@ -981,9 +855,11 @@ export function registerSalesLeadershipRoutes(
       }
       const contest = contestRes.rows[0] as Record<string, unknown>;
       if (contest.status !== "active") {
-        await client.query("ROLLBACK");
-        return res.status(409).json({ error: "contest_not_active", status: contest.status });
+        await client.query("COMMIT");
+        return res.json({ ok: true, contest_id: id, replayed: true });
       }
+
+      await refreshContestParticipants(client, orgId, id);
 
       const prizesRes = await client.query(
         `SELECT id, rank, product_id, product_title, product_category, fulfillment_type
@@ -1034,10 +910,12 @@ export function registerSalesLeadershipRoutes(
         const awardRes = await client.query(
           `INSERT INTO sales_prize_awards
              (contest_id, prize_id, winner_user_id, rank, status,
-              product_title, product_category, fulfillment_type, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+              product_title, product_category, fulfillment_type, idempotency_key, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+           ON CONFLICT (contest_id, idempotency_key) WHERE idempotency_key IS NOT NULL
+           DO UPDATE SET updated_at = NOW()
            RETURNING id, winner_user_id, product_title, status`,
-          [id, prize.id, w.user_id, i + 1, initialStatus, prize.product_title, prize.product_category, prize.fulfillment_type],
+          [id, prize.id, w.user_id, i + 1, initialStatus, prize.product_title, prize.product_category, prize.fulfillment_type, `rank:${i + 1}`],
         );
         createdAwards.push(awardRes.rows[0] as { id: string; winner_user_id: string; product_title: string; status: string });
       }
@@ -1108,7 +986,11 @@ export function registerSalesLeadershipRoutes(
     const statusFilter = readString(req.query.status);
     const orgView = readString(req.query.org) === "true";
 
-    if (orgView && !isAdminLikeRole(session.role)) {
+    if (
+      orgView
+      && !isAdminLikeRole(session.role)
+      && !(await canManageLeadgridSales(pool, orgId, session.userId, session.role))
+    ) {
       return res.status(403).json({ error: "manager_role_required" });
     }
 
@@ -1166,8 +1048,10 @@ export function registerSalesLeadershipRoutes(
       if (!currentRes.rows.length) return res.status(404).json({ error: "not_found" });
       const current = currentRes.rows[0] as Record<string, unknown>;
 
-      // Tilgang: org-admin ELLER vinneren selv (for awaiting_address-flyt).
-      const isManager = isAdminLikeRole(session.role) && String(current.organization_id) === orgId;
+      // Tilgang: aktiv workspace-manager ELLER vinneren selv. Ikke stol på
+      // en global admin-rolle; organisasjonsrollen er autoritativ her.
+      const isManager = String(current.organization_id) === orgId
+        && await canManageLeadgridSales(pool, orgId, session.userId, session.role);
       const isWinner = String(current.winner_user_id) === session.userId;
       if (!isManager && !isWinner) {
         return res.status(403).json({ error: "forbidden" });
@@ -1212,7 +1096,7 @@ export function registerSalesLeadershipRoutes(
         `UPDATE sales_prize_awards
             SET ${sets.join(", ")}
           WHERE id = $${vals.length}
-          RETURNING id, status, tracking_number, ordered_at, shipped_at, received_at`,
+          RETURNING *`,
         vals,
       );
       const updated = updateRes.rows[0] as Record<string, unknown>;
@@ -1229,7 +1113,12 @@ export function registerSalesLeadershipRoutes(
         notes: body.notes,
       });
 
-      return res.json(updated);
+      return res.json({
+        award: {
+          ...updated,
+          contest_name: typeof current.contest_name === "string" ? current.contest_name : null,
+        },
+      });
     } catch (err) {
       console.error("[sales-leadership] award advance failed:", err);
       return res.status(500).json({ error: "award_advance_failed", detail: "internal_error" });

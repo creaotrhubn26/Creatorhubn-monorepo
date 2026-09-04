@@ -11,9 +11,8 @@
 // feedback_pg_text_cast_not_iso8601). Vi holder derfor alle timestamps
 // som `String?` og lar views formatere via `LeadgridDate.formatNo(...)`.
 //
-// Bilde-opplasting (`uploadPrizeImage`) bruker JSON + base64 i stedet
-// for multipart (ingen eksisterende multipart-mønster i denne klienten),
-// med wrapper `PrizeImageUploadPayload { data: base64, mime_type }`.
+// Bilde-opplasting (`uploadPrizeImage`) bruker multipart/form-data, som
+// backendens multer-handler forventer.
 
 import Foundation
 
@@ -296,80 +295,22 @@ struct SalesTeamMembersResponse: Decodable {
 struct PrizeAwardDTO: Codable, Hashable, Identifiable {
     let id: UUID
     let contestId: UUID
-    let winnerId: UUID
-    let userId: String
-    let productSnapshot: Data
-    let fulfillmentMethod: String
+    let prizeId: UUID
+    let winnerUserId: String
+    let rank: Int
+    let productTitle: String
+    let productCategory: String
+    let fulfillmentType: String
     let status: String
     let trackingNumber: String?
     let notes: String?
     let orderedAt: String?
     let shippedAt: String?
     let receivedAt: String?
+    let contestName: String?
 
-    enum CodingKeys: String, CodingKey {
-        case id, contestId, winnerId, userId, productSnapshot
-        case fulfillmentMethod, status, trackingNumber, notes
-        case orderedAt, shippedAt, receivedAt
-    }
-
-    init(
-        id: UUID, contestId: UUID, winnerId: UUID, userId: String,
-        productSnapshot: Data, fulfillmentMethod: String, status: String,
-        trackingNumber: String?, notes: String?,
-        orderedAt: String?, shippedAt: String?, receivedAt: String?
-    ) {
-        self.id = id
-        self.contestId = contestId
-        self.winnerId = winnerId
-        self.userId = userId
-        self.productSnapshot = productSnapshot
-        self.fulfillmentMethod = fulfillmentMethod
-        self.status = status
-        self.trackingNumber = trackingNumber
-        self.notes = notes
-        self.orderedAt = orderedAt
-        self.shippedAt = shippedAt
-        self.receivedAt = receivedAt
-    }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.id = try c.decode(UUID.self, forKey: .id)
-        self.contestId = try c.decode(UUID.self, forKey: .contestId)
-        self.winnerId = try c.decode(UUID.self, forKey: .winnerId)
-        self.userId = try c.decode(String.self, forKey: .userId)
-        if let raw = try? c.decode(JSONValue.self, forKey: .productSnapshot) {
-            self.productSnapshot = (try? JSONEncoder().encode(raw)) ?? Data("{}".utf8)
-        } else {
-            self.productSnapshot = Data("{}".utf8)
-        }
-        self.fulfillmentMethod = try c.decode(String.self, forKey: .fulfillmentMethod)
-        self.status = try c.decode(String.self, forKey: .status)
-        self.trackingNumber = try c.decodeIfPresent(String.self, forKey: .trackingNumber)
-        self.notes = try c.decodeIfPresent(String.self, forKey: .notes)
-        self.orderedAt = try c.decodeIfPresent(String.self, forKey: .orderedAt)
-        self.shippedAt = try c.decodeIfPresent(String.self, forKey: .shippedAt)
-        self.receivedAt = try c.decodeIfPresent(String.self, forKey: .receivedAt)
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(id, forKey: .id)
-        try c.encode(contestId, forKey: .contestId)
-        try c.encode(winnerId, forKey: .winnerId)
-        try c.encode(userId, forKey: .userId)
-        if let value = try? JSONDecoder().decode(JSONValue.self, from: productSnapshot) {
-            try c.encode(value, forKey: .productSnapshot)
-        }
-        try c.encode(fulfillmentMethod, forKey: .fulfillmentMethod)
-        try c.encode(status, forKey: .status)
-        try c.encodeIfPresent(trackingNumber, forKey: .trackingNumber)
-        try c.encodeIfPresent(notes, forKey: .notes)
-        try c.encodeIfPresent(orderedAt, forKey: .orderedAt)
-        try c.encodeIfPresent(shippedAt, forKey: .shippedAt)
-        try c.encodeIfPresent(receivedAt, forKey: .receivedAt)
-    }
+    var userId: String { winnerUserId }
+    var fulfillmentMethod: String { fulfillmentType }
 }
 
 // ============================================================
@@ -506,7 +447,7 @@ extension APIClient {
     }
 
     func saveCommissionConfig(_ config: CommissionConfigDTO) async throws {
-        try await _post("/api/leadgrid/sales-leadership/commission-config", body: config)
+        try await _put("/api/leadgrid/sales-leadership/commission-config", body: config)
     }
 
     // -- Templates -----------------------------------------------
@@ -525,8 +466,9 @@ extension APIClient {
         let payload = UpdateContestTemplatePayload(
             templateType: type, enabled: enabled, defaults: defaults
         )
-        try await _post(
-            "/api/leadgrid/sales-leadership/contest-templates",
+        let encodedType = type.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? type
+        try await _put(
+            "/api/leadgrid/sales-leadership/contest-templates/\(encodedType)",
             body: payload
         )
     }
@@ -566,21 +508,28 @@ extension APIClient {
         try await _delete("/api/leadgrid/sales-leadership/prize-catalog/\(id.uuidString)")
     }
 
-    /// Last opp bilde for premie. Bruker JSON + base64 (ingen multipart-
-    /// mønster i denne klienten). Returnerer (url, b2Key) som lagres på
+    /// Last opp bilde for premie som multipart-feltet `image`.
+    /// Returnerer (url, b2Key) som lagres på
     /// `OrgPrizeProductDTO.imageUrl` / `imageB2Key`.
     func uploadPrizeImage(
         data: Data,
         mimeType: String
     ) async throws -> (url: String, b2Key: String) {
-        let payload = PrizeImageUploadPayload(
-            data: data.base64EncodedString(),
-            mimeType: mimeType
-        )
-        let resp: PrizeImageUploadResponse = try await _post(
+        let boundary = "LeadgridPrize-\(UUID().uuidString)"
+        let newline = "\r\n"
+        var body = Data()
+        body.append("--\(boundary)\(newline)".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"image\"; filename=\"prize-image\"\(newline)".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\(newline)\(newline)".data(using: .utf8)!)
+        body.append(data)
+        body.append("\(newline)--\(boundary)--\(newline)".data(using: .utf8)!)
+        let responseData = try await _request(
             "/api/leadgrid/sales-leadership/prize-catalog/upload-image",
-            body: payload
+            method: "POST",
+            body: body,
+            contentType: "multipart/form-data; boundary=\(boundary)"
         )
+        let resp = try Self._sharedDecoder.decode(PrizeImageUploadResponse.self, from: responseData)
         return (resp.url, resp.b2Key)
     }
 
@@ -614,10 +563,11 @@ extension APIClient {
     /// Lukker en konkurranse → backend registrerer vinnere og oppretter
     /// `sales_prize_awards`-rader. Returnerer den oppdaterte konkurransen.
     func closeContest(id: UUID) async throws -> ContestDTO {
-        let resp: SalesLeadershipContestEnvelope = try await _postEmpty(
-            "/api/leadgrid/sales-leadership/contests/\(id.uuidString)/close"
+        _ = try await _request(
+            "/api/leadgrid/sales-leadership/contests/\(id.uuidString)/close",
+            method: "POST"
         )
-        return resp.contest
+        return try await fetchContestDetail(id: id)
     }
 
     func deleteContest(id: UUID) async throws {
@@ -635,7 +585,7 @@ extension APIClient {
         {
             qs.append("status=\(enc)")
         }
-        if orgWide { qs.append("scope=org") }
+        if orgWide { qs.append("org=true") }
         let path = "/api/leadgrid/sales-leadership/awards"
             + (qs.isEmpty ? "" : "?\(qs.joined(separator: "&"))")
         let resp: SalesLeadershipAwardsEnvelope = try await _get(path)
@@ -658,10 +608,9 @@ extension APIClient {
     }
 
     func setAwardShippingAddress(id: UUID, address: ShippingAddress) async throws {
-        let payload = SetAwardAddressPayload(address: address)
         try await _post(
             "/api/leadgrid/sales-leadership/awards/\(id.uuidString)/shipping-address",
-            body: payload
+            body: address
         )
     }
 
@@ -684,12 +633,6 @@ private struct UpdateContestTemplatePayload: Encodable {
     let defaults: [String: String]
 }
 
-private struct PrizeImageUploadPayload: Encodable {
-    /// Base64-kodet bilde-data.
-    let data: String
-    let mimeType: String
-}
-
 private struct PrizeImageUploadResponse: Decodable {
     let url: String
     let b2Key: String
@@ -698,10 +641,6 @@ private struct PrizeImageUploadResponse: Decodable {
 private struct AdvanceAwardPayload: Encodable {
     let trackingNumber: String?
     let notes: String?
-}
-
-private struct SetAwardAddressPayload: Encodable {
-    let address: ShippingAddress
 }
 
 private struct SalesLeadershipTemplatesEnvelope: Decodable {
@@ -738,6 +677,17 @@ private struct SalesLeadershipContestsEnvelope: Decodable {
 
 private struct SalesLeadershipContestEnvelope: Decodable {
     let contest: ContestDTO
+
+    init(from decoder: Decoder) throws {
+        if let container = try? decoder.container(keyedBy: CodingKeys.self),
+           let nested = try container.decodeIfPresent(ContestDTO.self, forKey: .contest) {
+            contest = nested
+        } else {
+            contest = try ContestDTO(from: decoder)
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey { case contest }
 }
 
 private struct SalesLeadershipAwardsEnvelope: Decodable {

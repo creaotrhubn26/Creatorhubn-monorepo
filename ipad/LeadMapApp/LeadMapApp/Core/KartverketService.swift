@@ -229,6 +229,23 @@ enum DorsalgAddressFetchPolicy {
 final class KartverketService {
     static let shared = KartverketService()
 
+    /// Dørsalg-backenden har en eksplisitt camelCase-kontrakt. Den delte
+    /// API-encoderen konverterer ellers til snake_case, så alle writes går
+    /// gjennom denne broen. Feil kan fortsatt håndteres av eksisterende UI,
+    /// men payloaden endrer ikke feltnavn på vei ut.
+    private func requestCamelCase<B: Encodable, R: Decodable>(
+        _ path: String,
+        method: String,
+        body: B,
+        using api: APIClient
+    ) async throws -> R {
+        let encoder = JSONEncoder()
+        let decoder = JSONDecoder()
+        let payload = try encoder.encode(body)
+        let data = try await api._request(path, method: method, body: payload)
+        return try decoder.decode(R.self, from: data)
+    }
+
     /// Resultat-source så UI kan vise "🇳🇴 Kartverket" hvis vi vil.
     enum Source: String, Sendable { case kartverket, apple }
 
@@ -425,8 +442,9 @@ func fetchAdresser(
             adresseId: adr.id, adressetekst: adr.adressetekst,
             postnummer: adr.postnummer, poststed: adr.poststed,
             lat: adr.lat, lon: adr.lon, status: status, productId: productId)
-        let _: DorsalgAck? = try? await api._post(
-            "/api/leadgrid/dorsalg/status", body: body)
+        let _: DorsalgAck? = try? await requestCamelCase(
+            "/api/leadgrid/dorsalg/status", method: "POST", body: body,
+            using: api)
     }
 
     // Dørsalg-produkter (mig 0399): org-en selger for flere oppdragsgivere
@@ -478,9 +496,9 @@ func fetchAdresser(
 
     func createDorsalgProduct(navn: String, verdiPerVunnet: Double?,
                               using api: APIClient) async -> Bool {
-        let r: ProductAck? = try? await api._post(
-            "/api/leadgrid/dorsalg/products",
-            body: ProductCreateBody(navn: navn, verdiPerVunnet: verdiPerVunnet))
+        let r: ProductAck? = try? await requestCamelCase(
+            "/api/leadgrid/dorsalg/products", method: "POST",
+            body: ProductCreateBody(navn: navn, verdiPerVunnet: verdiPerVunnet), using: api)
         return r?.ok == true
     }
 
@@ -491,9 +509,10 @@ func fetchAdresser(
 
     func patchDorsalgProduct(id: String, aktiv: Bool?, verdiPerVunnet: Double?,
                              using api: APIClient) async {
-        try? await api._patch(
-            "/api/leadgrid/dorsalg/products/\(id)",
-            body: ProductPatchBody(aktiv: aktiv, verdiPerVunnet: verdiPerVunnet))
+        let _: ProductAck? = try? await requestCamelCase(
+            "/api/leadgrid/dorsalg/products/\(id)", method: "PATCH",
+            body: ProductPatchBody(aktiv: aktiv, verdiPerVunnet: verdiPerVunnet),
+            using: api)
     }
 
     // «Registrer salg» (mig 0400): ekte avtale på døra. Grandma-prinsippet:
@@ -533,7 +552,8 @@ func fetchAdresser(
             kundeNavn: kundeNavn, kundeTelefon: kundeTelefon,
             kundeEpost: kundeEpost, ringBekreftet: ringBekreftet,
             samtykkeTekst: samtykkeTekst)
-        let r: DorsalgSaleAck? = try? await api._post("/api/leadgrid/dorsalg/sales", body: body)
+        let r: DorsalgSaleAck? = try? await requestCamelCase(
+            "/api/leadgrid/dorsalg/sales", method: "POST", body: body, using: api)
         return r?.ok == true
     }
 
@@ -559,9 +579,9 @@ func fetchAdresser(
 
     func setDorsalgProductAccess(userId: String, productIds: [String],
                                  using api: APIClient) async {
-        let _: ProductAck? = try? await api._put(
-            "/api/leadgrid/dorsalg/products/access",
-            body: AccessPutBody(userId: userId, productIds: productIds))
+        let _: ProductAck? = try? await requestCamelCase(
+            "/api/leadgrid/dorsalg/products/access", method: "PUT",
+            body: AccessPutBody(userId: userId, productIds: productIds), using: api)
     }
 
     // Dørsalg-oversikt (aggregat for org-en) — vises i Oversikt-fanen.
@@ -655,10 +675,10 @@ func fetchAdresser(
             let budsjettPerSelger: Int?
         }
         struct Ack: Decodable { let ok: Bool? }
-        let ack: Ack? = try? await api._put(
-            "/api/leadgrid/dorsalg/maal",
+        let ack: Ack? = try? await requestCamelCase(
+            "/api/leadgrid/dorsalg/maal", method: "PUT",
             body: Body(teamId: teamId ?? "", dagsmalPerSelger: dagsmalPerSelger,
-                       budsjettPerSelger: budsjettPerSelger))
+                       budsjettPerSelger: budsjettPerSelger), using: api)
         return ack?.ok == true
     }
 

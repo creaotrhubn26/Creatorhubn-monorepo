@@ -897,6 +897,7 @@ import { setupDeliveriesRoutes } from "./deliveries-routes";
 import { setupAudioSettingsRoutes } from "./audio-settings-routes";
 import { setupSalesRoutes } from "./sales-routes";
 import { registerSalesLeadershipRoutes } from "./sales-leadership-routes";
+import { registerLeadgridSalesManagementRoutes } from "./leadgrid-sales-management-routes";
 import { registerLeadgridManualInvoiceRoutes } from "./leadgrid-manual-invoice-routes";
 import { registerLeadgridMileageApprovalRoutes } from "./leadgrid-mileage-approval-routes";
 import { registerLeadgridCockpitRoutes } from "./leadgrid-cockpit-routes";
@@ -2218,6 +2219,10 @@ const leadMapSessionHydrator = createLeadMapSessionHydrator(
 app.use("/api/admin-room/lead-map", leadMapSessionHydrator);
 app.use("/api/leadgrid", leadMapSessionHydrator);
 app.use("/api/auth/user", leadMapSessionHydrator);
+// Role Room agent guards are intentionally synchronous, so warm their
+// process-local session map from the durable store before each request. This
+// keeps valid web sessions working across Render restarts and instances.
+app.use("/api/role-room/agent", leadMapSessionHydrator);
 
 // Pending-2FA-state for login-flow. Når en bruker har TOTP aktivert,
 // stasher vi alt vi trenger for å fullføre sessionen mens vi venter på
@@ -67214,6 +67219,7 @@ setupSalesRoutes({
 
 // /api/leadgrid/sales-leadership/* — 18 endpoints (provisjons-modeller,
 // konkurranse-maler, premie-katalog, fulfillment). Forutsetter mig 0354.
+registerLeadgridSalesManagementRoutes({ app, pool, requireUserSession });
 registerSalesLeadershipRoutes({ app, pool, requireUserSession });
 
 // /api/leadgrid/manual-invoice — manuell faktura for org uten Stripe (mig 0407,
@@ -67982,7 +67988,18 @@ setupProjectsRoutes({
   pool,
   mapProjectRow,
   compatResolveUserId,
-  requireUserSession,
+  // Generic project routes must be able to resolve a durable session after a
+  // Render restart or when a request lands on another instance. The historic
+  // synchronous guard only checked this process' activeSessions Map, which
+  // made valid Role Room owners receive a misleading 404 from /files.
+  requireUserSession: async (req, res) => {
+    const session = await resolveActiveSessionFromRequest(req);
+    if (!session) {
+      res.status(401).json({ error: "auth_required" });
+      return null;
+    }
+    return session;
+  },
   compatStoreSet,
   buildGalleryShareUrl,
   bootstrapCaptureSessionForProject,
