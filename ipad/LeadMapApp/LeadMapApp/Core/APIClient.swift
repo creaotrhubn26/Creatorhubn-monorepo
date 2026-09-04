@@ -1479,7 +1479,7 @@ actor APIClient {
             encoder.keyEncodingStrategy = .convertToSnakeCase
             var request = makeRequest("/api/admin-room/lead-map/leads", method: "POST")
             request.setValue(
-                "leadgrid:\(draft.organizationId):\(draft.creationId.uuidString)",
+                draft.creationId.uuidString.lowercased(),
                 forHTTPHeaderField: "Idempotency-Key"
             )
             request.setValue(draft.organizationId, forHTTPHeaderField: "X-Organization-Id")

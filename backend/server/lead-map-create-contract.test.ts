@@ -8,6 +8,7 @@ import {
   normalizeLeadPhone,
   normalizeWebsiteDomain,
   parseLeadCreationBody,
+  parseLeadDuplicateCheckBody,
   parseLeadCreationIdempotencyKey,
   pipelineStageForLeadStatus,
 } from "./lead-map-create-contract.js";
@@ -141,6 +142,20 @@ it("validerer og kan utelate Idempotency-Key bakoverkompatibelt", () => {
     expectValidationCode(() => parseLeadCreationBody({
       name: "Test AS", latitude: 91, longitude: 10,
     }), "ugyldig_koordinat");
+  });
+
+  it("duplikatsøk tillater at begge koordinatene mangler", () => {
+    const body = parseLeadDuplicateCheckBody({
+      name: "Test AS",
+      email: "post@example.no",
+      latitude: null,
+      longitude: null,
+      location_confidence: "exact",
+    });
+    expect(body.locationConfidence).toBe("unknown");
+    expect(body.latitude).toBe(0);
+    expect(body.longitude).toBe(0);
+    expect(body.emailNormalized).toBe("post@example.no");
   });
 });
 

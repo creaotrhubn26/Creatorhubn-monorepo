@@ -367,6 +367,40 @@ type LeadCreationInput = LeadCreationBody & {
   organizationId: string;
   idempotencyKey: string | null;
   requestHash: string | null;
+  allowDuplicate?: boolean;
+};
+
+type LeadDuplicateIdentityInput = LeadCreationBody & {
+  organizationId: string;
+};
+
+type DuplicateLeadRow = {
+  id: string;
+  name: string;
+  company: string | null;
+  email: string | null;
+  phone: string | null;
+  website_url: string | null;
+  address: string | null;
+  city: string | null;
+  organization_number_match: boolean;
+  google_place_id_match: boolean;
+  website_domain_match: boolean;
+  email_match: boolean;
+  phone_match: boolean;
+  geographic_proximity_match: boolean;
+};
+
+export type LeadDuplicateCandidate = {
+  id: string;
+  name: string;
+  company: string | null;
+  email: string | null;
+  phone: string | null;
+  websiteUrl: string | null;
+  address: string | null;
+  city: string | null;
+  matchReasons: DuplicateLeadMatch[];
 };
 
 function leadIdentityLockKeys(input: LeadCreationInput): string[] {
@@ -401,10 +435,22 @@ async function lockLeadIdentities(
   }
 }
 
-async function findDuplicateLead(
-  client: PoolClient,
-  input: LeadCreationInput,
-): Promise<{ id: string; matchedFields: DuplicateLeadMatch[] } | null> {
+function duplicateMatchReasons(row: DuplicateLeadRow): DuplicateLeadMatch[] {
+  const matchedFields: DuplicateLeadMatch[] = [];
+  if (row.organization_number_match) matchedFields.push("organization_number");
+  if (row.google_place_id_match) matchedFields.push("google_place_id");
+  if (row.website_domain_match) matchedFields.push("website_domain");
+  if (row.email_match) matchedFields.push("email");
+  if (row.phone_match) matchedFields.push("phone");
+  if (row.geographic_proximity_match) matchedFields.push("geographic_proximity");
+  return matchedFields;
+}
+
+async function queryDuplicateLeadRows(
+  queryable: Pool | PoolClient,
+  input: LeadDuplicateIdentityInput,
+  limit: number,
+): Promise<DuplicateLeadRow[]> {
   const matchByLocation = input.locationConfidence !== "unknown";
   if (
     !input.organizationNumber &&
@@ -414,19 +460,12 @@ async function findDuplicateLead(
     !input.phoneNormalized &&
     !matchByLocation
   ) {
-    return null;
+    return [];
   }
 
-  const result = await client.query<{
-    id: string;
-    organization_number_match: boolean;
-    google_place_id_match: boolean;
-    website_domain_match: boolean;
-    email_match: boolean;
-    phone_match: boolean;
-    geographic_proximity_match: boolean;
-  }>(
-    `SELECT id::text,
+  const result = await queryable.query<DuplicateLeadRow>(
+    `SELECT c.id::text, c.name, c.company, c.email, c.phone,
+            c.website_url, c.address, c.city,
             ($2::text IS NOT NULL AND enrichment_org_nr = $2::text)
               AS organization_number_match,
             ($3::text IS NOT NULL AND google_place_id = $3::text)
@@ -481,8 +520,8 @@ async function findDuplicateLead(
             ) <= 25.0
           )
         )
-      ORDER BY created_at ASC
-      LIMIT 1`,
+      ORDER BY c.created_at ASC
+      LIMIT $10::integer`,
     [
       input.organizationId,
       input.organizationNumber,
@@ -493,19 +532,39 @@ async function findDuplicateLead(
       matchByLocation,
       input.latitude,
       input.longitude,
+      Math.max(1, Math.min(limit, 20)),
     ],
   );
 
-  const row = result.rows[0];
+  return result.rows;
+}
+
+export async function findLeadDuplicateCandidates(
+  pool: Pool,
+  input: LeadDuplicateIdentityInput,
+): Promise<LeadDuplicateCandidate[]> {
+  const rows = await queryDuplicateLeadRows(pool, input, 20);
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    company: row.company,
+    email: row.email,
+    phone: row.phone,
+    websiteUrl: row.website_url,
+    address: row.address,
+    city: row.city,
+    matchReasons: duplicateMatchReasons(row),
+  }));
+}
+
+async function findDuplicateLead(
+  client: PoolClient,
+  input: LeadCreationInput,
+): Promise<{ id: string; matchedFields: DuplicateLeadMatch[] } | null> {
+  const row = (await queryDuplicateLeadRows(client, input, 1))[0];
+
   if (!row) return null;
-  const matchedFields: DuplicateLeadMatch[] = [];
-  if (row.organization_number_match) matchedFields.push("organization_number");
-  if (row.google_place_id_match) matchedFields.push("google_place_id");
-  if (row.website_domain_match) matchedFields.push("website_domain");
-  if (row.email_match) matchedFields.push("email");
-  if (row.phone_match) matchedFields.push("phone");
-  if (row.geographic_proximity_match) matchedFields.push("geographic_proximity");
-  return { id: row.id, matchedFields };
+  return { id: row.id, matchedFields: duplicateMatchReasons(row) };
 }
 
 type ExistingIdempotentCreation = {
@@ -570,7 +629,9 @@ export async function createLeadFromPin(
       return replay;
     }
 
-    const duplicate = await findDuplicateLead(client, input);
+    const duplicate = input.allowDuplicate
+      ? null
+      : await findDuplicateLead(client, input);
     if (duplicate) {
       throw new DuplicateLeadError(duplicate.id, duplicate.matchedFields);
     }

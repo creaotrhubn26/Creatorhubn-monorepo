@@ -260,3 +260,27 @@ export function parseLeadCreationBody(raw: unknown): LeadCreationBody {
     projectId: optionalText(body, "project_id", 255),
   };
 }
+
+/**
+ * Duplikatsøk skal også fungere for eldre leads uten kartkoordinater.
+ * Når begge koordinatene mangler, deaktiveres bare nærhetskriteriet; én
+ * manglende eller ugyldig koordinat avvises fortsatt av hovedparseren.
+ */
+export function parseLeadDuplicateCheckBody(raw: unknown): LeadCreationBody {
+  const body = recordBody(raw);
+  const latitudeMissing = body.latitude === undefined
+    || body.latitude === null
+    || body.latitude === "";
+  const longitudeMissing = body.longitude === undefined
+    || body.longitude === null
+    || body.longitude === "";
+  if (latitudeMissing && longitudeMissing) {
+    return parseLeadCreationBody({
+      ...body,
+      latitude: 0,
+      longitude: 0,
+      location_confidence: "unknown",
+    });
+  }
+  return parseLeadCreationBody(body);
+}

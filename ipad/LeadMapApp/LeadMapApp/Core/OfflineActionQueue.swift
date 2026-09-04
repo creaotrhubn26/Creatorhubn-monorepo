@@ -266,11 +266,14 @@ actor OfflineActionQueue {
     ) async -> (success: Int, failed: Int) {
         await drain(organizationId: organizationId) { action in
             do {
+                let idempotencyKey = action.endpoint == "/api/admin-room/lead-map/leads"
+                    ? action.id.uuidString.lowercased()
+                    : "leadgrid:\(organizationId):\(action.id.uuidString)"
                 _ = try await api.executeRaw(
                     method: action.httpMethod,
                     path: action.endpoint,
                     body: action.bodyJson,
-                    idempotencyKey: "leadgrid:\(organizationId):\(action.id.uuidString)",
+                    idempotencyKey: idempotencyKey,
                     organizationId: organizationId
                 )
             } catch {

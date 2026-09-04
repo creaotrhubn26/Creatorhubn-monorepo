@@ -27,6 +27,7 @@ import Stripe from "stripe";
 import {
   createLeadFromPin,
   DuplicateLeadError,
+  findLeadDuplicateCandidates,
   LeadCreationIdempotencyConflictError,
   generateLeadPitch,
   getLeadById,
@@ -57,6 +58,7 @@ import {
   hashLeadCreationBody,
   LeadCreationValidationError,
   parseLeadCreationBody,
+  parseLeadDuplicateCheckBody,
   parseLeadCreationIdempotencyKey,
 } from "./lead-map-create-contract.js";
 import { CardLeadProjectScopeError, createCardLead } from "./lead-map-card-service.js";
@@ -150,6 +152,169 @@ export function setupLeadMapRoutes(deps: Deps): void {
     }
     return e;
   }
+
+  function duplicateCandidatesPayload(
+    candidates: Awaited<ReturnType<typeof findLeadDuplicateCandidates>>,
+  ) {
+    return candidates.map((candidate) => ({
+      id: candidate.id,
+      name: candidate.name,
+      company: candidate.company,
+      email: candidate.email,
+      phone: candidate.phone,
+      website_url: candidate.websiteUrl,
+      address: candidate.address,
+      city: candidate.city,
+      match_reasons: candidate.matchReasons,
+    }));
+  }
+
+  // POST /leads/duplicate-check — samme tenant-avgrensede motor som create.
+  app.post(
+    "/api/admin-room/lead-map/leads/duplicate-check",
+    requireLeadMapPermission("leads.view", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) {
+        return res.status(401).json({ error: "Innlogging kreves" });
+      }
+      let body: ReturnType<typeof parseLeadDuplicateCheckBody>;
+      try {
+        body = parseLeadDuplicateCheckBody(req.body ?? {});
+      } catch (error) {
+        if (error instanceof LeadCreationValidationError) {
+          return res.status(400).json({ error: error.code });
+        }
+        return res.status(400).json({ error: "ugyldig_payload" });
+      }
+      try {
+        const organizationId =
+          (await organizationScope(req, session.userId))
+          ?? (await resolveOrgIdForUser(pool, session.userId));
+        const candidates = await findLeadDuplicateCandidates(pool, {
+          ...body,
+          organizationId,
+        });
+        return res.json({ candidates: duplicateCandidatesPayload(candidates) });
+      } catch (error) {
+        if (sendLeadMapOrganizationScopeError(error, res)) return;
+        return res.status(500).json({
+          error: "duplicate_check_failed",
+          detail: "internal_error",
+        });
+      }
+    },
+  );
+
+  // POST /leads — canonical iPad/offline-create med eksplisitt override.
+  app.post(
+    "/api/admin-room/lead-map/leads",
+    requireLeadMapPermission("leads.create", { pool, activeSessions }),
+    async (req: Request, res: Response) => {
+      const session = await getUser(req, pool, activeSessions);
+      if (!session?.userId) {
+        return res.status(401).json({ error: "Innlogging kreves" });
+      }
+
+      let body: ReturnType<typeof parseLeadCreationBody>;
+      let idempotencyKey: string | null;
+      const rawAllowDuplicate = (req.body as Record<string, unknown> | null)
+        ?.allow_duplicate;
+      if (
+        rawAllowDuplicate !== undefined
+        && typeof rawAllowDuplicate !== "boolean"
+      ) {
+        return res.status(400).json({ error: "ugyldig_allow_duplicate" });
+      }
+      const allowDuplicate = rawAllowDuplicate === true;
+      try {
+        body = parseLeadCreationBody(req.body ?? {});
+        idempotencyKey = parseLeadCreationIdempotencyKey(
+          req.get("Idempotency-Key"),
+        );
+      } catch (error) {
+        if (error instanceof LeadCreationValidationError) {
+          return res.status(400).json({ error: error.code });
+        }
+        return res.status(400).json({ error: "ugyldig_payload" });
+      }
+
+      let organizationId: string | null = null;
+      try {
+        organizationId =
+          (await organizationScope(req, session.userId))
+          ?? (await resolveOrgIdForUser(pool, session.userId));
+        const creation = await createLeadFromPin(pool, {
+          ...body,
+          ownerUserId: session.userId,
+          organizationId,
+          idempotencyKey,
+          requestHash: idempotencyKey ? hashLeadCreationBody(body) : null,
+          allowDuplicate,
+        });
+        if (creation.idempotentReplay) {
+          res.setHeader("Idempotent-Replayed", "true");
+        }
+        if (creation.created) {
+          void (async () => {
+            try {
+              const { publishEvent } =
+                await import("./leadgrid-workflow-engine.js");
+              await publishEvent({
+                pool,
+                organizationId,
+                type: "lead.created",
+                leadId: creation.id,
+                actorUserId: session.userId,
+                data: {
+                  source: body.leadSource,
+                  lead_status: body.leadStatus,
+                  lead_temperature: body.leadTemperature,
+                  occurred_at: new Date().toISOString(),
+                },
+              });
+            } catch (eventError) {
+              console.warn(
+                "[lead-map] canonical lead.created-event feilet:",
+                (eventError as Error).message,
+              );
+            }
+          })();
+        }
+        return res.status(creation.created ? 201 : 200).json({
+          ok: true,
+          id: creation.id,
+          created: creation.created,
+          replayed: creation.idempotentReplay,
+          duplicates_checked: 0,
+          brreg: null,
+        });
+      } catch (error) {
+        if (sendLeadMapOrganizationScopeError(error, res)) return;
+        if (error instanceof DuplicateLeadError && organizationId) {
+          const candidates = await findLeadDuplicateCandidates(pool, {
+            ...body,
+            organizationId,
+          }).catch(() => []);
+          return res.status(409).json({
+            error: "duplicate_conflict",
+            existing_lead_id: error.existingLeadId,
+            candidates: duplicateCandidatesPayload(candidates),
+          });
+        }
+        if (error instanceof LeadCreationIdempotencyConflictError) {
+          return res.status(409).json({
+            error: "idempotency_payload_conflict",
+            existing_lead_id: error.existingLeadId || undefined,
+          });
+        }
+        return res.status(500).json({
+          error: "create_failed",
+          detail: "internal_error",
+        });
+      }
+    },
+  );
 
   // GET /leads — innenfor bounds + valgfrie filtre
   app.get("/api/admin-room/lead-map/leads", async (req: Request, res: Response) => {
