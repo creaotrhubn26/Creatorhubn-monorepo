@@ -67982,7 +67982,18 @@ setupProjectsRoutes({
   pool,
   mapProjectRow,
   compatResolveUserId,
-  requireUserSession,
+  // Generic project routes must be able to resolve a durable session after a
+  // Render restart or when a request lands on another instance. The historic
+  // synchronous guard only checked this process' activeSessions Map, which
+  // made valid Role Room owners receive a misleading 404 from /files.
+  requireUserSession: async (req, res) => {
+    const session = await resolveActiveSessionFromRequest(req);
+    if (!session) {
+      res.status(401).json({ error: "auth_required" });
+      return null;
+    }
+    return session;
+  },
   compatStoreSet,
   buildGalleryShareUrl,
   bootstrapCaptureSessionForProject,
