@@ -5729,13 +5729,15 @@ export async function fetchGooglePlacesLocalPresencePlan(
           }
           const websiteUrl = hasText(place.websiteUri) ? normalizeWebsiteUrl(place.websiteUri) : null;
           const placeHost = normalizeHost(websiteUrl);
-          const key = hasText(place.id)
-            ? normalizeWhitespace(place.id)
-            : placeHost || `${definition.type}:${normalizeIdentity(name)}:${normalizeIdentity(hasText(place.formattedAddress) ? place.formattedAddress : "")}`;
-          if (!key || seenKeys.has(key)) {
+          const identityKeys = [
+            hasText(place.id) ? `placeId:${normalizeWhitespace(place.id)}` : "",
+            placeHost ? `host:${placeHost}` : "",
+            `name:${normalizeIdentity(name)}`,
+          ].filter(Boolean);
+          if (identityKeys.length === 0 || identityKeys.some((key) => seenKeys.has(key))) {
             continue;
           }
-          seenKeys.add(key);
+          for (const key of identityKeys) seenKeys.add(key);
 
           const formattedAddress = hasText(place.formattedAddress) ? normalizeWhitespace(place.formattedAddress) : null;
           const evidence: RoleRoomAgentLocalOpportunityEvidence[] = [

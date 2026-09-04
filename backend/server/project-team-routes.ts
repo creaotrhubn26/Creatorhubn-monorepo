@@ -89,7 +89,8 @@ export async function getProjectAccess(
   try {
     const owner = await pool.query(
       `SELECT 1 WHERE EXISTS(SELECT 1 FROM projects WHERE id::text = $1 AND user_id::text = $2)
-                  OR EXISTS(SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2)`,
+                  OR EXISTS(SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2)
+                  OR EXISTS(SELECT 1 FROM casting_projects WHERE id = $1 AND created_by = $2)`,
       [projectId, userId],
     );
     if ((owner.rowCount ?? owner.rows?.length ?? 0) > 0) {
@@ -142,7 +143,8 @@ export async function canEditProject(
 async function isProjectOwner(pool: any, userId: string, projectId: string): Promise<boolean> {
   const r = await pool.query(
     `SELECT 1 WHERE EXISTS(SELECT 1 FROM projects WHERE id::text = $1 AND user_id::text = $2)
-                OR EXISTS(SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2)`,
+                OR EXISTS(SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2)
+                OR EXISTS(SELECT 1 FROM casting_projects WHERE id = $1 AND created_by = $2)`,
     [projectId, userId],
   );
   return (r.rowCount ?? 0) > 0;

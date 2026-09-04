@@ -172,6 +172,50 @@ describe('Role Room local-presence fail-closed policy', () => {
     expect(result.recommendedEventConcepts.every((entry) => !/Hub 33/i.test(entry))).toBe(true);
   });
 
+  it('deduplicates local branches that resolve to the same website host', async () => {
+    process.env.GOOGLE_PLACES_API_KEY = 'test-key';
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({
+      places: [
+        {
+          id: 'workspace-one',
+          displayName: { text: 'Workspace Oslo Sentrum' },
+          formattedAddress: 'Storgata 1, 0155 Oslo, Norge',
+          websiteUri: 'https://workspace.example/oslo-sentrum',
+          primaryType: 'coworking_space',
+          primaryTypeDisplayName: { text: 'Kontorfellesskap' },
+        },
+        {
+          id: 'workspace-two',
+          displayName: { text: 'Workspace Oslo Vest' },
+          formattedAddress: 'Drammensveien 1, 0255 Oslo, Norge',
+          websiteUri: 'https://workspace.example/oslo-vest',
+          primaryType: 'coworking_space',
+          primaryTypeDisplayName: { text: 'Kontorfellesskap' },
+        },
+      ],
+    }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+
+    const result = await fetchGooglePlacesLocalPresencePlan(
+      {
+        projectId: 'medside-local-domain-dedupe-test',
+        websiteUrl: 'https://medside.no',
+        companyName: 'MEDINNOVA AS',
+      },
+      {
+        finalUrl: 'https://medside.no/',
+        metaDescription: 'GDPR-sikker AI-plattform for medisinsk transkripsjon og journalnotat.',
+        textSnippet: 'Bygget for norske leger og helsepersonell.',
+        selectedPageSnippets: [],
+        socialProfileCandidates: [],
+      },
+      null,
+      verifiedMedinnova(),
+    );
+
+    expect(result.nearbyOpportunities).toHaveLength(1);
+    expect(result.nearbyOpportunities[0]?.name).toBe('Workspace Oslo Sentrum');
+  });
+
   it('filters wrong-country Places candidates from competitor analysis', async () => {
     process.env.GOOGLE_PLACES_API_KEY = 'test-key';
     globalThis.fetch = vi.fn(async () => {

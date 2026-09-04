@@ -9,7 +9,8 @@ function buildApp() {
     query: async (sql: string, params: unknown[] = []) => {
       captured.push({ sql, params });
       if (sql.includes("SELECT 1 WHERE EXISTS")) {
-        const owner = params[1] === "owner-user";
+        const owner = params[1] === "owner-user"
+          || (params[0] === "role-room-project" && params[1] === "role-room-owner");
         return { rows: owner ? [{ ok: 1 }] : [], rowCount: owner ? 1 : 0 };
       }
       if (sql.includes("SELECT role, permissions")) {
@@ -33,6 +34,9 @@ function buildApp() {
       }
       if (sql.includes("SELECT id FROM legacy.projects") && params[0] === "project-1") {
         return { rows: [{ id: "project-1" }], rowCount: 1 };
+      }
+      if (sql.includes("SELECT id FROM casting_projects") && params[0] === "role-room-project") {
+        return { rows: [{ id: "role-room-project" }], rowCount: 1 };
       }
       if (sql.includes("FROM projects p") && sql.includes("LIMIT 1") && params[0] === "public-project") {
         return {
@@ -182,5 +186,25 @@ describe("generic project access routes", () => {
     expect((await request(app)
       .get("/api/projects/project-1/comments")
       .set("x-test-user", "intruder")).status).toBe(404);
+  });
+
+  it("serves files to the owner of a Role Room casting project", async () => {
+    const { app, captured } = buildApp();
+    const response = await request(app)
+      .get("/api/projects/role-room-project/files")
+      .set("x-test-user", "role-room-owner");
+    const denied = await request(app)
+      .get("/api/projects/role-room-project/files")
+      .set("x-test-user", "intruder");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([]);
+    expect(denied.status).toBe(404);
+    expect(captured.some((call) =>
+      call.sql.includes("FROM casting_projects")
+      && call.sql.includes("created_by = $2")
+      && call.params[0] === "role-room-project"
+      && call.params[1] === "role-room-owner",
+    )).toBe(true);
   });
 });
