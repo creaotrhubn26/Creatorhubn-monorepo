@@ -5,15 +5,24 @@ import CoreLocation
 final class AddLeadFieldParserTests: XCTestCase {
     func testNormalizesNorwegianOrganizationNumber() throws {
         XCTAssertEqual(
-            try AddLeadFieldParser.organizationNumber("NO 912 345 678 MVA"),
-            "912345678"
+            try AddLeadFieldParser.organizationNumber("NO 937 518 684 MVA"),
+            "937518684"
         )
         XCTAssertNil(try AddLeadFieldParser.organizationNumber(""))
     }
 
     func testRejectsInvalidOrganizationNumberAndEmployeeRange() {
         XCTAssertThrowsError(try AddLeadFieldParser.organizationNumber("123"))
+        XCTAssertThrowsError(try AddLeadFieldParser.organizationNumber("123456789"))
         XCTAssertThrowsError(try AddLeadFieldParser.employeeCount("25–50"))
+    }
+
+    func testValidatesEmailAndSafeWebsiteSchemes() throws {
+        XCTAssertEqual(try AddLeadFieldParser.email(" post@example.no "), "post@example.no")
+        XCTAssertThrowsError(try AddLeadFieldParser.email("ugyldig-epost"))
+        XCTAssertEqual(try AddLeadFieldParser.website("leadgrid.no"), "leadgrid.no")
+        XCTAssertThrowsError(try AddLeadFieldParser.website("javascript:alert(1)"))
+        XCTAssertThrowsError(try AddLeadFieldParser.website("https://user:pass@example.no"))
     }
 
     func testParsesNorwegianRevenueFormatsWithoutGuessingRanges() throws {

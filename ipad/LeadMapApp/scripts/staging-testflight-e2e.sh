@@ -64,18 +64,44 @@ lead_payload="$(jq -n   --arg creation_id "$creation_id"   --arg organization_id
     allow_duplicate: true
   }')"
 
-create_response="$(curl --fail-with-body --silent --show-error   -H "Authorization: Bearer $token"   -H "X-Organization-Id: $org_id"   -H "Idempotency-Key: leadgrid-staging-e2e-$creation_id"   -H "Content-Type: application/json"   --data-binary "$lead_payload"   "$staging_url/api/admin-room/lead-map/leads")"
+create_response="$(curl --fail-with-body --silent --show-error   -H "Authorization: Bearer $token"   -H "X-Organization-Id: $org_id"   -H "X-Leadgrid-Organization-Id: $org_id"   -H "Idempotency-Key: leadgrid-staging-e2e-$creation_id"   -H "Content-Type: application/json"   --data-binary "$lead_payload"   "$staging_url/api/admin-room/lead-map/leads")"
 lead_id="$(jq -er '.id' <<<"$create_response")"
 
-detail_response="$(curl --fail-with-body --silent --show-error   -H "Authorization: Bearer $token"   -H "X-Organization-Id: $org_id"   "$staging_url/api/admin-room/lead-map/leads/$lead_id")"
+detail_response="$(curl --fail-with-body --silent --show-error   -H "Authorization: Bearer $token"   -H "X-Organization-Id: $org_id"   -H "X-Leadgrid-Organization-Id: $org_id"   "$staging_url/api/admin-room/lead-map/leads/$lead_id")"
 if ! jq -e --arg id "$lead_id" '(.id == $id) or (.lead.id == $id)'   <<<"$detail_response" >/dev/null; then
   echo "Leaden kunne ikke leses tilbake fra staging-persistensen." >&2
   exit 4
 fi
 
+# Leadbook: opprett samme kladd to ganger med samme creation_id, les den
+# tilbake fra detalj og liste, og slett testkladden gjennom GDPR-endepunktet.
+leadbook_creation_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+leadbook_payload="$(jq -n --arg creation_id "$leadbook_creation_id" --arg title "[E2E] Leadbook staging $timestamp" '{
+    creation_id: $creation_id,
+    title: $title,
+    customer_label: "Anonymisert stagingkunde",
+    industry: "Programvare",
+    outcome: "ongoing",
+    channel: "telephone",
+    summary: "Automatisk staging-E2E. Skal slettes i samme test."
+  }')"
+leadbook_create_one="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer $token" -H "X-Organization-Id: $org_id" -H "X-Leadgrid-Organization-Id: $org_id" -H "Content-Type: application/json" --data-binary "$leadbook_payload" "$staging_url/api/leadgrid/leadbook/examples")"
+leadbook_create_two="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer $token" -H "X-Organization-Id: $org_id" -H "X-Leadgrid-Organization-Id: $org_id" -H "Content-Type: application/json" --data-binary "$leadbook_payload" "$staging_url/api/leadgrid/leadbook/examples")"
+leadbook_id="$(jq -er '.id' <<<"$leadbook_create_one")"
+if [[ "$(jq -er '.id' <<<"$leadbook_create_two")" != "$leadbook_id" ]]; then
+  echo "Leadbook-idempotens returnerte forskjellige ID-er." >&2
+  exit 6
+fi
+leadbook_detail="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer $token" -H "X-Organization-Id: $org_id" -H "X-Leadgrid-Organization-Id: $org_id" "$staging_url/api/leadgrid/leadbook/examples/$leadbook_id")"
+jq -e --arg id "$leadbook_id" '.example.id == $id' <<<"$leadbook_detail" >/dev/null
+leadbook_list="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer $token" -H "X-Organization-Id: $org_id" -H "X-Leadgrid-Organization-Id: $org_id" "$staging_url/api/leadgrid/leadbook/examples?limit=50")"
+jq -e --arg id "$leadbook_id" '.examples | any(.id == $id)' <<<"$leadbook_list" >/dev/null
+leadbook_delete="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer $token" -H "X-Organization-Id: $org_id" -H "X-Leadgrid-Organization-Id: $org_id" -H "Content-Type: application/json" --data-binary '{}' "$staging_url/api/leadgrid/leadbook/examples/$leadbook_id/request-deletion")"
+jq -e '.deleted == true' <<<"$leadbook_delete" >/dev/null
+
 enrichment_ready=false
 for _attempt in {1..30}; do
-  enrichment_response="$(curl --fail-with-body --silent --show-error     -H "Authorization: Bearer $token"     -H "X-Organization-Id: $org_id"     "$staging_url/api/admin-room/lead-map/leads/$lead_id/enrichment")"
+  enrichment_response="$(curl --fail-with-body --silent --show-error     -H "Authorization: Bearer $token"     -H "X-Organization-Id: $org_id"     -H "X-Leadgrid-Organization-Id: $org_id"     "$staging_url/api/admin-room/lead-map/leads/$lead_id/enrichment")"
   if jq -e '.enrichment != null' <<<"$enrichment_response" >/dev/null; then
     enrichment_ready=true
     break
@@ -124,6 +150,7 @@ echo "ORGANIZATION_ID=$org_id"
 echo "LEAD_ID=$lead_id"
 echo "LEAD_NAME=$lead_name"
 echo "BRREG_WORKER=PASS"
+echo "LEADBOOK_CREATE_DETAIL_LIST_IDEMPOTENCY_DELETE=PASS"
 if [[ "$run_simulator_e2e" == "1" ]]; then
   echo "PONDUS_OFFLINE_RECONNECT=PASS"
 fi

@@ -147,6 +147,22 @@ export function registerLeadgridAcademyRoutes(deps: AcademyRoutesDeps): void {
     const position = Math.max(0, Math.min(Number(body.position_seconds ?? 0) || 0, 24 * 3600));
     try {
       const orgId = await resolveOrgIdForUser(pool, session.userId);
+      if (!orgId) return res.status(400).json({ error: "ingen_organisasjon" });
+      // A chapter id is never enough authorization on its own. Only a
+      // published official course or a published course owned by this org
+      // may receive progress for this tenant.
+      const visible = await pool.query(
+        `SELECT 1
+           FROM leadgrid_academy_chapters ch
+           JOIN leadgrid_academy_courses c ON c.id = ch.course_id
+          WHERE ch.id = $1::uuid AND c.is_published = TRUE
+            AND (c.scope = 'leadgrid_official' OR c.organization_id = $2)
+          LIMIT 1`,
+        [body.chapter_id, orgId],
+      );
+      if (!visible.rows[0]) {
+        return res.status(404).json({ error: "chapter_not_visible" });
+      }
       await pool.query(
         `INSERT INTO leadgrid_academy_progress
            (user_id, chapter_id, organization_id, watched, position_seconds, completed_at, updated_at)
@@ -168,14 +184,21 @@ export function registerLeadgridAcademyRoutes(deps: AcademyRoutesDeps): void {
 
   // ── Fase 2: admin-hjelpere ────────────────────────────────────────
 
-  /// Global admin/super_admin, eller aktiv 'admin' i org-en.
+  /// Global admin/super_admin, eller lederrolle i aktiv Leadgrid-org.
   async function isAcademyAdmin(session: SessionUser, orgId: string): Promise<boolean> {
     if (session.role === "admin" || session.role === "super_admin") return true;
     const r = await pool.query(
-      `SELECT 1 FROM enterprise_team_members
-        WHERE user_id = $1 AND organization_id = $2
-          AND status = 'active' AND role = 'admin'
-        LIMIT 1`,
+      `SELECT 1
+         WHERE EXISTS (
+           SELECT 1 FROM organization_members
+            WHERE user_id = $1 AND organization_id = $2::uuid
+              AND role IN ('admin', 'salgssjef', 'teamleder')
+         ) OR EXISTS (
+           SELECT 1 FROM enterprise_team_members
+            WHERE user_id = $1 AND organization_id = $2
+              AND status = 'active' AND role = 'admin'
+         )
+         LIMIT 1`,
       [session.userId, orgId],
     );
     return r.rows.length > 0;

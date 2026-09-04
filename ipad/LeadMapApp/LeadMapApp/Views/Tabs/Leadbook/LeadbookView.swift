@@ -238,8 +238,8 @@ enum LeadbookData {
     ]
 
     /// Mock ytelses-tall — KUN i demo-modus (ingen per-mal-analytics enda).
-    static var perf: [PerformanceRow] {
-        DemoModeManager.isActiveNonisolated ? _perf : []
+    @MainActor static var perf: [PerformanceRow] {
+        DemoModeManager.isActiveNonisolated ? _perf : LeadbookLiveStore.shared.performanceRows
     }
     private static let _perf: [PerformanceRow] = [
         PerformanceRow(name: "Møtebooking – telefon",     responseRate: 0.52, conversion: 0.41),
@@ -352,7 +352,11 @@ struct LeadbookView: View {
                             case .maler:     malerContent.gated(.leadbookMaler)
                             case .pondus:    pondusContent.gated(.leadbookPondus)
                             case .akademi:   AcademyTabView()
-                            case .eksempler: LeadbookExamplesView().gated(.leadbookEksempler)
+                            case .eksempler:
+                                LeadbookExamplesView(
+                                    requestedExampleId: appState.deepLinkLeadbookExampleId
+                                )
+                                .gated(.leadbookEksempler)
                             case .innsikt:   LeadbookInnsiktView().gated(.leadbookInnsikt)
                             }
                         }
@@ -362,10 +366,18 @@ struct LeadbookView: View {
                     }
                     .padding(.horizontal, 20).padding(.top, 14)
                 }
+                .refreshable {
+                    await pondusStore.load(
+                        api: appState.api,
+                        organizationId: appState.activeOrganizationId
+                    )
+                    await LeadbookLiveStore.shared.refresh()
+                    await AcademyLiveStore.shared.load()
+                }
             }
         }
         .preferredColorScheme(.dark)
-        .task {
+        .task(id: appState.activeOrganizationId) {
             await pondusStore.load(
                 api: appState.api,
                 organizationId: appState.activeOrganizationId
@@ -377,6 +389,12 @@ struct LeadbookView: View {
                     api: api,
                     organizationId: appState.activeOrganizationId
                 )
+                await LeadbookLiveStore.shared.refresh()
+                if let first = LeadbookLiveStore.shared.templates.first,
+                   !LeadbookLiveStore.shared.templates.contains(where: { $0.id == selectedTemplate.id }) {
+                    selectedTemplate = first
+                    selectedStep = LeadbookLiveStore.shared.templateDTO(for: first)?.orderedSteps.first?.order ?? 1
+                }
             }
             // Ved cold-start konsumer deep-link satt av App Intent (som kjørte
             // før view-en var ready). Vi må gjøre det ETTER load() slik at
@@ -389,6 +407,9 @@ struct LeadbookView: View {
         // dekkes av samme observer.
         .onChange(of: appState.deepLinkPondusRequestedAt) { _, _ in
             consumePondusDeepLink()
+        }
+        .onChange(of: appState.deepLinkLeadbookRequestedAt) { _, _ in
+            if appState.deepLinkLeadbookRequestedAt != nil { subTab = .eksempler }
         }
         // Legacy NotificationCenter-basert path — beholdt for Watch-siden
         // (PondusWatchSync) og for backward compat. Bruker samme match-
@@ -407,7 +428,7 @@ struct LeadbookView: View {
             TemplateLibraryModal(selected: $selectedTemplate)
         }
         .sheet(isPresented: $showPerformance) { PerformanceModal() }
-        .sheet(isPresented: $showVersions) { VersionsModal() }
+        .sheet(isPresented: $showVersions) { VersionsModal(template: selectedTemplate) }
         .sheet(item: $selectedKPI) { kpi in LeadbookKPIDetailSheet(kpi: kpi) }
         .sheet(isPresented: $showTeamAccess) { TeamAccessControlView() }
         .sheet(isPresented: $showEcosystem) { PondusEcosystemSheet() }
@@ -605,10 +626,11 @@ struct LeadbookView: View {
 
     private func newButton(isCompact: Bool) -> some View {
         Menu {
-            Button { showNewTemplate = true } label: { Label("Ny mal", systemImage: "doc.badge.plus") }
-            // 2026-07-17: wiret til NewObjectionSheet (var død knapp).
-            Button { showNewObjection = true } label: { Label("Ny innvending", systemImage: "shield.fill") }
-            Divider()
+            if canManagePondus {
+                Button { showNewTemplate = true } label: { Label("Ny mal", systemImage: "doc.badge.plus") }
+                Button { showNewObjection = true } label: { Label("Ny innvending", systemImage: "shield.fill") }
+                Divider()
+            }
             // Innganger som tidligere lå i fanens egen avatar-meny
             // (SharedProfileAvatar) — bevart her etter at headeren ble
             // unifisert med Oversikt (delt LeadgridTabHeader).
@@ -620,7 +642,7 @@ struct LeadbookView: View {
             HStack(spacing: 5) {
                 Image(systemName: "plus").font(.appScaled(size: 12, weight: .bold))
                 if !isCompact {
-                    Text("Ny mal").font(.appScaled(size: 12, weight: .bold)).lineLimit(1).fixedSize()
+                    Text(canManagePondus ? "Ny mal" : "Mer").font(.appScaled(size: 12, weight: .bold)).lineLimit(1).fixedSize()
                 }
             }
             .foregroundStyle(.white)
@@ -736,6 +758,15 @@ struct LeadbookView: View {
             PondusEmptyStateView(
                 isSuperAdmin: canManagePondus,
                 isLoading: pondusStore.isLoading,
+                error: pondusStore.lastError,
+                onRetry: {
+                    Task {
+                        await pondusStore.load(
+                            api: appState.api,
+                            organizationId: appState.activeOrganizationId
+                        )
+                    }
+                },
                 onNew: {
                     pondusEditorTarget = nil
                     showPondusEditor = true

@@ -579,6 +579,7 @@ actor APIClient {
         /// Visningstall (kun i responsen for ledere — «hva brukes faktisk»).
         var viewsTotal: Int? = nil
         var viewersCount: Int? = nil
+        var canRequestDeletion: Bool = false
 
         enum CodingKeys: String, CodingKey {
             case id, status, title, industry, outcome, channel, summary
@@ -596,6 +597,7 @@ actor APIClient {
             case feedback
             case viewsTotal = "views_total"
             case viewersCount = "viewers_count"
+            case canRequestDeletion = "can_request_deletion"
         }
 
         init(from decoder: Decoder) throws {
@@ -621,6 +623,7 @@ actor APIClient {
             feedback = (try? c.decode([LeadbookExampleFeedbackDTO].self, forKey: .feedback)) ?? []
             viewsTotal = APIClient.lenientInt(c, .viewsTotal)
             viewersCount = APIClient.lenientInt(c, .viewersCount)
+            canRequestDeletion = (try? c.decode(Bool.self, forKey: .canRequestDeletion)) ?? false
         }
     }
 
@@ -628,10 +631,31 @@ actor APIClient {
         let examples: [LeadbookExampleDTO]
         let canEdit: Bool
         let canGiveFeedback: Bool
+        let nextCursor: String?
+        let canCreateDraft: Bool?
     }
 
-    func fetchLeadbookExamples() async throws -> LeadbookExamplesResponse {
-        try await get("/api/leadgrid/leadbook/examples")
+    func fetchLeadbookExamples(
+        limit: Int = 30,
+        cursor: String? = nil
+    ) async throws -> LeadbookExamplesResponse {
+        var path = "/api/leadgrid/leadbook/examples?limit=\(max(1, min(limit, 50)))"
+        if let cursor,
+           let encoded = cursor.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            path += "&cursor=\(encoded)"
+        }
+        return try await get(path)
+    }
+
+    struct LeadbookExampleDetailResponse: Codable {
+        let example: LeadbookExampleDTO
+        let canEdit: Bool
+        let canGiveFeedback: Bool
+        let canCreateDraft: Bool?
+    }
+
+    func fetchLeadbookExample(id: String) async throws -> LeadbookExampleDetailResponse {
+        try await get("/api/leadgrid/leadbook/examples/\(id)")
     }
 
     /// Opprett eksempel (leder). `transcript` = [{speaker, text, at_sec}].

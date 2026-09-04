@@ -83,13 +83,15 @@ final class PondusStore {
         organizationId: String? = nil,
         includeDrafts: Bool = true
     ) async {
+        if self.organizationId != organizationId {
+            resetForOrganization(organizationId)
+        }
         guard let api else {
             lastError = "no_api_client"
             return
         }
         isLoading = true
-        self.organizationId = organizationId
-        defer { isLoading = false }
+        let requestedOrganizationId = organizationId
         do {
             let list = try await api.pondusListTemplates(
                 category: nil,
@@ -97,6 +99,8 @@ final class PondusStore {
                 publishedOnly: !includeDrafts,
                 organizationId: organizationId
             )
+            guard requestedOrganizationId == self.organizationId else { return }
+            self.isLoading = false
             self.templates = list
             self.lastLoadedAt = Date()
             self.lastError = nil
@@ -104,8 +108,26 @@ final class PondusStore {
             // Trimmer til topp 8 publiserte maler.
             PondusWatchSync.shared.pushTemplatesToWatch(list.filter { $0.isPublished })
         } catch {
+            guard requestedOrganizationId == self.organizationId else { return }
+            self.isLoading = false
             self.lastError = String(describing: error)
         }
+    }
+
+    func resetForOrganization(_ newOrganizationId: String?) {
+        organizationId = newOrganizationId
+        templates = []
+        isLoading = false
+        lastError = nil
+        lastLoadedAt = nil
+    }
+
+    func resetForSignOut() {
+        organizationId = nil
+        templates = []
+        isLoading = false
+        lastError = nil
+        lastLoadedAt = nil
     }
 
     // MARK: - Mutations (SuperAdmin only — backend returnerer 403 hvis ikke)
@@ -406,6 +428,8 @@ private struct PondusBackendCard: View {
 struct PondusEmptyStateView: View {
     let isSuperAdmin: Bool
     let isLoading: Bool
+    var error: String? = nil
+    var onRetry: () -> Void = {}
     let onNew: () -> Void
 
     var body: some View {
@@ -420,6 +444,12 @@ struct PondusEmptyStateView: View {
             Text("Ingen publiserte pondus-maler enda")
                 .font(.appScaled(size: 22, weight: .heavy))
                 .foregroundStyle(.white)
+            if let error, !isLoading {
+                Text("Kunne ikke hente maler: \(error)")
+                    .font(.appScaled(size: 12)).foregroundStyle(LBrand.orange)
+                    .multilineTextAlignment(.center)
+                Button("Prøv igjen", action: onRetry).buttonStyle(.bordered)
+            }
             if isSuperAdmin {
                 Text("Legg til første mal og publiser den slik at alle brukere får tilgang.")
                     .font(.appScaled(size: 13))

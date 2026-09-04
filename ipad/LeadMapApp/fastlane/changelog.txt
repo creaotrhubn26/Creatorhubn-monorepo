@@ -10,3 +10,8 @@ Leadgrid 2.1
 • Nye forklarbare kvalitetsscorer, sikker versjonshistorikk og serververifisert quiz.
 • Pondus-økter synkroniseres idempotent etter nettverksbrudd, med samme økt fra start til utfall.
 • Bedre organisasjonsavgrensning, ledertilgang og stabil åpning fra Siri og Apple Watch.
+• Leadbook-eksempler har fått paginert oversikt, komplett detaljvisning og sikre lenker med full ID.
+• Selgere kan opprette og se egne kladder; publisering, redigering og coaching følger tydelige roller.
+• Opptak krever sporbar samtykkekobling i samme organisasjon, og sletting følger GDPR-flyten.
+• Leadbook-handlinger tåler nettverksbrudd med idempotent kø, synlig feilstatus og prøv-igjen.
+• Academy og Leadbook viser nå bare ekte serverdata, med trygg tomtilstand og reell fremdrift.

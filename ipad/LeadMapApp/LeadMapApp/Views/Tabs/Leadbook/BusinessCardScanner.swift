@@ -386,10 +386,12 @@ struct BusinessCardScannerSheet: View {
         guard let image else { return }
         stage = .scanning
         BusinessCardOCR.extractFields(from: image) { extracted, confidence in
-            withAnimation(.easeInOut(duration: 0.25)) {
-                fields = extracted
-                ocrConfidence = confidence
-                stage = .review
+            Task { @MainActor in
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    fields = extracted
+                    ocrConfidence = confidence
+                    stage = .review
+                }
             }
         }
     }

@@ -833,6 +833,7 @@ struct LeadsView: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("lead-new")
     }
 
     private func filterChip(label: String, active: Bool, badge: Int?,

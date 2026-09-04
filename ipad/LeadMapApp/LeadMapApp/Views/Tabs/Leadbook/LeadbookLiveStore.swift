@@ -36,7 +36,6 @@ final class LeadbookLiveStore {
     private weak var api: APIClient?
     private var organizationId: String?
     private var activeUsageSessions: [UUID: UUID] = [:]
-    private var didInitialSync = false
 
     private init() {}
 
@@ -55,15 +54,36 @@ final class LeadbookLiveStore {
 
     /// Kalles fra LeadbookView når APIClient er klar (idempotent).
     func attach(api: APIClient, organizationId: String?) {
+        resetForOrganization(organizationId)
         self.api = api
         self.organizationId = organizationId
-        guard !didInitialSync else { return }
-        didInitialSync = true
-        Task { await refresh() }
+    }
+
+    func resetForOrganization(_ newOrganizationId: String?) {
+        guard organizationId != newOrganizationId else { return }
+        organizationId = newOrganizationId
+        templates = []
+        objections = []
+        stats = nil
+        dtosById = [:]
+        activeUsageSessions = [:]
+        loadState = .idle
+    }
+
+    func resetForSignOut() {
+        organizationId = nil
+        templates = []
+        objections = []
+        stats = nil
+        dtosById = [:]
+        activeUsageSessions = [:]
+        loadState = .idle
+        api = nil
     }
 
     func refresh() async {
         guard let api else { return }
+        let requestedOrganizationId = organizationId
         if case .loaded = loadState {} else { loadState = .loading }
         do {
             async let templatesTask = api.pondusListTemplates(
@@ -74,6 +94,7 @@ final class LeadbookLiveStore {
                 organizationId: organizationId
             )
             let dtos = try await templatesTask
+            guard requestedOrganizationId == organizationId else { return }
             self.stats = usage
             let usageByTemplate = Dictionary(
                 uniqueKeysWithValues: (usage?.templates ?? []).map { ($0.templateId, $0) }
@@ -98,6 +119,7 @@ final class LeadbookLiveStore {
             }
             loadState = .loaded
         } catch {
+            guard requestedOrganizationId == organizationId else { return }
             print("[LeadbookLiveStore] refresh feilet: \(error)")
             if case .loaded = loadState {} else {
                 loadState = .failed(error.localizedDescription)
@@ -158,6 +180,21 @@ final class LeadbookLiveStore {
     var kpiTeamAdoption: String {
         guard let t = stats?.totals else { return "—" }
         return t.distinctUsers30d == 0 ? "—" : "\(t.distinctUsers30d) aktive"
+    }
+
+    var performanceRows: [PerformanceRow] {
+        guard let stats else { return [] }
+        let names = Dictionary(uniqueKeysWithValues: templates.compactMap { template in
+            template.backendId.map { ($0.lowercased(), template.name) }
+        })
+        return stats.templates.compactMap { item in
+            guard let name = names[item.templateId.lowercased()] else { return nil }
+            return PerformanceRow(
+                name: name,
+                responseRate: item.responseRate,
+                conversion: item.conversionRate
+            )
+        }
     }
 
     // MARK: - Mapping

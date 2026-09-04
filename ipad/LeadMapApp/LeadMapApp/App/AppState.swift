@@ -78,6 +78,11 @@ final class AppState {
     /// (>60s) som kan ha kommet fra en tidligere session-kø.
     var deepLinkPondusRequestedAt: Date?
 
+    /// Backend notifications and copied links route here. LeadbookExamplesView
+    /// consumes the id after it has fetched tenant-authorized detail.
+    var deepLinkLeadbookExampleId: String?
+    var deepLinkLeadbookRequestedAt: Date?
+
     /// Singleton for lettvekts observable pondus-store som App Intents kan
     /// lese uten å gå via SwiftUI-view-hierarkiet. LeadbookView bytter til
     /// denne (i stedet for lokal @State) slik at `PondusScoreIntent` og
@@ -110,6 +115,25 @@ final class AppState {
         self.deepLinkPondusTemplateName = nil
         self.deepLinkPondusStepIndex = nil
         self.deepLinkPondusRequestedAt = nil
+    }
+
+    @discardableResult
+    func handleLeadgridURL(_ url: URL) -> Bool {
+        guard let destination = LeadbookDeepLinkRouter.parse(url) else { return false }
+        switch destination {
+        case .example(let id):
+            deepLinkLeadbookExampleId = id.uuidString.lowercased()
+            deepLinkLeadbookRequestedAt = Date()
+            selectedSidebarItem = .leadbook
+        case .template(let id):
+            setPondusDeepLink(templateId: id.uuidString.lowercased())
+        }
+        return true
+    }
+
+    func clearLeadbookExampleDeepLink() {
+        deepLinkLeadbookExampleId = nil
+        deepLinkLeadbookRequestedAt = nil
     }
 
     // ── Nav deep-link (Møter «Naviger» → Kart ekte turn-by-turn-motor) ──
@@ -450,6 +474,9 @@ final class AppState {
                 let generation = organizationSelectionGeneration
                 let selectedOrganizationId = activeOrganizationId
                 leadgridDiscoveryEnabled = false
+                LeadbookLiveStore.shared.resetForOrganization(selectedOrganizationId)
+                AcademyLiveStore.shared.resetForOrganization(selectedOrganizationId)
+                pondusStore.resetForOrganization(selectedOrganizationId)
                 if api != nil {
                     projects = projects.filter { $0.organizationId == selectedOrganizationId }
                     if let activeProjectId,
@@ -598,6 +625,12 @@ final class AppState {
     func handleLeadgridNotificationTap(_ payload: [String: String]) {
         // Trig refresh av notifikasjons-listen så badge-counter er aktuell.
         Task { await refreshLeadgridNotifications() }
+
+        if let raw = payload["deep_link"],
+           let url = URL(string: raw),
+           handleLeadgridURL(url) {
+            return
+        }
 
         let eventType = payload["event_type"] ?? ""
         switch eventType {
@@ -1099,6 +1132,11 @@ func configureDiscovery() async {
         self.activeOrganizationId = nil
         self.permissions = []
         self.roleInOrg = nil
+        self.clearPondusDeepLink()
+        self.clearLeadbookExampleDeepLink()
+        LeadbookLiveStore.shared.resetForSignOut()
+        AcademyLiveStore.shared.resetForSignOut()
+        pondusStore.resetForSignOut()
         self.leadgridDiscoveryEnabled = false
         self.workloadLeads = []
         self.quota = nil
@@ -1238,9 +1276,10 @@ func configureDiscovery() async {
             self.lastSyncAt = Date()
             self.isUsingStaleCache = false
 
-            if let organizationId {
-                WatchSession.shared.pushLeads(newLeads, organizationId: organizationId)
-            }
+            WatchSession.shared.pushLeads(
+                newLeads,
+                organizationId: refreshOrganizationId
+            )
 
             // Lagre snapshot til disk
             await OfflineCache.shared.save(newLeads, named: "leads")

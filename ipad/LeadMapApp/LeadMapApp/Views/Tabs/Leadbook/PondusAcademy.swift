@@ -52,11 +52,13 @@ struct PondusChapter: Identifiable, Hashable {
 }
 
 enum PondusAcademyData {
-    /// Kapitlene views leser — live fra AcademyLiveStore (mig 0368) når
-    /// lastet, ellers den innebygde mocken. Demo-modus gir alltid mock.
+    /// Produksjon viser aldri demo-kurs ved nettverksfeil. Demo-modus er
+    /// den eneste inngangen til den innebygde katalogen.
     @MainActor
     static var chapters: [PondusChapter] {
-        AcademyLiveStore.shared.chapters ?? mockChapters
+        DemoModeManager.isActiveNonisolated
+            ? mockChapters
+            : (AcademyLiveStore.shared.chapters ?? [])
     }
 
     static let mockChapters: [PondusChapter] = [

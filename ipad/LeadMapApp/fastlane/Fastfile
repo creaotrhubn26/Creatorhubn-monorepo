@@ -106,7 +106,7 @@ platform :ios do
     upload_to_testflight(
       skip_waiting_for_build_processing: true,
       distribute_external: false,
-      changelog: "Staging E2E — leads, BRREG, Pondus-økt og offline/reconnect",
+      changelog: "Staging E2E — leads, BRREG, Leadbook, Pondus-økt og offline/reconnect",
     )
     UI.success("Staging TestFlight-build #{build_number} lastet opp")
   end

@@ -458,6 +458,9 @@ struct RootView: View {
                 api: api
             )
         }
+        .onOpenURL { url in
+            _ = appState.handleLeadgridURL(url)
+        }
         // Lytt på alle WebSocket-events globalt så vi kan trigge
         // pulse-animasjon på nye pins uavhengig av hvilken fane er åpen.
         .onReceive(NotificationCenter.default.publisher(for: .leadgridRealtimeEvent)) { notif in

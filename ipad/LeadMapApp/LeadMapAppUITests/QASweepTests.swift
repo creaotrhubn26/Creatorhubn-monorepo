@@ -102,6 +102,15 @@ final class QASweepTests: XCTestCase {
         ).firstMatch
     }
 
+    private func tapWhenHittable(_ element: XCUIElement, scrolling form: XCUIElement) {
+        XCTAssertTrue(element.waitForExistence(timeout: 3))
+        for _ in 0..<8 where !element.isHittable {
+            form.swipeUp()
+        }
+        XCTAssertTrue(element.isHittable)
+        element.tap()
+    }
+
     private func pondusUsageCount(
         baseURL: URL,
         token: String,
@@ -169,7 +178,7 @@ final class QASweepTests: XCTestCase {
 
     func testSharedLeadFormShowsInlineValidationErrors() throws {
         let app = XCUIApplication()
-        app.launchEnvironment["QA_TOUR"] = "lead-form"
+        app.launchEnvironment["QA_TOUR"] = "lead-form-validation"
         app.launchEnvironment["QA_DEMO"] = "1"
         app.launchEnvironment["QA_TAB"] = "2"
         app.launch()
@@ -178,31 +187,18 @@ final class QASweepTests: XCTestCase {
         XCTAssertTrue(newLead.waitForExistence(timeout: 10))
         newLead.tap()
 
-        let form = app.otherElements["lead-add-form"]
+        let form = app.scrollViews["add-lead.form"]
         XCTAssertTrue(form.waitForExistence(timeout: 5))
 
-        let name = app.textFields["lead-field-name"]
-        XCTAssertTrue(name.waitForExistence(timeout: 3))
-        name.tap()
-        name.typeText("Valideringstest AS")
+        XCTAssertEqual(
+            app.textFields["add-lead.field.bedriftsnavn"].value as? String,
+            "Valideringstest AS"
+        )
+        tapWhenHittable(app.buttons["add-lead.save"], scrolling: form)
 
-        let orgNumber = app.textFields["lead-field-organizationNumber"]
-        orgNumber.tap()
-        orgNumber.typeText("123456789")
-
-        let website = app.textFields["lead-field-website"]
-        website.tap()
-        website.typeText("javascript:alert(1)")
-
-        let email = app.textFields["lead-field-email"]
-        email.tap()
-        email.typeText("ugyldig-epost")
-
-        app.buttons["lead-submit"].tap()
-
-        XCTAssertTrue(app.staticTexts["lead-error-organizationNumber"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["lead-error-website"].exists)
-        XCTAssertTrue(app.staticTexts["lead-error-email"].exists)
+        XCTAssertTrue(app.staticTexts["add-lead.error.org.nr"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["add-lead.error.nettside"].exists)
+        XCTAssertTrue(app.staticTexts["add-lead.error.e-post"].exists)
         XCTAssertFalse(app.alerts["Kunne ikke lagre lead"].exists)
         app.terminate()
     }
@@ -216,18 +212,15 @@ final class QASweepTests: XCTestCase {
             app.launch()
 
             if tab == 1 {
-                let actions = app.buttons["lead-actions-menu"]
-                XCTAssertTrue(actions.waitForExistence(timeout: 10))
-                actions.tap()
-                let newMapLead = app.buttons["lead-new-map"]
-                XCTAssertTrue(newMapLead.waitForExistence(timeout: 3))
+                let newMapLead = app.buttons["kart.drop-pin"]
+                XCTAssertTrue(newMapLead.waitForExistence(timeout: 10))
                 newMapLead.tap()
             } else {
                 let newLead = app.buttons["lead-new"]
                 XCTAssertTrue(newLead.waitForExistence(timeout: 10))
                 newLead.tap()
             }
-            XCTAssertTrue(app.otherElements["lead-add-form"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.scrollViews["add-lead.form"].waitForExistence(timeout: 5))
             app.terminate()
         }
     }

@@ -101,11 +101,13 @@ struct PondusTabView: View {
     var body: some View {
         VStack(spacing: 14) {
             pondusHeader
-            PondusAcademyBanner(
-                watched: $academyWatched,
-                currentChapter: $academyCurrent,
-                onOpen: { showAcademy = true }
-            )
+            if !PondusAcademyData.chapters.isEmpty {
+                PondusAcademyBanner(
+                    watched: $academyWatched,
+                    currentChapter: $academyCurrent,
+                    onOpen: { showAcademy = true }
+                )
+            }
             mainRow
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -133,17 +135,28 @@ struct PondusTabView: View {
         .sheet(isPresented: $showExport) { PondusExportSheet(template: selected) }
         .sheet(isPresented: $showPublish) { PondusPublishSheet(template: selected) }
         .fullScreenCover(isPresented: $showAcademy) {
-            PondusAkademiSheet(
-                watched: $academyWatched,
-                current: academyCurrent ?? PondusAcademyData.chapters[0],
-                chapters: PondusAcademyData.chapters
-            )
+            if let first = PondusAcademyData.chapters.first {
+                PondusAkademiSheet(
+                    watched: $academyWatched,
+                    current: academyCurrent ?? first,
+                    chapters: PondusAcademyData.chapters
+                )
+            } else {
+                ContentUnavailableView(
+                    "Academy er ikke tilgjengelig",
+                    systemImage: "wifi.exclamationmark",
+                    description: Text("Lukk vinduet og prøv igjen når forbindelsen er tilbake.")
+                )
+            }
         }
         .fullScreenCover(isPresented: $showTeamUsage) { PondusTeamUsageModal() }
         // Leadgrid Academy (mig 0368): last kurs + progresjon fra backend og
-        // flett serverens sett-status inn i lokal state. Mock er fallback.
-        .task {
-            AcademyLiveStore.shared.attach(api: appState.api)
+        // flett serverens sett-status inn i lokal state.
+        .task(id: appState.activeOrganizationId) {
+            AcademyLiveStore.shared.attach(
+                api: appState.api,
+                organizationId: appState.activeOrganizationId
+            )
             await AcademyLiveStore.shared.load()
             academyWatched.formUnion(AcademyLiveStore.shared.serverWatched)
         }

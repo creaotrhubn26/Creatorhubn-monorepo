@@ -211,6 +211,9 @@ describe('createLeadFromPin', () => {
               organization_number_match: true,
               google_place_id_match: false,
               website_domain_match: true,
+              email_match: true,
+              phone_match: true,
+              geographic_proximity_match: true,
             },
           ],
           rowCount: 1,
@@ -230,8 +233,32 @@ describe('createLeadFromPin', () => {
       expect((error as DuplicateLeadError).matchedFields).toEqual([
         'organization_number',
         'website_domain',
+        'email',
+        'phone',
+        'geographic_proximity',
       ]);
     }
+    const duplicateQuery = query.mock.calls.find(([sql]) =>
+      String(sql).includes('AS geographic_proximity_match'),
+    );
+    expect(duplicateQuery).toBeDefined();
+    const [duplicateSql, duplicateParams] = duplicateQuery as unknown as [
+      string,
+      unknown[],
+    ];
+    expect(duplicateSql).toContain('organization_id = $1::uuid');
+    expect(duplicateSql).toContain('email_normalized = $5::text');
+    expect(duplicateSql).toContain('phone_normalized = $6::text');
+    expect(duplicateSql).toContain('<= 25.0');
+    expect(duplicateParams[4]).toBe('post@nordic.example');
+    expect(duplicateParams[5]).toBe('+4799999999');
+    expect(duplicateParams[6]).toBe(true);
+    expect(
+      query.mock.calls.some(([_sql, params]) =>
+        Array.isArray(params)
+        && params[0] === `leadgrid:${ORGANIZATION_ID}:geographic_proximity`
+      ),
+    ).toBe(true);
     expect(query).toHaveBeenCalledWith('ROLLBACK');
   });
 });

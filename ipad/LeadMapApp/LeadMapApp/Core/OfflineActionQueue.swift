@@ -61,6 +61,10 @@ private func classifyOfflineActionError(_ error: Error) -> OfflineActionExecutio
         return .permanent(kind: .authorization, message: apiError.localizedDescription)
     case .invalidURL, .decodingFailure:
         return .permanent(kind: .permanent, message: apiError.localizedDescription)
+    case .duplicateLead:
+        return .permanent(kind: .duplicateConflict, message: apiError.localizedDescription)
+    case .idempotencyConflict:
+        return .permanent(kind: .validation, message: apiError.localizedDescription)
     case .statusCode(let code):
         return httpFailure(code: code)
     case .serverError(let code, let detail):

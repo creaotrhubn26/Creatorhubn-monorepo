@@ -132,6 +132,13 @@ struct LeadbookMalerView: View {
             || appState.can("pondus.manage")
     }
 
+    private var localCustomizationScope: (userId: String, organizationId: String)? {
+        guard let userId = appState.userEmail?.lowercased(),
+              let organizationId = appState.activeOrganizationId?.lowercased()
+        else { return nil }
+        return (userId, organizationId)
+    }
+
     private func beginEditing(_ template: LeadbookTemplate) {
         if let dto = LeadbookLiveStore.shared.templateDTO(for: template) {
             backendEditorTarget = dto
@@ -147,7 +154,12 @@ struct LeadbookMalerView: View {
     /// maler) → kanal-defaults som siste utvei.
     private func seededSteps(for t: LeadbookTemplate) -> [EditableStep] {
         if let s = editedSteps[t.id] { return s }
-        if let stored = MalTilpasningStore.get(for: t.id.uuidString) {
+        if let scope = localCustomizationScope,
+           let stored = MalTilpasningStore.get(
+               for: t.id.uuidString,
+               userId: scope.userId,
+               organizationId: scope.organizationId
+           ) {
             return stored.steps.map {
                 EditableStep(icon: $0.icon, iconColor: LBrand.purpleLight,
                              label: $0.label, content: $0.content,
@@ -168,9 +180,16 @@ struct LeadbookMalerView: View {
     }
 
     private func seededName(for t: LeadbookTemplate) -> String {
-        editedNames[t.id]
-            ?? MalTilpasningStore.get(for: t.id.uuidString)?.name
-            ?? t.name
+        if let edited = editedNames[t.id] { return edited }
+        if let scope = localCustomizationScope,
+           let stored = MalTilpasningStore.get(
+               for: t.id.uuidString,
+               userId: scope.userId,
+               organizationId: scope.organizationId
+           ) {
+            return stored.name
+        }
+        return t.name
     }
 
     /// Lagre redigering: alltid på enheten (overlever restart); SuperAdmin
@@ -179,16 +198,20 @@ struct LeadbookMalerView: View {
                              steps newSteps: [EditableStep], name newName: String) {
         editedSteps[t.id] = newSteps
         editedNames[t.id] = newName
-        MalTilpasningStore.set(
-            StoredMalTilpasning(
-                name: newName,
-                steps: newSteps.map {
-                    .init(icon: $0.icon, label: $0.label, content: $0.content,
-                          charLimit: $0.charLimit, backendKey: $0.backendKey)
-                }
-            ),
-            for: t.id.uuidString
-        )
+        if let scope = localCustomizationScope {
+            MalTilpasningStore.set(
+                StoredMalTilpasning(
+                    name: newName,
+                    steps: newSteps.map {
+                        .init(icon: $0.icon, label: $0.label, content: $0.content,
+                              charLimit: $0.charLimit, backendKey: $0.backendKey)
+                    }
+                ),
+                for: t.id.uuidString,
+                userId: scope.userId,
+                organizationId: scope.organizationId
+            )
+        }
         // Hvem kan dele med teamet? SuperAdmin (globale maler) eller
         // org-leder (2026-08-02: org-scopede maler i backend — salgssjef/
         // teamleder/admin). Andre: kun enhets-lagring.
@@ -582,7 +605,7 @@ struct LeadbookMalerView: View {
                         // «Dupliser» fjernet 2026-07-17: var død knapp — kun
                         // toast, ingen kopi ble opprettet.
                         Button {
-                            UIPasteboard.general.string = "leadgrid://leadbook/\(t.id.uuidString.prefix(8))"
+                            UIPasteboard.general.string = "leadgrid://leadbook/templates/\(t.id.uuidString.lowercased())"
                             flashToast("Lenke kopiert")
                         } label: { Label("Kopier lenke", systemImage: "link") }
                         // «Eksporter PDF» (tom closure) + «Arkiver» (kun
@@ -785,7 +808,13 @@ struct StoredMalTilpasning: Codable {
 }
 
 enum MalTilpasningStore {
-    private static let key = "leadgrid.maler.tilpasninger.v1"
+    private static let key = "leadgrid.maler.tilpasninger.v2"
+
+    private static func scopedKey(
+        templateId: String, userId: String, organizationId: String
+    ) -> String {
+        "\(organizationId.lowercased())|\(userId.lowercased())|\(templateId.lowercased())"
+    }
 
     static func all() -> [String: StoredMalTilpasning] {
         guard let data = UserDefaults.standard.data(forKey: key),
@@ -794,13 +823,24 @@ enum MalTilpasningStore {
         return decoded
     }
 
-    static func get(for templateId: String) -> StoredMalTilpasning? {
-        all()[templateId]
+    static func get(
+        for templateId: String, userId: String, organizationId: String
+    ) -> StoredMalTilpasning? {
+        all()[scopedKey(templateId: templateId, userId: userId, organizationId: organizationId)]
     }
 
-    static func set(_ tilpasning: StoredMalTilpasning, for templateId: String) {
+    static func set(
+        _ tilpasning: StoredMalTilpasning,
+        for templateId: String,
+        userId: String,
+        organizationId: String
+    ) {
         var current = all()
-        current[templateId] = tilpasning
+        current[scopedKey(
+            templateId: templateId,
+            userId: userId,
+            organizationId: organizationId
+        )] = tilpasning
         if let data = try? JSONEncoder().encode(current) {
             UserDefaults.standard.set(data, forKey: key)
         }

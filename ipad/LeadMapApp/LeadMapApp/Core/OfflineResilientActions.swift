@@ -16,6 +16,11 @@ enum OfflineResilientActions {
         case sent
         case queued
         case rejected(String)
+
+        var isQueued: Bool {
+            if case .queued = self { return true }
+            return false
+        }
     }
 
     struct AgentVisitPayload: Encodable, Sendable, Equatable {
@@ -38,6 +43,112 @@ enum OfflineResilientActions {
         let leadId: String?
         let outcome: String
         let source: String
+    }
+
+    @discardableResult
+    static func createLeadbookExample(
+        api: APIClient,
+        organizationId: String,
+        body: [String: Any],
+        actionId: UUID = UUID()
+    ) async -> WriteDisposition {
+        var payload = body
+        payload["creation_id"] = actionId.uuidString.lowercased()
+        guard JSONSerialization.isValidJSONObject(payload),
+              let data = try? JSONSerialization.data(withJSONObject: payload)
+        else { return .rejected("Eksempelet kunne ikke klargjøres for sikker lagring.") }
+        return await sendOrQueue(
+            api: api,
+            organizationId: organizationId,
+            action: .init(
+                id: actionId,
+                organizationId: organizationId,
+                endpoint: "/api/leadgrid/leadbook/examples",
+                httpMethod: "POST",
+                bodyJson: data
+            )
+        )
+    }
+
+    @discardableResult
+    static func saveAcademyProgress(
+        api: APIClient,
+        organizationId: String,
+        chapterId: String,
+        watched: Bool,
+        positionSeconds: Int,
+        actionId: UUID = UUID()
+    ) async -> WriteDisposition {
+        let payload: [String: Any] = [
+            "chapter_id": chapterId,
+            "watched": watched,
+            "position_seconds": max(0, min(positionSeconds, 86400))
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else {
+            return .rejected("Kursprogresjonen kunne ikke klargjøres.")
+        }
+        return await sendOrQueue(
+            api: api,
+            organizationId: organizationId,
+            action: .init(
+                id: actionId,
+                organizationId: organizationId,
+                endpoint: "/api/leadgrid/academy/progress",
+                httpMethod: "POST",
+                bodyJson: data
+            )
+        )
+    }
+
+    @discardableResult
+    static func addLeadbookFeedback(
+        api: APIClient,
+        organizationId: String,
+        exampleId: String,
+        payload: [String: Any],
+        actionId: UUID = UUID()
+    ) async -> WriteDisposition {
+        var body = payload
+        body["client_action_id"] = actionId.uuidString.lowercased()
+        guard JSONSerialization.isValidJSONObject(body),
+              let data = try? JSONSerialization.data(withJSONObject: body)
+        else { return .rejected("Tilbakemeldingen kunne ikke klargjøres.") }
+        return await sendOrQueue(
+            api: api,
+            organizationId: organizationId,
+            action: .init(
+                id: actionId,
+                organizationId: organizationId,
+                endpoint: "/api/leadgrid/leadbook/examples/\(exampleId)/feedback",
+                httpMethod: "POST",
+                bodyJson: data
+            )
+        )
+    }
+
+    @discardableResult
+    static func replyLeadbookFeedback(
+        api: APIClient,
+        organizationId: String,
+        feedbackId: String,
+        body text: String,
+        actionId: UUID = UUID()
+    ) async -> WriteDisposition {
+        guard let data = try? JSONSerialization.data(withJSONObject: [
+            "body": text,
+            "client_action_id": actionId.uuidString.lowercased()
+        ]) else { return .rejected("Svaret kunne ikke klargjøres.") }
+        return await sendOrQueue(
+            api: api,
+            organizationId: organizationId,
+            action: .init(
+                id: actionId,
+                organizationId: organizationId,
+                endpoint: "/api/leadgrid/leadbook/feedback/\(feedbackId)/replies",
+                httpMethod: "POST",
+                bodyJson: data
+            )
+        )
     }
 
     static func makePondusUsageAction(

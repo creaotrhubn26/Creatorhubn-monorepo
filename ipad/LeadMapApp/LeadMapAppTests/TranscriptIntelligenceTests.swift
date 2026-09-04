@@ -434,54 +434,54 @@ final class OfflineActionQueueTests: XCTestCase {
 @MainActor
 final class LeadgridRealtimeClientTests: XCTestCase {
     func testChangedConfigurationReplacesSocketDuringHandshake() {
-        let client = LeadgridRealtimeClient(testingWithoutNetwork: true)
-        defer { client.disconnect() }
-
-        client.connect(
-            baseURL: "https://one.example.test",
-            token: "token-a",
-            channels: ["org:a", "user:1"]
-        )
-        let initialGeneration = client.connectionGenerationForTesting
+        let currentChannels: Set<String> = ["org:a", "user:1"]
 
         // Kanalrekkefølge er ikke en konfigurasjonsendring.
-        client.connect(
-            baseURL: "https://one.example.test",
-            token: "token-a",
-            channels: ["user:1", "org:a"]
-        )
-        XCTAssertEqual(client.connectionGenerationForTesting, initialGeneration)
-
-        client.connect(
-            baseURL: "https://one.example.test",
-            token: "token-b",
-            channels: ["org:a", "user:1"]
-        )
-        let tokenGeneration = client.connectionGenerationForTesting
-        XCTAssertGreaterThan(tokenGeneration, initialGeneration)
-
-        client.connect(
-            baseURL: "https://two.example.test",
-            token: "token-b",
-            channels: ["org:a", "user:1"]
-        )
-        let baseURLGeneration = client.connectionGenerationForTesting
-        XCTAssertGreaterThan(baseURLGeneration, tokenGeneration)
-
-        client.connect(
-            baseURL: "https://two.example.test",
-            token: "token-b",
-            channels: ["org:b"]
-        )
-        XCTAssertGreaterThan(
-            client.connectionGenerationForTesting,
-            baseURLGeneration
-        )
-        XCTAssertEqual(client.configuredChannelsForTesting, ["org:b"])
-
-        client.disconnect()
-        XCTAssertFalse(client.hasConfigurationForTesting)
-        XCTAssertFalse(client.isConnected)
+        XCTAssertFalse(LeadgridRealtimeClient.requiresReconnect(
+            currentBaseURL: "https://one.example.test",
+            currentSessionIdentity: "session-a",
+            currentChannels: currentChannels,
+            requestedBaseURL: "https://one.example.test",
+            requestedSessionIdentity: "session-a",
+            requestedChannels: ["user:1", "org:a"],
+            hasActiveConnection: true
+        ))
+        XCTAssertTrue(LeadgridRealtimeClient.requiresReconnect(
+            currentBaseURL: "https://one.example.test",
+            currentSessionIdentity: "session-a",
+            currentChannels: currentChannels,
+            requestedBaseURL: "https://one.example.test",
+            requestedSessionIdentity: "session-b",
+            requestedChannels: currentChannels,
+            hasActiveConnection: true
+        ))
+        XCTAssertTrue(LeadgridRealtimeClient.requiresReconnect(
+            currentBaseURL: "https://one.example.test",
+            currentSessionIdentity: "session-a",
+            currentChannels: currentChannels,
+            requestedBaseURL: "https://two.example.test",
+            requestedSessionIdentity: "session-a",
+            requestedChannels: currentChannels,
+            hasActiveConnection: true
+        ))
+        XCTAssertTrue(LeadgridRealtimeClient.requiresReconnect(
+            currentBaseURL: "https://one.example.test",
+            currentSessionIdentity: "session-a",
+            currentChannels: currentChannels,
+            requestedBaseURL: "https://one.example.test",
+            requestedSessionIdentity: "session-a",
+            requestedChannels: ["org:b"],
+            hasActiveConnection: true
+        ))
+        XCTAssertTrue(LeadgridRealtimeClient.requiresReconnect(
+            currentBaseURL: "https://one.example.test",
+            currentSessionIdentity: "session-a",
+            currentChannels: currentChannels,
+            requestedBaseURL: "https://one.example.test",
+            requestedSessionIdentity: "session-a",
+            requestedChannels: currentChannels,
+            hasActiveConnection: false
+        ))
     }
 }
 

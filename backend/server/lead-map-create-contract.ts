@@ -23,7 +23,9 @@ export type LeadCreationBody = {
   websiteDomainNormalized: string | null;
   googlePlaceId: string | null;
   phone: string | null;
+  phoneNormalized: string | null;
   email: string | null;
+  emailNormalized: string | null;
   industryId: string | null;
   industryLabel: string | null;
   employeeCountEstimate: number | null;
@@ -82,6 +84,21 @@ export function normalizeWebsiteDomain(raw: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+/** Samme kanoniske form som database-triggeren i migrasjon 0505. */
+export function normalizeLeadEmail(raw: string | null): string | null {
+  const value = raw?.trim().toLowerCase();
+  return value || null;
+}
+
+/** E.164-lignende form; norske åttesifrede numre får landskode +47. */
+export function normalizeLeadPhone(raw: string | null): string | null {
+  let digits = raw?.replace(/\D/g, "") ?? "";
+  if (!digits) return null;
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.length === 8) digits = `47${digits}`;
+  return `+${digits}`;
 }
 
 /** Fast feltrekkefølge fra parseren gir en stabil hash av logisk payload. */
@@ -207,6 +224,8 @@ export function parseLeadCreationBody(raw: unknown): LeadCreationBody {
   }
 
   const websiteUrl = optionalText(body, "website_url", 2048);
+  const phone = optionalText(body, "phone", 64);
+  const email = optionalText(body, "email", 320);
 
   return {
     name,
@@ -217,8 +236,10 @@ export function parseLeadCreationBody(raw: unknown): LeadCreationBody {
     websiteUrl,
     websiteDomainNormalized: normalizeWebsiteDomain(websiteUrl),
     googlePlaceId: optionalText(body, "google_place_id", 255),
-    phone: optionalText(body, "phone", 64),
-    email: optionalText(body, "email", 320),
+    phone,
+    phoneNormalized: normalizeLeadPhone(phone),
+    email,
+    emailNormalized: normalizeLeadEmail(email),
     industryId,
     industryLabel: optionalText(body, "industry_label", 200),
     employeeCountEstimate: optionalNonNegativeNumber(body, "employee_count_estimate", true),

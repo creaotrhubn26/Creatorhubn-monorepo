@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   hashLeadCreationBody,
   LeadCreationValidationError,
+  normalizeLeadEmail,
+  normalizeLeadPhone,
   normalizeWebsiteDomain,
   parseLeadCreationBody,
   parseLeadCreationIdempotencyKey,
@@ -57,6 +59,8 @@ describe("parseLeadCreationBody", () => {
       contactRole: "Daglig leder",
       organizationNumber: "912345678",
       websiteDomainNormalized: "nordic.example",
+      phoneNormalized: "+4722334455",
+      emailNormalized: "post@nordic.example",
       googlePlaceId: "places/nordic",
       employeeCountEstimate: 25,
       annualRevenueNokEstimate: 10_000_000,
@@ -74,6 +78,10 @@ it("normaliserer domener og hasher normalisert payload stabilt", () => {
     .toBe("example.no");
   expect(normalizeWebsiteDomain("example.no/kontakt")).toBe("example.no");
   expect(normalizeWebsiteDomain("ikke en url")).toBeNull();
+  expect(normalizeLeadEmail(" Post@Example.NO ")).toBe("post@example.no");
+  expect(normalizeLeadPhone("22 33 44 55")).toBe("+4722334455");
+  expect(normalizeLeadPhone("0047 22 33 44 55")).toBe("+4722334455");
+  expect(normalizeLeadPhone("+46 70 123 45 67")).toBe("+46701234567");
 
   const first = parseLeadCreationBody({
     name: "Test AS", latitude: 60, longitude: 10,
@@ -176,5 +184,21 @@ describe("migration 0489", () => {
     expect(sql).toContain("organization_id, website_domain_normalized");
     expect(sql).toContain("crm_customers_creation_request_hash_format_check");
     expect(sql).toContain("crm_customers_creation_idempotency_pair_check");
+  });
+});
+
+describe("migration 0506", () => {
+  it("normaliserer e-post/telefon og indekserer nærhet per workspace", () => {
+    const sql = readFileSync(
+      new URL("../migrations/0506_leadgrid_lead_identity_normalization.sql", import.meta.url),
+      "utf8",
+    );
+
+    expect(sql).toContain("ADD COLUMN IF NOT EXISTS email_normalized");
+    expect(sql).toContain("ADD COLUMN IF NOT EXISTS phone_normalized");
+    expect(sql).toContain("trg_leadgrid_customer_identities");
+    expect(sql).toContain("organization_id, email_normalized");
+    expect(sql).toContain("organization_id, phone_normalized");
+    expect(sql).toContain("organization_id, latitude, longitude");
   });
 });
