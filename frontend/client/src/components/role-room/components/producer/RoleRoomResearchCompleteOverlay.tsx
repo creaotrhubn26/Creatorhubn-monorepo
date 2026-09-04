@@ -107,6 +107,22 @@ const RESEARCH_SKILL_STATUS = {
   failed: { label: 'Feilet', color: '#fecaca', background: 'rgba(239,68,68,0.18)' },
 } as const;
 
+function selectPrimarySkillLimitation(skill: RoleRoomAgentResearchSkillRun): string | null {
+  const sourceKinds = new Set(skill.sourceKinds);
+  const matchingLimitation = skill.limitations.find((limitation) => {
+    const normalized = limitation.toLowerCase();
+    if (normalized.includes('google places')) return sourceKinds.has('google_places');
+    if (normalized.includes('websøk') || normalized.includes('webresultat')) {
+      return sourceKinds.has('web_search');
+    }
+    if (normalized.includes('brreg')) {
+      return sourceKinds.has('brreg') || sourceKinds.has('brreg_nace');
+    }
+    return true;
+  });
+  return matchingLimitation ?? skill.limitations[0] ?? null;
+}
+
 function readSeenResearchIds(): Set<string> {
   try {
     const raw = sessionStorage.getItem(SEEN_RESEARCH_KEY);
@@ -557,6 +573,7 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
               {researchSkills.map((skill) => {
                 const presentation = RESEARCH_SKILL_STATUS[skill.status];
                 const failedChecks = skill.checks?.filter((check) => !check.passed) ?? [];
+                const primaryLimitation = selectPrimarySkillLimitation(skill);
                 return (
                   <Box
                     key={skill.id}
@@ -600,9 +617,9 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
                         Kilder: {skill.sourceKinds.join(' · ')}
                       </Typography>
                     ) : null}
-                    {skill.limitations[0] ? (
+                    {primaryLimitation ? (
                       <Typography sx={{ color: presentation.color, fontSize: '0.72rem', mt: 0.35 }}>
-                        {skill.limitations[0]}
+                        {primaryLimitation}
                       </Typography>
                     ) : null}
                     {failedChecks.length > 0 ? (
