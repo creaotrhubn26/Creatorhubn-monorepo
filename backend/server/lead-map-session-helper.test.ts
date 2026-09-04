@@ -189,6 +189,40 @@ describe("resolveLeadMapSession", () => {
 });
 
 describe("createLeadMapSessionHydrator", () => {
+  it("hydrates a persisted web session before a Role Room agent guard runs", async () => {
+    authSessionStore.load.mockResolvedValue({
+      userId: "role-room-owner",
+      email: "owner@example.test",
+      name: "Role Room Owner",
+      role: "admin",
+      loginAt: "2026-09-04T20:00:00.000Z",
+    });
+    const pool = { query: vi.fn() } as unknown as Pool;
+    const activeSessions = new Map<string, { userId: string }>();
+    const app = express();
+
+    app.use(
+      "/api/role-room/agent",
+      createLeadMapSessionHydrator(pool, activeSessions),
+    );
+    app.get("/api/role-room/agent/access", (req, res) => {
+      const token = req.headers.authorization?.slice("Bearer ".length) ?? "";
+      const session = activeSessions.get(token);
+      if (!session) return res.status(401).json({ error: "auth_required" });
+      return res.json({ allowed: true, userId: session.userId });
+    });
+
+    await request(app)
+      .get("/api/role-room/agent/access")
+      .set("Authorization", "Bearer role-room-web-session")
+      .expect(200, { allowed: true, userId: "role-room-owner" });
+
+    expect(authSessionStore.load).toHaveBeenCalledWith(
+      pool,
+      "role-room-web-session",
+    );
+  });
+
   it("hydrates before a legacy synchronous route guard runs", async () => {
     const query = vi.fn().mockResolvedValue({
       rows: [

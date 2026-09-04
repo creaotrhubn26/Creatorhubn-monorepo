@@ -2218,6 +2218,10 @@ const leadMapSessionHydrator = createLeadMapSessionHydrator(
 app.use("/api/admin-room/lead-map", leadMapSessionHydrator);
 app.use("/api/leadgrid", leadMapSessionHydrator);
 app.use("/api/auth/user", leadMapSessionHydrator);
+// Role Room agent guards are intentionally synchronous, so warm their
+// process-local session map from the durable store before each request. This
+// keeps valid web sessions working across Render restarts and instances.
+app.use("/api/role-room/agent", leadMapSessionHydrator);
 
 // Pending-2FA-state for login-flow. Når en bruker har TOTP aktivert,
 // stasher vi alt vi trenger for å fullføre sessionen mens vi venter på
