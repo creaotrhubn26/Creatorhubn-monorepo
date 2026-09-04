@@ -8,6 +8,7 @@ import {
 import {
   createLeadFromPin,
   DuplicateLeadError,
+  findLeadDuplicateCandidates,
   LeadCreationIdempotencyConflictError,
 } from './lead-map-service.js';
 
@@ -58,7 +59,7 @@ function mockPool(
   const release = vi.fn();
   const client = { query, release } as unknown as PoolClient;
   const connect = vi.fn(async () => client);
-  const pool = { connect } as unknown as Pool;
+  const pool = { connect, query } as unknown as Pool;
   return { pool, query, release };
 }
 
@@ -211,6 +212,9 @@ describe('createLeadFromPin', () => {
               organization_number_match: true,
               google_place_id_match: false,
               website_domain_match: true,
+              email_match: true,
+              phone_match: true,
+              geographic_proximity_match: true,
             },
           ],
           rowCount: 1,
@@ -230,8 +234,98 @@ describe('createLeadFromPin', () => {
       expect((error as DuplicateLeadError).matchedFields).toEqual([
         'organization_number',
         'website_domain',
+        'email',
+        'phone',
+        'geographic_proximity',
       ]);
     }
+    const duplicateQuery = query.mock.calls.find(([sql]) =>
+      String(sql).includes('AS geographic_proximity_match'),
+    );
+    expect(duplicateQuery).toBeDefined();
+    const [duplicateSql, duplicateParams] = duplicateQuery as unknown as [
+      string,
+      unknown[],
+    ];
+    expect(duplicateSql).toContain('organization_id = $1::uuid');
+    expect(duplicateSql).toContain('email_normalized = $5::text');
+    expect(duplicateSql).toContain('phone_normalized = $6::text');
+    expect(duplicateSql).toContain('<= 25.0');
+    expect(duplicateParams[4]).toBe('post@nordic.example');
+    expect(duplicateParams[5]).toBe('+4799999999');
+    expect(duplicateParams[6]).toBe(true);
+    expect(
+      query.mock.calls.some(([_sql, params]) =>
+        Array.isArray(params)
+        && params[0] === `leadgrid:${ORGANIZATION_ID}:geographic_proximity`
+      ),
+    ).toBe(true);
     expect(query).toHaveBeenCalledWith('ROLLBACK');
+  });
+
+  it('returnerer presentable kandidater fra samme duplikatmotor', async () => {
+    const { pool, query } = mockPool((sql, params) => {
+      if (sql.includes('AS organization_number_match')) {
+        expect(params?.[0]).toBe(ORGANIZATION_ID);
+        expect(params?.[9]).toBe(20);
+        return {
+          rows: [{
+            id: 'lead-existing',
+            name: 'Nordic Elektro AS',
+            company: 'Nordic Elektro AS',
+            email: 'post@nordic.example',
+            phone: '+47 99 99 99 99',
+            website_url: 'https://nordic.example',
+            address: 'Storgata 12',
+            city: 'Oslo',
+            organization_number_match: true,
+            google_place_id_match: false,
+            website_domain_match: true,
+            email_match: true,
+            phone_match: true,
+            geographic_proximity_match: false,
+          }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    await expect(findLeadDuplicateCandidates(pool, {
+      ...creationBody(),
+      organizationId: ORGANIZATION_ID,
+    })).resolves.toEqual([{
+      id: 'lead-existing',
+      name: 'Nordic Elektro AS',
+      company: 'Nordic Elektro AS',
+      email: 'post@nordic.example',
+      phone: '+47 99 99 99 99',
+      websiteUrl: 'https://nordic.example',
+      address: 'Storgata 12',
+      city: 'Oslo',
+      matchReasons: ['organization_number', 'website_domain', 'email', 'phone'],
+    }]);
+    expect(query).toHaveBeenCalledOnce();
+  });
+
+  it('hopper eksplisitt over naturlig duplikat ved brukerbekreftet override', async () => {
+    const { pool, query } = mockPool((sql) => {
+      if (sql.includes('INSERT INTO crm_customers')) {
+        return { rows: [{ id: 'lead-override' }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    await expect(createLeadFromPin(pool, {
+      ...creationInput(),
+      allowDuplicate: true,
+    })).resolves.toEqual({
+      id: 'lead-override',
+      created: true,
+      idempotentReplay: false,
+    });
+    expect(query.mock.calls.some(([sql]) =>
+      String(sql).includes('AS organization_number_match')
+    )).toBe(false);
   });
 });

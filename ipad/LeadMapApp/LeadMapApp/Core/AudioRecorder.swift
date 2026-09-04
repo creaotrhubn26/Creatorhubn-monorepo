@@ -45,7 +45,7 @@ final class AudioRecorder: NSObject, AVAudioRecorderDelegate {
         }
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .spokenAudio, options: [.allowBluetooth])
+            try session.setCategory(.playAndRecord, mode: .spokenAudio, options: [.allowBluetoothHFP])
             try session.setActive(true)
 
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]

@@ -19,7 +19,8 @@ final class PhoneSession: NSObject, ObservableObject {
 
     @Published private(set) var leads: [WatchLead] = []
     @Published private(set) var lastSync: Date?
-    @Published var pendingAction: (lead: WatchLead, sentAt: Date)?
+    @Published private(set) var pendingAction: (id: UUID, lead: WatchLead, sentAt: Date)?
+    @Published private(set) var quickActionError: String?
 
     private let session: WCSession = .default
     private let storageKey = "leadgrid.watch.leads.v1"
@@ -66,15 +67,30 @@ final class PhoneSession: NSObject, ObservableObject {
     /// `transferUserInfo` (queued hvis iPhone er offline) så ingen
     /// action går tapt selv om brukeren markerer "besøkt" mens
     /// hen er i en kjeller uten signal.
-    func sendQuickAction(_ action: LeadQuickAction, for lead: WatchLead) {
+    @discardableResult
+    func sendQuickAction(_ action: LeadQuickAction, for lead: WatchLead) -> Bool {
+        guard let organizationId = lead.organizationId,
+              !organizationId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            quickActionError = "Lead-listen mangler organisasjonskontekst. Åpne Leadgrid på iPhone for å synkronisere før du prøver igjen."
+            return false
+        }
+        let actionId = UUID()
         let payload: [String: Any] = [
             "type": "lead_action",
             "lead_id": lead.id,
+            "organization_id": organizationId,
             "action": action.rawValue,
+            "action_id": actionId.uuidString,
             "ts": Date().timeIntervalSince1970,
         ]
         session.transferUserInfo(payload)
-        pendingAction = (lead, Date())
+        pendingAction = (actionId, lead, Date())
+        return true
+    }
+
+    func clearQuickActionError() {
+        quickActionError = nil
     }
 
     /// Send et diktert notat til iPhone for analyse (Apple Intelligence på
@@ -151,6 +167,7 @@ extension PhoneSession: WCSessionDelegate {
         _ session: WCSession,
         didReceiveApplicationContext applicationContext: [String: Any]
     ) {
+        let snapshotOrganizationId = applicationContext["organization_id"] as? String
         let raw = applicationContext["leads"] as? [[String: Any]] ?? []
         let decoded: [WatchLead] = raw.compactMap { dict in
             guard let id = dict["id"] as? String,
@@ -160,6 +177,7 @@ extension PhoneSession: WCSessionDelegate {
             else { return nil }
             return WatchLead(
                 id: id,
+                organizationId: dict["organization_id"] as? String ?? snapshotOrganizationId,
                 name: name,
                 address: dict["address"] as? String,
                 latitude: lat,
@@ -196,6 +214,17 @@ extension PhoneSession: WCSessionDelegate {
     nonisolated private func handleIncomingPayload(_ payload: [String: Any]) {
         guard let type = payload["type"] as? String else { return }
         switch type {
+        case "lead_action_result":
+            guard payload["status"] as? String == "rejected" else { return }
+            let actionId = (payload["action_id"] as? String).flatMap(UUID.init(uuidString:))
+            let message = payload["message"] as? String
+                ?? "Handlingen ble avvist av iPhone. Synkroniser Leadgrid og prøv igjen."
+            Task { @MainActor in
+                if actionId == nil || self.pendingAction?.id == actionId {
+                    self.pendingAction = nil
+                }
+                self.quickActionError = message
+            }
         case WatchPondusMessageType.templatesSync:
             let raw = payload["templates"] as? [[String: Any]] ?? []
             guard let data = try? JSONSerialization.data(withJSONObject: raw, options: []),

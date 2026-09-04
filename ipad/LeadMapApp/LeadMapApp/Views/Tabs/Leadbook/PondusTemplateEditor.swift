@@ -31,7 +31,9 @@ struct PondusTemplateEditor: View {
     @State private var objections: [PondusObjectionDTO]
     @State private var isPublished: Bool
     @State private var isSaving = false
+    @State private var isAnalyzing = false
     @State private var errorText: String?
+    @State private var analysisMeta: PondusAnalysisMetaDTO?
 
     init(store: PondusStore, existing: PondusTemplateDTO? = nil) {
         self.store = store
@@ -69,16 +71,35 @@ struct PondusTemplateEditor: View {
                         }
                     }
 
+                    if name.count > 160 {
+                        Text("Mal-navn kan være maks 160 tegn.").font(.caption).foregroundStyle(.red)
+                    }
+                    if description.count > 2_000 {
+                        Text("Beskrivelse kan være maks 2000 tegn.").font(.caption).foregroundStyle(.red)
+                    }
+                }
+
+                Section("Serveranalyse") {
                     HStack {
                         Text("Pondus-score")
                         Spacer()
-                        Text("\(score)").font(.system(.body, design: .rounded).monospacedDigit())
+                        Text("\(score)")
+                            .font(.system(.body, design: .rounded).monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
-                    Slider(value: Binding(
-                        get: { Double(score) },
-                        set: { score = Int($0.rounded()) }
-                    ), in: 0...100, step: 1)
+                    Text("Scoren beregnes av en versjonert, forklarbar rubrikk på serveren.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    ForEach(analysisMeta?.recommendations ?? [], id: \.self) { recommendation in
+                        Label(recommendation, systemImage: "lightbulb.fill")
+                            .font(.footnote)
+                    }
+                    Button {
+                        Task { await analyze() }
+                    } label: {
+                        if isAnalyzing { ProgressView() } else { Label("Analyser mal", systemImage: "waveform.path.ecg") }
+                    }
+                    .disabled(isAnalyzing || !validationIssues.isEmpty)
                 }
 
                 Section("Steg") {
@@ -334,6 +355,67 @@ struct PondusTemplateEditor: View {
         }
     }
 
+    private var validationIssues: [String] {
+        var issues: [String] = []
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedName.isEmpty { issues.append("Mal-navn er påkrevd.") }
+        if name.count > 160 { issues.append("Mal-navn kan være maks 160 tegn.") }
+        if description.count > 2_000 { issues.append("Beskrivelse kan være maks 2000 tegn.") }
+        if steps.count > 30 { issues.append("En mal kan ha maks 30 steg.") }
+        if objections.count > 50 { issues.append("En mal kan ha maks 50 innvendinger.") }
+        let stepIds = steps.map(\.id)
+        if Set(stepIds).count != stepIds.count { issues.append("Alle steg må ha unik nøkkel.") }
+        if steps.contains(where: { $0.id.range(of: "^[A-Za-z0-9][A-Za-z0-9_-]*$", options: .regularExpression) == nil }) {
+            issues.append("Steg-nøkler kan bare inneholde bokstaver, tall, _ og -.")
+        }
+        if steps.contains(where: { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || $0.title.count > 120 }) {
+            issues.append("Hvert steg må ha tittel på maks 120 tegn.")
+        }
+        if steps.contains(where: { ($0.prompt?.count ?? 0) > 4_000 }) {
+            issues.append("Prompt per steg kan være maks 4000 tegn.")
+        }
+        if objections.contains(where: { $0.prompt.isEmpty || $0.prompt.count > 500 || $0.response.isEmpty || $0.response.count > 4_000 }) {
+            issues.append("Hver innvending trenger spørsmål (maks 500) og svar (maks 4000 tegn).")
+        }
+        return issues
+    }
+
+    private func currentPayload() -> CreatePondusTemplatePayload {
+        CreatePondusTemplatePayload(
+            name: name,
+            description: description.isEmpty ? nil : description,
+            category: category,
+            kind: kind,
+            score: score,
+            steps: steps,
+            objections: objections,
+            orgId: existing?.orgId
+        )
+    }
+
+    @MainActor
+    private func analyze() async {
+        guard validationIssues.isEmpty,
+              let api = appState.api
+        else {
+            errorText = validationIssues.joined(separator: "\n")
+            return
+        }
+        isAnalyzing = true
+        defer { isAnalyzing = false }
+        do {
+            let response = try await api.pondusAnalyzeTemplate(
+                currentPayload(),
+                organizationId: appState.activeOrganizationId
+            )
+            score = response.score
+            analysisMeta = response.analysisMeta
+            errorText = nil
+        } catch {
+            errorText = "Analysen feilet: \(error.localizedDescription)"
+        }
+    }
+
     // MARK: - Save
 
     private func save() async {
@@ -341,6 +423,11 @@ struct PondusTemplateEditor: View {
         isSaving = true
         defer { isSaving = false }
         errorText = nil
+
+        guard validationIssues.isEmpty else {
+            errorText = validationIssues.joined(separator: "\n")
+            return
+        }
 
         // Reindex før lagring
         reindex()
@@ -353,7 +440,8 @@ struct PondusTemplateEditor: View {
                 kind: kind,
                 score: score,
                 steps: steps,
-                objections: objections
+                objections: objections,
+                expectedVersion: existing.version
             )
             guard let updated = await store.update(id: existing.id, payload, api: api) else {
                 errorText = store.lastError ?? "Kunne ikke lagre mal."
@@ -365,16 +453,7 @@ struct PondusTemplateEditor: View {
             }
             dismiss()
         } else {
-            let payload = CreatePondusTemplatePayload(
-                name: name,
-                description: description.isEmpty ? nil : description,
-                category: category,
-                kind: kind,
-                score: score,
-                steps: steps,
-                objections: objections,
-                orgId: nil // Leadgrid-global som default (SuperAdmin-editor)
-            )
+            let payload = currentPayload()
             guard let created = await store.create(payload, api: api) else {
                 errorText = store.lastError ?? "Kunne ikke opprette mal."
                 return

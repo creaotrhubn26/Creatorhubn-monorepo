@@ -8,7 +8,7 @@ import PencilKit
 import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
-import Vision
+@preconcurrency import Vision
 
 struct CanvasAnalyseSheet: View {
     let drawing: PKDrawing
@@ -785,8 +785,9 @@ struct CanvasTypeVelger: View {
 
 struct TidsreiseSheet: View {
     let notatId: String
+    let revision: Int
     let naavaerende: PKDrawing
-    let onGjenopprett: (PKDrawing) -> Void
+    let onGjenopprett: (CanvasNotatDTO) -> Void
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
@@ -794,6 +795,8 @@ struct TidsreiseSheet: View {
     @State private var versjoner: [CanvasVersjonDTO] = []
     @State private var posisjon: Double = 0
     @State private var lastet = false
+    @State private var gjenoppretter = false
+    @State private var gjenopprettFeil: String?
 
     private var valgtIndeks: Int {
         min(Int(posisjon.rounded()), maxIndeks)
@@ -886,22 +889,38 @@ struct TidsreiseSheet: View {
 
                         if valgtIndeks < maxIndeks {
                             Button {
-                                if let tegning = tegningForValgt() {
-                                    onGjenopprett(tegning)
-                                }
+                                gjenopprettValgt()
                             } label: {
-                                Text("Gjenopprett dette tidspunktet")
-                                    .font(.appScaled(size: 13, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(
-                                        LinearGradient(colors: [CvBrand.purple, CvBrand.purpleLight],
-                                                       startPoint: .leading, endPoint: .trailing),
-                                        in: RoundedRectangle(cornerRadius: 12))
+                                HStack(spacing: 8) {
+                                    if gjenoppretter { ProgressView().tint(.white) }
+                                    Text("Gjenopprett hele dokumentet")
+                                        .font(.appScaled(size: 13, weight: .bold))
+                                }
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(
+                                    LinearGradient(colors: [CvBrand.purple, CvBrand.purpleLight],
+                                                   startPoint: .leading, endPoint: .trailing),
+                                    in: RoundedRectangle(cornerRadius: 12))
                             }
                             .buttonStyle(.plain)
+                            .disabled(gjenoppretter || !valgtErFullSnapshot)
                             .padding(.horizontal, 16)
+                            if !valgtErFullSnapshot {
+                                Text("Denne eldre versjonen inneholder bare tegningen og kan forhåndsvises, men ikke trygt gjenopprettes.")
+                                    .font(.appScaled(size: 10))
+                                    .foregroundStyle(CvBrand.orange)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, 20)
+                            }
+                            if let gjenopprettFeil {
+                                Text(gjenopprettFeil)
+                                    .font(.appScaled(size: 10))
+                                    .foregroundStyle(CvBrand.red)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, 20)
+                            }
                         }
                     }
                 }
@@ -932,6 +951,33 @@ struct TidsreiseSheet: View {
         return try? PKDrawing(data: data)
     }
 
+    private var valgtErFullSnapshot: Bool {
+        guard valgtIndeks < versjoner.count else { return false }
+        return versjoner[valgtIndeks].schemaVersion == 1
+    }
+
+    private func gjenopprettValgt() {
+        guard valgtIndeks < versjoner.count,
+              valgtErFullSnapshot,
+              let api = appState.api else { return }
+        let versionId = versjoner[valgtIndeks].id
+        gjenoppretter = true
+        gjenopprettFeil = nil
+        Task { @MainActor in
+            defer { gjenoppretter = false }
+            do {
+                let dto = try await api.gjenopprettCanvasVersjon(
+                    notatId: notatId,
+                    versionId: versionId,
+                    revision: revision)
+                onGjenopprett(dto)
+                dismiss()
+            } catch {
+                gjenopprettFeil = error.localizedDescription
+            }
+        }
+    }
+
     private func bildeForValgt() -> UIImage? {
         let tegning: PKDrawing?
         if valgtIndeks == maxIndeks {
@@ -951,4 +997,3 @@ struct TidsreiseSheet: View {
         return f.string(from: d)
     }
 }
-

@@ -335,12 +335,23 @@ struct TemplateLibraryModal: View {
                     }
                     Spacer(minLength: 4)
                     Menu {
-                        Button { selected = t; LeadbookLiveStore.shared.logUsage(t); flashToast("\(t.name) er valgt") } label: { Label("Bruk mal", systemImage: "play.fill") }
+                        Button {
+                            selected = t
+                            if t.backendId != nil {
+                                dismiss()
+                                Task { @MainActor in
+                                    try? await Task.sleep(for: .milliseconds(250))
+                                    LeadbookLiveStore.shared.openCoach(for: t)
+                                }
+                            } else {
+                                flashToast("\(t.name) er valgt")
+                            }
+                        } label: { Label("Bruk mal", systemImage: "play.fill") }
                         Button { menuTemplate = t } label: { Label("Forhåndsvis", systemImage: "eye") }
                         // «Rediger» + «Dupliser» fjernet 2026-07-17: var døde
                         // knapper — kun toast, ingen editor/kopi bak.
                         Button {
-                            UIPasteboard.general.string = "leadgrid://leadbook/\(t.id.uuidString.prefix(8))"
+                            UIPasteboard.general.string = "leadgrid://leadbook/templates/\(t.id.uuidString.lowercased())"
                             flashToast("Lenke kopiert")
                         } label: { Label("Kopier lenke", systemImage: "link") }
                         // «Eksporter PDF» (tom closure) + «Arkiver» (kun toast)
@@ -571,6 +582,7 @@ struct SelectedLeadbookCard: View {
     let template: LeadbookTemplate
     @Binding var currentStep: Int
     @State private var showUseMal = false
+    @State private var activeCoach: PondusTemplateDTO?
     @State private var showOutcomePrompt = false
     @State private var showNewTemplate = false
     @State private var showNewObjection = false
@@ -671,7 +683,9 @@ struct SelectedLeadbookCard: View {
                 }
                 .buttonStyle(.plain)
                 // Primær CTA
-                Button { showUseMal = true } label: {
+                Button {
+                    if let dto { activeCoach = dto } else { showUseMal = true }
+                } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "play.fill")
                             .font(.appScaled(size: 11, weight: .bold))
@@ -740,6 +754,10 @@ struct SelectedLeadbookCard: View {
                 // Prompten vises etter at sheeten er lukket.
                 showOutcomePrompt = true
             })
+        }
+        .sheet(item: $activeCoach) { template in
+            PondusCoachView(template: template, initialStep: max(0, currentStep - 1))
+                .environment(appState)
         }
         // Utfalls-prompt (2026-07-04): oppgraderer 'used'-raden i backend
         // → ekte møte-rate per mal i Leadbook-KPI-ene.
@@ -1075,18 +1093,6 @@ struct PerformanceModal: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Lukk") { dismiss() }.tint(LBrand.textSecondary)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Menu {
-                        Button("Eksporter CSV") {}
-                        Button("Eksporter PDF") {}
-                        Divider()
-                        Button("Del rapport…") {}
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.appScaled(size: 14, weight: .semibold))
-                            .foregroundStyle(LBrand.purpleLight)
-                    }
-                }
             }
             .sheet(item: $selected) { p in
                 PerformanceDetailSheet(row: p, range: range)
@@ -1303,18 +1309,15 @@ struct PerformanceDetailSheet: View {
                                 .foregroundStyle(LBrand.textSecondary)
                         }
                         HStack(spacing: 12) {
-                            metric("Sendt", "\(Int.random(in: 80...420))", LBrand.blue)
                             metric("Respons", "\(Int(row.responseRate * 100))%", LBrand.purple)
                             metric("Konvertering", "\(Int(row.conversion * 100))%", LBrand.green)
-                            metric("Møter booket", "\(Int.random(in: 5...40))", LBrand.orange)
                         }
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("ANBEFALTE OPTIMALISERINGER")
+                            Text("DATAGRUNNLAG")
                                 .font(.appScaled(size: 10, weight: .black))
                                 .foregroundStyle(LBrand.textTertiary).tracking(0.8)
-                            tip("Test ny åpningslinje — A/B-test 50/50 i 14 dager")
-                            tip("Legg til personlig video for warm leads (+18% historisk)")
-                            tip("Forenkle CTA — én tydelig handling pr. melding")
+                            Text("Tallene er beregnet fra organisasjonens registrerte bruk og utfall i valgt periode.")
+                                .font(.appScaled(size: 13)).foregroundStyle(LBrand.textSecondary)
                         }
                     }
                     .padding(20)
@@ -1358,11 +1361,16 @@ struct PerformanceDetailSheet: View {
 }
 
 struct VersionsModal: View {
+    let template: LeadbookTemplate
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var filter: VersionFilter = .all
     @State private var query: String = ""
     @State private var selected: VersionEntry?
     @State private var showCompare = false
+    @State private var liveVersions: [VersionEntry] = []
+    @State private var isLoading = false
+    @State private var loadError: String?
 
     enum VersionFilter: String, CaseIterable, Identifiable {
         case all = "Alle"
@@ -1373,7 +1381,7 @@ struct VersionsModal: View {
     }
 
     private var rows: [VersionEntry] {
-        let base = LeadbookData.versions
+        let base = DemoModeManager.isActiveNonisolated ? LeadbookData.versions : liveVersions
         let f: [VersionEntry] = {
             switch filter {
             case .all: return base
@@ -1389,8 +1397,11 @@ struct VersionsModal: View {
         }
     }
 
-    private var pendingCount: Int { LeadbookData.versions.filter { $0.status == .pending }.count }
-    private var approvedCount: Int { LeadbookData.versions.filter { $0.status == .approved }.count }
+    private var allVersions: [VersionEntry] {
+        DemoModeManager.isActiveNonisolated ? LeadbookData.versions : liveVersions
+    }
+    private var pendingCount: Int { allVersions.filter { $0.status == .pending }.count }
+    private var approvedCount: Int { allVersions.filter { $0.status == .approved }.count }
 
     var body: some View {
         NavigationStack {
@@ -1401,6 +1412,15 @@ struct VersionsModal: View {
                         summaryRow
                         filterBar
                         VStack(spacing: 8) {
+                            if isLoading { ProgressView("Henter versjoner…").tint(LBrand.purpleLight) }
+                            if let loadError {
+                                VStack(spacing: 8) {
+                                    Text(loadError).foregroundStyle(LBrand.orange)
+                                    Button("Prøv igjen") { Task { await loadVersions() } }
+                                        .buttonStyle(.bordered)
+                                }
+                                .frame(maxWidth: .infinity).padding(.vertical, 20)
+                            }
                             ForEach(rows) { v in
                                 Button { selected = v } label: { versionRow(v) }
                                     .buttonStyle(.plain)
@@ -1409,7 +1429,7 @@ struct VersionsModal: View {
                                 emptyState
                             }
                         }
-                        approvalCard
+                        if DemoModeManager.isActiveNonisolated { approvalCard }
                     }
                     .padding(20)
                 }
@@ -1420,7 +1440,8 @@ struct VersionsModal: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Lukk") { dismiss() }.tint(LBrand.textSecondary)
                 }
-                ToolbarItem(placement: .confirmationAction) {
+                if DemoModeManager.isActiveNonisolated {
+                    ToolbarItem(placement: .confirmationAction) {
                     Menu {
                         Button { showCompare = true } label: { Label("Sammenlign versjoner", systemImage: "rectangle.split.2x1") }
                         // «Eksporter versjonshistorikk» + «Tilbakestill til
@@ -1431,11 +1452,13 @@ struct VersionsModal: View {
                             .font(.appScaled(size: 16, weight: .semibold))
                             .foregroundStyle(LBrand.purpleLight)
                     }
+                    }
                 }
             }
             .sheet(item: $selected) { v in VersionDetailSheet(version: v) }
             .sheet(isPresented: $showCompare) { CompareVersionsSheet() }
         }
+        .task(id: template.backendId) { await loadVersions() }
     }
 
     // iPhone: scrollbar tile-rad — full-bredde-HStack brøt etikettene
@@ -1455,9 +1478,8 @@ struct VersionsModal: View {
     private var summaryTiles: some View {
         summaryTile("VENTER GODKJENNING", "\(pendingCount)", LBrand.orange, "clock.fill")
         summaryTile("GODKJENT", "\(approvedCount)", LBrand.green, "checkmark.seal.fill")
-        summaryTile("TOTALT VERSJONER", "\(LeadbookData.versions.count)", LBrand.purpleLight, "doc.on.doc.fill")
-        // Mock-dato KUN i demo — ellers ærlig strek (ingen versjons-backend).
-        summaryTile("SISTE ENDRING", LeadbookData.versions.isEmpty ? "—" : "20.05", LBrand.blue, "calendar")
+        summaryTile("TOTALT VERSJONER", "\(allVersions.count)", LBrand.purpleLight, "doc.on.doc.fill")
+        summaryTile("SISTE ENDRING", allVersions.first?.date ?? "—", LBrand.blue, "calendar")
     }
 
     private func summaryTile(_ label: String, _ value: String, _ tint: Color, _ icon: String) -> some View {
@@ -1543,12 +1565,46 @@ struct VersionsModal: View {
         VStack(spacing: 8) {
             Image(systemName: "doc.text.magnifyingglass")
                 .font(.appScaled(size: 28)).foregroundStyle(LBrand.textTertiary)
-            Text("Ingen versjoner i dette filteret")
+            Text(template.backendId == nil && !DemoModeManager.isActiveNonisolated
+                 ? "Velg en lagret mal for å se versjoner"
+                 : "Ingen versjoner i dette filteret")
                 .font(.appScaled(size: 13, weight: .semibold))
                 .foregroundStyle(LBrand.textSecondary)
         }
         .frame(maxWidth: .infinity).padding(30)
         .background(LBrand.card, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    @MainActor
+    private func loadVersions() async {
+        guard !DemoModeManager.isActiveNonisolated else { return }
+        guard let api = appState.api, let id = template.backendId else {
+            liveVersions = []
+            return
+        }
+        isLoading = true
+        loadError = nil
+        do {
+            let versions = try await api.pondusTemplateVersions(
+                id: id,
+                organizationId: appState.activeOrganizationId
+            )
+            liveVersions = versions.enumerated().map { index, item in
+                let author = item.changedBy?.isEmpty == false ? item.changedBy! : "Ukjent"
+                let changed = item.changedAt ?? "Ukjent tidspunkt"
+                let snapshotName = item.snapshot.name ?? template.name
+                return VersionEntry(
+                    version: "v\(item.version)",
+                    date: "\(changed) av \(author)",
+                    author: author,
+                    summary: "Snapshot av «\(snapshotName)»",
+                    status: index == 0 ? .current : .approved
+                )
+            }
+        } catch {
+            loadError = "Kunne ikke hente versjonshistorikken"
+        }
+        isLoading = false
     }
 
     private func versionRow(_ v: VersionEntry) -> some View {

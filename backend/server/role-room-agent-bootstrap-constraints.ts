@@ -1,4 +1,6 @@
 // =============================================================================
+
+import { ROLE_ROOM_RESEARCH_SKILL_DEFINITIONS } from "./role-room-agent-research-skills.js";
 // Delte synthesis-constraints for producer-bootstrappen.
 //
 // Bakgrunn (F7 i accuracy-auditen): systemprompt, constraints og
@@ -19,38 +21,7 @@ export const BOOTSTRAP_SYSTEM_PROMPT =
   'Du er The Role Room Agent for The Role Room. Lag norske JSON-utkast for innholdsproduksjon. Returner kun gyldig JSON med feltene companyProfile, intakeDraft, planningDraft, storyLogicDraft og nextRecommendedSteps. Svar kun med JSON. Vær konkret, kommersiell og nyttig for en innholdsprodusent som bygger brief, story logikk og produksjonsgrunnlag for en kunde. Bruk Brreg-data som juridisk kilde når den finnes, og ikke finn på organisasjonsnummer eller selskapsstatus.';
 
 /** Explicit research skills shared by every Role Room bootstrap model. */
-export const ROLE_ROOM_AGENT_RESEARCH_SKILLS = [
-  {
-    id: 'resolve_legal_identity',
-    instruction:
-      'Juridisk identitet: les kundens eget nettsted først når URL finnes. Bruk organisasjonsnummer eller legalName fra nettstedet til nøyaktig Brreg-oppslag. Merkenavn alene er ikke juridisk fasit.',
-  },
-  {
-    id: 'enforce_source_precedence',
-    instruction:
-      'Kildeprioritet: bruk kundens førstegangskilde for tilbud/målgruppe og Brreg for juridisk navn/org.nr/adresse/NACE. Google Places kan berike kundeprofil og anmeldelser bare ved navn- eller domenematch; lokale kandidater krever separat geografisk bevis.',
-  },
-  {
-    id: 'verify_geographic_relevance',
-    instruction:
-      'Geografisk relevans: anmeldelser, konkurrenter, lokale muligheter, merch og eventpartnere skal forkastes hvis adresse eller koordinater ikke matcher kundens verifiserte kommune/radius. Region-bias og popularitet er aldri bevis.',
-  },
-  {
-    id: 'verify_semantic_relevance',
-    instruction:
-      'Semantisk relevans: et navn i riktig by er ikke nok. Konkurrenter må dokumentere samme produktkategori, og lokale partnere må ha en kategori som faktisk matcher den foreslåtte partnerrollen. Forkast generiske tjenester, offentlige etater, lagring, eiendomsmegling og andre kategorifeil.',
-  },
-  {
-    id: 'propagate_verified_profile',
-    instruction:
-      'Dataflyt: juridisk identitet, bransje, underbransje, forretningsmodell, målgruppe og adresse fra den deterministiske analysen skal gjenbrukes uendret i brief, markedsplan, lokale forslag og story-logikk.',
-  },
-  {
-    id: 'fail_closed_without_evidence',
-    instruction:
-      'Manglende bevis: når en ekstern kilde ikke gir et sikkert treff, returner tomme kandidatlister og forklar begrensningen. Ikke lag eventkonsepter, outreach, anmeldelser eller lokale planer fra antakelser.',
-  },
-] as const;
+export const ROLE_ROOM_AGENT_RESEARCH_SKILLS = ROLE_ROOM_RESEARCH_SKILL_DEFINITIONS;
 
 /** Delt constraint-liste — unionen av det de to banene tidligere hadde hver
  *  for seg, så begge modeller får samme region-regler OG samme

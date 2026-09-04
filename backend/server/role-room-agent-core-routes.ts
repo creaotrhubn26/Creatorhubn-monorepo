@@ -866,7 +866,21 @@ export function setupRoleRoomAgentCoreRoutes(
         };
       } else if (section === "merch") {
         payload = {
-          merchSuppliers: await fetchMerchSuppliersAnalysis(input, websiteInsights, businessSignals, brreg),
+          merchSuppliers: await fetchMerchSuppliersAnalysis(
+            input,
+            websiteInsights,
+            businessSignals,
+            brreg,
+            {
+              requestTimeoutMs: 6_000,
+              enrichWebsiteSignals: true,
+              websiteEnrichmentLimit: 16,
+              websiteEnrichmentConcurrency: 8,
+              websiteHomepageTimeoutMs: 3_500,
+              websiteContactTimeoutMs: 1_500,
+              websiteEnrichmentTotalTimeoutMs: 9_000,
+            },
+          ),
         };
       } else if (section === "social") {
         // socialProfileCandidates are produced inside fetchWebsiteInsights —

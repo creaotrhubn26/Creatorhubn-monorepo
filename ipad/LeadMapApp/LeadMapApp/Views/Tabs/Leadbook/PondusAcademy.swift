@@ -52,11 +52,13 @@ struct PondusChapter: Identifiable, Hashable {
 }
 
 enum PondusAcademyData {
-    /// Kapitlene views leser — live fra AcademyLiveStore (mig 0368) når
-    /// lastet, ellers den innebygde mocken. Demo-modus gir alltid mock.
+    /// Produksjon viser aldri demo-kurs ved nettverksfeil. Demo-modus er
+    /// den eneste inngangen til den innebygde katalogen.
     @MainActor
     static var chapters: [PondusChapter] {
-        AcademyLiveStore.shared.chapters ?? mockChapters
+        DemoModeManager.isActiveNonisolated
+            ? mockChapters
+            : (AcademyLiveStore.shared.chapters ?? [])
     }
 
     static let mockChapters: [PondusChapter] = [
@@ -315,7 +317,8 @@ struct PondusAkademiSheet: View {
     @State private var videoLoadFailed = false
     // Quiz-kapittelet («Test deg selv») er interaktivt — ikke video.
     @State private var showQuiz = false
-    @State private var quizLocalResult: PondusQuizLocalResult? = PondusQuizLocalResult.load()
+    @State private var quizLocalResult: PondusQuizLocalResult?
+    @State private var quizAttempts = 0
     // «Anbefalt for deg» (slice B): kvalitets-underkjenninger som signal.
     @Environment(AppState.self) private var appState
     @State private var qualityRejections: [SalesVerification] = []
@@ -427,6 +430,21 @@ struct PondusAkademiSheet: View {
     /// underkjenninger — uten kjent bruker-id vises ingenting (aldri org-data
     /// som personlig signal). 403 fra kvalitetskøen → signal stille borte.
     private func loadRejections() async {
+        quizLocalResult = PondusQuizLocalResult.load(
+            userEmail: appState.userEmail,
+            organizationId: appState.activeOrganizationId
+        )
+        if !DemoModeManager.isActiveNonisolated,
+           let api = appState.api,
+           let organizationId = appState.activeOrganizationId,
+           let remote = try? await api.fetchPondusQuizMine(organizationId: organizationId) {
+            quizAttempts = remote.attempts
+            if let latest = remote.latest {
+                let hydrated = PondusQuizLocalResult(remote: latest)
+                hydrated.save(userEmail: appState.userEmail, organizationId: organizationId)
+                quizLocalResult = hydrated
+            }
+        }
         if DemoModeManager.isActiveNonisolated {
             qualityRejections = KvalitetDemoStore.shared.items.filter { $0.status == "rejected" }
             return
@@ -500,6 +518,12 @@ struct PondusAkademiSheet: View {
                     Text("Siste resultat: \(r.total) · \(r.tierLabel) · \(formatQuizDate(r.date))")
                         .font(.appScaled(size: 12, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.75))
+                }
+                if quizAttempts > 0 {
+                    Text("\(quizAttempts) gjennomføringer lagret på profilen")
+                        .font(.appScaled(size: 11, weight: .medium))
+                        .foregroundStyle(LBrand.textSecondary)
+                        .accessibilityIdentifier("pondus-quiz-attempts")
                 }
                 Button { showQuiz = true } label: {
                     HStack(spacing: 8) {

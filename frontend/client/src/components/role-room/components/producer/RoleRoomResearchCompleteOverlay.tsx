@@ -44,6 +44,7 @@ import {
 } from '@mui/icons-material';
 import type {
   RoleRoomAgentProducerBootstrapResult,
+  RoleRoomAgentResearchSkillRun,
   RoleRoomAgentServiceLatencies,
 } from '../../services/roleRoomAgentService';
 import SocialProfileCandidatesPreview from './SocialProfileCandidatesPreview';
@@ -91,6 +92,21 @@ const SERVICE_LABELS: Record<keyof RoleRoomAgentServiceLatencies, { label: strin
   openaiSynthesis: { label: 'OpenAI-syntese', source: 'api.openai.com' },
   totalMs: { label: 'Totaltid', source: 'wall clock' },
 };
+
+const RESEARCH_SKILL_LABELS: Record<RoleRoomAgentResearchSkillRun['id'], string> = {
+  resolve_company_identity: 'Selskapsidentitet',
+  discover_product_competitors: 'Produktkonkurrenter',
+  verify_market_and_location: 'Marked og geografi',
+  extract_brand_system: 'Logo og merkevaresystem',
+  recommend_merch_and_suppliers: 'Merch og leverandører',
+  audit_research_dataflow: 'Dataflytkontroll',
+};
+
+const RESEARCH_SKILL_STATUS = {
+  ready: { label: 'Klar', color: '#6ee7b7', background: 'rgba(16,185,129,0.16)' },
+  limited: { label: 'Begrenset', color: '#fde68a', background: 'rgba(245,158,11,0.16)' },
+  failed: { label: 'Feilet', color: '#fecaca', background: 'rgba(239,68,68,0.18)' },
+} as const;
 
 function readSeenResearchIds(): Set<string> {
   try {
@@ -252,6 +268,8 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
   }, [result]);
 
   const fallbacksUsed = result?.fallbacksUsed ?? [];
+  const researchSkills = result?.researchSkills ?? [];
+  const researchSkillsPassed = researchSkills.length === 6 && researchSkills.every((skill) => skill.status !== 'failed');
   const totalMs = result?.serviceLatencies?.totalMs;
   const datapoints =
     (result?.competitorAnalysis?.competitors?.length ?? 0)
@@ -262,6 +280,7 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
   const fullyComplete =
     missingCriticalFields.length === 0
     && fallbacksUsed.length === 0
+    && researchSkillsPassed
     && Boolean(result?.companyProfile?.logoUrl)
     && (result?.planningDraft?.brandGuide?.colors?.length ?? 0) > 0;
 
@@ -302,10 +321,14 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
 
   if (!result || !researchId) return null;
 
+  // This overlay is rendered inside RoleRoomAgentDialog. Keeping it in that
+  // dialog's DOM prevents MUI's nested ModalManager from applying aria-hidden
+  // to the parent dialog while focus remains inside it.
   return (
     <Modal
       open={open}
       onClose={handleClose}
+      disablePortal
       aria-labelledby="research-complete-title"
       closeAfterTransition
       sx={{
@@ -497,6 +520,80 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
           </Box>
         ) : null}
 
+        {researchSkills.length > 0 ? (
+          <Box sx={{ mb: 2 }}>
+            <Stack direction="row" alignItems="baseline" justifyContent="space-between" sx={{ mb: 1 }}>
+              <Typography sx={{ color: '#f8fafc', fontWeight: 700 }}>
+                Research-skills
+              </Typography>
+              <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.76rem' }}>
+                {researchSkills.filter((skill) => skill.status === 'ready').length}/{researchSkills.length} klare
+              </Typography>
+            </Stack>
+            <Stack spacing={0.6}>
+              {researchSkills.map((skill) => {
+                const presentation = RESEARCH_SKILL_STATUS[skill.status];
+                const failedChecks = skill.checks?.filter((check) => !check.passed) ?? [];
+                return (
+                  <Box
+                    key={skill.id}
+                    sx={{
+                      p: 1,
+                      borderRadius: 1.8,
+                      border: '1px solid rgba(148,163,184,0.14)',
+                      bgcolor: 'rgba(15,23,42,0.42)',
+                    }}
+                  >
+                    <Stack
+                      direction={{ xs: 'column', sm: 'row' }}
+                      alignItems={{ xs: 'flex-start', sm: 'center' }}
+                      justifyContent="space-between"
+                      spacing={0.6}
+                    >
+                      <Tooltip title={`Execution key: ${skill.executionKey}`} placement="top" arrow>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 650, fontSize: '0.86rem' }}>
+                          {RESEARCH_SKILL_LABELS[skill.id]}
+                        </Typography>
+                      </Tooltip>
+                      <Stack direction="row" alignItems="center" spacing={0.6}>
+                        <Typography sx={{ color: 'rgba(226,232,240,0.55)', fontSize: '0.7rem' }}>
+                          v{skill.version} · {skill.evidenceCount} bevis · {formatMs(skill.durationMs)}
+                        </Typography>
+                        <Chip
+                          size="small"
+                          label={presentation.label}
+                          sx={{
+                            height: 22,
+                            bgcolor: presentation.background,
+                            color: presentation.color,
+                            fontWeight: 700,
+                            fontSize: '0.68rem',
+                          }}
+                        />
+                      </Stack>
+                    </Stack>
+                    {skill.sourceKinds.length > 0 ? (
+                      <Typography sx={{ color: 'rgba(165,180,252,0.72)', fontSize: '0.7rem', mt: 0.35 }}>
+                        Kilder: {skill.sourceKinds.join(' · ')}
+                      </Typography>
+                    ) : null}
+                    {skill.limitations[0] ? (
+                      <Typography sx={{ color: presentation.color, fontSize: '0.72rem', mt: 0.35 }}>
+                        {skill.limitations[0]}
+                      </Typography>
+                    ) : null}
+                    {failedChecks.length > 0 ? (
+                      <Typography sx={{ color: '#fecaca', fontSize: '0.72rem', mt: 0.35 }}>
+                        {failedChecks.length} dataflytkontroll{failedChecks.length === 1 ? '' : 'er'} feilet
+                      </Typography>
+                    ) : null}
+                  </Box>
+                );
+              })}
+            </Stack>
+          </Box>
+        ) : null}
+
         {/* #7 + #8 + #11 Timeline with source attribution + tooltips */}
         <Box sx={{ mb: 2 }}>
           <Typography sx={{ color: '#f8fafc', fontWeight: 700, mb: 1 }}>
@@ -655,6 +752,7 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
                   model: result.model,
                   serviceLatencies: result.serviceLatencies,
                   fallbacksUsed: result.fallbacksUsed,
+                  researchSkills: result.researchSkills,
                   datapoints: {
                     competitors: result.competitorAnalysis?.competitors?.length ?? 0,
                     localOpportunities: result.localPresencePlan?.nearbyOpportunities?.length ?? 0,

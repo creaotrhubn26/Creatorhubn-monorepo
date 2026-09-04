@@ -83,12 +83,16 @@ final class PondusWatchSync {
             "ts": Date().timeIntervalSince1970,
         ]
 
-        // Dedup: samme signatur → hopp over. Inkluderer INNHOLDS-hash
-        // (navn + antall steg + kind), ikke bare id+score — ellers ble en
-        // ren tekst-redigering (samme id/score) aldri synket, og klokka
-        // viste utdatert innhold (QA 2026-07-06).
+        // Dedup på deterministisk, komplett Watch-innhold. Swift hashValue
+        // er prosess-randomisert og antall steg oppdager ikke prompt-endring.
         let signature = trimmed.map {
-            "\($0.id.uuidString):\($0.score):\($0.name.hashValue):\($0.orderedSteps.count):\($0.kind)"
+            let stepContent = $0.orderedSteps.map { step in
+                "\(step.id):\(step.order):\(step.title):\(step.prompt ?? ""): \(step.icon ?? "")"
+            }.joined(separator: "~")
+            let axes = $0.analysis.map {
+                "\($0.authority):\($0.clarity):\($0.trust):\($0.safety):\($0.momentum)"
+            } ?? ""
+            return "\($0.id.uuidString):\($0.version):\($0.score):\($0.name):\($0.kind):\($0.category):\(axes):\(stepContent)"
         }.joined(separator: "|")
         if signature == lastPushSignature { return }
         lastPushSignature = signature
@@ -103,6 +107,9 @@ final class PondusWatchSync {
         switch type {
         case PondusWatchMessageType.templateActivate:
             guard let id = msg["templateId"] as? String else { return }
+            // Bridge buffrer requesten hvis SwiftUI/AppState ikke er klar.
+            AppStateBridge.shared.navigateToPondus(templateId: id, stepIndex: 0)
+            // Legacy warm-start-signal beholdes for eldre view-hierarki.
             NotificationCenter.default.post(
                 name: .pondusActivateTemplate,
                 object: nil,
@@ -159,6 +166,8 @@ final class PondusWatchSync {
             "kind": dto.kind,
             "category": dto.category,
             "score": dto.score,
+            "version": dto.version,
+            "rubricVersion": dto.analysisMeta?.rubricVersion ?? "legacy",
             "steps": steps,
             "analysis": analysis,
         ]

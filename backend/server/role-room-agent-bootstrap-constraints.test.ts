@@ -39,12 +39,12 @@ describe('shared bootstrap constraints (F7)', () => {
 
   it('shares explicit identity, geography, propagation and fail-closed skills across providers', () => {
     expect(ROLE_ROOM_AGENT_RESEARCH_SKILLS.map((skill) => skill.id)).toEqual([
-      'resolve_legal_identity',
-      'enforce_source_precedence',
-      'verify_geographic_relevance',
-      'verify_semantic_relevance',
-      'propagate_verified_profile',
-      'fail_closed_without_evidence',
+      'resolve_company_identity',
+      'discover_product_competitors',
+      'verify_market_and_location',
+      'extract_brand_system',
+      'recommend_merch_and_suppliers',
+      'audit_research_dataflow',
     ]);
     for (const skill of ROLE_ROOM_AGENT_RESEARCH_SKILLS) {
       expect(BOOTSTRAP_CONSTRAINTS).toContain(skill.instruction);
