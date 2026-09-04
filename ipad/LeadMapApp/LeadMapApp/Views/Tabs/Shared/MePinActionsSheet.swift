@@ -58,6 +58,8 @@ struct MePinActionsSheet: View {
     @State private var currentCoord: CLLocationCoordinate2D?
     @State private var creatingLead = false
     @State private var errorMessage: String?
+    @State private var leadCreationId = UUID()
+    @State private var leadQueued = false
     @State private var appeared = false
     /// Reverse-geocoded adresse: "Solgården 12, 1830 Askim". Vises i stedet
     /// for rå koordinater når vi finner et treff. `nil` under første fetch;
@@ -232,9 +234,9 @@ struct MePinActionsSheet: View {
             // SOUTH — Ny lead
             HUDWheelButton(
                 icon: "plus.circle.fill",
-                label: "NY LEAD",
+                label: leadQueued ? "LAGRET" : "NY LEAD",
                 color: HUDPalette.purple,
-                isDisabled: currentCoord == nil,
+                isDisabled: currentCoord == nil || leadQueued,
                 isBusy: creatingLead,
                 onTap: { Task { await createLeadHere() } }
             )
@@ -344,19 +346,77 @@ struct MePinActionsSheet: View {
     @MainActor
     private func createLeadHere() async {
         guard let api = appState.api, let coord = currentCoord else { return }
+        guard let organizationId = appState.activeOrganizationId else {
+            errorMessage = "Velg en organisasjon før du oppretter lead."
+            return
+        }
         creatingLead = true
         errorMessage = nil
         defer { creatingLead = false }
-        do {
-            let dto = try await api.createLeadAtPosition(
-                lat: coord.latitude,
-                lon: coord.longitude,
-                orgId: appState.activeOrganizationId
+
+        let fallbackName = "Nytt lead ved \(coordString(coord))"
+        let displayName = String((resolvedAddress ?? fallbackName).prefix(200))
+        let draft = LeadDraft(
+            creationId: leadCreationId,
+            organizationId: organizationId,
+            name: displayName,
+            company: nil,
+            organizationNumber: nil,
+            websiteUrl: nil,
+            contactName: nil,
+            contactRole: nil,
+            email: nil,
+            phone: nil,
+            address: resolvedAddress,
+            postalCode: nil,
+            city: resolvedMunicipality,
+            country: "NO",
+            latitude: coord.latitude,
+            longitude: coord.longitude,
+            googlePlaceId: nil,
+            industryId: nil,
+            industry: nil,
+            employeeCountEstimate: nil,
+            annualRevenueNokEstimate: nil,
+            estimatedValue: nil,
+            notes: nil,
+            leadTemperature: "cold",
+            pipelineStage: "new",
+            leadStatus: "unvisited",
+            nextFollowUpAt: nil,
+            nextAction: nil,
+            locationConfidence: resolvedAddress == nil ? "unknown" : "geocoded",
+            leadSource: "map_drop",
+            projectId: appState.activeProjectId,
+            rawText: nil,
+            allowDuplicate: false
+        )
+
+        let result = await OfflineResilientActions.createLead(api: api, draft: draft)
+        switch result {
+        case .sent(let response):
+            let dto = CreatedLeadAtPositionDTO(
+                leadId: response.id,
+                name: displayName,
+                address: resolvedAddress,
+                googlePlaceId: nil,
+                latitude: coord.latitude,
+                longitude: coord.longitude,
+                orgId: organizationId
             )
+            await appState.refreshAll()
             close()
             onLeadCreated(dto)
-        } catch {
-            errorMessage = "Kunne ikke opprette lead: \(error.localizedDescription)"
+        case .queued:
+            leadQueued = true
+            errorMessage = "Leaden er lagret offline og sendes automatisk når nettet er tilbake."
+        case .duplicate(let candidates):
+            let names = candidates.prefix(3).map(\.name).joined(separator: ", ")
+            errorMessage = names.isEmpty
+                ? "En mulig duplikat finnes allerede i organisasjonen."
+                : "Mulig eksisterende lead: \(names)."
+        case .rejected(let message):
+            errorMessage = message
         }
     }
 }

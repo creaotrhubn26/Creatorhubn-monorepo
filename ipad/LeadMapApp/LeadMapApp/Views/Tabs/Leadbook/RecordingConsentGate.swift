@@ -23,7 +23,7 @@ enum RecordingConsentGate {
 
 struct RecordingConsentGateSheet: View {
     /// Kalt når selger har bekreftet OG samtykket er logget server-side.
-    let onConfirmed: () -> Void
+    let onConfirmed: (LeadbookRecordingConsentDTO, String) -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
     @State private var customerLabel: String = ""
@@ -117,13 +117,14 @@ struct RecordingConsentGateSheet: View {
         isSaving = true
         error = nil
         do {
-            _ = try await api.leadbookLogRecordingConsent(
+            let consent = try await api.leadbookLogRecordingConsent(
                 consentVersion: RecordingConsentGate.currentVersion,
                 customerLabel: customerLabel
             )
+            let retainedCustomerLabel = customerLabel.trimmingCharacters(in: .whitespacesAndNewlines)
             isSaving = false
             dismiss()
-            onConfirmed()
+            onConfirmed(consent, retainedCustomerLabel)
         } catch {
             isSaving = false
             self.error = "Kunne ikke logge samtykke — prøv igjen. (\(error.localizedDescription))"

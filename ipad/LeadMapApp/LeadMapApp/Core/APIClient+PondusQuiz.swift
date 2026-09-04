@@ -21,16 +21,11 @@ struct PondusQuizResult: Decodable, Identifiable, Hashable {
     let trygghet: Int
     let fremdrift: Int
     let total: Int
+    let scoringVersion: String?
     let createdAt: String?
 }
 
 private struct PondusQuizSubmitBody: Encodable {
-    let autoritet: Int
-    let klarhet: Int
-    let troverdighet: Int
-    let trygghet: Int
-    let fremdrift: Int
-    let total: Int
     let answers: [String: Int]
 }
 
@@ -55,30 +50,44 @@ extension APIClient {
     /// Selger: lagre en quiz-gjennomføring (alle scorer 0-100).
     @discardableResult
     func submitPondusQuiz(
-        autoritet: Int, klarhet: Int, troverdighet: Int,
-        trygghet: Int, fremdrift: Int, total: Int,
-        answers: [String: Int]
+        answers: [String: Int],
+        organizationId: String? = nil
     ) async throws -> PondusQuizResult {
-        let body = PondusQuizSubmitBody(
-            autoritet: autoritet, klarhet: klarhet, troverdighet: troverdighet,
-            trygghet: trygghet, fremdrift: fremdrift, total: total, answers: answers
-        )
+        let body = PondusQuizSubmitBody(answers: answers)
         let payload = try Self._pondusQuizEncoder.encode(body)
-        let data = try await _request("/api/leadgrid/pondus/quiz", method: "POST", body: payload)
+        let data = try await _request(
+            pondusQuizPath("/api/leadgrid/pondus/quiz", organizationId: organizationId),
+            method: "POST",
+            body: payload
+        )
         return try Self._pondusQuizDecoder.decode(PondusQuizSubmitResponse.self, from: data).result
     }
 
     /// Selger: siste profil + antall gjennomføringer.
-    func fetchPondusQuizMine() async throws -> (latest: PondusQuizResult?, attempts: Int) {
-        let data = try await _request("/api/leadgrid/pondus/quiz/mine", method: "GET")
+    func fetchPondusQuizMine(
+        organizationId: String? = nil
+    ) async throws -> (latest: PondusQuizResult?, history: [PondusQuizResult], attempts: Int) {
+        let data = try await _request(
+            pondusQuizPath("/api/leadgrid/pondus/quiz/mine", organizationId: organizationId),
+            method: "GET"
+        )
         let resp = try Self._pondusQuizDecoder.decode(PondusQuizMineResponse.self, from: data)
-        return (resp.latest, resp.attempts)
+        return (resp.latest, resp.history, resp.attempts)
     }
 
     /// Leder: siste profil per selger i org-en (manager-gate — 403 ellers).
     /// Brukes av coaching-forberedelsen («Ny 1-til-1»).
-    func fetchPondusQuizOrg() async throws -> [PondusQuizResult] {
-        let data = try await _request("/api/leadgrid/pondus/quiz/org", method: "GET")
+    func fetchPondusQuizOrg(organizationId: String? = nil) async throws -> [PondusQuizResult] {
+        let data = try await _request(
+            pondusQuizPath("/api/leadgrid/pondus/quiz/org", organizationId: organizationId),
+            method: "GET"
+        )
         return try Self._pondusQuizDecoder.decode(PondusQuizOrgResponse.self, from: data).profiles
     }
 }
+    private func pondusQuizPath(_ path: String, organizationId: String?) -> String {
+        guard let organizationId, !organizationId.isEmpty,
+              let encoded = organizationId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+        else { return path }
+        return path + (path.contains("?") ? "&" : "?") + "organization_id=\(encoded)"
+    }

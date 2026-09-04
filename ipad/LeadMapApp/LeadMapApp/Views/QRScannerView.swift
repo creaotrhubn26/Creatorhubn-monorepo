@@ -4,7 +4,7 @@
 // Skanner ROLE-ROOM-PAIR:<token> formaterte koder fra web Admin Room.
 
 import SwiftUI
-import AVFoundation
+@preconcurrency import AVFoundation
 
 struct QRScannerView: UIViewControllerRepresentable {
     let onScan: (String) -> Void

@@ -234,16 +234,6 @@ struct OversiktView: View {
     private var contentBody: some View {
         GeometryReader { geo in
             let isPortrait = geo.size.width < geo.size.height
-            // Dynamisk kart-høyde: fyll resten av vinduet under header + KPI-
-            // rad + padding. På Mac Catalyst med store vinduer gir dette
-            // kartet ~1000+px, mens iPad landscape holder ~640px minimum.
-            // Konstantene: header (~60) + KPI (~120) + spacing (~68) + padding
-            // (~42) = ~290pt. Vi bruker 320 som konservativ margin.
-            // iPhone: 640pt minimum tvinger unødig scrolling (portrett-
-            // vindu er ~844, landskap ~390) — bruk lavere gulv så kartet
-            // følger tilgjengelig høyde i stedet.
-            let minMapHeight: CGFloat = DeviceIdiom.isPhone ? 420 : Self.mapHeight
-            let dynamicMapHeight = max(minMapHeight, geo.size.height - 320)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
@@ -9661,15 +9651,16 @@ struct CustomPrizeSheet: View {
     }
 
     private var photoControls: some View {
-        VStack(spacing: 8) {
+        let hasPhoto = photoData != nil
+        return VStack(spacing: 8) {
             PhotosPicker(selection: $photoItem, matching: .images) {
                 HStack {
                     Image(systemName: "photo.on.rectangle.angled")
                         .font(.appScaled(size: 13, weight: .semibold))
-                    Text(photoData == nil ? "Velg bilde fra galleriet" : "Bytt bilde")
+                    Text(hasPhoto ? "Bytt bilde" : "Velg bilde fra galleriet")
                         .font(.appScaled(size: 13, weight: .semibold))
                     Spacer()
-                    if photoData != nil {
+                    if hasPhoto {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                     }
@@ -10141,4 +10132,3 @@ struct PrizeFulfillmentSheet: View {
         name.split(separator: " ").prefix(2).map { String($0.prefix(1)) }.joined().uppercased()
     }
 }
-

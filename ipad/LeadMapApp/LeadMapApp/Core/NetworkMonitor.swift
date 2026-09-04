@@ -22,6 +22,9 @@ final class NetworkMonitor {
 
     private(set) var isOnline: Bool = true
     private(set) var connectionType: String = "unknown"
+    #if DEBUG
+    private var connectivityOverride: Bool?
+    #endif
 
     /// Kalles én gang per offline→online-transisjon.
     /// LeadMapApp registrerer en handler som drainer OfflineActionQueue.
@@ -36,20 +39,38 @@ final class NetworkMonitor {
             let isEthernet = path.usesInterfaceType(.wiredEthernet)
             Task { @MainActor in
                 guard let self else { return }
-                let wasOffline = !self.isOnline
-                self.isOnline = satisfied
-                if isWifi { self.connectionType = "wifi" }
-                else if isCellular { self.connectionType = "cellular" }
-                else if isEthernet { self.connectionType = "ethernet" }
-                else { self.connectionType = "unknown" }
-
-                if wasOffline && self.isOnline {
-                    self.onConnectivityRestored?()
+                #if DEBUG
+                if let override = self.connectivityOverride {
+                    self.applyConnectivity(online: override, type: "qa-override")
+                    return
                 }
+                #endif
+                let type = isWifi ? "wifi" :
+                    isCellular ? "cellular" :
+                    isEthernet ? "ethernet" : "unknown"
+                self.applyConnectivity(online: satisfied, type: type)
             }
         }
         monitor.start(queue: queue)
     }
+
+    private func applyConnectivity(online: Bool, type: String) {
+        let wasOffline = !isOnline
+        isOnline = online
+        connectionType = type
+        if wasOffline && online {
+            onConnectivityRestored?()
+        }
+    }
+
+    #if DEBUG
+    /// Deterministisk UI-testhook. Påvirker bare appens nettverksbeslutning;
+    /// Release/TestFlight må fortsatt testes med et fysisk nettverksbrudd.
+    func setConnectivityForTesting(online: Bool) {
+        connectivityOverride = online
+        applyConnectivity(online: online, type: "qa-override")
+    }
+    #endif
 
     deinit {
         monitor.cancel()

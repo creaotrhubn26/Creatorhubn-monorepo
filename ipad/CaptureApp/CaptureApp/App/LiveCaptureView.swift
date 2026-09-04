@@ -1798,7 +1798,7 @@ private struct HeroImage: View {
                 GeometryReader { geo in
                     Image(uiImage: image)
                         .resizable()
-                        .aspectRatio(contentMode: .fit)
+                        .scaledToFit()
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                         .shadow(radius: 20, y: 8)
                         .transition(.opacity)
@@ -1909,7 +1909,7 @@ private struct FocusLoupe: View {
             Image(uiImage: image)
                 .resizable()
                 .interpolation(.high)
-                .aspectRatio(contentMode: .fit)
+                .scaledToFit()
                 .frame(width: displaySize.width * Self.zoom, height: displaySize.height * Self.zoom)
                 .offset(
                     x: -localX * Self.zoom + Self.loupeDiameter / 2,
@@ -2068,7 +2068,7 @@ private struct CompareHeroStage: View {
             if let key = asset.displayPreviewKey, let image = UIImage(contentsOfFile: key) {
                 Image(uiImage: image)
                     .resizable()
-                    .aspectRatio(contentMode: .fit)
+                    .scaledToFit()
                     .scaleEffect(scale)
                     .offset(offset)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -2306,7 +2306,7 @@ private struct ReviewSideRail: View {
                 if let key = asset.displayPreviewKey, let img = UIImage(contentsOfFile: key) {
                     Image(uiImage: img)
                         .resizable()
-                        .aspectRatio(contentMode: .fill)
+                        .scaledToFill()
                         .frame(width: 44, height: 44)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 } else {
@@ -3031,7 +3031,7 @@ private struct ImageFile: View {
     var body: some View {
         Group {
             if let image {
-                Image(uiImage: image).resizable().aspectRatio(contentMode: .fit)
+                Image(uiImage: image).resizable().scaledToFit()
             } else {
                 Color.captureChipBG
             }
@@ -4365,7 +4365,7 @@ private struct PersonFaceThumb: View {
     var body: some View {
         Group {
             if let img = croppedFace() {
-                Image(uiImage: img).resizable().aspectRatio(contentMode: .fill)
+                Image(uiImage: img).resizable().scaledToFill()
             } else {
                 Image(systemName: "person.crop.circle.fill")
                     .resizable().foregroundStyle(.secondary)
@@ -4471,7 +4471,7 @@ private struct FilmstripTile: View {
                     if let key = asset.displayPreviewKey, let image = UIImage(contentsOfFile: key) {
                         Image(uiImage: image)
                             .resizable()
-                            .aspectRatio(contentMode: .fill)
+                            .scaledToFill()
                     } else if asset.state == .previewPending {
                         ZStack {
                             Color.captureChipBG
@@ -5362,7 +5362,7 @@ private struct AssetViewerPage: View {
                 if let key = effectivePreviewKey, let image = UIImage(contentsOfFile: key) {
                     Image(uiImage: image)
                         .resizable()
-                        .aspectRatio(contentMode: .fit)
+                        .scaledToFit()
                         .scaleEffect(scale)
                         .offset(offset)
                         .gesture(

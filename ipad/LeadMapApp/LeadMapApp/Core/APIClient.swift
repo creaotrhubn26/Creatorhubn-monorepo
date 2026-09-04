@@ -3,15 +3,33 @@
 // Tynn URLSession-wrapper for /api/admin-room/lead-map/* endepunkter.
 // Alle metoder er async throws — caller bestemmer error-handling.
 //
-// Base-URL er hardkodet til prod. Lokal-utvikling kan overstyre via
-// LEAD_MAP_API_BASE i Info.plist senere.
+// Release-URL bygges inn via LeadMapAPIBaseURL i Info.plist. DEBUG-testene
+// kan overstyre med LEADGRID_API_BASE_URL for ekte staging-E2E.
 
 import Foundation
 import CoreLocation
 
 actor APIClient {
+    private static let productionBaseURL = "https://creatorhub-backend-rtbl.onrender.com"
+
     /// Statisk base-URL for kall som ikke trenger token (Google OAuth).
-    static let baseURL = "https://creatorhub-backend-rtbl.onrender.com"
+    static let baseURL: String = {
+        #if DEBUG
+        if let override = ProcessInfo.processInfo.environment["LEADGRID_API_BASE_URL"],
+           validatedBaseURL(override) != nil {
+            return override.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        #endif
+        if let configured = Bundle.main.object(
+            forInfoDictionaryKey: "LeadMapAPIBaseURL"
+        ) as? String,
+           validatedBaseURL(configured) != nil {
+            return configured.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return productionBaseURL
+    }()
+
+    static var isNonProduction: Bool { baseURL != productionBaseURL }
 
     private let token: String
     private let baseURL: URL
@@ -20,7 +38,7 @@ actor APIClient {
     /// so legacy endpoint families resolve the same workspace as the UI.
     private var activeOrganizationId: String?
 
-    init(token: String, baseURL: URL = URL(string: "https://creatorhub-backend-rtbl.onrender.com")!) {
+    init(token: String, baseURL: URL = URL(string: APIClient.baseURL)!) {
         self.token = token
         self.baseURL = baseURL
         let config = URLSessionConfiguration.default
@@ -32,6 +50,26 @@ actor APIClient {
     func setActiveOrganizationId(_ organizationId: String?) {
         let value = organizationId?.trimmingCharacters(in: .whitespacesAndNewlines)
         activeOrganizationId = value?.isEmpty == false ? value : nil
+    }
+
+    private static func validatedBaseURL(_ rawValue: String) -> URL? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(),
+              let host = url.host,
+              scheme == "https" ||
+                (scheme == "http" && ["127.0.0.1", "localhost"].contains(host))
+        else { return nil }
+        return url
+    }
+
+    // MARK: - GET-endepunkter
+
+    /// Bygg ?projectId=… query-string når aktivt prosjekt er satt.
+    private func projectQuery(_ projectId: String?, sep: String = "?") -> String {
+        guard let p = projectId, !p.isEmpty else { return "" }
+        let encoded = p.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? p
+        return "\(sep)projectId=\(encoded)"
     }
 
     // MARK: - GET-endepunkter
@@ -208,6 +246,15 @@ actor APIClient {
         if let organizationId, !organizationId.isEmpty { body["organization_id"] = organizationId }
         let resp: EnrichmentEnvelope = try await post(
             "/api/admin-room/lead-map/leads/\(leadId)/enrich", body: body
+        )
+        return resp.enrichment
+    }
+
+    func triggerEnrichment(leadId: String, forceRefresh: Bool) async throws -> EnrichmentModel? {
+        struct Body: Encodable { let force: Bool }
+        let resp: EnrichmentEnvelope = try await _post(
+            "/api/admin-room/lead-map/leads/\(leadId)/enrich",
+            body: Body(force: forceRefresh)
         )
         return resp.enrichment
     }
@@ -532,6 +579,7 @@ actor APIClient {
         /// Visningstall (kun i responsen for ledere — «hva brukes faktisk»).
         var viewsTotal: Int? = nil
         var viewersCount: Int? = nil
+        var canRequestDeletion: Bool = false
 
         enum CodingKeys: String, CodingKey {
             case id, status, title, industry, outcome, channel, summary
@@ -549,6 +597,7 @@ actor APIClient {
             case feedback
             case viewsTotal = "views_total"
             case viewersCount = "viewers_count"
+            case canRequestDeletion = "can_request_deletion"
         }
 
         init(from decoder: Decoder) throws {
@@ -574,6 +623,7 @@ actor APIClient {
             feedback = (try? c.decode([LeadbookExampleFeedbackDTO].self, forKey: .feedback)) ?? []
             viewsTotal = APIClient.lenientInt(c, .viewsTotal)
             viewersCount = APIClient.lenientInt(c, .viewersCount)
+            canRequestDeletion = (try? c.decode(Bool.self, forKey: .canRequestDeletion)) ?? false
         }
     }
 
@@ -581,10 +631,31 @@ actor APIClient {
         let examples: [LeadbookExampleDTO]
         let canEdit: Bool
         let canGiveFeedback: Bool
+        let nextCursor: String?
+        let canCreateDraft: Bool?
     }
 
-    func fetchLeadbookExamples() async throws -> LeadbookExamplesResponse {
-        try await get("/api/leadgrid/leadbook/examples")
+    func fetchLeadbookExamples(
+        limit: Int = 30,
+        cursor: String? = nil
+    ) async throws -> LeadbookExamplesResponse {
+        var path = "/api/leadgrid/leadbook/examples?limit=\(max(1, min(limit, 50)))"
+        if let cursor,
+           let encoded = cursor.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            path += "&cursor=\(encoded)"
+        }
+        return try await get(path)
+    }
+
+    struct LeadbookExampleDetailResponse: Codable {
+        let example: LeadbookExampleDTO
+        let canEdit: Bool
+        let canGiveFeedback: Bool
+        let canCreateDraft: Bool?
+    }
+
+    func fetchLeadbookExample(id: String) async throws -> LeadbookExampleDetailResponse {
+        try await get("/api/leadgrid/leadbook/examples/\(id)")
     }
 
     /// Opprett eksempel (leder). `transcript` = [{speaker, text, at_sec}].
@@ -1391,6 +1462,50 @@ actor APIClient {
         return response.id
     }
 
+
+    // MARK: - Canonical lead creation
+
+    /// Tapsfri opprettelse brukt av kart, leadliste og visittkort.
+    /// Samme UUID sendes i body og idempotency-headeren, også ved retry.
+    @discardableResult
+    func createLead(_ draft: LeadDraft) async throws -> LeadCreationResponse {
+        struct ErrorEnvelope: Decodable {
+            let error: String
+            let candidates: [LeadDuplicateCandidate]?
+        }
+
+        do {
+            let encoder = JSONEncoder()
+            encoder.keyEncodingStrategy = .convertToSnakeCase
+            var request = makeRequest("/api/admin-room/lead-map/leads", method: "POST")
+            request.setValue(
+                draft.creationId.uuidString.lowercased(),
+                forHTTPHeaderField: "Idempotency-Key"
+            )
+            request.setValue(draft.organizationId, forHTTPHeaderField: "X-Organization-Id")
+            request.httpBody = try encoder.encode(draft)
+
+            let (data, response) = try await session.data(for: request)
+            if let http = response as? HTTPURLResponse, http.statusCode == 409 {
+                if let envelope = try? Self.decoder.decode(ErrorEnvelope.self, from: data) {
+                    if envelope.error == "duplicate_conflict" {
+                        throw LeadCreationSubmissionError.duplicate(envelope.candidates ?? [])
+                    }
+                    if envelope.error == "idempotency_payload_conflict" {
+                        throw LeadCreationSubmissionError.idempotencyConflict
+                    }
+                }
+                throw APIError.statusCode(409)
+            }
+
+            try Self.validate(response, data: data)
+            return try Self.decoder.decode(LeadCreationResponse.self, from: data)
+        } catch {
+            throw Self.mapNetworkError(error)
+        }
+    }
+
+
     // MARK: - Varsler (PR #622)
 
     func fetchNotifications(unreadOnly: Bool = false, limit: Int = 50) async throws -> NotificationFeedResponse {
@@ -1963,7 +2078,7 @@ actor APIClient {
 
     /// Returnerer CSV-data klar for å vises i UIActivityViewController/iOS Share.
     func exportLeadsCsv(period: String = "30d", status: String = "all") async throws -> Data {
-        var req = makeRequest(
+        let req = makeRequest(
             "/api/leadgrid/leads/export?format=csv&period=\(period)&status=\(status)",
             method: "GET",
         )
@@ -2688,7 +2803,9 @@ actor APIClient {
         method: String,
         path: String,
         body: Data?,
-        headers: [String: String] = [:]
+        headers: [String: String] = [:],
+        idempotencyKey: String? = nil,
+        organizationId: String? = nil
     ) async throws -> Data {
         do {
             // String-konkat i stedet for appendingPathComponent — se makeRequest.
@@ -2701,11 +2818,16 @@ actor APIClient {
             req.httpMethod = method
             req.timeoutInterval = 30
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        if let activeOrganizationId {
-            req.setValue(activeOrganizationId, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
-        }
+            let requestOrganizationId = organizationId ?? activeOrganizationId
+            if let requestOrganizationId,
+               !requestOrganizationId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                req.setValue(requestOrganizationId, forHTTPHeaderField: "X-Leadgrid-Organization-Id")
+            }
             for (name, value) in headers {
                 req.setValue(value, forHTTPHeaderField: name)
+            }
+            if let idempotencyKey {
+                req.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
             }
             if let body = body {
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -2745,6 +2867,44 @@ actor APIClient {
 // MARK: - Fase 18: Super-admin endpoints
 
 extension APIClient {
+    func fetchAgentAIConsent(projectId: String) async throws -> AgentAIConsent? {
+        let response: AgentAIConsentEnvelope = try await _get(
+            "/api/role-room/projects/\(projectId)/ai-consent?processor=anthropic"
+        )
+        return response.consent
+    }
+
+    func grantAgentAIConsent(projectId: String) async throws -> AgentAIConsent {
+        struct Body: Encodable {
+            let scope: String
+            let processor: String
+            let note: String
+        }
+        let response: AgentAIConsentEnvelope = try await _post(
+            "/api/role-room/projects/\(projectId)/ai-consent",
+            body: Body(
+                scope: "full_context",
+                processor: "anthropic",
+                note: "Leadgrid iPad-agent: eksplisitt samtykke fra agentflaten."
+            )
+        )
+        guard let consent = response.consent else { throw APIError.invalidResponse }
+        return consent
+    }
+
+    func findLeadDuplicates(_ draft: LeadDraft) async throws -> [LeadDuplicateCandidate] {
+        struct Envelope: Decodable { let candidates: [LeadDuplicateCandidate] }
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let data = try await executeRaw(
+            method: "POST",
+            path: "/api/admin-room/lead-map/leads/duplicate-check",
+            body: try encoder.encode(draft),
+            organizationId: draft.organizationId
+        )
+        return try Self._sharedDecoder.decode(Envelope.self, from: data).candidates
+    }
+
 
     // -- /api/auth/user (rolle-deteksjon) ---------------------------
 
@@ -3962,8 +4122,10 @@ enum APIError: Error, LocalizedError {
     /// dette for å velge mellom "Prøv igjen" og "Logg inn på nytt"-CTA.
     var isRetryable: Bool {
         switch self {
-        case .networkFailure, .statusCode, .serverError, .tooManyRequests, .invalidResponse:
+        case .networkFailure, .tooManyRequests, .invalidResponse:
             return true
+        case .statusCode(let code), .serverError(let code, _):
+            return code == 429 || code >= 500
         case .unauthorized, .forbidden, .invalidURL, .decodingFailure,
              .duplicateLead, .idempotencyConflict:
             return false
@@ -4795,6 +4957,8 @@ extension APIClient {
         threadId: String,
         content: String,
         requiredScope: String? = nil,
+        organizationId: String? = nil,
+        leads: [AgentLeadContext] = [],
     ) -> AsyncThrowingStream<AgentStreamEvent, Error> {
         let token = self.token
         let base = self.baseURL
@@ -4813,9 +4977,21 @@ extension APIClient {
                     }
                     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-                    var body: [String: Any] = ["content": content]
-                    if let requiredScope { body["required_scope"] = requiredScope }
-                    req.httpBody = try JSONSerialization.data(withJSONObject: body)
+                    struct Context: Encodable, Sendable { let leads: [AgentLeadContext] }
+                    struct Body: Encodable, Sendable {
+                        let content: String
+                        let requiredScope: String?
+                        let surface: String
+                        let organizationId: String?
+                        let context: Context
+                    }
+                    req.httpBody = try JSONEncoder().encode(Body(
+                        content: content,
+                        requiredScope: requiredScope,
+                        surface: "leadgrid_ipad",
+                        organizationId: organizationId,
+                        context: Context(leads: Array(leads.prefix(100)))
+                    ))
                     req.timeoutInterval = 120
 
                     let (bytes, response) = try await URLSession.shared.bytes(for: req)

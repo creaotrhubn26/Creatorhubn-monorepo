@@ -234,12 +234,14 @@ struct MinProfilSheet: View {
         FaceDetector.detectFaceCenter(in: portraitAsset) { center in
             guard let center else { return }
             let suggested = FaceDetector.focalOffset(faceCenter: center)
-            withAnimation(.easeInOut(duration: 0.6)) {
-                focalOffset = suggested
-                didAutoDetectFace = true
+            Task { @MainActor in
+                withAnimation(.easeInOut(duration: 0.6)) {
+                    focalOffset = suggested
+                    didAutoDetectFace = true
+                }
+                toast = "AI fant ansiktet — bildet er sentrert"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { toast = nil }
             }
-            toast = "AI fant ansiktet — bildet er sentrert"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { toast = nil }
         }
     }
 

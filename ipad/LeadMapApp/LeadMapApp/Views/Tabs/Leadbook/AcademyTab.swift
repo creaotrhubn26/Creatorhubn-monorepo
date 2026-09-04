@@ -34,7 +34,9 @@ struct AcademyTabView: View {
 
     private var store: AcademyLiveStore { AcademyLiveStore.shared }
     private var isAdmin: Bool {
-        appState.userRole == "admin" || appState.userRole == "super_admin"
+        appState.isSuperAdmin
+            || ["admin", "owner", "salgssjef", "teamleder"].contains(appState.roleInOrg ?? "")
+            || appState.can("academy.manage")
     }
 
     private var officialCourses: [AcademyCourseDTO] {
@@ -62,8 +64,11 @@ struct AcademyTabView: View {
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: errorToast)
-        .task {
-            AcademyLiveStore.shared.attach(api: appState.api)
+        .task(id: appState.activeOrganizationId) {
+            AcademyLiveStore.shared.attach(
+                api: appState.api,
+                organizationId: appState.activeOrganizationId
+            )
             await AcademyLiveStore.shared.load()
             watched.formUnion(AcademyLiveStore.shared.serverWatched)
         }
@@ -157,18 +162,32 @@ struct AcademyTabView: View {
             sectionLabel("LEADGRID-KURS", icon: "checkmark.seal.fill", tint: LBrand.purpleLight)
             LazyVGrid(columns: MacCatalystGrid.adaptive(phone: 1, iPad: 2, mac: 3), spacing: 12) {
                 if officialCourses.isEmpty {
-                    // Offline/demo-fallback: Pondus-Akademiet fra innebygd mock
-                    // slik at fanen aldri står tom.
-                    AcademyCourseCard(
-                        title: "Lær Leadgrid Pondus",
-                        description: "Bygg autoritet, klarhet, troverdighet, trygghet og fremdrift i all utadrettet kommunikasjon.",
-                        icon: "graduationcap.fill",
-                        tint: LBrand.purpleLight,
-                        isOfficial: true,
-                        chapters: PondusAcademyData.chapters,
-                        watched: watched
-                    ) {
-                        openPayload = AcademyOpenPayload(id: "pondus-mock", chapters: PondusAcademyData.chapters)
+                    if DemoModeManager.isActiveNonisolated {
+                        AcademyCourseCard(
+                            title: "Lær Leadgrid Pondus",
+                            description: "Bygg autoritet, klarhet, troverdighet, trygghet og fremdrift i all utadrettet kommunikasjon.",
+                            icon: "graduationcap.fill",
+                            tint: LBrand.purpleLight,
+                            isOfficial: true,
+                            chapters: PondusAcademyData.mockChapters,
+                            watched: watched
+                        ) {
+                            openPayload = AcademyOpenPayload(id: "pondus-mock", chapters: PondusAcademyData.mockChapters)
+                        }
+                    } else if case .loading = store.loadState {
+                        ProgressView("Henter kurs…").tint(LBrand.purpleLight)
+                            .frame(maxWidth: .infinity).padding(.vertical, 32)
+                    } else if case .failed(let message, _) = store.loadState {
+                        VStack(spacing: 10) {
+                            Text(message).foregroundStyle(LBrand.orange)
+                            Button("Prøv igjen") { Task { await store.load() } }
+                                .buttonStyle(.bordered)
+                        }
+                        .frame(maxWidth: .infinity).padding(.vertical, 28)
+                    } else {
+                        Text("Ingen publiserte Leadgrid-kurs er tilgjengelige.")
+                            .font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
+                            .frame(maxWidth: .infinity).padding(.vertical, 32)
                     }
                 } else {
                     ForEach(officialCourses) { course in

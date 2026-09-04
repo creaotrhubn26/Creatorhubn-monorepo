@@ -139,6 +139,7 @@ struct BookMeetingSheet: View {
     @State private var meetingType: MeetingType = .facetime
     @State private var agenda: String = ""
     @State private var notify: Bool = true
+    @State private var showPersistenceUnavailable = false
 
     enum LeadFilter: String, CaseIterable, Hashable {
         case all = "Alle"
@@ -239,6 +240,11 @@ struct BookMeetingSheet: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .safeAreaInset(edge: .bottom, spacing: 0) { saveBar }
+            .alert("Møtet ble ikke booket", isPresented: $showPersistenceUnavailable) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Møte- og kalenderlagring er ikke koblet til denne flaten ennå. Ingen invitasjon er sendt og ingen status er endret.")
+            }
         }
     }
 
@@ -709,12 +715,12 @@ struct BookMeetingSheet: View {
 
     private var saveBar: some View {
         let canSave = selectedLead != nil
-        return Button { dismiss() } label: {
+        return Button { showPersistenceUnavailable = true } label: {
             HStack(spacing: 6) {
                 Image(systemName: "calendar.badge.checkmark")
                     .font(.appScaled(size: 14, weight: .bold))
                 Text(canSave
-                     ? "Bok møte \(String(format: "%02d:%02d", startHour, startMinute))"
+                     ? "Booking ikke koblet — \(String(format: "%02d:%02d", startHour, startMinute))"
                      : "Velg lead først")
                     .font(.appScaled(size: 14, weight: .bold))
             }

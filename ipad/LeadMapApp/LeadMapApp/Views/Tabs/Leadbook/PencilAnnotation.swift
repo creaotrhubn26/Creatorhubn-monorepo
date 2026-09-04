@@ -244,6 +244,7 @@ struct PencilToolbar: View {
 enum PencilExporter {
     /// Rendrer en gitt SwiftUI-view + drawing-overlay til en PDF.
     /// Vi flater til et UIImage og pakker i en PDF-side.
+    @MainActor
     static func exportPDF(snapshot: UIImage, drawing: PKDrawing, size: CGSize) -> Data {
         let renderer = UIGraphicsPDFRenderer(bounds: CGRect(origin: .zero, size: size))
         return renderer.pdfData { ctx in

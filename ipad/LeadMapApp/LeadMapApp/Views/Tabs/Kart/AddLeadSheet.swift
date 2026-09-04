@@ -87,6 +87,9 @@ enum AddLeadFieldParser {
     static func organizationNumber(_ raw: String) throws -> String? {
         var value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !value.isEmpty else { return nil }
+        guard value.count <= 32 else {
+            throw AddLeadSaveError(message: "Organisasjonsnummer kan være maks 32 tegn.")
+        }
         if value.hasPrefix("no") { value.removeFirst(2) }
         if value.hasSuffix("mva") { value.removeLast(3) }
         value = value
@@ -95,6 +98,46 @@ enum AddLeadFieldParser {
             .replacingOccurrences(of: ".", with: "")
         guard value.count == 9, value.allSatisfy(\.isNumber) else {
             throw AddLeadSaveError(message: "Organisasjonsnummer må bestå av 9 siffer.")
+        }
+        let digits = value.compactMap(\.wholeNumberValue)
+        let weights = [3, 2, 7, 6, 5, 4, 3, 2]
+        let remainder = 11 - zip(digits.prefix(8), weights)
+            .reduce(0) { $0 + $1.0 * $1.1 } % 11
+        let checkDigit = remainder == 11 ? 0 : remainder
+        guard checkDigit != 10, checkDigit == digits[8] else {
+            throw AddLeadSaveError(message: "Organisasjonsnummeret har ugyldig kontrollsiffer.")
+        }
+        return value
+    }
+
+    static func email(_ raw: String) throws -> String? {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+        guard value.count <= 200 else {
+            throw AddLeadSaveError(message: "E-post kan være maks 200 tegn.")
+        }
+        guard value.range(
+            of: #"^[^\s@]+@[^\s@]+\.[^\s@]+$"#,
+            options: .regularExpression
+        ) != nil else {
+            throw AddLeadSaveError(message: "E-postadressen er ugyldig.")
+        }
+        return value
+    }
+
+    static func website(_ raw: String) throws -> String? {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return nil }
+        guard value.count <= 2_048 else {
+            throw AddLeadSaveError(message: "Nettadressen kan være maks 2048 tegn.")
+        }
+        let candidate = value.contains("://") ? value : "https://\(value)"
+        let parts = URLComponents(string: candidate)
+        guard parts?.host?.isEmpty == false,
+              ["http", "https"].contains(parts?.scheme?.lowercased() ?? ""),
+              parts?.user == nil,
+              parts?.password == nil else {
+            throw AddLeadSaveError(message: "Nettadressen er ugyldig.")
         }
         return value
     }
@@ -274,6 +317,7 @@ struct AddLeadSheet: View {
     @State private var resolvingCoordinate = false
     @State private var locationConfidence: String
     @State private var submissionState = AddLeadSubmissionState()
+    @State private var fieldErrors: [String: String] = [:]
     @State private var didNotifyCancel = false
 
     private var saving: Bool { submissionState.isSaving }
@@ -369,6 +413,9 @@ struct AddLeadSheet: View {
         .macCatalystSheetSize(minWidth: 820, minHeight: 720)
         .interactiveDismissDisabled(saving)
         .task {
+            #if DEBUG
+            seedQAValidationDataIfRequested()
+            #endif
             await resolveInitialAddressIfNeeded()
         }
         .onDisappear {
@@ -734,12 +781,17 @@ struct AddLeadSheet: View {
                     fieldLabel("Notat")
                     TextEditor(text: $notat)
                         .scrollContentBackground(.hidden)
+                        .accessibilityLabel("Notat")
+                        .accessibilityIdentifier("add-lead.field.notat")
                         .foregroundStyle(.white)
                         .font(.appScaled(size: 13))
                         .frame(minHeight: 70)
                         .padding(10)
                         .background(AlBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(AlBrand.stroke, lineWidth: 1))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(
+                            fieldErrors["notat"] == nil ? AlBrand.stroke : AlBrand.red,
+                            lineWidth: fieldErrors["notat"] == nil ? 1 : 1.5
+                        ))
                         .overlay(alignment: .topLeading) {
                             if notat.isEmpty {
                                 Text("Hvorfor er denne leaden interessant? Hva er neste steg?")
@@ -749,6 +801,15 @@ struct AddLeadSheet: View {
                                     .allowsHitTesting(false)
                             }
                         }
+                        .onChange(of: notat) { _, _ in
+                            fieldErrors.removeValue(forKey: "notat")
+                        }
+                    if let message = fieldErrors["notat"] {
+                        Text(message)
+                            .font(.appScaled(size: 10, weight: .semibold))
+                            .foregroundStyle(AlBrand.red)
+                            .accessibilityIdentifier("add-lead.error.notat")
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -998,6 +1059,17 @@ struct AddLeadSheet: View {
         dismiss()
     }
 
+    #if DEBUG
+    private func seedQAValidationDataIfRequested() {
+        guard ProcessInfo.processInfo.environment["QA_TOUR"] == "lead-form-validation"
+        else { return }
+        companyName = "Valideringstest AS"
+        orgNumber = "123456789"
+        website = "javascript:alert(1)"
+        email = "ugyldig-epost"
+    }
+    #endif
+
     private func notifyCancelIfNeeded() {
         guard !didSave, !didNotifyCancel else { return }
         didNotifyCancel = true
@@ -1024,32 +1096,76 @@ struct AddLeadSheet: View {
         }
     }
 
+    private struct ParsedFields {
+        let organizationNumber: String?
+        let website: String?
+        let email: String?
+        let employeeCount: Int?
+        let revenue: Double?
+    }
+
+    private func validatedFields() -> ParsedFields? {
+        var errors: [String: String] = [:]
+        func validateLength(_ value: String, key: String, label: String, max: Int) {
+            if value.trimmingCharacters(in: .whitespacesAndNewlines).count > max {
+                errors[key] = "\(label) kan være maks \(max) tegn."
+            }
+        }
+        validateLength(companyName, key: "bedriftsnavn", label: "Bedriftsnavn", max: 200)
+        validateLength(contactName, key: "navn", label: "Kontaktperson", max: 240)
+        validateLength(contactRole, key: "rolle", label: "Rolle", max: 160)
+        validateLength(phone, key: "telefon", label: "Telefon", max: 50)
+        validateLength(address, key: "adresse", label: "Adresse", max: 500)
+        validateLength(postalCode, key: "postnr", label: "Postnummer", max: 20)
+        validateLength(city, key: "sted", label: "Sted", max: 120)
+        validateLength(industry, key: "bransje", label: "Bransje", max: 60)
+        validateLength(notat, key: "notat", label: "Notat", max: 20_000)
+        if includeFollowUp {
+            validateLength(nextAction, key: "neste-handling", label: "Neste handling", max: 2_000)
+            if nextAction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                errors["neste-handling"] = "Beskriv neste handling når oppfølging er aktivert."
+            }
+        }
+
+        var parsedOrganizationNumber: String?
+        var parsedWebsite: String?
+        var parsedEmail: String?
+        var parsedEmployeeCount: Int?
+        var parsedRevenue: Double?
+        do { parsedOrganizationNumber = try AddLeadFieldParser.organizationNumber(orgNumber) }
+        catch { errors["org.nr"] = error.localizedDescription }
+        do { parsedWebsite = try AddLeadFieldParser.website(website) }
+        catch { errors["nettside"] = error.localizedDescription }
+        do { parsedEmail = try AddLeadFieldParser.email(email) }
+        catch { errors["e-post"] = error.localizedDescription }
+        do { parsedEmployeeCount = try AddLeadFieldParser.employeeCount(employees) }
+        catch { errors["ansatte"] = error.localizedDescription }
+        do { parsedRevenue = try AddLeadFieldParser.annualRevenueNok(revenue) }
+        catch { errors["omsetning-(nok)"] = error.localizedDescription }
+
+        fieldErrors = errors
+        guard errors.isEmpty else { return nil }
+        return ParsedFields(
+            organizationNumber: parsedOrganizationNumber,
+            website: parsedWebsite,
+            email: parsedEmail,
+            employeeCount: parsedEmployeeCount,
+            revenue: parsedRevenue
+        )
+    }
+
     private func saveLead() async {
         guard !saving else { return }
         let trimmedName = companyName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { return }
+        guard let parsed = validatedFields() else {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
 
         submissionState.begin()
 
-        let parsedOrganizationNumber: String?
-        let parsedEmployeeCount: Int?
-        let parsedRevenue: Double?
-        do {
-            parsedOrganizationNumber = try AddLeadFieldParser.organizationNumber(orgNumber)
-            parsedEmployeeCount = try AddLeadFieldParser.employeeCount(employees)
-            parsedRevenue = try AddLeadFieldParser.annualRevenueNok(revenue)
-        } catch {
-            submissionState.fail(error.localizedDescription)
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
-            return
-        }
-
         let trimmedNextAction = nextAction.trimmingCharacters(in: .whitespacesAndNewlines)
-        if includeFollowUp && trimmedNextAction.isEmpty {
-            submissionState.fail("Beskriv neste handling når oppfølging er aktivert.")
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
-            return
-        }
 
         let fullAddress = formattedAddress
         var resolvedCoordinate = pinCoord
@@ -1080,15 +1196,15 @@ struct AddLeadSheet: View {
         do {
             try await onSave(NewLeadData(
                 companyName: trimmedName,
-                organizationNumber: parsedOrganizationNumber,
-                websiteURL: optionalField(website),
+                organizationNumber: parsed.organizationNumber,
+                websiteURL: parsed.website,
                 contactName: optionalField(contactName),
                 contactRole: optionalField(contactRole),
                 phone: optionalField(phone),
-                email: optionalField(email),
+                email: parsed.email,
                 industryLabel: optionalField(industry),
-                employeeCountEstimate: parsedEmployeeCount,
-                annualRevenueNokEstimate: parsedRevenue,
+                employeeCountEstimate: parsed.employeeCount,
+                annualRevenueNokEstimate: parsed.revenue,
                 notes: optionalField(notat),
                 leadTemperature: temperature,
                 leadStatus: leadStatus,
@@ -1174,19 +1290,32 @@ struct AddLeadSheet: View {
     @ViewBuilder
     private func field(label: String, placeholder: String, text: Binding<String>,
                        keyboard: UIKeyboardType = .default) -> some View {
+        let identifier = fieldIdentifier(label)
         VStack(alignment: .leading, spacing: 6) {
             fieldLabel(label)
             TextField("", text: text, prompt: Text(placeholder).foregroundColor(AlBrand.textTertiary))
                 .textFieldStyle(.plain)
                 .accessibilityLabel(label)
-                .accessibilityIdentifier("add-lead.field.\(fieldIdentifier(label))")
+                .accessibilityIdentifier("add-lead.field.\(identifier)")
                 .foregroundStyle(.white)
                 .font(.appScaled(size: 13))
                 .keyboardType(keyboard)
                 .padding(.horizontal, 12)
                 .frame(minHeight: 44)
                 .background(AlBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(AlBrand.stroke, lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(
+                    fieldErrors[identifier] == nil ? AlBrand.stroke : AlBrand.red,
+                    lineWidth: fieldErrors[identifier] == nil ? 1 : 1.5
+                ))
+                .onChange(of: text.wrappedValue) { _, _ in
+                    fieldErrors.removeValue(forKey: identifier)
+                }
+            if let message = fieldErrors[identifier] {
+                Text(message)
+                    .font(.appScaled(size: 10, weight: .semibold))
+                    .foregroundStyle(AlBrand.red)
+                    .accessibilityIdentifier("add-lead.error.\(identifier)")
+            }
         }
     }
 

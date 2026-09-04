@@ -40,6 +40,7 @@ struct LeadbookExample: Identifiable, Hashable {
     // nil-sjekk er gaten i UI-et («Ukens samtale»-distribusjonen).
     var viewsTotal: Int? = nil
     var viewersCount: Int? = nil
+    var canRequestDeletion: Bool = false
 
     enum Outcome: String, CaseIterable, Identifiable, Hashable {
         case won = "Vant"
@@ -502,7 +503,8 @@ extension LeadbookExample {
             isDraft: dto.status == "draft",
             feedback: dto.feedback,
             viewsTotal: dto.viewsTotal,
-            viewersCount: dto.viewersCount
+            viewersCount: dto.viewersCount,
+            canRequestDeletion: dto.canRequestDeletion
         )
     }
 }
@@ -583,6 +585,7 @@ enum LeadbookFeedbackFormat {
 // MARK: - LeadbookExamplesView
 
 struct LeadbookExamplesView: View {
+    var requestedExampleId: String? = nil
     @Environment(AppState.self) private var appState
     @State private var outcomeFilter: LeadbookExample.Outcome?
     @State private var channelFilter: LeadbookTemplate.Channel?
@@ -598,9 +601,13 @@ struct LeadbookExamplesView: View {
     @State private var backendExamples: [LeadbookExample] = []
     @State private var canEdit = false
     @State private var canGiveFeedback = false
+    @State private var canCreateDraft = false
     @State private var isLoading = false
+    @State private var isLoadingMore = false
+    @State private var nextCursor: String?
     @State private var loadError: String?
     @State private var showCreate = false
+    @State private var loadedOrganizationId: String?
 
     // 2026-07-17: «Mine tilbakemeldinger»-samleflate (dialog-utvidelsen)
     @State private var myFeedback: [APIClient.LeadbookExampleFeedbackDTO] = []
@@ -658,7 +665,11 @@ struct LeadbookExamplesView: View {
             filterChips
             grid
         }
-        .task { await loadExamples() }
+        .task(id: appState.activeOrganizationId) { await loadExamples(reset: true) }
+        .task(id: "\(appState.activeOrganizationId ?? "")|\(requestedExampleId ?? "")") {
+            guard let requestedExampleId else { return }
+            await openExample(id: requestedExampleId)
+        }
         .sheet(item: $detail) { ex in
             // 2026-07-17: backend-rettigheter + refresh-callback inn i sheeten.
             LeadbookExampleDetailSheet(
@@ -695,6 +706,9 @@ struct LeadbookExamplesView: View {
                 addToast = "«\(name)» lagret som utkast"
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { addToast = nil }
                 Task { await loadExamples() }
+            } onQueued: { name in
+                addToast = "«\(name)» lagret offline — sendes ved nett"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { addToast = nil }
             }
             .presentationDragIndicator(DeviceIdiom.isPhone ? .visible : .automatic)
         }
@@ -776,7 +790,7 @@ struct LeadbookExamplesView: View {
                     heroStat(label: "PÅGÅR", value: "\(sourceExamples.filter { $0.outcome == .ongoing }.count)", color: LBrand.orange)
                 }
                 // 2026-07-17: i ekte modus kun for ledere (canEdit) → ekte sheet.
-                if isDemo || canEdit {
+                if isDemo || canCreateDraft {
                     Button { if isDemo { showAdd = true } else { showCreate = true } } label: {
                         HStack(spacing: 7) {
                             Image(systemName: "plus.circle.fill").font(.appScaled(size: 13, weight: .bold))
@@ -931,7 +945,21 @@ struct LeadbookExamplesView: View {
                     ForEach(rows) { ex in
                         exampleCard(ex)
                     }
-                    if isDemo || canEdit { addNewCard }
+                    if isDemo || canCreateDraft { addNewCard }
+                    if !isDemo, nextCursor != nil {
+                        Button { Task { await loadExamples(reset: false) } } label: {
+                            HStack(spacing: 7) {
+                                if isLoadingMore { ProgressView().controlSize(.small).tint(.white) }
+                                Text(isLoadingMore ? "Henter flere…" : "Last inn flere")
+                            }
+                            .font(.appScaled(size: 12, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity).padding(.vertical, 12)
+                            .background(LBrand.cardHi, in: RoundedRectangle(cornerRadius: 11))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isLoadingMore)
+                    }
                 }
             }
         }
@@ -977,7 +1005,7 @@ struct LeadbookExamplesView: View {
             Text("Flagg gode samtaler fra Kvalitet, eller opprett manuelt.")
                 .font(.appScaled(size: 12)).foregroundStyle(LBrand.textSecondary)
                 .multilineTextAlignment(.center)
-            if canEdit {
+            if canCreateDraft {
                 Button { showCreate = true } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "plus.circle.fill").font(.appScaled(size: 12, weight: .bold))
@@ -1044,7 +1072,13 @@ struct LeadbookExamplesView: View {
     }
 
     private func exampleCard(_ ex: LeadbookExample) -> some View {
-        Button { detail = ex } label: {
+        Button {
+            if let id = ex.backendId, !isDemo {
+                Task { await openExample(id: id, fallback: ex) }
+            } else {
+                detail = ex
+            }
+        } label: {
             VStack(alignment: .leading, spacing: 0) {
                 // Poster
                 ZStack(alignment: .topLeading) {
@@ -1213,27 +1247,82 @@ struct LeadbookExamplesView: View {
 
     /// Henter org-egne eksempler i ekte modus. Demo-modus rører aldri nettet.
     @MainActor
-    private func loadExamples() async {
-        guard !isDemo, let api = appState.api else { return }
-        if backendExamples.isEmpty { isLoading = true }
+    private func loadExamples(reset: Bool = true) async {
+        guard !isDemo, let api = appState.api,
+              let requestedOrganizationId = appState.activeOrganizationId else {
+            backendExamples = []
+            myFeedback = []
+            unreadFeedback = 0
+            nextCursor = nil
+            loadedOrganizationId = nil
+            return
+        }
+        if reset {
+            if loadedOrganizationId != requestedOrganizationId {
+                backendExamples = []
+                myFeedback = []
+                unreadFeedback = 0
+                canEdit = false
+                canGiveFeedback = false
+                canCreateDraft = false
+                detail = nil
+            }
+            isLoading = backendExamples.isEmpty
+            nextCursor = nil
+        } else {
+            guard nextCursor != nil, !isLoadingMore else { return }
+            isLoadingMore = true
+        }
         loadError = nil
         do {
-            let resp = try await api.fetchLeadbookExamples()
-            backendExamples = resp.examples.map(LeadbookExample.fromDTO)
+            let resp = try await api.fetchLeadbookExamples(cursor: reset ? nil : nextCursor)
+            guard appState.activeOrganizationId == requestedOrganizationId else { return }
+            let mapped = resp.examples.map(LeadbookExample.fromDTO)
+            backendExamples = reset ? mapped : backendExamples + mapped
             canEdit = resp.canEdit
             canGiveFeedback = resp.canGiveFeedback
+            canCreateDraft = resp.canCreateDraft ?? resp.canEdit
+            nextCursor = resp.nextCursor
+            loadedOrganizationId = requestedOrganizationId
         } catch {
+            guard appState.activeOrganizationId == requestedOrganizationId else { return }
             loadError = "Kunne ikke hente eksempler"
         }
+        guard appState.activeOrganizationId == requestedOrganizationId else { return }
         isLoading = false
+        isLoadingMore = false
         // 2026-07-17: «Mine tilbakemeldinger» + ulest-badge — sekundært,
         // feiler stille uten å påvirke eksempel-listen.
         do {
             let mine = try await api.fetchMyLeadbookFeedback()
+            guard appState.activeOrganizationId == requestedOrganizationId else { return }
             myFeedback = mine.feedback
             unreadFeedback = mine.unread
         } catch {
             // stille — innboksen viser bare det vi har
+        }
+    }
+
+    @MainActor
+    private func openExample(id: String, fallback: LeadbookExample? = nil) async {
+        guard !isDemo, let api = appState.api else {
+            if let fallback { detail = fallback }
+            return
+        }
+        let requestedOrganizationId = appState.activeOrganizationId
+        do {
+            let response = try await api.fetchLeadbookExample(id: id)
+            guard appState.activeOrganizationId == requestedOrganizationId else { return }
+            canEdit = response.canEdit
+            canGiveFeedback = response.canGiveFeedback
+            canCreateDraft = response.canCreateDraft ?? response.canEdit
+            detail = LeadbookExample.fromDTO(response.example)
+            if requestedExampleId == id { appState.clearLeadbookExampleDeepLink() }
+        } catch {
+            guard appState.activeOrganizationId == requestedOrganizationId else { return }
+            loadError = "Eksempelet finnes ikke, eller du har ikke tilgang."
+            if requestedExampleId == id { appState.clearLeadbookExampleDeepLink() }
+            if let fallback { detail = fallback }
         }
     }
 
@@ -1395,7 +1484,7 @@ struct LeadbookExampleDetailSheet: View {
                 // Selvbetjent sletting (§7 «selgere kan be om sletting»,
                 // 2026-08-16): kladd slettes umiddelbart, publisert flagges
                 // + varsler ledere. Kun for ekte eksempler (backendId satt).
-                if canEdit, example.backendId != nil {
+                if example.canRequestDeletion, example.backendId != nil {
                     ToolbarItem(placement: .destructiveAction) {
                         Button(role: .destructive) { showDeleteConfirm = true } label: {
                             Image(systemName: "trash")
@@ -2564,12 +2653,14 @@ struct LeadbookExampleDetailSheet: View {
 
     @MainActor
     private func sendReply(_ fb: APIClient.LeadbookExampleFeedbackDTO) async {
-        guard let api = appState.api else { return }
+        guard let api = appState.api, let organizationId = appState.activeOrganizationId else { return }
         let text = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isSendingReply else { return }
         isSendingReply = true
-        do {
-            try await api.replyToLeadbookFeedback(feedbackId: fb.id, body: text)
+        let disposition = await OfflineResilientActions.replyLeadbookFeedback(
+            api: api, organizationId: organizationId, feedbackId: fb.id, body: text)
+        switch disposition {
+        case .sent, .queued:
             // Optimistisk append — rolle-heuristikk kun for lokal visning
             extraReplies[fb.id, default: []].append(APIClient.LeadbookFeedbackReplyDTO(
                 id: UUID().uuidString,
@@ -2580,10 +2671,12 @@ struct LeadbookExampleDetailSheet: View {
             ))
             replyText = ""
             replyingTo = nil
-            saveToast = "Svar sendt — \(fb.authorName) varsles"
+            saveToast = disposition.isQueued
+                ? "Svar lagret offline — sendes ved nett"
+                : "Svar sendt — \(fb.authorName) varsles"
             onChanged?()
-        } catch {
-            saveToast = "Kunne ikke svare — prøv igjen"
+        case .rejected(let message):
+            saveToast = message
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { saveToast = nil }
         isSendingReply = false
@@ -2690,7 +2783,9 @@ struct LeadbookExampleDetailSheet: View {
 
     @MainActor
     private func sendFeedback() async {
-        guard let api = appState.api, let id = example.backendId else { return }
+        guard let api = appState.api,
+              let organizationId = appState.activeOrganizationId,
+              let id = example.backendId else { return }
         let text = feedbackText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isSendingFeedback else { return }
         isSendingFeedback = true
@@ -2701,10 +2796,14 @@ struct LeadbookExampleDetailSheet: View {
             let t = example.transcript[$0].timestamp
             return t > 0 ? t : nil
         }
-        do {
-            try await api.addLeadbookExampleFeedback(
-                exampleId: id, body: text, dimension: dimKey,
-                transcriptIndex: anchorIdx, atSec: anchorSec)
+        var payload: [String: Any] = ["body": text]
+        if let dimKey { payload["dimension"] = dimKey }
+        if let anchorIdx { payload["transcript_index"] = anchorIdx }
+        if let anchorSec { payload["at_sec"] = anchorSec }
+        let disposition = await OfflineResilientActions.addLeadbookFeedback(
+            api: api, organizationId: organizationId, exampleId: id, payload: payload)
+        switch disposition {
+        case .sent, .queued:
             // Optimistisk append — refresh skjer i bakgrunnen via onChanged.
             extraFeedback.append(APIClient.LeadbookExampleFeedbackDTO(
                 id: UUID().uuidString,
@@ -2721,14 +2820,14 @@ struct LeadbookExampleDetailSheet: View {
             anchorIndex = nil
             clearFeedbackDraft()
             // 2026-07-17: backend varsler selgeren (in-app + push) automatisk.
-            saveToast = example.salesperson.isEmpty
-                ? "Tilbakemelding sendt"
-                : "Sendt — \(example.salesperson) varsles"
+            saveToast = disposition.isQueued
+                ? "Tilbakemelding lagret offline — sendes ved nett"
+                : (example.salesperson.isEmpty
+                    ? "Tilbakemelding sendt"
+                    : "Sendt — \(example.salesperson) varsles")
             onChanged?()
-        } catch {
-            // Utkastet ligger alt i UserDefaults (persistert mens man
-            // skriver) — si det eksplisitt så ingen tror teksten er tapt.
-            saveToast = "Kunne ikke sende — utkastet er lagret, prøv igjen"
+        case .rejected(let message):
+            saveToast = message
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { saveToast = nil }
         isSendingFeedback = false
@@ -3685,6 +3784,7 @@ struct AddExampleSheet: View {
 /// (Demo-modusens AI-wizard `AddExampleSheet` er urørt og vises kun i demo.)
 struct LeadbookCreateExampleSheet: View {
     var onCreated: (String) -> Void
+    var onQueued: (String) -> Void = { _ in }
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
 
@@ -3958,12 +4058,24 @@ struct LeadbookCreateExampleSheet: View {
 
     @MainActor
     private func save() async {
-        guard let api = appState.api else {
+        guard let api = appState.api, let organizationId = appState.activeOrganizationId else {
             errorText = "Ikke innlogget — prøv igjen"
             return
         }
         let t = title.trimmingCharacters(in: .whitespaces)
         guard !t.isEmpty, !isSaving else { return }
+        guard t.count <= 200 else { errorText = "Tittel kan være maks 200 tegn"; return }
+        guard customerLabel.count <= 200 else { errorText = "Kunde kan være maks 200 tegn"; return }
+        guard industry.count <= 120 else { errorText = "Bransje kan være maks 120 tegn"; return }
+        guard sellerName.count <= 160 else { errorText = "Selgernavn kan være maks 160 tegn"; return }
+        guard summary.count <= 4000 else { errorText = "Sammendrag kan være maks 4000 tegn"; return }
+        let trimmedDealValue = dealValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedDealValue.isEmpty {
+            guard trimmedDealValue.allSatisfy(\.isNumber), Int(trimmedDealValue) != nil else {
+                errorText = "Deal-verdi må være et gyldig heltall"
+                return
+            }
+        }
         isSaving = true
         errorText = nil
 
@@ -3976,7 +4088,7 @@ struct LeadbookCreateExampleSheet: View {
         let channelKey: String
         switch channel {
         case .field: channelKey = "field"
-        case .phone: channelKey = "phone"
+        case .phone: channelKey = "telephone"
         case .email: channelKey = "email"
         case .video: channelKey = "video"
         }
@@ -3996,7 +4108,7 @@ struct LeadbookCreateExampleSheet: View {
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
         ]
-        if let v = Int(dealValue.filter(\.isNumber)), v > 0 {
+        if let v = Int(trimmedDealValue), v > 0 {
             body["deal_value_nok"] = v
         }
         // 2026-07-17: AI-forslag (fra «Strukturer med AI») følger med payloaden
@@ -4004,12 +4116,17 @@ struct LeadbookCreateExampleSheet: View {
         if let fd = aiFeaturedDimension, !fd.isEmpty { body["featured_dimension"] = fd }
         if let ps = aiPondusScore { body["pondus_score"] = ps }
 
-        do {
-            _ = try await api.createLeadbookExample(body)
+        let disposition = await OfflineResilientActions.createLeadbookExample(
+            api: api, organizationId: organizationId, body: body)
+        switch disposition {
+        case .sent:
             onCreated(t)
             dismiss()
-        } catch {
-            errorText = "Kunne ikke lagre — prøv igjen"
+        case .queued:
+            onQueued(t)
+            dismiss()
+        case .rejected(let message):
+            errorText = message
         }
         isSaving = false
     }
@@ -4361,12 +4478,14 @@ struct LeadbookFeedbackInboxSheet: View {
 
     @MainActor
     private func sendReply(_ fb: APIClient.LeadbookExampleFeedbackDTO) async {
-        guard let api = appState.api else { return }
+        guard let api = appState.api, let organizationId = appState.activeOrganizationId else { return }
         let text = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isSendingReply else { return }
         isSendingReply = true
-        do {
-            try await api.replyToLeadbookFeedback(feedbackId: fb.id, body: text)
+        let disposition = await OfflineResilientActions.replyLeadbookFeedback(
+            api: api, organizationId: organizationId, feedbackId: fb.id, body: text)
+        switch disposition {
+        case .sent, .queued:
             // Innboksen er selger-scopet → optimistisk svar som «selger»
             extraReplies[fb.id, default: []].append(APIClient.LeadbookFeedbackReplyDTO(
                 id: UUID().uuidString,
@@ -4376,9 +4495,11 @@ struct LeadbookFeedbackInboxSheet: View {
                 createdAt: ISO8601DateFormatter().string(from: Date())
             ))
             replyText = ""
-            toast = "Svar sendt — \(fb.authorName) varsles"
-        } catch {
-            toast = "Kunne ikke svare — prøv igjen"
+            toast = disposition.isQueued
+                ? "Svar lagret offline — sendes ved nett"
+                : "Svar sendt — \(fb.authorName) varsles"
+        case .rejected(let message):
+            toast = message
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { toast = nil }
         isSendingReply = false

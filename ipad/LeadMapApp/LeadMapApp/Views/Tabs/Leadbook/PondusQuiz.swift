@@ -157,6 +157,24 @@ struct PondusQuizLocalResult: Codable {
     let total: Int
     let date: Date
 
+    init(
+        autoritet: Int,
+        klarhet: Int,
+        troverdighet: Int,
+        trygghet: Int,
+        fremdrift: Int,
+        total: Int,
+        date: Date
+    ) {
+        self.autoritet = autoritet
+        self.klarhet = klarhet
+        self.troverdighet = troverdighet
+        self.trygghet = trygghet
+        self.fremdrift = fremdrift
+        self.total = total
+        self.date = date
+    }
+
     func score(for dim: PondusDimension) -> Int {
         switch dim {
         case .autoritet:    return autoritet
@@ -181,17 +199,37 @@ struct PondusQuizLocalResult: Codable {
         }
     }
 
-    private static let key = "pondus.quiz.latest"
+    static func storageKey(userEmail: String?, organizationId: String?) -> String? {
+        guard let email = userEmail?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !email.isEmpty,
+              let organizationId,
+              !organizationId.isEmpty
+        else { return nil }
+        return "pondus.quiz.latest.v2.\(organizationId).\(email)"
+    }
 
-    static func load() -> PondusQuizLocalResult? {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+    static func load(userEmail: String?, organizationId: String?) -> PondusQuizLocalResult? {
+        guard let key = storageKey(userEmail: userEmail, organizationId: organizationId),
+              let data = UserDefaults.standard.data(forKey: key)
+        else { return nil }
         return try? JSONDecoder().decode(PondusQuizLocalResult.self, from: data)
     }
 
-    func save() {
-        if let data = try? JSONEncoder().encode(self) {
-            UserDefaults.standard.set(data, forKey: Self.key)
-        }
+    func save(userEmail: String?, organizationId: String?) {
+        guard let key = Self.storageKey(userEmail: userEmail, organizationId: organizationId),
+              let data = try? JSONEncoder().encode(self)
+        else { return }
+        UserDefaults.standard.set(data, forKey: key)
+    }
+
+    init(remote: PondusQuizResult) {
+        autoritet = remote.autoritet
+        klarhet = remote.klarhet
+        troverdighet = remote.troverdighet
+        trygghet = remote.trygghet
+        fremdrift = remote.fremdrift
+        total = remote.total
+        date = remote.createdAt.flatMap(ISO8601DateFormatter().date(from:)) ?? Date()
     }
 }
 
@@ -216,8 +254,9 @@ struct PondusQuizSheet: View {
     @State private var answers: [String: Int] = [:]        // questionId → valgt indeks
     @State private var selectedOption: Int?
     @State private var result: PondusQuizLocalResult?
-    @State private var previous: PondusQuizLocalResult? = PondusQuizLocalResult.load()
+    @State private var previous: PondusQuizLocalResult?
     @State private var advancing = false
+    @State private var remoteSaveMessage: String?
 
     private let questions = PondusQuizBank.questions
     /// True når svaret POST-es til backend (ekte modus m/ API).
@@ -243,6 +282,7 @@ struct PondusQuizSheet: View {
                 }
             }
         }
+        .task { await hydratePreviousResult() }
     }
 
     // MARK: Intro
@@ -414,7 +454,7 @@ struct PondusQuizSheet: View {
                         Text(r.tierLabel)
                             .font(.appScaled(size: 17, weight: .bold))
                             .foregroundStyle(.white)
-                        Text(savesRemotely ? "Lagret i profilen din" : "Lagret lokalt")
+                        Text(remoteSaveMessage ?? (savesRemotely ? "Synkroniserer med profilen din" : "Lagret lokalt"))
                             .font(.appScaled(size: 10))
                             .foregroundStyle(LBrand.textTertiary)
                     }
@@ -561,25 +601,53 @@ struct PondusQuizSheet: View {
             total: total,
             date: Date()
         )
-        r.save()
+        r.save(
+            userEmail: appState.userEmail,
+            organizationId: appState.activeOrganizationId
+        )
         result = r
         previous = r
         onCompleted?(r)
 
-        // Backend (best-effort) — kun ekte modus.
-        if savesRemotely, let api = appState.api {
+        // Server beregner fasiten fra rå svar. Offline-køen beholder
+        // nøyaktig samme payload og tenant til reconnect.
+        if savesRemotely,
+           let api = appState.api,
+           let organizationId = appState.activeOrganizationId {
             let answersCopy = answers
             Task {
-                try? await api.submitPondusQuiz(
-                    autoritet: r.autoritet, klarhet: r.klarhet,
-                    troverdighet: r.troverdighet, trygghet: r.trygghet,
-                    fremdrift: r.fremdrift, total: r.total,
+                let disposition = await OfflineResilientActions.submitPondusQuiz(
+                    api: api,
+                    organizationId: organizationId,
                     answers: answersCopy
                 )
+                switch disposition {
+                case .sent: remoteSaveMessage = "Lagret i profilen din"
+                case .queued: remoteSaveMessage = "Lagret offline — synkroniseres automatisk"
+                case .rejected(let reason): remoteSaveMessage = reason
+                }
             }
         }
 
         withAnimation(.easeInOut(duration: 0.25)) { phase = .result }
+    }
+
+    @MainActor
+    private func hydratePreviousResult() async {
+        previous = PondusQuizLocalResult.load(
+            userEmail: appState.userEmail,
+            organizationId: appState.activeOrganizationId
+        )
+        guard !DemoModeManager.isActiveNonisolated,
+              let api = appState.api,
+              let organizationId = appState.activeOrganizationId
+        else { return }
+        guard let remote = try? await api.fetchPondusQuizMine(organizationId: organizationId),
+              let latest = remote.latest
+        else { return }
+        let hydrated = PondusQuizLocalResult(remote: latest)
+        hydrated.save(userEmail: appState.userEmail, organizationId: organizationId)
+        previous = hydrated
     }
 
     private func formatDate(_ d: Date) -> String {
