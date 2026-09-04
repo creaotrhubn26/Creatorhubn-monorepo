@@ -597,6 +597,66 @@ describe('Role Room local-presence fail-closed policy', () => {
     expect(new Set(matchedNames).size).toBe(matchedNames.length);
   });
 
+  it('limits website enrichment and prioritizes merch-specific suppliers', async () => {
+    process.env.GOOGLE_PLACES_API_KEY = 'test-key';
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('data.brreg.no')) {
+        return new Response(JSON.stringify({ _embedded: { enheter: [] } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('.example')) {
+        return new Response(
+          '<!doctype html><html><head><title>Profilprodukter</title></head><body>Vi leverer profilklær, polo, hoodie og tekstiltrykk med broderi og silketrykk til norske bedrifter. Kontakt oss for tilbud og vareprøver.</body></html>',
+          { status: 200, headers: { 'content-type': 'text/html' } },
+        );
+      }
+      return new Response(JSON.stringify({
+        places: [
+          {
+            id: 'generic-office',
+            displayName: { text: 'Generic Office AS' },
+            formattedAddress: 'Storgata 1, 0155 Oslo, Norge',
+            websiteUri: 'https://generic-office.example',
+          },
+          {
+            id: 'merchberry',
+            displayName: { text: 'Merchberry AS' },
+            formattedAddress: 'Storgata 2, 0155 Oslo, Norge',
+            websiteUri: 'https://merchberry.example',
+          },
+          {
+            id: 'tekstiltrykk',
+            displayName: { text: 'Oslo Tekstiltrykk' },
+            formattedAddress: 'Storgata 3, 0155 Oslo, Norge',
+            websiteUri: 'https://tekstiltrykk.example',
+          },
+          {
+            id: 'another-company',
+            displayName: { text: 'Another Company' },
+            formattedAddress: 'Storgata 4, 0155 Oslo, Norge',
+            websiteUri: 'https://another-company.example',
+          },
+        ],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+
+    const result = await fetchMerchSuppliersAnalysis(
+      { projectId: 'bounded-merch-refresh', companyName: 'MEDINNOVA AS' },
+      { finalUrl: 'https://medside.no/', selectedPageSnippets: [], socialProfileCandidates: [] },
+      null,
+      verifiedMedinnova(),
+      { websiteEnrichmentLimit: 2, websiteEnrichmentConcurrency: 2 },
+    );
+
+    const enriched = result.suppliers.filter((supplier) => supplier.websiteSignalsEnriched);
+    expect(enriched).toHaveLength(2);
+    expect(enriched.every((supplier) => /merch|tekstiltrykk/i.test(supplier.name))).toBe(true);
+    expect(result.suppliers.find((supplier) => supplier.name === 'Generic Office AS')?.websiteSignalsEnriched).not.toBe(true);
+  });
+
   it('retains fast merch results and reports partial provider timeouts', async () => {
     process.env.GOOGLE_PLACES_API_KEY = 'test-key';
     globalThis.fetch = vi.fn(async (input) => {

@@ -300,18 +300,73 @@ export type MerchMockupProductId =
   | 'totebag'
   | 'mug';
 
+export type MerchProductionTechnique =
+  | 'screen_print'
+  | 'dtg'
+  | 'dtfilm'
+  | 'embroidery'
+  | 'cut_sew'
+  | 'sublimation'
+  | 'vinyl'
+  | 'promo_products';
+
+export interface MerchPlacementSpec {
+  id: string;
+  label: string;
+  maxWidthMm: number;
+  maxHeightMm: number;
+  defaultWidthMm: number;
+  defaultHeightMm: number;
+  techniques: MerchProductionTechnique[];
+}
+
+export interface MerchProductSpec {
+  productId: MerchMockupProductId;
+  label: string;
+  provider: 'printful';
+  providerProductId: number;
+  defaultVariantId: number;
+  defaultColorName: string;
+  defaultColorHex: string;
+  techniques: MerchProductionTechnique[];
+  placements: MerchPlacementSpec[];
+}
+
+export interface MerchCatalogVariant {
+  id: number;
+  productId: number;
+  name: string;
+  size: string | null;
+  colorName: string;
+  colorHex: string;
+  colorHex2: string | null;
+  imageUrl: string | null;
+}
+
 export interface MerchMockupResult {
   mockupUrl: string;
+  mockupUrls: string[];
   cached: boolean;
   productLabel: string;
+  providerProductId: number;
+  providerVariantId: number;
+  providerColorName: string;
+  providerColorHex: string;
+  placement: string;
+  providerPlacement: string;
+  technique: MerchProductionTechnique;
+  printWidthMm: number;
+  printHeightMm: number;
 }
 
 export interface MerchMockupErrorShape {
   code:
     | 'mockup_provider_unconfigured'
+    | 'mockup_catalog_failed'
     | 'invalid_product'
     | 'invalid_design_url'
-    | 'mockup_generation_failed';
+    | 'mockup_generation_failed'
+    | 'forbidden';
   detail: string;
   httpStatus: number;
 }
@@ -329,19 +384,66 @@ export class MerchMockupError extends Error {
   }
 }
 
-/**
- * Generate a Printful-rendered mockup for the given product +
- * customer-logo URL. Synchronous from the caller's perspective; the
- * backend polls Printful internally for up to 60s.
- *
- * Pass forceRefresh to bypass the server-side cache — useful when the
- * previous render picked up the wrong logo (favicon) and the URL itself
- * hasn't changed, so cache-key would otherwise return the broken render.
- */
+async function readMerchError(response: Response, fallbackCode: MerchMockupErrorShape['code']): Promise<MerchMockupError> {
+  const raw = await response.text().catch(() => '');
+  let parsed: { error?: string; detail?: string } | null = null;
+  try {
+    parsed = raw ? JSON.parse(raw) : null;
+  } catch {
+    parsed = null;
+  }
+  return new MerchMockupError({
+    code: (parsed?.error ?? fallbackCode) as MerchMockupErrorShape['code'],
+    detail: parsed?.detail ?? `HTTP ${response.status}`,
+    httpStatus: response.status,
+  });
+}
+
+export async function getMerchMockupStatus(projectId: string): Promise<{
+  configured: boolean;
+  provider: 'printful';
+  products: MerchProductSpec[];
+}> {
+  const response = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(projectId)}/agent/merch-mockup/status`,
+    { headers: buildHeaders() },
+  );
+  if (!response.ok) throw await readMerchError(response, 'mockup_generation_failed');
+  const payload = await response.json() as { configured?: unknown; products?: unknown };
+  return {
+    configured: payload.configured === true,
+    provider: 'printful',
+    products: Array.isArray(payload.products) ? payload.products as MerchProductSpec[] : [],
+  };
+}
+
+export async function getMerchCatalog(input: {
+  projectId: string;
+  productId: MerchMockupProductId;
+  forceRefresh?: boolean;
+}): Promise<{ productId: MerchMockupProductId; variants: MerchCatalogVariant[] }> {
+  const query = input.forceRefresh ? '?refresh=true' : '';
+  const response = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(input.projectId)}/agent/merch-catalog/${encodeURIComponent(input.productId)}${query}`,
+    { headers: buildHeaders() },
+  );
+  if (!response.ok) throw await readMerchError(response, 'mockup_catalog_failed');
+  const payload = await response.json() as { productId?: MerchMockupProductId; variants?: MerchCatalogVariant[] };
+  return {
+    productId: payload.productId ?? input.productId,
+    variants: Array.isArray(payload.variants) ? payload.variants : [],
+  };
+}
+
 export async function generateMerchMockup(input: {
   projectId: string;
   productId: MerchMockupProductId;
   designImageUrl: string;
+  variantId?: number | null;
+  placement?: string | null;
+  technique?: MerchProductionTechnique | null;
+  printWidthMm?: number | null;
+  printHeightMm?: number | null;
   forceRefresh?: boolean;
 }): Promise<MerchMockupResult> {
   const response = await fetch(
@@ -352,25 +454,88 @@ export async function generateMerchMockup(input: {
       body: JSON.stringify({
         productId: input.productId,
         designImageUrl: input.designImageUrl,
+        variantId: input.variantId ?? null,
+        placement: input.placement ?? null,
+        technique: input.technique ?? null,
+        printWidthMm: input.printWidthMm ?? null,
+        printHeightMm: input.printHeightMm ?? null,
         forceRefresh: input.forceRefresh === true,
       }),
     },
   );
-  if (!response.ok) {
-    const raw = await response.text().catch(() => '');
-    let parsed: { error?: string; detail?: string } | null = null;
-    try {
-      parsed = raw ? JSON.parse(raw) : null;
-    } catch {
-      parsed = null;
-    }
-    throw new MerchMockupError({
-      code: (parsed?.error ?? 'mockup_generation_failed') as MerchMockupErrorShape['code'],
-      detail: parsed?.detail ?? `HTTP ${response.status}`,
-      httpStatus: response.status,
-    });
-  }
+  if (!response.ok) throw await readMerchError(response, 'mockup_generation_failed');
   return (await response.json()) as MerchMockupResult;
+}
+
+export type MerchLogoVariant = 'original' | 'light' | 'dark';
+export type MerchConceptStatus = 'draft' | 'approved' | 'archived';
+
+export interface MerchConceptInput {
+  productId: MerchMockupProductId;
+  supplierKey?: string | null;
+  supplierName?: string | null;
+  provider: 'concept' | 'printful';
+  providerProductId?: number | null;
+  providerVariantId?: number | null;
+  providerColorName?: string | null;
+  providerColorHex?: string | null;
+  requestedColorHex: string;
+  logoUrl: string;
+  logoVariant: MerchLogoVariant;
+  placement: string;
+  printWidthMm: number;
+  printHeightMm: number;
+  technique: MerchProductionTechnique;
+  mockupUrls?: string[];
+}
+
+export interface MerchConceptRecord extends MerchConceptInput {
+  id: string;
+  projectId: string;
+  conceptKey: string;
+  status: MerchConceptStatus;
+  createdByUserId: string | null;
+  updatedByUserId: string | null;
+  approvedByUserId: string | null;
+  approvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function listMerchConcepts(projectId: string): Promise<MerchConceptRecord[]> {
+  const response = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(projectId)}/agent/merch-concepts`,
+    { headers: buildHeaders() },
+  );
+  if (!response.ok) throw await readMerchError(response, 'mockup_generation_failed');
+  const payload = await response.json() as { concepts?: MerchConceptRecord[] };
+  return Array.isArray(payload.concepts) ? payload.concepts : [];
+}
+
+export async function saveMerchConcept(
+  projectId: string,
+  input: MerchConceptInput,
+): Promise<{ concept: MerchConceptRecord; deduplicated: boolean }> {
+  const response = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(projectId)}/agent/merch-concepts`,
+    { method: 'POST', headers: buildHeaders(), body: JSON.stringify(input) },
+  );
+  if (!response.ok) throw await readMerchError(response, 'mockup_generation_failed');
+  return (await response.json()) as { concept: MerchConceptRecord; deduplicated: boolean };
+}
+
+export async function setMerchConceptStatus(input: {
+  projectId: string;
+  conceptId: string;
+  status: MerchConceptStatus;
+}): Promise<MerchConceptRecord> {
+  const response = await fetch(
+    `${API_BASE}/projects/${encodeURIComponent(input.projectId)}/agent/merch-concepts/${encodeURIComponent(input.conceptId)}/status`,
+    { method: 'PATCH', headers: buildHeaders(), body: JSON.stringify({ status: input.status }) },
+  );
+  if (!response.ok) throw await readMerchError(response, 'mockup_generation_failed');
+  const payload = await response.json() as { concept: MerchConceptRecord };
+  return payload.concept;
 }
 
 export type MerchPartnerType = 'sportsklubb' | 'event' | 'skole' | 'forening' | 'bedrift';

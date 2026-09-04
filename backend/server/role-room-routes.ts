@@ -101,9 +101,18 @@ import { handleAgentStream } from './role-room-agent-stream.js';
 import {
   generateMerchMockup,
   isPrintfulConfigured,
+  listMerchCatalogVariants,
+  listMerchProductSpecs,
   PrintfulMockupError,
   type MerchMockupProductId,
+  type MerchProductionTechnique,
 } from './role-room-merch-mockup.js';
+import {
+  listMerchConcepts,
+  MerchConceptError,
+  saveMerchConcept,
+  setMerchConceptStatus,
+} from './role-room-merch-concepts.js';
 import {
   generateMerchCooperationDraft,
   MerchCooperationError,
@@ -2034,8 +2043,8 @@ function apiKeyAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
     const keyHash = hashApiKey(key);
     try {
       const result = await pool.query<RoleRoomApiKeyRow>(
-        `SELECT * FROM role_room_api_keys 
-         WHERE key_hash = $1 AND is_active = TRUE 
+        `SELECT * FROM role_room_api_keys
+         WHERE key_hash = $1 AND is_active = TRUE
          AND (expires_at IS NULL OR expires_at > NOW())`,
         [keyHash]
       );
@@ -9048,7 +9057,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     try {
       const result = await pool.query('SELECT NOW() AS server_time');
       const tableCheck = await pool.query(
-        `SELECT COUNT(*) AS count FROM information_schema.tables 
+        `SELECT COUNT(*) AS count FROM information_schema.tables
          WHERE table_schema = 'public' AND table_name LIKE 'casting_%'`
       );
       res.json({
@@ -22939,49 +22948,160 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     },
   );
 
-  // Merch mockup generator — synchronous wrapper over Printful's
-  // mockup-generator API. Given a productId (tshirt/hoodie/...) and
-  // a public design image URL (typically the customer's logo from the
-  // bootstrap result), returns the rendered photorealistic mockup URL.
-  // Internal polling up to 30s; cached per (productId, designImageUrl).
+  // Merch catalog, concepts and mockups. Every route is project-scoped:
+  // readers can inspect provider state and saved decisions; only producer/editor
+  // roles can create provider work or change persisted production decisions.
+  router.get(
+    '/projects/:projectId/agent/merch-mockup/status',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+        if (!canReadProducerData(req, roleRecord)) {
+          return res.status(403).json({ error: 'forbidden', detail: 'Mangler tilgang til dette prosjektet' });
+        }
+        res.json({
+          configured: isPrintfulConfigured(),
+          provider: 'printful',
+          products: listMerchProductSpecs(),
+        });
+      } catch (error) {
+        res.status(500).json({ error: 'mockup_status_failed', detail: 'internal_error' });
+      }
+    },
+  );
+
+  router.get(
+    '/projects/:projectId/agent/merch-catalog/:productId',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+        if (!canReadProducerData(req, roleRecord)) {
+          return res.status(403).json({ error: 'forbidden', detail: 'Mangler tilgang til dette prosjektet' });
+        }
+        const allowedProducts = new Set<MerchMockupProductId>([
+          'tshirt', 'hoodie', 'polo', 'cap', 'totebag', 'mug',
+        ]);
+        const productId = req.params.productId as MerchMockupProductId;
+        if (!allowedProducts.has(productId)) {
+          return res.status(400).json({ error: 'invalid_product' });
+        }
+        const variants = await listMerchCatalogVariants(productId, req.query.refresh === 'true');
+        res.json({ productId, variants });
+      } catch (error) {
+        if (error instanceof PrintfulMockupError) {
+          return res.status(error.httpStatus).json({ error: 'mockup_catalog_failed', detail: error.message });
+        }
+        res.status(500).json({ error: 'mockup_catalog_failed', detail: 'internal_error' });
+      }
+    },
+  );
+
   router.post(
     '/projects/:projectId/agent/merch-mockup',
     apiKeyAuth(pool, activeSessions),
     async (req: Request, res: Response) => {
       try {
+        const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+        if (!canWriteProducerData(req, roleRecord)) {
+          return res.status(403).json({ error: 'forbidden', detail: 'Mangler skrivetilgang til dette prosjektet' });
+        }
         if (!isPrintfulConfigured()) {
           return res.status(503).json({
             error: 'mockup_provider_unconfigured',
-            detail: 'Printful is not fully configured. Both PRINTFUL_API_KEY and PRINTFUL_STORE_ID must be set in Render env. Create a free Printful store under Stores → Add store, then add the numeric store id to env.',
+            detail: 'Printful is not fully configured. Both PRINTFUL_API_KEY and PRINTFUL_STORE_ID must be set in Render env.',
           });
         }
-        const { productId, designImageUrl, forceRefresh } = req.body ?? {};
+        const { productId, designImageUrl, variantId, placement, technique, printWidthMm, printHeightMm, forceRefresh } = req.body ?? {};
         const allowedProducts = new Set<MerchMockupProductId>([
           'tshirt', 'hoodie', 'polo', 'cap', 'totebag', 'mug',
         ]);
         if (typeof productId !== 'string' || !allowedProducts.has(productId as MerchMockupProductId)) {
           return res.status(400).json({ error: 'invalid_product', detail: `productId must be one of: ${Array.from(allowedProducts).join(', ')}` });
         }
-        if (typeof designImageUrl !== 'string' || !/^https?:\/\//i.test(designImageUrl)) {
-          return res.status(400).json({ error: 'invalid_design_url', detail: 'designImageUrl must be a public http(s) URL' });
+        if (typeof designImageUrl !== 'string' || !/^https:\/\//i.test(designImageUrl)) {
+          return res.status(400).json({ error: 'invalid_design_url', detail: 'designImageUrl must be a public HTTPS URL' });
         }
         const result = await generateMerchMockup(pool, {
           productId: productId as MerchMockupProductId,
           designImageUrl,
+          variantId: variantId == null ? null : Number(variantId),
+          placement: typeof placement === 'string' ? placement : null,
+          technique: typeof technique === 'string' ? technique as MerchProductionTechnique : null,
+          printWidthMm: printWidthMm == null ? null : Number(printWidthMm),
+          printHeightMm: printHeightMm == null ? null : Number(printHeightMm),
           forceRefresh: forceRefresh === true,
         });
         res.json(result);
       } catch (error) {
         if (error instanceof PrintfulMockupError) {
-          return res.status(error.httpStatus).json({
-            error: 'mockup_generation_failed',
-            detail: error.message,
-          });
+          return res.status(error.httpStatus).json({ error: 'mockup_generation_failed', detail: error.message });
         }
-        res.status(500).json({
-          error: 'mockup_generation_failed',
-          detail: error instanceof Error ? error.message : String(error),
-        });
+        res.status(500).json({ error: 'mockup_generation_failed', detail: 'internal_error' });
+      }
+    },
+  );
+
+  router.get(
+    '/projects/:projectId/agent/merch-concepts',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+        if (!canReadProducerData(req, roleRecord)) {
+          return res.status(403).json({ error: 'forbidden', detail: 'Mangler tilgang til dette prosjektet' });
+        }
+        const concepts = await listMerchConcepts(pool, req.params.projectId);
+        res.json({ concepts });
+      } catch (error) {
+        res.status(500).json({ error: 'merch_concepts_list_failed', detail: 'internal_error' });
+      }
+    },
+  );
+
+  router.post(
+    '/projects/:projectId/agent/merch-concepts',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+        if (!canWriteProducerData(req, roleRecord)) {
+          return res.status(403).json({ error: 'forbidden', detail: 'Mangler skrivetilgang til dette prosjektet' });
+        }
+        const result = await saveMerchConcept(pool, req.params.projectId, getUserId(req), req.body);
+        res.status(result.deduplicated ? 200 : 201).json(result);
+      } catch (error) {
+        if (error instanceof MerchConceptError) {
+          return res.status(error.httpStatus).json({ error: error.code, detail: error.message });
+        }
+        res.status(500).json({ error: 'merch_concept_save_failed', detail: 'internal_error' });
+      }
+    },
+  );
+
+  router.patch(
+    '/projects/:projectId/agent/merch-concepts/:conceptId/status',
+    apiKeyAuth(pool, activeSessions),
+    async (req: Request, res: Response) => {
+      try {
+        const roleRecord = await getProjectRoleRecord(req.params.projectId, getUserIdentifiers(req));
+        if (!canWriteProducerData(req, roleRecord)) {
+          return res.status(403).json({ error: 'forbidden', detail: 'Mangler skrivetilgang til dette prosjektet' });
+        }
+        const concept = await setMerchConceptStatus(
+          pool,
+          req.params.projectId,
+          req.params.conceptId,
+          req.body?.status,
+          getUserId(req),
+        );
+        res.json({ concept });
+      } catch (error) {
+        if (error instanceof MerchConceptError) {
+          return res.status(error.httpStatus).json({ error: error.code, detail: error.message });
+        }
+        res.status(500).json({ error: 'merch_concept_status_failed', detail: 'internal_error' });
       }
     },
   );

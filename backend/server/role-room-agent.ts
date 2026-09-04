@@ -5180,20 +5180,50 @@ function extractContactPageUrl(html: string, baseUrl: string): string | null {
 
 async function enrichMerchSuppliersWithWebsiteSignals(
   suppliers: RoleRoomAgentMerchSupplier[],
+  options: {
+    maxSuppliers?: number;
+    concurrency?: number;
+    homepageTimeoutMs?: number;
+    contactTimeoutMs?: number;
+    totalTimeoutMs?: number;
+  } = {},
 ): Promise<void> {
-  const targets = suppliers.filter(
-    (s) => hasText(s.websiteUrl) && (s.status === "verified" || s.status === "likely"),
-  );
+  const maxSuppliers = Math.max(1, options.maxSuppliers ?? suppliers.length);
+  const homepageTimeoutMs = Math.max(250, options.homepageTimeoutMs ?? 6_000);
+  const contactTimeoutMs = Math.max(250, options.contactTimeoutMs ?? 4_000);
+  const totalTimeoutMs = Math.max(1_000, options.totalTimeoutMs ?? 60_000);
+  const startedAt = Date.now();
+  const priorityKeywords = /merch|profil|trykk|print|broder|tekstil|t.?skjort|klær|promo|reklame/i;
+  const targets = suppliers
+    .filter(
+      (s) => hasText(s.websiteUrl) && (s.status === "verified" || s.status === "likely"),
+    )
+    .sort((left, right) => {
+      const score = (supplier: RoleRoomAgentMerchSupplier): number => (
+        (priorityKeywords.test(supplier.name) ? 200 : 0)
+        + supplier.productCategories.filter((category) => category !== "unknown").length * 30
+        + supplier.techniques.filter((technique) => technique !== "unknown").length * 20
+        + (supplier.status === "verified" ? 20 : 0)
+        + supplier.confidence
+      );
+      return score(right) - score(left);
+    })
+    .slice(0, maxSuppliers);
   if (targets.length === 0) return;
 
-  const concurrency = 3;
+  const concurrency = Math.max(1, Math.min(options.concurrency ?? 3, targets.length));
   for (let i = 0; i < targets.length; i += concurrency) {
+    if (Date.now() - startedAt >= totalTimeoutMs) break;
     const batch = targets.slice(i, i + concurrency);
     await Promise.all(
       batch.map(async (supplier) => {
         try {
           const url = supplier.websiteUrl;
           if (!url) return;
+          const homepageBudgetMs = Math.min(
+            homepageTimeoutMs,
+            Math.max(250, totalTimeoutMs - (Date.now() - startedAt)),
+          );
           const response = await fetch(url, {
             headers: {
               "User-Agent":
@@ -5201,7 +5231,7 @@ async function enrichMerchSuppliersWithWebsiteSignals(
               Accept: "text/html,application/xhtml+xml",
             },
             redirect: "follow",
-            signal: AbortSignal.timeout(6_000),
+            signal: AbortSignal.timeout(homepageBudgetMs),
           });
           if (!response.ok) return;
           const html = await response.text();
@@ -5294,11 +5324,12 @@ async function enrichMerchSuppliersWithWebsiteSignals(
           let email = extractEmail(homepageText);
           let phone = extractNorwegianPhone(homepageText);
           const contactPageUrl = extractContactPageUrl(html, url);
-          if ((!email || !phone) && contactPageUrl && contactPageUrl !== url) {
+          const remainingMs = totalTimeoutMs - (Date.now() - startedAt);
+          if ((!email || !phone) && contactPageUrl && contactPageUrl !== url && remainingMs >= 250) {
             try {
               const cResp = await fetch(contactPageUrl, {
                 headers: { "User-Agent": "Mozilla/5.0 (compatible; RoleRoomAgent/1.0)" },
-                signal: AbortSignal.timeout(4_000),
+                signal: AbortSignal.timeout(Math.min(contactTimeoutMs, remainingMs)),
                 redirect: "follow",
               });
               if (cResp.ok) {
@@ -5351,6 +5382,14 @@ export type FetchMerchSuppliersOptions = {
   /** Website/contact enrichment is useful on explicit refresh, but skipped
    *  in the bootstrap's tighter wall-clock budget. */
   enrichWebsiteSignals?: boolean;
+  /** Explicit refreshes must finish before the hosting gateway closes the
+   *  request. Enrich the strongest candidates first and keep the full,
+   *  un-enriched candidate list available for manual review. */
+  websiteEnrichmentLimit?: number;
+  websiteEnrichmentConcurrency?: number;
+  websiteHomepageTimeoutMs?: number;
+  websiteContactTimeoutMs?: number;
+  websiteEnrichmentTotalTimeoutMs?: number;
 };
 
 export async function fetchMerchSuppliersAnalysis(
@@ -5436,13 +5475,24 @@ export async function fetchMerchSuppliersAnalysis(
   // technique/product offerings beyond name+NACE alone. Mutates the
   // supplier records in place — best-effort, never throws.
   if (options.enrichWebsiteSignals !== false) {
-    await enrichMerchSuppliersWithWebsiteSignals(suppliers);
+    await enrichMerchSuppliersWithWebsiteSignals(suppliers, {
+      maxSuppliers: options.websiteEnrichmentLimit,
+      concurrency: options.websiteEnrichmentConcurrency,
+      homepageTimeoutMs: options.websiteHomepageTimeoutMs,
+      contactTimeoutMs: options.websiteContactTimeoutMs,
+      totalTimeoutMs: options.websiteEnrichmentTotalTimeoutMs,
+    });
   }
   // Re-sort in case enrichment bumped some suppliers' confidence.
   suppliers = suppliers.sort((a, b) => b.confidence - a.confidence);
   const verifiedCount = suppliers.filter(
     (s) => s.status === "verified" || s.status === "likely",
   ).length;
+  const documentedCount = suppliers.filter((supplier) => (
+    supplier.websiteSignalsEnriched === true
+    && (supplier.websiteConfirmedProductCategories?.length ?? 0) > 0
+    && (supplier.websiteConfirmedTechniques?.length ?? 0) > 0
+  )).length;
 
   const techniqueCounts = emptyTechniqueCounts();
   const productCounts = emptyProductCounts();
@@ -5462,7 +5512,9 @@ export async function fetchMerchSuppliersAnalysis(
     source: "brreg+google_places",
     generatedAt: new Date().toISOString(),
     marketContext: verifiedCount > 0
-      ? `${verifiedCount} verifiserbare merch-leverandører i ${marketArea}, klare for tilbudsforespørsel.`
+      ? `${suppliers.length} leverandørkandidater i ${marketArea}. ${documentedCount > 0
+        ? `${documentedCount} har tilbud dokumentert på egen nettside.`
+        : "Nettsidebevis er ikke hentet ennå; kandidatene må kontrolleres før tilbudsforespørsel."}`
       : `Fant ${suppliers.length} mulige leverandører i ${marketArea}, men ingen scoret høyt nok til å anbefales uten manuell sjekk.`,
     suppliers,
     verifiedSupplierCount: verifiedCount,
