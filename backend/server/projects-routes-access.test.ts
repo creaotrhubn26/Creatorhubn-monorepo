@@ -3,7 +3,7 @@ import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { setupProjectsRoutes } from "./projects-routes";
 
-function buildApp() {
+function buildApp(options: { asyncSession?: boolean } = {}) {
   const captured: Array<{ sql: string; params: unknown[] }> = [];
   const pool = {
     query: async (sql: string, params: unknown[] = []) => {
@@ -67,7 +67,10 @@ function buildApp() {
     pool,
     mapProjectRow: (row: any) => row,
     compatResolveUserId: (req: express.Request) => String(req.headers["x-test-user"] || ""),
-    requireUserSession: (req: express.Request, res: express.Response) => {
+    requireUserSession: async (req: express.Request, res: express.Response) => {
+      if (options.asyncSession) {
+        await new Promise((resolve) => setTimeout(resolve, 1));
+      }
       const userId = String(req.headers["x-test-user"] || "");
       if (!userId) {
         res.status(401).json({ error: "unauthorized" });
@@ -189,7 +192,7 @@ describe("generic project access routes", () => {
   });
 
   it("serves files to the owner of a Role Room casting project", async () => {
-    const { app, captured } = buildApp();
+    const { app, captured } = buildApp({ asyncSession: true });
     const response = await request(app)
       .get("/api/projects/role-room-project/files")
       .set("x-test-user", "role-room-owner");
