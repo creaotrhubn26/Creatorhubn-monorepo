@@ -8,9 +8,19 @@ function buildApp(options: { asyncSession?: boolean } = {}) {
   const pool = {
     query: async (sql: string, params: unknown[] = []) => {
       captured.push({ sql, params });
-      if (sql.includes("SELECT 1 WHERE EXISTS")) {
-        const owner = params[1] === "owner-user"
-          || (params[0] === "role-room-project" && params[1] === "role-room-owner");
+      if (
+        sql.includes("SELECT 1 FROM projects")
+        || sql.includes("SELECT 1 FROM legacy.projects")
+        || sql.includes("SELECT 1 FROM casting_projects")
+      ) {
+        const owner = (
+          !sql.includes("SELECT 1 FROM casting_projects")
+          && params[1] === "owner-user"
+        ) || (
+          sql.includes("SELECT 1 FROM casting_projects")
+          && params[0] === "role-room-project"
+          && params[1] === "role-room-owner"
+        );
         return { rows: owner ? [{ ok: 1 }] : [], rowCount: owner ? 1 : 0 };
       }
       if (sql.includes("SELECT role, permissions")) {
