@@ -60,4 +60,30 @@ describe('RoleRoomResearchCompleteOverlay', () => {
     await waitFor(() => expect(screen.queryByTestId('research-complete-overlay')).toBeNull());
     expect(screen.getByTestId('parent-dialog')).not.toBeNull();
   });
+
+  it('shows the limitation matching the successful source for persisted results', async () => {
+    const placesLimitation = 'Google Places ga ingen trygge konkurrentkandidater etter at kunden selv ble ekskludert.';
+    const webLimitation = 'Webresultater bekrefter synlig produktrelevans, men ikke juridisk enhet.';
+    const persistedResult = {
+      ...result,
+      researchId: 'research-overlay-source-copy-test',
+      researchSkills: [{
+        id: 'discover_product_competitors',
+        version: '1.0.0',
+        status: 'ready',
+        executionKey: 'source-copy-test',
+        startedAt: '2026-09-05T00:00:00.000Z',
+        finishedAt: '2026-09-05T00:00:01.000Z',
+        durationMs: 1000,
+        evidenceCount: 8,
+        sourceKinds: ['web_search'],
+        limitations: [placesLimitation, webLimitation],
+      }],
+    } as unknown as RoleRoomAgentProducerBootstrapResult;
+
+    render(<ResearchCompleteOverlay result={persistedResult} projectId="project-1" />);
+
+    expect(await screen.findByText(webLimitation)).not.toBeNull();
+    expect(screen.queryByText(placesLimitation)).toBeNull();
+  });
 });
