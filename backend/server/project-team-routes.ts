@@ -73,6 +73,37 @@ export interface ProjectAccess {
   isOwner: boolean;
 }
 
+async function ownsProjectInAnyStore(
+  pool: any,
+  userId: string,
+  projectId: string,
+): Promise<boolean> {
+  // The three project stores do not necessarily share privileges in
+  // production. Keep each lookup isolated so a denied legacy schema cannot
+  // hide an otherwise valid public or Role Room casting owner.
+  const ownerChecks = await Promise.all([
+    pool.query(
+      `SELECT 1 FROM projects
+        WHERE id::text = $1 AND user_id::text = $2
+        LIMIT 1`,
+      [projectId, userId],
+    ).then((result: any) => (result.rowCount ?? result.rows?.length ?? 0) > 0).catch(() => false),
+    pool.query(
+      `SELECT 1 FROM legacy.projects
+        WHERE id = $1 AND user_id = $2
+        LIMIT 1`,
+      [projectId, userId],
+    ).then((result: any) => (result.rowCount ?? result.rows?.length ?? 0) > 0).catch(() => false),
+    pool.query(
+      `SELECT 1 FROM casting_projects
+        WHERE id = $1 AND created_by = $2
+        LIMIT 1`,
+      [projectId, userId],
+    ).then((result: any) => (result.rowCount ?? result.rows?.length ?? 0) > 0).catch(() => false),
+  ]);
+  return ownerChecks.some(Boolean);
+}
+
 /**
  * Én autoritativ tilgangsoppløsning for Team Workspace.
  * Eier kan alltid lese/skrive. Aktive medlemmer får rettighetene som faktisk
@@ -87,13 +118,7 @@ export async function getProjectAccess(
   const denied: ProjectAccess = { canRead: false, canEdit: false, isOwner: false };
   if (!userId || !projectId) return denied;
   try {
-    const owner = await pool.query(
-      `SELECT 1 WHERE EXISTS(SELECT 1 FROM projects WHERE id::text = $1 AND user_id::text = $2)
-                  OR EXISTS(SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2)
-                  OR EXISTS(SELECT 1 FROM casting_projects WHERE id = $1 AND created_by = $2)`,
-      [projectId, userId],
-    );
-    if ((owner.rowCount ?? owner.rows?.length ?? 0) > 0) {
+    if (await ownsProjectInAnyStore(pool, userId, projectId)) {
       return { canRead: true, canEdit: true, isOwner: true };
     }
 
@@ -141,13 +166,7 @@ export async function canEditProject(
 }
 
 async function isProjectOwner(pool: any, userId: string, projectId: string): Promise<boolean> {
-  const r = await pool.query(
-    `SELECT 1 WHERE EXISTS(SELECT 1 FROM projects WHERE id::text = $1 AND user_id::text = $2)
-                OR EXISTS(SELECT 1 FROM legacy.projects WHERE id = $1 AND user_id = $2)
-                OR EXISTS(SELECT 1 FROM casting_projects WHERE id = $1 AND created_by = $2)`,
-    [projectId, userId],
-  );
-  return (r.rowCount ?? 0) > 0;
+  return ownsProjectInAnyStore(pool, userId, projectId);
 }
 
 function getMailer(): ReturnType<typeof nodemailer.createTransport> | null {
