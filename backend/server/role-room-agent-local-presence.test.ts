@@ -13,6 +13,7 @@ const previousPlacesKey = process.env.GOOGLE_PLACES_API_KEY;
 const previousSearchKey = process.env.GOOGLE_SEARCH_API_KEY;
 const previousSearchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
 const previousAnthropicKey = process.env.ANTHROPIC_API_KEY;
+const previousOpenAiKey = process.env.OPENAI_API_KEY;
 const originalFetch = globalThis.fetch;
 
 function verifiedMedinnova(): RoleRoomAgentBrregCompany {
@@ -56,11 +57,16 @@ afterEach(() => {
     delete process.env.GOOGLE_SEARCH_ENGINE_ID;
   } else {
     process.env.GOOGLE_SEARCH_ENGINE_ID = previousSearchEngineId;
+  }
   if (previousAnthropicKey === undefined) {
     delete process.env.ANTHROPIC_API_KEY;
   } else {
     process.env.ANTHROPIC_API_KEY = previousAnthropicKey;
   }
+  if (previousOpenAiKey === undefined) {
+    delete process.env.OPENAI_API_KEY;
+  } else {
+    process.env.OPENAI_API_KEY = previousOpenAiKey;
   }
 });
 
@@ -354,6 +360,135 @@ describe('Role Room local-presence fail-closed policy', () => {
     });
   });
 
+  it('falls back to OpenAI web search and keeps only candidates backed by response citations', async () => {
+    delete process.env.GOOGLE_SEARCH_API_KEY;
+    delete process.env.GOOGLE_SEARCH_ENGINE_ID;
+    process.env.ANTHROPIC_API_KEY = 'anthropic-test-key';
+    process.env.OPENAI_API_KEY = 'openai-test-key';
+    const requestBodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = vi.fn(async (input, init) => {
+      requestBodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
+      if (String(input).includes('api.anthropic.com/v1/messages')) {
+        return new Response(JSON.stringify({
+          type: 'error',
+          error: { type: 'invalid_request_error', message: 'Web search is disabled.' },
+        }), { status: 400, headers: { 'content-type': 'application/json' } });
+      }
+      expect(String(input)).toBe('https://api.openai.com/v1/responses');
+      return new Response(JSON.stringify({
+        output: [
+          {
+            type: 'web_search_call',
+            status: 'completed',
+            action: {
+              type: 'search',
+              sources: [
+                { type: 'url', url: 'https://noteless.no/for-leger' },
+              ],
+            },
+          },
+          {
+            type: 'message',
+            content: [{
+              type: 'output_text',
+              text: JSON.stringify({
+                competitors: [
+                  {
+                    name: 'Noteless',
+                    url: 'https://noteless.no/for-leger',
+                    evidence: 'Medisinsk AI-programvare for klinisk journalnotat og norske leger.',
+                  },
+                  {
+                    name: 'Uten kilde',
+                    url: 'https://uncited.example/produkt',
+                    evidence: 'Medisinsk programvare for leger.',
+                  },
+                ],
+              }),
+              annotations: [{
+                type: 'url_citation',
+                title: 'Noteless for leger',
+                url: 'https://noteless.no/for-leger',
+              }],
+            }],
+          },
+        ],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+
+    const result = await fetchWebCompetitorAnalysis(
+      {
+        projectId: 'medside-openai-web-fallback-test',
+        websiteUrl: 'https://medside.no',
+        companyName: 'MEDINNOVA AS',
+      },
+      {
+        finalUrl: 'https://medside.no/',
+        metaDescription: 'GDPR-sikker AI-plattform for medisinsk transkripsjon og journalnotat.',
+        textSnippet: 'Bygget for norske leger og helsepersonell.',
+        selectedPageSnippets: [],
+        socialProfileCandidates: [],
+      },
+      verifiedMedinnova(),
+    );
+
+    expect(result.status).toBe('ready');
+    expect(result.competitors).toHaveLength(1);
+    expect(result.competitors[0]).toMatchObject({ name: 'Noteless', source: 'web_search' });
+    expect(result.competitors[0]?.evidence).toContainEqual(expect.objectContaining({
+      label: 'Funnet via OpenAI websøk',
+    }));
+    expect(JSON.stringify(result)).not.toContain('Uten kilde');
+    expect(requestBodies[1]).toMatchObject({
+      model: 'gpt-5',
+      tools: [{
+        type: 'web_search',
+        search_context_size: 'medium',
+        user_location: {
+          type: 'approximate',
+          country: 'NO',
+          city: 'Oslo',
+          region: 'Oslo',
+          timezone: 'Europe/Oslo',
+        },
+      }],
+      tool_choice: 'required',
+      include: ['web_search_call.action.sources'],
+    });
+  });
+
+  it('exposes a safe OpenAI web-search status without leaking provider error text', async () => {
+    delete process.env.GOOGLE_SEARCH_API_KEY;
+    delete process.env.GOOGLE_SEARCH_ENGINE_ID;
+    delete process.env.ANTHROPIC_API_KEY;
+    process.env.OPENAI_API_KEY = 'openai-test-key';
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({
+      error: { message: 'sensitive upstream detail' },
+    }), { status: 429, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+
+    const result = await fetchWebCompetitorAnalysis(
+      {
+        projectId: 'medside-openai-web-status-test',
+        websiteUrl: 'https://medside.no',
+        companyName: 'MEDINNOVA AS',
+      },
+      {
+        finalUrl: 'https://medside.no/',
+        metaDescription: 'GDPR-sikker AI-plattform for medisinsk transkripsjon og journalnotat.',
+        textSnippet: 'Bygget for norske leger og helsepersonell.',
+        selectedPageSnippets: [],
+        socialProfileCandidates: [],
+      },
+      verifiedMedinnova(),
+    );
+
+    expect(result.status).toBe('limited');
+    expect(result.limitations).toContain(
+      'OpenAI websøk traff leverandørens kapasitets- eller kvotegrense (HTTP 429). Ingen webkandidater vises uten kilde.',
+    );
+    expect(JSON.stringify(result)).not.toContain('sensitive upstream detail');
+  });
+
   it('filters wrong-country Places candidates from merch discovery', async () => {
     process.env.GOOGLE_PLACES_API_KEY = 'test-key';
     globalThis.fetch = vi.fn(async (input) => {
@@ -374,6 +509,7 @@ describe('Role Room local-presence fail-closed policy', () => {
           {
             id: 'oslo-merch',
             displayName: { text: 'Oslo Profil' },
+            primaryTypeDisplayName: { text: 'Profilklær og broderi' },
             formattedAddress: 'Storgata 1, 0155 Oslo, Norge',
           },
         ],
@@ -383,7 +519,13 @@ describe('Role Room local-presence fail-closed policy', () => {
     const startedAt = Date.now();
     const result = await fetchMerchSuppliersAnalysis(
       { projectId: 'medside-merch-test', websiteUrl: 'https://medside.no', companyName: 'MEDINNOVA AS' },
-      { finalUrl: 'https://medside.no/', selectedPageSnippets: [], socialProfileCandidates: [] },
+      {
+        finalUrl: 'https://medside.no/',
+        metaDescription: 'GDPR-sikker AI-plattform for medisinsk transkripsjon og journalnotat.',
+        textSnippet: 'Bygget for norske leger og helsepersonell.',
+        selectedPageSnippets: [],
+        socialProfileCandidates: [],
+      },
       null,
       verifiedMedinnova(),
     );
@@ -391,6 +533,68 @@ describe('Role Room local-presence fail-closed policy', () => {
     expect(Date.now() - startedAt).toBeLessThan(180);
     expect(result.suppliers.map((entry) => entry.name)).toEqual(['Oslo Profil']);
     expect(JSON.stringify(result)).not.toMatch(/Atlanta|Glenlake|Sandy Springs/i);
+    expect(result.recommendations.map((entry) => entry.productId)).toEqual([
+      'polo', 'mug', 'totebag', 'hoodie',
+    ]);
+    expect(new Set(result.recommendations.map((entry) => entry.productId)).size).toBe(
+      result.recommendations.length,
+    );
+    expect(result.recommendations[0]).toMatchObject({
+      productLabel: 'Brodert polo',
+      supplierMatch: null,
+    });
+    expect(result.recommendations[0]?.rationale).toMatch(/MEDINNOVA AS.*helseteknologi/i);
+  });
+
+  it('matches only website-documented category and technique and never reuses a supplier', async () => {
+    process.env.GOOGLE_PLACES_API_KEY = 'test-key';
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('data.brreg.no')) {
+        return new Response(JSON.stringify({ _embedded: { enheter: [] } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('osloprofil.example')) {
+        return new Response(`<!doctype html><html><head><title>Oslo Profil</title><meta name="description" content="Profilklær med broderi"></head><body>Vi leverer polo, skjorter og hoodies med broderi til bedrifter. Kontakt post@osloprofil.no eller 22 33 44 55 for tilbud.</body></html>`, {
+          status: 200,
+          headers: { 'content-type': 'text/html' },
+        });
+      }
+      return new Response(JSON.stringify({
+        places: [{
+          id: 'oslo-merch-documented',
+          displayName: { text: 'Oslo Profil' },
+          primaryTypeDisplayName: { text: 'Profilklær og broderi' },
+          formattedAddress: 'Storgata 1, 0155 Oslo, Norge',
+          websiteUri: 'https://osloprofil.example',
+        }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+
+    const result = await fetchMerchSuppliersAnalysis(
+      { projectId: 'medside-merch-proof-test', websiteUrl: 'https://medside.no', companyName: 'MEDINNOVA AS' },
+      {
+        finalUrl: 'https://medside.no/',
+        metaDescription: 'GDPR-sikker AI-plattform for medisinsk transkripsjon og journalnotat.',
+        textSnippet: 'Bygget for norske leger og helsepersonell.',
+        selectedPageSnippets: [],
+        socialProfileCandidates: [],
+      },
+      null,
+      verifiedMedinnova(),
+    );
+
+    expect(result.suppliers[0]).toMatchObject({
+      websiteSignalsEnriched: true,
+      websiteConfirmedTechniques: ['embroidery'],
+      websiteConfirmedProductCategories: ['apparel'],
+    });
+    expect(result.recommendations[0]?.supplierMatch).toMatchObject({ name: 'Oslo Profil' });
+    expect(result.recommendations[3]?.supplierMatch).toBeNull();
+    const matchedNames = result.recommendations.map((entry) => entry.supplierMatch?.name).filter(Boolean);
+    expect(new Set(matchedNames).size).toBe(matchedNames.length);
   });
 
   it('retains fast merch results and reports partial provider timeouts', async () => {

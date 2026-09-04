@@ -47,7 +47,7 @@ export interface RoleRoomAgentAccess {
   defaultModel?: string;
   googlePlacesConfigured?: boolean;
   webSearchConfigured?: boolean;
-  webSearchProvider?: 'google_cse' | 'anthropic' | null;
+  webSearchProvider?: 'google_cse' | 'anthropic_openai' | 'anthropic' | 'openai' | null;
   cohereConfigured?: boolean;
   cohereRerankModel?: string;
   brregConfigured?: boolean;
@@ -315,6 +315,31 @@ export interface RoleRoomAgentMerchSupplierEvidence {
   weight: number;
 }
 
+export type RoleRoomAgentMerchProductId =
+  | 'tshirt'
+  | 'hoodie'
+  | 'polo'
+  | 'cap'
+  | 'totebag'
+  | 'mug';
+
+export interface RoleRoomAgentMerchRecommendation {
+  productId: RoleRoomAgentMerchProductId;
+  productLabel: string;
+  productCategory: RoleRoomAgentMerchProductCategory;
+  priority: 'primary' | 'secondary' | 'experimental';
+  purpose: string;
+  rationale: string;
+  recommendedTechnique: RoleRoomAgentMerchTechnique;
+  supplierMatch?: {
+    name: string;
+    organizationNumber?: string | null;
+    placeId?: string | null;
+    confidence: number;
+  } | null;
+  requiresManualConfirmation: true;
+}
+
 export interface RoleRoomAgentMerchSupplier {
   source: 'brreg_nace' | 'google_places';
   naceCode?: string | null;
@@ -333,6 +358,9 @@ export interface RoleRoomAgentMerchSupplier {
   offerings?: string[];
   /** True when the supplier's website was scraped for richer signals. */
   websiteSignalsEnriched?: boolean;
+  /** Signals explicitly found on the supplier's own website. */
+  websiteConfirmedTechniques?: RoleRoomAgentMerchTechnique[];
+  websiteConfirmedProductCategories?: RoleRoomAgentMerchProductCategory[];
   /** Contact info scraped from the supplier's homepage and/or
    *  /kontakt subpage. All fields nullable. */
   contact?: {
@@ -357,6 +385,7 @@ export interface RoleRoomAgentMerchSuppliers {
   verifiedSupplierCount: number;
   techniqueCounts: Record<RoleRoomAgentMerchTechnique, number>;
   productCounts: Record<RoleRoomAgentMerchProductCategory, number>;
+  recommendations?: RoleRoomAgentMerchRecommendation[];
   cooperationAngles: string[];
   outreachChecklist: string[];
   partial?: boolean;
@@ -1451,9 +1480,34 @@ export const roleRoomAgentService = {
   },
 
   async getSnapshot(projectId: string): Promise<RoleRoomAgentProducerBootstrapResult | null> {
-    return settingsService.getSetting<RoleRoomAgentProducerBootstrapResult>(AGENT_SNAPSHOT_NAMESPACE, {
+    const snapshot = await settingsService.getSetting<RoleRoomAgentProducerBootstrapResult>(AGENT_SNAPSHOT_NAMESPACE, {
       projectId,
     });
+    if (snapshot) return snapshot;
+
+    // Older streaming clients persisted the immutable research version but
+    // skipped the active settings snapshot. Restore that exact version rather
+    // than generating a duplicate research run.
+    try {
+      const params = new URLSearchParams({ projectId });
+      const response = await fetch(`/api/role-room/agent/research/latest?${params.toString()}`, {
+        cache: 'no-store',
+        headers: readRoleRoomAgentHeaders(),
+      });
+      const payload = await response.json().catch(() => null) as {
+        success?: boolean;
+        result?: RoleRoomAgentProducerBootstrapResult;
+      } | null;
+      if (!response.ok || !payload?.success || !payload.result) return null;
+      await settingsService.setSetting<RoleRoomAgentProducerBootstrapResult>(
+        AGENT_SNAPSHOT_NAMESPACE,
+        payload.result,
+        { projectId },
+      );
+      return payload.result;
+    } catch {
+      return null;
+    }
   },
 
   async saveSnapshot(

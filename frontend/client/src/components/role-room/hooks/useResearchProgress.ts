@@ -14,7 +14,10 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
-import { roleRoomAgentDefaultHeaders } from '../services/roleRoomAgentService';
+import {
+  roleRoomAgentDefaultHeaders,
+  roleRoomAgentService,
+} from '../services/roleRoomAgentService';
 import type { RoleRoomAgentProducerBootstrapResult } from '../services/roleRoomAgentService';
 
 export type ResearchStageKey =
@@ -169,6 +172,12 @@ export function useResearchProgress(): UseResearchProgressReturn {
             } else if (frame.event === 'done') {
               const payload = parsed as { success?: boolean; result?: RoleRoomAgentProducerBootstrapResult };
               if (payload?.success && payload.result) {
+                // Match the non-stream bootstrap contract before exposing
+                // done. Without this PUT the version history exists, but the
+                // project loses the result (including merch) after a reload.
+                await roleRoomAgentService.saveSnapshot(
+                  input.projectId, payload.result,
+                );
                 setResult(payload.result);
                 setStatus('done');
               } else {
