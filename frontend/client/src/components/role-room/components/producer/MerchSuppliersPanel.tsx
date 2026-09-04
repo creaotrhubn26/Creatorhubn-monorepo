@@ -285,7 +285,7 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
   }), [productFilter, rankedSuppliers, techniqueFilter]);
 
   const topSuppliers = useMemo(
-    () => filteredSuppliers.filter(hasDocumentedSupplierCapabilities).slice(0, 5),
+    () => filteredSuppliers.slice(0, 5),
     [filteredSuppliers],
   );
   const documentedSupplierCount = merch?.suppliers.filter(hasDocumentedSupplierCapabilities).length ?? 0;
@@ -518,16 +518,19 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
 
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8} alignItems={{ sm: 'center' }} justifyContent="space-between">
         <Box>
-          <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>Topp 5 leverandører med nettsidebevis</Typography>
+          <Typography sx={{ color: '#f8fafc', fontWeight: 800 }}>Topp 5 merch-leverandører</Typography>
           <Typography sx={{ color: 'rgba(226,232,240,0.56)', fontSize: '0.76rem' }}>
-            Rangert etter dokumenterte tilbud, status, tillitsscore og anmeldelser.
+            Rangert etter nettsidebevis, status, tillitsscore og anmeldelser. Kandidater uten bevis merkes for manuell kontroll.
           </Typography>
         </Box>
         {rankedSuppliers.length > 0 ? (
           <Button
             size="small"
             variant="outlined"
-            onClick={() => setAllSuppliersOpen(true)}
+            onClick={(event) => {
+              event.currentTarget.blur();
+              setAllSuppliersOpen(true);
+            }}
             sx={{ textTransform: 'none', fontWeight: 700, flexShrink: 0 }}
           >
             Se alle ({rankedSuppliers.length})
@@ -539,12 +542,6 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
         {filteredSuppliers.length === 0 ? (
           <Alert severity="info" sx={{ width: '100%' }}>
             Ingen leverandører matcher de valgte filtrene. Klikk på en chip for å fjerne filteret.
-          </Alert>
-        ) : null}
-        {filteredSuppliers.length > 0 && topSuppliers.length === 0 ? (
-          <Alert severity="warning" sx={{ width: '100%' }}>
-            Ingen leverandører har ennå nettsidebevis for både produktkategori og produksjonsteknikk.
-            Bruk «Oppdater og verifiser», eller åpne «Se alle» for kandidater som må kontrolleres manuelt.
           </Alert>
         ) : null}
         {topSuppliers.map((supplier) => {
@@ -596,6 +593,17 @@ const MerchSuppliersPanel: React.FC<MerchSuppliersPanelProps> = ({ projectId, bo
                         sx={{ bgcolor: 'rgba(99,102,241,0.22)', color: '#e0e7ff', fontWeight: 700, height: 20, fontSize: '0.66rem' }}
                       />
                     ) : null}
+                    <Chip
+                      size="small"
+                      label={hasDocumentedSupplierCapabilities(supplier) ? 'Nettsidebevis' : 'Manuell kontroll'}
+                      sx={{
+                        bgcolor: hasDocumentedSupplierCapabilities(supplier) ? 'rgba(34,197,94,0.14)' : 'rgba(250,204,21,0.12)',
+                        color: hasDocumentedSupplierCapabilities(supplier) ? '#bbf7d0' : '#fde68a',
+                        fontWeight: 700,
+                        height: 20,
+                        fontSize: '0.66rem',
+                      }}
+                    />
                   </Stack>
                   <Chip
                     size="small"
