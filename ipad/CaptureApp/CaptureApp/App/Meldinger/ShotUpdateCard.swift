@@ -251,7 +251,7 @@ struct ShotThumbView: View {
         if let url = thumb.imageURL, let u = URL(string: url) {
             AsyncImage(url: u) { phase in
                 if let image = phase.image {
-                    image.resizable().aspectRatio(contentMode: .fill)
+                    image.resizable().scaledToFill()
                 } else {
                     placeholder
                 }
