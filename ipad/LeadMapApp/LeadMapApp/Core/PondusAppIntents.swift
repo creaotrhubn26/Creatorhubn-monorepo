@@ -143,7 +143,10 @@ struct NextPondusStepIntent: AppIntent {
         // ActivatePondusIntent — så neste steg fungerer selv etter
         // en re-launch.
         let activeId = PondusIntentState.shared.activeTemplateId
-        AppStateBridge.shared.navigateToPondus(templateId: activeId)
+        AppStateBridge.shared.navigateToPondus(
+            templateId: activeId,
+            stepIndex: next
+        )
         // Poste steg-info separat så LeadbookView vet steget skal endres.
         // Bruk gammel NotificationCenter for stegteller siden det bare er
         // en UI-hint, ikke navigasjons-krav.

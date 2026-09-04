@@ -334,7 +334,10 @@ export async function getLeadById(
 export type DuplicateLeadMatch =
   | "organization_number"
   | "google_place_id"
-  | "website_domain";
+  | "website_domain"
+  | "email"
+  | "phone"
+  | "geographic_proximity";
 
 export class DuplicateLeadError extends Error {
   constructor(
@@ -364,6 +367,40 @@ type LeadCreationInput = LeadCreationBody & {
   organizationId: string;
   idempotencyKey: string | null;
   requestHash: string | null;
+  allowDuplicate?: boolean;
+};
+
+type LeadDuplicateIdentityInput = LeadCreationBody & {
+  organizationId: string;
+};
+
+type DuplicateLeadRow = {
+  id: string;
+  name: string;
+  company: string | null;
+  email: string | null;
+  phone: string | null;
+  website_url: string | null;
+  address: string | null;
+  city: string | null;
+  organization_number_match: boolean;
+  google_place_id_match: boolean;
+  website_domain_match: boolean;
+  email_match: boolean;
+  phone_match: boolean;
+  geographic_proximity_match: boolean;
+};
+
+export type LeadDuplicateCandidate = {
+  id: string;
+  name: string;
+  company: string | null;
+  email: string | null;
+  phone: string | null;
+  websiteUrl: string | null;
+  address: string | null;
+  city: string | null;
+  matchReasons: DuplicateLeadMatch[];
 };
 
 function leadIdentityLockKeys(input: LeadCreationInput): string[] {
@@ -375,6 +412,11 @@ function leadIdentityLockKeys(input: LeadCreationInput): string[] {
     input.websiteDomainNormalized
       ? `website_domain:${input.websiteDomainNormalized}`
       : null,
+    input.emailNormalized ? `email:${input.emailNormalized}` : null,
+    input.phoneNormalized ? `phone:${input.phoneNormalized}` : null,
+    // Én kort org-lås gjør nærhetskontroll + INSERT atomisk også når to
+    // enheter slipper pinnen på hver sin side av en geografisk bucket.
+    input.locationConfidence !== "unknown" ? "geographic_proximity" : null,
   ]
     .filter((value): value is string => Boolean(value))
     .map((value) => `leadgrid:${input.organizationId}:${value}`)
@@ -393,56 +435,136 @@ async function lockLeadIdentities(
   }
 }
 
-async function findDuplicateLead(
-  client: PoolClient,
-  input: LeadCreationInput,
-): Promise<{ id: string; matchedFields: DuplicateLeadMatch[] } | null> {
+function duplicateMatchReasons(row: DuplicateLeadRow): DuplicateLeadMatch[] {
+  const matchedFields: DuplicateLeadMatch[] = [];
+  if (row.organization_number_match) matchedFields.push("organization_number");
+  if (row.google_place_id_match) matchedFields.push("google_place_id");
+  if (row.website_domain_match) matchedFields.push("website_domain");
+  if (row.email_match) matchedFields.push("email");
+  if (row.phone_match) matchedFields.push("phone");
+  if (row.geographic_proximity_match) matchedFields.push("geographic_proximity");
+  return matchedFields;
+}
+
+async function queryDuplicateLeadRows(
+  queryable: Pool | PoolClient,
+  input: LeadDuplicateIdentityInput,
+  limit: number,
+): Promise<DuplicateLeadRow[]> {
+  const matchByLocation = input.locationConfidence !== "unknown";
   if (
     !input.organizationNumber &&
     !input.googlePlaceId &&
-    !input.websiteDomainNormalized
+    !input.websiteDomainNormalized &&
+    !input.emailNormalized &&
+    !input.phoneNormalized &&
+    !matchByLocation
   ) {
-    return null;
+    return [];
   }
 
-  const result = await client.query<{
-    id: string;
-    organization_number_match: boolean;
-    google_place_id_match: boolean;
-    website_domain_match: boolean;
-  }>(
-    `SELECT id::text,
+  const result = await queryable.query<DuplicateLeadRow>(
+    `SELECT c.id::text, c.name, c.company, c.email, c.phone,
+            c.website_url, c.address, c.city,
             ($2::text IS NOT NULL AND enrichment_org_nr = $2::text)
               AS organization_number_match,
             ($3::text IS NOT NULL AND google_place_id = $3::text)
               AS google_place_id_match,
             ($4::text IS NOT NULL AND website_domain_normalized = $4::text)
-              AS website_domain_match
-       FROM crm_customers
+              AS website_domain_match,
+            ($5::text IS NOT NULL AND email_normalized = $5::text)
+              AS email_match,
+            ($6::text IS NOT NULL AND phone_normalized = $6::text)
+              AS phone_match,
+            (
+              $7::boolean
+              AND c.latitude BETWEEN $8::double precision - 0.001
+                                 AND $8::double precision + 0.001
+              AND c.longitude BETWEEN $9::double precision - 0.003
+                                  AND $9::double precision + 0.003
+              AND 111320.0 * SQRT(
+                POWER(c.latitude::double precision - $8::double precision, 2)
+                + POWER(
+                  (c.longitude::double precision - $9::double precision)
+                  * COS(RADIANS(
+                    (c.latitude::double precision + $8::double precision) / 2
+                  )),
+                  2
+                )
+              ) <= 25.0
+            ) AS geographic_proximity_match
+       FROM crm_customers c
       WHERE organization_id = $1::uuid
         AND archived_at IS NULL
         AND (
           ($2::text IS NOT NULL AND enrichment_org_nr = $2::text)
           OR ($3::text IS NOT NULL AND google_place_id = $3::text)
           OR ($4::text IS NOT NULL AND website_domain_normalized = $4::text)
+          OR ($5::text IS NOT NULL AND email_normalized = $5::text)
+          OR ($6::text IS NOT NULL AND phone_normalized = $6::text)
+          OR (
+            $7::boolean
+            AND c.latitude BETWEEN $8::double precision - 0.001
+                               AND $8::double precision + 0.001
+            AND c.longitude BETWEEN $9::double precision - 0.003
+                                AND $9::double precision + 0.003
+            AND 111320.0 * SQRT(
+              POWER(c.latitude::double precision - $8::double precision, 2)
+              + POWER(
+                (c.longitude::double precision - $9::double precision)
+                * COS(RADIANS(
+                  (c.latitude::double precision + $8::double precision) / 2
+                )),
+                2
+              )
+            ) <= 25.0
+          )
         )
-      ORDER BY created_at ASC
-      LIMIT 1`,
+      ORDER BY c.created_at ASC
+      LIMIT $10::integer`,
     [
       input.organizationId,
       input.organizationNumber,
       input.googlePlaceId,
       input.websiteDomainNormalized,
+      input.emailNormalized,
+      input.phoneNormalized,
+      matchByLocation,
+      input.latitude,
+      input.longitude,
+      Math.max(1, Math.min(limit, 20)),
     ],
   );
 
-  const row = result.rows[0];
+  return result.rows;
+}
+
+export async function findLeadDuplicateCandidates(
+  pool: Pool,
+  input: LeadDuplicateIdentityInput,
+): Promise<LeadDuplicateCandidate[]> {
+  const rows = await queryDuplicateLeadRows(pool, input, 20);
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    company: row.company,
+    email: row.email,
+    phone: row.phone,
+    websiteUrl: row.website_url,
+    address: row.address,
+    city: row.city,
+    matchReasons: duplicateMatchReasons(row),
+  }));
+}
+
+async function findDuplicateLead(
+  client: PoolClient,
+  input: LeadCreationInput,
+): Promise<{ id: string; matchedFields: DuplicateLeadMatch[] } | null> {
+  const row = (await queryDuplicateLeadRows(client, input, 1))[0];
+
   if (!row) return null;
-  const matchedFields: DuplicateLeadMatch[] = [];
-  if (row.organization_number_match) matchedFields.push("organization_number");
-  if (row.google_place_id_match) matchedFields.push("google_place_id");
-  if (row.website_domain_match) matchedFields.push("website_domain");
-  return { id: row.id, matchedFields };
+  return { id: row.id, matchedFields: duplicateMatchReasons(row) };
 }
 
 type ExistingIdempotentCreation = {
@@ -507,7 +629,9 @@ export async function createLeadFromPin(
       return replay;
     }
 
-    const duplicate = await findDuplicateLead(client, input);
+    const duplicate = input.allowDuplicate
+      ? null
+      : await findDuplicateLead(client, input);
     if (duplicate) {
       throw new DuplicateLeadError(duplicate.id, duplicate.matchedFields);
     }

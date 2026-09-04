@@ -5226,11 +5226,12 @@ struct KartView: View {
         req.source = MKMapItem(placemark: MKPlacemark(coordinate: from))
         req.destination = MKMapItem(placemark: MKPlacemark(coordinate: to))
         req.transportType = navTransport.mkType
-        let verb = navTransport.etaVerb
+        let fallbackSpeed = navTransport.fallbackSpeed
+        let directMeters = metersBetween(from, to)
         MKDirections(request: req).calculate { resp, _ in
             var coords: [CLLocationCoordinate2D] = [from, to]
-            var meters = self.metersBetween(from, to)
-            var seconds = meters / self.navTransport.fallbackSpeed
+            var meters = directMeters
+            var seconds = meters / fallbackSpeed
             var steps: [NavStep] = []
             if let route = resp?.routes.first {
                 let poly = route.polyline
@@ -5247,7 +5248,21 @@ struct KartView: View {
                     var spc = [CLLocationCoordinate2D](repeating: kCLLocationCoordinate2DInvalid, count: sp.pointCount)
                     sp.getCoordinates(&spc, range: NSRange(location: 0, length: sp.pointCount))
                     let c = spc.first ?? to
-                    steps.append(NavStep(text: instr, coord: c, icon: self.maneuverIcon(instr)))
+                    let normalized = instr.lowercased()
+                    let icon: String
+                    if normalized.contains("høyre") || normalized.contains("right") {
+                        icon = "arrow.turn.up.right"
+                    } else if normalized.contains("venstre") || normalized.contains("left") {
+                        icon = "arrow.turn.up.left"
+                    } else if normalized.contains("rundkjøring") || normalized.contains("roundabout") {
+                        icon = "arrow.triangle.2.circlepath"
+                    } else if normalized.contains("ankom") || normalized.contains("arrive")
+                                || normalized.contains("destinasjon") {
+                        icon = "mappin.and.ellipse"
+                    } else {
+                        icon = "arrow.up"
+                    }
+                    steps.append(NavStep(text: instr, coord: c, icon: icon))
                 }
             }
             DispatchQueue.main.async {

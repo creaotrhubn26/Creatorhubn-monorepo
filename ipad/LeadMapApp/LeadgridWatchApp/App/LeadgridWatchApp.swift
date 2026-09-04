@@ -52,6 +52,19 @@ struct RootTabs: View {
             PondusLynkortView()
         }
         .tabViewStyle(.verticalPage)
+        .alert(
+            "Handlingen kunne ikke lagres",
+            isPresented: Binding(
+                get: { session.quickActionError != nil },
+                set: { isPresented in
+                    if !isPresented { session.clearQuickActionError() }
+                }
+            )
+        ) {
+            Button("OK") { session.clearQuickActionError() }
+        } message: {
+            Text(session.quickActionError ?? "Synkroniser Leadgrid og prøv igjen.")
+        }
     }
 }
 

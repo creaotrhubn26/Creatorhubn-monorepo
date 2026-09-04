@@ -92,9 +92,11 @@ const WRITE_ROLES = new Set(["admin", "salgssjef", "teamleder", "kvalitet"]);
 const FEEDBACK_ROLES = new Set(["admin", "salgssjef", "teamleder"]);
 const VALID_STATUS = new Set(["draft", "published", "archived"]);
 const VALID_OUTCOME = new Set(["won", "lost", "ongoing"]);
+const VALID_CHANNEL = new Set(["field", "telephone", "email", "video"]);
 const VALID_DIMENSIONS = new Set([
   "autoritet", "klarhet", "troverdighet", "trygghet", "fremdrift",
 ]);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 async function orgRole(
   pool: Pool, orgId: string, userId: string,
@@ -122,6 +124,57 @@ function intOrNull(v: unknown): number | null {
 
 function jsonArr(v: unknown): unknown[] {
   return Array.isArray(v) ? v : [];
+}
+
+function bounded(v: unknown, max: number): string | null {
+  const value = str(v).trim();
+  return value.length <= max ? value : null;
+}
+
+function normalizedChannel(v: unknown): string | null {
+  const value = str(v, "telephone").toLowerCase();
+  const canonical = ["phone", "telefon", "telefonen"].includes(value)
+    ? "telephone"
+    : value;
+  return VALID_CHANNEL.has(canonical) ? canonical : null;
+}
+
+function optionalBoundedInteger(
+  value: unknown, min: number, max: number,
+): { valid: boolean; value: number | null } {
+  if (value === undefined || value === null || value === "") {
+    return { valid: true, value: null };
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) {
+    return { valid: false, value: null };
+  }
+  return { valid: true, value: parsed };
+}
+
+function validClientActionId(value: unknown): string | null {
+  const id = str(value).trim();
+  return id && UUID_RE.test(id) ? id : null;
+}
+
+type ExampleCursor = { createdAt: string; id: string };
+
+function decodeExampleCursor(value: unknown): ExampleCursor | null {
+  if (typeof value !== "string" || !value) return null;
+  try {
+    const decoded = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as ExampleCursor;
+    if (!UUID_RE.test(decoded.id) || Number.isNaN(Date.parse(decoded.createdAt))) return null;
+    return decoded;
+  } catch {
+    return null;
+  }
+}
+
+function encodeExampleCursor(row: { created_at: string | Date; id: string }): string {
+  const createdAt = row.created_at instanceof Date
+    ? row.created_at.toISOString()
+    : String(row.created_at);
+  return Buffer.from(JSON.stringify({ createdAt, id: row.id }), "utf8").toString("base64url");
 }
 
 // Regex-basert PII-maskering (§6 i docs/leadgrid-gdpr-lydopptak.md) — kjøres
@@ -179,54 +232,47 @@ export function registerLeadgridLeadbookExamplesRoutes(
   }
 
   // ── GET /api/leadgrid/leadbook/examples ───────────────────────────
-  // Publiserte for alle medlemmer; ledere ser også drafts (kurerings-kø).
-  // Tilbakemeldinger joines inn per eksempel.
+  // Paginert SUMMARY-liste. Tunge transcript/key_moments/reply-felter
+  // hentes kun fra detail-endepunktet under.
   app.get("/api/leadgrid/leadbook/examples", async (req, res) => {
     const g = await guard(req, res);
     if (!g) return;
     const isLeder = g.role != null && WRITE_ROLES.has(g.role);
+    const requestedLimit = Number(req.query.limit ?? 30);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.max(1, Math.min(Math.trunc(requestedLimit), 50))
+      : 30;
+    const cursorRaw = req.query.cursor;
+    const cursor = decodeExampleCursor(cursorRaw);
+    if (cursorRaw != null && !cursor) {
+      return res.status(400).json({ error: "ugyldig_cursor" });
+    }
     try {
       const r = await pool.query(
-        `SELECT * FROM leadbook_examples
+        `SELECT id, status, title, customer_label, industry, outcome, channel,
+                duration_sec, seller_user_id, seller_name, happened_on,
+                pondus_score, featured_dimension, dimension_scores,
+                key_learnings, deal_value_nok, summary, created_by,
+                created_by_name, created_at, updated_at, source_consent_id,
+                delete_requested_at, anonymized_at
+           FROM leadbook_examples
           WHERE organization_id = $1 AND status <> 'archived'
-            AND (status = 'published' OR $2)
-          ORDER BY created_at DESC
-          LIMIT 200`,
-        [g.orgId, isLeder],
+            AND (
+              status = 'published'
+              OR $2
+              OR (status = 'draft' AND seller_user_id = $3)
+            )
+            AND (
+              $4::timestamptz IS NULL
+              OR (created_at, id) < ($4::timestamptz, $5::uuid)
+            )
+          ORDER BY created_at DESC, id DESC
+          LIMIT $6`,
+        [g.orgId, isLeder, g.session.userId, cursor?.createdAt ?? null, cursor?.id ?? null, limit + 1],
       );
-      const ids = r.rows.map((row) => row.id);
-      let feedback: Record<string, unknown[]> = {};
-      if (ids.length > 0) {
-        const fr = await pool.query(
-          `SELECT * FROM leadbook_example_feedback
-            WHERE example_id = ANY($1::uuid[])
-            ORDER BY created_at ASC`,
-          [ids],
-        );
-        // Svar-tråder (2026-07-17, dialog-utvidelsen) joines inn per
-        // tilbakemelding.
-        const fbIds = fr.rows.map((row) => row.id);
-        let replies: Record<string, unknown[]> = {};
-        if (fbIds.length > 0) {
-          const rr = await pool.query(
-            `SELECT * FROM leadbook_feedback_replies
-              WHERE feedback_id = ANY($1::uuid[])
-              ORDER BY created_at ASC`,
-            [fbIds],
-          );
-          replies = rr.rows.reduce((acc: Record<string, unknown[]>, row) => {
-            (acc[row.feedback_id] ??= []).push(row);
-            return acc;
-          }, {});
-        }
-        feedback = fr.rows.reduce((acc: Record<string, unknown[]>, row) => {
-          (acc[row.example_id] ??= []).push({
-            ...row,
-            replies: replies[row.id] ?? [],
-          });
-          return acc;
-        }, {});
-      }
+      const hasMore = r.rows.length > limit;
+      const page = r.rows.slice(0, limit);
+      const ids = page.map((row) => row.id);
       // Visningstall (2026-07-17, distribusjon): kun for ledere — «så
       // ledere ser hva som faktisk brukes».
       let views: Record<string, { views_total: number; viewers: number }> = {};
@@ -247,18 +293,86 @@ export function registerLeadgridLeadbookExamplesRoutes(
         ]));
       }
       return res.json({
-        examples: r.rows.map((row) => ({
+        examples: page.map((row) => ({
           ...row,
-          feedback: feedback[row.id] ?? [],
           views_total: views[row.id]?.views_total ?? null,
           viewers_count: views[row.id]?.viewers ?? null,
+          can_request_deletion:
+            isLeder || row.seller_user_id === g.session.userId,
         })),
+        nextCursor: hasMore && page.length > 0
+          ? encodeExampleCursor(page[page.length - 1])
+          : null,
         canEdit: isLeder,
+        canCreateDraft: true,
         canGiveFeedback: g.role != null && FEEDBACK_ROLES.has(g.role),
       });
     } catch (err) {
       console.warn("[leadbook-examples] list failed:", (err as Error).message);
       return res.status(500).json({ error: "list_failed" });
+    }
+  });
+
+  // ── GET /api/leadgrid/leadbook/examples/:id ──────────────────────
+  // Full detail for one visible example. Keeps transcript and coaching
+  // dialogue out of the collection response.
+  app.get("/api/leadgrid/leadbook/examples/:id([0-9a-fA-F-]{36})", async (req, res) => {
+    const g = await guard(req, res);
+    if (!g) return;
+    const isLeder = g.role != null && WRITE_ROLES.has(g.role);
+    try {
+      const result = await pool.query(
+        `SELECT * FROM leadbook_examples
+          WHERE id = $1::uuid AND organization_id = $2
+            AND status <> 'archived'
+            AND (
+              status = 'published'
+              OR $3
+              OR (status = 'draft' AND seller_user_id = $4)
+            )
+          LIMIT 1`,
+        [req.params.id, g.orgId, isLeder, g.session.userId],
+      );
+      const example = result.rows[0];
+      if (!example) return res.status(404).json({ error: "ikke_funnet" });
+
+      const feedbackResult = await pool.query(
+        `SELECT * FROM leadbook_example_feedback
+          WHERE example_id = $1::uuid AND organization_id = $2
+          ORDER BY created_at ASC`,
+        [req.params.id, g.orgId],
+      );
+      const feedbackIds = feedbackResult.rows.map((row) => row.id);
+      let replies: Record<string, unknown[]> = {};
+      if (feedbackIds.length > 0) {
+        const replyResult = await pool.query(
+          `SELECT * FROM leadbook_feedback_replies
+            WHERE feedback_id = ANY($1::uuid[]) AND organization_id = $2
+            ORDER BY created_at ASC`,
+          [feedbackIds, g.orgId],
+        );
+        replies = replyResult.rows.reduce((acc: Record<string, unknown[]>, row) => {
+          (acc[row.feedback_id] ??= []).push(row);
+          return acc;
+        }, {});
+      }
+      return res.json({
+        example: {
+          ...example,
+          feedback: feedbackResult.rows.map((row) => ({
+            ...row,
+            replies: replies[row.id] ?? [],
+          })),
+          can_request_deletion:
+            isLeder || example.seller_user_id === g.session.userId,
+        },
+        canEdit: isLeder,
+        canCreateDraft: true,
+        canGiveFeedback: g.role != null && FEEDBACK_ROLES.has(g.role),
+      });
+    } catch (err) {
+      console.warn("[leadbook-examples] detail failed:", (err as Error).message);
+      return res.status(500).json({ error: "detail_failed" });
     }
   });
 
@@ -776,50 +890,107 @@ ${objection.slice(0, 500)}`;
     }
   });
 
-  // ── POST /api/leadgrid/leadbook/examples — opprett (leder) ────────
+  // ── POST /api/leadgrid/leadbook/examples — eget utkast / leder ───
   app.post("/api/leadgrid/leadbook/examples", async (req, res) => {
     const g = await guard(req, res);
     if (!g) return;
-    if (g.role == null || !WRITE_ROLES.has(g.role)) {
-      return res.status(403).json({ error: "krever_leder_rolle" });
-    }
     const b = (req.body ?? {}) as Record<string, unknown>;
-    const title = str(b.title).trim();
+    const isLeder = g.role != null && WRITE_ROLES.has(g.role);
+    const title = bounded(b.title, 200);
+    if (title == null) return res.status(400).json({ error: "tittel_for_lang", max: 200 });
     if (!title) return res.status(400).json({ error: "mangler_tittel" });
-    const status = VALID_STATUS.has(str(b.status)) ? str(b.status) : "draft";
+    const customerLabel = bounded(b.customer_label, 200);
+    const industry = bounded(b.industry, 120);
+    const sellerName = bounded(b.seller_name, 160);
+    const summary = bounded(b.summary, 4000);
+    if (customerLabel == null || industry == null || sellerName == null || summary == null) {
+      return res.status(400).json({ error: "felt_for_langt" });
+    }
+    const requestedStatus = str(b.status, "draft");
+    const status = isLeder && VALID_STATUS.has(requestedStatus)
+      ? requestedStatus
+      : "draft";
     const outcome = VALID_OUTCOME.has(str(b.outcome)) ? str(b.outcome) : "won";
+    const channel = normalizedChannel(b.channel);
+    if (!channel) return res.status(400).json({ error: "ugyldig_kanal" });
     const featured = VALID_DIMENSIONS.has(str(b.featured_dimension))
       ? str(b.featured_dimension) : null;
+    const duration = optionalBoundedInteger(b.duration_sec, 0, 86400);
+    const score = optionalBoundedInteger(b.pondus_score, 0, 100);
+    const dealValue = optionalBoundedInteger(b.deal_value_nok, 0, Number.MAX_SAFE_INTEGER);
+    if (!duration.valid || !score.valid || !dealValue.valid) {
+      return res.status(400).json({ error: "ugyldig_tallverdi" });
+    }
+    const creationRaw = b.creation_id ?? b.creationId;
+    const creationId = validClientActionId(creationRaw);
+    if (creationRaw != null && !creationId) {
+      return res.status(400).json({ error: "ugyldig_creation_id" });
+    }
+    const consentRaw = b.source_consent_id ?? b.sourceConsentId;
+    const consentId = validClientActionId(consentRaw);
+    if (consentRaw != null && !consentId) {
+      return res.status(400).json({ error: "ugyldig_source_consent" });
+    }
+    const transcript = jsonArr(b.transcript);
+    const transcriptJSON = JSON.stringify(transcript);
+    if (transcript.length > 5000 || Buffer.byteLength(transcriptJSON, "utf8") > 1_000_000) {
+      return res.status(413).json({ error: "transkript_for_stort" });
+    }
     try {
+      let consentCustomer = "";
+      if (consentId) {
+        const consent = await pool.query<{ customer_label: string }>(
+          `SELECT customer_label FROM leadbook_recording_consents
+            WHERE id = $1::uuid AND organization_id = $2 AND user_id = $3
+            LIMIT 1`,
+          [consentId, g.orgId, g.session.userId],
+        );
+        if (!consent.rows[0]) {
+          return res.status(400).json({ error: "ugyldig_source_consent" });
+        }
+        consentCustomer = consent.rows[0].customer_label ?? "";
+      }
       const id = randomUUID();
-      await pool.query(
+      const inserted = await pool.query<{ id: string }>(
         `INSERT INTO leadbook_examples
            (id, organization_id, status, title, customer_label, industry,
             outcome, channel, duration_sec, seller_user_id, seller_name,
             happened_on, pondus_score, featured_dimension, dimension_scores,
             key_learnings, alternative_phrasings, transcript, key_moments,
-            deal_value_nok, summary, created_by, created_by_name)
+            deal_value_nok, summary, created_by, created_by_name,
+            source_consent_id, creation_id)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
-                 $15::jsonb,$16::jsonb,$17::jsonb,$18::jsonb,$19::jsonb,$20,$21,$22,$23)`,
+                 $15::jsonb,$16::jsonb,$17::jsonb,$18::jsonb,$19::jsonb,$20,$21,$22,$23,$24,$25)
+         ON CONFLICT (organization_id, creation_id)
+           WHERE creation_id IS NOT NULL DO NOTHING
+         RETURNING id`,
         [
           id, g.orgId, status, title,
-          str(b.customer_label), str(b.industry), outcome,
-          str(b.channel, "telephone"),
-          intOrNull(b.duration_sec),
-          str(b.seller_user_id) || null, str(b.seller_name),
+          customerLabel || consentCustomer, industry, outcome, channel,
+          duration.value,
+          (consentId || !isLeder) ? g.session.userId : (str(b.seller_user_id) || g.session.userId),
+          (consentId || !isLeder) ? (g.session.name ?? "") : sellerName,
           str(b.happened_on) || null,
-          intOrNull(b.pondus_score), featured,
+          score.value, featured,
           JSON.stringify(b.dimension_scores ?? {}),
           JSON.stringify(jsonArr(b.key_learnings)),
           JSON.stringify(jsonArr(b.alternative_phrasings)),
-          JSON.stringify(jsonArr(b.transcript)),
+          transcriptJSON,
           JSON.stringify(jsonArr(b.key_moments)),
-          intOrNull(b.deal_value_nok),
-          str(b.summary),
+          dealValue.value,
+          summary,
           g.session.userId, g.session.name ?? "",
+          consentId, creationId,
         ],
       );
-      return res.status(201).json({ id });
+      if (inserted.rows[0]) return res.status(201).json({ id: inserted.rows[0].id });
+      const existing = await pool.query<{ id: string }>(
+        `SELECT id FROM leadbook_examples
+          WHERE organization_id = $1 AND creation_id = $2::uuid LIMIT 1`,
+        [g.orgId, creationId],
+      );
+      if (existing.rows[0]) return res.status(200).json({ id: existing.rows[0].id });
+      throw new Error("idempotent create returned no row");
     } catch (err) {
       console.warn("[leadbook-examples] create failed:", (err as Error).message);
       return res.status(500).json({ error: "create_failed" });
@@ -840,15 +1011,43 @@ ${objection.slice(0, 500)}`;
       vals.push(val);
       sets.push(`${col} = $${vals.length}`);
     };
-    if (typeof b.title === "string" && b.title.trim()) push("title", b.title.trim());
+    if (typeof b.title === "string") {
+      const title = bounded(b.title, 200);
+      if (!title) return res.status(400).json({ error: title == null ? "tittel_for_lang" : "mangler_tittel" });
+      push("title", title);
+    }
     if (typeof b.status === "string" && VALID_STATUS.has(b.status)) push("status", b.status);
-    if (typeof b.customer_label === "string") push("customer_label", b.customer_label);
-    if (typeof b.industry === "string") push("industry", b.industry);
+    if (typeof b.customer_label === "string") {
+      const value = bounded(b.customer_label, 200);
+      if (value == null) return res.status(400).json({ error: "customer_label_for_lang" });
+      push("customer_label", value);
+    }
+    if (typeof b.industry === "string") {
+      const value = bounded(b.industry, 120);
+      if (value == null) return res.status(400).json({ error: "industry_for_lang" });
+      push("industry", value);
+    }
     if (typeof b.outcome === "string" && VALID_OUTCOME.has(b.outcome)) push("outcome", b.outcome);
-    if (typeof b.channel === "string") push("channel", b.channel);
-    if (b.duration_sec !== undefined) push("duration_sec", intOrNull(b.duration_sec));
-    if (typeof b.seller_name === "string") push("seller_name", b.seller_name);
-    if (b.pondus_score !== undefined) push("pondus_score", intOrNull(b.pondus_score));
+    if (typeof b.channel === "string") {
+      const channel = normalizedChannel(b.channel);
+      if (!channel) return res.status(400).json({ error: "ugyldig_kanal" });
+      push("channel", channel);
+    }
+    if (b.duration_sec !== undefined) {
+      const value = optionalBoundedInteger(b.duration_sec, 0, 86400);
+      if (!value.valid) return res.status(400).json({ error: "ugyldig_varighet" });
+      push("duration_sec", value.value);
+    }
+    if (typeof b.seller_name === "string") {
+      const value = bounded(b.seller_name, 160);
+      if (value == null) return res.status(400).json({ error: "seller_name_for_lang" });
+      push("seller_name", value);
+    }
+    if (b.pondus_score !== undefined) {
+      const value = optionalBoundedInteger(b.pondus_score, 0, 100);
+      if (!value.valid) return res.status(400).json({ error: "ugyldig_pondus_score" });
+      push("pondus_score", value.value);
+    }
     if (typeof b.featured_dimension === "string" && VALID_DIMENSIONS.has(b.featured_dimension)) {
       push("featured_dimension", b.featured_dimension);
     }
@@ -857,8 +1056,16 @@ ${objection.slice(0, 500)}`;
     if (b.alternative_phrasings !== undefined) push("alternative_phrasings", JSON.stringify(jsonArr(b.alternative_phrasings)));
     if (b.transcript !== undefined) push("transcript", JSON.stringify(jsonArr(b.transcript)));
     if (b.key_moments !== undefined) push("key_moments", JSON.stringify(jsonArr(b.key_moments)));
-    if (b.deal_value_nok !== undefined) push("deal_value_nok", intOrNull(b.deal_value_nok));
-    if (typeof b.summary === "string") push("summary", b.summary);
+    if (b.deal_value_nok !== undefined) {
+      const value = optionalBoundedInteger(b.deal_value_nok, 0, Number.MAX_SAFE_INTEGER);
+      if (!value.valid) return res.status(400).json({ error: "ugyldig_deal_value" });
+      push("deal_value_nok", value.value);
+    }
+    if (typeof b.summary === "string") {
+      const value = bounded(b.summary, 4000);
+      if (value == null) return res.status(400).json({ error: "summary_for_lang" });
+      push("summary", value);
+    }
     if (sets.length === 0) return res.status(400).json({ error: "ingenting_aa_oppdatere" });
     push("updated_at", new Date());
     vals.push(req.params.id, g.orgId);
@@ -987,11 +1194,19 @@ ${objection.slice(0, 500)}`;
   app.post("/api/leadgrid/leadbook/examples/:id/view", async (req, res) => {
     const g = await guard(req, res);
     if (!g) return;
+    const isLeder = g.role != null && WRITE_ROLES.has(g.role);
     try {
       const ex = await pool.query(
         `SELECT id FROM leadbook_examples
-          WHERE id = $1::uuid AND organization_id = $2 LIMIT 1`,
-        [req.params.id, g.orgId],
+          WHERE id = $1::uuid AND organization_id = $2
+            AND status <> 'archived'
+            AND (
+              status = 'published'
+              OR $3
+              OR (status = 'draft' AND seller_user_id = $4)
+            )
+          LIMIT 1`,
+        [req.params.id, g.orgId, isLeder, g.session.userId],
       );
       if (ex.rowCount === 0) return res.status(404).json({ error: "ikke_funnet" });
       await pool.query(
@@ -1038,9 +1253,15 @@ ${objection.slice(0, 500)}`;
       return res.status(403).json({ error: "krever_salgssjef_eller_teamleder" });
     }
     const b = (req.body ?? {}) as Record<string, unknown>;
-    const body = str(b.body).trim();
+    const body = bounded(b.body, 4000);
+    if (body == null) return res.status(400).json({ error: "tekst_for_lang", max: 4000 });
     if (!body) return res.status(400).json({ error: "mangler_tekst" });
     const dimension = VALID_DIMENSIONS.has(str(b.dimension)) ? str(b.dimension) : null;
+    const actionRaw = b.client_action_id ?? b.clientActionId;
+    const clientActionId = validClientActionId(actionRaw);
+    if (actionRaw != null && !clientActionId) {
+      return res.status(400).json({ error: "ugyldig_client_action_id" });
+    }
     // Valgfritt anker (2026-07-17): konkret replikk (indeks i transcript-
     // arrayen) og/eller tidspunkt i sekunder (fase 2-lyd).
     const transcriptIndex = intOrNull(b.transcript_index ?? b.transcriptIndex);
@@ -1058,17 +1279,30 @@ ${objection.slice(0, 500)}`;
       const example = ex.rows[0];
       if (!example) return res.status(404).json({ error: "ikke_funnet" });
       const id = randomUUID();
-      await pool.query(
+      const inserted = await pool.query<{ id: string }>(
         `INSERT INTO leadbook_example_feedback
            (id, example_id, organization_id, author_user_id, author_name,
-            author_role, dimension, body, transcript_index, at_sec)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+            author_role, dimension, body, transcript_index, at_sec,
+            client_action_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         ON CONFLICT (organization_id, client_action_id)
+           WHERE client_action_id IS NOT NULL DO NOTHING
+         RETURNING id`,
         [
           id, req.params.id, g.orgId,
           g.session.userId, g.session.name ?? "",
-          g.role, dimension, body, transcriptIndex, atSec,
+          g.role, dimension, body, transcriptIndex, atSec, clientActionId,
         ],
       );
+      if (!inserted.rows[0]) {
+        const existing = await pool.query<{ id: string }>(
+          `SELECT id FROM leadbook_example_feedback
+            WHERE organization_id = $1 AND client_action_id = $2::uuid LIMIT 1`,
+          [g.orgId, clientActionId],
+        );
+        if (existing.rows[0]) return res.status(200).json({ id: existing.rows[0].id });
+        throw new Error("idempotent feedback returned no row");
+      }
 
       // Varsle selgeren (2026-07-17, Daniel: «hvordan får brukerne
       // notifikasjon på at de har fått tilbakemelding?») — samme pipeline
@@ -1201,9 +1435,9 @@ ${objection.slice(0, 500)}`;
       if (fbIds.length > 0) {
         const rr = await pool.query(
           `SELECT * FROM leadbook_feedback_replies
-            WHERE feedback_id = ANY($1::uuid[])
+            WHERE feedback_id = ANY($1::uuid[]) AND organization_id = $2
             ORDER BY created_at ASC`,
-          [fbIds],
+          [fbIds, g.orgId],
         );
         replies = rr.rows.reduce((acc: Record<string, unknown[]>, row) => {
           (acc[row.feedback_id] ??= []).push(row);
@@ -1253,8 +1487,14 @@ ${objection.slice(0, 500)}`;
     const g = await guard(req, res);
     if (!g) return;
     const b = (req.body ?? {}) as Record<string, unknown>;
-    const body = str(b.body).trim();
+    const body = bounded(b.body, 4000);
+    if (body == null) return res.status(400).json({ error: "tekst_for_lang", max: 4000 });
     if (!body) return res.status(400).json({ error: "mangler_tekst" });
+    const actionRaw = b.client_action_id ?? b.clientActionId;
+    const clientActionId = validClientActionId(actionRaw);
+    if (actionRaw != null && !clientActionId) {
+      return res.status(400).json({ error: "ugyldig_client_action_id" });
+    }
     try {
       const fb = await pool.query<{
         id: string; author_user_id: string; example_id: string;
@@ -1277,14 +1517,27 @@ ${objection.slice(0, 500)}`;
       }
 
       const id = randomUUID();
-      await pool.query(
+      const inserted = await pool.query<{ id: string }>(
         `INSERT INTO leadbook_feedback_replies
            (id, feedback_id, organization_id, author_user_id, author_name,
-            author_role, body)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+            author_role, body, client_action_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (organization_id, client_action_id)
+           WHERE client_action_id IS NOT NULL DO NOTHING
+         RETURNING id`,
         [id, req.params.id, g.orgId, g.session.userId,
-         g.session.name ?? "", isSeller ? "selger" : (g.role ?? ""), body],
+         g.session.name ?? "", isSeller ? "selger" : (g.role ?? ""), body,
+         clientActionId],
       );
+      if (!inserted.rows[0]) {
+        const existing = await pool.query<{ id: string }>(
+          `SELECT id FROM leadbook_feedback_replies
+            WHERE organization_id = $1 AND client_action_id = $2::uuid LIMIT 1`,
+          [g.orgId, clientActionId],
+        );
+        if (existing.rows[0]) return res.status(200).json({ id: existing.rows[0].id });
+        throw new Error("idempotent reply returned no row");
+      }
 
       // Selgerens svar teller som lest (de har åpenbart sett den).
       if (isSeller) {

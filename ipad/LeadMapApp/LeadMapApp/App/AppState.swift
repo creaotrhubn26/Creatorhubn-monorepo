@@ -73,9 +73,15 @@ final class AppState {
     /// stabil id-basert routing (Watch-siden sender uuid).
     var deepLinkPondusTemplateId: String?
     var deepLinkPondusTemplateName: String?
+    var deepLinkPondusStepIndex: Int?
     /// Tid da deep-link ble satt — brukes til å ignorere gamle deep-links
     /// (>60s) som kan ha kommet fra en tidligere session-kø.
     var deepLinkPondusRequestedAt: Date?
+
+    /// Backend notifications and copied links route here. LeadbookExamplesView
+    /// consumes the id after it has fetched tenant-authorized detail.
+    var deepLinkLeadbookExampleId: String?
+    var deepLinkLeadbookRequestedAt: Date?
 
     /// Singleton for lettvekts observable pondus-store som App Intents kan
     /// lese uten å gå via SwiftUI-view-hierarkiet. LeadbookView bytter til
@@ -90,9 +96,14 @@ final class AppState {
     /// Sett deep-link + tidsstempel. Kalles av AppStateBridge (og indirekte
     /// av App Intents). LeadbookView.onAppear/task/onChange plukker opp
     /// dette og switch-er til Pondus-fanen.
-    func setPondusDeepLink(templateId: String? = nil, templateName: String? = nil) {
+    func setPondusDeepLink(
+        templateId: String? = nil,
+        templateName: String? = nil,
+        stepIndex: Int? = nil
+    ) {
         self.deepLinkPondusTemplateId = templateId
         self.deepLinkPondusTemplateName = templateName
+        self.deepLinkPondusStepIndex = stepIndex
         self.deepLinkPondusRequestedAt = Date()
         self.selectedSidebarItem = .leadbook
     }
@@ -102,7 +113,27 @@ final class AppState {
     func clearPondusDeepLink() {
         self.deepLinkPondusTemplateId = nil
         self.deepLinkPondusTemplateName = nil
+        self.deepLinkPondusStepIndex = nil
         self.deepLinkPondusRequestedAt = nil
+    }
+
+    @discardableResult
+    func handleLeadgridURL(_ url: URL) -> Bool {
+        guard let destination = LeadbookDeepLinkRouter.parse(url) else { return false }
+        switch destination {
+        case .example(let id):
+            deepLinkLeadbookExampleId = id.uuidString.lowercased()
+            deepLinkLeadbookRequestedAt = Date()
+            selectedSidebarItem = .leadbook
+        case .template(let id):
+            setPondusDeepLink(templateId: id.uuidString.lowercased())
+        }
+        return true
+    }
+
+    func clearLeadbookExampleDeepLink() {
+        deepLinkLeadbookExampleId = nil
+        deepLinkLeadbookRequestedAt = nil
     }
 
     // ── Nav deep-link (Møter «Naviger» → Kart ekte turn-by-turn-motor) ──
@@ -341,10 +372,17 @@ final class AppState {
     /// pulse-flyten for å unngå å refreshe metrics/calendar samtidig.
     func refreshLeads() async {
         guard let api else { return }
+        let organizationId = activeOrganizationId
         do {
             let fresh = try await api.fetchLeads(projectId: activeProjectId, organizationId: activeOrganizationId)
+            // Et org-bytte mens requesten er i flight skal verken erstatte
+            // skjermdata eller feilmerke et Watch-snapshot med ny aktiv org.
+            guard activeOrganizationId == organizationId else { return }
             self.leads = fresh
             self.leadsLoadState = .loaded
+            if let organizationId {
+                WatchSession.shared.pushLeads(fresh, organizationId: organizationId)
+            }
         } catch {
             print("[AppState] refreshLeads failed: \(error)")
             if case .loaded = leadsLoadState {} else {
@@ -436,6 +474,9 @@ final class AppState {
                 let generation = organizationSelectionGeneration
                 let selectedOrganizationId = activeOrganizationId
                 leadgridDiscoveryEnabled = false
+                LeadbookLiveStore.shared.resetForOrganization(selectedOrganizationId)
+                AcademyLiveStore.shared.resetForOrganization(selectedOrganizationId)
+                pondusStore.resetForOrganization(selectedOrganizationId)
                 if api != nil {
                     projects = projects.filter { $0.organizationId == selectedOrganizationId }
                     if let activeProjectId,
@@ -585,6 +626,12 @@ final class AppState {
         // Trig refresh av notifikasjons-listen så badge-counter er aktuell.
         Task { await refreshLeadgridNotifications() }
 
+        if let raw = payload["deep_link"],
+           let url = URL(string: raw),
+           handleLeadgridURL(url) {
+            return
+        }
+
         let eventType = payload["event_type"] ?? ""
         switch eventType {
         case "lead_assigned_as_team_leader",
@@ -729,10 +776,31 @@ func configureDiscovery() async {
         // QA-hook (landing-videoer): QA_TOUR kjører på ren demo-data og
         // trenger ingen backend — hopp over pairing hvis sesjonen mangler.
         // Reverteres m/ task #59-følget.
-        if ProcessInfo.processInfo.environment["QA_TOUR"] != nil,
+        if let qaTour = ProcessInfo.processInfo.environment["QA_TOUR"],
            AuthClient.loadToken() == nil {
             self.authToken = "qa-tour-demo"
             self.userEmail = "demo@leadgrid.no"
+            self.activeOrganizationId = "qa-tour-organization"
+            if qaTour == "agent-skills" {
+                self.activeProjectId = "qa-agent-project"
+                self.permissions = ["leads.view", "leads.update", "visits.create"]
+                self.roleInOrg = "admin"
+            }
+            if qaTour == "pondus-coach" {
+                let orgId = UUID(uuidString: "11111111-1111-4111-8111-111111111111")!
+                self.activeOrganizationId = orgId.uuidString.lowercased()
+                self.permissions = ["pondus.manage", "analytics.view_overview"]
+                self.roleInOrg = "salgssjef"
+                self.api = APIClient(
+                    token: "qa-tour-demo",
+                    baseURL: URL(string: "http://127.0.0.1:9")!
+                )
+                self.pondusStore.seedForQACoach(organizationId: orgId)
+                self.setPondusDeepLink(
+                    templateId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                    stepIndex: 0
+                )
+            }
             return
         }
         #endif
@@ -793,6 +861,13 @@ func configureDiscovery() async {
         do {
             let orgs = try await api.fetchOrganizations()
             self.organizations = orgs
+            #if DEBUG
+            if let requested = ProcessInfo.processInfo.environment["QA_ORGANIZATION_ID"],
+               orgs.contains(where: { $0.id == requested }) {
+                self.activeOrganizationId = requested
+                return
+            }
+            #endif
             // FIX 4: Valider at activeOrganizationId fortsatt eksisterer i
             // medlemskapslista. Stale ID i UserDefaults (typisk: brukeren
             // ble fjernet fra orgen, eller orgen ble slettet) → alle
@@ -1057,6 +1132,11 @@ func configureDiscovery() async {
         self.activeOrganizationId = nil
         self.permissions = []
         self.roleInOrg = nil
+        self.clearPondusDeepLink()
+        self.clearLeadbookExampleDeepLink()
+        LeadbookLiveStore.shared.resetForSignOut()
+        AcademyLiveStore.shared.resetForSignOut()
+        pondusStore.resetForSignOut()
         self.leadgridDiscoveryEnabled = false
         self.workloadLeads = []
         self.quota = nil
@@ -1074,7 +1154,6 @@ func configureDiscovery() async {
             return
         }
         let refreshOrganizationGeneration = organizationSelectionGeneration
-
         // Marker prosjekter som «laster» FØR vi fyrer av kall. Hvis kortet
         // er i .idle vil det ellers ende på empty-state i 1-2 sek mens
         // fetchProjects pågår — bug fra PR #993 som denne fixen løser.
@@ -1196,6 +1275,11 @@ func configureDiscovery() async {
             if let r = newRemOpt { self.reminders = r }
             self.lastSyncAt = Date()
             self.isUsingStaleCache = false
+
+            WatchSession.shared.pushLeads(
+                newLeads,
+                organizationId: refreshOrganizationId
+            )
 
             // Lagre snapshot til disk
             await OfflineCache.shared.save(newLeads, named: "leads")

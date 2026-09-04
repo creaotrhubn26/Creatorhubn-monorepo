@@ -304,11 +304,13 @@ struct LiveTranscriptionSheet: View {
     /// nil, dvs. kundesamtale) — LogActivitySheet sin egen-diktering
     /// (onUse satt) er ikke en tredjepart-opptak-situasjon og gates ikke.
     @State private var showConsentGate = false
-    @State private var consentedThisSession = false
+    @State private var recordingConsentId: String?
+    @State private var consentCustomerLabel = ""
     @State private var showComplianceSheet = false
 
     /// Kun kundesamtale-modus krever entitlement+samtykke.
     private var requiresRecordingConsent: Bool { onUse == nil }
+    private var consentedThisSession: Bool { recordingConsentId != nil }
     private var lydopptakLocked: Bool {
         requiresRecordingConsent && !EntitlementStore.shared.isExplicitlyEnabled(.leadbookLydopptak)
     }
@@ -412,8 +414,9 @@ struct LiveTranscriptionSheet: View {
                 }
             }
             .sheet(isPresented: $showConsentGate) {
-                RecordingConsentGateSheet {
-                    consentedThisSession = true
+                RecordingConsentGateSheet { consent, customerLabel in
+                    recordingConsentId = consent.id
+                    consentCustomerLabel = customerLabel
                     engine.start()
                 }
             }
@@ -494,7 +497,7 @@ struct LiveTranscriptionSheet: View {
                 .foregroundStyle(LBrand.orange)
             Text("Vi trenger mikrofon-tilgang")
                 .font(.appScaled(size: 18, weight: .heavy)).foregroundStyle(.white)
-            Text("Leadgrid bruker mikrofonen + tale-gjenkjenning for å transkribere det du sier. Begge deler kjører lokalt på enheten.")
+            Text("Leadgrid bruker mikrofon og talegjenkjenning. Når norsk on-device-modell mangler, kan Apple behandle lyden skybasert som vist i statusfeltet over.")
                 .font(.appScaled(size: 13))
                 .foregroundStyle(LBrand.textSecondary)
                 .multilineTextAlignment(.center)
@@ -738,27 +741,38 @@ struct LiveTranscriptionSheet: View {
             }
         }
 
+        guard let organizationId = appState.activeOrganizationId,
+              let recordingConsentId else {
+            saveError = "Samtykke eller organisasjon mangler. Start opptaket på nytt."
+            isSaving = false
+            return
+        }
         let body: [String: Any] = [
             "status": "draft",
             "title": title,
             "summary": summary,
+            "customer_label": consentCustomerLabel,
+            "source_consent_id": recordingConsentId,
             "channel": "telephone",
             "duration_sec": engine.elapsedSeconds,
             "transcript": transcriptLines,
             "key_learnings": learnings,
         ]
-        do {
-            _ = try await api.createLeadbookExample(body)
+        let disposition = await OfflineResilientActions.createLeadbookExample(
+            api: api,
+            organizationId: organizationId,
+            body: body
+        )
+        switch disposition {
+        case .sent, .queued:
             savedTitle = title
+            if case .queued = disposition { savedSource = "lagret offline – sendes ved nett" }
             withAnimation { showSavedToast = true }
             try? await Task.sleep(nanoseconds: 1_600_000_000)
             withAnimation { showSavedToast = false }
             dismiss()
-        } catch {
-            let msg = String(describing: error)
-            saveError = msg.contains("krever_leder_rolle")
-                ? "Lagring i Eksempler krever leder-rolle. Bruk «Bruk i notat» fra aktivitetsloggen, eller be teamleder lagre."
-                : "Kunne ikke lagre — prøv igjen. (\(error.localizedDescription))"
+        case .rejected(let message):
+            saveError = message
         }
         isSaving = false
     }

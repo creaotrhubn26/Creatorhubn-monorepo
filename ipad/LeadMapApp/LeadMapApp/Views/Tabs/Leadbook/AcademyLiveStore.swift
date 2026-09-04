@@ -4,7 +4,7 @@
 // (mig 0368) og persisterer progresjon per bruker. PondusAcademyData.chapters
 // er en computed var som leser herfra — alle eksisterende views (banner,
 // spiller, kapittel-liste) blir API-backet uten endring, med den innebygde
-// mocken som fallback når API-et ikke er lastet eller demo-modus er på.
+// mocken kun når eksplisitt demo-modus er på.
 
 import SwiftUI
 
@@ -15,6 +15,8 @@ final class AcademyLiveStore {
     private init() {}
 
     private var api: APIClient?
+    private var organizationId: String?
+    private(set) var loadState: ProjectsLoadState = .idle
 
     /// Kapitler fra backend — nil til første vellykkede last (→ mock brukes).
     private(set) var liveChapters: [PondusChapter]?
@@ -29,8 +31,31 @@ final class AcademyLiveStore {
     /// Kapitler per kurs-id, mappet til view-modellen.
     private(set) var chaptersByCourse: [String: [PondusChapter]] = [:]
 
-    func attach(api: APIClient?) {
+    func attach(api: APIClient?, organizationId: String?) {
+        resetForOrganization(organizationId)
         self.api = api
+    }
+
+    func resetForOrganization(_ newOrganizationId: String?) {
+        guard organizationId != newOrganizationId else { return }
+        organizationId = newOrganizationId
+        liveChapters = nil
+        backendIds = [:]
+        serverWatched = []
+        courses = []
+        chaptersByCourse = [:]
+        loadState = .idle
+    }
+
+    func resetForSignOut() {
+        organizationId = nil
+        liveChapters = nil
+        backendIds = [:]
+        serverWatched = []
+        courses = []
+        chaptersByCourse = [:]
+        loadState = .idle
+        api = nil
     }
 
     var apiClient: APIClient? { api }
@@ -42,8 +67,13 @@ final class AcademyLiveStore {
 
     func load() async {
         guard !DemoModeManager.isActiveNonisolated, let api else { return }
+        let requestedOrganizationId = organizationId
+        loadState = .loading
         do {
             let courses = try await api.fetchAcademyCourses()
+            guard requestedOrganizationId == organizationId else { return }
+            backendIds = [:]
+            serverWatched = []
 
             // Fase 2: hele kurslisten mappes for Akademi-flaten.
             self.courses = courses
@@ -66,24 +96,27 @@ final class AcademyLiveStore {
                let mapped = byCourse[course.id], !mapped.isEmpty {
                 self.liveChapters = mapped
             }
+            loadState = .loaded
         } catch {
-            // Mock-fallback er alltid gyldig innhold — ikke støy brukeren.
+            guard requestedOrganizationId == organizationId else { return }
             print("[academy] kurs-last feilet: \(error)")
+            loadState = .failed("Kunne ikke hente Academy-kurs")
         }
     }
 
     /// Persister at et kapittel er sett. Fire-and-forget fra UI-tråden.
     func logWatched(_ chapterId: UUID, positionSeconds: Int = 0) {
-        guard let api, let backendId = backendIds[chapterId] else { return }
+        guard let api, let organizationId, let backendId = backendIds[chapterId] else { return }
         Task {
-            do {
-                try await api.academyLogProgress(
-                    chapterId: backendId,
-                    watched: true,
-                    positionSeconds: positionSeconds
-                )
-            } catch {
-                print("[academy] progress-lagring feilet: \(error)")
+            let result = await OfflineResilientActions.saveAcademyProgress(
+                api: api,
+                organizationId: organizationId,
+                chapterId: backendId,
+                watched: true,
+                positionSeconds: positionSeconds
+            )
+            if case .rejected(let message) = result {
+                print("[academy] progress-lagring avvist: \(message)")
             }
         }
     }

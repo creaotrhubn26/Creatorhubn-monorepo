@@ -34,27 +34,67 @@ final class LeadbookLiveStore {
     }
 
     private weak var api: APIClient?
-    private var didInitialSync = false
+    private var organizationId: String?
+    private var activeUsageSessions: [UUID: UUID] = [:]
 
     private init() {}
 
+    /// Sender alle live innganger til den kanoniske Pondus-coachen. Demo-
+    /// maler har ingen backend-id og fortsetter i sin lokale prøveflyt.
+    @discardableResult
+    func openCoach(for template: LeadbookTemplate) -> Bool {
+        guard let backendId = template.backendId else { return false }
+        NotificationCenter.default.post(
+            name: .pondusActivateTemplate,
+            object: nil,
+            userInfo: ["templateId": backendId, "templateName": template.name]
+        )
+        return true
+    }
+
     /// Kalles fra LeadbookView når APIClient er klar (idempotent).
-    func attach(api: APIClient) {
+    func attach(api: APIClient, organizationId: String?) {
+        resetForOrganization(organizationId)
         self.api = api
-        guard !didInitialSync else { return }
-        didInitialSync = true
-        Task { await refresh() }
+        self.organizationId = organizationId
+    }
+
+    func resetForOrganization(_ newOrganizationId: String?) {
+        guard organizationId != newOrganizationId else { return }
+        organizationId = newOrganizationId
+        templates = []
+        objections = []
+        stats = nil
+        dtosById = [:]
+        activeUsageSessions = [:]
+        loadState = .idle
+    }
+
+    func resetForSignOut() {
+        organizationId = nil
+        templates = []
+        objections = []
+        stats = nil
+        dtosById = [:]
+        activeUsageSessions = [:]
+        loadState = .idle
+        api = nil
     }
 
     func refresh() async {
         guard let api else { return }
+        let requestedOrganizationId = organizationId
         if case .loaded = loadState {} else { loadState = .loading }
         do {
             async let templatesTask = api.pondusListTemplates(
-                category: nil, kind: nil, publishedOnly: true
+                category: nil, kind: nil, publishedOnly: true,
+                organizationId: organizationId
             )
-            let usage: PondusUsageStatsDTO? = try? await api.pondusUsageStats()
+            let usage: PondusUsageStatsDTO? = try? await api.pondusUsageStats(
+                organizationId: organizationId
+            )
             let dtos = try await templatesTask
+            guard requestedOrganizationId == organizationId else { return }
             self.stats = usage
             let usageByTemplate = Dictionary(
                 uniqueKeysWithValues: (usage?.templates ?? []).map { ($0.templateId, $0) }
@@ -79,6 +119,7 @@ final class LeadbookLiveStore {
             }
             loadState = .loaded
         } catch {
+            guard requestedOrganizationId == organizationId else { return }
             print("[LeadbookLiveStore] refresh feilet: \(error)")
             if case .loaded = loadState {} else {
                 loadState = .failed(error.localizedDescription)
@@ -89,8 +130,15 @@ final class LeadbookLiveStore {
     /// «Bruk mal» — logg bruk (fire-and-forget) og oppdater tellere.
     func logUsage(_ template: LeadbookTemplate, leadId: String? = nil) {
         guard let api, let backendId = template.backendId else { return }
+        let usageSessionId = UUID()
+        activeUsageSessions[template.id] = usageSessionId
         Task {
-            try? await api.pondusLogUsage(templateId: backendId, leadId: leadId)
+            _ = try? await api.pondusLogUsage(
+                templateId: backendId,
+                usageSessionId: usageSessionId,
+                leadId: leadId,
+                organizationId: organizationId
+            )
             await refresh()
         }
     }
@@ -99,9 +147,17 @@ final class LeadbookLiveStore {
     /// 'used'-raden i backend (meeting_booked/won/… erstatter, dobler
     /// ikke nevneren) → ekte møte-rater per mal.
     func logOutcome(_ template: LeadbookTemplate, outcome: String) {
-        guard let api, let backendId = template.backendId else { return }
+        guard let api,
+              let backendId = template.backendId,
+              let usageSessionId = activeUsageSessions[template.id]
+        else { return }
         Task {
-            try? await api.pondusLogUsage(templateId: backendId, outcome: outcome)
+            _ = try? await api.pondusLogUsage(
+                templateId: backendId,
+                usageSessionId: usageSessionId,
+                outcome: outcome,
+                organizationId: organizationId
+            )
             await refresh()
         }
     }
@@ -124,6 +180,21 @@ final class LeadbookLiveStore {
     var kpiTeamAdoption: String {
         guard let t = stats?.totals else { return "—" }
         return t.distinctUsers30d == 0 ? "—" : "\(t.distinctUsers30d) aktive"
+    }
+
+    var performanceRows: [PerformanceRow] {
+        guard let stats else { return [] }
+        let names = Dictionary(uniqueKeysWithValues: templates.compactMap { template in
+            template.backendId.map { ($0.lowercased(), template.name) }
+        })
+        return stats.templates.compactMap { item in
+            guard let name = names[item.templateId.lowercased()] else { return nil }
+            return PerformanceRow(
+                name: name,
+                responseRate: item.responseRate,
+                conversion: item.conversionRate
+            )
+        }
     }
 
     // MARK: - Mapping

@@ -342,11 +342,11 @@ struct ShotListPanel: View {
     @ViewBuilder
     private func thumb(for shot: BackendShotListItem?) -> some View {
         if let shot, let image = capturedImage(for: shot) {
-            Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
+            Image(uiImage: image).resizable().scaledToFill()
         } else if let shot, let backendId = shot.capturedAssetBackendId,
                   let url = model.assetPreviewURL(backendAssetId: backendId) {
             AsyncImage(url: url) { phase in
-                if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } else { thumbPlaceholder }
+                if let image = phase.image { image.resizable().scaledToFill() } else { thumbPlaceholder }
             }
         } else if let shot, let scene = ShotListPanel.demoThumbs[shot.id] {
             MockPhotoView(scene: scene)
