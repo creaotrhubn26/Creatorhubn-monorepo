@@ -100,7 +100,10 @@ struct SalgsledelseView: View {
 
     /// Salgsledelse er leder-domene (provisjon/premier/konkurranser).
     private var isLeder: Bool {
-        ["admin", "salgssjef"].contains(appState.roleInOrg ?? "")
+        appState.isSuperAdmin
+            || ["owner", "admin", "salgssjef", "teamleder"].contains(appState.roleInOrg ?? "")
+            || appState.permissions.contains("sales_leadership.view")
+            || appState.permissions.contains("sales_leadership.manage")
     }
 
     var body: some View {
@@ -110,7 +113,7 @@ struct SalgsledelseView: View {
                 ContentUnavailableView(
                     "Krever salgssjef-rolle",
                     systemImage: "lock.shield",
-                    description: Text("Salgsledelse er tilgjengelig for administratorer og salgssjefer.")
+                    description: Text("Salgsledelse er tilgjengelig for administratorer, salgssjefer og teamledere.")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(LBrand.bg.ignoresSafeArea())
@@ -173,7 +176,9 @@ struct SalgsledelseView: View {
             // TeamRoutesTodaySheet's «Naviger dit» starter den EKTE Kart-nav-
             // motoren (POV/Kjøre, MKDirections, POI langs rute) via
             // AppState.requestNavigation.
-            SalgssjefCockpitStrip()
+            if DemoModeManager.isActiveNonisolated {
+                SalgssjefCockpitStrip()
+            }
 
             // Dørsalg: teamets dører som KPI-strip over suiten + inngang
             // til produkt-styringen (hvem selger hva, verdi per produkt).
@@ -204,11 +209,15 @@ struct SalgsledelseView: View {
             // Full Salgsledelse-suite (4 sub-tabs: Provisjon/Konkurranser/
             // Premie-katalog/Tildel premier) portet fra preview.
             // embedded: true → skjuler X-lukkeknappen (arv fra sheet-modus).
-            SalesLeadershipSheet(
-                sellers: sellers,
-                currentUserName: currentUserName,
-                embedded: true
-            )
+            if DemoModeManager.isActiveNonisolated {
+                SalesLeadershipSheet(
+                    sellers: sellers,
+                    currentUserName: currentUserName,
+                    embedded: true
+                )
+            } else {
+                SalesManagementWorkspaceView()
+            }
         }
     }
 }

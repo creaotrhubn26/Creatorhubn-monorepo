@@ -37,18 +37,18 @@ extension APIClient {
     /// Leder: org-ens ventende krav.
     /// Kostnad→besøk (#73): logg kjøregodtgjørelsen som krav i
     /// godkjennings-flyten, attribuert til leaden via routeText/note.
-    func submitLeadgridMileageClaim(km: Int, amountNok: Int,
-                                    routeText: String, note: String?) async throws {
+    func submitLeadgridMileageClaim(km: Int, routeText: String, note: String?,
+                                    idempotencyKey: String) async throws {
         struct Body: Encodable {
             let km: Int
-            let amountNok: Int
             let routeText: String
             let note: String?
         }
         let data = try JSONEncoder().encode(Body(
-            km: km, amountNok: amountNok, routeText: routeText, note: note))
-        _ = try await _request("/api/leadgrid/mileage/claims",
-                               method: "POST", body: data)
+            km: km, routeText: routeText, note: note))
+        _ = try await _request("/api/leadgrid/sales-management/mileage",
+                               method: "POST", body: data,
+                               headers: ["Idempotency-Key": idempotencyKey])
     }
 
     func fetchLeadgridMileagePending() async throws -> [LeadgridMileageClaim] {

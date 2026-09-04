@@ -28,6 +28,7 @@ struct LeadDetailFullSheet: View {
     @Environment(AppState.self) private var appState
     @State private var showScheduleMeeting = false
     @State private var showAssign = false
+    @State private var showApprovalRequest = false
 
     // Demo-fallback brukes bare når demo eksplisitt er aktiv. Live skjuler
     // kontaktkanalen hvis LeadModel ikke leverer verdien.
@@ -125,6 +126,7 @@ struct LeadDetailFullSheet: View {
                             Button("Send e-post", systemImage: "envelope") { mail(email) }
                         }
                         Button("Planlegg møte", systemImage: "calendar") { showScheduleMeeting = true }
+                        Button("Be om godkjenning", systemImage: "checkmark.seal") { showApprovalRequest = true }
                         if ["admin", "salgssjef", "teamleder"].contains(appState.roleInOrg ?? "") {
                             Button("Tilordne selger", systemImage: "person.crop.circle") { showAssign = true }
                         }
@@ -146,6 +148,13 @@ struct LeadDetailFullSheet: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .sheet(isPresented: $showScheduleMeeting) {
                 ScheduleMeetingSheet(lead: lead)
+            }
+            .sheet(isPresented: $showApprovalRequest) {
+                LeadApprovalRequestSheet(
+                    leadId: lead.id,
+                    leadName: lead.name,
+                    estimatedValue: lead.estimatedValue
+                )
             }
             .sheet(isPresented: $showAssign) {
                 AssignToTeamMemberSheet(
