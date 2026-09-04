@@ -302,10 +302,14 @@ const ResearchCompleteOverlay: React.FC<ResearchCompleteOverlayProps> = ({
 
   if (!result || !researchId) return null;
 
+  // This overlay is rendered inside RoleRoomAgentDialog. Keeping it in that
+  // dialog's DOM prevents MUI's nested ModalManager from applying aria-hidden
+  // to the parent dialog while focus remains inside it.
   return (
     <Modal
       open={open}
       onClose={handleClose}
+      disablePortal
       aria-labelledby="research-complete-title"
       closeAfterTransition
       sx={{
