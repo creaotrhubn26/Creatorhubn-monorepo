@@ -410,6 +410,35 @@ export interface RoleRoomAgentServiceLatencies {
   totalMs?: number;
 }
 
+export type RoleRoomAgentResearchSkillStatus = 'ready' | 'limited' | 'failed';
+
+export interface RoleRoomAgentResearchSkillCheck {
+  id: string;
+  passed: boolean;
+  severity: 'critical' | 'warning';
+  detail: string;
+}
+
+export interface RoleRoomAgentResearchSkillRun {
+  id:
+    | 'resolve_company_identity'
+    | 'discover_product_competitors'
+    | 'verify_market_and_location'
+    | 'extract_brand_system'
+    | 'recommend_merch_and_suppliers'
+    | 'audit_research_dataflow';
+  version: string;
+  status: RoleRoomAgentResearchSkillStatus;
+  executionKey: string;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  evidenceCount: number;
+  sourceKinds: string[];
+  limitations: string[];
+  checks?: RoleRoomAgentResearchSkillCheck[];
+}
+
 export interface RoleRoomAgentProducerBootstrapResult {
   generatedAt: string;
   provider: 'openai' | 'anthropic' | 'fallback';
@@ -430,6 +459,8 @@ export interface RoleRoomAgentProducerBootstrapResult {
    *  surfaces these as warnings ("Cohere skipped — no API key",
    *  "Brreg timeout — using cached data"). Empty = clean happy path. */
   fallbacksUsed?: string[];
+  /** Deterministic skill ledger and final dataflow audit for this run. */
+  researchSkills?: RoleRoomAgentResearchSkillRun[];
   /** Per-field provenance from the synthesis model itself (item #6
    *  proper-fix). When present, the provenance panel reads confidence
    *  and rationale from here instead of computing them heuristically.

@@ -33,6 +33,12 @@ describe('roleRoomAgentService.getSnapshot', () => {
       researchId: 'research-17',
       companyProfile: { companyName: 'MEDINNOVA AS' },
       merchSuppliers: { recommendations: [{ productId: 'polo' }] },
+      researchSkills: [{
+        id: 'audit_research_dataflow',
+        version: '1.0.0',
+        status: 'ready',
+        executionKey: 'input:audit_research_dataflow:1.0.0',
+      }],
     };
     getSettingMock.mockResolvedValue(null);
     setSettingMock.mockResolvedValue(storedResult);
@@ -62,5 +68,30 @@ describe('roleRoomAgentService.getSnapshot', () => {
     await expect(roleRoomAgentService.getSnapshot('project-1')).resolves.toBe(active);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(setSettingMock).not.toHaveBeenCalled();
+  });
+
+  it('persists the research skill ledger with one settings PUT', async () => {
+    const result = {
+      researchId: 'research-18',
+      researchSkills: [{
+        id: 'audit_research_dataflow',
+        version: '1.0.0',
+        status: 'ready',
+        executionKey: 'input:audit_research_dataflow:1.0.0',
+        startedAt: '2026-09-04T10:00:00.000Z',
+        finishedAt: '2026-09-04T10:00:00.010Z',
+        durationMs: 10,
+        evidenceCount: 12,
+        sourceKinds: ['normalized_payload'],
+        limitations: [],
+      }],
+    };
+    setSettingMock.mockResolvedValue(result);
+
+    await expect(roleRoomAgentService.saveSnapshot('project-1', result as never)).resolves.toBe(result);
+    expect(setSettingMock).toHaveBeenCalledOnce();
+    expect(setSettingMock).toHaveBeenCalledWith('role-room-agent-snapshot', result, {
+      projectId: 'project-1',
+    });
   });
 });

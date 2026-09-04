@@ -51,6 +51,12 @@ import {
   groundBootstrapPayload,
   type RoleRoomAgentGroundingSources,
 } from "./role-room-agent-grounding.js";
+import {
+  auditRoleRoomResearchDataflow,
+  buildRoleRoomResearchSkillFingerprint,
+  RoleRoomResearchSkillLedger,
+  type RoleRoomResearchSkillRun,
+} from "./role-room-agent-research-skills.js";
 import { enrichCompetitorWithMetaPage } from "./role-room-meta-pages.js";
 import { extractWebsiteLegalIdentityFromHtml } from "./role-room-agent-website-identity.js";
 import {
@@ -646,6 +652,9 @@ export type RoleRoomAgentNormalizedPayload = {
    *  "brreg_timeout", "claude_synthesis_failed_used_openai". Empty when
    *  the happy path executed cleanly. */
   fallbacksUsed?: string[];
+  /** Versioned execution evidence for each deterministic research skill.
+   *  The final audit runs after grounding and before persistence. */
+  researchSkills?: RoleRoomResearchSkillRun[];
   /** Per-field provenance from the synthesis model itself. Optional —
    *  when present, frontend prefers it over heuristic provenance. */
   fieldMetadata?: RoleRoomAgentFieldProvenance;
@@ -3610,10 +3619,10 @@ function isSpecializedHealthProductResult(item: GoogleCustomSearchItem): boolean
     item.displayLink,
     item.link,
   ].filter(hasText).join(" ")).toLowerCase();
-  const hasHealthContext = /\b(?:lege|leger|medisinsk|klinisk|helsepersonell|pasient|journal|journalnotat|journaldokumentasjon|transkripsjon)\b/.test(corpus);
-  const hasDigitalProduct = /\b(?:ai|kunstig intelligens|programvare|plattform|app|saas|journalsystem|journalnotat|transkripsjon|diktering|tale[ -]til[ -]tekst|videokonsultasjon)\b/.test(corpus);
+  const hasHealthContext = /\b(?:lege|leger|medisinsk|klinisk|helsepersonell|pasient|journal|journalnotat(?:er)?|journaldokumentasjon|transkripsjon)\b/.test(corpus);
+  const hasDigitalProduct = /\b(?:ai|ki|kunstig intelligens|programvare|plattform|app|saas|journalsystem|journalnotat(?:er)?|transkripsjon|transkriberer?|diktering|tale[ -]til[ -]tekst|videokonsultasjon)\b/.test(corpus);
   const looksLikeCareProvider = /\b(?:fysioterapi|ergoterapi|hjemmesykepleie|legevakt|sykehus|behandlingsklinikk|rehabilitering)\b/.test(corpus)
-    && !/\b(?:programvare|plattform|saas|journalsystem|journalnotat|transkripsjon)\b/.test(corpus);
+    && !/\b(?:ai|ki|programvare|plattform|saas|journalsystem|journalnotat(?:er)?|transkripsjon|transkriberer?)\b/.test(corpus);
   return hasHealthContext && hasDigitalProduct && !looksLikeCareProvider;
 }
 
@@ -3633,8 +3642,21 @@ function webCompetitorName(item: GoogleCustomSearchItem, host: string): string {
 
 type SpecializedWebSearchOutcome = {
   items: GoogleCustomSearchItem[];
-  provider: "google_cse" | "anthropic_web_search" | "openai_web_search";
+  provider: "google_cse" | "anthropic_web_search" | "openai_web_search" | "first_party_catalog";
 };
+
+// Discovery seeds are not treated as proof on their own. The runtime fetches
+// each first-party page and keeps it only when the current page copy still
+// passes the same clinical-product filter as provider search results. This
+// gives the specialized flow a deterministic, auditable fallback when a
+// configured search provider returns an empty index response.
+const CLINICAL_DOCUMENTATION_FIRST_PARTY_SOURCES: ReadonlyArray<{
+  name: string;
+  url: string;
+}> = [
+  { name: "Talk!t", url: "https://talkit.no/" },
+  { name: "Journalia", url: "https://www.journalia.no/no" },
+];
 
 function specializedWebSearchConfigured(): boolean {
   return googleCustomSearchConfigured()
@@ -3642,22 +3664,25 @@ function specializedWebSearchConfigured(): boolean {
     || hasText(process.env.OPENAI_API_KEY);
 }
 
-async function searchSpecializedCompetitorWebPrimary(
+async function searchSpecializedCompetitorsWithGoogleCse(
   customerHost: string | null,
 ): Promise<SpecializedWebSearchOutcome> {
-  const query = '("AI journalnotat" OR "medisinsk transkripsjon" OR "klinisk dokumentasjon") programvare lege Norge';
-  if (googleCustomSearchConfigured()) {
-    return {
-      provider: "google_cse",
-      items: await searchGoogleCustom(query, {
-        num: 10,
-        timeoutMs: 4_000,
-        languageRestriction: "lang_no",
-        countryRestriction: "countryNO",
-        excludedSite: customerHost,
-      }),
-    };
-  }
+  const query = '("AI journalføring" OR "KI journalføring" OR "AI journalnotat" OR "KI journalnotat" OR "medisinsk transkripsjon" OR "klinisk dokumentasjon") (lege OR helsepersonell) Norge';
+  return {
+    provider: "google_cse",
+    items: await searchGoogleCustom(query, {
+      num: 10,
+      timeoutMs: 4_000,
+      languageRestriction: "lang_no",
+      countryRestriction: "countryNO",
+      excludedSite: customerHost,
+    }),
+  };
+}
+
+async function searchSpecializedCompetitorsWithAnthropic(
+  customerHost: string | null,
+): Promise<SpecializedWebSearchOutcome> {
   if (!hasText(process.env.ANTHROPIC_API_KEY)) {
     throw new Error("specialized_web_search_not_configured");
   }
@@ -3730,6 +3755,46 @@ Svar til slutt kun med JSON:
     });
   }
   return { provider: "anthropic_web_search", items };
+}
+
+async function fetchSpecializedFirstPartyCandidates(
+  customerHost: string | null,
+): Promise<GoogleCustomSearchItem[]> {
+  const candidates = await Promise.all(
+    CLINICAL_DOCUMENTATION_FIRST_PARTY_SOURCES.map(async (source) => {
+      const sourceHost = normalizeHost(source.url);
+      if (!sourceHost || sourceHost === customerHost) return null;
+      try {
+        const response = await fetch(source.url, {
+          headers: {
+            "User-Agent": "CreatorHub Role Room Agent/1.0 (+https://theroleroom.com)",
+            Accept: "text/html,application/xhtml+xml",
+          },
+          redirect: "follow",
+          signal: AbortSignal.timeout(4_000),
+        });
+        if (!response.ok) return null;
+        const resolvedUrl = response.url || source.url;
+        const resolvedHost = normalizeHost(resolvedUrl);
+        if (!resolvedHost || resolvedHost !== sourceHost || resolvedHost === customerHost) return null;
+        const html = (await response.text()).slice(0, 750_000);
+        const item: GoogleCustomSearchItem = {
+          title: extractTitle(html) || source.name,
+          link: resolvedUrl,
+          displayLink: resolvedHost,
+          snippet: normalizeWhitespace([
+            extractMetaContent(html, "description") || "",
+            extractMetaContent(html, "og:description") || "",
+            extractTextSnippet(html),
+          ].filter(Boolean).join(" ")).slice(0, 2_400),
+        };
+        return isSpecializedHealthProductResult(item) ? item : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return candidates.filter((entry): entry is GoogleCustomSearchItem => entry !== null);
 }
 
 async function searchSpecializedCompetitorsWithOpenAi(
@@ -3849,27 +3914,50 @@ async function searchSpecializedCompetitorWeb(
   customerHost: string | null,
 ): Promise<SpecializedWebSearchOutcome> {
   const failures: string[] = [];
-  try {
-    const primary = await searchSpecializedCompetitorWebPrimary(customerHost);
-    if (primary.items.length > 0 || !hasText(process.env.OPENAI_API_KEY)) return primary;
-    failures.push(`${primary.provider}_empty`);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    failures.push(`primary_error:${reason}`);
-    console.warn(`[web-competitors:primary] ${reason}`);
+  if (googleCustomSearchConfigured()) {
+    try {
+      const google = await searchSpecializedCompetitorsWithGoogleCse(customerHost);
+      const usableItems = google.items.filter(isSpecializedHealthProductResult);
+      if (usableItems.length > 0) return { ...google, items: usableItems };
+      failures.push("google_cse_empty_or_irrelevant");
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      failures.push(`google_cse_error:${reason}`);
+      console.warn(`[web-competitors:google-cse] ${reason}`);
+    }
+  }
+
+  if (hasText(process.env.ANTHROPIC_API_KEY)) {
+    try {
+      const anthropic = await searchSpecializedCompetitorsWithAnthropic(customerHost);
+      const usableItems = anthropic.items.filter(isSpecializedHealthProductResult);
+      if (usableItems.length > 0) return { ...anthropic, items: usableItems };
+      failures.push("anthropic_web_search_empty_or_irrelevant");
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      failures.push(`anthropic_error:${reason}`);
+      console.warn(`[web-competitors:anthropic] ${reason}`);
+    }
   }
 
   if (hasText(process.env.OPENAI_API_KEY)) {
     try {
       const items = await searchSpecializedCompetitorsWithOpenAi(customerHost);
-      if (items.length > 0) return { provider: "openai_web_search", items };
-      failures.push("openai_web_search_empty");
+      const usableItems = items.filter(isSpecializedHealthProductResult);
+      if (usableItems.length > 0) return { provider: "openai_web_search", items: usableItems };
+      failures.push("openai_web_search_empty_or_irrelevant");
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       failures.push(`openai_error:${reason}`);
       console.warn(`[web-competitors:openai] ${reason}`);
     }
   }
+
+  const firstPartyItems = await fetchSpecializedFirstPartyCandidates(customerHost);
+  if (firstPartyItems.length > 0) {
+    return { provider: "first_party_catalog", items: firstPartyItems };
+  }
+  failures.push("first_party_catalog_empty");
   throw new Error(failures.join("|") || "specialized_web_search_not_configured");
 }
 
@@ -3918,14 +4006,6 @@ export async function fetchWebCompetitorAnalysis(
       brregCompany,
     );
   }
-  if (!specializedWebSearchConfigured()) {
-    return buildLimitedCompetitorAnalysis(
-      "Websøk er ikke konfigurert. Google Places-resultater beholdes, men nasjonale programvarekonkurrenter kan mangle.",
-      input,
-      brregCompany,
-    );
-  }
-
   const customerUrl = normalizeWebsiteUrl(input.websiteUrl)
     || normalizeWebsiteUrl(websiteInsights.finalUrl)
     || normalizeWebsiteUrl(brregCompany?.website)
@@ -3964,7 +4044,9 @@ export async function fetchWebCompetitorAnalysis(
           ? "Funnet via Google websøk"
           : searchOutcome.provider === "openai_web_search"
             ? "Funnet via OpenAI websøk"
-            : "Funnet via Claude websøk",
+            : searchOutcome.provider === "anthropic_web_search"
+              ? "Funnet via Claude websøk"
+              : "Verifisert på leverandørens egen produktside",
         weight: 30,
       },
       { type: "specialized_product_match", label: "Matcher klinisk programvare, journalnotat eller medisinsk transkripsjon", weight: 30 },
@@ -6583,6 +6665,9 @@ export async function generateRoleRoomAgentProducerBootstrap(
   const startedAtMs = Date.now();
   const serviceLatencies: RoleRoomAgentServiceLatencies = {};
   const fallbacksUsed: string[] = [];
+  const researchSkillLedger = new RoleRoomResearchSkillLedger(
+    buildRoleRoomResearchSkillFingerprint(input),
+  );
   const onProgress = options?.onProgress;
   // Local helper that pre-binds the shared latency/fallback bags and the
   // outer onProgress sink, so existing withTiming callsites stay clean.
@@ -6598,7 +6683,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
       onProgress,
     });
 
-  const finalize = <T extends Omit<RoleRoomAgentNormalizedPayload, "researchId" | "bootstrapStartedAt" | "bootstrapFinishedAt" | "serviceLatencies" | "fallbacksUsed">>(
+  const finalize = <T extends Omit<RoleRoomAgentNormalizedPayload, "researchId" | "bootstrapStartedAt" | "bootstrapFinishedAt" | "serviceLatencies" | "fallbacksUsed" | "researchSkills">>(
     payload: T,
     groundingSources?: RoleRoomAgentGroundingSources,
   ): RoleRoomAgentNormalizedPayload => {
@@ -6614,6 +6699,20 @@ export async function generateRoleRoomAgentProducerBootstrap(
     if (grounded.strippedReasons.length > 0) {
       fallbacksUsed.push(...grounded.strippedReasons);
     }
+    const dataflowAudit = auditRoleRoomResearchDataflow(
+      grounded.payload,
+      researchSkillLedger.completedRuns(),
+    );
+    researchSkillLedger.record("audit_research_dataflow", {
+      status: dataflowAudit.status,
+      evidenceCount: dataflowAudit.checks.filter((check) => check.passed).length,
+      sourceKinds: ["normalized_payload", "research_skill_ledger"],
+      limitations: dataflowAudit.limitations,
+      checks: dataflowAudit.checks,
+    });
+    if (dataflowAudit.status === "failed") {
+      fallbacksUsed.push("research_skill_audit_failed");
+    }
     const finalPayload = {
       ...grounded.payload,
       researchId,
@@ -6621,6 +6720,7 @@ export async function generateRoleRoomAgentProducerBootstrap(
       bootstrapFinishedAt: new Date().toISOString(),
       serviceLatencies,
       fallbacksUsed,
+      researchSkills: researchSkillLedger.snapshot(),
     } as RoleRoomAgentNormalizedPayload;
     // Item #40 — telemetry event. Structured prefix so ops can grep on
     // any log backend (Render, Datadog) without an SDK. Stays in
@@ -6641,6 +6741,11 @@ export async function generateRoleRoomAgentProducerBootstrap(
         fallbackCount: fallbacksUsed.length,
         fallbacks: fallbacksUsed,
         serviceLatencies,
+        researchSkills: finalPayload.researchSkills?.map((skill) => ({
+          id: skill.id,
+          status: skill.status,
+          evidenceCount: skill.evidenceCount,
+        })),
       }));
     } catch {
       // telemetry never blocks the response
@@ -6664,10 +6769,48 @@ export async function generateRoleRoomAgentProducerBootstrap(
           socialProfileCandidates: [],
         };
       const orchCompanyAge = calculateCompanyAge(orch.brregCompany);
-      const orchBrandColors = await time("colorExtraction",
-      () => extractBrandColorsFromLogo(orchWebsiteInsights.probableLogoUrl),
-        { emptyFallbackLabel: "logo_palette_extraction_failed_no_colors", isEmpty: (v) => v.length === 0 },
+      const orchIdentityReady = orch.brregCompany?.lookupStatus === "verified";
+      researchSkillLedger.record("resolve_company_identity", {
+        status: orchIdentityReady ? "ready" : "limited",
+        evidenceCount: (orchIdentityReady ? 1 : 0)
+          + orchWebsiteInsights.selectedPageSnippets.length,
+        sourceKinds: [
+          ...(orchIdentityReady ? ["brreg"] : []),
+          ...(orchWebsiteInsights.finalUrl ? ["website"] : []),
+        ],
+        limitations: orchIdentityReady ? [] : ["legal_identity_not_verified"],
+      });
+      const orchBrandColors = await researchSkillLedger.execute(
+        "extract_brand_system",
+        () => time("colorExtraction",
+          () => extractBrandColorsFromLogo(orchWebsiteInsights.probableLogoUrl),
+          { emptyFallbackLabel: "logo_palette_extraction_failed_no_colors", isEmpty: (v) => v.length === 0 },
+        ),
+        (colors) => ({
+          status: orchWebsiteInsights.probableLogoUrl && colors.length > 0 ? "ready" : "limited",
+          evidenceCount: colors.length,
+          sourceKinds: orchWebsiteInsights.probableLogoUrl ? ["website", "logo_palette"] : [],
+          limitations: colors.length > 0 ? [] : ["verified_logo_palette_unavailable"],
+        }),
       );
+      researchSkillLedger.record("discover_product_competitors", {
+        status: "limited",
+        evidenceCount: 0,
+        sourceKinds: [],
+        limitations: ["orchestrated_path_has_no_grounded_competitor_candidates"],
+      });
+      researchSkillLedger.record("verify_market_and_location", {
+        status: "limited",
+        evidenceCount: orch.businessSignals?.formattedAddress ? 1 : 0,
+        sourceKinds: orch.businessSignals ? ["google_places"] : [],
+        limitations: ["orchestrated_path_has_no_grounded_local_opportunities"],
+      });
+      researchSkillLedger.record("recommend_merch_and_suppliers", {
+        status: "limited",
+        evidenceCount: 0,
+        sourceKinds: [],
+        limitations: ["orchestrated_path_has_no_grounded_merch_suppliers"],
+      });
       const orchFallback = buildFallbackBootstrap(
         input,
         orchWebsiteInsights,
@@ -6704,6 +6847,8 @@ export async function generateRoleRoomAgentProducerBootstrap(
   // When a website is the only trustworthy identifier, read it before Brreg.
   // This prevents a brand/project label from producing a low-quality registry
   // lookup and guarantees exactly one Brreg request for the resolved identity.
+  const identitySkillStartedAt = new Date();
+  const identitySkillStartedMs = performance.now();
   const normalizedInputWebsiteUrl = normalizeWebsiteUrl(input.websiteUrl);
   const shouldResolveIdentityFromWebsite = Boolean(normalizedInputWebsiteUrl)
     && !normalizeOrganizationNumber(input.organizationNumber);
@@ -6751,6 +6896,30 @@ export async function generateRoleRoomAgentProducerBootstrap(
       || null,
     websiteUrl: websiteUrl || initialBrregCompany?.website || preWebsiteInput.websiteUrl || null,
   };
+  const legalIdentityVerified = initialBrregCompany?.lookupStatus === "verified";
+  const firstPartyWebsiteRead = Boolean(websiteInsights.finalUrl);
+  researchSkillLedger.record(
+    "resolve_company_identity",
+    {
+      status: legalIdentityVerified && (!normalizedInputWebsiteUrl || firstPartyWebsiteRead)
+        ? "ready"
+        : "limited",
+      evidenceCount: (legalIdentityVerified ? 1 : 0)
+        + websiteInsights.selectedPageSnippets.length
+        + (websiteInsights.extractedOrgNumber ? 1 : 0)
+        + (websiteInsights.extractedLegalName ? 1 : 0),
+      sourceKinds: [
+        ...(legalIdentityVerified ? ["brreg"] : []),
+        ...(firstPartyWebsiteRead ? ["website"] : []),
+      ],
+      limitations: [
+        ...(!legalIdentityVerified ? ["legal_identity_not_verified"] : []),
+        ...(normalizedInputWebsiteUrl && !firstPartyWebsiteRead ? ["first_party_website_unavailable"] : []),
+      ],
+    },
+    identitySkillStartedAt,
+    identitySkillStartedMs,
+  );
   const businessSignals = await time("googlePlacesBusiness",
       () => withTimeoutFallback(
         fetchGooglePlacesBusinessSignals(enrichedInput, websiteInsights, initialBrregCompany),
@@ -6760,6 +6929,8 @@ export async function generateRoleRoomAgentProducerBootstrap(
       ),
     { emptyFallbackLabel: "google_places_no_business_match", isEmpty: (v) => !v },
   );
+  const competitorSkillStartedAt = new Date();
+  const competitorSkillStartedMs = performance.now();
   const placesCompetitorAnalysisPromise = time("googlePlacesCompetitors",
       () => withTimeoutFallback(
         fetchGooglePlacesCompetitorAnalysis(enrichedInput, websiteInsights, businessSignals, initialBrregCompany),
@@ -6819,7 +6990,9 @@ export async function generateRoleRoomAgentProducerBootstrap(
     extractMarketLocation(businessSignals?.formattedAddress || initialBrregCompany?.businessAddress || "")
     || initialBrregCompany?.municipality
     || "";
-  const localPresencePlanPromise = time("googlePlacesLocal",
+  const localPresencePlanPromise = researchSkillLedger.execute(
+    "verify_market_and_location",
+    () => time("googlePlacesLocal",
       () => withTimeoutFallback(
         fetchGooglePlacesLocalPresencePlan(enrichedInput, websiteInsights, businessSignals, initialBrregCompany),
         6_000,
@@ -6832,8 +7005,20 @@ export async function generateRoleRoomAgentProducerBootstrap(
         ),
       ),
     { emptyFallbackLabel: "local_presence_no_opportunities", isEmpty: (v) => v.nearbyOpportunities.length === 0 },
+    ),
+    (plan) => ({
+      status: plan.status === "ready" && plan.nearbyOpportunities.length > 0 ? "ready" : "limited",
+      evidenceCount: plan.nearbyOpportunities.reduce(
+        (total, opportunity) => total + opportunity.evidence.length,
+        0,
+      ),
+      sourceKinds: plan.nearbyOpportunities.length > 0 ? ["google_places"] : [],
+      limitations: plan.limitations,
+    }),
   );
-  const merchSuppliersPromise = time("merchSuppliers",
+  const merchSuppliersPromise = researchSkillLedger.execute(
+    "recommend_merch_and_suppliers",
+    () => time("merchSuppliers",
       () => withTimeoutFallback(
         fetchMerchSuppliersAnalysis(
           enrichedInput,
@@ -6850,8 +7035,22 @@ export async function generateRoleRoomAgentProducerBootstrap(
         },
       ),
     { emptyFallbackLabel: "merch_suppliers_empty", isEmpty: (v) => !v || v.suppliers.length === 0 },
+    ),
+    (analysis) => ({
+      status: analysis?.status === "ready" && !analysis.partial ? "ready" : "limited",
+      evidenceCount: (analysis?.suppliers ?? []).reduce(
+        (total, supplier) => total + supplier.evidence.length,
+        0,
+      ) + (analysis?.recommendations.length ?? 0),
+      sourceKinds: analysis?.source === "brreg+google_places"
+        ? ["brreg", "google_places"]
+        : [],
+      limitations: analysis?.limitations ?? ["verified_merch_suppliers_unavailable"],
+    }),
   );
-  const brandColorsPromise = time("colorExtraction",
+  const brandColorsPromise = researchSkillLedger.execute(
+    "extract_brand_system",
+    () => time("colorExtraction",
       () => withTimeoutFallback(
         extractBrandColorsFromLogo(websiteInsights.probableLogoUrl),
         4_000,
@@ -6859,6 +7058,13 @@ export async function generateRoleRoomAgentProducerBootstrap(
         [],
       ),
     { emptyFallbackLabel: "logo_palette_extraction_failed_no_colors", isEmpty: (v) => v.length === 0 },
+    ),
+    (colors) => ({
+      status: websiteInsights.probableLogoUrl && colors.length > 0 ? "ready" : "limited",
+      evidenceCount: colors.length,
+      sourceKinds: websiteInsights.probableLogoUrl ? ["website", "logo_palette"] : [],
+      limitations: colors.length > 0 ? [] : ["verified_logo_palette_unavailable"],
+    }),
   );
   const [placesCompetitorAnalysis, webCompetitorAnalysis, brregNaceCompetitors, localPresencePlan, merchSuppliers, brandColors] = await Promise.all([
     placesCompetitorAnalysisPromise,
@@ -6888,6 +7094,24 @@ export async function generateRoleRoomAgentProducerBootstrap(
         "meta_pages_enrichment_timeout",
         undefined,
       ),
+  );
+  researchSkillLedger.record(
+    "discover_product_competitors",
+    {
+      status: competitorAnalysis.status === "ready" && competitorAnalysis.competitors.length > 0
+        ? "ready"
+        : "limited",
+      evidenceCount: competitorAnalysis.competitors.reduce(
+        (total, competitor) => total + competitor.evidence.length,
+        0,
+      ),
+      sourceKinds: Array.from(
+        new Set(competitorAnalysis.competitors.map((competitor) => competitor.source)),
+      ),
+      limitations: competitorAnalysis.limitations,
+    },
+    competitorSkillStartedAt,
+    competitorSkillStartedMs,
   );
   const fallback = buildFallbackBootstrap(
     {

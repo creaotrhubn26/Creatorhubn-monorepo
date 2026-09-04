@@ -360,6 +360,143 @@ describe('Role Room local-presence fail-closed policy', () => {
     });
   });
 
+  it('falls through an empty Google CSE result to sourced Anthropic competitors', async () => {
+    process.env.GOOGLE_SEARCH_API_KEY = 'google-test-key';
+    process.env.GOOGLE_SEARCH_ENGINE_ID = 'google-test-engine';
+    process.env.ANTHROPIC_API_KEY = 'anthropic-test-key';
+    delete process.env.OPENAI_API_KEY;
+    const requestedUrls: string[] = [];
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.includes('customsearch.googleapis.com')) {
+        return new Response(JSON.stringify({ items: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      expect(url).toContain('api.anthropic.com/v1/messages');
+      return new Response(JSON.stringify({
+        id: 'msg_role_room_provider_fallback',
+        type: 'message',
+        role: 'assistant',
+        model: 'claude-sonnet-4-6',
+        content: [
+          {
+            type: 'web_search_tool_result',
+            tool_use_id: 'srvtoolu_provider_fallback',
+            content: [
+              {
+                type: 'web_search_result',
+                title: 'Talk!t – AI journalføring for helsepersonell',
+                url: 'https://talkit.no/',
+                encrypted_content: 'grounded-talkit',
+              },
+              {
+                type: 'web_search_result',
+                title: 'Journalia – KI-drevet dokumentasjon for helse og omsorg',
+                url: 'https://www.journalia.no/no',
+                encrypted_content: 'grounded-journalia',
+              },
+            ],
+          },
+          {
+            type: 'text',
+            text: JSON.stringify({
+              competitors: [
+                {
+                  name: 'Talk!t',
+                  url: 'https://talkit.no/',
+                  evidence: 'AI journalføring og strukturerte journalnotater for helsepersonell.',
+                },
+                {
+                  name: 'Journalia',
+                  url: 'https://www.journalia.no/no',
+                  evidence: 'KI-programvare for klinisk dokumentasjon og journalnotater for helsepersonell.',
+                },
+              ],
+            }),
+          },
+        ],
+        stop_reason: 'end_turn',
+        stop_sequence: null,
+        usage: { input_tokens: 10, output_tokens: 10 },
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+
+    const result = await fetchWebCompetitorAnalysis(
+      {
+        projectId: 'medside-provider-fallback-test',
+        websiteUrl: 'https://medside.no',
+        companyName: 'MEDINNOVA AS',
+      },
+      {
+        finalUrl: 'https://medside.no/',
+        metaDescription: 'GDPR-sikker AI-plattform for medisinsk transkripsjon og journalnotat.',
+        textSnippet: 'Bygget for norske leger og helsepersonell.',
+        selectedPageSnippets: [],
+        socialProfileCandidates: [],
+      },
+      verifiedMedinnova(),
+    );
+
+    expect(result.status).toBe('ready');
+    expect(result.competitors.map((entry) => entry.name)).toEqual(['Talk!t', 'Journalia']);
+    expect(result.competitors.every((entry) => entry.source === 'web_search')).toBe(true);
+    expect(requestedUrls[0]).toContain('customsearch.googleapis.com');
+    expect(requestedUrls[1]).toContain('api.anthropic.com/v1/messages');
+  });
+
+  it('verifies first-party clinical product pages when all search providers are unavailable', async () => {
+    delete process.env.GOOGLE_SEARCH_API_KEY;
+    delete process.env.GOOGLE_SEARCH_ENGINE_ID;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.includes('talkit.no')) {
+        return new Response(
+          '<html><head><title>Talk!t – AI journalføring for helsepersonell</title><meta name="description" content="Automatisk journalføring med kunstig intelligens og strukturerte journalnotater for helsepersonell."></head><body></body></html>',
+          { status: 200, headers: { 'content-type': 'text/html' } },
+        );
+      }
+      if (url.includes('journalia.no')) {
+        return new Response(
+          '<html><head><title>Journalia - KI-drevet dokumentasjon for helse og omsorg</title><meta name="description" content="Klinisk dokumentasjon som transkriberer pasientkonsultasjoner og genererer journalnotater for helsepersonell."></head><body></body></html>',
+          { status: 200, headers: { 'content-type': 'text/html' } },
+        );
+      }
+      return new Response('', { status: 404 });
+    }) as typeof fetch;
+
+    const result = await fetchWebCompetitorAnalysis(
+      {
+        projectId: 'medside-first-party-fallback-test',
+        websiteUrl: 'https://medside.no',
+        companyName: 'MEDINNOVA AS',
+      },
+      {
+        finalUrl: 'https://medside.no/',
+        metaDescription: 'GDPR-sikker AI-plattform for medisinsk transkripsjon og journalnotat.',
+        textSnippet: 'Bygget for norske leger og helsepersonell.',
+        selectedPageSnippets: [],
+        socialProfileCandidates: [],
+      },
+      verifiedMedinnova(),
+    );
+
+    expect(result.status).toBe('ready');
+    expect(result.competitors.map((entry) => entry.name)).toEqual(['Talk!t', 'Journalia']);
+    expect(result.competitors).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        websiteUrl: 'https://talkit.no/',
+        evidence: expect.arrayContaining([
+          expect.objectContaining({ label: 'Verifisert på leverandørens egen produktside' }),
+        ]),
+      }),
+    ]));
+  });
+
   it('falls back to OpenAI web search and keeps only candidates backed by response citations', async () => {
     delete process.env.GOOGLE_SEARCH_API_KEY;
     delete process.env.GOOGLE_SEARCH_ENGINE_ID;
