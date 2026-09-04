@@ -3610,10 +3610,10 @@ function isSpecializedHealthProductResult(item: GoogleCustomSearchItem): boolean
     item.displayLink,
     item.link,
   ].filter(hasText).join(" ")).toLowerCase();
-  const hasHealthContext = /\b(?:lege|leger|medisinsk|klinisk|helsepersonell|pasient|journal|journalnotat|journaldokumentasjon|transkripsjon)\b/.test(corpus);
-  const hasDigitalProduct = /\b(?:ai|kunstig intelligens|programvare|plattform|app|saas|journalsystem|journalnotat|transkripsjon|diktering|tale[ -]til[ -]tekst|videokonsultasjon)\b/.test(corpus);
+  const hasHealthContext = /\b(?:lege|leger|medisinsk|klinisk|helsepersonell|pasient|journal|journalnotat(?:er)?|journaldokumentasjon|transkripsjon)\b/.test(corpus);
+  const hasDigitalProduct = /\b(?:ai|ki|kunstig intelligens|programvare|plattform|app|saas|journalsystem|journalnotat(?:er)?|transkripsjon|transkriberer?|diktering|tale[ -]til[ -]tekst|videokonsultasjon)\b/.test(corpus);
   const looksLikeCareProvider = /\b(?:fysioterapi|ergoterapi|hjemmesykepleie|legevakt|sykehus|behandlingsklinikk|rehabilitering)\b/.test(corpus)
-    && !/\b(?:programvare|plattform|saas|journalsystem|journalnotat|transkripsjon)\b/.test(corpus);
+    && !/\b(?:ai|ki|programvare|plattform|saas|journalsystem|journalnotat(?:er)?|transkripsjon|transkriberer?)\b/.test(corpus);
   return hasHealthContext && hasDigitalProduct && !looksLikeCareProvider;
 }
 
@@ -3633,8 +3633,21 @@ function webCompetitorName(item: GoogleCustomSearchItem, host: string): string {
 
 type SpecializedWebSearchOutcome = {
   items: GoogleCustomSearchItem[];
-  provider: "google_cse" | "anthropic_web_search" | "openai_web_search";
+  provider: "google_cse" | "anthropic_web_search" | "openai_web_search" | "first_party_catalog";
 };
+
+// Discovery seeds are not treated as proof on their own. The runtime fetches
+// each first-party page and keeps it only when the current page copy still
+// passes the same clinical-product filter as provider search results. This
+// gives the specialized flow a deterministic, auditable fallback when a
+// configured search provider returns an empty index response.
+const CLINICAL_DOCUMENTATION_FIRST_PARTY_SOURCES: ReadonlyArray<{
+  name: string;
+  url: string;
+}> = [
+  { name: "Talk!t", url: "https://talkit.no/" },
+  { name: "Journalia", url: "https://www.journalia.no/no" },
+];
 
 function specializedWebSearchConfigured(): boolean {
   return googleCustomSearchConfigured()
@@ -3642,22 +3655,25 @@ function specializedWebSearchConfigured(): boolean {
     || hasText(process.env.OPENAI_API_KEY);
 }
 
-async function searchSpecializedCompetitorWebPrimary(
+async function searchSpecializedCompetitorsWithGoogleCse(
   customerHost: string | null,
 ): Promise<SpecializedWebSearchOutcome> {
-  const query = '("AI journalnotat" OR "medisinsk transkripsjon" OR "klinisk dokumentasjon") programvare lege Norge';
-  if (googleCustomSearchConfigured()) {
-    return {
-      provider: "google_cse",
-      items: await searchGoogleCustom(query, {
-        num: 10,
-        timeoutMs: 4_000,
-        languageRestriction: "lang_no",
-        countryRestriction: "countryNO",
-        excludedSite: customerHost,
-      }),
-    };
-  }
+  const query = '("AI journalføring" OR "KI journalføring" OR "AI journalnotat" OR "KI journalnotat" OR "medisinsk transkripsjon" OR "klinisk dokumentasjon") (lege OR helsepersonell) Norge';
+  return {
+    provider: "google_cse",
+    items: await searchGoogleCustom(query, {
+      num: 10,
+      timeoutMs: 4_000,
+      languageRestriction: "lang_no",
+      countryRestriction: "countryNO",
+      excludedSite: customerHost,
+    }),
+  };
+}
+
+async function searchSpecializedCompetitorsWithAnthropic(
+  customerHost: string | null,
+): Promise<SpecializedWebSearchOutcome> {
   if (!hasText(process.env.ANTHROPIC_API_KEY)) {
     throw new Error("specialized_web_search_not_configured");
   }
@@ -3730,6 +3746,46 @@ Svar til slutt kun med JSON:
     });
   }
   return { provider: "anthropic_web_search", items };
+}
+
+async function fetchSpecializedFirstPartyCandidates(
+  customerHost: string | null,
+): Promise<GoogleCustomSearchItem[]> {
+  const candidates = await Promise.all(
+    CLINICAL_DOCUMENTATION_FIRST_PARTY_SOURCES.map(async (source) => {
+      const sourceHost = normalizeHost(source.url);
+      if (!sourceHost || sourceHost === customerHost) return null;
+      try {
+        const response = await fetch(source.url, {
+          headers: {
+            "User-Agent": "CreatorHub Role Room Agent/1.0 (+https://theroleroom.com)",
+            Accept: "text/html,application/xhtml+xml",
+          },
+          redirect: "follow",
+          signal: AbortSignal.timeout(4_000),
+        });
+        if (!response.ok) return null;
+        const resolvedUrl = response.url || source.url;
+        const resolvedHost = normalizeHost(resolvedUrl);
+        if (!resolvedHost || resolvedHost !== sourceHost || resolvedHost === customerHost) return null;
+        const html = (await response.text()).slice(0, 750_000);
+        const item: GoogleCustomSearchItem = {
+          title: extractTitle(html) || source.name,
+          link: resolvedUrl,
+          displayLink: resolvedHost,
+          snippet: normalizeWhitespace([
+            extractMetaContent(html, "description") || "",
+            extractMetaContent(html, "og:description") || "",
+            extractTextSnippet(html),
+          ].filter(Boolean).join(" ")).slice(0, 2_400),
+        };
+        return isSpecializedHealthProductResult(item) ? item : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return candidates.filter((entry): entry is GoogleCustomSearchItem => entry !== null);
 }
 
 async function searchSpecializedCompetitorsWithOpenAi(
@@ -3849,27 +3905,50 @@ async function searchSpecializedCompetitorWeb(
   customerHost: string | null,
 ): Promise<SpecializedWebSearchOutcome> {
   const failures: string[] = [];
-  try {
-    const primary = await searchSpecializedCompetitorWebPrimary(customerHost);
-    if (primary.items.length > 0 || !hasText(process.env.OPENAI_API_KEY)) return primary;
-    failures.push(`${primary.provider}_empty`);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    failures.push(`primary_error:${reason}`);
-    console.warn(`[web-competitors:primary] ${reason}`);
+  if (googleCustomSearchConfigured()) {
+    try {
+      const google = await searchSpecializedCompetitorsWithGoogleCse(customerHost);
+      const usableItems = google.items.filter(isSpecializedHealthProductResult);
+      if (usableItems.length > 0) return { ...google, items: usableItems };
+      failures.push("google_cse_empty_or_irrelevant");
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      failures.push(`google_cse_error:${reason}`);
+      console.warn(`[web-competitors:google-cse] ${reason}`);
+    }
+  }
+
+  if (hasText(process.env.ANTHROPIC_API_KEY)) {
+    try {
+      const anthropic = await searchSpecializedCompetitorsWithAnthropic(customerHost);
+      const usableItems = anthropic.items.filter(isSpecializedHealthProductResult);
+      if (usableItems.length > 0) return { ...anthropic, items: usableItems };
+      failures.push("anthropic_web_search_empty_or_irrelevant");
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      failures.push(`anthropic_error:${reason}`);
+      console.warn(`[web-competitors:anthropic] ${reason}`);
+    }
   }
 
   if (hasText(process.env.OPENAI_API_KEY)) {
     try {
       const items = await searchSpecializedCompetitorsWithOpenAi(customerHost);
-      if (items.length > 0) return { provider: "openai_web_search", items };
-      failures.push("openai_web_search_empty");
+      const usableItems = items.filter(isSpecializedHealthProductResult);
+      if (usableItems.length > 0) return { provider: "openai_web_search", items: usableItems };
+      failures.push("openai_web_search_empty_or_irrelevant");
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       failures.push(`openai_error:${reason}`);
       console.warn(`[web-competitors:openai] ${reason}`);
     }
   }
+
+  const firstPartyItems = await fetchSpecializedFirstPartyCandidates(customerHost);
+  if (firstPartyItems.length > 0) {
+    return { provider: "first_party_catalog", items: firstPartyItems };
+  }
+  failures.push("first_party_catalog_empty");
   throw new Error(failures.join("|") || "specialized_web_search_not_configured");
 }
 
@@ -3918,14 +3997,6 @@ export async function fetchWebCompetitorAnalysis(
       brregCompany,
     );
   }
-  if (!specializedWebSearchConfigured()) {
-    return buildLimitedCompetitorAnalysis(
-      "Websøk er ikke konfigurert. Google Places-resultater beholdes, men nasjonale programvarekonkurrenter kan mangle.",
-      input,
-      brregCompany,
-    );
-  }
-
   const customerUrl = normalizeWebsiteUrl(input.websiteUrl)
     || normalizeWebsiteUrl(websiteInsights.finalUrl)
     || normalizeWebsiteUrl(brregCompany?.website)
@@ -3964,7 +4035,9 @@ export async function fetchWebCompetitorAnalysis(
           ? "Funnet via Google websøk"
           : searchOutcome.provider === "openai_web_search"
             ? "Funnet via OpenAI websøk"
-            : "Funnet via Claude websøk",
+            : searchOutcome.provider === "anthropic_web_search"
+              ? "Funnet via Claude websøk"
+              : "Verifisert på leverandørens egen produktside",
         weight: 30,
       },
       { type: "specialized_product_match", label: "Matcher klinisk programvare, journalnotat eller medisinsk transkripsjon", weight: 30 },
