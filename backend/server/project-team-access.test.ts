@@ -30,6 +30,27 @@ describe("Team Workspace project access", () => {
     expect(access).toEqual({ canRead: true, canEdit: true, isOwner: true });
   });
 
+  it("recognizes Role Room casting-project owners in the shared access gate", async () => {
+    let ownerSql = "";
+    const pool = {
+      query: async (sql: string) => {
+        if (sql.includes("SELECT 1 WHERE EXISTS")) {
+          ownerSql = sql;
+          return { rows: [{ ok: 1 }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      },
+    };
+
+    await expect(getProjectAccess(pool, "role-room-owner", "casting-project")).resolves.toEqual({
+      canRead: true,
+      canEdit: true,
+      isOwner: true,
+    });
+    expect(ownerSql).toContain("FROM casting_projects");
+    expect(ownerSql).toContain("created_by = $2");
+  });
+
   it("keeps active viewers read-only even if malformed permissions claim edit", async () => {
     const pool = accessPool({
       role: "viewer",
