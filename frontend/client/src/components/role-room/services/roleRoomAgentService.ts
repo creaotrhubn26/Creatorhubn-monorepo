@@ -879,6 +879,36 @@ export interface RoleRoomFeedPost {
   linkedInOrganizationUrn?: string | null;
 }
 
+export interface RoleRoomMockupProjectSummary {
+  id: string;
+  name: string;
+  status: string;
+  template: string;
+  workspaceProjectId: string | null;
+  revision: number;
+  projectUpdatedAt: number;
+  updatedAt: string;
+  accessRole: 'owner' | 'editor' | 'commenter' | 'approver' | 'viewer';
+}
+
+export interface RoleRoomFeedMockupLink {
+  id: string;
+  workspaceProjectId: string;
+  platform: Exclude<RoleRoomFeedPlatform, 'youtube'>;
+  feedPostId: string;
+  feedPostTitle: string | null;
+  feedPostCaption: string | null;
+  mockupProjectId: string;
+  mockupName: string;
+  mockupRevision: number;
+  lastAppliedRevision: number | null;
+  lastAppliedSha256: string | null;
+  lastAppliedAt: string | null;
+  stale: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface RoleRoomFeedBrandSocialProfile {
   platform: string; // youtube | instagram | linkedin | facebook | tiktok | x | threads | pinterest | vimeo
   url: string;
@@ -1568,6 +1598,64 @@ export const roleRoomAgentService = {
       return null;
     }
     return payload.plan ?? null;
+  },
+
+  async listMockupProjects(): Promise<RoleRoomMockupProjectSummary[]> {
+    const response = await fetch('/api/role-room/mockup-projects', {
+      headers: readRoleRoomAgentHeaders(),
+    });
+    const payload = await response.json().catch(() => null) as {
+      projects?: RoleRoomMockupProjectSummary[];
+      error?: string;
+    } | null;
+    if (!response.ok) throw new Error(payload?.error || 'Kunne ikke hente Mockup Studio-prosjekter.');
+    return Array.isArray(payload?.projects) ? payload.projects : [];
+  },
+
+  async listFeedMockupLinks(input: {
+    workspaceProjectId?: string;
+    mockupProjectId?: string;
+  }): Promise<RoleRoomFeedMockupLink[]> {
+    const params = new URLSearchParams();
+    if (input.workspaceProjectId) params.set('workspaceProjectId', input.workspaceProjectId);
+    if (input.mockupProjectId) params.set('mockupProjectId', input.mockupProjectId);
+    const response = await fetch(`/api/role-room/feed-mockup-links?${params.toString()}`, {
+      headers: readRoleRoomAgentHeaders(),
+    });
+    const payload = await response.json().catch(() => null) as {
+      links?: RoleRoomFeedMockupLink[];
+      error?: string;
+    } | null;
+    if (!response.ok) throw new Error(payload?.error || 'Kunne ikke hente feed-koblinger.');
+    return Array.isArray(payload?.links) ? payload.links : [];
+  },
+
+  async createFeedMockupLink(input: {
+    workspaceProjectId: string;
+    platform: Exclude<RoleRoomFeedPlatform, 'youtube'>;
+    feedPostId: string;
+    mockupProjectId: string;
+  }): Promise<RoleRoomFeedMockupLink> {
+    const response = await fetch('/api/role-room/feed-mockup-links', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+      body: JSON.stringify(input),
+    });
+    const payload = await response.json().catch(() => null) as {
+      link?: RoleRoomFeedMockupLink;
+      error?: string;
+    } | null;
+    if (!response.ok || !payload?.link) throw new Error(payload?.error || 'Kunne ikke koble mockupen.');
+    return payload.link;
+  },
+
+  async deleteFeedMockupLink(linkId: string): Promise<void> {
+    const response = await fetch(`/api/role-room/feed-mockup-links/${encodeURIComponent(linkId)}`, {
+      method: 'DELETE',
+      headers: readRoleRoomAgentHeaders(),
+    });
+    const payload = await response.json().catch(() => null) as { error?: string } | null;
+    if (!response.ok) throw new Error(payload?.error || 'Kunne ikke fjerne koblingen.');
   },
 
   async saveFeedPlan(

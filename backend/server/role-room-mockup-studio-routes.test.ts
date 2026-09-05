@@ -72,6 +72,45 @@ describe("Mockup Studio Review Room routes", () => {
     expect(handlers.has("POST /api/role-room/mockup-projects/:id/change-sets/:changeSetId/apply")).toBe(true);
   });
 
+  it("behandler gjentatt sky-push med samme updatedAt som idempotent", async () => {
+    const handlers = new Map<string, Handler>();
+    const register = (method: string) => (path: string, ...values: unknown[]) => handlers.set(method + " " + path, values.at(-1) as Handler);
+    const app = { get: register("GET"), put: register("PUT"), post: register("POST"), patch: register("PATCH"), delete: register("DELETE") } as unknown as Express;
+    const query = vi.fn().mockImplementation(async (statement: unknown) => {
+      const sql = String(statement);
+      if (sql.includes("FROM demo_studio_mockup_projects p")) return { rows: [{
+        id: "project", created_by: "owner", payload: { id: "project", name: "MedSide", version: 1 },
+        revision: 4, status: "draft", workspace_project_id: null, project_updated_at: 123,
+        updated_at: "2026-09-05T10:00:00.000Z", access_role: "owner",
+      }] };
+      if (sql.includes("UPDATE demo_studio_mockup_projects SET")) return { rows: [] };
+      return { rows: [] };
+    });
+    registerRoleRoomMockupStudioRoutes(app, {
+      pool: { query } as unknown as Pool,
+      activeSessions: new Map([["owner-token", {
+        userId: "owner", role: "owner", email: "owner@example.com", name: "Ola Eier", loginAt: new Date().toISOString(),
+      }]]),
+    });
+    const res = response();
+    await handlers.get("PUT /api/role-room/mockup-projects/:id")!({
+      params: { id: "project" },
+      headers: { authorization: "Bearer owner-token" },
+      body: { project: { id: "project", name: "MedSide", version: 1, updatedAt: 123, status: "draft", devices: [], images: [], canvas: {} } },
+    } as unknown as Request, res);
+
+    expect(res.body).toEqual({
+      ok: true,
+      updated: false,
+      revision: 4,
+      updatedAt: "2026-09-05T10:00:00.000Z",
+    });
+    const update = query.mock.calls.find(([statement]) => String(statement).includes("UPDATE demo_studio_mockup_projects SET"));
+    expect(String(update?.[0])).toContain("project_updated_at < $6");
+    expect(String(update?.[0])).not.toContain("project_updated_at <= $6");
+    expect(query.mock.calls.some(([statement]) => String(statement).includes("revision=mockup_studio_project_state.revision+1"))).toBe(false);
+  });
+
   it("binder kommentarenes versjons-ID som bigint i PostgreSQL", async () => {
     const handlers = new Map<string, Handler>();
     const register = (method: string) => (path: string, ...values: unknown[]) => handlers.set(method + " " + path, values.at(-1) as Handler);

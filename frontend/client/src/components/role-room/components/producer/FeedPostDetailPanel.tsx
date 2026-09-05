@@ -55,6 +55,7 @@ import FeedPostTile from './FeedPostTile';
 import GoogleDriveImagePicker from './GoogleDriveImagePicker';
 import FeedPostApprovalActions from './FeedPostApprovalActions';
 import LinkedInPublishAsSelector from './LinkedInPublishAsSelector';
+import FeedPostMockupLinks from './FeedPostMockupLinks';
 
 type FeedPostDetailPanelProps = {
   projectId: string;
@@ -568,6 +569,8 @@ export default function FeedPostDetailPanel({
           })
         }
       />
+
+      <FeedPostMockupLinks projectId={projectId} platform={platform} postId={post.id} />
 
       {platform === 'linkedin' ? (
         <LinkedInPublishAsSelector
