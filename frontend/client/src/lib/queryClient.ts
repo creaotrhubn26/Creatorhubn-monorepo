@@ -102,9 +102,35 @@ async function hydrateStoredUserFromToken(token: string): Promise<Record<string,
 // Denne gir det faktiske lagrede tokenet (sync, til raw fetch-kall).
 export function getStoredAuthToken(): string {
   try {
+    const creatorHubToken = (localStorage.getItem('creatorhub_auth_token') || '').trim();
+    let roleRoomToken = (localStorage.getItem('role_room_auth_token') || '').trim();
+
+    if (!roleRoomToken) {
+      try {
+        const storedSession = JSON.parse(
+          localStorage.getItem('role_room_auth_session') || 'null',
+        ) as { sessionToken?: unknown } | null;
+        roleRoomToken = typeof storedSession?.sessionToken === 'string'
+          ? storedSession.sessionToken.trim()
+          : '';
+      } catch {
+        // A malformed legacy session must not prevent the other token fallbacks.
+      }
+    }
+
+    const hostname = typeof window !== 'undefined'
+      ? window.location?.hostname?.trim().toLowerCase() || ''
+      : '';
+    const pathname = typeof window !== 'undefined'
+      ? window.location?.pathname?.trim().toLowerCase() || ''
+      : '';
+    const isRoleRoomSurface =
+      /(^|\.)theroleroom\.com$/.test(hostname)
+      || hostname.endsWith('.netlify.app')
+      || /^\/(?:theroleroom|casting(?:\.html)?)(?:\/|$)/.test(pathname);
+
     return (
-      localStorage.getItem('creatorhub_auth_token') ||
-      localStorage.getItem('role_room_auth_token') ||
+      (isRoleRoomSurface ? roleRoomToken || creatorHubToken : creatorHubToken || roleRoomToken) ||
       localStorage.getItem('token') ||
       localStorage.getItem('authToken') ||
       ''
