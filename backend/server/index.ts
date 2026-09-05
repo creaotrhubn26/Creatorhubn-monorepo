@@ -67,6 +67,7 @@ import { registerRoleRoomBillingAlertsRoutes } from "./role-room-billing-alerts-
 import { registerRoleRoomSeatReconciliationRoutes } from "./role-room-seat-reconciliation-routes.js";
 import { registerRoleRoomUpcomingJobsRoutes } from "./role-room-upcoming-jobs-routes.js";
 import { registerRoleRoomFeedPlanThumbnailRoutes } from "./role-room-feed-plan-thumbnail-routes.js";
+import { registerRoleRoomFeedMockupLinkRoutes } from "./role-room-feed-mockup-links-routes.js";
 import { registerInfographicRenderRoutes } from "./infographic-render-routes.js";
 import { registerInfographicLeadgridRoutes } from "./infographic-leadgrid-connector.js";
 import { registerRoleRoomBrandAssetsRoutes } from "./role-room-brand-assets-routes.js";
@@ -2615,6 +2616,7 @@ registerRoleRoomDemoAssetsRoutes(app, { pool, activeSessions });
 // Collaboration routes go first because they provide a backwards-compatible
 // superset of the owner-only project endpoints.
 registerRoleRoomMockupStudioRoutes(app, { pool, activeSessions });
+registerRoleRoomFeedMockupLinkRoutes(app, { pool, activeSessions });
 registerRoleRoomMockupProjectsRoutes(app, { pool, activeSessions });
 registerRoleRoomInfographicSignalsRoutes(app, { pool, activeSessions });
 registerRoleRoomInfographicLibraryRoutes(app, { pool, activeSessions });

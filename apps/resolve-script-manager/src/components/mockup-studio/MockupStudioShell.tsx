@@ -21,6 +21,7 @@ import { DesignGallery } from './DesignGallery';
 import { CampaignCompareDialog } from './CampaignCompareDialog';
 import { CaptureDialog } from './CaptureDialog';
 import { ProjectsView } from './ProjectsView';
+import FeedPlannerPublishButton from './FeedPlannerPublishButton';
 import { useMockupStudio } from './mockupStudioStore';
 import {
   listKits,
@@ -572,6 +573,7 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
         <div style={{ flex: 1 }} />
         {exportMsg && <span style={{ fontSize: FS_SM, color: C.inkSoft, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportMsg}</span>}
         {!exportMsg && missingShots > 0 && <span style={{ fontSize: FS_SM, color: '#e0b060' }} title="Last opp eller hent skjermbilder">{missingShots} enhet{missingShots > 1 ? 'er' : ''} uten skjermbilde</span>}
+        <FeedPlannerPublishButton doc={doc} />
         <select
           onChange={(e) => { const c = e.target.value; e.target.selectedIndex = 0; const l = LOCALIZE_LANGS.find((x) => x.code === c); if (l) void runLocalize(l.code, l.label); }}
           disabled={videoBusy || !localizeAvailable()}
