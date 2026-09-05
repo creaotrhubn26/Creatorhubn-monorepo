@@ -1,0 +1,11 @@
+## Feed Planner-kobling
+
+- Koble eksisterende Mockup Studio-prosjekter til riktig Instagram-, LinkedIn- eller TikTok-post i Role Room Feed Planner.
+- Send det faktiske designet som en ferdig PNG- eller JPEG-render direkte fra Post Agent, uten å kopiere prosjektet eller kildefilene.
+- Se koblet post, plattform, mockup-versjon og om en nyere versjon må sendes på nytt.
+
+## Trygg dataflyt
+
+- Samme kobling og samme render behandles idempotent, slik at gjentatte klikk ikke lager duplikater eller unødvendige revisjoner.
+- Godkjente eller planlagte poster krever eksplisitt bekreftelse før designet erstattes, og settes deretter til «må godkjennes på nytt».
+- Publiserte poster er låst mot designbytte. Tilgang kontrolleres både for Role Room-prosjektet og Mockup Studio-prosjektet.
