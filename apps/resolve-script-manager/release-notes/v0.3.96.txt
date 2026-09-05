@@ -1,0 +1,18 @@
+## Skill-baserte kampanjer fra Role Room
+
+- Role Room-agenten lager nå fem merkevarebaserte ideer per research: to bildeposter, to karuseller og én reel.
+- Kampanjesystem, kildekontroll, bildekomposisjon, karusellfortelling og reel-storyboard er egne versjonerte skills med lagret evidens og beslutninger.
+- En post kjører bare formatspesialisten den trenger. Sluttkontrollen verifiserer skill-rekkefølge, format, slide-roller, kildemerking, kontrast og logo.
+
+## Bedre bilde- og karusellmockups
+
+- Bildeposter bruker en redaksjonell foto-/produktbro med merkevarepalett, logo, scene, person, produkt-/beviskort, koblingslinje og tydelig CTA.
+- Helserelaterte bedrifter, som MedSide, får automatisk en klinisk scene og relevant figur uten at bedriften hardkodes i agentlogikken.
+- Karuseller bygges som en sammenhengende historie med hook, kontekst, mekanisme, dokumenterte proof points og avsluttende CTA.
+- Hver slide lagres som et eget redigerbart Mockup Studio-dokument, med stabil rekkefølge og samme aktive variant uten duplikater ved ny kjøring.
+
+## Synlig dataflyt
+
+- Research-visningen viser hvilke kreative skills som ble brukt på hvert utkast, ikke bare en samlet brand-status.
+- Live-forhåndsvisningene bruker nå samme lyse, redaksjonelle kampanjeretning som de ferdige Mockup Studio-dokumentene.
+- Eksisterende JSONB-felt for skill-kjøringer og kreative beslutninger gjenbrukes; denne versjonen trenger ingen ny databasemigrasjon.

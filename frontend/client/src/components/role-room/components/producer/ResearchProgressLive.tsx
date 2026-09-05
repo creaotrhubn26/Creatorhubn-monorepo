@@ -39,6 +39,23 @@ const STAGE_LABELS: Record<ResearchStageKey, string> = {
   openaiSynthesis: 'OpenAI-syntese',
 };
 
+const CREATIVE_SKILL_LABELS: Record<string, string> = {
+  develop_campaign_system: "Kampanjesystem",
+  guard_claim_evidence: "Kildekontroll",
+  compose_single_image_post: "Bildekomposisjon",
+  compose_carousel_narrative: "Karusellfortelling",
+  compose_reel_storyboard: "Reel-storyboard",
+};
+
+function creativeSkillSummary(draft: ResearchMockupDraft): string {
+  return (draft.skillRuns ?? [])
+    .flatMap((skill) => {
+      const label = CREATIVE_SKILL_LABELS[skill.id];
+      return label && skill.status !== "failed" ? [label] : [];
+    })
+    .join(" · ");
+}
+
 interface ResearchProgressLiveProps {
   status: ResearchProgressStatus;
   stages: ResearchStage[];
@@ -285,20 +302,40 @@ const ResearchProgressLive: React.FC<ResearchProgressLiveProps> = ({
                     </Typography>
                   </Stack>
                   {(draft.skillRuns?.length ?? 0) > 0 ? (
-                    <Typography
-                      sx={{
-                        color:
-                          draft.qualityStatus === "ready"
-                            ? "#86efac"
-                            : draft.qualityStatus === "failed"
-                              ? "#fca5a5"
-                              : "#fde68a",
-                        fontSize: "0.62rem",
-                        fontWeight: 700,
-                      }}
-                    >
-                      Brand-sjekk: {(draft.skillRuns ?? []).filter((skill) => skill.status === "ready").length}/{draft.skillRuns?.length ?? 0} skills
-                    </Typography>
+                    <>
+                      <Typography
+                        sx={{
+                          color:
+                            draft.qualityStatus === "ready"
+                              ? "#86efac"
+                              : draft.qualityStatus === "failed"
+                                ? "#fca5a5"
+                                : "#fde68a",
+                          fontSize: "0.62rem",
+                          fontWeight: 700,
+                        }}
+                      >
+                        Skill-sjekk:{" "}
+                        {
+                          (draft.skillRuns ?? []).filter(
+                            (skill) => skill.status === "ready",
+                          ).length
+                        }
+                        /{draft.skillRuns?.length ?? 0}
+                      </Typography>
+                      {creativeSkillSummary(draft) ? (
+                        <Typography
+                          title={creativeSkillSummary(draft)}
+                          sx={{
+                            color: "#cbd5e1",
+                            fontSize: "0.59rem",
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          {creativeSkillSummary(draft)}
+                        </Typography>
+                      ) : null}
+                    </>
                   ) : null}
                   <Typography
                     noWrap
