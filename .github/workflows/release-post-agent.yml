@@ -587,15 +587,15 @@ jobs:
               ;;
           esac
 
-      # Production B2 secret contract: POST_AGENT_B2_KEY_ID,
-      # POST_AGENT_B2_APPLICATION_KEY, POST_AGENT_B2_BUCKET and POST_AGENT_B2_REGION.
-      # No service-wide Render environment is read by this release.
+      # Mirror to the same private Role Room B2 bucket that the gated backend
+      # download route presigns. These repository secrets are the canonical
+      # storage contract; no service-wide Render environment is read here.
       - name: Mirror marketplace download to B2
         env:
-          POST_AGENT_B2_KEY_ID: ${{ secrets.POST_AGENT_B2_KEY_ID }}
-          POST_AGENT_B2_APPLICATION_KEY: ${{ secrets.POST_AGENT_B2_APPLICATION_KEY }}
-          POST_AGENT_B2_BUCKET: ${{ secrets.POST_AGENT_B2_BUCKET }}
-          POST_AGENT_B2_REGION: ${{ secrets.POST_AGENT_B2_REGION }}
+          POST_AGENT_B2_KEY_ID: ${{ secrets.B2_ROLE_ROOM_APPLICATION_KEY_ID }}
+          POST_AGENT_B2_APPLICATION_KEY: ${{ secrets.B2_ROLE_ROOM_APPLICATION_KEY }}
+          POST_AGENT_B2_BUCKET: ${{ secrets.B2_ROLE_ROOM_BUCKET_NAME }}
+          POST_AGENT_B2_REGION: eu-central-003
           TAG: ${{ needs.guard.outputs.tag }}
         shell: bash
         run: |
