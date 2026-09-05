@@ -24,3 +24,9 @@
 
 - Endringer i materiell som venter på klient, er godkjent eller planlagt krever bekreftelse og sendes tilbake til ny godkjenning.
 - Publiserte poster forblir låst. Post Agent kan åpne det eksakte skyprosjektet fra Role Room-lenken.
+
+## Stabil prosjektfil-auth i Role Room
+
+- På theroleroom.com prioriterer den delte API-klienten nå den aktive Role Room-sesjonen foran et eldre CreatorHub-token.
+- Prosjektfiler, logoer og annet researchgrunnlag kan dermed lastes uten feilaktige 401-svar når brukeren fortsatt har en eldre CreatorHub-økt lagret.
+- Hvis token-speilet mangler, gjenbrukes det validerte session-tokenet fra den lagrede Role Room-sesjonen.
