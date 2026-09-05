@@ -77,6 +77,12 @@ import {
 } from "./role-room-research-validation.js";
 import { BOOTSTRAP_POSTPROCESS_TIMEOUT_MS, withTimeout } from "./role-room-agent-llm-util.js";
 import { readString } from "./_shared";
+import {
+  advanceResearchMockupDrafts,
+  failResearchMockupDrafts,
+  finalizeResearchMockupDrafts,
+  initializeResearchMockupDrafts,
+} from "./role-room-research-mockups.js";
 
 interface AdminSession {
   userId: string;
@@ -188,7 +194,14 @@ export function setupRoleRoomAgentCoreRoutes(
       });
     }
 
+    const researchId = crypto.randomUUID();
     try {
+      await initializeResearchMockupDrafts(pool, {
+        projectId,
+        researchId,
+        projectName: readString(body.projectName) ?? readString(body.companyName) ?? undefined,
+        createdByUserId: session.userId,
+      });
       // Lag 2a: load APPROVED learned overrides so producer-corrected
       // classifications (businessModel) and measured channel performance take
       // effect. Best-effort — both return [] if the table is absent or DB
@@ -206,7 +219,11 @@ export function setupRoleRoomAgentCoreRoutes(
           companyName: readString(body.companyName) ?? undefined,
           extraContext: readString(body.extraContext) ?? undefined,
         },
-        { learnedNaceBusinessModelOverrides, learnedChannelPriorityOverrides },
+        {
+          researchId,
+          learnedNaceBusinessModelOverrides,
+          learnedChannelPriorityOverrides,
+        },
       );
 
       // Item #42 — generate executive summary in parallel with version
@@ -252,6 +269,12 @@ export function setupRoleRoomAgentCoreRoutes(
       const changeFlags = previousResult ? detectMaterialChanges(result, previousResult) : [];
       const validationFlags = [...syncFlags, ...changeFlags, ...vaguenessFlags];
       const resultWithSummary = { ...result, executiveSummary, validationFlags };
+      const researchMockups = await finalizeResearchMockupDrafts(pool, {
+        projectId,
+        researchId,
+        result: resultWithSummary,
+        createdByUserId: session.userId,
+      });
 
       // Item #39 — team-notifikasjon. Best-effort, etter at version er
       // persistert (vi vil ha versjons-nummeret i meldingen).
@@ -279,9 +302,11 @@ export function setupRoleRoomAgentCoreRoutes(
         },
         result: resultWithSummary,
         version: versionInfo,
+        researchMockups,
       });
     } catch (error) {
       console.error("[role-room-agent] Failed to generate producer bootstrap", error);
+      await failResearchMockupDrafts(pool, { projectId, researchId }).catch(() => undefined);
       return res.status(500).json({
         success: false,
         error: "Kunne ikke generere utkast fra The Role Room Agent.",
@@ -326,9 +351,18 @@ export function setupRoleRoomAgentCoreRoutes(
         // socket may be torn down; ignore
       }
     };
-    writeEvent("start", { projectId, startedAt: new Date().toISOString() });
+    const researchId = crypto.randomUUID();
+    writeEvent("start", { projectId, researchId, startedAt: new Date().toISOString() });
 
     try {
+      const initialMockups = await initializeResearchMockupDrafts(pool, {
+        projectId,
+        researchId,
+        projectName: readString(body.projectName) ?? readString(body.companyName) ?? undefined,
+        createdByUserId: session.userId,
+      });
+      writeEvent("mockups", { researchId, drafts: initialMockups });
+      let mockupProgressQueue = Promise.resolve();
       const result = await generateRoleRoomAgentProducerBootstrap(
         {
           projectId,
@@ -339,9 +373,28 @@ export function setupRoleRoomAgentCoreRoutes(
           extraContext: readString(body.extraContext) ?? undefined,
         },
         {
-          onProgress: (evt) => writeEvent("stage", evt),
+          researchId,
+          onProgress: (evt) => {
+            writeEvent("stage", evt);
+            mockupProgressQueue = mockupProgressQueue.then(async () => {
+              const drafts = await advanceResearchMockupDrafts(pool, {
+                projectId,
+                researchId,
+                stage: evt.stage,
+                completed: evt.type === "stage_done",
+                preview: evt.type === "stage_done" ? evt.preview : undefined,
+              });
+              writeEvent("mockups", { researchId, drafts });
+            }).catch((error) => {
+              console.warn("[role-room-agent] live mockup progress skipped", {
+                researchId,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            });
+          },
         },
       );
+      await mockupProgressQueue;
       // Persist version + summary in parallel. Same best-effort pattern
       // as the non-SSE path. Run before "done" event so the frontend
       // gets everything in one payload.
@@ -379,6 +432,13 @@ export function setupRoleRoomAgentCoreRoutes(
       const changeFlags = previousResult ? detectMaterialChanges(result, previousResult) : [];
       const validationFlags = [...syncFlags, ...changeFlags, ...vaguenessFlags];
       const resultWithSummary = { ...result, executiveSummary, validationFlags };
+      const finalizedMockups = await finalizeResearchMockupDrafts(pool, {
+        projectId,
+        researchId,
+        result: resultWithSummary,
+        createdByUserId: session.userId,
+      });
+      writeEvent("mockups", { researchId, drafts: finalizedMockups });
       // Item #39 — team-notifikasjon (samme som non-SSE path)
       void notifyResearchCompleted({
         projectId,
@@ -392,9 +452,11 @@ export function setupRoleRoomAgentCoreRoutes(
           + (result.socialProfileCandidates?.length ?? 0)
           + (result.merchSuppliers?.suppliers?.length ?? 0),
       });
-      writeEvent("done", { success: true, result: resultWithSummary, version: versionInfo });
+      writeEvent("done", { success: true, result: resultWithSummary, version: versionInfo, researchMockups: finalizedMockups });
     } catch (error) {
       console.error("[role-room-agent] producer-bootstrap-stream failed", error);
+      const failedMockups = await failResearchMockupDrafts(pool, { projectId, researchId }).catch(() => []);
+      if (failedMockups.length) writeEvent("mockups", { researchId, drafts: failedMockups });
       writeEvent("error", {
         success: false,
         error: "internal_error",

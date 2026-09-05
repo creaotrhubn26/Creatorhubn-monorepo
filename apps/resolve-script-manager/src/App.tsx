@@ -135,6 +135,10 @@ export default function App() {
   const [pendingDialog, setPendingDialog] = useState<{ script: ScriptMeta; dryRun: boolean } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [view, setView] = useState<"pipeline" | "cull" | "audio" | "color" | "demo" | "infographic" | "mockup">(IS_BROWSER_TEST ? "mockup" : "pipeline");
+  const [requestedMockupProjectId, setRequestedMockupProjectId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("mockupProjectId");
+  });
   const [showSetup, setShowSetup] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [runningScripts, setRunningScripts] = useState<Record<string, RunningScript>>({});
@@ -351,11 +355,37 @@ export default function App() {
     let cancelled = false;
     void import("@tauri-apps/api/event").then(({ listen }) => {
       if (cancelled) return;
+      const handleDeepLinks = (payload: unknown) => {
+        const urls = Array.isArray(payload) ? payload : [payload];
+        for (const raw of urls) {
+          if (typeof raw !== "string") continue;
+          try {
+            const url = new URL(raw);
+            if (url.protocol !== "postagent:" || url.hostname !== "mockup") continue;
+            const projectId = url.searchParams.get("projectId")?.trim();
+            if (!projectId) continue;
+            setRequestedMockupProjectId(projectId);
+            setView("mockup");
+            break;
+          } catch {
+            // Ignore malformed external URLs.
+          }
+        }
+      };
       // Denne effekten har [] deps → closuren ville fanget INITIELL (tom) runs/
       // scriptsById → «Kjør forrige» så alltid ingen kjøringer. Rut via en ref som
       // holdes fersk (rerunLastRef) i stedet.
       listen("menu://rerun-last", () => { void rerunLastRef.current(); }).then((u) => unlisteners.push(u));
       listen("menu://new-workflow", () => setView("pipeline")).then((u) => unlisteners.push(u));
+      listen<unknown>("deep-link://received", (event) => {
+        handleDeepLinks(event.payload);
+      }).then((u) => unlisteners.push(u));
+      // A cold-start deep link can reach Rust before React has subscribed.
+      // Drain the native buffer once so that exact project is still opened.
+      void import("@tauri-apps/api/core")
+        .then(({ invoke }) => invoke<string[]>("take_pending_deep_links"))
+        .then(handleDeepLinks)
+        .catch(() => undefined);
       // Updater-handler: brukes både av menu://check-updates og av
       // auto-check ved oppstart. Sjekker etter ny versjon; hvis funnet
       // setter vi updateInfo som rendrer UpdaterDialog. Selve nedlastings-
@@ -889,7 +919,7 @@ export default function App() {
       {view === "mockup" &&
         ((IS_BROWSER_TEST || (authStatus === "ok" && entitledModules.includes("demo_studio"))) ? (
           <div style={{ minHeight: 0, overflow: "hidden", display: "flex" }}>
-            <MockupStudioShell onClose={() => setView("pipeline")} />
+            <MockupStudioShell onClose={() => setView("pipeline")} initialProjectId={requestedMockupProjectId} />
           </div>
         ) : (
           <ModuleGate

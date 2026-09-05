@@ -48,19 +48,19 @@ function getAdminB2Client(): { client: S3Client; bucket: string } | null {
 
 export interface UserBucket {
   userId: string;
-  bucketPrefix: string;          // 'users/{userId}/'
-  tier: 'free' | 'paid' | 'byo';
-  quotaBytes: number | null;     // null = ubegrenset (byo)
+  bucketPrefix: string; // 'users/{userId}/'
+  tier: "free" | "paid" | "byo";
+  quotaBytes: number | null; // null = ubegrenset (byo)
   createdAt: string;
 }
 
 export interface UserStorageStats {
   userId: string;
-  tier: 'free' | 'paid' | 'byo';
+  tier: "free" | "paid" | "byo";
   usedBytes: number;
   quotaBytes: number | null;
   fileCount: number;
-  percentageUsed: number;        // 0–100, eller 0 hvis ubegrenset
+  percentageUsed: number; // 0–100, eller 0 hvis ubegrenset
   lastCalculatedAt: string;
 }
 
@@ -98,12 +98,15 @@ export interface UploadContext {
  * første upload, men kan også kalles eksplisitt fra UI ("init mitt
  * lagringsområde").
  */
-export async function ensureUserBucket(pool: Pool, userId: string): Promise<UserBucket> {
+export async function ensureUserBucket(
+  pool: Pool,
+  userId: string,
+): Promise<UserBucket> {
   const prefix = `users/${userId}/`;
   const r = await pool.query<{
     user_id: string;
     bucket_prefix: string;
-    tier: 'free' | 'paid' | 'byo';
+    tier: "free" | "paid" | "byo";
     quota_bytes: string | null;
     created_at: Date;
   }>(
@@ -131,7 +134,10 @@ export async function ensureUserBucket(pool: Pool, userId: string): Promise<User
 }
 
 /** Hent gjeldende statistikk. Oppretter rad hvis bruker ikke finnes ennå. */
-export async function getUserStorageStats(pool: Pool, userId: string): Promise<UserStorageStats> {
+export async function getUserStorageStats(
+  pool: Pool,
+  userId: string,
+): Promise<UserStorageStats> {
   const bucket = await ensureUserBucket(pool, userId);
   const r = await pool.query<{
     used_bytes: string;
@@ -143,7 +149,11 @@ export async function getUserStorageStats(pool: Pool, userId: string): Promise<U
      WHERE user_id = $1`,
     [userId],
   );
-  const row = r.rows[0] ?? { used_bytes: "0", file_count: 0, last_calculated_at: new Date() };
+  const row = r.rows[0] ?? {
+    used_bytes: "0",
+    file_count: 0,
+    last_calculated_at: new Date(),
+  };
   const usedBytes = Number(row.used_bytes);
   const percentageUsed = bucket.quotaBytes
     ? Math.min(100, Math.round((usedBytes / bucket.quotaBytes) * 100))
@@ -174,33 +184,45 @@ export async function uploadUserFile(
     displayName: string;
     body: Buffer | Uint8Array | string;
     contentType: string;
-    sourceModule?: string;          // 'selftape' | 'deck' | 'casting-poster' | ...
+    sourceModule?: string; // 'selftape' | 'deck' | 'casting-poster' | ...
     metadata?: Record<string, unknown>;
-    context?: UploadContext;        // L4 — kontekst-kobling
+    context?: UploadContext; // L4 — kontekst-kobling
   },
 ): Promise<
   | { ok: true; file: UserFile }
-  | { ok: false; reason: 'quota_exceeded' | 'b2_not_configured' | 'upload_failed'; detail?: string; stats?: UserStorageStats }
+  | {
+      ok: false;
+      reason: "quota_exceeded" | "b2_not_configured" | "upload_failed";
+      detail?: string;
+      stats?: UserStorageStats;
+    }
 > {
-  const buf = typeof opts.body === "string" ? Buffer.from(opts.body, "utf8") : Buffer.from(opts.body);
+  const buf =
+    typeof opts.body === "string"
+      ? Buffer.from(opts.body, "utf8")
+      : Buffer.from(opts.body);
 
   // Quota-check FØR upload
   const stats = await getUserStorageStats(pool, opts.userId);
-  if (stats.quotaBytes !== null && stats.usedBytes + buf.length > stats.quotaBytes) {
-    return { ok: false, reason: 'quota_exceeded', stats };
+  if (
+    stats.quotaBytes !== null &&
+    stats.usedBytes + buf.length > stats.quotaBytes
+  ) {
+    return { ok: false, reason: "quota_exceeded", stats };
   }
 
   const config = getAdminB2Client();
   if (!config) {
-    return { ok: false, reason: 'b2_not_configured' };
+    return { ok: false, reason: "b2_not_configured" };
   }
 
   const bucket = await ensureUserBucket(pool, opts.userId);
   const fileId = crypto.randomUUID();
-  const safeName = opts.displayName
-    .replace(/[^a-zA-Z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 200) || 'file';
+  const safeName =
+    opts.displayName
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 200) || "file";
   const b2Key = `${bucket.bucketPrefix}${fileId}-${safeName}`;
 
   try {
@@ -213,31 +235,59 @@ export async function uploadUserFile(
       }),
     );
   } catch (err) {
-    return { ok: false, reason: 'upload_failed', detail: (err as Error).message };
+    return {
+      ok: false,
+      reason: "upload_failed",
+      detail: (err as Error).message,
+    };
   }
 
   // Registrer i DB (atomisk: oppretter fil + bumper consumption + kobler kontekst)
   const ctx = opts.context ?? {};
-  const r = await pool.query<{ role_room_register_user_upload: string }>(
-    `SELECT role_room_register_user_upload(
+  let r;
+  try {
+    r = await pool.query<{ role_room_register_user_upload: string }>(
+      `SELECT role_room_register_user_upload(
        $1, $2, $3, $4::bigint, $5, $6, $7::jsonb,
        $8::varchar, $9::varchar, $10::text, $11::text, $12::text
      )`,
-    [
-      opts.userId,
-      b2Key,
-      opts.displayName,
-      buf.length,
-      opts.contentType,
-      opts.sourceModule ?? null,
-      JSON.stringify(opts.metadata ?? {}),
-      ctx.projectId ?? null,
-      ctx.sceneId ?? null,
-      ctx.attachedToEntityType ?? null,
-      ctx.attachedToEntityId ?? null,
-      ctx.attachmentNote ?? null,
-    ],
-  );
+      [
+        opts.userId,
+        b2Key,
+        opts.displayName,
+        buf.length,
+        opts.contentType,
+        opts.sourceModule ?? null,
+        JSON.stringify(opts.metadata ?? {}),
+        ctx.projectId ?? null,
+        ctx.sceneId ?? null,
+        ctx.attachedToEntityType ?? null,
+        ctx.attachedToEntityId ?? null,
+        ctx.attachmentNote ?? null,
+      ],
+    );
+  } catch (err) {
+    // The object has already reached B2. Remove it if DB registration fails so
+    // retries cannot leave untracked files that consume storage indefinitely.
+    try {
+      await config.client.send(
+        new DeleteObjectCommand({ Bucket: config.bucket, Key: b2Key }),
+      );
+    } catch (cleanupError) {
+      console.warn(
+        "[role-room-user-storage] opprydding etter registreringsfeil feilet",
+        {
+          key: b2Key,
+          err: (cleanupError as Error).message,
+        },
+      );
+    }
+    return {
+      ok: false,
+      reason: "upload_failed",
+      detail: (err as Error).message,
+    };
+  }
   const newFileId = r.rows[0].role_room_register_user_upload;
 
   return {
@@ -333,7 +383,14 @@ export async function listUserFiles(
 export async function getUserFilesPerProject(
   pool: Pool,
   userId: string,
-): Promise<Array<{ projectId: string | null; projectName: string | null; fileCount: number; totalBytes: number }>> {
+): Promise<
+  Array<{
+    projectId: string | null;
+    projectName: string | null;
+    fileCount: number;
+    totalBytes: number;
+  }>
+> {
   // NB: casting-prosjektene bor i legacy compat-storen, IKKE i en egen
   // casting_projects-tabell — joinen mot den (og alias-casten i ORDER BY)
   // knakk endepunktet i prod. Klienten mapper projectId → navn selv.
@@ -422,7 +479,8 @@ export async function hardDeleteUserFile(
       b2Deleted = true;
     } catch (err) {
       console.warn("[role-room-user-storage] B2 delete feilet", {
-        key: row.b2_key, err: (err as Error).message,
+        key: row.b2_key,
+        err: (err as Error).message,
       });
     }
   }
@@ -446,25 +504,28 @@ export async function hardDeleteUserFile(
 export async function getUserFileDownloadUrl(
   pool: Pool,
   opts: { userId: string; fileId: string; expiresInSeconds?: number },
-): Promise<{ ok: true; url: string; displayName: string } | { ok: false; reason: string }> {
+): Promise<
+  { ok: true; url: string; displayName: string } | { ok: false; reason: string }
+> {
   const r = await pool.query<{ b2_key: string; display_name: string }>(
     `SELECT b2_key, display_name FROM role_room_user_files
      WHERE id = $1::uuid AND user_id = $2 AND deleted_at IS NULL`,
     [opts.fileId, opts.userId],
   );
   const row = r.rows[0];
-  if (!row) return { ok: false, reason: 'not_found' };
+  if (!row) return { ok: false, reason: "not_found" };
 
   const config = getAdminB2Client();
-  if (!config) return { ok: false, reason: 'b2_not_configured' };
+  if (!config) return { ok: false, reason: "b2_not_configured" };
 
   // display_name is stored raw (the original upload filename); strip quotes and
   // control chars so it cannot break out of / inject into the Content-Disposition
   // header B2 echoes back on download.
-  const safeDisposition = row.display_name
-    .replace(/[\r\n"\\]/g, "")
-    .replace(/[\x00-\x1f\x7f]/g, "")
-    .slice(0, 200) || "download";
+  const safeDisposition =
+    row.display_name
+      .replace(/[\r\n"\\]/g, "")
+      .replace(/[\x00-\x1f\x7f]/g, "")
+      .slice(0, 200) || "download";
 
   try {
     const url = await getSignedUrl(
@@ -482,21 +543,67 @@ export async function getUserFileDownloadUrl(
   }
 }
 
+/**
+ * Hent private filbytes server-side. Dette brukes av autentiserte proxy-ruter
+ * som må fungere i canvas/fetch uten å være avhengige av bucket-CORS.
+ */
+export async function getUserFileContent(
+  pool: Pool,
+  opts: { userId: string; fileId: string },
+): Promise<
+  | { ok: true; body: Uint8Array; displayName: string; contentType: string }
+  | { ok: false; reason: string }
+> {
+  const r = await pool.query<{
+    b2_key: string;
+    display_name: string;
+    content_type: string | null;
+  }>(
+    `SELECT b2_key, display_name, content_type FROM role_room_user_files
+     WHERE id = $1::uuid AND user_id = $2 AND deleted_at IS NULL`,
+    [opts.fileId, opts.userId],
+  );
+  const row = r.rows[0];
+  if (!row) return { ok: false, reason: "not_found" };
+
+  const config = getAdminB2Client();
+  if (!config) return { ok: false, reason: "b2_not_configured" };
+
+  try {
+    const object = await config.client.send(
+      new GetObjectCommand({ Bucket: config.bucket, Key: row.b2_key }),
+    );
+    if (!object.Body) return { ok: false, reason: "empty_object" };
+    const body = await object.Body.transformToByteArray();
+    return {
+      ok: true,
+      body,
+      displayName: row.display_name,
+      contentType:
+        object.ContentType || row.content_type || "application/octet-stream",
+    };
+  } catch (err) {
+    return { ok: false, reason: `download_failed: ${(err as Error).message}` };
+  }
+}
+
 /** Admin-helper: alle brukere som er nær eller over kvoten. */
 export async function listUsersNearQuota(
   pool: Pool,
   thresholdPercentage = 80,
-): Promise<Array<{
-  userId: string;
-  tier: 'free' | 'paid' | 'byo';
-  usedBytes: number;
-  quotaBytes: number | null;
-  percentageUsed: number;
-  fileCount: number;
-}>> {
+): Promise<
+  Array<{
+    userId: string;
+    tier: "free" | "paid" | "byo";
+    usedBytes: number;
+    quotaBytes: number | null;
+    percentageUsed: number;
+    fileCount: number;
+  }>
+> {
   const r = await pool.query<{
     user_id: string;
-    tier: 'free' | 'paid' | 'byo';
+    tier: "free" | "paid" | "byo";
     used_bytes: string;
     quota_bytes: string | null;
     file_count: number;

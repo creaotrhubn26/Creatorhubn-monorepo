@@ -52,6 +52,10 @@ export interface RoleRoomFeedPostInput {
   locked?: boolean;
   customImageUrl?: string | null;
   customImageName?: string | null;
+  customImageUrls?: string[] | null;
+  customImageNames?: string[] | null;
+  customVideoDataUrl?: string | null;
+  customVideoName?: string | null;
   // Grid-beskjæring + egendefinert cover/thumbnail (vises i feed-grid,
   // nettside-portfolio, deling & link-preview). gridAspect default '4:5'.
   gridAspect?: '1:1' | '4:5' | '16:9' | null;
@@ -109,38 +113,74 @@ function normalizePost(raw: unknown, fallbackIndex: number): RoleRoomFeedPostInp
     .map((entry) => clipString(entry, 80))
     .filter((entry) => entry.length > 0);
 
-  const mediaType = record.mediaType === 'reel' || record.mediaType === 'carousel' ? record.mediaType : 'image';
-  const logoPlacement = (['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'] as const).includes(
-    record.logoPlacement as 'top-left',
-  )
-    ? (record.logoPlacement as RoleRoomFeedPostInput['logoPlacement'])
+  const mediaType =
+    record.mediaType === "reel" || record.mediaType === "carousel"
+      ? record.mediaType
+      : "image";
+  const logoPlacement = (
+    ["top-left", "top-right", "bottom-left", "bottom-right", "center"] as const
+  ).includes(record.logoPlacement as "top-left")
+    ? (record.logoPlacement as RoleRoomFeedPostInput["logoPlacement"])
     : null;
 
   const customImageUrl =
-    typeof record.customImageUrl === 'string' && record.customImageUrl.length > 0
+    typeof record.customImageUrl === "string" &&
+    record.customImageUrl.length > 0
       ? clipString(record.customImageUrl, MAX_CUSTOM_IMAGE_LENGTH)
       : null;
   const customImageName =
-    typeof record.customImageName === 'string' && record.customImageName.length > 0
+    typeof record.customImageName === "string" &&
+    record.customImageName.length > 0
       ? clipString(record.customImageName, MAX_CUSTOM_IMAGE_NAME_LENGTH)
+      : null;
+  const customImageUrls = Array.isArray(record.customImageUrls)
+    ? record.customImageUrls
+        .slice(0, 10)
+        .flatMap((value) =>
+          typeof value === "string" && value.length > 0
+            ? [clipString(value, MAX_CUSTOM_IMAGE_LENGTH)]
+            : [],
+        )
+    : null;
+  const customImageNames = Array.isArray(record.customImageNames)
+    ? record.customImageNames
+        .slice(0, 10)
+        .map((value) =>
+          typeof value === "string"
+            ? clipString(value, MAX_CUSTOM_IMAGE_NAME_LENGTH)
+            : "",
+        )
+    : null;
+  const customVideoDataUrl =
+    typeof record.customVideoDataUrl === "string" &&
+    record.customVideoDataUrl.length > 0
+      ? clipString(record.customVideoDataUrl, MAX_CUSTOM_IMAGE_LENGTH * 8)
+      : null;
+  const customVideoName =
+    typeof record.customVideoName === "string" &&
+    record.customVideoName.length > 0
+      ? clipString(record.customVideoName, MAX_CUSTOM_IMAGE_NAME_LENGTH)
       : null;
 
   const approvalState =
-    typeof record.approvalState === 'string' &&
+    typeof record.approvalState === "string" &&
     (APPROVAL_STATES as readonly string[]).includes(record.approvalState)
       ? (record.approvalState as RoleRoomFeedApprovalState)
-      : 'draft';
+      : "draft";
 
   const gridAspect =
-    record.gridAspect === '1:1' || record.gridAspect === '4:5' || record.gridAspect === '16:9'
+    record.gridAspect === "1:1" ||
+    record.gridAspect === "4:5" ||
+    record.gridAspect === "16:9"
       ? record.gridAspect
       : null;
   const coverImageUrl =
-    typeof record.coverImageUrl === 'string' && record.coverImageUrl.length > 0
+    typeof record.coverImageUrl === "string" && record.coverImageUrl.length > 0
       ? clipString(record.coverImageUrl, MAX_CUSTOM_IMAGE_LENGTH)
       : null;
   const coverImageName =
-    typeof record.coverImageName === 'string' && record.coverImageName.length > 0
+    typeof record.coverImageName === "string" &&
+    record.coverImageName.length > 0
       ? clipString(record.coverImageName, MAX_CUSTOM_IMAGE_NAME_LENGTH)
       : null;
 
@@ -152,40 +192,70 @@ function normalizePost(raw: unknown, fallbackIndex: number): RoleRoomFeedPostInp
     hashtags,
     callToAction: clipString(record.callToAction, 200),
     imageStyle: clipString(record.imageStyle, 200),
-    scheduledFor: typeof record.scheduledFor === 'string' ? clipString(record.scheduledFor, 40) : null,
-    backgroundColor: typeof record.backgroundColor === 'string' ? clipString(record.backgroundColor, 40) : null,
-    accentColor: typeof record.accentColor === 'string' ? clipString(record.accentColor, 40) : null,
-    textColor: typeof record.textColor === 'string' ? clipString(record.textColor, 40) : null,
+    scheduledFor:
+      typeof record.scheduledFor === "string"
+        ? clipString(record.scheduledFor, 40)
+        : null,
+    backgroundColor:
+      typeof record.backgroundColor === "string"
+        ? clipString(record.backgroundColor, 40)
+        : null,
+    accentColor:
+      typeof record.accentColor === "string"
+        ? clipString(record.accentColor, 40)
+        : null,
+    textColor:
+      typeof record.textColor === "string"
+        ? clipString(record.textColor, 40)
+        : null,
     logoPlacement,
     mediaType,
     locked: Boolean(record.locked),
     customImageUrl,
     customImageName,
+    customImageUrls,
+    customImageNames,
+    customVideoDataUrl,
+    customVideoName,
     gridAspect,
     coverImageUrl,
     coverImageName,
     approvalState,
     approvalChangedAt:
-      typeof record.approvalChangedAt === 'string' ? clipString(record.approvalChangedAt, 40) : null,
+      typeof record.approvalChangedAt === "string"
+        ? clipString(record.approvalChangedAt, 40)
+        : null,
     approvalChangedBy:
-      typeof record.approvalChangedBy === 'string' ? clipString(record.approvalChangedBy, 200) : null,
+      typeof record.approvalChangedBy === "string"
+        ? clipString(record.approvalChangedBy, 200)
+        : null,
     approvalNote:
-      typeof record.approvalNote === 'string' ? clipString(record.approvalNote, 1000) : null,
+      typeof record.approvalNote === "string"
+        ? clipString(record.approvalNote, 1000)
+        : null,
     reviewRequestedAt:
-      typeof record.reviewRequestedAt === 'string' ? clipString(record.reviewRequestedAt, 40) : null,
+      typeof record.reviewRequestedAt === "string"
+        ? clipString(record.reviewRequestedAt, 40)
+        : null,
     reviewRequestedBy:
-      typeof record.reviewRequestedBy === 'string' ? clipString(record.reviewRequestedBy, 200) : null,
+      typeof record.reviewRequestedBy === "string"
+        ? clipString(record.reviewRequestedBy, 200)
+        : null,
     reviewDeadline:
-      typeof record.reviewDeadline === 'string' ? clipString(record.reviewDeadline, 40) : null,
+      typeof record.reviewDeadline === "string"
+        ? clipString(record.reviewDeadline, 40)
+        : null,
     linkedInOrganizationUrn:
-      typeof record.linkedInOrganizationUrn === 'string' &&
-      record.linkedInOrganizationUrn.startsWith('urn:li:organization:')
+      typeof record.linkedInOrganizationUrn === "string" &&
+      record.linkedInOrganizationUrn.startsWith("urn:li:organization:")
         ? clipString(record.linkedInOrganizationUrn, 200)
         : null,
   };
 }
 
-export function normalizeFeedPostsPayload(raw: unknown): RoleRoomFeedPostInput[] {
+export function normalizeFeedPostsPayload(
+  raw: unknown,
+): RoleRoomFeedPostInput[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .slice(0, MAX_POSTS_PER_PLAN)
@@ -198,7 +268,9 @@ function mapRow(row: Record<string, unknown>): RoleRoomFeedPlanRow {
     id: String(row.id),
     projectId: String(row.project_id),
     platform: row.platform as RoleRoomFeedPlatform,
-    posts: Array.isArray(row.posts) ? (row.posts as RoleRoomFeedPostInput[]) : [],
+    posts: Array.isArray(row.posts)
+      ? (row.posts as RoleRoomFeedPostInput[])
+      : [],
     brandSnapshot: row.brand_snapshot ?? null,
     updatedBy: (row.updated_by as string | null) ?? null,
     createdAt: row.created_at as Date,

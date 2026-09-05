@@ -6610,12 +6610,134 @@ function normalizeFieldMetadata(value: unknown): RoleRoomAgentFieldProvenance | 
 /** Event payload sent to onProgress callbacks. Used by the SSE route
  *  (item #2 — live progress with per-stage ticks) so the frontend can
  *  render a real-time timeline while bootstrap runs. */
+export interface RoleRoomAgentProgressPreview {
+  headline: string;
+  detail: string;
+  primaryColor?: string;
+  accentColor?: string;
+}
+
 export type RoleRoomAgentProgressEvent =
   | { type: "stage_start"; stage: keyof RoleRoomAgentServiceLatencies }
-  | { type: "stage_done"; stage: keyof RoleRoomAgentServiceLatencies; ms: number; fallback?: string }
+  | { type: "stage_done"; stage: keyof RoleRoomAgentServiceLatencies; ms: number; fallback?: string; preview?: RoleRoomAgentProgressPreview }
   | { type: "stage_error"; stage: keyof RoleRoomAgentServiceLatencies; ms: number; error: string };
 
 export type RoleRoomAgentProgressSink = (event: RoleRoomAgentProgressEvent) => void;
+
+function buildProgressPreview(
+  stage: keyof RoleRoomAgentServiceLatencies,
+  value: unknown,
+): RoleRoomAgentProgressPreview | undefined {
+  const object =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  const nested = (candidate: unknown): Record<string, unknown> =>
+    candidate && typeof candidate === "object" && !Array.isArray(candidate)
+      ? (candidate as Record<string, unknown>)
+      : {};
+  const firstText = (...values: unknown[]) =>
+    values.find(hasText) as string | undefined;
+  const count = (candidate: unknown) =>
+    Array.isArray(candidate) ? candidate.length : 0;
+  const short = (candidate: unknown, limit = 150) =>
+    hasText(candidate)
+      ? normalizeWhitespace(candidate).slice(0, limit)
+      : undefined;
+
+  if (stage === "brreg") {
+    const industry = nested(object.industryCode);
+    return {
+      headline: short(object.name, 90) || "Juridisk identitet kontrollert",
+      detail:
+        short(industry.description) ||
+        short(object.businessAddress) ||
+        "Brønnøysund-data er kontrollert.",
+    };
+  }
+  if (stage === "website") {
+    return {
+      headline:
+        short(object.extractedLegalName, 90) ||
+        short(object.pageTitle, 90) ||
+        "Nettsiden er lest",
+      detail:
+        short(object.metaDescription) ||
+        short(object.textSnippet) ||
+        "Førstepartsbudskap og visuelle signaler er analysert.",
+    };
+  }
+  if (stage === "googlePlacesBusiness") {
+    const rating =
+      typeof object.rating === "number"
+        ? `${object.rating.toFixed(1)} stjerner`
+        : "";
+    return {
+      headline: short(object.displayName, 90) || "Bedriftssignaler kontrollert",
+      detail:
+        [rating, short(object.formattedAddress, 110)]
+          .filter(Boolean)
+          .join(" · ") || "Google-signaler er kontrollert.",
+    };
+  }
+  if (
+    [
+      "googlePlacesCompetitors",
+      "webCompetitors",
+      "competitorAnalysis",
+    ].includes(String(stage))
+  ) {
+    const candidates = count(object.competitors);
+    return {
+      headline: candidates
+        ? `${candidates} relevante konkurrenter`
+        : "Konkurrentbildet kontrolleres",
+      detail:
+        short(object.marketContext) ||
+        "Kandidater sammenlignes og duplikater fjernes.",
+    };
+  }
+  if (["googlePlacesLocal", "localPresence"].includes(String(stage))) {
+    const opportunities = count(object.nearbyOpportunities);
+    return {
+      headline: opportunities
+        ? `${opportunities} lokale muligheter`
+        : "Lokale muligheter kontrolleres",
+      detail:
+        short(object.marketArea) ||
+        "Kun geografisk verifiserte forslag brukes i konseptet.",
+    };
+  }
+  if (stage === "merchSuppliers") {
+    const suppliers = count(object.suppliers);
+    return {
+      headline: suppliers
+        ? `${suppliers} merch-leverandører vurdert`
+        : "Merch-alternativer vurderes",
+      detail:
+        "Produkter, logoanvendelse og leverandørbevis kobles til anbefalingen.",
+    };
+  }
+  if (stage === "colorExtraction" && Array.isArray(value)) {
+    const colors = value
+      .map(nested)
+      .map((color) => firstText(color.hex, color.value))
+      .filter(hasText);
+    return {
+      headline: colors.length
+        ? `${colors.length} logofarger funnet`
+        : "Logo-paletten kontrolleres",
+      detail: colors.length
+        ? colors.slice(0, 4).join(" · ")
+        : "Ingen farge brukes som verifisert uten logo-bevis.",
+      primaryColor: colors.find((color) => /^#[0-9a-f]{6}$/i.test(color)),
+      accentColor: colors
+        .slice(1)
+        .find((color) => /^#[0-9a-f]{6}$/i.test(color)),
+    };
+  }
+  return undefined;
+}
 
 /** Wraps an async call with wall-clock timing and writes the duration
  *  (rounded to ms) into the provided latencies bag under `key`. The
@@ -6645,7 +6767,8 @@ async function withTiming<T>(
       fallbacks.push(options.emptyFallbackLabel);
       fallback = options.emptyFallbackLabel;
     }
-    options?.onProgress?.({ type: "stage_done", stage: key, ms, fallback });
+    const preview = buildProgressPreview(key, result);
+    options?.onProgress?.({ type: "stage_done", stage: key, ms, fallback, ...(preview ? { preview } : {}) });
     return result;
   } catch (error) {
     const ms = Date.now() - startedAt;
@@ -6665,6 +6788,9 @@ export async function generateRoleRoomAgentProducerBootstrap(
   input: RoleRoomAgentProducerBootstrapInput,
   options?: {
     onProgress?: RoleRoomAgentProgressSink;
+    /** Route-provided id lets progressive SSE side effects and the final
+     * payload share one idempotency key. */
+    researchId?: string;
     /** APPROVED learned NACE→businessModel overrides (Lag 2a), loaded by the
      *  route from role_room_agent_learned_overrides. Fed into the grounding
      *  pass so producer-corrected classifications take effect at runtime. */
@@ -6679,7 +6805,9 @@ export async function generateRoleRoomAgentProducerBootstrap(
   // render the "Research Complete" overlay with a real timeline instead
   // of a spinner that disappears. All three are best-effort — if a stage
   // throws, we still record its (final) duration before rethrowing.
-  const researchId = crypto.randomUUID();
+  const researchId = options?.researchId && /^[0-9a-f-]{36}$/i.test(options.researchId)
+    ? options.researchId
+    : crypto.randomUUID();
   const bootstrapStartedAt = new Date().toISOString();
   const startedAtMs = Date.now();
   const serviceLatencies: RoleRoomAgentServiceLatencies = {};

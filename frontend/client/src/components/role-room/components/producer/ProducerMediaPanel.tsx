@@ -17104,6 +17104,7 @@ export default function ProducerMediaPanel({
         progressStages={researchProgress.stages}
         progressStatus={researchProgress.status}
         progressError={researchProgress.error}
+        progressMockups={researchProgress.mockups}
       />
       {/* MFA step-up modal for vault-reveal — vises kun når backend
           har returnert mfa_required for siste reveal-request */}

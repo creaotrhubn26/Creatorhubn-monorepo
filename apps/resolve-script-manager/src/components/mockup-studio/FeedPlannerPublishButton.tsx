@@ -7,16 +7,22 @@ import {
 } from '../../services/feedMockupLinksService';
 import type { MockupDoc } from './mockupStudioModel';
 import { rasterizeMockup } from './mockupRaster';
+import { exportMotionWebm } from './mockupMotionExport';
+import { MOTION_PRESETS } from './mockupMotion';
 
 const MAX_DATA_URL_LENGTH = 1_900_000;
 
-async function renderForFeed(doc: MockupDoc): Promise<{ dataUrl: string; fileName: string }> {
+async function renderForFeed(doc: MockupDoc, mediaType: FeedMockupLink['mediaType']): Promise<{ dataUrl: string; fileName: string }> {
   const safeName = (doc.name || 'mockup-studio')
     .trim()
     .replace(/[^a-z0-9æøå._-]+/gi, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 120) || 'mockup-studio';
   const longEdge = Math.max(doc.canvas.w, doc.canvas.h);
+  if (mediaType === 'reel') {
+    const base64 = await exportMotionWebm(doc, MOTION_PRESETS.find((preset) => preset.id === 'reel')!.cfg, 0.5);
+    return { dataUrl: `data:video/webm;base64,${base64}`, fileName: `${safeName}.webm` };
+  }
   const targetEdges = [1600, 1350, 1080, 900];
 
   for (const targetEdge of targetEdges) {
@@ -86,17 +92,19 @@ export default function FeedPlannerPublishButton({ doc }: { doc: MockupDoc }) {
       setLinks(refreshed);
       const link = refreshed.find((item) => item.id === initialLink.id);
       if (!link) throw new Error('Koblingen finnes ikke lenger.');
-      const rendered = await renderForFeed(doc);
+      const rendered = await renderForFeed(doc, link.mediaType);
       const result = await feedMockupLinksService.applyOutput({
         linkId: link.id,
-        imageDataUrl: rendered.dataUrl,
+        mediaDataUrl: rendered.dataUrl,
         fileName: rendered.fileName,
         mockupRevision: link.mockupRevision,
         confirmApprovedAssetChange: confirmed,
       });
       setMessage(result.changed
         ? `✓ Sendt til ${platformLabel(link.platform)} · ${link.feedPostTitle || link.feedPostId}`
-        : '✓ Feed-posten har allerede nøyaktig denne renderen. Ingen duplikat ble laget.');
+        : link.mediaType === 'carousel' && result.variantComplete === false
+          ? `✓ Slide ${link.outputPosition}/${link.expectedOutputCount} lagret. Feed-posten oppdateres når alle slidene er sendt.`
+          : '✓ Feed-posten har allerede nøyaktig denne renderen. Ingen duplikat ble laget.');
       setLinks(await feedMockupLinksService.list(doc.id));
     } catch (caught) {
       if (
@@ -171,7 +179,8 @@ export default function FeedPlannerPublishButton({ doc }: { doc: MockupDoc }) {
                       {link.feedPostTitle || link.feedPostId}
                     </div>
                     <div style={{ color: link.stale ? '#f0bd68' : '#8fa3b8', fontSize: 10.5, marginTop: 2 }}>
-                      {platformLabel(link.platform)} · versjon {link.mockupRevision}
+                      {platformLabel(link.platform)} · {link.variantLabel}{link.mediaType === 'carousel' ? ` · slide ${link.outputPosition}/${link.expectedOutputCount}` : ''} · versjon {link.mockupRevision}
+                      {link.skillRuns?.length ? ` · brand ${link.qualityStatus === 'ready' ? 'verifisert' : link.qualityStatus || 'limited'}` : ''}
                       {link.stale ? ' · ny versjon må sendes' : link.lastAppliedAt ? ' · synkronisert' : ' · ikke sendt'}
                     </div>
                   </div>

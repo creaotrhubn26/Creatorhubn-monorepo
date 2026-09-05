@@ -127,9 +127,15 @@ export default function FeedPostApprovalActions({
             }}
           >
             Kommentar fra reviewer
-            {post.approvalChangedBy ? ` · ${post.approvalChangedBy}` : ''}
+            {post.approvalChangedBy ? ` · ${post.approvalChangedBy}` : ""}
           </Typography>
-          <Typography sx={{ color: '#e2e8f0', fontSize: '0.8rem', whiteSpace: 'pre-wrap' }}>
+          <Typography
+            sx={{
+              color: "#e2e8f0",
+              fontSize: "0.8rem",
+              whiteSpace: "pre-wrap",
+            }}
+          >
             {post.approvalNote}
           </Typography>
         </Box>
@@ -147,10 +153,10 @@ export default function FeedPostApprovalActions({
             disabled={isBusy}
             size="small"
             sx={{
-              '& .MuiInputBase-root': {
-                fontSize: '0.82rem',
-                color: '#e2e8f0',
-                bgcolor: 'rgba(15,23,42,0.55)',
+              "& .MuiInputBase-root": {
+                fontSize: "0.82rem",
+                color: "#e2e8f0",
+                bgcolor: "rgba(15,23,42,0.55)",
               },
             }}
           />
@@ -159,12 +165,12 @@ export default function FeedPostApprovalActions({
               size="small"
               onClick={() => {
                 setShowRejectInput(false);
-                setRejectNote('');
+                setRejectNote("");
               }}
               sx={{
-                textTransform: 'none',
-                fontSize: '0.78rem',
-                color: 'rgba(226,232,240,0.7)',
+                textTransform: "none",
+                fontSize: "0.78rem",
+                color: "rgba(226,232,240,0.7)",
               }}
               disabled={isBusy}
             >
@@ -173,21 +179,23 @@ export default function FeedPostApprovalActions({
             <Button
               size="small"
               variant="contained"
-              onClick={() => transition('needs_changes', rejectNote.trim() || null)}
+              onClick={() =>
+                transition("needs_changes", rejectNote.trim() || null)
+              }
               disabled={isBusy}
               startIcon={
-                busyTarget === 'needs_changes' ? (
+                busyTarget === "needs_changes" ? (
                   <CircularProgress size={14} color="inherit" />
                 ) : (
                   <EditIcon fontSize="small" />
                 )
               }
               sx={{
-                textTransform: 'none',
-                fontSize: '0.78rem',
-                bgcolor: '#fbbf24',
-                color: '#0f172a',
-                '&:hover': { bgcolor: '#f59e0b' },
+                textTransform: "none",
+                fontSize: "0.78rem",
+                bgcolor: "#fbbf24",
+                color: "#0f172a",
+                "&:hover": { bgcolor: "#f59e0b" },
               }}
             >
               Send tilbake
@@ -196,34 +204,34 @@ export default function FeedPostApprovalActions({
         </Stack>
       ) : (
         <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-          {currentState === 'draft' || currentState === 'needs_changes' ? (
+          {currentState === "draft" || currentState === "needs_changes" ? (
             <Button
               size="small"
               variant="contained"
               startIcon={
-                busyTarget === 'approved' ? (
+                busyTarget === "approved" ? (
                   <CircularProgress size={14} color="inherit" />
                 ) : (
                   <CheckIcon fontSize="small" />
                 )
               }
-              onClick={() => transition('approved')}
+              onClick={() => transition("approved")}
               disabled={isBusy}
               data-testid="approve-button"
               sx={{
-                textTransform: 'none',
-                fontSize: '0.82rem',
+                textTransform: "none",
+                fontSize: "0.82rem",
                 fontWeight: 700,
-                bgcolor: '#22c55e',
-                color: '#0f172a',
-                '&:hover': { bgcolor: '#16a34a' },
+                bgcolor: "#22c55e",
+                color: "#0f172a",
+                "&:hover": { bgcolor: "#16a34a" },
               }}
             >
               Godkjenn
             </Button>
           ) : null}
 
-          {currentState === 'draft' ? (
+          {currentState === "draft" ? (
             <Button
               size="small"
               variant="outlined"
@@ -232,74 +240,81 @@ export default function FeedPostApprovalActions({
               disabled={isBusy}
               data-testid="request-changes-button"
               sx={{
-                textTransform: 'none',
-                fontSize: '0.82rem',
-                color: '#fbbf24',
-                borderColor: 'rgba(251,191,36,0.5)',
-                '&:hover': { borderColor: '#fbbf24', bgcolor: 'rgba(251,191,36,0.08)' },
+                textTransform: "none",
+                fontSize: "0.82rem",
+                color: "#fbbf24",
+                borderColor: "rgba(251,191,36,0.5)",
+                "&:hover": {
+                  borderColor: "#fbbf24",
+                  bgcolor: "rgba(251,191,36,0.08)",
+                },
               }}
             >
               Be om endring
             </Button>
           ) : null}
 
-          {currentState === 'approved' || currentState === 'scheduled' ? (
+          {currentState === "awaiting_client" ||
+          currentState === "approved" ||
+          currentState === "scheduled" ? (
             <Button
               size="small"
               variant="outlined"
               startIcon={
-                busyTarget === 'draft' ? (
+                busyTarget === "draft" ? (
                   <CircularProgress size={14} color="inherit" />
                 ) : (
                   <ReplayIcon fontSize="small" />
                 )
               }
-              onClick={() => transition('draft')}
+              onClick={() => transition("draft")}
               disabled={isBusy}
               data-testid="back-to-draft-button"
               sx={{
-                textTransform: 'none',
-                fontSize: '0.82rem',
-                color: 'rgba(226,232,240,0.85)',
-                borderColor: 'rgba(148,163,184,0.4)',
+                textTransform: "none",
+                fontSize: "0.82rem",
+                color: "rgba(226,232,240,0.85)",
+                borderColor: "rgba(148,163,184,0.4)",
               }}
             >
-              Tilbake til utkast
+              {currentState === "awaiting_client"
+                ? "Trekk tilbake"
+                : "Tilbake til utkast"}
             </Button>
           ) : null}
 
-          {currentState === 'draft' ? (
+          {currentState === "draft" ? (
             <Button
               size="small"
               variant="text"
               startIcon={<BlockIcon fontSize="small" />}
-              onClick={() => transition('rejected')}
+              onClick={() => transition("rejected")}
               disabled={isBusy}
               data-testid="reject-button"
               sx={{
-                textTransform: 'none',
-                fontSize: '0.78rem',
-                color: 'rgba(248,113,113,0.85)',
-                '&:hover': { bgcolor: 'rgba(248,113,113,0.08)' },
+                textTransform: "none",
+                fontSize: "0.78rem",
+                color: "rgba(248,113,113,0.85)",
+                "&:hover": { bgcolor: "rgba(248,113,113,0.08)" },
               }}
             >
               Avvis
             </Button>
           ) : null}
 
-          {currentState === 'rejected' ? (
+          {currentState === "rejected" ? (
             <Button
               size="small"
               variant="outlined"
               startIcon={<ReplayIcon fontSize="small" />}
-              onClick={() => transition('draft')}
+              onClick={() => transition("draft")}
               disabled={isBusy}
               data-testid="back-to-draft-button"
               sx={{
-                textTransform: 'none',
-                fontSize: '0.82rem',
-                color: 'rgba(226,232,240,0.85)',
-                borderColor: 'rgba(148,163,184,0.4)',
+                textTransform: "none",
+                fontSize: "0.82rem",
+                color: "rgba(226,232,240,0.85)",
+                borderColor: "rgba(148,163,184,0.4)",
               }}
             >
               Send inn på nytt
@@ -309,7 +324,9 @@ export default function FeedPostApprovalActions({
       )}
 
       {error ? (
-        <Typography sx={{ color: '#fca5a5', fontSize: '0.74rem' }}>{error}</Typography>
+        <Typography sx={{ color: "#fca5a5", fontSize: "0.74rem" }}>
+          {error}
+        </Typography>
       ) : null}
     </Stack>
   );

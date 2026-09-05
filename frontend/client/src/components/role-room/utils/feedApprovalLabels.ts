@@ -31,6 +31,16 @@ const DESCRIPTORS: Record<RoleRoomFeedApprovalState, FeedApprovalDescriptor> = {
     primaryActionLabel: 'Godkjenn',
     primaryActionTarget: 'approved',
   },
+  awaiting_client: {
+    label: "Venter på klient",
+    description:
+      "Sendt til klient for vurdering. Endringer i mockupen nullstiller denne gjennomgangen.",
+    color: "#c4b5fd",
+    bgColor: "rgba(167,139,250,0.18)",
+    borderColor: "rgba(167,139,250,0.5)",
+    primaryActionLabel: "Trekk tilbake",
+    primaryActionTarget: "draft",
+  },
   approved: {
     label: 'Godkjent',
     description: 'Klar for å planlegges eller publiseres umiddelbart.',
