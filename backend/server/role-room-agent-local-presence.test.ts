@@ -4,7 +4,9 @@ import {
   fetchWebCompetitorAnalysis,
   fetchGooglePlacesLocalPresencePlan,
   fetchMerchSuppliersAnalysis,
+  mergeCompetitorAnalyses,
   type RoleRoomAgentBrregCompany,
+  type RoleRoomAgentCompetitorAnalysis,
   type RoleRoomAgentProducerBootstrapInput,
   type RoleRoomAgentWebsiteInsights,
 } from './role-room-agent.js';
@@ -260,6 +262,70 @@ describe('Role Room local-presence fail-closed policy', () => {
     expect(Date.now() - startedAt).toBeLessThan(180);
     expect(result.competitors.map((entry) => entry.name)).toEqual(['Oslo Klinisk AI']);
     expect(JSON.stringify(result)).not.toMatch(/Atlanta|Hope Rd|MedSide Georgia/i);
+  });
+
+  it('leads with successful web copy when Places returns no competitors', () => {
+    const placesLimitation = 'Google Places ga ingen trygge konkurrentkandidater etter at kunden selv ble ekskludert.';
+    const webLimitation = 'Webresultater bekrefter produktrelevans, men krever manuell kontroll.';
+    const places: RoleRoomAgentCompetitorAnalysis = {
+      status: 'limited',
+      source: 'fallback',
+      generatedAt: '2026-09-05T00:00:00.000Z',
+      marketContext: 'Places mangler kandidater.',
+      competitors: [],
+      verifiedCompetitorCount: 0,
+      averageRating: null,
+      averageReviewCount: null,
+      marketingOpportunities: ['Be kunden oppgi konkurrenter manuelt.'],
+      positioningRecommendations: ['Ikke bruk navngitte konkurrenter.'],
+      contentGapSuggestions: ['Lag en manuell matrise.'],
+      producerQuestions: ['Hvilke konkurrenter kjenner kunden?'],
+      limitations: [placesLimitation],
+    };
+    const web: RoleRoomAgentCompetitorAnalysis = {
+      status: 'ready',
+      source: 'web_search',
+      generatedAt: '2026-09-05T00:00:01.000Z',
+      marketContext: '1 kildebelagt produktkandidat er klar for manuell kontroll.',
+      competitors: [{
+        source: 'web_search',
+        name: 'Talk!t',
+        websiteUrl: 'https://talkit.no/',
+        confidence: 75,
+        status: 'likely',
+        evidence: [{ type: 'web_search_result', label: 'Funnet via websøk', weight: 30 }],
+        relevanceReason: 'Matcher klinisk programvare.',
+        marketingSignals: {
+          positionHint: 'Talk!t er synlig i samme produktsegment.',
+          contentAngles: [],
+          ctaOpportunities: [],
+          riskNotes: [],
+        },
+        requiresManualConfirmation: true,
+      }],
+      verifiedCompetitorCount: 1,
+      averageRating: null,
+      averageReviewCount: null,
+      marketingOpportunities: ['Sammenlign produktløfte og GDPR-bevis.'],
+      positioningRecommendations: ['Skill dokumenterte funksjoner fra antakelser.'],
+      contentGapSuggestions: ['Kartlegg produktdemo og arbeidsflyt.'],
+      producerQuestions: ['Møter kunden Talk!t i salgsprosessen?'],
+      limitations: [webLimitation],
+    };
+
+    const result = mergeCompetitorAnalyses(places, web);
+
+    expect(result).toMatchObject({
+      status: 'ready',
+      source: 'web_search',
+      marketContext: web.marketContext,
+      marketingOpportunities: web.marketingOpportunities,
+      positioningRecommendations: web.positioningRecommendations,
+      contentGapSuggestions: web.contentGapSuggestions,
+      producerQuestions: web.producerQuestions,
+    });
+    expect(result.competitors.map((competitor) => competitor.name)).toEqual(['Talk!t']);
+    expect(result.limitations).toEqual([webLimitation, placesLimitation]);
   });
 
   it('finds specialized Norwegian software competitors from web results without duplicates or self matches', async () => {

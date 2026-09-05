@@ -26,11 +26,14 @@ import {
   type MockupChangeOperation,
 } from "./mockup-change-set-service.js";
 
-type SessionData = { userId: string; role: string; email: string; name: string; loginAt: string; [key: string]: unknown };
+export type MockupStudioSessionData = { userId: string; role: string; email: string; name: string; loginAt: string; [key: string]: unknown };
 interface Deps { pool: Pool; activeSessions: Map<string, SessionData> }
-interface Actor { userId: string; email: string; displayName: string }
-type AccessRole = "owner" | "editor" | "commenter" | "approver" | "viewer";
-interface ProjectAccess {
+type SessionData = MockupStudioSessionData;
+export interface MockupStudioActor { userId: string; email: string; displayName: string }
+type Actor = MockupStudioActor;
+export type MockupStudioAccessRole = "owner" | "editor" | "commenter" | "approver" | "viewer";
+type AccessRole = MockupStudioAccessRole;
+export interface MockupStudioProjectAccess {
   id: string;
   created_by: string;
   payload: Record<string, unknown>;
@@ -41,6 +44,7 @@ interface ProjectAccess {
   updated_at: Date | string;
   access_role: AccessRole;
 }
+type ProjectAccess = MockupStudioProjectAccess;
 interface PublicLink {
   token_hash: string;
   share_id: string;
@@ -240,9 +244,10 @@ function publicAppBase(): string {
 function isExpired(link: PublicLink): boolean {
   return Boolean(link.expires_at && new Date(link.expires_at).getTime() <= Date.now());
 }
-function roleCanEdit(role: AccessRole): boolean {
+export function roleCanEditMockupProject(role: AccessRole): boolean {
   return role === "owner" || role === "editor";
 }
+const roleCanEdit = roleCanEditMockupProject;
 function roleCanComment(role: AccessRole): boolean {
   return role !== "viewer";
 }
@@ -262,7 +267,7 @@ function rateLimited(key: string, limit = 60, windowMs = 60_000): boolean {
   return item.count > limit;
 }
 
-async function resolveActor(
+export async function resolveMockupStudioActor(
   pool: Pool,
   activeSessions: Map<string, SessionData>,
   req: Request,
@@ -284,8 +289,9 @@ async function resolveActor(
     displayName: cleanText(session.name, 200) || email || session.userId.slice(0, 200),
   };
 }
+const resolveActor = resolveMockupStudioActor;
 
-async function projectAccess(pool: Pool, actor: Actor, projectId: string): Promise<ProjectAccess | null> {
+export async function getMockupStudioProjectAccess(pool: Pool, actor: Actor, projectId: string): Promise<ProjectAccess | null> {
   const result = await pool.query<ProjectAccess>(
     `SELECT p.id, p.created_by, p.payload, COALESCE(ms.revision,1) AS revision,
        p.status, ms.workspace_project_id, p.project_updated_at, p.updated_at,
@@ -331,6 +337,7 @@ async function projectAccess(pool: Pool, actor: Actor, projectId: string): Promi
   }
   return access;
 }
+const projectAccess = getMockupStudioProjectAccess;
 
 async function loadPublicLink(pool: Pool, rawToken: string): Promise<PublicLink | null> {
   if (!rawToken || rawToken.length > 200) return null;
@@ -700,6 +707,8 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
            COALESCE(ms.revision,1) AS revision, p.updated_at, ms.workspace_project_id,
            CASE WHEN p.created_by=$1 THEN 'owner'
              WHEN c.role IS NOT NULL THEN c.role
+             WHEN cur.user_id IS NOT NULL THEN
+               CASE WHEN lower(COALESCE(cur.role,'')) IN ('owner','admin','producer','editor','creative') THEN 'editor' ELSE 'commenter' END
              ELSE 'commenter' END AS access_role,
            (SELECT count(*)::int FROM mockup_studio_comments mc
              WHERE mc.project_id=p.id AND mc.created_by=p.created_by AND mc.status<>'resolved') AS open_comments
@@ -798,7 +807,7 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
           `UPDATE demo_studio_mockup_projects SET
              name=$3, status=$4, template_id=$5, project_updated_at=$6,
              payload=$7::jsonb, updated_at=now()
-           WHERE id=$1 AND created_by=$2 AND project_updated_at <= $6
+           WHERE id=$1 AND created_by=$2 AND project_updated_at < $6
            RETURNING updated_at`,
           [
             id, access.created_by, String(project.name).slice(0, 200),

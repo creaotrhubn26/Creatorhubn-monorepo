@@ -95,6 +95,11 @@ jobs:
             echo "::error::Requested version must match tauri.conf.json and Cargo.toml"
             exit 1
           fi
+          release_notes_path="apps/resolve-script-manager/release-notes/v$REQUESTED_VERSION.txt"
+          if [ ! -s "$release_notes_path" ]; then
+            echo "::error::Release notes are required at $release_notes_path"
+            exit 1
+          fi
 
           release_tag="post-agent-v$REQUESTED_VERSION"
           tag_response="$RUNNER_TEMP/post-agent-tag-ref.json"
@@ -394,27 +399,15 @@ jobs:
           fi
           public_url="https://github.com/$REPOSITORY/releases/download/$RELEASE_TAG/post-agent-$ARCH_LABEL.app.tar.gz"
 
-          # "Hva er nytt" = commit-emnene siden forrige post-agent-tag (uten støy-commits).
-          # Updater-dialogen i appen viser dette feltet (update.body), så det MÅ være ekte.
-          previous_tag=$(git tag -l 'post-agent-v*' --sort=-v:refname \
-            | grep -Fvx "$RELEASE_TAG" | head -n 1 || true)
-          # Sti-filter til selve appen → «hva er nytt» blir en REN Post Agent-logg,
-          # ikke urelaterte monorepo-commits (releases tagges utenfor main, så
-          # spennet er stort). Uten dette druknet Infographic Studio i i18n/Leadgrid-støy.
-          if [ -n "$previous_tag" ]; then
-            raw_notes=$(git log --no-merges --pretty=format:'%s' \
-              "$previous_tag..$RELEASE_TARGET" -- apps/resolve-script-manager 2>/dev/null || true)
-          else
-            raw_notes=$(git log --no-merges --pretty=format:'%s' -n 12 \
-              "$RELEASE_TARGET" -- apps/resolve-script-manager 2>/dev/null || true)
+          # Den samme versjonerte teksten brukes i GitHub Release og i appens
+          # «Hva er nytt»-dialog. Markdown-overskrifter og listemarkører gjøres
+          # om til lesbar ren tekst for updater-manifestet.
+          release_notes_path="apps/resolve-script-manager/release-notes/v$RELEASE_VERSION.txt"
+          if [ ! -s "$release_notes_path" ]; then
+            echo "::error::Release notes are missing or empty: $release_notes_path"
+            exit 1
           fi
-          notes=$(printf '%s\n' "$raw_notes" \
-            | grep -vE '^chore\(post-agent\): bump|^chore: trigger|^Merge ' \
-            | sed -E 's/^(feat|fix|chore|refactor|docs|style|perf|test)(\([^)]*\))?: //' \
-            | sed 's/^/• /' | head -n 15 || true)
-          if [ -z "$notes" ]; then
-            notes="Forbedringer og feilrettinger."
-          fi
+          notes=$(sed -E 's/^#{1,6}[[:space:]]*//; s/^- /• /' "$release_notes_path")
 
           export PA_ARCH="$ARCH_LABEL" PA_NOTES="$notes" PA_SIG="$signature" \
             PA_URL="$public_url" PA_VER="$RELEASE_VERSION"
@@ -594,15 +587,14 @@ jobs:
               ;;
           esac
 
-      # Production B2 secret contract: POST_AGENT_B2_KEY_ID,
-      # POST_AGENT_B2_APPLICATION_KEY, POST_AGENT_B2_BUCKET and POST_AGENT_B2_REGION.
-      # No service-wide Render environment is read by this release.
+      # Mirror to the same private Role Room B2 bucket that the gated backend
+      # download route presigns. Read only the three exact runtime keys from
+      # Render so release uploads cannot drift from the backend contract.
       - name: Mirror marketplace download to B2
         env:
-          POST_AGENT_B2_KEY_ID: ${{ secrets.POST_AGENT_B2_KEY_ID }}
-          POST_AGENT_B2_APPLICATION_KEY: ${{ secrets.POST_AGENT_B2_APPLICATION_KEY }}
-          POST_AGENT_B2_BUCKET: ${{ secrets.POST_AGENT_B2_BUCKET }}
-          POST_AGENT_B2_REGION: ${{ secrets.POST_AGENT_B2_REGION }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: srv-d76ob60ule4c73dv2p60
+          POST_AGENT_B2_REGION: eu-central-003
           TAG: ${{ needs.guard.outputs.tag }}
         shell: bash
         run: |
@@ -616,6 +608,41 @@ jobs:
             echo "::error::The ubuntu-24.04 runner does not provide the expected AWS CLI"
             exit 1
           fi
+          if [ -z "$RENDER_API_KEY" ]; then
+            echo "::error::RENDER_API_KEY is not configured in the Production environment"
+            exit 1
+          fi
+          echo "::add-mask::$RENDER_API_KEY"
+
+          read_render_env() {
+            local render_key="$1"
+            local response="$RUNNER_TEMP/post-agent-render-$render_key.json"
+            local status
+            if [[ ! "$render_key" =~ ^B2_ROLE_ROOM_(APPLICATION_KEY_ID|APPLICATION_KEY|BUCKET_NAME)$ ]]; then
+              echo "::error::Refusing unexpected Render environment key" >&2
+              return 1
+            fi
+            status=$(curl -sS --retry 3 --retry-all-errors --connect-timeout 5 --max-time 30 \
+              -o "$response" -w '%{http_code}' \
+              -H "Authorization: Bearer $RENDER_API_KEY" \
+              -H "Accept: application/json" \
+              "https://api.render.com/v1/services/$RENDER_SERVICE_ID/env-vars/$render_key")
+            if [ "$status" != 200 ]; then
+              echo "::error::Unable to read required Render environment key $render_key (HTTP $status)" >&2
+              return 1
+            fi
+            jq -er '
+              if type == "object" then (.value // .envVar.value // empty) else empty end
+              | select(type == "string" and length > 0)
+            ' "$response"
+          }
+
+          POST_AGENT_B2_KEY_ID=$(read_render_env B2_ROLE_ROOM_APPLICATION_KEY_ID)
+          POST_AGENT_B2_APPLICATION_KEY=$(read_render_env B2_ROLE_ROOM_APPLICATION_KEY)
+          POST_AGENT_B2_BUCKET=$(read_render_env B2_ROLE_ROOM_BUCKET_NAME)
+          echo "::add-mask::$POST_AGENT_B2_KEY_ID"
+          echo "::add-mask::$POST_AGENT_B2_APPLICATION_KEY"
+          echo "::add-mask::$POST_AGENT_B2_BUCKET"
 
           missing=0
           for key in POST_AGENT_B2_KEY_ID POST_AGENT_B2_APPLICATION_KEY POST_AGENT_B2_BUCKET POST_AGENT_B2_REGION; do
@@ -627,9 +654,6 @@ jobs:
           if [ "$missing" -gt 0 ]; then
             exit 1
           fi
-          echo "::add-mask::$POST_AGENT_B2_KEY_ID"
-          echo "::add-mask::$POST_AGENT_B2_APPLICATION_KEY"
-
           b2_region="$POST_AGENT_B2_REGION"
           b2_bucket="$POST_AGENT_B2_BUCKET"
 
@@ -706,6 +730,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
+      - name: Checkout exact guarded release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.guard.outputs.target_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
       - name: Download the staged immutable artifact set
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -718,6 +749,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.guard.outputs.tag }}
           RELEASE_TARGET: ${{ needs.guard.outputs.target_sha }}
+          RELEASE_VERSION: ${{ needs.guard.outputs.version }}
           REPOSITORY: ${{ github.repository }}
         shell: bash
         run: |
@@ -818,7 +850,8 @@ jobs:
           draft: true
           prerelease: false
           make_latest: false
-          generate_release_notes: true
+          body_path: apps/resolve-script-manager/release-notes/v${{ needs.guard.outputs.version }}.txt
+          generate_release_notes: false
           files: dist/*
           fail_on_unmatched_files: true
 
@@ -829,6 +862,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.guard.outputs.tag }}
           RELEASE_TARGET: ${{ needs.guard.outputs.target_sha }}
+          RELEASE_VERSION: ${{ needs.guard.outputs.version }}
           REPOSITORY: ${{ github.repository }}
         shell: bash
         run: |
@@ -857,9 +891,13 @@ jobs:
           expected_json=$(printf '%s\n' "${expected[@]}" | jq -R . | jq -sc 'sort')
           actual_json=$(jq -c '[.assets[].name] | sort' "$draft_response")
           assets_ready=$(jq -r '.assets | all(.state == "uploaded" and (.size > 0))' "$draft_response")
+          notes_path="apps/resolve-script-manager/release-notes/v$RELEASE_VERSION.txt"
+          expected_body=$(cat "$notes_path")
+          actual_body=$(jq -r '.body // ""' "$draft_response")
           if [ "$(jq -r '.tag_name' "$draft_response")" != "$RELEASE_TAG" ] || \
              [ "$(jq -r '.draft' "$draft_response")" != true ] || \
-             [ "$actual_json" != "$expected_json" ] || [ "$assets_ready" != true ]; then
+             [ "$actual_json" != "$expected_json" ] || [ "$assets_ready" != true ] || \
+             [ "$actual_body" != "$expected_body" ]; then
             echo "::error::Draft release is not the complete expected release"
             exit 1
           fi
@@ -886,6 +924,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.guard.outputs.tag }}
           RELEASE_TARGET: ${{ needs.guard.outputs.target_sha }}
+          RELEASE_VERSION: ${{ needs.guard.outputs.version }}
           REPOSITORY: ${{ github.repository }}
         shell: bash
         run: |
@@ -910,9 +949,13 @@ jobs:
           expected_json=$(printf '%s\n' "${expected[@]}" | jq -R . | jq -sc 'sort')
           actual_json=$(jq -c '[.assets[].name] | sort' "$release_response")
           assets_ready=$(jq -r '.assets | all(.state == "uploaded" and (.size > 0))' "$release_response")
+          notes_path="apps/resolve-script-manager/release-notes/v$RELEASE_VERSION.txt"
+          expected_body=$(cat "$notes_path")
+          actual_body=$(jq -r '.body // ""' "$release_response")
           if [ "$(jq -r '.draft' "$release_response")" != false ] || \
              [ "$(jq -r '.prerelease' "$release_response")" != false ] || \
-             [ "$actual_json" != "$expected_json" ] || [ "$assets_ready" != true ]; then
+             [ "$actual_json" != "$expected_json" ] || [ "$assets_ready" != true ] || \
+             [ "$actual_body" != "$expected_body" ]; then
             echo "::error::Published release verification failed"
             exit 1
           fi

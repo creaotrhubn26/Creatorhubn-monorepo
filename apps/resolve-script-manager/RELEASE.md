@@ -36,6 +36,13 @@ The CI workflow at `.github/workflows/release-post-agent.yml` requires:
 | `APPLE_ID` | If notarizing | Apple ID email |
 | `APPLE_PASSWORD` | If notarizing | App-specific password from appleid.apple.com |
 | `APPLE_TEAM_ID` | If notarizing | 10-char team ID |
+| `RENDER_API_KEY` | **YES** | Reads the exact private Role Room B2 keys used by the backend and records the published Post Agent version |
+
+The release mirrors the exact signed artifact set to the existing Role Room B2
+bucket in `eu-central-003`. The Render service must contain
+`B2_ROLE_ROOM_APPLICATION_KEY_ID`, `B2_ROLE_ROOM_APPLICATION_KEY`, and
+`B2_ROLE_ROOM_BUCKET_NAME`. The workflow reads only these three named keys with
+single-key GET requests; it never lists or replaces the full Render environment.
 
 To add a secret:
 

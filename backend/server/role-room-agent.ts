@@ -4178,10 +4178,27 @@ export function mergeCompetitorAnalyses(
   const leadingAnalysis = primary.competitors.length > 0
     ? primary
     : supplementalAnalyses.find((entry) => entry.competitors.length > 0) || primary;
+  const allAnalyses = [primary, ...supplementalAnalyses];
+  const successfulAnalyses = allAnalyses.filter((analysis) => analysis.competitors.length > 0);
+  // Empty providers still carry useful diagnostic limitations, but their
+  // generic fallback advice must not become the main copy once another
+  // provider has returned grounded competitors. Put successful-source
+  // limitations first so compact consumers that render only index 0 describe
+  // the candidates the user can actually see.
+  const businessTextAnalyses = successfulAnalyses.length > 0
+    ? successfulAnalyses
+    : allAnalyses;
+  const limitationAnalyses = successfulAnalyses.length > 0
+    ? [
+        ...successfulAnalyses,
+        ...allAnalyses.filter((analysis) => analysis.competitors.length === 0),
+      ]
+    : allAnalyses;
   const mergeText = (
     key: "marketingOpportunities" | "positioningRecommendations" | "contentGapSuggestions" | "producerQuestions" | "limitations",
+    analyses: RoleRoomAgentCompetitorAnalysis[] = businessTextAnalyses,
   ): string[] => Array.from(new Set(
-    [primary, ...supplementalAnalyses].flatMap((analysis) => analysis[key]),
+    analyses.flatMap((analysis) => analysis[key]),
   ));
 
   return {
@@ -4201,7 +4218,7 @@ export function mergeCompetitorAnalyses(
     positioningRecommendations: mergeText("positioningRecommendations"),
     contentGapSuggestions: mergeText("contentGapSuggestions"),
     producerQuestions: mergeText("producerQuestions"),
-    limitations: mergeText("limitations"),
+    limitations: mergeText("limitations", limitationAnalyses),
   };
 }
 
