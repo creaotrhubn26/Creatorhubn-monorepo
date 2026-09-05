@@ -15,7 +15,7 @@ beforeAll(() => {
   vi.stubGlobal('localStorage', localStorageMock);
   vi.stubGlobal('window', {
     localStorage: localStorageMock,
-    location: { hostname: 'localhost' },
+    location: { hostname: 'localhost', pathname: '/' },
     dispatchEvent: vi.fn(),
   });
 });
@@ -27,6 +27,8 @@ afterAll(() => {
 describe('Role Room bearer-token contract', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    window.location.hostname = 'localhost';
+    window.location.pathname = '/';
   });
 
   it('falls back to the Role Room token when CreatorHub auth is absent', async () => {
@@ -43,6 +45,26 @@ describe('Role Room bearer-token contract', () => {
     window.localStorage.setItem('role_room_auth_token', 'role-room-session');
 
     expect(getStoredAuthToken()).toBe('creatorhub-session');
+  });
+
+  it('prefers the Role Room token on the dedicated Role Room host', async () => {
+    window.location.hostname = 'theroleroom.com';
+    window.localStorage.setItem('creatorhub_auth_token', 'stale-creatorhub-session');
+    window.localStorage.setItem('role_room_auth_token', 'fresh-role-room-session');
+
+    expect(getStoredAuthToken()).toBe('fresh-role-room-session');
+    await expect(getAuthHeader()).resolves.toMatchObject({
+      Authorization: 'Bearer fresh-role-room-session',
+    });
+  });
+
+  it('recovers the Role Room token from the persisted session object', () => {
+    window.location.hostname = 'theroleroom.com';
+    window.localStorage.setItem('role_room_auth_session', JSON.stringify({
+      sessionToken: 'persisted-role-room-session',
+    }));
+
+    expect(getStoredAuthToken()).toBe('persisted-role-room-session');
   });
 
   it('supports the legacy generic token fallback', () => {
