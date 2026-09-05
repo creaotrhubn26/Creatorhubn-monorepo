@@ -172,9 +172,9 @@ export async function applyFeedPostImageLocked(
       await client.query(
         `UPDATE role_room_feed_mockup_links
             SET last_applied_revision=$2,
-                last_applied_sha256=$3,
+                last_applied_sha256=$3::varchar(64),
                 last_applied_at=CASE
-                  WHEN last_applied_sha256 IS DISTINCT FROM $3 THEN now()
+                  WHEN last_applied_sha256 IS DISTINCT FROM $3::varchar(64) THEN now()
                   ELSE COALESCE(last_applied_at, now())
                 END,
                 updated_at=now()
