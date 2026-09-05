@@ -730,6 +730,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
+      - name: Checkout exact guarded release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.guard.outputs.target_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
       - name: Download the staged immutable artifact set
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -742,6 +749,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.guard.outputs.tag }}
           RELEASE_TARGET: ${{ needs.guard.outputs.target_sha }}
+          RELEASE_VERSION: ${{ needs.guard.outputs.version }}
           REPOSITORY: ${{ github.repository }}
         shell: bash
         run: |
@@ -854,6 +862,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.guard.outputs.tag }}
           RELEASE_TARGET: ${{ needs.guard.outputs.target_sha }}
+          RELEASE_VERSION: ${{ needs.guard.outputs.version }}
           REPOSITORY: ${{ github.repository }}
         shell: bash
         run: |
@@ -882,9 +891,13 @@ jobs:
           expected_json=$(printf '%s\n' "${expected[@]}" | jq -R . | jq -sc 'sort')
           actual_json=$(jq -c '[.assets[].name] | sort' "$draft_response")
           assets_ready=$(jq -r '.assets | all(.state == "uploaded" and (.size > 0))' "$draft_response")
+          notes_path="apps/resolve-script-manager/release-notes/v$RELEASE_VERSION.txt"
+          expected_body=$(cat "$notes_path")
+          actual_body=$(jq -r '.body // ""' "$draft_response")
           if [ "$(jq -r '.tag_name' "$draft_response")" != "$RELEASE_TAG" ] || \
              [ "$(jq -r '.draft' "$draft_response")" != true ] || \
-             [ "$actual_json" != "$expected_json" ] || [ "$assets_ready" != true ]; then
+             [ "$actual_json" != "$expected_json" ] || [ "$assets_ready" != true ] || \
+             [ "$actual_body" != "$expected_body" ]; then
             echo "::error::Draft release is not the complete expected release"
             exit 1
           fi
@@ -911,6 +924,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.guard.outputs.tag }}
           RELEASE_TARGET: ${{ needs.guard.outputs.target_sha }}
+          RELEASE_VERSION: ${{ needs.guard.outputs.version }}
           REPOSITORY: ${{ github.repository }}
         shell: bash
         run: |
@@ -935,9 +949,13 @@ jobs:
           expected_json=$(printf '%s\n' "${expected[@]}" | jq -R . | jq -sc 'sort')
           actual_json=$(jq -c '[.assets[].name] | sort' "$release_response")
           assets_ready=$(jq -r '.assets | all(.state == "uploaded" and (.size > 0))' "$release_response")
+          notes_path="apps/resolve-script-manager/release-notes/v$RELEASE_VERSION.txt"
+          expected_body=$(cat "$notes_path")
+          actual_body=$(jq -r '.body // ""' "$release_response")
           if [ "$(jq -r '.draft' "$release_response")" != false ] || \
              [ "$(jq -r '.prerelease' "$release_response")" != false ] || \
-             [ "$actual_json" != "$expected_json" ] || [ "$assets_ready" != true ]; then
+             [ "$actual_json" != "$expected_json" ] || [ "$assets_ready" != true ] || \
+             [ "$actual_body" != "$expected_body" ]; then
             echo "::error::Published release verification failed"
             exit 1
           fi
