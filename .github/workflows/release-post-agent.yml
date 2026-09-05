@@ -95,6 +95,11 @@ jobs:
             echo "::error::Requested version must match tauri.conf.json and Cargo.toml"
             exit 1
           fi
+          release_notes_path="apps/resolve-script-manager/release-notes/v$REQUESTED_VERSION.txt"
+          if [ ! -s "$release_notes_path" ]; then
+            echo "::error::Release notes are required at $release_notes_path"
+            exit 1
+          fi
 
           release_tag="post-agent-v$REQUESTED_VERSION"
           tag_response="$RUNNER_TEMP/post-agent-tag-ref.json"
@@ -394,27 +399,15 @@ jobs:
           fi
           public_url="https://github.com/$REPOSITORY/releases/download/$RELEASE_TAG/post-agent-$ARCH_LABEL.app.tar.gz"
 
-          # "Hva er nytt" = commit-emnene siden forrige post-agent-tag (uten støy-commits).
-          # Updater-dialogen i appen viser dette feltet (update.body), så det MÅ være ekte.
-          previous_tag=$(git tag -l 'post-agent-v*' --sort=-v:refname \
-            | grep -Fvx "$RELEASE_TAG" | head -n 1 || true)
-          # Sti-filter til selve appen → «hva er nytt» blir en REN Post Agent-logg,
-          # ikke urelaterte monorepo-commits (releases tagges utenfor main, så
-          # spennet er stort). Uten dette druknet Infographic Studio i i18n/Leadgrid-støy.
-          if [ -n "$previous_tag" ]; then
-            raw_notes=$(git log --no-merges --pretty=format:'%s' \
-              "$previous_tag..$RELEASE_TARGET" -- apps/resolve-script-manager 2>/dev/null || true)
-          else
-            raw_notes=$(git log --no-merges --pretty=format:'%s' -n 12 \
-              "$RELEASE_TARGET" -- apps/resolve-script-manager 2>/dev/null || true)
+          # Den samme versjonerte teksten brukes i GitHub Release og i appens
+          # «Hva er nytt»-dialog. Markdown-overskrifter og listemarkører gjøres
+          # om til lesbar ren tekst for updater-manifestet.
+          release_notes_path="apps/resolve-script-manager/release-notes/v$RELEASE_VERSION.txt"
+          if [ ! -s "$release_notes_path" ]; then
+            echo "::error::Release notes are missing or empty: $release_notes_path"
+            exit 1
           fi
-          notes=$(printf '%s\n' "$raw_notes" \
-            | grep -vE '^chore\(post-agent\): bump|^chore: trigger|^Merge ' \
-            | sed -E 's/^(feat|fix|chore|refactor|docs|style|perf|test)(\([^)]*\))?: //' \
-            | sed 's/^/• /' | head -n 15 || true)
-          if [ -z "$notes" ]; then
-            notes="Forbedringer og feilrettinger."
-          fi
+          notes=$(sed -E 's/^#{1,6}[[:space:]]*//; s/^- /• /' "$release_notes_path")
 
           export PA_ARCH="$ARCH_LABEL" PA_NOTES="$notes" PA_SIG="$signature" \
             PA_URL="$public_url" PA_VER="$RELEASE_VERSION"
@@ -818,7 +811,8 @@ jobs:
           draft: true
           prerelease: false
           make_latest: false
-          generate_release_notes: true
+          body_path: apps/resolve-script-manager/release-notes/v${{ needs.guard.outputs.version }}.txt
+          generate_release_notes: false
           files: dist/*
           fail_on_unmatched_files: true
 
