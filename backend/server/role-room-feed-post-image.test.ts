@@ -77,6 +77,8 @@ describe("applyFeedPostImageLocked", () => {
       customImageName: baseInput.imageName,
     });
     expect(harness.queries.some(({ sql }) => sql.includes("UPDATE role_room_feed_mockup_links"))).toBe(true);
+    const linkUpdate = harness.queries.find(({ sql }) => sql.includes("UPDATE role_room_feed_mockup_links"));
+    expect(linkUpdate?.sql.match(/\$3::varchar\(64\)/g)).toHaveLength(2);
     expect(harness.queries.at(-1)?.sql).toBe("COMMIT");
     expect(harness.release).toHaveBeenCalledOnce();
   });
