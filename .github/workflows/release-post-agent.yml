@@ -588,13 +588,12 @@ jobs:
           esac
 
       # Mirror to the same private Role Room B2 bucket that the gated backend
-      # download route presigns. These repository secrets are the canonical
-      # storage contract; no service-wide Render environment is read here.
+      # download route presigns. Read only the three exact runtime keys from
+      # Render so release uploads cannot drift from the backend contract.
       - name: Mirror marketplace download to B2
         env:
-          POST_AGENT_B2_KEY_ID: ${{ secrets.B2_ROLE_ROOM_APPLICATION_KEY_ID }}
-          POST_AGENT_B2_APPLICATION_KEY: ${{ secrets.B2_ROLE_ROOM_APPLICATION_KEY }}
-          POST_AGENT_B2_BUCKET: ${{ secrets.B2_ROLE_ROOM_BUCKET_NAME }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: srv-d76ob60ule4c73dv2p60
           POST_AGENT_B2_REGION: eu-central-003
           TAG: ${{ needs.guard.outputs.tag }}
         shell: bash
@@ -609,6 +608,41 @@ jobs:
             echo "::error::The ubuntu-24.04 runner does not provide the expected AWS CLI"
             exit 1
           fi
+          if [ -z "$RENDER_API_KEY" ]; then
+            echo "::error::RENDER_API_KEY is not configured in the Production environment"
+            exit 1
+          fi
+          echo "::add-mask::$RENDER_API_KEY"
+
+          read_render_env() {
+            local render_key="$1"
+            local response="$RUNNER_TEMP/post-agent-render-$render_key.json"
+            local status
+            if [[ ! "$render_key" =~ ^B2_ROLE_ROOM_(APPLICATION_KEY_ID|APPLICATION_KEY|BUCKET_NAME)$ ]]; then
+              echo "::error::Refusing unexpected Render environment key" >&2
+              return 1
+            fi
+            status=$(curl -sS --retry 3 --retry-all-errors --connect-timeout 5 --max-time 30 \
+              -o "$response" -w '%{http_code}' \
+              -H "Authorization: Bearer $RENDER_API_KEY" \
+              -H "Accept: application/json" \
+              "https://api.render.com/v1/services/$RENDER_SERVICE_ID/env-vars/$render_key")
+            if [ "$status" != 200 ]; then
+              echo "::error::Unable to read required Render environment key $render_key (HTTP $status)" >&2
+              return 1
+            fi
+            jq -er '
+              if type == "object" then (.value // .envVar.value // empty) else empty end
+              | select(type == "string" and length > 0)
+            ' "$response"
+          }
+
+          POST_AGENT_B2_KEY_ID=$(read_render_env B2_ROLE_ROOM_APPLICATION_KEY_ID)
+          POST_AGENT_B2_APPLICATION_KEY=$(read_render_env B2_ROLE_ROOM_APPLICATION_KEY)
+          POST_AGENT_B2_BUCKET=$(read_render_env B2_ROLE_ROOM_BUCKET_NAME)
+          echo "::add-mask::$POST_AGENT_B2_KEY_ID"
+          echo "::add-mask::$POST_AGENT_B2_APPLICATION_KEY"
+          echo "::add-mask::$POST_AGENT_B2_BUCKET"
 
           missing=0
           for key in POST_AGENT_B2_KEY_ID POST_AGENT_B2_APPLICATION_KEY POST_AGENT_B2_BUCKET POST_AGENT_B2_REGION; do
@@ -620,9 +654,6 @@ jobs:
           if [ "$missing" -gt 0 ]; then
             exit 1
           fi
-          echo "::add-mask::$POST_AGENT_B2_KEY_ID"
-          echo "::add-mask::$POST_AGENT_B2_APPLICATION_KEY"
-
           b2_region="$POST_AGENT_B2_REGION"
           b2_bucket="$POST_AGENT_B2_BUCKET"
 
