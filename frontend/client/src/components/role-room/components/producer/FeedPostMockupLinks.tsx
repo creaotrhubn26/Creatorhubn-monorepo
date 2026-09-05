@@ -31,6 +31,7 @@ type Props = {
   projectId: string;
   platform: RoleRoomFeedPlatform;
   postId: string;
+  mediaType: "image" | "carousel" | "reel";
 };
 
 function formatAppliedAt(value: string | null): string {
@@ -41,16 +42,22 @@ function formatAppliedAt(value: string | null): string {
     : `Sendt ${date.toLocaleString('nb-NO', { dateStyle: 'short', timeStyle: 'short' })}`;
 }
 
-export default function FeedPostMockupLinks({ projectId, platform, postId }: Props) {
+export default function FeedPostMockupLinks({
+  projectId,
+  platform,
+  postId,
+  mediaType,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [links, setLinks] = useState<RoleRoomFeedMockupLink[]>([]);
   const [projects, setProjects] = useState<RoleRoomMockupProjectSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
+  const [variantLabel, setVariantLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const supported = platform !== 'youtube';
+  const supported = platform !== "youtube";
 
   const refresh = async (includeProjects = open) => {
     if (!supported) return;
@@ -58,13 +65,25 @@ export default function FeedPostMockupLinks({ projectId, platform, postId }: Pro
     setError(null);
     try {
       const [allLinks, allProjects] = await Promise.all([
-        roleRoomAgentService.listFeedMockupLinks({ workspaceProjectId: projectId }),
-        includeProjects ? roleRoomAgentService.listMockupProjects() : Promise.resolve(projects),
+        roleRoomAgentService.listFeedMockupLinks({
+          workspaceProjectId: projectId,
+        }),
+        includeProjects
+          ? roleRoomAgentService.listMockupProjects()
+          : Promise.resolve(projects),
       ]);
-      setLinks(allLinks.filter((link) => link.platform === platform && link.feedPostId === postId));
+      setLinks(
+        allLinks.filter(
+          (link) => link.platform === platform && link.feedPostId === postId,
+        ),
+      );
       if (includeProjects) setProjects(allProjects);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Kunne ikke hente Mockup Studio-koblinger.');
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Kunne ikke hente Mockup Studio-koblinger.",
+      );
     } finally {
       setLoading(false);
     }
@@ -73,7 +92,7 @@ export default function FeedPostMockupLinks({ projectId, platform, postId }: Pro
   useEffect(() => {
     void refresh(false);
     // Project/post switches must discard any previous search before refetching.
-    setQuery('');
+    setQuery("");
     setOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, platform, postId]);
@@ -83,11 +102,30 @@ export default function FeedPostMockupLinks({ projectId, platform, postId }: Pro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const linkedIds = useMemo(() => new Set(links.map((link) => link.mockupProjectId)), [links]);
+  const linkedIds = useMemo(
+    () => new Set(links.map((link) => link.mockupProjectId)),
+    [links],
+  );
+  const variants = useMemo(() => {
+    const grouped = new Map<string, RoleRoomFeedMockupLink[]>();
+    for (const link of links)
+      grouped.set(link.variantId, [
+        ...(grouped.get(link.variantId) ?? []),
+        link,
+      ]);
+    return Array.from(grouped.values()).map((items) => ({
+      primary: items[0],
+      items: items.sort((a, b) => a.outputPosition - b.outputPosition),
+    }));
+  }, [links]);
   const available = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase('nb-NO');
+    const normalized = query.trim().toLocaleLowerCase("nb-NO");
     return projects
-      .filter((project) => !normalized || project.name.toLocaleLowerCase('nb-NO').includes(normalized))
+      .filter(
+        (project) =>
+          !normalized ||
+          project.name.toLocaleLowerCase("nb-NO").includes(normalized),
+      )
       .sort((a, b) => {
         const aCurrent = a.workspaceProjectId === projectId ? 1 : 0;
         const bCurrent = b.workspaceProjectId === projectId ? 1 : 0;
@@ -102,13 +140,19 @@ export default function FeedPostMockupLinks({ projectId, platform, postId }: Pro
     try {
       const link = await roleRoomAgentService.createFeedMockupLink({
         workspaceProjectId: projectId,
-        platform,
+        platform: platform as Exclude<RoleRoomFeedPlatform, "youtube">,
         feedPostId: postId,
         mockupProjectId,
       });
-      setLinks((current) => current.some((item) => item.id === link.id) ? current : [link, ...current]);
+      setLinks((current) =>
+        current.some((item) => item.id === link.id)
+          ? current
+          : [link, ...current],
+      );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Kunne ikke koble mockupen.');
+      setError(
+        caught instanceof Error ? caught.message : "Kunne ikke koble mockupen.",
+      );
     } finally {
       setBusyId(null);
     }
@@ -121,7 +165,45 @@ export default function FeedPostMockupLinks({ projectId, platform, postId }: Pro
       await roleRoomAgentService.deleteFeedMockupLink(link.id);
       setLinks((current) => current.filter((item) => item.id !== link.id));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Kunne ikke fjerne koblingen.');
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Kunne ikke fjerne koblingen.",
+      );
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const createProject = async (requestedLabel?: string) => {
+    setBusyId("create-project");
+    setError(null);
+    try {
+      const created = await roleRoomAgentService.createFeedMockupProject({
+        workspaceProjectId: projectId,
+        platform: platform as Exclude<RoleRoomFeedPlatform, "youtube">,
+        feedPostId: postId,
+        mediaType,
+        slideCount: mediaType === "carousel" ? 3 : undefined,
+        label:
+          requestedLabel?.trim() ||
+          `${mediaType === "carousel" ? "Karusell" : mediaType === "reel" ? "Reel" : "Bilde"} · Feed Planner`,
+      });
+      setLinks((current) => [
+        ...created.links,
+        ...current.filter(
+          (item) =>
+            !created.links.some((createdLink) => createdLink.id === item.id),
+        ),
+      ]);
+      if (requestedLabel) setVariantLabel("");
+      setOpen(true);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Kunne ikke opprette mockup-prosjektet.",
+      );
     } finally {
       setBusyId(null);
     }
@@ -132,57 +214,122 @@ export default function FeedPostMockupLinks({ projectId, platform, postId }: Pro
   return (
     <Box
       sx={{
-        border: '1px solid rgba(34,211,238,0.2)',
+        border: "1px solid rgba(34,211,238,0.2)",
         borderRadius: 2,
-        bgcolor: 'rgba(8,47,73,0.18)',
-        overflow: 'hidden',
+        bgcolor: "rgba(8,47,73,0.18)",
+        overflow: "hidden",
       }}
     >
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 1.4, py: 1.1 }}>
-        <DesignServicesIcon sx={{ color: '#22d3ee', fontSize: 20 }} />
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={1}
+        flexWrap="wrap"
+        sx={{ px: 1.4, py: 1.1 }}
+      >
+        <DesignServicesIcon sx={{ color: "#22d3ee", fontSize: 20 }} />
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography sx={{ color: '#e2e8f0', fontSize: '0.86rem', fontWeight: 750 }}>
+          <Typography
+            sx={{ color: "#e2e8f0", fontSize: "0.86rem", fontWeight: 750 }}
+          >
             Mockup Studio
           </Typography>
-          <Typography sx={{ color: 'rgba(226,232,240,0.58)', fontSize: '0.7rem' }}>
-            {links.length ? `${links.length} eksisterende design koblet` : 'Gjenbruk design som allerede finnes i Post Agent'}
+          <Typography
+            sx={{ color: "rgba(226,232,240,0.58)", fontSize: "0.7rem" }}
+          >
+            {variants.length
+              ? `${variants.length} variant${variants.length === 1 ? "" : "er"} koblet`
+              : "Gjenbruk design som allerede finnes i Post Agent"}
           </Typography>
         </Box>
-        {loading && <CircularProgress size={16} sx={{ color: '#22d3ee' }} />}
+        {loading && <CircularProgress size={16} sx={{ color: "#22d3ee" }} />}
         <Button
           size="small"
-          variant={links.length ? 'outlined' : 'contained'}
+          variant={links.length ? "outlined" : "contained"}
           startIcon={<AddLinkIcon />}
           onClick={() => setOpen((value) => !value)}
           aria-expanded={open}
-          sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}
+          sx={{ textTransform: "none", whiteSpace: "nowrap" }}
         >
-          {open ? 'Lukk' : links.length ? 'Administrer' : 'Koble design'}
+          {open ? "Lukk" : links.length ? "Administrer" : "Koble design"}
+        </Button>
+        <Button
+          size="small"
+          variant="contained"
+          disabled={busyId === "create-project"}
+          onClick={() => void createProject()}
+          sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+        >
+          {busyId === "create-project" ? "Oppretter…" : "Lag mockup"}
         </Button>
       </Stack>
 
       {links.length > 0 && (
-        <Stack direction="row" gap={0.7} flexWrap="wrap" sx={{ px: 1.4, pb: open ? 1 : 1.2 }}>
-          {links.map((link) => (
+        <Stack
+          direction="row"
+          gap={0.7}
+          flexWrap="wrap"
+          sx={{ px: 1.4, pb: open ? 1 : 1.2 }}
+        >
+          {variants.map(({ primary: link, items }) => (
             <Chip
-              key={link.id}
+              key={link.variantId}
               size="small"
-              label={`${link.mockupName} · ${link.stale ? 'ny versjon finnes' : formatAppliedAt(link.lastAppliedAt)}`}
-              color={link.stale ? 'warning' : link.lastAppliedAt ? 'success' : 'default'}
+              label={`${link.variantLabel} · ${link.variantActive ? "aktiv" : "alternativ"}${link.skillRuns?.length ? ` · brand ${link.qualityStatus === "ready" ? "verifisert" : link.qualityStatus || "limited"}` : ""} · ${link.mediaType === "carousel" ? `${items.filter((item) => item.lastAppliedAt).length}/${link.expectedOutputCount} slides` : link.stale ? "ny versjon finnes" : formatAppliedAt(link.lastAppliedAt)}`}
+              color={
+                link.stale
+                  ? "warning"
+                  : link.variantActive
+                    ? "success"
+                    : "default"
+              }
               variant="outlined"
-              sx={{ color: '#e2e8f0', maxWidth: '100%' }}
+              sx={{ color: "#e2e8f0", maxWidth: "100%" }}
             />
           ))}
         </Stack>
       )}
 
       <Collapse in={open} unmountOnExit>
-        <Divider sx={{ borderColor: 'rgba(148,163,184,0.16)' }} />
+        <Divider sx={{ borderColor: "rgba(148,163,184,0.16)" }} />
         <Stack spacing={1.2} sx={{ p: 1.4 }}>
-          <Alert severity="info" sx={{ py: 0.2, fontSize: '0.75rem' }}>
-            Koblingen peker på originalprosjektet. Åpne det i Post Agent og velg «Send til Feed Planner» når designet er klart.
+          <Alert severity="info" sx={{ py: 0.2, fontSize: "0.75rem" }}>
+            {mediaType === "carousel"
+              ? "Karuseller opprettes som ett komplett slidesett. Bruk «Lag mockup» eller «Lag alternativ», åpne hver slide i Post Agent og send dem til Feed Planner."
+              : "Koblingen peker på originalprosjektet. Åpne det i Post Agent og velg «Send til Feed Planner» når designet er klart."}
           </Alert>
-          {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
+          {error && (
+            <Alert severity="error" onClose={() => setError(null)}>
+              {error}
+            </Alert>
+          )}
+
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={0.8}
+            alignItems={{ sm: "center" }}
+          >
+            <TextField
+              size="small"
+              fullWidth
+              value={variantLabel}
+              onChange={(event) => setVariantLabel(event.target.value)}
+              placeholder="Navn på alternativ, f.eks. Produktfokus"
+              inputProps={{
+                maxLength: 160,
+                "aria-label": "Navn på ny mockup-variant",
+              }}
+            />
+            <Button
+              size="small"
+              variant="outlined"
+              disabled={!variantLabel.trim() || busyId === "create-project"}
+              onClick={() => void createProject(variantLabel)}
+              sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+            >
+              Lag alternativ
+            </Button>
+          </Stack>
 
           {links.map((link) => (
             <Stack
@@ -190,16 +337,37 @@ export default function FeedPostMockupLinks({ projectId, platform, postId }: Pro
               direction="row"
               alignItems="center"
               spacing={1}
-              sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(15,23,42,0.72)' }}
+              sx={{ p: 1, borderRadius: 1.5, bgcolor: "rgba(15,23,42,0.72)" }}
             >
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography noWrap sx={{ color: '#f8fafc', fontSize: '0.8rem', fontWeight: 700 }}>
+                <Typography
+                  noWrap
+                  sx={{ color: "#f8fafc", fontSize: "0.8rem", fontWeight: 700 }}
+                >
                   {link.mockupName}
                 </Typography>
-                <Typography sx={{ color: 'rgba(226,232,240,0.56)', fontSize: '0.68rem' }}>
-                  Versjon {link.mockupRevision} · {link.stale ? 'må sendes på nytt' : formatAppliedAt(link.lastAppliedAt)}
+                <Typography
+                  sx={{ color: "rgba(226,232,240,0.56)", fontSize: "0.68rem" }}
+                >
+                  {link.variantLabel} ·{" "}
+                  {link.mediaType === "carousel"
+                    ? `slide ${link.outputPosition}/${link.expectedOutputCount} · `
+                    : ""}
+                  versjon {link.mockupRevision} ·{" "}
+                  {link.stale
+                    ? "må sendes på nytt"
+                    : formatAppliedAt(link.lastAppliedAt)}
                 </Typography>
               </Box>
+              <Button
+                component="a"
+                href={`postagent://mockup?projectId=${encodeURIComponent(link.mockupProjectId)}`}
+                size="small"
+                variant="outlined"
+                sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+              >
+                Åpne
+              </Button>
               <Tooltip title="Fjern bare koblingen — originalprosjektet slettes ikke">
                 <span>
                   <IconButton
@@ -207,75 +375,117 @@ export default function FeedPostMockupLinks({ projectId, platform, postId }: Pro
                     disabled={busyId === link.id}
                     onClick={() => void deleteLink(link)}
                     aria-label={`Fjern kobling til ${link.mockupName}`}
-                    sx={{ color: 'rgba(248,113,113,0.9)' }}
+                    sx={{ color: "rgba(248,113,113,0.9)" }}
                   >
-                    {busyId === link.id ? <CircularProgress size={16} /> : <LinkOffIcon fontSize="small" />}
+                    {busyId === link.id ? (
+                      <CircularProgress size={16} />
+                    ) : (
+                      <LinkOffIcon fontSize="small" />
+                    )}
                   </IconButton>
                 </span>
               </Tooltip>
             </Stack>
           ))}
 
-          <Stack direction="row" spacing={0.8} alignItems="center">
-            <TextField
-              size="small"
-              fullWidth
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Søk i eksisterende mockup-prosjekter"
-              inputProps={{ 'aria-label': 'Søk i eksisterende mockup-prosjekter' }}
-            />
-            <Tooltip title="Oppdater listen">
-              <IconButton onClick={() => void refresh(true)} aria-label="Oppdater mockup-listen">
-                <RefreshIcon />
-              </IconButton>
-            </Tooltip>
-          </Stack>
-
-          <Stack spacing={0.7} sx={{ maxHeight: 260, overflowY: 'auto' }}>
-            {!loading && available.length === 0 && (
-              <Typography sx={{ color: 'rgba(226,232,240,0.6)', fontSize: '0.76rem', py: 1 }}>
-                Ingen tilgjengelige Mockup Studio-prosjekter matcher søket.
-              </Typography>
-            )}
-            {available.map((project) => {
-              const linked = linkedIds.has(project.id);
-              const editable = project.accessRole === 'owner' || project.accessRole === 'editor';
-              return (
-                <Stack
-                  key={`${project.id}:${project.projectUpdatedAt}`}
-                  direction="row"
-                  alignItems="center"
-                  spacing={1}
-                  sx={{ p: 1, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.14)' }}
+          {mediaType !== "carousel" && (
+            <Stack direction="row" spacing={0.8} alignItems="center">
+              <TextField
+                size="small"
+                fullWidth
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Søk i eksisterende mockup-prosjekter"
+                inputProps={{
+                  "aria-label": "Søk i eksisterende mockup-prosjekter",
+                }}
+              />
+              <Tooltip title="Oppdater listen">
+                <IconButton
+                  onClick={() => void refresh(true)}
+                  aria-label="Oppdater mockup-listen"
                 >
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Stack direction="row" spacing={0.6} alignItems="center">
-                      <Typography noWrap sx={{ color: '#e2e8f0', fontSize: '0.78rem', fontWeight: 650 }}>
-                        {project.name}
-                      </Typography>
-                      {project.workspaceProjectId === projectId && (
-                        <Chip size="small" label="Dette prosjektet" color="info" sx={{ height: 19, fontSize: '0.61rem' }} />
-                      )}
-                    </Stack>
-                    <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.66rem' }}>
-                      Versjon {project.revision} · {project.status}
-                    </Typography>
-                  </Box>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={linked ? <CloseIcon /> : <AddLinkIcon />}
-                    disabled={linked || !editable || busyId === project.id}
-                    onClick={() => void createLink(project.id)}
-                    sx={{ textTransform: 'none', whiteSpace: 'nowrap' }}
+                  <RefreshIcon />
+                </IconButton>
+              </Tooltip>
+            </Stack>
+          )}
+
+          {mediaType !== "carousel" && (
+            <Stack spacing={0.7} sx={{ maxHeight: 260, overflowY: "auto" }}>
+              {!loading && available.length === 0 && (
+                <Typography
+                  sx={{
+                    color: "rgba(226,232,240,0.6)",
+                    fontSize: "0.76rem",
+                    py: 1,
+                  }}
+                >
+                  Ingen tilgjengelige Mockup Studio-prosjekter matcher søket.
+                </Typography>
+              )}
+              {available.map((project) => {
+                const linked = linkedIds.has(project.id);
+                const editable =
+                  project.accessRole === "owner" ||
+                  project.accessRole === "editor";
+                return (
+                  <Stack
+                    key={`${project.id}:${project.projectUpdatedAt}`}
+                    direction="row"
+                    alignItems="center"
+                    spacing={1}
+                    sx={{
+                      p: 1,
+                      borderRadius: 1.5,
+                      border: "1px solid rgba(148,163,184,0.14)",
+                    }}
                   >
-                    {linked ? 'Koblet' : editable ? 'Koble' : 'Kun visning'}
-                  </Button>
-                </Stack>
-              );
-            })}
-          </Stack>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Stack direction="row" spacing={0.6} alignItems="center">
+                        <Typography
+                          noWrap
+                          sx={{
+                            color: "#e2e8f0",
+                            fontSize: "0.78rem",
+                            fontWeight: 650,
+                          }}
+                        >
+                          {project.name}
+                        </Typography>
+                        {project.workspaceProjectId === projectId && (
+                          <Chip
+                            size="small"
+                            label="Dette prosjektet"
+                            color="info"
+                            sx={{ height: 19, fontSize: "0.61rem" }}
+                          />
+                        )}
+                      </Stack>
+                      <Typography
+                        sx={{
+                          color: "rgba(226,232,240,0.5)",
+                          fontSize: "0.66rem",
+                        }}
+                      >
+                        Versjon {project.revision} · {project.status}
+                      </Typography>
+                    </Box>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={linked ? <CloseIcon /> : <AddLinkIcon />}
+                      disabled={linked || !editable || busyId === project.id}
+                      onClick={() => void createLink(project.id)}
+                      sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+                    >
+                      {linked ? "Koblet" : editable ? "Koble" : "Kun visning"}
+                    </Button>
+                  </Stack>
+                );
+              })}
+            </Stack>
+          )}
         </Stack>
       </Collapse>
     </Box>

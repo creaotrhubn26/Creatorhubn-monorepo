@@ -29,6 +29,26 @@ const link = {
   lastAppliedSha256: null,
   lastAppliedAt: null,
   stale: false,
+  variantId: "variant-1",
+  variantLabel: "Primær",
+  qualityStatus: "ready" as const,
+  skillRuns: [{
+    id: "audit_mockup_dataflow",
+    version: "1.0.0",
+    status: "ready" as const,
+    executionKey: "fingerprint:audit_mockup_dataflow:1.0.0",
+    evidence: ["render_plan"],
+    limitations: [],
+  }],
+  mediaType: "image" as const,
+  variantActive: true,
+  outputPosition: 1,
+  syncStatus: "not_sent" as const,
+  lastError: null,
+  outputUrl: null,
+  outputMimeType: null,
+  readyOutputCount: 0,
+  expectedOutputCount: 1,
   createdAt: '2026-09-05T10:00:00.000Z',
   updatedAt: '2026-09-05T10:00:00.000Z',
 };
@@ -53,7 +73,14 @@ describe('FeedPostMockupLinks', () => {
   });
 
   it('links an existing Post Agent project without creating or importing a duplicate', async () => {
-    render(<FeedPostMockupLinks projectId="medside-project" platform="instagram" postId="post-1" />);
+    render(
+      <FeedPostMockupLinks
+        projectId="medside-project"
+        platform="instagram"
+        postId="post-1"
+        mediaType="image"
+      />,
+    );
     fireEvent.click(await screen.findByRole('button', { name: 'Koble design' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Koble' }));
 
@@ -69,7 +96,12 @@ describe('FeedPostMockupLinks', () => {
 
   it('does not render the bridge for the unsupported YouTube feed surface', () => {
     const { container } = render(
-      <FeedPostMockupLinks projectId="medside-project" platform="youtube" postId="post-1" />,
+      <FeedPostMockupLinks
+        projectId="medside-project"
+        platform="youtube"
+        postId="post-1"
+        mediaType="image"
+      />,
     );
     expect(container.innerHTML).toBe('');
     expect(mocks.listFeedMockupLinks).not.toHaveBeenCalled();

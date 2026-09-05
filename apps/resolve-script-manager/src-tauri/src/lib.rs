@@ -37,7 +37,15 @@ use folder_watcher::{FolderWatcherState, WatchedFolder};
 use history::HistoryRecord;
 use photoshop_bridge::PhotoshopBridgeState;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+
+#[derive(Default)]
+struct PendingDeepLinks(Mutex<Vec<String>>);
+
+#[tauri::command]
+fn take_pending_deep_links(state: State<'_, PendingDeepLinks>) -> Vec<String> {
+    std::mem::take(&mut *state.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner()))
+}
 
 use python::{python_root, spawn_python, AppSettings, RunSummary, RunningScriptsState};
 
@@ -925,6 +933,7 @@ pub fn run() {
         .manage(FolderWatcherState::default())
         .manage(capture_sources::ScreenRecState::default())
         .manage(Arc::new(PhotoshopBridgeState::default()))
+        .manage(PendingDeepLinks::default())
         .setup(|app| {
             // Tilpass hovedvinduet til skjermen det åpner på + sentrer det. Den faste
             // størrelsen (1560×980) er HØYERE enn det brukbare området på en 13/14"
@@ -970,6 +979,10 @@ pub fn run() {
             app.deep_link().on_open_url(move |event| {
                 let urls: Vec<String> = event.urls().iter().map(|u| u.to_string()).collect();
                 eprintln!("Deep link received: {:?}", urls);
+                {
+                    let pending = deep_handle.state::<PendingDeepLinks>();
+                    pending.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).extend(urls.clone());
+                }
                 if let Some(window) = deep_handle.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.unminimize();
@@ -993,6 +1006,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            take_pending_deep_links,
             list_scripts,
             list_workflows,
             claude_chat,

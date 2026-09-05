@@ -10,6 +10,7 @@ import type {
   RoleRoomFeedPost,
 } from '../../services/roleRoomAgentService';
 import { CONCEPT_LABELS } from '../../utils/feedPlanner';
+import { useRoleRoomMediaUrl } from "../../utils/protectedMedia";
 
 type FeedPostTileProps = {
   post: RoleRoomFeedPost;
@@ -68,28 +69,47 @@ export default function FeedPostTile({
   selected = false,
   onSelect,
 }: FeedPostTileProps) {
-  const placement = post.logoPlacement || 'top-left';
+  const placement = post.logoPlacement || "top-left";
   const placementStyles = LOGO_PLACEMENT_STYLES[placement];
   const gradient = buildGradient(post.backgroundColor, post.accentColor);
-  const textColor = post.textColor || '#f8fafc';
-  const conceptLabel = CONCEPT_LABELS[post.concept as keyof typeof CONCEPT_LABELS] || 'Post';
+  const textColor = post.textColor || "#f8fafc";
+  const conceptLabel =
+    CONCEPT_LABELS[post.concept as keyof typeof CONCEPT_LABELS] || "Post";
 
-  // Cover/thumbnail overstyrer post-bildet i grid-visningen (poster-frame for
-  // reels, eller et eget grid-utsnitt). Faller tilbake til customImageUrl.
-  const gridImageUrl = post.coverImageUrl || post.customImageUrl || null;
-  const hasCustomImage = Boolean(gridImageUrl);
+  // Cover/thumbnail overstyrer mediet i grid-visningen. Uten eget cover viser
+  // karusellen første slide og reelen første videoframe fra Mockup Studio.
+  const firstCarouselImage = post.customImageUrls?.[0] || null;
+  const gridMediaUrl =
+    post.coverImageUrl ||
+    (post.mediaType === "carousel"
+      ? firstCarouselImage
+      : post.mediaType === "reel"
+        ? post.customVideoDataUrl
+        : post.customImageUrl) ||
+    null;
+  const gridMediaIsVideo = Boolean(
+    post.mediaType === "reel" &&
+      post.customVideoDataUrl &&
+      gridMediaUrl === post.customVideoDataUrl,
+  );
+  const { url: resolvedGridMediaUrl } = useRoleRoomMediaUrl(gridMediaUrl);
+  const hasCustomMedia = Boolean(gridMediaUrl);
   // Grid-beskjæring styres per post. Mangler → '4 / 5' (historisk default).
   const aspectRatioCss =
-    post.gridAspect === '1:1' ? '1 / 1' : post.gridAspect === '16:9' ? '16 / 9' : '4 / 5';
+    post.gridAspect === "1:1"
+      ? "1 / 1"
+      : post.gridAspect === "16:9"
+        ? "16 / 9"
+        : "4 / 5";
 
   return (
     <Box
       onClick={onSelect}
-      role={onSelect ? 'button' : undefined}
+      role={onSelect ? "button" : undefined}
       tabIndex={onSelect ? 0 : undefined}
       onKeyDown={(event) => {
         if (!onSelect) return;
-        if (event.key === 'Enter' || event.key === ' ') {
+        if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           onSelect();
         }
@@ -97,61 +117,63 @@ export default function FeedPostTile({
       aria-label={`${conceptLabel}: ${post.title}`}
       aria-pressed={selected}
       sx={{
-        position: 'relative',
+        position: "relative",
         aspectRatio: aspectRatioCss,
-        cursor: onSelect ? 'pointer' : 'default',
-        background: hasCustomImage ? '#000' : gradient,
-        overflow: 'hidden',
-        outline: selected ? '2px solid #22d3ee' : '2px solid transparent',
+        cursor: onSelect ? "pointer" : "default",
+        background: hasCustomMedia ? "#000" : gradient,
+        overflow: "hidden",
+        outline: selected ? "2px solid #22d3ee" : "2px solid transparent",
         outlineOffset: -2,
-        transition: 'transform 0.18s ease, outline-color 0.18s ease',
-        '&:hover': onSelect
+        transition: "transform 0.18s ease, outline-color 0.18s ease",
+        "&:hover": onSelect
           ? {
-              transform: 'scale(1.02)',
+              transform: "scale(1.02)",
               zIndex: 1,
             }
           : undefined,
       }}
     >
-      {hasCustomImage ? (
+      {hasCustomMedia ? (
         <Box
-          component="img"
-          src={gridImageUrl ?? ''}
-          alt=""
+          component={gridMediaIsVideo ? "video" : "img"}
+          src={resolvedGridMediaUrl ?? ""}
+          {...(gridMediaIsVideo
+            ? { muted: true, playsInline: true, preload: "metadata" }
+            : { alt: "" })}
           sx={{
-            position: 'absolute',
+            position: "absolute",
             inset: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
           }}
         />
       ) : null}
 
       {/* Decorative geometric overlay for visual variety (hidden when a real
           image is provided — let the image carry the composition). */}
-      {!hasCustomImage ? (
+      {!hasCustomMedia ? (
         <Box
           aria-hidden
           sx={{
-            position: 'absolute',
+            position: "absolute",
             inset: 0,
             background:
               index % 3 === 0
-                ? 'radial-gradient(circle at 80% 20%, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 55%)'
+                ? "radial-gradient(circle at 80% 20%, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 55%)"
                 : index % 3 === 1
-                  ? 'linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,0.35) 100%)'
-                  : 'repeating-linear-gradient(-45deg, rgba(255,255,255,0.06) 0 8px, rgba(255,255,255,0) 8px 16px)',
+                  ? "linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,0.35) 100%)"
+                  : "repeating-linear-gradient(-45deg, rgba(255,255,255,0.06) 0 8px, rgba(255,255,255,0) 8px 16px)",
           }}
         />
       ) : (
         <Box
           aria-hidden
           sx={{
-            position: 'absolute',
+            position: "absolute",
             inset: 0,
             background:
-              'linear-gradient(180deg, rgba(0,0,0,0) 45%, rgba(0,0,0,0.55) 100%)',
+              "linear-gradient(180deg, rgba(0,0,0,0) 45%, rgba(0,0,0,0.55) 100%)",
           }}
         />
       )}
@@ -159,25 +181,25 @@ export default function FeedPostTile({
       {/* Concept badge top-opposite-of-logo. */}
       <Box
         sx={{
-          position: 'absolute',
-          ...(placement === 'top-right' || placement === 'bottom-right'
+          position: "absolute",
+          ...(placement === "top-right" || placement === "bottom-right"
             ? { top: 8, left: 8 }
             : { top: 8, right: 8 }),
           px: 0.8,
           py: 0.3,
           borderRadius: 999,
-          bgcolor: 'rgba(0,0,0,0.4)',
-          backdropFilter: 'blur(4px)',
-          border: '1px solid rgba(255,255,255,0.18)',
+          bgcolor: "rgba(0,0,0,0.4)",
+          backdropFilter: "blur(4px)",
+          border: "1px solid rgba(255,255,255,0.18)",
         }}
       >
         <Typography
           sx={{
-            color: '#f8fafc',
-            fontSize: '0.6rem',
+            color: "#f8fafc",
+            fontSize: "0.6rem",
             fontWeight: 700,
-            letterSpacing: '0.04em',
-            textTransform: 'uppercase',
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
           }}
         >
           {conceptLabel}
@@ -185,19 +207,23 @@ export default function FeedPostTile({
       </Box>
 
       {/* Media-type indicator (reel/carousel). */}
-      {post.mediaType !== 'image' ? (
+      {post.mediaType !== "image" ? (
         <Box
           sx={{
-            position: 'absolute',
-            top: placement === 'top-left' || placement === 'top-right' ? 36 : 8,
+            position: "absolute",
+            top: placement === "top-left" || placement === "top-right" ? 36 : 8,
             right: 8,
-            color: '#fff',
-            filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.6))',
-            display: 'flex',
-            alignItems: 'center',
+            color: "#fff",
+            filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.6))",
+            display: "flex",
+            alignItems: "center",
           }}
         >
-          {post.mediaType === 'reel' ? <ReelIcon fontSize="small" /> : <CarouselIcon fontSize="small" />}
+          {post.mediaType === "reel" ? (
+            <ReelIcon fontSize="small" />
+          ) : (
+            <CarouselIcon fontSize="small" />
+          )}
         </Box>
       ) : null}
 
@@ -205,42 +231,42 @@ export default function FeedPostTile({
       {brandSnapshot?.logoUrl ? (
         <Box
           sx={{
-            position: 'absolute',
+            position: "absolute",
             ...placementStyles,
             width: 32,
             height: 32,
-            borderRadius: '50%',
-            bgcolor: 'rgba(255,255,255,0.92)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            borderRadius: "50%",
+            bgcolor: "rgba(255,255,255,0.92)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
           }}
         >
           <Box
             component="img"
             src={brandSnapshot.logoUrl}
             alt=""
-            sx={{ maxWidth: 24, maxHeight: 24, objectFit: 'contain' }}
+            sx={{ maxWidth: 24, maxHeight: 24, objectFit: "contain" }}
           />
         </Box>
       ) : brandSnapshot?.companyName ? (
         <Box
           sx={{
-            position: 'absolute',
+            position: "absolute",
             ...placementStyles,
             width: 32,
             height: 32,
-            borderRadius: '50%',
-            bgcolor: 'rgba(255,255,255,0.14)',
-            border: '1px solid rgba(255,255,255,0.28)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            borderRadius: "50%",
+            bgcolor: "rgba(255,255,255,0.14)",
+            border: "1px solid rgba(255,255,255,0.28)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
             color: textColor,
             fontWeight: 800,
-            fontSize: '0.72rem',
+            fontSize: "0.72rem",
           }}
         >
           {brandSnapshot.companyName.slice(0, 1).toUpperCase()}
@@ -251,7 +277,7 @@ export default function FeedPostTile({
       <Stack
         spacing={0.4}
         sx={{
-          position: 'absolute',
+          position: "absolute",
           left: 10,
           right: 10,
           bottom: 10,
@@ -260,14 +286,14 @@ export default function FeedPostTile({
         <Typography
           sx={{
             color: textColor,
-            fontSize: '0.82rem',
+            fontSize: "0.82rem",
             fontWeight: 800,
             lineHeight: 1.2,
-            textShadow: '0 1px 4px rgba(0,0,0,0.6)',
-            display: '-webkit-box',
+            textShadow: "0 1px 4px rgba(0,0,0,0.6)",
+            display: "-webkit-box",
             WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
           }}
         >
           {post.title}
@@ -277,8 +303,8 @@ export default function FeedPostTile({
             sx={{
               width: 6,
               height: 6,
-              borderRadius: '50%',
-              bgcolor: post.accentColor || 'var(--role-cyan, #22d3ee)',
+              borderRadius: "50%",
+              bgcolor: post.accentColor || "var(--role-cyan, #22d3ee)",
               boxShadow: `0 0 8px ${post.accentColor || 'var(--role-cyan, #22d3ee)'}`,
             }}
           />
