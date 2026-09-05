@@ -45,6 +45,33 @@ export interface ResearchStage {
 
 export type ResearchProgressStatus = 'idle' | 'streaming' | 'done' | 'error';
 
+export interface ResearchMockupDraft {
+  id: string;
+  projectId: string;
+  researchId: string;
+  platform: "instagram" | "tiktok" | "linkedin";
+  ordinal: number;
+  feedPostId: string;
+  mediaType: "image" | "carousel" | "reel";
+  status: "building" | "ready" | "failed";
+  stage: string | null;
+  progress: number;
+  title: string;
+  caption: string;
+  previewDataUrl: string | null;
+  mockupProjectId: string | null;
+  variantId: string | null;
+  qualityStatus?: "ready" | "limited" | "failed";
+  skillRuns?: Array<{
+    id: string;
+    version: string;
+    status: "ready" | "limited" | "failed";
+    executionKey: string;
+    evidence: string[];
+    limitations: string[];
+  }>;
+}
+
 interface UseResearchProgressReturn {
   start: (input: ResearchProgressInput) => void;
   reset: () => void;
@@ -52,6 +79,7 @@ interface UseResearchProgressReturn {
   status: ResearchProgressStatus;
   result: RoleRoomAgentProducerBootstrapResult | null;
   error: string | null;
+  mockups: ResearchMockupDraft[];
 }
 
 export interface ResearchProgressInput {
@@ -84,6 +112,7 @@ export function useResearchProgress(): UseResearchProgressReturn {
   const [status, setStatus] = useState<ResearchProgressStatus>('idle');
   const [result, setResult] = useState<RoleRoomAgentProducerBootstrapResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mockups, setMockups] = useState<ResearchMockupDraft[]>([]);
   const abortRef = useRef<AbortController | null>(null);
 
   const reset = useCallback(() => {
@@ -93,6 +122,7 @@ export function useResearchProgress(): UseResearchProgressReturn {
     setStatus('idle');
     setResult(null);
     setError(null);
+    setMockups([]);
   }, []);
 
   const start = useCallback((input: ResearchProgressInput) => {
@@ -148,66 +178,85 @@ export function useResearchProgress(): UseResearchProgressReturn {
         });
         if (!response.ok || !response.body) {
           const text = await response.text().catch(() => '');
-          throw new Error(`SSE handshake failed: ${response.status} ${text.slice(0, 200)}`);
-        }
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
+          throw new Error(`SSE handshake failed: ${response.status} ${text.slice(0, 200)}`,
+            );
+          }
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          let sawTerminalEvent = false;
           for (;;) {
-            const frame = parseSseFrame(buffer);
-            if (!frame) break;
-            buffer = frame.rest;
-            let parsed: unknown = null;
-            try {
-              parsed = frame.data ? JSON.parse(frame.data) : null;
-            } catch {
-              parsed = null;
-            }
-            if (frame.event === 'stage') {
-              handleStageEvent(parsed);
-            } else if (frame.event === 'done') {
-              const payload = parsed as { success?: boolean; result?: RoleRoomAgentProducerBootstrapResult };
-              if (payload?.success && payload.result) {
-                // Match the non-stream bootstrap contract before exposing
-                // done. Without this PUT the version history exists, but the
-                // project loses the result (including merch) after a reload.
-                await roleRoomAgentService.saveSnapshot(
-                  input.projectId, payload.result,
-                );
-                setResult(payload.result);
-                setStatus('done');
-              } else {
-                setStatus('error');
-                setError('Bootstrap returnerte uten resultat');
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            for (;;) {
+              const frame = parseSseFrame(buffer);
+              if (!frame) break;
+              buffer = frame.rest;
+              let parsed: unknown = null;
+              try {
+                parsed = frame.data ? JSON.parse(frame.data) : null;
+              } catch {
+                parsed = null;
               }
-            } else if (frame.event === 'error') {
-              const payload = parsed as { error?: string };
-              setError(payload?.error || 'Ukjent feil under bootstrap');
-              setStatus('error');
+              if (frame.event === "stage") {
+                handleStageEvent(parsed);
+              } else if (frame.event === "mockups") {
+                const payload = parsed as { drafts?: ResearchMockupDraft[] };
+                if (Array.isArray(payload?.drafts)) setMockups(payload.drafts);
+              } else if (frame.event === "done") {
+                sawTerminalEvent = true;
+                const payload = parsed as {
+                  success?: boolean;
+                  result?: RoleRoomAgentProducerBootstrapResult;
+                  researchMockups?: ResearchMockupDraft[];
+                };
+                if (payload?.success && payload.result) {
+                  // Match the non-stream bootstrap contract before exposing
+                  // done. Without this PUT the version history exists, but the
+                  // project loses the result (including merch) after a reload.
+                  await roleRoomAgentService.saveSnapshot(
+                    input.projectId,
+                    payload.result,
+                  );
+                  setResult(payload.result);
+                  if (Array.isArray(payload.researchMockups))
+                    setMockups(payload.researchMockups);
+                  setStatus("done");
+                } else {
+                  setStatus("error");
+                  setError("Bootstrap returnerte uten resultat");
+                }
+              } else if (frame.event === "error") {
+                sawTerminalEvent = true;
+                const payload = parsed as { error?: string };
+                setError(payload?.error || "Ukjent feil under bootstrap");
+                setStatus("error");
+              }
             }
           }
+          if (!sawTerminalEvent) {
+            // Stream closed without explicit done event
+            setStatus((curr) => (curr === "streaming" ? "error" : curr));
+          }
+        } catch (err) {
+          if ((err as DOMException)?.name === "AbortError") return;
+          // Never replay the full bootstrap automatically. A proxy can return
+          // 504 after the backend has already persisted the research version;
+          // retrying through the non-stream endpoint created duplicate versions
+          // for one click. The user may retry explicitly after the visible error.
+          console.warn(
+            "[useResearchProgress] SSE request failed without automatic replay:",
+            err,
+          );
+          if (controller.signal.aborted) return;
+          setError(err instanceof Error ? err.message : String(err));
+          setStatus("error");
         }
-        if (status !== 'done' && status !== 'error') {
-          // Stream closed without explicit done event
-          setStatus((curr) => (curr === 'streaming' ? 'error' : curr));
-        }
-      } catch (err) {
-        if ((err as DOMException)?.name === 'AbortError') return;
-        // Never replay the full bootstrap automatically. A proxy can return
-        // 504 after the backend has already persisted the research version;
-        // retrying through the non-stream endpoint created duplicate versions
-        // for one click. The user may retry explicitly after the visible error.
-        console.warn('[useResearchProgress] SSE request failed without automatic replay:', err);
-        if (controller.signal.aborted) return;
-        setError(err instanceof Error ? err.message : String(err));
-        setStatus('error');
-      }
-    })();
-  }, [reset, status]);
+      })();
+    },
+    [reset],
+  );
 
-  return { start, reset, stages, status, result, error };
+  return { start, reset, stages, status, result, error, mockups };
 }

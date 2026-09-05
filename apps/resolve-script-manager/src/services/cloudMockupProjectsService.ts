@@ -55,16 +55,22 @@ async function listCloudMockupProjects(): Promise<CloudMockupProjectMeta[] | nul
   const headers = authHeaders();
   if (!headers) return null;
   try {
-    const response = await fetch(`${getBaseUrl()}/api/role-room/mockup-projects`, { headers });
+    const response = await fetch(`${getBaseUrl()}/api/role-room/mockup-projects`,
+      { headers },
+    );
     if (!response.ok) return null;
-    const json = (await response.json()) as { projects?: CloudMockupProjectMeta[] };
+    const json = (await response.json()) as {
+      projects?: CloudMockupProjectMeta[];
+    };
     return Array.isArray(json.projects) ? json.projects : [];
   } catch {
     return null;
   }
 }
 
-async function pullCloudMockupProject(id: string): Promise<MockupDoc | null> {
+export async function pullCloudMockupProject(
+  id: string,
+): Promise<MockupDoc | null> {
   const headers = authHeaders();
   if (!headers) return null;
   try {

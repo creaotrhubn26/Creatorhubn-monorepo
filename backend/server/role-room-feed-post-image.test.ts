@@ -98,6 +98,37 @@ describe("applyFeedPostImageLocked", () => {
     expect(harness.queries.filter(({ sql }) => sql.includes("UPDATE role_room_feed_mockup_links"))).toHaveLength(1);
   });
 
+  it("applies an ordered carousel variant without losing post copy", async () => {
+    const harness = poolHarness({ post: post() });
+    const assets = [
+      {
+        url: "/api/role-room/feed-mockup-outputs/slide-1/content",
+        name: "slide-1.png",
+      },
+      {
+        url: "/api/role-room/feed-mockup-outputs/slide-2/content",
+        name: "slide-2.png",
+      },
+    ];
+    const result = await applyFeedPostImageLocked(harness.pool as never, {
+      ...baseInput,
+      assetUrl: assets[1].url,
+      assetSha256: "a".repeat(64),
+      mediaType: "carousel",
+      variantAssets: assets,
+      link,
+    });
+
+    expect(result).toMatchObject({ ok: true, changed: true });
+    expect(harness.savedPosts()?.[0]).toMatchObject({
+      title: "Original title",
+      caption: "Original caption",
+      mediaType: "carousel",
+      customImageUrls: assets.map((asset) => asset.url),
+      customImageNames: assets.map((asset) => asset.name),
+    });
+  });
+
   it("requires explicit confirmation before replacing an approved asset", async () => {
     const harness = poolHarness({ post: post({ approvalState: "approved" }) });
     const result = await applyFeedPostImageLocked(harness.pool as never, { ...baseInput, link });

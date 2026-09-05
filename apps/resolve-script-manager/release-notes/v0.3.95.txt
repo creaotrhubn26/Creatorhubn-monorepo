@@ -1,0 +1,26 @@
+## Live post-mockups under research
+
+- Role Room viser bilde-, karusell- og reel-utkast mens agenten undersøker bedriften, og ferdigstiller dem som redigerbare Mockup Studio-prosjekter.
+- Research oppdaterer de samme tre Feed Planner-plassene på tvers av kjøringer. Godkjente poster beholdes, og gjentatte kall gjenbruker rader uten duplikater.
+- Utkastene oppdateres visuelt med verifisert selskapsnavn, markedssignaler, konkurrenter, lokale muligheter, merch og logofarger etter hvert som kildene blir ferdige.
+- Feed Planner kan opprette en standardmockup med ett klikk eller flere navngitte designalternativer.
+
+## Full medie- og variantflyt
+
+- Bilder, karuseller med 2–10 slides og reel-video kan sendes tilbake til riktig Feed Planner-post.
+- Renderne lagres som tilgangskontrollerte prosjektfiler og strømmes via Role Room med samme tilgangskontroll helt frem til forhåndsvisning og publisering.
+- Kundelogoen bygges inn i mockup-dokumentet etter SSRF-, filtype- og størrelseskontroll, slik at canvas-eksporten beholder logo og merkevarefarger.
+- Samme revisjon og filinnhold lagres bare én gang. Avbrutte opplastinger kan gjenopptas uten permanente låser.
+- Aktiv variant, fremdrift per slide, synkstatus og utdaterte Mockup Studio-versjoner vises i Feed Planner.
+
+## Brand-baserte mockup-skills
+
+- Seks versjonerte skills styrer brandgrunnlag, postkonsept, visuelt hierarki og kontrast, bilde/karusell/reel-format, logoplassering og avsluttende dataflytrevisjon.
+- Hver mockup lagrer fingerprint, brand-beslutning, skill-evidens og kvalitetsstatus sammen med varianten og det redigerbare dokumentet.
+- Manglende eller ikke-verifisert logo/palett markeres som begrenset i stedet for å bli presentert som kundens faktiske brand.
+- Feed Planner og Post Agent viser om varianten har gjennomført brand-sjekken.
+
+## Godkjenning og åpning
+
+- Endringer i materiell som venter på klient, er godkjent eller planlagt krever bekreftelse og sendes tilbake til ny godkjenning.
+- Publiserte poster forblir låst. Post Agent kan åpne det eksakte skyprosjektet fra Role Room-lenken.

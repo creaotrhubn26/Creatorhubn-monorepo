@@ -1,5 +1,6 @@
 import settingsService from './settingsService';
 import { authSessionService } from './authSessionService';
+import { roleRoomMediaToDataUrl } from "../utils/protectedMedia";
 
 const AGENT_SNAPSHOT_NAMESPACE = 'role-room-agent-snapshot';
 
@@ -825,6 +826,7 @@ export interface RoleRoomPendingApproval {
 
 export type RoleRoomFeedApprovalState =
   | 'draft'
+  | "awaiting_client"
   | 'approved'
   | 'scheduled'
   | 'published'
@@ -905,6 +907,26 @@ export interface RoleRoomFeedMockupLink {
   lastAppliedSha256: string | null;
   lastAppliedAt: string | null;
   stale: boolean;
+  variantId: string;
+  variantLabel: string;
+  qualityStatus?: "ready" | "limited" | "failed";
+  skillRuns?: Array<{
+    id: string;
+    version: string;
+    status: "ready" | "limited" | "failed";
+    executionKey: string;
+    evidence: string[];
+    limitations: string[];
+  }>;
+  mediaType: "image" | "carousel" | "reel";
+  variantActive: boolean;
+  outputPosition: number;
+  syncStatus: "building" | "not_sent" | "synced" | "stale" | "error";
+  lastError: string | null;
+  outputUrl: string | null;
+  outputMimeType: string | null;
+  readyOutputCount: number;
+  expectedOutputCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -1619,38 +1641,87 @@ export const roleRoomAgentService = {
     const params = new URLSearchParams();
     if (input.workspaceProjectId) params.set('workspaceProjectId', input.workspaceProjectId);
     if (input.mockupProjectId) params.set('mockupProjectId', input.mockupProjectId);
-    const response = await fetch(`/api/role-room/feed-mockup-links?${params.toString()}`, {
-      headers: readRoleRoomAgentHeaders(),
-    });
-    const payload = await response.json().catch(() => null) as {
+    const response = await fetch(`/api/role-room/feed-mockup-links?${params.toString()}`,
+      {
+        headers: readRoleRoomAgentHeaders(),
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as {
       links?: RoleRoomFeedMockupLink[];
       error?: string;
     } | null;
-    if (!response.ok) throw new Error(payload?.error || 'Kunne ikke hente feed-koblinger.');
+    if (!response.ok)
+      throw new Error(payload?.error || "Kunne ikke hente feed-koblinger.");
     return Array.isArray(payload?.links) ? payload.links : [];
   },
 
   async createFeedMockupLink(input: {
     workspaceProjectId: string;
-    platform: Exclude<RoleRoomFeedPlatform, 'youtube'>;
+    platform: Exclude<RoleRoomFeedPlatform, "youtube">;
     feedPostId: string;
     mockupProjectId: string;
   }): Promise<RoleRoomFeedMockupLink> {
-    const response = await fetch('/api/role-room/feed-mockup-links', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+    const response = await fetch("/api/role-room/feed-mockup-links", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...readRoleRoomAgentHeaders(),
+      },
       body: JSON.stringify(input),
     });
-    const payload = await response.json().catch(() => null) as {
+    const payload = (await response.json().catch(() => null)) as {
       link?: RoleRoomFeedMockupLink;
       error?: string;
     } | null;
-    if (!response.ok || !payload?.link) throw new Error(payload?.error || 'Kunne ikke koble mockupen.');
+    if (!response.ok || !payload?.link)
+      throw new Error(payload?.error || "Kunne ikke koble mockupen.");
     return payload.link;
   },
 
+  async createFeedMockupProject(input: {
+    workspaceProjectId: string;
+    platform: Exclude<RoleRoomFeedPlatform, "youtube">;
+    feedPostId: string;
+    mediaType: "image" | "carousel" | "reel";
+    slideCount?: number;
+    label?: string;
+  }): Promise<{
+    variantId: string;
+    mockupProjectId: string;
+    links: RoleRoomFeedMockupLink[];
+  }> {
+    const response = await fetch(
+      "/api/role-room/feed-mockup-links/create-project",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...readRoleRoomAgentHeaders(),
+        },
+        body: JSON.stringify(input),
+      },
+    );
+    const payload = (await response.json().catch(() => null)) as {
+      variantId?: string;
+      mockupProjectId?: string;
+      links?: RoleRoomFeedMockupLink[];
+      error?: string;
+    } | null;
+    if (!response.ok || !payload?.variantId || !payload.mockupProjectId) {
+      throw new Error(
+        payload?.error || "Kunne ikke opprette Mockup Studio-prosjekt.",
+      );
+    }
+    return {
+      variantId: payload.variantId,
+      mockupProjectId: payload.mockupProjectId,
+      links: Array.isArray(payload.links) ? payload.links : [],
+    };
+  },
+
   async deleteFeedMockupLink(linkId: string): Promise<void> {
-    const response = await fetch(`/api/role-room/feed-mockup-links/${encodeURIComponent(linkId)}`, {
+    const response = await fetch(
+      `/api/role-room/feed-mockup-links/${encodeURIComponent(linkId)}`, {
       method: 'DELETE',
       headers: readRoleRoomAgentHeaders(),
     });
@@ -2175,9 +2246,9 @@ export const roleRoomAgentService = {
       const response = await fetch(
         `/api/role-room/social/inbox/${encodeURIComponent(eventId)}/draft-reply`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
             ...readRoleRoomAgentHeaders(),
           },
           body: JSON.stringify({
@@ -2187,11 +2258,15 @@ export const roleRoomAgentService = {
         },
       );
       const payload = await response.json().catch(() => null);
-      if (!response.ok || !payload?.success || typeof payload.draft !== 'string') {
+      if (
+        !response.ok ||
+        !payload?.success ||
+        typeof payload.draft !== "string"
+      ) {
         if (response.status === 429) {
-          return { error: 'For mange forespørsler. Vent litt og prøv igjen.' };
+          return { error: "For mange forespørsler. Vent litt og prøv igjen." };
         }
-        return { error: payload?.error || 'Kunne ikke generere svarforslag.' };
+        return { error: payload?.error || "Kunne ikke generere svarforslag." };
       }
       return { draft: payload.draft, model: payload.model };
     } catch (err) {
@@ -2205,7 +2280,7 @@ export const roleRoomAgentService = {
     error?: string;
   }> {
     try {
-      const response = await fetch('/api/role-room/linkedin/companies', {
+      const response = await fetch("/api/role-room/linkedin/companies", {
         headers: readRoleRoomAgentHeaders(),
       });
       const payload = await response.json().catch(() => null);
@@ -2213,7 +2288,7 @@ export const roleRoomAgentService = {
         return {
           companies: [],
           scopeMissing: false,
-          error: payload?.error || 'Kunne ikke hente LinkedIn-bedrifter.',
+          error: payload?.error || "Kunne ikke hente LinkedIn-bedrifter.",
         };
       }
       return {
@@ -2221,7 +2296,11 @@ export const roleRoomAgentService = {
         scopeMissing: Boolean(payload.scopeMissing),
       };
     } catch (err) {
-      return { companies: [], scopeMissing: false, error: (err as Error).message };
+      return {
+        companies: [],
+        scopeMissing: false,
+        error: (err as Error).message,
+      };
     }
   },
 
@@ -2233,7 +2312,7 @@ export const roleRoomAgentService = {
     profilePictureUrl?: string | null;
   }> {
     try {
-      const response = await fetch('/api/role-room/linkedin/profile', {
+      const response = await fetch("/api/role-room/linkedin/profile", {
         headers: readRoleRoomAgentHeaders(),
       });
       const payload = await response.json().catch(() => null);
@@ -2259,7 +2338,7 @@ export const roleRoomAgentService = {
     error?: string;
   }> {
     try {
-      const response = await fetch('/api/role-room/youtube/channels', {
+      const response = await fetch("/api/role-room/youtube/channels", {
         headers: readRoleRoomAgentHeaders(),
       });
       const payload = await response.json().catch(() => null);
@@ -2268,7 +2347,7 @@ export const roleRoomAgentService = {
           channels: [],
           scopeMissing: false,
           noConnection: false,
-          error: payload?.error || 'Kunne ikke hente YouTube-kanaler.',
+          error: payload?.error || "Kunne ikke hente YouTube-kanaler.",
         };
       }
       return {
@@ -2288,7 +2367,7 @@ export const roleRoomAgentService = {
 
   async fetchTikTokConnection(): Promise<RoleRoomTikTokConnection> {
     try {
-      const response = await fetch('/api/role-room/tiktok/connection', {
+      const response = await fetch("/api/role-room/tiktok/connection", {
         headers: readRoleRoomAgentHeaders(),
       });
       const payload = await response.json().catch(() => null);
@@ -2329,9 +2408,12 @@ export const roleRoomAgentService = {
     projectId: string;
   }): Promise<{ authorizationUrl: string | null; error?: string }> {
     try {
-      const response = await fetch('/api/role-room/tiktok/oauth/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+      const response = await fetch("/api/role-room/tiktok/oauth/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...readRoleRoomAgentHeaders(),
+        },
         body: JSON.stringify({
           projectId: input.projectId,
           returnPath: window.location.pathname + window.location.search,
@@ -2342,7 +2424,7 @@ export const roleRoomAgentService = {
       if (!response.ok || !payload?.success) {
         return {
           authorizationUrl: null,
-          error: payload?.error || 'Kunne ikke starte TikTok OAuth.',
+          error: payload?.error || "Kunne ikke starte TikTok OAuth.",
         };
       }
       return { authorizationUrl: payload.authorizationUrl };
@@ -2353,8 +2435,8 @@ export const roleRoomAgentService = {
 
   async disconnectTikTok(): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await fetch('/api/role-room/tiktok/disconnect', {
-        method: 'POST',
+      const response = await fetch("/api/role-room/tiktok/disconnect", {
+        method: "POST",
         headers: readRoleRoomAgentHeaders(),
       });
       const payload = await response.json().catch(() => null);
@@ -2374,9 +2456,12 @@ export const roleRoomAgentService = {
     recipientEmail?: string | null;
   }): Promise<{ request: RoleRoomSocialAccessRequest | null; error?: string }> {
     try {
-      const response = await fetch('/api/role-room/social/access-request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+      const response = await fetch("/api/role-room/social/access-request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...readRoleRoomAgentHeaders(),
+        },
         body: JSON.stringify({
           projectId: input.projectId,
           platform: input.platform,
@@ -2386,9 +2471,14 @@ export const roleRoomAgentService = {
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.success) {
-        return { request: null, error: payload?.error || 'Kunne ikke lage e-post-utkast.' };
+        return {
+          request: null,
+          error: payload?.error || "Kunne ikke lage e-post-utkast.",
+        };
       }
-      return { request: (payload.request as RoleRoomSocialAccessRequest) ?? null };
+      return {
+        request: (payload.request as RoleRoomSocialAccessRequest) ?? null,
+      };
     } catch (err) {
       return { request: null, error: (err as Error).message };
     }
@@ -2398,14 +2488,20 @@ export const roleRoomAgentService = {
     projectId: string;
   }): Promise<{ plan: RoleRoomYouTubeChannelPlan | null; error?: string }> {
     try {
-      const response = await fetch('/api/role-room/youtube/channel-plan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+      const response = await fetch("/api/role-room/youtube/channel-plan", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...readRoleRoomAgentHeaders(),
+        },
         body: JSON.stringify({ projectId: input.projectId }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.success) {
-        return { plan: null, error: payload?.error || 'Kunne ikke generere kanal-plan.' };
+        return {
+          plan: null,
+          error: payload?.error || "Kunne ikke generere kanal-plan.",
+        };
       }
       return { plan: (payload.plan as RoleRoomYouTubeChannelPlan) ?? null };
     } catch (err) {
@@ -2419,15 +2515,20 @@ export const roleRoomAgentService = {
     error?: string;
   }> {
     try {
-      const response = await fetch('/api/role-room/agent/feed-plan/approvals/pending', {
-        headers: readRoleRoomAgentHeaders(),
-      });
+      const response = await fetch(
+        "/api/role-room/agent/feed-plan/approvals/pending",
+        {
+          headers: readRoleRoomAgentHeaders(),
+        },
+      );
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.success) {
         return {
           pending: [],
           totalPending: 0,
-          error: payload?.error || 'Kunne ikke hente posts som venter på godkjenning.',
+          error:
+            payload?.error ||
+            "Kunne ikke hente posts som venter på godkjenning.",
         };
       }
       return {
@@ -2443,15 +2544,18 @@ export const roleRoomAgentService = {
     projectId: string;
     platform: string;
     postIds: string[];
-    approvalState: 'draft' | 'approved' | 'scheduled' | 'published' | 'rejected' | 'needs_changes';
+    approvalState: RoleRoomFeedApprovalState;
     approvalNote?: string | null;
   }): Promise<{ success: boolean; touched?: number; error?: string }> {
     try {
       const response = await fetch(
         `/api/role-room/agent/feed-plan/${encodeURIComponent(input.projectId)}/${encodeURIComponent(input.platform)}/approve`,
         {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...readRoleRoomAgentHeaders(),
+          },
           body: JSON.stringify({
             postIds: input.postIds,
             approvalState: input.approvalState,
@@ -2461,7 +2565,10 @@ export const roleRoomAgentService = {
       );
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.success) {
-        return { success: false, error: payload?.error || 'Kunne ikke oppdatere approval-status.' };
+        return {
+          success: false,
+          error: payload?.error || "Kunne ikke oppdatere approval-status.",
+        };
       }
       return { success: true, touched: Number(payload.touched ?? 0) };
     } catch (err) {
@@ -2474,7 +2581,7 @@ export const roleRoomAgentService = {
     error?: string;
   }> {
     try {
-      const response = await fetch('/api/role-room/social/agent-insights', {
+      const response = await fetch("/api/role-room/social/agent-insights", {
         headers: readRoleRoomAgentHeaders(),
       });
       const payload = await response.json().catch(() => null);
@@ -2498,12 +2605,12 @@ export const roleRoomAgentService = {
     error?: string;
   }> {
     try {
-      const response = await fetch('/api/role-room/social/analytics', {
+      const response = await fetch("/api/role-room/social/analytics", {
         headers: readRoleRoomAgentHeaders(),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.success) {
-        return { error: payload?.error || 'Kunne ikke hente analytics.' };
+        return { error: payload?.error || "Kunne ikke hente analytics." };
       }
       return {
         summary: payload.summary,
@@ -2523,7 +2630,7 @@ export const roleRoomAgentService = {
     connectionId: string;
     projectId: string;
     feedPlanPostId: string;
-    mediaType: 'image' | 'reel' | 'carousel';
+    mediaType: "image" | "reel" | "carousel";
     caption: string;
     /** Single image — used for mediaType='image'. */
     imageDataUrl?: string;
@@ -2535,10 +2642,32 @@ export const roleRoomAgentService = {
     coverDataUrl?: string;
     scheduledFor?: string | null;
   }): Promise<RoleRoomInstagramPublishResult> {
-    const response = await fetch('/api/role-room/instagram/publish', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...readRoleRoomAgentHeaders() },
-      body: JSON.stringify(input),
+    const [imageDataUrl, imageDataUrls, videoDataUrl, coverDataUrl] =
+      await Promise.all([
+        roleRoomMediaToDataUrl(input.imageDataUrl),
+        input.imageDataUrls
+          ? Promise.all(
+              input.imageDataUrls.map((value) => roleRoomMediaToDataUrl(value)),
+            ).then((values) =>
+              values.filter((value): value is string => Boolean(value)),
+            )
+          : Promise.resolve(undefined),
+        roleRoomMediaToDataUrl(input.videoDataUrl),
+        roleRoomMediaToDataUrl(input.coverDataUrl),
+      ]);
+    const response = await fetch("/api/role-room/instagram/publish", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...readRoleRoomAgentHeaders(),
+      },
+      body: JSON.stringify({
+        ...input,
+        imageDataUrl,
+        imageDataUrls,
+        videoDataUrl,
+        coverDataUrl,
+      }),
     });
     const payload = (await response.json().catch(() => null)) as {
       success?: boolean;
@@ -2550,12 +2679,12 @@ export const roleRoomAgentService = {
     } | null;
     if (response.status === 402) {
       throw new RoleRoomFeedEntitlementError(
-        payload?.error || 'IG-publisering krever Showrunner-pakken.',
+        payload?.error || "IG-publisering krever Showrunner-pakken.",
         payload?.entitlement as never,
       );
     }
     if (!response.ok || !payload?.success || !payload.job) {
-      throw new Error(payload?.error || 'Publisering feilet.');
+      throw new Error(payload?.error || "Publisering feilet.");
     }
     return {
       job: payload.job,
@@ -2564,8 +2693,11 @@ export const roleRoomAgentService = {
     };
   },
 
-  async listInstagramJobs(projectId: string): Promise<RoleRoomInstagramPublishJob[]> {
-    const response = await fetch(`/api/role-room/instagram/jobs/${encodeURIComponent(projectId)}`, {
+  async listInstagramJobs(
+    projectId: string,
+  ): Promise<RoleRoomInstagramPublishJob[]> {
+    const response = await fetch(
+      `/api/role-room/instagram/jobs/${encodeURIComponent(projectId)}`, {
       headers: readRoleRoomAgentHeaders(),
     });
     if (!response.ok) return [];

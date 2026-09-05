@@ -22,6 +22,7 @@ import { CampaignCompareDialog } from './CampaignCompareDialog';
 import { CaptureDialog } from './CaptureDialog';
 import { ProjectsView } from './ProjectsView';
 import FeedPlannerPublishButton from './FeedPlannerPublishButton';
+import { pullCloudMockupProject } from "../../services/cloudMockupProjectsService";
 import { useMockupStudio } from './mockupStudioStore';
 import {
   listKits,
@@ -166,9 +167,14 @@ const TEXT_ROLE_LABELS: Record<MockupTextRole, string> = {
   tag: 'Liten tekst',
 };
 
-export function MockupStudioShell({ onClose }: { onClose: () => void }) {
+export function MockupStudioShell({ onClose,
+  initialProjectId,
+}: { onClose: () => void;
+  initialProjectId?: string | null;
+}) {
   const doc = useMockupStudio((s) => s.doc);
   const selection = useMockupStudio((s) => s.selection);
+  const setDocument = useMockupStudio((s) => s.setDocument);
   const store = useMockupStudio();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -183,7 +189,28 @@ export function MockupStudioShell({ onClose }: { onClose: () => void }) {
   const [showCapture, setShowCapture] = useState(false);
   const [videoBusy, setVideoBusy] = useState(false);
   const [showSwitch, setShowSwitch] = useState(false);
-  const [view, setView] = useState<'projects' | 'editor'>(IS_BROWSER_TEST ? 'editor' : 'projects');
+  const [view, setView] = useState<'projects' | 'editor'>(IS_BROWSER_TEST ? 'editor' : 'projects',
+  );
+
+  useEffect(() => {
+    if (!initialProjectId) return;
+    let cancelled = false;
+    void pullCloudMockupProject(initialProjectId).then((project) => {
+      if (cancelled) return;
+      if (!project) {
+        setExportMsg(
+          "Kunne ikke åpne det koblede skyprosjektet. Kontroller Role Room-innloggingen og prøv igjen.",
+        );
+        setView("projects");
+        return;
+      }
+      setDocument(project);
+      setView("editor");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialProjectId, setDocument]);
 
   // URL-capture (P2)
   const [url, setUrl] = useState('');

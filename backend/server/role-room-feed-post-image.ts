@@ -30,6 +30,12 @@ export interface ApplyFeedPostImageInput {
   feedPostId: string;
   imageDataUrl: string;
   imageName: string;
+  /** Stable project-access URL after the render has been persisted. Legacy
+   * thumbnail callers omit this and keep using imageDataUrl directly. */
+  assetUrl?: string;
+  assetSha256?: string;
+  mediaType?: "image" | "carousel" | "reel";
+  variantAssets?: Array<{ url: string; name: string }>;
   updatedBy: string;
   /** Present for Mockup Studio sends; absent for the legacy thumbnail bridge. */
   link?: {
@@ -38,6 +44,8 @@ export interface ApplyFeedPostImageInput {
     mockupCreatedBy: string;
     revision: number;
     confirmApprovedAssetChange: boolean;
+    variantId?: string;
+    outputPosition?: number;
   };
 }
 
@@ -106,7 +114,9 @@ export async function applyFeedPostImageLocked(
     }
 
     const posts = Array.isArray(plan.rows[0].posts) ? plan.rows[0].posts : [];
-    const postIndex = posts.findIndex((post) => String(post.id) === input.feedPostId);
+    const postIndex = posts.findIndex(
+      (post) => String(post.id) === input.feedPostId,
+    );
     if (postIndex < 0) {
       await client.query("ROLLBACK");
       return { ok: false, reason: "feed_post_not_found" };
@@ -114,15 +124,35 @@ export async function applyFeedPostImageLocked(
 
     const currentPost = posts[postIndex];
     const currentApproval = approvalStateOf(currentPost);
-    const sha256 = imageHash(input.imageDataUrl);
-    const alreadyApplied = currentPost.customImageUrl === input.imageDataUrl
-      && currentPost.customImageName === input.imageName;
+    const sha256 = input.assetSha256 ?? imageHash(input.imageDataUrl);
+    const assetUrl = input.assetUrl ?? input.imageDataUrl;
+    const mediaType = input.mediaType ?? "image";
+    const variantAssets = input.variantAssets ?? [
+      { url: assetUrl, name: input.imageName },
+    ];
+    const alreadyApplied =
+      mediaType === "reel"
+        ? currentPost.customVideoDataUrl === assetUrl &&
+          currentPost.customVideoName === input.imageName
+        : mediaType === "carousel"
+          ? JSON.stringify(currentPost.customImageUrls ?? []) ===
+              JSON.stringify(variantAssets.map((asset) => asset.url)) &&
+            JSON.stringify(currentPost.customImageNames ?? []) ===
+              JSON.stringify(variantAssets.map((asset) => asset.name))
+          : currentPost.customImageUrl === assetUrl &&
+            currentPost.customImageName === input.imageName;
     if (input.link && currentApproval === "published" && !alreadyApplied) {
       await client.query("ROLLBACK");
-      return { ok: false, reason: "published_post_locked", approvalState: currentApproval };
+      return {
+        ok: false,
+        reason: "published_post_locked",
+        approvalState: currentApproval,
+      };
     }
     const approvalMustReset = Boolean(
-      input.link && !alreadyApplied && ["approved", "scheduled"].includes(currentApproval),
+      input.link &&
+      !alreadyApplied &&
+      ["awaiting_client", "approved", "scheduled"].includes(currentApproval),
     );
     if (approvalMustReset && !input.link?.confirmApprovedAssetChange) {
       await client.query("ROLLBACK");
@@ -136,11 +166,35 @@ export async function applyFeedPostImageLocked(
     let nextApproval = currentApproval;
 
     if (!alreadyApplied) {
-      const nextPost: RoleRoomFeedPostInput = {
-        ...currentPost,
-        customImageUrl: input.imageDataUrl,
-        customImageName: input.imageName,
-      };
+      const nextPost: RoleRoomFeedPostInput = { ...currentPost, mediaType };
+      if (mediaType === "reel") {
+        Object.assign(nextPost, {
+          customVideoDataUrl: assetUrl,
+          customVideoName: input.imageName,
+          customImageUrl: null,
+          customImageName: null,
+          customImageUrls: null,
+          customImageNames: null,
+        });
+      } else if (mediaType === "carousel") {
+        Object.assign(nextPost, {
+          customImageUrls: variantAssets.map((asset) => asset.url),
+          customImageNames: variantAssets.map((asset) => asset.name),
+          customImageUrl: null,
+          customImageName: null,
+          customVideoDataUrl: null,
+          customVideoName: null,
+        });
+      } else {
+        Object.assign(nextPost, {
+          customImageUrl: assetUrl,
+          customImageName: input.imageName,
+          customImageUrls: null,
+          customImageNames: null,
+          customVideoDataUrl: null,
+          customVideoName: null,
+        });
+      }
       if (approvalMustReset) {
         const now = new Date().toISOString();
         nextApproval = "needs_changes";
@@ -148,7 +202,8 @@ export async function applyFeedPostImageLocked(
           approvalState: nextApproval,
           approvalChangedAt: now,
           approvalChangedBy: input.updatedBy,
-          approvalNote: "Mockup-output ble oppdatert etter godkjenning og må godkjennes på nytt.",
+          approvalNote:
+            "Mockup-output ble oppdatert etter godkjenning og må godkjennes på nytt.",
           reviewRequestedAt: null,
           reviewRequestedBy: null,
           reviewDeadline: null,
@@ -181,10 +236,38 @@ export async function applyFeedPostImageLocked(
           WHERE id=$1::uuid`,
         [input.link.id, input.link.revision, sha256],
       );
+      if (input.link.variantId) {
+        await client.query(
+          `UPDATE role_room_feed_mockup_variants SET is_active=false,updated_at=now()
+            WHERE workspace_project_id=$1 AND platform=$2 AND feed_post_id=$3
+              AND id<>$4::uuid AND is_active`,
+          [
+            input.workspaceProjectId,
+            input.platform,
+            input.feedPostId,
+            input.link.variantId,
+          ],
+        );
+        await client.query(
+          `UPDATE role_room_feed_mockup_variants SET is_active=true,updated_at=now()
+            WHERE id=$1::uuid AND workspace_project_id=$2 AND platform=$3 AND feed_post_id=$4`,
+          [
+            input.link.variantId,
+            input.workspaceProjectId,
+            input.platform,
+            input.feedPostId,
+          ],
+        );
+      }
     }
 
     await client.query("COMMIT");
-    return { ok: true, changed: !alreadyApplied, imageSha256: sha256, approvalState: nextApproval };
+    return {
+      ok: true,
+      changed: !alreadyApplied,
+      imageSha256: sha256,
+      approvalState: nextApproval,
+    };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw error;

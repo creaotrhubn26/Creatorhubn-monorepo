@@ -43,7 +43,7 @@ import {
 } from '@mui/icons-material';
 import RoleRoomResearchCompleteOverlay from './RoleRoomResearchCompleteOverlay';
 import ResearchProgressLive from './ResearchProgressLive';
-import type { ResearchStage, ResearchProgressStatus } from '../../hooks/useResearchProgress';
+import type { ResearchMockupDraft, ResearchStage, ResearchProgressStatus } from '../../hooks/useResearchProgress';
 import MetaPagePublicMetadataInspector from './MetaPagePublicMetadataInspector';
 import AdsAttributionInspector from './AdsAttributionInspector';
 import FacebookVideoPublisher from './FacebookVideoPublisher';
@@ -117,6 +117,7 @@ type RoleRoomAgentDialogProps = {
   progressStages?: ResearchStage[];
   progressStatus?: ResearchProgressStatus;
   progressError?: string | null;
+  progressMockups?: ResearchMockupDraft[];
   /** Hvilken fane som er aktiv ved åpning. Default 'research'. Brukes
    *  når dialog-en åpnes fra et annet sted (f.eks. "Endre plan"-knappen
    *  i Markedsplan-arbeidsflaten) for å hoppe rett til riktig fane. */
@@ -259,6 +260,7 @@ export default function RoleRoomAgentDialog({
   progressStages,
   progressStatus,
   progressError,
+  progressMockups,
   initialTab,
 }: RoleRoomAgentDialogProps) {
   const [websiteUrl, setWebsiteUrl] = useState(initialWebsiteUrl ?? '');
@@ -1333,6 +1335,7 @@ export default function RoleRoomAgentDialog({
                 status={progressStatus}
                 stages={progressStages ?? []}
                 error={progressError ?? null}
+              mockups={progressMockups ?? []}
               />
             </Box>
           ) : null}
