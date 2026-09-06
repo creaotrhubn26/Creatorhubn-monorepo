@@ -5,6 +5,7 @@ import type { Pool } from "pg";
 import { loadPersistedAuthSession } from "./auth-session-store.js";
 import { broadcastUserEvent } from "./realtime-user-events.js";
 import {
+  getUserFileContent,
   getUserFileDownloadUrl,
   uploadUserFile,
 } from "./role-room-user-storage-service.js";
@@ -217,7 +218,7 @@ function isPortableProjectAsset(value: unknown): boolean {
   if (typeof value !== "string" || value.length === 0) return true;
   return /^(?:data:|https?:)/i.test(value)
     || value.startsWith("/assets/")
-    || /^mockup-cloud-file:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+    || /^mockup-cloud-file:(?:[^:]{1,255}:)?[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 /** Reject the image slots the desktop automatically reads/uploads during sync. */
@@ -230,7 +231,25 @@ export function hasUnsafeMockupProjectAssetReferences(project: Record<string, un
   const logo = canvas.logo && typeof canvas.logo === "object" && !Array.isArray(canvas.logo)
     ? canvas.logo as Record<string, unknown>
     : {};
-  return devices.some((item) => {
+  const unsafeFigureAssets = images.some((item) => {
+    const image = item && typeof item === "object" && !Array.isArray(item) ? item as Record<string, unknown> : {};
+    const sprite = image.sprite && typeof image.sprite === "object" && !Array.isArray(image.sprite)
+      ? image.sprite as Record<string, unknown> : {};
+    const generation = image.figureGeneration && typeof image.figureGeneration === "object" && !Array.isArray(image.figureGeneration)
+      ? image.figureGeneration as Record<string, unknown> : {};
+    const variants = Array.isArray(generation.variants) ? generation.variants : [];
+    const master = generation.characterMaster && typeof generation.characterMaster === "object" && !Array.isArray(generation.characterMaster)
+      ? generation.characterMaster as Record<string, unknown> : {};
+    const views = master.views && typeof master.views === "object" && !Array.isArray(master.views)
+      ? Object.values(master.views as Record<string, unknown>) : [];
+    const nestedImages = [...variants, ...views].flatMap((asset) => {
+      if (!asset || typeof asset !== "object" || Array.isArray(asset)) return [];
+      return [(asset as Record<string, unknown>).image];
+    });
+    return (Array.isArray(sprite.frames) && sprite.frames.some((frame) => !isPortableProjectAsset(frame)))
+      || nestedImages.some((asset) => !isPortableProjectAsset(asset));
+  });
+  return unsafeFigureAssets || devices.some((item) => {
     const device = item && typeof item === "object" && !Array.isArray(item) ? item as Record<string, unknown> : {};
     return !isPortableProjectAsset(device.image);
   }) || images.some((item) => {
@@ -769,6 +788,20 @@ export function registerRoleRoomMockupStudioRoutes(app: Express, deps: Deps): vo
         [fileId, access.id],
       );
       if (!attached.rows.length) { res.status(404).json({ error: "fil_finnes_ikke" }); return; }
+      if (String(req.query?.raw || "") === "1") {
+        const content = await getUserFileContent(pool, {
+          userId: attached.rows[0].user_id,
+          fileId,
+        });
+        if (!content.ok) {
+          res.status(content.reason === "not_found" ? 404 : 503).json({ error: content.reason });
+          return;
+        }
+        res.setHeader("Content-Type", content.contentType || "application/octet-stream");
+        res.setHeader("Cache-Control", "private, max-age=300");
+        res.send(Buffer.from(content.body));
+        return;
+      }
       const download = await getUserFileDownloadUrl(pool, {
         userId: attached.rows[0].user_id, fileId, expiresInSeconds: 300,
       });

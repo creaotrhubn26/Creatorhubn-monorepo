@@ -114,6 +114,11 @@ function isDemoTestMode(): boolean {
   return new URLSearchParams(window.location.search).get("test") === "demo";
 }
 
+function isMockupProjectDeepLink(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).has("mockupProjectId");
+}
+
 // Browser-test-modus (satt av browserTauriShim når Tauri mangler). Umulig i native/prod.
 const IS_BROWSER_TEST = typeof window !== "undefined" && !!(window as unknown as { __BROWSER_TEST__?: boolean }).__BROWSER_TEST__;
 
@@ -205,7 +210,9 @@ export default function App() {
     window.addEventListener("trrpa:open-dependencies", handler);
     return () => window.removeEventListener("trrpa:open-dependencies", handler);
   }, []);
-  const [showFirstRun, setShowFirstRun] = useState(() => shouldShowFirstRun());
+  const [showFirstRun, setShowFirstRun] = useState(
+    () => !isMockupProjectDeepLink() && shouldShowFirstRun(),
+  );
   const [showWatch, setShowWatch] = useState(false);
   const [showPhotoshopBridge, setShowPhotoshopBridge] = useState(false);
   const [showFireflyPrompt, setShowFireflyPrompt] = useState(false);
@@ -215,7 +222,7 @@ export default function App() {
   const [showPsdGallery, setShowPsdGallery] = useState(false);
   const [showPhotoshopHealth, setShowPhotoshopHealth] = useState(false);
   const [showPhotoshopTour, setShowPhotoshopTour] = useState(
-    () => !hasCompletedPhotoshopTour(),
+    () => !isMockupProjectDeepLink() && !hasCompletedPhotoshopTour(),
   );
   const [showFeedback, setShowFeedback] = useState(false);
   const [showHelp, setShowHelp] = useState(false);

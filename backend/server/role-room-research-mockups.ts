@@ -5,6 +5,15 @@ import type { RoleRoomAgentProgressPreview } from "./role-room-agent.js";
 import type { RoleRoomFeedPostInput } from "./role-room-feed-plan.js";
 import {
   buildBrandBasedMockupPlan,
+  type RoleRoomBrandMotionPlan,
+  type RoleRoomCinematicScenePlan,
+  type RoleRoomFigurePlan,
+  type RoleRoomHighFidelitySubjectRenderPlan,
+  type RoleRoomFigureRigPlan,
+  type RoleRoomFigureProductionPlan,
+  type RoleRoomMockupCampaignPlan,
+  type RoleRoomMockupSlideLayout,
+  type RoleRoomMockupSlideRole,
   type RoleRoomMockupSkillRun,
 } from "./role-room-agent-mockup-skills.js";
 import { ssrfSafeFetch } from "./ssrf-guard.js";
@@ -97,6 +106,12 @@ function strings(value: unknown): string[] {
         return normalized ? [normalized] : [];
       })
     : [];
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return Array.from(
+    new Set(values.map((value) => value.trim()).filter(Boolean)),
+  );
 }
 
 function validHex(value: unknown, fallback: string): string {
@@ -233,32 +248,70 @@ export async function materializeBrandLogoDataUrl(
   }
 }
 
-function previewDataUrl(
+export function buildResearchMockupPreviewDataUrl(
   title: string,
   subtitle: string,
   bg: string,
   accent: string,
   logoDataUrl?: string,
 ): string {
-  const escape = (value: string) =>
-    value.replace(
-      /[&<>"']/g,
-      (char) =>
-        ({
-          "&": "&amp;",
-          "<": "&lt;",
-          ">": "&gt;",
-          '"': "&quot;",
-          "'": "&#39;",
-        })[char] ?? char,
-    );
-  const safeTitle = escape(title.slice(0, 72));
-  const safeSubtitle = escape(subtitle.slice(0, 110));
+  const surface = mixHex(bg, "#FFFFFF", 0.92);
+  const scene = mixHex(bg, "#FFFFFF", 0.8);
+  const titleSvg = headlineLines(title)
+    .map(
+      (line, index) =>
+        '<text x="72" y="' +
+        (205 + index * 68) +
+        '" font-family="Georgia,serif" font-size="58" font-weight="700" fill="' +
+        (index === 1 ? accent : bg) +
+        '">' +
+        escapeSvg(line) +
+        "</text>",
+    )
+    .join("");
+  const safeSubtitle = escapeSvg(short(subtitle, 74));
   const logo = logoDataUrl?.startsWith("data:image/")
-    ? `<image href="${escape(logoDataUrl)}" x="76" y="72" width="190" height="110" preserveAspectRatio="xMinYMid meet"/>`
-    : `<rect x="76" y="82" width="166" height="18" rx="9" fill="${accent}"/>`;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350"><defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="${bg}"/><stop offset="1" stop-color="#080b12"/></linearGradient></defs><rect width="1080" height="1350" rx="54" fill="url(#g)"/><circle cx="920" cy="160" r="240" fill="${accent}" opacity=".24"/>${logo}<text x="76" y="520" fill="#fff" font-family="Arial,sans-serif" font-size="74" font-weight="700"><tspan x="76" dy="0">${safeTitle}</tspan></text><text x="76" y="700" fill="#dbe4ee" font-family="Arial,sans-serif" font-size="34"><tspan x="76" dy="0">${safeSubtitle}</tspan></text><rect x="76" y="1130" width="360" height="92" rx="46" fill="${accent}"/><text x="256" y="1190" text-anchor="middle" fill="#071018" font-family="Arial,sans-serif" font-size="30" font-weight="700">SE UTKAST →</text></svg>`;
-  return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+    ? '<image href="' +
+      escapeSvg(logoDataUrl) +
+      '" x="820" y="54" width="190" height="100" preserveAspectRatio="xMaxYMid meet"/>'
+    : '<rect x="840" y="76" width="170" height="14" rx="7" fill="' +
+      accent +
+      '"/>';
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350">' +
+    '<rect width="1080" height="1350" rx="46" fill="' +
+    surface +
+    '"/><rect y="510" width="1080" height="840" fill="' +
+    scene +
+    '"/>' +
+    logo +
+    '<text x="72" y="110" fill="' +
+    bg +
+    '" font-family="Arial,sans-serif" font-size="22" font-weight="700" letter-spacing="4">SKILL-BASERT KONSEPT</text>' +
+    titleSvg +
+    '<text x="72" y="450" fill="#3C4453" font-family="Arial,sans-serif" font-size="25">' +
+    safeSubtitle +
+    '</text><circle cx="280" cy="890" r="170" fill="' +
+    bg +
+    '" opacity=".12"/><circle cx="280" cy="820" r="62" fill="' +
+    accent +
+    '" opacity=".75"/><rect x="485" y="650" width="500" height="380" rx="28" fill="#FFFFFF"/>' +
+    '<rect x="485" y="650" width="12" height="380" rx="6" fill="' +
+    accent +
+    '"/><text x="535" y="720" fill="' +
+    bg +
+    '" font-family="Georgia,serif" font-size="25" font-weight="700">Research → visuelt bevis</text>' +
+    '<line x1="535" y1="770" x2="935" y2="770" stroke="#E6E9EE"/><line x1="535" y1="850" x2="935" y2="850" stroke="#E6E9EE"/>' +
+    '<circle cx="550" cy="812" r="8" fill="' +
+    accent +
+    '"/><circle cx="550" cy="892" r="8" fill="' +
+    accent +
+    '"/><text x="580" y="820" fill="#3C4453" font-family="Arial,sans-serif" font-size="20">Budskap og målgruppe</text>' +
+    '<text x="580" y="900" fill="#3C4453" font-family="Arial,sans-serif" font-size="20">Logo, palett og neste steg</text>' +
+    '<rect x="72" y="1190" width="350" height="76" rx="38" fill="' +
+    bg +
+    '"/><text x="247" y="1238" text-anchor="middle" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="23" font-weight="700">ÅPNE MOCKUP →</text></svg>';
+  return svgDataUrl(svg);
 }
 
 function initialDrafts(projectName: string) {
@@ -280,6 +333,19 @@ function initialDrafts(projectName: string) {
       mediaType: "reel" as const,
       title: "Kortformat som skaper tillit",
       caption: "Planlegger en animert reel med tydelig handling.",
+    },
+    {
+      ordinal: 4,
+      mediaType: "image" as const,
+      title: "Dokumentert proof point",
+      caption: "Bygger en alternativ bildepost med produktbevis og merkevare.",
+    },
+    {
+      ordinal: 5,
+      mediaType: "carousel" as const,
+      title: "Beslutningskarusell",
+      caption:
+        "Bygger en alternativ karusell for spørsmål, bevis og neste steg.",
     },
   ].map((draft) => ({
     ...draft,
@@ -325,7 +391,12 @@ export async function initializeResearchMockupDrafts(
         draft.mediaType,
         draft.title,
         draft.caption,
-        previewDataUrl(draft.title, draft.caption, "#172033", "#55d6be"),
+        buildResearchMockupPreviewDataUrl(
+          draft.title,
+          draft.caption,
+          "#172033",
+          "#55d6be",
+        ),
         input.createdByUserId,
       ],
     );
@@ -409,7 +480,7 @@ export async function advanceResearchMockupDrafts(
         ordinal,
         headline,
         detail,
-        previewDataUrl(headline, detail, primary, accent),
+        buildResearchMockupPreviewDataUrl(headline, detail, primary, accent),
       ],
     );
   }
@@ -435,43 +506,115 @@ function deriveContent(result: RoleRoomAgentNormalizedPayload) {
   const intake = record(root.intakeDraft);
   const planning = record(root.planningDraft);
   const brand = record(planning.brandGuide);
+  const activation = record(planning.activationPlan);
+  const contentLogic = record(planning.contentLogic);
   const colors = Array.isArray(brand.colors) ? brand.colors.map(record) : [];
   const companyName = text(company.companyName, "Merket");
   const offerings = strings(company.offerings);
   const audience = strings(company.targetAudience);
+  const proofPoints = uniqueStrings([
+    ...strings(contentLogic.proofPoints),
+    ...offerings,
+  ]);
+  const painPoints = uniqueStrings([
+    ...strings(contentLogic.painPoints),
+    ...strings(activation.painPoints),
+  ]);
   const keyMessage = text(
     intake.keyMessage,
     text(company.summary, `Oppdag hva ${companyName} kan gjøre for deg.`),
   );
+  const objective = text(
+    contentLogic.objective,
+    text(activation.businessGoal, "Skape forståelse og et tydelig neste steg."),
+  );
+  const campaignAngle = text(
+    contentLogic.hook,
+    text(activation.idea, keyMessage.split(".")[0]),
+  );
+  const coreMessage = text(contentLogic.coreMessage, keyMessage);
+  const callToAction = text(contentLogic.callToAction, "Les mer");
+  const industry = text(company.industry);
   const primary = validHex(colors[0]?.hex, "#172033");
   const accent = validHex(colors[1]?.hex, "#55d6be");
   const logoUrl = text(brand.logoUrl, text(company.logoUrl));
+  const sourceEvidence = uniqueStrings([
+    "companyProfile.companyName",
+    ...(offerings.length ? ["companyProfile.offerings"] : []),
+    ...(audience.length ? ["companyProfile.targetAudience"] : []),
+    ...(text(company.summary) ? ["companyProfile.summary"] : []),
+    ...(text(intake.keyMessage) ? ["intakeDraft.keyMessage"] : []),
+    ...(text(contentLogic.coreMessage)
+      ? ["planningDraft.contentLogic.coreMessage"]
+      : []),
+    ...(text(contentLogic.objective)
+      ? ["planningDraft.contentLogic.objective"]
+      : []),
+    ...(strings(contentLogic.proofPoints).length
+      ? ["planningDraft.contentLogic.proofPoints"]
+      : []),
+    ...(text(contentLogic.hook) ? ["planningDraft.contentLogic.hook"] : []),
+    ...(text(contentLogic.callToAction)
+      ? ["planningDraft.contentLogic.callToAction"]
+      : []),
+    ...(text(activation.businessGoal)
+      ? ["planningDraft.activationPlan.businessGoal"]
+      : []),
+    ...(text(activation.idea) ? ["planningDraft.activationPlan.idea"] : []),
+  ]);
   const concepts = [
     {
-      concept: "product_highlight",
-      title: offerings[0] || keyMessage.split(".")[0],
-      caption:
-        `${keyMessage} ${audience[0] ? `For ${audience[0]}.` : ""}`.trim(),
-      cta: "Les mer",
+      concept: "campaign_hero",
+      title: campaignAngle || offerings[0] || keyMessage.split(".")[0],
+      caption: coreMessage,
+      cta: callToAction,
+      slideCount: 1,
     },
     {
-      concept: "educational",
-      title: `Slik skaper ${companyName} verdi`,
-      caption: `Tre konkrete punkter basert på research om ${companyName}.`,
-      cta: "Sveip videre",
+      concept: "product_story",
+      title: offerings[0]
+        ? `Fra behov til ${offerings[0]}`
+        : `Slik skaper ${companyName} verdi`,
+      caption: coreMessage,
+      cta: callToAction,
+      slideCount: 5,
     },
     {
       concept: "behind_the_scenes",
       title: `Møt ${companyName}`,
-      caption: `Et kortformat som viser kompetanse, mennesker og dokumenterte proof points.`,
-      cta: "Se hvordan",
+      caption: coreMessage,
+      cta: callToAction,
+      slideCount: 1,
+    },
+    {
+      concept: "proof_highlight",
+      title: proofPoints[0] || offerings[0] || campaignAngle,
+      caption: `${companyName}: ${coreMessage}`,
+      cta: callToAction,
+      slideCount: 1,
+    },
+    {
+      concept: "decision_guide",
+      title: audience[0]
+        ? `Dette bør ${audience[0]} vite`
+        : `Dette bør du vite om ${companyName}`,
+      caption: coreMessage,
+      cta: callToAction,
+      slideCount: 4,
     },
   ];
   return {
     companyName,
     offerings,
     audience,
+    proofPoints,
+    painPoints,
     keyMessage,
+    objective,
+    campaignAngle,
+    coreMessage,
+    industry,
+    sourceEvidence,
     primary,
     accent,
     logoUrl,
@@ -480,11 +623,258 @@ function deriveContent(result: RoleRoomAgentNormalizedPayload) {
   };
 }
 
+function mixHex(left: string, right: string, amount: number): string {
+  const parse = (value: string) => [
+    Number.parseInt(value.slice(1, 3), 16),
+    Number.parseInt(value.slice(3, 5), 16),
+    Number.parseInt(value.slice(5, 7), 16),
+  ];
+  const a = parse(validHex(left, "#172033"));
+  const b = parse(validHex(right, "#FFFFFF"));
+  return (
+    "#" +
+    a
+      .map((channel, index) =>
+        Math.round(channel + (b[index] - channel) * amount)
+          .toString(16)
+          .padStart(2, "0"),
+      )
+      .join("")
+      .toUpperCase()
+  );
+}
+
+function svgDataUrl(svg: string): string {
+  return "data:image/svg+xml;base64," + Buffer.from(svg).toString("base64");
+}
+
+function escapeSvg(value: string): string {
+  return value.replace(
+    /[&<>"']/g,
+    (char) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[char] || char,
+  );
+}
+
+function short(value: string, length: number): string {
+  if (value.length <= length) return value;
+  return value.slice(0, Math.max(1, length - 1)).trimEnd() + "…";
+}
+
+function buildBrandMotionTimeline(input: {
+  motion: RoleRoomBrandMotionPlan;
+  textIds: string[];
+  imageIds: string[];
+}) {
+  const { motion } = input;
+  const activeSeconds = Math.max(
+    2.2,
+    motion.durationSeconds - motion.holdSeconds,
+  );
+  const revealLength = Math.max(0.42, Math.min(0.82, activeSeconds * 0.16));
+  const textId = (prefix: string) =>
+    input.textIds.find((id) => id.startsWith(prefix));
+  const titleIds = input.textIds.filter((id) => id.startsWith("title-"));
+  const clips: Array<{
+    id: string;
+    label: string;
+    track: number;
+    start: number;
+    len: number;
+    kind: "reveal";
+    ref: string;
+    ease: "smooth" | "out";
+  }> = [];
+  const add = (
+    ref: string | undefined,
+    label: string,
+    track: number,
+    start: number,
+    len = revealLength,
+  ) => {
+    if (!ref) return;
+    clips.push({
+      id: `brand-reveal-${ref}`,
+      label,
+      track,
+      start: Number(start.toFixed(3)),
+      len: Number(len.toFixed(3)),
+      kind: "reveal",
+      ref,
+      ease: motion.easing,
+    });
+  };
+
+  add(
+    textId("eyebrow-"),
+    "Brand-signal",
+    2,
+    activeSeconds * 0.035,
+    revealLength * 0.72,
+  );
+  titleIds.forEach((id, index) =>
+    add(
+      id,
+      index === 0 ? "Hook" : "Hook fortsetter",
+      2,
+      activeSeconds * 0.1 + index * motion.staggerSeconds,
+    ),
+  );
+  add(
+    textId("body-"),
+    "Støttebudskap",
+    2,
+    activeSeconds * 0.32 +
+      Math.max(0, titleIds.length - 1) * motion.staggerSeconds,
+    revealLength * 1.08,
+  );
+  input.imageIds.forEach((id, index) =>
+    add(
+      id,
+      id.startsWith("research-card-") ? "Dokumentert bevis" : "Merkevarescene",
+      3,
+      activeSeconds * (index === 0 ? 0.27 : 0.47) +
+        index * motion.staggerSeconds,
+      revealLength * 1.16,
+    ),
+  );
+  add(
+    textId("cta-"),
+    "Neste steg",
+    2,
+    activeSeconds * 0.72,
+    revealLength * 0.86,
+  );
+  return {
+    duration: motion.durationSeconds,
+    in: 0,
+    out: 1,
+    clips: clips.sort((left, right) => left.start - right.start),
+  };
+}
+
+function headlineLines(value: string): string[] {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return ["Nytt konsept"];
+  const lines: string[] = [];
+  for (const word of words) {
+    const current = lines.at(-1);
+    if (!current || (current + " " + word).length > 27) {
+      if (lines.length === 3) {
+        lines[2] = short(lines[2] + " " + word, 32);
+      } else {
+        lines.push(word);
+      }
+    } else {
+      lines[lines.length - 1] = current + " " + word;
+    }
+  }
+  return lines;
+}
+
+function surfaceDataUrl(
+  label: string,
+  background: string,
+  ink: string,
+): string {
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600">' +
+    '<rect width="600" height="600" fill="' +
+    background +
+    '"/><text x="300" y="300" font-family="-apple-system,system-ui,sans-serif" font-size="24" font-weight="700" fill="' +
+    ink +
+    '" fill-opacity=".38" text-anchor="middle">' +
+    escapeSvg(label) +
+    "</text></svg>";
+  return svgDataUrl(svg);
+}
+
+function researchCardDataUrl(input: {
+  title: string;
+  rows: Array<{ label: string; value: string }>;
+  primary: string;
+  accent: string;
+}): string {
+  const rows = input.rows.slice(0, 3);
+  const rowSvg = rows
+    .map((row, index) => {
+      const y = 118 + index * 92;
+      return (
+        '<circle cx="42" cy="' +
+        (y + 17) +
+        '" r="15" fill="' +
+        input.primary +
+        '" fill-opacity=".10"/>' +
+        '<circle cx="42" cy="' +
+        (y + 17) +
+        '" r="5" fill="' +
+        input.accent +
+        '"/><text x="72" y="' +
+        y +
+        '" font-family="-apple-system,system-ui,sans-serif" font-size="13" fill="#737984">' +
+        escapeSvg(short(row.label, 30)) +
+        '</text><text x="72" y="' +
+        (y + 26) +
+        '" font-family="-apple-system,system-ui,sans-serif" font-size="17" font-weight="650" fill="#171A1F">' +
+        escapeSvg(short(row.value, 44)) +
+        '</text><line x1="24" y1="' +
+        (y + 54) +
+        '" x2="576" y2="' +
+        (y + 54) +
+        '" stroke="#ECEFF3"/>'
+      );
+    })
+    .join("");
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="420">' +
+    '<defs><linearGradient id="card-surface" x1="0" y1="0" x2="1" y2="1">' +
+    '<stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="' +
+    input.primary +
+    '" stop-opacity=".065"/></linearGradient><linearGradient id="card-accent" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0" stop-color="' +
+    input.accent +
+    '"/><stop offset="1" stop-color="' +
+    input.primary +
+    '"/></linearGradient><filter id="card-shadow" x="-20%" y="-20%" width="140%" height="150%">' +
+    '<feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="' +
+    input.primary +
+    '" flood-opacity=".16"/></filter></defs>' +
+    '<rect x="14" y="10" width="572" height="390" rx="28" fill="url(#card-surface)" filter="url(#card-shadow)"/>' +
+    '<circle cx="530" cy="34" r="96" fill="' +
+    input.accent +
+    '" fill-opacity=".07"/>' +
+    '<rect x="14" y="10" width="12" height="390" rx="6" fill="url(#card-accent)"/>' +
+    '<rect x="38" y="83" width="516" height="1" fill="' +
+    input.primary +
+    '" fill-opacity=".09"/>' +
+    '<circle cx="42" cy="48" r="10" fill="' +
+    input.accent +
+    '" fill-opacity=".2"/><circle cx="42" cy="48" r="5" fill="' +
+    input.accent +
+    '"/><circle cx="42" cy="48" r="10" fill="none" stroke="' +
+    input.primary +
+    '" stroke-opacity=".45"/><text x="66" y="56" font-family="Georgia,serif" font-size="24" font-weight="700" fill="' +
+    input.primary +
+    '">' +
+    escapeSvg(short(input.title, 34)) +
+    "</text>" +
+    rowSvg +
+    "</svg>";
+  return svgDataUrl(svg);
+}
+
 function mockupDocument(input: {
   id: string;
   name: string;
   projectId: string;
   researchId: string;
+  companyName: string;
   title: string;
   caption: string;
   eyebrow: string;
@@ -496,18 +886,35 @@ function mockupDocument(input: {
   mediaType: ResearchMockupMediaType;
   logoUrl: string | null;
   logoPlacement:
-    "top-left" | "top-right" | "bottom-left" | "bottom-right" | "center";
+    | "top-left"
+    | "top-right"
+    | "bottom-left"
+    | "bottom-right"
+    | "center";
   toneOfVoice: string | null;
   visualStyle: string | null;
   qualityStatus: "ready" | "limited" | "failed";
   inputFingerprint: string;
   skillRuns: RoleRoomMockupSkillRun[];
+  campaign: RoleRoomMockupCampaignPlan;
+  motion: RoleRoomBrandMotionPlan;
+  figure: RoleRoomFigurePlan;
+  figureRender: RoleRoomHighFidelitySubjectRenderPlan;
+  figureRig: RoleRoomFigureRigPlan;
+  figureProduction: RoleRoomFigureProductionPlan;
+  scene: RoleRoomCinematicScenePlan;
+  role: RoleRoomMockupSlideRole;
+  layout: RoleRoomMockupSlideLayout;
+  evidenceRef: string | null;
   slide: number;
+  totalSlides: number;
 }) {
   const portrait = input.mediaType === "reel";
   const width = 1080;
   const height = portrait ? 1920 : 1350;
   const now = Date.now();
+  const surface = mixHex(input.primary, "#FFFFFF", 0.92);
+  const mutedSurface = mixHex(input.primary, "#FFFFFF", 0.82);
   const logoPosition = {
     "top-left": { x: 90, y: 70 },
     "top-right": { x: 840, y: 70 },
@@ -518,11 +925,11 @@ function mockupDocument(input: {
   const eyebrowY =
     input.logoUrl && ["top-left", "center"].includes(input.logoPlacement)
       ? 260
-      : 140;
+      : 150;
   const ctaY =
     input.logoUrl && input.logoPlacement.startsWith("bottom-")
       ? Math.round(height * 0.7)
-      : Math.round(height * 0.82);
+      : Math.round(height * 0.91);
   const textSlot = (
     id: string,
     role: string,
@@ -534,9 +941,9 @@ function mockupDocument(input: {
     id,
     role,
     text: value,
-    x: 90,
+    x: 72,
     y,
-    w: 900,
+    w: 936,
     size,
     weight: role === "title" ? 800 : 500,
     color,
@@ -545,16 +952,338 @@ function mockupDocument(input: {
     tracking: role === "eyebrow" ? 3 : 0,
     uppercase: role === "eyebrow",
   });
+  const lines = headlineLines(input.title);
+  const titleSlots = lines.map((line, index) =>
+    textSlot(
+      "title-" + input.slide + "-" + (index + 1),
+      "title",
+      line,
+      eyebrowY + 52 + index * (portrait ? 94 : 72),
+      portrait ? 76 : 58,
+      index === 1 ? input.accent : input.primary,
+    ),
+  );
+  const cardContent = {
+    title:
+      input.role === "proof"
+        ? "Dokumentert proof point"
+        : input.role === "mechanism"
+          ? "Slik henger det sammen"
+          : input.companyName,
+    rows: [
+      { icon: "clipboard", label: "Budskap", value: short(input.title, 54) },
+      {
+        icon: "people",
+        label: "Målgruppe",
+        value: short(input.campaign.audience, 54),
+      },
+      {
+        icon: "check",
+        label: "Neste steg",
+        value: short(input.callToAction, 54),
+      },
+    ],
+    highlightRow: { icon: "check", label: "Basert på prosjektets research" },
+    animateRows: false,
+  };
+  const cardImage = researchCardDataUrl({
+    title: cardContent.title,
+    rows: cardContent.rows,
+    primary: input.primary,
+    accent: input.accent,
+  });
+  const images: Array<Record<string, unknown>> = [];
+  const annotations: Array<Record<string, unknown>> = [];
+  const sceneLayout = [
+    "photo-product-bridge",
+    "problem-frame",
+    "vertical-story",
+  ].includes(input.layout);
+  if (sceneLayout) {
+    images.push({
+      id: "scene-" + input.slide,
+      image: surfaceDataUrl(
+        input.campaign.scene === "clinical" ? "KLINISK SCENE" : "ARBEIDSSCENE",
+        mutedSurface,
+        input.primary,
+      ),
+      x: 0,
+      y: portrait ? 650 : 500,
+      w: width,
+      h: portrait ? 1270 : 850,
+      radius: 0,
+      fit: "cover",
+      rotation: 0,
+      shadow: false,
+      illustration:
+        input.campaign.scene === "clinical"
+          ? "waiting-room-backdrop"
+          : "office-backdrop",
+      sceneStyle: {
+        renderQuality: input.scene.renderQuality,
+        style: input.scene.style,
+        environment: input.scene.environment,
+        lighting: input.scene.lighting,
+        colorGrade: input.scene.colorGrade,
+        primary: input.scene.brandHarmony.primary,
+        accent: input.scene.brandHarmony.accent,
+        materialDetail: input.scene.materialDetail,
+      },
+      noReveal: true,
+    });
+    images.push({
+      id: "person-" + input.slide,
+      image: surfaceDataUrl("PERSON", surface, input.primary),
+      x: portrait ? 0 : 10,
+      y: portrait ? 850 : 600,
+      w: portrait ? 620 : 500,
+      h: portrait ? 860 : 700,
+      radius: 0,
+      fit: "contain",
+      rotation: 0,
+      shadow: false,
+      illustration: "person-laptop",
+      altText: input.figure.altText,
+      mediaProvenance: {
+        source: input.figure.provenance,
+        disclosure: input.figure.disclosure,
+        consistencyKey: input.figure.consistencyKey,
+      },
+      figureGeneration: {
+        qualityTarget: input.figure.qualityTarget,
+        renderMode: input.figureRig.defaultMode,
+        presentation: input.figure.presentation,
+        appearance: {
+          ageRange: input.figure.ageRange,
+          skinTone: input.figure.skin,
+          hairColor: input.figure.hair,
+          hairStyle: {
+            kort: "short",
+            buffert: "volume",
+            krøller: "curly",
+          }[input.figure.hairStyle],
+          faceShape: input.figure.faceShape,
+        },
+        customizationSkill: (() => {
+          const skill = input.skillRuns.find(
+            (run) => run.id === "customize_subject_identity",
+          );
+          return skill
+            ? {
+                id: "customize_subject_identity",
+                version: "1.0.0",
+                executionKey: skill.executionKey,
+                decisions: skill.decisions,
+              }
+            : undefined;
+        })(),
+        renderSkill: (() => {
+          const skill = input.skillRuns.find(
+            (run) => run.id === "render_high_fidelity_subject",
+          );
+          return skill
+            ? {
+                id: "render_high_fidelity_subject",
+                version: "1.0.0",
+                executionKey: skill.executionKey,
+                decisions: skill.decisions,
+              }
+            : undefined;
+        })(),
+        rigSkill: (() => {
+          const skill = input.skillRuns.find(
+            (run) => run.id === "rig_subject_motion",
+          );
+          return skill
+            ? {
+                id: "rig_subject_motion",
+                version: "1.0.0",
+                executionKey: skill.executionKey,
+                decisions: skill.decisions,
+              }
+            : undefined;
+        })(),
+        pipelineSkills: Object.fromEntries(
+          input.skillRuns
+            .filter((run) => [
+              "build_character_master",
+              "direct_pose_expression",
+              "generate_layered_sprite_package",
+              "composite_subject_scene",
+              "author_subject_animation",
+              "curate_subject_variants",
+              "audit_subject_visual_quality",
+              "verify_subject_production",
+            ].includes(run.id))
+            .map((run) => [run.id, {
+              version: run.version,
+              executionKey: run.executionKey,
+              decisions: run.decisions,
+            }]),
+        ),
+        status: "planned",
+        provider: input.figureRender.model,
+        consistencyStrategy: input.figureRender.consistencyStrategy,
+        prompt: input.figure.generationPrompt,
+        negativePrompt: input.figure.negativePrompt,
+        seed: input.figure.seed,
+        consistencyKey: input.figure.consistencyKey,
+        fallback: input.figure.fallbackStyle,
+        poseId: input.figureProduction.poseExpression.defaultPose,
+        expressionId: input.figureProduction.poseExpression.defaultExpression,
+        compositing: {
+          contactShadow: 0.72,
+          rimLight: 0.36,
+          ambientMatch: 0.28,
+          depthBlur: 0,
+          perspective: 0,
+          groundOffset: 0.93,
+        },
+        variants: [],
+      },
+      personStyle: {
+        renderQuality: input.figure.renderQuality,
+        artDirection: input.figure.style,
+        presentation: input.figure.presentation,
+        ageRange: input.figure.ageRange,
+        faceShape: input.figure.faceShape,
+        skin: input.figure.skin,
+        hair: input.figure.hair,
+        hairStyle: input.figure.hairStyle,
+        shirt: input.primary,
+        accent: input.accent,
+        outfit: input.figure.outfit,
+        accessory: input.figure.accessory,
+        scenario: input.figure.scenario,
+      },
+    });
+  }
+  images.push({
+    id: "research-card-" + input.slide,
+    image: cardImage,
+    x:
+      input.layout === "proof-card" || input.layout === "process-card"
+        ? 120
+        : portrait
+          ? 390
+          : 510,
+    y:
+      input.layout === "proof-card" || input.layout === "process-card"
+        ? 610
+        : portrait
+          ? 1000
+          : 650,
+    w:
+      input.layout === "proof-card" || input.layout === "process-card"
+        ? 840
+        : portrait
+          ? 620
+          : 500,
+    h:
+      input.layout === "proof-card" || input.layout === "process-card"
+        ? 588
+        : portrait
+          ? 434
+          : 350,
+    radius: 28,
+    fit: "contain",
+    rotation: 0,
+    shadow: true,
+    infoCardContent: cardContent,
+  });
+  if (input.mediaType === "carousel") {
+    annotations.push({
+      id: "step-" + input.slide,
+      kind: "step",
+      fx: 0.035,
+      fy: 0.035,
+      n: input.slide,
+      color: input.primary,
+    });
+    annotations.push({
+      id: "progress-" + input.slide,
+      kind: "pill",
+      fx: 0.86,
+      fy: 0.94,
+      glyph: "→",
+      label: input.slide + "/" + input.totalSlides,
+      label2: input.role === "cta" ? "Neste steg" : "Sveip videre",
+    });
+  }
+  if (sceneLayout) {
+    annotations.push({
+      id: "connector-" + input.slide,
+      kind: "connector",
+      fx: 0.34,
+      fy: portrait ? 0.64 : 0.61,
+      fx2: portrait ? 0.42 : 0.49,
+      fy2: portrait ? 0.6 : 0.56,
+      curve: 0.04,
+      color: input.accent,
+    });
+  }
+  annotations.push({
+    id: "evidence-" + input.slide,
+    kind: "pill",
+    fx: input.mediaType === "carousel" ? 0.22 : 0.5,
+    fy: 0.94,
+    glyph: "✓",
+    label: input.evidenceRef ? "Kildemerket" : "Research-utkast",
+    label2: input.evidenceRef
+      ? short(input.evidenceRef, 34)
+      : "Verifiser budskap før publisering",
+  });
+  const texts = [
+    textSlot(
+      `eyebrow-${input.slide}`,
+      "eyebrow",
+      input.eyebrow,
+      eyebrowY,
+      24,
+      input.primary,
+    ),
+    ...titleSlots,
+    textSlot(
+      `body-${input.slide}`,
+      "body",
+      short(input.caption, 190),
+      eyebrowY + 72 + lines.length * (portrait ? 94 : 72),
+      portrait ? 30 : 25,
+      "#3C4453",
+    ),
+    textSlot(
+      `cta-${input.slide}`,
+      "tag",
+      input.callToAction,
+      ctaY,
+      26,
+      input.primary,
+    ),
+  ];
   return {
     id: input.id,
     name: input.name,
     version: 1,
-    template: "role_room_brand_post",
+    template: "role_room_campaign_post_v2",
     workspaceProjectId: input.projectId,
     campaignId: input.researchId,
     mockupQualityStatus: input.qualityStatus,
     mockupInputFingerprint: input.inputFingerprint,
     mockupSkillRuns: input.skillRuns,
+    motion: input.motion,
+    creativeDecision: {
+      campaign: input.campaign,
+      figureDirection: input.figure,
+      figureRenderDirection: input.figureRender,
+      figureRigDirection: input.figureRig,
+      figureProductionDirection: input.figureProduction,
+      sceneDirection: input.scene,
+      role: input.role,
+      layout: input.layout,
+      evidenceRef: input.evidenceRef,
+      slide: input.slide,
+      totalSlides: input.totalSlides,
+    },
     brandDecision: {
       primaryColor: input.primary,
       accentColor: input.accent,
@@ -569,51 +1298,30 @@ function mockupDocument(input: {
       h: height,
       accent: input.accent,
       accent2: input.primary,
-      background: "brand",
-      bgStyle: "atmospheric",
-      typography: "moderne",
-      decor: "orbs",
-      bgColor: input.primary,
+      background: "light",
+      bgStyle: "clean",
+      typography: "editorial",
+      decor: "arc",
+      bgColor: surface,
+      pushIn: input.motion.cameraPushIn,
+      ...(input.motion.beatPunch > 0 && input.motion.bpm
+        ? { beatPunch: input.motion.beatPunch, bpm: input.motion.bpm }
+        : {}),
       ...(input.logoUrl
         ? { logo: { image: input.logoUrl, ...logoPosition, w: 150 } }
         : {}),
     },
     devices: [],
-    images: [],
-    texts: [
-      textSlot(
-        `eyebrow-${input.slide}`,
-        "eyebrow",
-        input.eyebrow,
-        eyebrowY,
-        28,
-        input.accentTextColor,
-      ),
-      textSlot(
-        `title-${input.slide}`,
-        "title",
-        input.title,
-        Math.round(height * 0.28),
-        portrait ? 84 : 72,
-        input.textColor,
-      ),
-      textSlot(
-        `body-${input.slide}`,
-        "body",
-        input.caption,
-        Math.round(height * 0.57),
-        34,
-        input.textColor,
-      ),
-      textSlot(
-        `cta-${input.slide}`,
-        "tag",
-        input.callToAction,
-        ctaY,
-        30,
-        input.accentTextColor,
-      ),
-    ],
+    images,
+    texts,
+    annotations,
+    timeline: buildBrandMotionTimeline({
+      motion: input.motion,
+      textIds: texts.map((entry) => entry.id),
+      imageIds: images
+        .filter((entry) => entry.noReveal !== true)
+        .map((entry) => String(entry.id)),
+    }),
     status: "draft",
     updatedAt: now,
   };
@@ -702,13 +1410,21 @@ export async function finalizeResearchMockupDrafts(
         callToAction: content.cta,
         concept: content.concept,
         mediaType: draft.mediaType,
-        slideCount: draft.mediaType === "carousel" ? 3 : 1,
+        slideCount: content.slideCount,
         primaryColor: derived.primary,
         accentColor: derived.accent,
         logoDataUrl: inlineLogo,
+        logoPlacement: text(derived.brand.logoPlacement, "top-right"),
         toneOfVoice: text(derived.brand.toneOfVoice) || null,
         visualStyle: text(derived.brand.visualStyle) || null,
-        proofPoints: derived.offerings,
+        industry: derived.industry,
+        campaignObjective: derived.objective,
+        campaignAngle: derived.campaignAngle,
+        audience: derived.audience,
+        offerings: derived.offerings,
+        painPoints: derived.painPoints,
+        proofPoints: derived.proofPoints,
+        sourceEvidence: derived.sourceEvidence,
         researchId: input.researchId,
       });
       if (mockupPlan.qualityStatus === "failed") {
@@ -732,7 +1448,7 @@ export async function finalizeResearchMockupDrafts(
             "#research",
           ].filter((tag) => tag.length > 1),
           callToAction: content.cta,
-          imageStyle: "Merkevaretilpasset research-mockup",
+          imageStyle: "Skill-basert kampanjemockup",
           scheduledFor: currentPost?.scheduledFor ?? null,
           backgroundColor: mockupPlan.primaryColor,
           accentColor: mockupPlan.accentColor,
@@ -799,6 +1515,7 @@ export async function finalizeResearchMockupDrafts(
           name: `${derived.companyName} · ${draft.title}${slideCount > 1 ? ` · ${slide}/${slideCount}` : ""}`,
           projectId: input.projectId,
           researchId: input.researchId,
+          companyName: derived.companyName,
           title: slidePlan.title,
           caption: slidePlan.caption,
           eyebrow: slidePlan.eyebrow,
@@ -814,8 +1531,19 @@ export async function finalizeResearchMockupDrafts(
           qualityStatus: mockupPlan.qualityStatus,
           inputFingerprint: mockupPlan.inputFingerprint,
           skillRuns: mockupPlan.skillRuns,
+          campaign: mockupPlan.campaign,
+          motion: mockupPlan.motion,
+          figure: mockupPlan.figure,
+          figureRender: mockupPlan.figureRender,
+          figureRig: mockupPlan.figureRig,
+          figureProduction: mockupPlan.figureProduction,
+          scene: mockupPlan.scene,
+          role: slidePlan.role,
+          layout: slidePlan.layout,
+          evidenceRef: slidePlan.evidenceRef,
           mediaType: draft.mediaType,
           slide,
+          totalSlides: slideCount,
         });
         await upsertMockupProject(client, {
           id: mockupId,
@@ -851,7 +1579,7 @@ export async function finalizeResearchMockupDrafts(
           draft.ordinal,
           content.title.slice(0, 200),
           content.caption,
-          previewDataUrl(
+          buildResearchMockupPreviewDataUrl(
             content.title,
             content.caption,
             mockupPlan.primaryColor,
@@ -929,10 +1657,24 @@ export async function createFeedMockupProject(
       input.feedPost.accentColor || text(brandSnapshot.accentColor) || null,
     preferredTextColor: input.feedPost.textColor,
     logoDataUrl: inlineLogo,
-    logoPlacement: input.feedPost.logoPlacement,
+    logoPlacement:
+      input.feedPost.logoPlacement ||
+      text(brandSnapshot.logoPlacement, "top-right"),
     toneOfVoice: text(brandSnapshot.toneOfVoice) || null,
     visualStyle: text(brandSnapshot.visualStyle) || null,
+    industry: text(brandSnapshot.industry) || null,
+    campaignObjective:
+      text(brandSnapshot.campaignObjective) ||
+      "Skape forståelse og lede målgruppen til et tydelig neste steg.",
+    campaignAngle: text(brandSnapshot.campaignAngle, input.feedPost.title),
+    audience: strings(brandSnapshot.audience),
+    offerings: strings(brandSnapshot.offerings),
+    painPoints: strings(brandSnapshot.painPoints),
     proofPoints: strings(brandSnapshot.proofPoints),
+    sourceEvidence: uniqueStrings([
+      ...strings(brandSnapshot.sourceEvidence),
+      "feedPost:" + input.feedPost.id,
+    ]),
   });
   if (mockupPlan.qualityStatus === "failed") {
     throw new Error("mockup_skill_audit_failed");
@@ -999,6 +1741,7 @@ export async function createFeedMockupProject(
         name: `${input.feedPost.title} · ${input.mediaType}${slideCount > 1 ? ` ${slide}/${slideCount}` : ""}`,
         projectId: input.projectId,
         researchId: variantId,
+        companyName: text(brandSnapshot.companyName, "Merket"),
         title: slidePlan.title,
         caption: slidePlan.caption,
         eyebrow: slidePlan.eyebrow,
@@ -1014,8 +1757,19 @@ export async function createFeedMockupProject(
         qualityStatus: mockupPlan.qualityStatus,
         inputFingerprint: mockupPlan.inputFingerprint,
         skillRuns: mockupPlan.skillRuns,
+        campaign: mockupPlan.campaign,
+        motion: mockupPlan.motion,
+        figure: mockupPlan.figure,
+        figureRender: mockupPlan.figureRender,
+        figureRig: mockupPlan.figureRig,
+        figureProduction: mockupPlan.figureProduction,
+        scene: mockupPlan.scene,
+        role: slidePlan.role,
+        layout: slidePlan.layout,
+        evidenceRef: slidePlan.evidenceRef,
         mediaType: input.mediaType,
         slide,
+        totalSlides: slideCount,
       });
       await upsertMockupProject(client, {
         id: mockupId,
