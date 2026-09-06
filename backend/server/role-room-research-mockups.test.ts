@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Pool } from "pg";
 import {
   advanceResearchMockupDrafts,
+  buildResearchMockupPreviewDataUrl,
   createFeedMockupProject,
   finalizeResearchMockupDrafts,
   initializeResearchMockupDrafts,
@@ -13,17 +14,20 @@ const VARIANT_IDS = [
   "00000000-0000-4000-8000-000000000021",
   "00000000-0000-4000-8000-000000000022",
   "00000000-0000-4000-8000-000000000023",
+  "00000000-0000-4000-8000-000000000024",
+  "00000000-0000-4000-8000-000000000025",
 ];
 
 function draftRows() {
-  return [1, 2, 3].map((ordinal) => ({
+  const mediaTypes = ["image", "carousel", "reel", "image", "carousel"];
+  return [1, 2, 3, 4, 5].map((ordinal) => ({
     id: `00000000-0000-4000-8000-00000000003${ordinal}`,
     workspace_project_id: "workspace-1",
     research_id: RESEARCH_ID,
     platform: "instagram",
     ordinal,
     feed_post_id: `role-room-research-post-${ordinal}`,
-    media_type: ordinal === 1 ? "image" : ordinal === 2 ? "carousel" : "reel",
+    media_type: mediaTypes[ordinal - 1],
     status: "building",
     stage: "starting",
     progress: 4,
@@ -36,6 +40,24 @@ function draftRows() {
 }
 
 describe("Role Room progressive research mockups", () => {
+  it("renders the live preview as an editable-campaign visual with independently positioned headline lines", () => {
+    const preview = buildResearchMockupPreviewDataUrl(
+      "Timen starter før pasienten kommer inn",
+      "Research blir til et tydelig visuelt bevis.",
+      "#1A2F4B",
+      "#C9A04A",
+    );
+    const decoded = Buffer.from(preview.split(",")[1] || "", "base64").toString(
+      "utf8",
+    );
+
+    expect(decoded).toContain("SKILL-BASERT KONSEPT");
+    expect(decoded).toContain('text x="72" y="205"');
+    expect(decoded).toContain('text x="72" y="273"');
+    expect(decoded).toContain("Research → visuelt bevis");
+    expect(decoded).not.toContain("<tspan");
+  });
+
   it("sanitizes inline SVG logos before they enter the editable canvas", async () => {
     const unsafe =
       '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><style>rect{fill:url(https://evil.test/x)}</style><script>alert(2)</script><a href="javascript:alert(3)"><rect style="fill:#123456"/></a></svg>';
@@ -88,13 +110,15 @@ describe("Role Room progressive research mockups", () => {
     const inserts = query.mock.calls.filter(([sql]) =>
       String(sql).includes("INSERT INTO role_room_research_mockup_drafts"),
     );
-    expect(inserts).toHaveLength(6);
+    expect(inserts).toHaveLength(10);
     expect(
-      inserts.slice(0, 3).map(([, params]) => (params as unknown[])[3]),
+      inserts.slice(0, 5).map(([, params]) => (params as unknown[])[3]),
     ).toEqual([
       "role-room-research-post-1",
       "role-room-research-post-2",
       "role-room-research-post-3",
+      "role-room-research-post-4",
+      "role-room-research-post-5",
     ]);
     expect(inserts.every(([sql]) => String(sql).includes("ON CONFLICT"))).toBe(
       true,
@@ -186,7 +210,7 @@ describe("Role Room progressive research mockups", () => {
     expect(keys[2]).not.toBe(keys[0]);
   });
 
-  it("updates three stable feed posts without duplicating them or overwriting approved copy", async () => {
+  it("updates five stable feed posts without duplicating them or overwriting approved copy", async () => {
     const rows = draftRows();
     let storedPosts: Array<Record<string, unknown>> = [
       {
@@ -244,9 +268,17 @@ describe("Role Room progressive research mockups", () => {
         companyName: "MedSide",
         offerings: ["Sikker medisinsk dokumentasjon"],
         targetAudience: ["norske leger"],
+        industry: "Helseteknologi og programvare",
       },
       intakeDraft: { keyMessage: "GDPR-sikker arbeidsflyt for klinikere." },
       planningDraft: {
+        activationPlan: {
+          businessGoal: "Gjøre produktverdien enkel å forstå.",
+        },
+        contentLogic: {
+          hook: "Mer tid til pasienten.",
+          proofPoints: ["GDPR-sikker arbeidsflyt"],
+        },
         brandGuide: {
           colors: [{ hex: "#102030" }, { hex: "#40c0a0" }],
           logoUrl:
@@ -268,8 +300,8 @@ describe("Role Room progressive research mockups", () => {
       createdByUserId: "user-1",
     });
 
-    expect(storedPosts).toHaveLength(4);
-    expect(new Set(storedPosts.map((post) => post.id)).size).toBe(4);
+    expect(storedPosts).toHaveLength(6);
+    expect(new Set(storedPosts.map((post) => post.id)).size).toBe(6);
     expect(
       storedPosts.find((post) => post.id === "role-room-research-post-1"),
     ).toEqual(
@@ -287,13 +319,40 @@ describe("Role Room progressive research mockups", () => {
     const linkInserts = query.mock.calls.filter(([sql]) =>
       String(sql).includes("INSERT INTO role_room_feed_mockup_links"),
     );
-    expect(projectInserts.length).toBeGreaterThan(0);
+    expect(projectInserts).toHaveLength(24);
+    expect(linkInserts).toHaveLength(24);
+    expect(
+      new Set(
+        projectInserts.map(([, params]) =>
+          String((params as unknown[] | undefined)?.[0]),
+        ),
+      ).size,
+    ).toBe(12);
+    const firstRunPayloads = projectInserts
+      .slice(0, 12)
+      .map(([, params]) =>
+        JSON.parse(String((params as unknown[] | undefined)?.[5])),
+      ) as Array<Record<string, unknown>>;
+    const productStoryRoles = firstRunPayloads
+      .filter((payload) => String(payload.name).includes("Utkast 2"))
+      .map(
+        (payload) =>
+          (payload.creativeDecision as Record<string, unknown> | undefined)
+            ?.role,
+      );
+    expect(productStoryRoles).toEqual([
+      "hook",
+      "context",
+      "mechanism",
+      "proof",
+      "cta",
+    ]);
     const firstProjectPayload = JSON.parse(
       String((projectInserts[0]?.[1] as unknown[] | undefined)?.[5]),
     ) as Record<string, unknown>;
     expect(firstProjectPayload).toEqual(
       expect.objectContaining({
-        template: "role_room_brand_post",
+        template: "role_room_campaign_post_v2",
         mockupQualityStatus: "ready",
         mockupSkillRuns: expect.arrayContaining([
           expect.objectContaining({
@@ -305,6 +364,131 @@ describe("Role Room progressive research mockups", () => {
           primaryColor: "#102030",
           accentColor: "#40C0A0",
         }),
+        creativeDecision: expect.objectContaining({
+          layout: "photo-product-bridge",
+          role: "hook",
+          figureDirection: expect.objectContaining({
+            style: "cinematic-3d-v1",
+            renderQuality: "cinematic",
+            qualityTarget: "cinematic-feature-animation",
+            assetStrategy: "generated-preferred",
+            provenance: "deterministic-procedural",
+          }),
+          figureRenderDirection: expect.objectContaining({
+            provider: "openai",
+            model: "gpt-image-2",
+            quality: "high",
+            background: "transparent",
+            consistencyStrategy: "reference-edit",
+          }),
+          figureRigDirection: expect.objectContaining({
+            manualControl: true,
+            defaultMode: "editable-rig",
+            highEndJointRequirement: "rigged-3d-or-sprite-sequence",
+          }),
+          figureProductionDirection: expect.objectContaining({
+            characterMaster: expect.objectContaining({ views: ["front", "three-quarter", "profile"] }),
+            spritePackage: expect.objectContaining({ interpolation: "crossfade", deduplicateBy: "sha256" }),
+            variants: { cap: 8, deduplicateBy: "sha256", compare: true },
+          }),
+          sceneDirection: expect.objectContaining({
+            style: "cinematic-scene-v1",
+            renderQuality: "cinematic",
+            environment: "clinical-editorial",
+            lighting: "soft-key-fill-rim",
+            brandHarmony: {
+              primary: "#102030",
+              accent: "#40C0A0",
+            },
+          }),
+        }),
+        motion: expect.objectContaining({
+          profile: "calm-precise",
+          source: "research-signals",
+          overshoot: 0,
+          reducedMotion: "fade",
+        }),
+        timeline: expect.objectContaining({
+          clips: expect.arrayContaining([
+            expect.objectContaining({ label: "Hook", kind: "reveal" }),
+            expect.objectContaining({
+              label: "Dokumentert bevis",
+              kind: "reveal",
+            }),
+            expect.objectContaining({ label: "Neste steg", kind: "reveal" }),
+          ]),
+        }),
+        canvas: expect.objectContaining({
+          pushIn: 0.06,
+        }),
+        images: expect.arrayContaining([
+          expect.objectContaining({
+            illustration: "waiting-room-backdrop",
+            sceneStyle: expect.objectContaining({
+              renderQuality: "cinematic",
+              style: "cinematic-scene-v1",
+              primary: "#102030",
+              accent: "#40C0A0",
+            }),
+          }),
+          expect.objectContaining({
+            illustration: "person-laptop",
+            altText: expect.stringContaining("kliniker"),
+            mediaProvenance: expect.objectContaining({
+              source: "deterministic-procedural",
+              disclosure: "representative-concept-illustration",
+            }),
+            figureGeneration: expect.objectContaining({
+              qualityTarget: "cinematic-feature-animation",
+              renderMode: "editable-rig",
+              presentation: expect.stringMatching(/female|male/),
+              appearance: expect.objectContaining({
+                ageRange: "adult",
+                faceShape: "balanced",
+              }),
+              customizationSkill: expect.objectContaining({
+                id: "customize_subject_identity",
+                version: "1.0.0",
+              }),
+              renderSkill: expect.objectContaining({
+                id: "render_high_fidelity_subject",
+                version: "1.0.0",
+              }),
+              rigSkill: expect.objectContaining({
+                id: "rig_subject_motion",
+                version: "1.0.0",
+              }),
+              pipelineSkills: expect.objectContaining({
+                build_character_master: expect.objectContaining({ version: "1.0.0" }),
+                generate_layered_sprite_package: expect.objectContaining({ version: "1.0.0" }),
+                audit_subject_visual_quality: expect.objectContaining({ version: "1.0.0" }),
+                verify_subject_production: expect.objectContaining({ version: "1.0.0" }),
+              }),
+              status: "planned",
+              provider: "gpt-image-2",
+              consistencyStrategy: "reference-edit",
+              fallback: "cinematic-3d-canvas-v1",
+              poseId: "neutral",
+              expressionId: "calm",
+              variants: [],
+              compositing: expect.objectContaining({
+                contactShadow: 0.72,
+                rimLight: 0.36,
+                groundOffset: 0.93,
+              }),
+            }),
+            personStyle: expect.objectContaining({
+              outfit: "legefrakk",
+              renderQuality: "cinematic",
+              artDirection: "cinematic-3d-v1",
+            }),
+          }),
+          expect.objectContaining({
+            infoCardContent: expect.objectContaining({
+              title: "MedSide",
+            }),
+          }),
+        ]),
       }),
     );
     const finalizedDraftUpdate = query.mock.calls.find(([sql]) =>

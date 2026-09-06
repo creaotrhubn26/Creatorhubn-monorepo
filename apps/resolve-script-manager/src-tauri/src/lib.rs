@@ -25,6 +25,7 @@ mod role_room_api;
 
 use std::path::PathBuf;
 
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use serde_json::Value;
 use tauri::menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -351,8 +352,8 @@ async fn reveal_photoshop_plugin_manifest() -> Result<String, String> {
     Ok(manifest)
 }
 
-/// AI image generation — kaller Role Room-backend som proxer mot fal.ai
-/// for Flux 1.1 Pro, henter ned bildet og lagrer det lokalt så det kan
+/// AI image generation — kaller Role Room-backend som proxer mot valgt
+/// bildeprovider, henter bildet og lagrer det lokalt så det kan
 /// brukes som smart-object i template.scaffold. Phase 2 av
 /// "AI-to-editable-PSD"-pipelinen.
 #[derive(serde::Serialize)]
@@ -362,6 +363,10 @@ pub struct AiImageResult {
     pub height: Option<u32>,
     pub model: String,
     pub seed: Option<i64>,
+    pub provider_mode: Option<String>,
+    pub asset_ref: Option<String>,
+    pub asset_hash: Option<String>,
+    pub visual_audit: Option<serde_json::Value>,
 }
 
 #[tauri::command]
@@ -370,6 +375,15 @@ async fn ai_generate_image(
     prompt: String,
     image_size: Option<String>,
     seed: Option<i64>,
+    model: Option<String>,
+    quality: Option<String>,
+    background: Option<String>,
+    output_format: Option<String>,
+    reference_image: Option<String>,
+    audit_image: Option<bool>,
+    brand_primary: Option<String>,
+    brand_accent: Option<String>,
+    asset_context: Option<serde_json::Value>,
 ) -> Result<AiImageResult, String> {
     let (bearer, base_url) = if let Some(settings) = app.try_state::<AppSettings>() {
         let snap = settings.snapshot();
@@ -397,6 +411,15 @@ async fn ai_generate_image(
         "options": {
             "image_size": image_size.unwrap_or_else(|| "square_hd".to_string()),
             "seed": seed,
+            "model": model,
+            "quality": quality,
+            "background": background,
+            "output_format": output_format,
+            "reference_image": reference_image,
+            "audit_image": audit_image,
+            "brand_primary": brand_primary,
+            "brand_accent": brand_accent,
+            "asset_context": asset_context,
         },
     });
     let client = reqwest::Client::new();
@@ -426,29 +449,63 @@ async fn ai_generate_image(
         .unwrap_or("unknown")
         .to_string();
     let seed_out = data.get("seed").and_then(|v| v.as_i64());
+    let provider_mode = data
+        .get("provider_mode")
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string());
+    let asset_ref = data
+        .get("asset_ref")
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string());
+    let asset_hash = data
+        .get("asset_hash")
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string());
+    let visual_audit = data.get("visual_audit").filter(|v| !v.is_null()).cloned();
     let width = data.get("width").and_then(|v| v.as_u64()).map(|v| v as u32);
     let height = data.get("height").and_then(|v| v.as_u64()).map(|v| v as u32);
 
-    // Last ned bildet og lagre det lokalt
-    let img_resp = client
-        .get(&image_url)
-        .send()
-        .await
-        .map_err(|e| format!("Download image: {}", e))?;
-    if !img_resp.status().is_success() {
-        return Err(format!("Image download {}: failed", img_resp.status()));
-    }
-    let bytes = img_resp
-        .bytes()
-        .await
-        .map_err(|e| format!("Read image bytes: {}", e))?;
+    // OpenAI returnerer inline base64; URL-baserte providere lastes ned.
+    let (bytes, extension): (Vec<u8>, &str) = if image_url.starts_with("data:image/") {
+        let (metadata, encoded) = image_url
+            .split_once(',')
+            .ok_or_else(|| "Ugyldig data-URL fra bildeprovider".to_string())?;
+        if !metadata.ends_with(";base64") {
+            return Err("Bildeprovider returnerte en data-URL uten base64".to_string());
+        }
+        let extension = if metadata.starts_with("data:image/webp") {
+            "webp"
+        } else if metadata.starts_with("data:image/jpeg") {
+            "jpg"
+        } else {
+            "png"
+        };
+        let decoded = BASE64_STANDARD
+            .decode(encoded)
+            .map_err(|e| format!("Decode image base64: {}", e))?;
+        (decoded, extension)
+    } else {
+        let img_resp = client
+            .get(&image_url)
+            .send()
+            .await
+            .map_err(|e| format!("Download image: {}", e))?;
+        if !img_resp.status().is_success() {
+            return Err(format!("Image download {}: failed", img_resp.status()));
+        }
+        let downloaded = img_resp
+            .bytes()
+            .await
+            .map_err(|e| format!("Read image bytes: {}", e))?;
+        (downloaded.to_vec(), "png")
+    };
 
     let dir = std::path::PathBuf::from(
         std::env::var("HOME").map_err(|e| format!("HOME not set: {}", e))?,
     )
     .join("Library/Application Support/no.creatorhubn.roleroom-post-agent/generated-images");
     std::fs::create_dir_all(&dir).map_err(|e| format!("Create dir: {}", e))?;
-    let filename = format!("{}.png", Uuid::new_v4());
+    let filename = format!("{}.{}", Uuid::new_v4(), extension);
     let out_path = dir.join(&filename);
     std::fs::write(&out_path, &bytes).map_err(|e| format!("Write file: {}", e))?;
 
@@ -458,6 +515,10 @@ async fn ai_generate_image(
         height,
         model,
         seed: seed_out,
+        provider_mode,
+        asset_ref,
+        asset_hash,
+        visual_audit,
     })
 }
 

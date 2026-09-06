@@ -8,13 +8,15 @@ import {
 } from "./role-room-mockup-studio-routes.js";
 import { createMockupWebhookSecret, signMockupWebhook, validateMockupWebhookUrl } from "./mockup-review-webhook-service.js";
 
-const { getUserFileDownloadUrlMock, sendTransactionalEmailMock, uploadUserFileMock } = vi.hoisted(() => ({
+const { getUserFileContentMock, getUserFileDownloadUrlMock, sendTransactionalEmailMock, uploadUserFileMock } = vi.hoisted(() => ({
+  getUserFileContentMock: vi.fn().mockResolvedValue({ ok: true, body: new Uint8Array([1, 2, 3]), displayName: "figure.png", contentType: "image/png" }),
   getUserFileDownloadUrlMock: vi.fn().mockResolvedValue({ ok: true, url: "https://files.example/signed", displayName: "photo.png" }),
   sendTransactionalEmailMock: vi.fn().mockResolvedValue({ sent: true, reason: null, provider: "resend" }),
   uploadUserFileMock: vi.fn(),
 }));
 vi.mock("./transactional-email-service.js", () => ({ sendTransactionalEmail: sendTransactionalEmailMock }));
 vi.mock("./role-room-user-storage-service.js", () => ({
+  getUserFileContent: getUserFileContentMock,
   getUserFileDownloadUrl: getUserFileDownloadUrlMock,
   uploadUserFile: uploadUserFileMock,
 }));
@@ -160,6 +162,15 @@ describe("Mockup Studio Review Room routes", () => {
     expect(hasUnsafeMockupProjectAssetReferences({
       devices: [], images: [{ image: "mockup-cloud-file:not-a-uuid" }], canvas: {},
     })).toBe(true);
+    expect(hasUnsafeMockupProjectAssetReferences({
+      devices: [],
+      images: [{
+        image: "data:image/png;base64,AAAA",
+        sprite: { frames: ["mockup-cloud-file:project-1:11111111-1111-4111-8111-111111111111"] },
+        figureGeneration: { variants: [{ image: "/Users/private/variant.png" }] },
+      }],
+      canvas: {},
+    })).toBe(true);
   });
 
   it("lar en samarbeidspartner laste ned bare et asset som er bundet til prosjektet", async () => {
@@ -200,6 +211,20 @@ describe("Mockup Studio Review Room routes", () => {
     const assetQuery = query.mock.calls.find(([statement]) => String(statement).includes("FROM role_room_user_files"));
     expect(String(assetQuery?.[0])).toContain("attached_to_entity_type='mockup-project'");
     expect(assetQuery?.[1]).toEqual([fileId, "project"]);
+
+    const rawRes = response();
+    await handlers.get("GET /api/role-room/mockup-projects/:id/assets/:fileId")!({
+      params: { id: "project", fileId },
+      query: { raw: "1" },
+      headers: { authorization: "Bearer editor-token" },
+    } as unknown as Request, rawRes);
+    expect(rawRes.statusCode).toBe(200);
+    expect(Buffer.isBuffer(rawRes.body)).toBe(true);
+    expect(rawRes.headers["Content-Type"]).toBe("image/png");
+    expect(rawRes.headers["Cache-Control"]).toBe("private, max-age=300");
+    expect(getUserFileContentMock).toHaveBeenCalledWith(pool, {
+      userId: "asset-uploader", fileId,
+    });
   });
 
   it("rydder Change Sets før et prosjekt slettes", async () => {
