@@ -25,6 +25,7 @@ import {
   PhotoCamera, ReceiptLongOutlined, ContentCopy, DoneAll, RocketLaunchOutlined, FileDownloadDoneOutlined, TipsAndUpdatesOutlined, MovieCreationOutlined, SelfImprovement, EventOutlined,
 } from '@mui/icons-material';
 import { apiRequest, getAuthHeader, buildApiUrl } from '@/lib/queryClient';
+import { easeVerseBoothUrl } from '@/lib/easeverse';
 import { buildSectionAnchors, parseSongSections, sectionInsertToken, INSERT_SECTION_OPTIONS, SECTION_COLORS as SECTION_TYPE_COLORS, NB_LABELS, type SectionType } from '@/lib/lyric-sections';
 import ImageDrop from '@/components/universal/showcase/ImageDrop';
 import ComboField, { MultiComboField, ROLE_OPTIONS, INSTRUMENT_OPTIONS, CONTRIBUTION_OPTIONS } from '@/components/universal/showcase/ComboField';
@@ -739,7 +740,7 @@ const MemberProfileDialog: React.FC<{ member: any; externalTrackId?: string; onC
   const setLink = (k: string, v: string) => setF((p: any) => ({ ...p, links: { ...p.links, [k]: v } }));
   const link = member.invite_token ? `${window.location.origin}/audio-review/invite/${member.invite_token}` : '';
   const isVocalist = /vokal/i.test(f.role || '');
-  const boothUrl = externalTrackId ? `https://easeverse.vercel.app/booth/${externalTrackId}` : '';
+  const boothUrl = externalTrackId ? easeVerseBoothUrl(externalTrackId) : '';
   return (
     <Dialog open={Boolean(member)} onClose={onClose} fullWidth maxWidth="xs" PaperProps={{ sx: { bgcolor: PANEL, color: TEXT, borderRadius: '14px' } }}>
       <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>Profil {member.is_owner && <WorkspacePremium sx={{ fontSize: 16, color: ACCENT }} />}

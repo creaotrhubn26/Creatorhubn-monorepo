@@ -9,6 +9,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Stack, Typography, Avatar, IconButton, Button, Chip, Menu, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Tooltip } from '@mui/material';
 import { useLocation } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
+import { EASEVERSE_APP_URL } from '@/lib/easeverse';
 import AccessTime from '@mui/icons-material/AccessTime';
 import ChevronLeft from '@mui/icons-material/ChevronLeft';
 import ChevronRight from '@mui/icons-material/ChevronRight';
@@ -113,6 +114,14 @@ const T: WsDict = {
   readyForRecording: { no: 'klar til opptak', en: 'ready to record' },
   moodCheckins: { no: 'form-innsjekk', en: 'mood check-ins' },
   addReference: { no: 'Legg til referanse', en: 'Add reference' },
+  musicToolsEyebrow: { no: 'FRA IDÉ TIL GODKJENT MIX', en: 'FROM IDEA TO APPROVED MIX' },
+  musicToolsTitle: { no: 'EaseVerse + Pro Tools Companion', en: 'EaseVerse + Pro Tools Companion' },
+  musicToolsBody: { no: 'Skriv og øv inn låten i EaseVerse. Synk markører og bounces fra Pro Tools. Samle versjoner og tilbakemeldinger i Workspace Sound Room.', en: 'Write and rehearse in EaseVerse. Sync markers and bounces from Pro Tools. Keep versions and feedback in Workspace Sound Room.' },
+  openEaseVerseBtn: { no: 'Åpne EaseVerse', en: 'Open EaseVerse' },
+  connectProToolsBtn: { no: 'Koble Pro Tools Companion', en: 'Connect Pro Tools Companion' },
+  musicStepWrite: { no: '1 · Skriv & øv', en: '1 · Write & rehearse' },
+  musicStepSync: { no: '2 · Synk fra Pro Tools', en: '2 · Sync from Pro Tools' },
+  musicStepReview: { no: '3 · Review i Sound Room', en: '3 · Review in Sound Room' },
   // aktivitet
   captureActivity: { no: 'Capture-aktivitet', en: 'Capture activity' },
 };
@@ -461,6 +470,32 @@ const OversiktTab: React.FC<{ projectId: string; profession?: string }> = ({ pro
             team, verktøy). Leser ekte tilstand, lukkbar, skjuler seg selv når alt
             er ferdig. projectId gjør team-sjekk/-lenke prosjekt-bevisst. */}
         <GettingStartedChecklist projectId={projectId} profession={profession} />
+        {wsCategory === 'music' && (
+          <WsCard sx={{ mb: 2, overflow: 'hidden', borderColor: ws.accentBorder, background: `linear-gradient(135deg, ${ws.accentSoft} 0%, ${ws.panel} 58%)` }}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2.5} alignItems={{ xs: 'stretch', md: 'center' }}>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography sx={{ fontSize: 10.5, color: ws.accent, fontWeight: 800, letterSpacing: 0.8, mb: 0.5 }}>{t('musicToolsEyebrow')}</Typography>
+                <Typography sx={{ fontSize: 18, fontWeight: 800, mb: 0.75 }}>{t('musicToolsTitle')}</Typography>
+                <Typography sx={{ fontSize: 12.5, color: ws.textDim, lineHeight: 1.55, maxWidth: 680 }}>{t('musicToolsBody')}</Typography>
+                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
+                  {[t('musicStepWrite'), t('musicStepSync'), t('musicStepReview')].map((label) => (
+                    <Chip key={label} size="small" label={label} sx={{ height: 24, bgcolor: ws.panelInput, color: ws.textDim, border: `1px solid ${ws.borderSoft}`, fontSize: 10.5, fontWeight: 600 }} />
+                  ))}
+                </Stack>
+              </Box>
+              <Stack spacing={1} sx={{ minWidth: { md: 220 } }}>
+                <Button component="a" href={EASEVERSE_APP_URL} target="_blank" rel="noopener noreferrer" variant="contained"
+                  sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>
+                  {t('openEaseVerseBtn')}
+                </Button>
+                <Button variant="outlined" onClick={() => navigate(`/workspace/${projectId}/sound-room?setup=protools`)}
+                  sx={{ color: ws.text, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>
+                  {t('connectProToolsBtn')}
+                </Button>
+              </Stack>
+            </Stack>
+          </WsCard>
+        )}
         {/* Fremdrift */}
         <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
           <Typography sx={{ fontSize: 13, color: ws.textDim }}>{t('progressLabel')}</Typography>
