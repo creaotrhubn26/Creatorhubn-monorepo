@@ -11,6 +11,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { MockupCanvas } from './MockupCanvas';
+import { CinematicFigurePanel } from './CinematicFigurePanel';
 import { MockupLibraryPanel } from './MockupLibraryPanel';
 import { ingestImage } from './mockupLibraryIngest';
 import { MockupKeyframeGraph } from './MockupKeyframeGraph';
@@ -1430,6 +1431,10 @@ function PersonThumbnail({ kf, style }: { kf: Record<string, import('./mockupStu
       browRaise: kfv('browRaise', DEFAULT_RIG_POSE.browRaise),
       tears: kfv('tears', DEFAULT_RIG_POSE.tears),
       legSwing: kfv('legSwing', DEFAULT_RIG_POSE.legSwing),
+      handTargetLeftX: kfv('handTargetLeftX', DEFAULT_RIG_POSE.handTargetLeftX),
+      handTargetLeftY: kfv('handTargetLeftY', DEFAULT_RIG_POSE.handTargetLeftY),
+      handTargetRightX: kfv('handTargetRightX', DEFAULT_RIG_POSE.handTargetRightX),
+      handTargetRightY: kfv('handTargetRightY', DEFAULT_RIG_POSE.handTargetRightY),
     };
     drawPersonLaptop(ctx, 0, 0, canvas.width, canvas.height, pose, style);
   }, [kf, style]);
@@ -1850,9 +1855,12 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
       <SectionLabel>{isBackdrop ? 'Bakgrunn' : isIllustration ? 'Illustrasjon' : 'Bilde'}</SectionLabel>
       {isPersonRig ? (
         <>
-          <div style={{ borderRadius: 8, marginBottom: 10, padding: '10px 0', background: C.panelSoft }}>
-            <PersonThumbnail kf={image.kf} style={image.personStyle} />
-          </div>
+          <CinematicFigurePanel
+            image={image}
+            canvas={doc.canvas}
+            projectId={doc.id}
+            fallbackPreview={<PersonThumbnail kf={image.kf} style={image.personStyle} />}
+          />
           {(() => {
             const backdrop = doc.images?.find((im) => im.illustration === 'office-backdrop' || im.illustration === 'waiting-room-backdrop');
             const anchors = backdrop ? BACKDROP_ANCHORS[backdrop.illustration as 'office-backdrop' | 'waiting-room-backdrop'] : undefined;
@@ -1984,7 +1992,7 @@ function ImageInspector({ image }: { image: import('./mockupStudioModel').Mockup
         <MockupKeyframeGraph value={image.kf} playT={playT} props={IMAGE_TRANSFORM_PROPS} onChange={(kf) => patchImage(image.id, { kf })} />
       </Field>
       {isPersonRig && (
-        <Field label="Animasjon — figur-rigg (hender, fingre, blunk, skjerm)">
+        <Field label="Animasjon — figur-rigg (ansikt, kropp, armer, hender, fingre, skjerm og gange)">
           <MockupKeyframeGraph value={image.kf} playT={playT} props={PERSON_RIG_PROPS} onChange={(kf) => patchImage(image.id, { kf })} />
         </Field>
       )}

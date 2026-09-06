@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "e2e:figure-controls": "npm run build -- --configLoader runner && node scripts/e2e-mockup-figure-controls.mjs",
     "preview": "vite preview",
     "tauri": "tauri"
   },

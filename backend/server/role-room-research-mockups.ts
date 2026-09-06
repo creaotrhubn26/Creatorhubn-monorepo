@@ -5,6 +5,12 @@ import type { RoleRoomAgentProgressPreview } from "./role-room-agent.js";
 import type { RoleRoomFeedPostInput } from "./role-room-feed-plan.js";
 import {
   buildBrandBasedMockupPlan,
+  type RoleRoomBrandMotionPlan,
+  type RoleRoomCinematicScenePlan,
+  type RoleRoomFigurePlan,
+  type RoleRoomHighFidelitySubjectRenderPlan,
+  type RoleRoomFigureRigPlan,
+  type RoleRoomFigureProductionPlan,
   type RoleRoomMockupCampaignPlan,
   type RoleRoomMockupSlideLayout,
   type RoleRoomMockupSlideRole,
@@ -474,12 +480,7 @@ export async function advanceResearchMockupDrafts(
         ordinal,
         headline,
         detail,
-        buildResearchMockupPreviewDataUrl(
-          headline,
-          detail,
-          primary,
-          accent,
-        ),
+        buildResearchMockupPreviewDataUrl(headline, detail, primary, accent),
       ],
     );
   }
@@ -666,6 +667,98 @@ function short(value: string, length: number): string {
   return value.slice(0, Math.max(1, length - 1)).trimEnd() + "…";
 }
 
+function buildBrandMotionTimeline(input: {
+  motion: RoleRoomBrandMotionPlan;
+  textIds: string[];
+  imageIds: string[];
+}) {
+  const { motion } = input;
+  const activeSeconds = Math.max(
+    2.2,
+    motion.durationSeconds - motion.holdSeconds,
+  );
+  const revealLength = Math.max(0.42, Math.min(0.82, activeSeconds * 0.16));
+  const textId = (prefix: string) =>
+    input.textIds.find((id) => id.startsWith(prefix));
+  const titleIds = input.textIds.filter((id) => id.startsWith("title-"));
+  const clips: Array<{
+    id: string;
+    label: string;
+    track: number;
+    start: number;
+    len: number;
+    kind: "reveal";
+    ref: string;
+    ease: "smooth" | "out";
+  }> = [];
+  const add = (
+    ref: string | undefined,
+    label: string,
+    track: number,
+    start: number,
+    len = revealLength,
+  ) => {
+    if (!ref) return;
+    clips.push({
+      id: `brand-reveal-${ref}`,
+      label,
+      track,
+      start: Number(start.toFixed(3)),
+      len: Number(len.toFixed(3)),
+      kind: "reveal",
+      ref,
+      ease: motion.easing,
+    });
+  };
+
+  add(
+    textId("eyebrow-"),
+    "Brand-signal",
+    2,
+    activeSeconds * 0.035,
+    revealLength * 0.72,
+  );
+  titleIds.forEach((id, index) =>
+    add(
+      id,
+      index === 0 ? "Hook" : "Hook fortsetter",
+      2,
+      activeSeconds * 0.1 + index * motion.staggerSeconds,
+    ),
+  );
+  add(
+    textId("body-"),
+    "Støttebudskap",
+    2,
+    activeSeconds * 0.32 +
+      Math.max(0, titleIds.length - 1) * motion.staggerSeconds,
+    revealLength * 1.08,
+  );
+  input.imageIds.forEach((id, index) =>
+    add(
+      id,
+      id.startsWith("research-card-") ? "Dokumentert bevis" : "Merkevarescene",
+      3,
+      activeSeconds * (index === 0 ? 0.27 : 0.47) +
+        index * motion.staggerSeconds,
+      revealLength * 1.16,
+    ),
+  );
+  add(
+    textId("cta-"),
+    "Neste steg",
+    2,
+    activeSeconds * 0.72,
+    revealLength * 0.86,
+  );
+  return {
+    duration: motion.durationSeconds,
+    in: 0,
+    out: 1,
+    clips: clips.sort((left, right) => left.start - right.start),
+  };
+}
+
 function headlineLines(value: string): string[] {
   const words = value.trim().split(/\s+/).filter(Boolean);
   if (!words.length) return ["Nytt konsept"];
@@ -740,12 +833,33 @@ function researchCardDataUrl(input: {
     .join("");
   const svg =
     '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="420">' +
-    '<rect width="600" height="420" rx="28" fill="#FFFFFF"/>' +
-    '<rect x="0" y="0" width="12" height="420" rx="6" fill="' +
-    input.accent +
-    '"/><circle cx="42" cy="48" r="10" fill="' +
+    '<defs><linearGradient id="card-surface" x1="0" y1="0" x2="1" y2="1">' +
+    '<stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="' +
     input.primary +
-    '"/><text x="66" y="56" font-family="Georgia,serif" font-size="24" font-weight="700" fill="' +
+    '" stop-opacity=".065"/></linearGradient><linearGradient id="card-accent" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0" stop-color="' +
+    input.accent +
+    '"/><stop offset="1" stop-color="' +
+    input.primary +
+    '"/></linearGradient><filter id="card-shadow" x="-20%" y="-20%" width="140%" height="150%">' +
+    '<feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="' +
+    input.primary +
+    '" flood-opacity=".16"/></filter></defs>' +
+    '<rect x="14" y="10" width="572" height="390" rx="28" fill="url(#card-surface)" filter="url(#card-shadow)"/>' +
+    '<circle cx="530" cy="34" r="96" fill="' +
+    input.accent +
+    '" fill-opacity=".07"/>' +
+    '<rect x="14" y="10" width="12" height="390" rx="6" fill="url(#card-accent)"/>' +
+    '<rect x="38" y="83" width="516" height="1" fill="' +
+    input.primary +
+    '" fill-opacity=".09"/>' +
+    '<circle cx="42" cy="48" r="10" fill="' +
+    input.accent +
+    '" fill-opacity=".2"/><circle cx="42" cy="48" r="5" fill="' +
+    input.accent +
+    '"/><circle cx="42" cy="48" r="10" fill="none" stroke="' +
+    input.primary +
+    '" stroke-opacity=".45"/><text x="66" y="56" font-family="Georgia,serif" font-size="24" font-weight="700" fill="' +
     input.primary +
     '">' +
     escapeSvg(short(input.title, 34)) +
@@ -772,13 +886,23 @@ function mockupDocument(input: {
   mediaType: ResearchMockupMediaType;
   logoUrl: string | null;
   logoPlacement:
-    "top-left" | "top-right" | "bottom-left" | "bottom-right" | "center";
+    | "top-left"
+    | "top-right"
+    | "bottom-left"
+    | "bottom-right"
+    | "center";
   toneOfVoice: string | null;
   visualStyle: string | null;
   qualityStatus: "ready" | "limited" | "failed";
   inputFingerprint: string;
   skillRuns: RoleRoomMockupSkillRun[];
   campaign: RoleRoomMockupCampaignPlan;
+  motion: RoleRoomBrandMotionPlan;
+  figure: RoleRoomFigurePlan;
+  figureRender: RoleRoomHighFidelitySubjectRenderPlan;
+  figureRig: RoleRoomFigureRigPlan;
+  figureProduction: RoleRoomFigureProductionPlan;
+  scene: RoleRoomCinematicScenePlan;
   role: RoleRoomMockupSlideRole;
   layout: RoleRoomMockupSlideLayout;
   evidenceRef: string | null;
@@ -895,27 +1019,142 @@ function mockupDocument(input: {
         input.campaign.scene === "clinical"
           ? "waiting-room-backdrop"
           : "office-backdrop",
+      sceneStyle: {
+        renderQuality: input.scene.renderQuality,
+        style: input.scene.style,
+        environment: input.scene.environment,
+        lighting: input.scene.lighting,
+        colorGrade: input.scene.colorGrade,
+        primary: input.scene.brandHarmony.primary,
+        accent: input.scene.brandHarmony.accent,
+        materialDetail: input.scene.materialDetail,
+      },
       noReveal: true,
     });
     images.push({
       id: "person-" + input.slide,
       image: surfaceDataUrl("PERSON", surface, input.primary),
-      x: 40,
-      y: portrait ? 940 : 660,
-      w: portrait ? 560 : 470,
-      h: portrait ? 820 : 620,
+      x: portrait ? 0 : 10,
+      y: portrait ? 850 : 600,
+      w: portrait ? 620 : 500,
+      h: portrait ? 860 : 700,
       radius: 0,
       fit: "contain",
       rotation: 0,
       shadow: false,
       illustration: "person-laptop",
+      altText: input.figure.altText,
+      mediaProvenance: {
+        source: input.figure.provenance,
+        disclosure: input.figure.disclosure,
+        consistencyKey: input.figure.consistencyKey,
+      },
+      figureGeneration: {
+        qualityTarget: input.figure.qualityTarget,
+        renderMode: input.figureRig.defaultMode,
+        presentation: input.figure.presentation,
+        appearance: {
+          ageRange: input.figure.ageRange,
+          skinTone: input.figure.skin,
+          hairColor: input.figure.hair,
+          hairStyle: {
+            kort: "short",
+            buffert: "volume",
+            krøller: "curly",
+          }[input.figure.hairStyle],
+          faceShape: input.figure.faceShape,
+        },
+        customizationSkill: (() => {
+          const skill = input.skillRuns.find(
+            (run) => run.id === "customize_subject_identity",
+          );
+          return skill
+            ? {
+                id: "customize_subject_identity",
+                version: "1.0.0",
+                executionKey: skill.executionKey,
+                decisions: skill.decisions,
+              }
+            : undefined;
+        })(),
+        renderSkill: (() => {
+          const skill = input.skillRuns.find(
+            (run) => run.id === "render_high_fidelity_subject",
+          );
+          return skill
+            ? {
+                id: "render_high_fidelity_subject",
+                version: "1.0.0",
+                executionKey: skill.executionKey,
+                decisions: skill.decisions,
+              }
+            : undefined;
+        })(),
+        rigSkill: (() => {
+          const skill = input.skillRuns.find(
+            (run) => run.id === "rig_subject_motion",
+          );
+          return skill
+            ? {
+                id: "rig_subject_motion",
+                version: "1.0.0",
+                executionKey: skill.executionKey,
+                decisions: skill.decisions,
+              }
+            : undefined;
+        })(),
+        pipelineSkills: Object.fromEntries(
+          input.skillRuns
+            .filter((run) => [
+              "build_character_master",
+              "direct_pose_expression",
+              "generate_layered_sprite_package",
+              "composite_subject_scene",
+              "author_subject_animation",
+              "curate_subject_variants",
+              "audit_subject_visual_quality",
+              "verify_subject_production",
+            ].includes(run.id))
+            .map((run) => [run.id, {
+              version: run.version,
+              executionKey: run.executionKey,
+              decisions: run.decisions,
+            }]),
+        ),
+        status: "planned",
+        provider: input.figureRender.model,
+        consistencyStrategy: input.figureRender.consistencyStrategy,
+        prompt: input.figure.generationPrompt,
+        negativePrompt: input.figure.negativePrompt,
+        seed: input.figure.seed,
+        consistencyKey: input.figure.consistencyKey,
+        fallback: input.figure.fallbackStyle,
+        poseId: input.figureProduction.poseExpression.defaultPose,
+        expressionId: input.figureProduction.poseExpression.defaultExpression,
+        compositing: {
+          contactShadow: 0.72,
+          rimLight: 0.36,
+          ambientMatch: 0.28,
+          depthBlur: 0,
+          perspective: 0,
+          groundOffset: 0.93,
+        },
+        variants: [],
+      },
       personStyle: {
+        renderQuality: input.figure.renderQuality,
+        artDirection: input.figure.style,
+        presentation: input.figure.presentation,
+        ageRange: input.figure.ageRange,
+        faceShape: input.figure.faceShape,
+        skin: input.figure.skin,
+        hair: input.figure.hair,
+        hairStyle: input.figure.hairStyle,
         shirt: input.primary,
         accent: input.accent,
-        outfit: input.campaign.scene === "clinical" ? "legefrakk" : "skjorte",
-        accessory:
-          input.campaign.scene === "clinical" ? "stetoskop" : "id-kort",
-        scenario: input.mediaType === "reel" ? "presenter" : "laptop",
+        outfit: input.figure.outfit,
+        accessory: input.figure.accessory,
+        scenario: input.figure.scenario,
       },
     });
   }
@@ -994,6 +1233,33 @@ function mockupDocument(input: {
       ? short(input.evidenceRef, 34)
       : "Verifiser budskap før publisering",
   });
+  const texts = [
+    textSlot(
+      `eyebrow-${input.slide}`,
+      "eyebrow",
+      input.eyebrow,
+      eyebrowY,
+      24,
+      input.primary,
+    ),
+    ...titleSlots,
+    textSlot(
+      `body-${input.slide}`,
+      "body",
+      short(input.caption, 190),
+      eyebrowY + 72 + lines.length * (portrait ? 94 : 72),
+      portrait ? 30 : 25,
+      "#3C4453",
+    ),
+    textSlot(
+      `cta-${input.slide}`,
+      "tag",
+      input.callToAction,
+      ctaY,
+      26,
+      input.primary,
+    ),
+  ];
   return {
     id: input.id,
     name: input.name,
@@ -1004,8 +1270,14 @@ function mockupDocument(input: {
     mockupQualityStatus: input.qualityStatus,
     mockupInputFingerprint: input.inputFingerprint,
     mockupSkillRuns: input.skillRuns,
+    motion: input.motion,
     creativeDecision: {
       campaign: input.campaign,
+      figureDirection: input.figure,
+      figureRenderDirection: input.figureRender,
+      figureRigDirection: input.figureRig,
+      figureProductionDirection: input.figureProduction,
+      sceneDirection: input.scene,
       role: input.role,
       layout: input.layout,
       evidenceRef: input.evidenceRef,
@@ -1031,40 +1303,25 @@ function mockupDocument(input: {
       typography: "editorial",
       decor: "arc",
       bgColor: surface,
+      pushIn: input.motion.cameraPushIn,
+      ...(input.motion.beatPunch > 0 && input.motion.bpm
+        ? { beatPunch: input.motion.beatPunch, bpm: input.motion.bpm }
+        : {}),
       ...(input.logoUrl
         ? { logo: { image: input.logoUrl, ...logoPosition, w: 150 } }
         : {}),
     },
     devices: [],
     images,
-    texts: [
-      textSlot(
-        `eyebrow-${input.slide}`,
-        "eyebrow",
-        input.eyebrow,
-        eyebrowY,
-        24,
-        input.primary,
-      ),
-      ...titleSlots,
-      textSlot(
-        `body-${input.slide}`,
-        "body",
-        short(input.caption, 190),
-        eyebrowY + 72 + lines.length * (portrait ? 94 : 72),
-        portrait ? 30 : 25,
-        "#3C4453",
-      ),
-      textSlot(
-        `cta-${input.slide}`,
-        "tag",
-        input.callToAction,
-        ctaY,
-        26,
-        input.primary,
-      ),
-    ],
+    texts,
     annotations,
+    timeline: buildBrandMotionTimeline({
+      motion: input.motion,
+      textIds: texts.map((entry) => entry.id),
+      imageIds: images
+        .filter((entry) => entry.noReveal !== true)
+        .map((entry) => String(entry.id)),
+    }),
     status: "draft",
     updatedAt: now,
   };
@@ -1275,6 +1532,12 @@ export async function finalizeResearchMockupDrafts(
           inputFingerprint: mockupPlan.inputFingerprint,
           skillRuns: mockupPlan.skillRuns,
           campaign: mockupPlan.campaign,
+          motion: mockupPlan.motion,
+          figure: mockupPlan.figure,
+          figureRender: mockupPlan.figureRender,
+          figureRig: mockupPlan.figureRig,
+          figureProduction: mockupPlan.figureProduction,
+          scene: mockupPlan.scene,
           role: slidePlan.role,
           layout: slidePlan.layout,
           evidenceRef: slidePlan.evidenceRef,
@@ -1495,6 +1758,12 @@ export async function createFeedMockupProject(
         inputFingerprint: mockupPlan.inputFingerprint,
         skillRuns: mockupPlan.skillRuns,
         campaign: mockupPlan.campaign,
+        motion: mockupPlan.motion,
+        figure: mockupPlan.figure,
+        figureRender: mockupPlan.figureRender,
+        figureRig: mockupPlan.figureRig,
+        figureProduction: mockupPlan.figureProduction,
+        scene: mockupPlan.scene,
         role: slidePlan.role,
         layout: slidePlan.layout,
         evidenceRef: slidePlan.evidenceRef,

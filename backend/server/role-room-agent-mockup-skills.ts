@@ -84,17 +84,155 @@ export const ROLE_ROOM_MOCKUP_SKILL_DEFINITIONS = [
       "Plasser kun en validert og materialisert logo i mockupen. Bevar logoens proporsjoner, bruk eksplisitt plassering og hold sikker avstand til tittel og CTA.",
   },
   {
-    id: "audit_mockup_dataflow",
+    id: "compose_brand_motion",
+    version: "1.0.0",
+    dependsOn: [
+      "resolve_mockup_brand",
+      "compose_visual_hierarchy",
+      "expand_mockup_format",
+    ],
+    instruction:
+      "Oversett dokumentert tone of voice, visuell stil, bransje og format til én eksplisitt motion-profil. Timingen skal prioritere hook, bevis og CTA, unngå generisk overshoot for rolige eller tillitsbaserte merker, og alltid ha en redusert-bevegelse-variant.",
+  },
+  {
+    id: "direct_subject_figure",
     version: "2.0.0",
+    dependsOn: [
+      "resolve_mockup_brand",
+      "develop_campaign_system",
+      "guard_claim_evidence",
+    ],
+    instruction:
+      "Gi menneskefiguren en eksplisitt og gjenbrukbar art direction fra bransje, scene og brandpalett. Primærmålet er en original, kinematisk 3D-feature-animation-figur med uttrykksfullt ansikt, myk studiobelysning og troverdige materialer; en brandtilpasset Canvas-figur er deterministisk fallback. Hold samme karakter gjennom kampanjen, og merk den som en representativ konseptillustrasjon – aldri som en ekte ansatt, kunde eller eksisterende franchisefigur.",
+  },
+  {
+    id: "customize_subject_identity",
+    version: "1.0.0",
+    dependsOn: ["direct_subject_figure"],
+    instruction:
+      "Gjor figuridentiteten eksplisitt og redigerbar gjennom presentasjon, aldersuttrykk, hudtone, haarfarge, haarform, ansiktskarakter og en valgfri egen beskrivelse. Hver kombinasjon skal gi stabil seed og execution key, samtidig som rolle, brandlys, antrekk og proveniens beholdes.",
+  },
+  {
+    id: "build_character_master",
+    version: "1.0.0",
+    dependsOn: ["direct_subject_figure", "customize_subject_identity"],
+    instruction:
+      "Bygg en gjenbrukbar karakter-master med front-, trekvart- og profilvisning. Lås ansikt, hår, antrekkskonstruksjon og brandpalett som egne valg, og bruk den godkjente trekvartvisningen som kontinuitetsreferanse for senere renderinger.",
+  },
+  {
+    id: "render_high_fidelity_subject",
+    version: "1.0.0",
+    dependsOn: ["direct_subject_figure", "customize_subject_identity", "build_character_master"],
+    instruction:
+      "Render figurmasteren med gpt-image-2 i high-kvalitet som transparent PNG i portrettformat. Bruk godkjent figurmaster som referanse ved senere utseende- og posevarianter for visuell kontinuitet. Skill mellom generert raster, sprite-sekvens og faktisk leddrigg; aldri presenter et flatt bilde som en ekte 3D-rigg.",
+  },
+  {
+    id: "direct_pose_expression",
+    version: "1.0.0",
+    dependsOn: ["build_character_master", "render_high_fidelity_subject"],
+    instruction:
+      "Velg en eksplisitt positur og et ansikksuttrykk fra det kuraterte biblioteket. Oversett samme valg både til referanse-edit-prompten og den deterministiske fallback-riggen, slik at generert asset og manuell redigering uttrykker samme handling.",
+  },
+  {
+    id: "generate_layered_sprite_package",
+    version: "1.0.0",
+    dependsOn: ["build_character_master", "render_high_fidelity_subject", "direct_pose_expression"],
+    instruction:
+      "Generer en deduplisert spritepakke med fire identitetslåste, transparente high-end-frames og et åtte-lags semantisk manifest for skygge, kropp, armer/hender, ansikt, mimikk, hår og rekvisitt. Bruk kryssfade for rolig bevegelse og behold redigerbar Canvas-rigg som fallback.",
+  },
+  {
+    id: "rig_subject_motion",
+    version: "1.0.0",
+    dependsOn: [
+      "direct_subject_figure",
+      "customize_subject_identity",
+      "render_high_fidelity_subject",
+      "direct_pose_expression",
+      "generate_layered_sprite_package",
+      "compose_brand_motion",
+    ],
+    instruction:
+      "Tilby full manuell kontroll uten AI gjennom en redigerbar figur-rigg med transform-, ansikts-, kropps-, arm-, hand-, finger- og gangkanaler samt keyframes. Generert raster skal fortsatt kunne flyttes, skaleres, roteres og fades som ett lag. Hoyopplost leddkontroll skal bruke rigget 3D-asset eller sprite-sekvens, og redusert bevegelse skal alltid kunne falle tilbake til fade.",
+  },
+  {
+    id: "composite_subject_scene",
+    version: "1.0.0",
+    dependsOn: ["resolve_mockup_brand", "render_high_fidelity_subject", "generate_layered_sprite_package"],
+    instruction:
+      "Komponer den transparente figuren med scenen gjennom separat kontaktskygge, brand-rimlys, miljømatch, dybdeblur, perspektiv og justerbar bakkekontakt. Bevar hele silhuetten og sikker kant; contain-fit skal aldri legge en falsk sort bakgrunn bak figuren.",
+  },
+  {
+    id: "author_subject_animation",
+    version: "1.0.0",
+    dependsOn: ["compose_brand_motion", "direct_pose_expression", "generate_layered_sprite_package", "rig_subject_motion"],
+    instruction:
+      "Forfatter manuell figurbevegelse med interruptible keyframes, kurve-easing og presets for rolig pust, vennlig vink og presentasjon. Kryssfade spriteframes når high-end-assets brukes, og reduser all ikke-essensiell reise til fade ved redusert bevegelse.",
+  },
+  {
+    id: "curate_subject_variants",
+    version: "1.0.0",
+    dependsOn: ["build_character_master", "render_high_fidelity_subject", "direct_pose_expression"],
+    instruction:
+      "Lagre høyst åtte figurvarianter med innholdshash, promptvalg, QA og proveniens. Dedupliser etter bildehash, behold aktiv variant eksplisitt og vis sammenlignbar historikk uten å kopiere høyoppløste base64-bilder inn i prosjektdokumentet.",
+  },
+  {
+    id: "audit_subject_visual_quality",
+    version: "1.0.0",
+    dependsOn: ["render_high_fidelity_subject", "generate_layered_sprite_package", "composite_subject_scene", "curate_subject_variants"],
+    instruction:
+      "Kjør objektiv piksel-QA for oppløsning, ekte alfa, motivflate, sikker kant og brandfargenærhet, samt strukturert visuell modellaudit for anatomi, fem-finger-hender, symmetri, kollisjoner, isolasjon, brandharmoni og identitetskontinuitet. Lagre score og hver sjekk sammen med varianten.",
+  },
+  {
+    id: "compose_cinematic_scene",
+    version: "1.0.0",
+    dependsOn: [
+      "resolve_mockup_brand",
+      "develop_campaign_system",
+      "compose_visual_hierarchy",
+      "compose_brand_motion",
+      "direct_subject_figure",
+      "customize_subject_identity",
+      "render_high_fidelity_subject",
+      "rig_subject_motion",
+      "composite_subject_scene",
+      "author_subject_animation",
+    ],
+    instruction:
+      "Bind miljø, figur, produktflate, redigerbar tekst, CTA, logo, lys og materialer til en original kinematisk scene. Brandfargene skal påvirke lys, rekvisitter og overflater uten å svekke kontrast eller logoens sikkerhetssone. Scenen skal ha tydelig dybdehierarki, en kontrollert kamerabevegelse og samme kvalitetsnivå i både generert asset og deterministisk Canvas-fallback.",
+  },
+  {
+    id: "verify_subject_production",
+    version: "1.0.0",
+    dependsOn: ["audit_subject_visual_quality", "author_subject_animation", "compose_cinematic_scene"],
+    instruction:
+      "Verifiser den faktiske produksjonsløypen mot Render med gpt-image-2: generering, privat assetpersistens, referanse-edit, pikseldekoding, transparent alfa, QA-respons, Mockup Studio-avspilling og skyreload. En konfigurasjonssjekk alene er ikke produksjonsbevis.",
+  },
+  {
+    id: "audit_mockup_dataflow",
+    version: "7.0.0",
     dependsOn: [
       "resolve_mockup_brand",
       "select_post_concept",
       "compose_visual_hierarchy",
       "expand_mockup_format",
       "place_brand_assets",
+      "compose_brand_motion",
+      "direct_subject_figure",
+      "customize_subject_identity",
+      "build_character_master",
+      "render_high_fidelity_subject",
+      "direct_pose_expression",
+      "generate_layered_sprite_package",
+      "rig_subject_motion",
+      "composite_subject_scene",
+      "author_subject_animation",
+      "curate_subject_variants",
+      "audit_subject_visual_quality",
+      "compose_cinematic_scene",
+      "verify_subject_production",
     ],
     instruction:
-      "Før mockupen lagres: kontroller at alle relevante oppstrøms skills kjørte én gang, at riktig formatspesialist ble brukt, at slide-rekkefølge og roller er gyldige, at påstander er kildemerket, og at palett, kontrast og logo samsvarer med det redigerbare dokumentet.",
+      "Før mockupen lagres: kontroller at alle relevante oppstrøms skills kjørte én gang, at riktig formatspesialist ble brukt, at slide-rekkefølge og roller er gyldige, at påstander er kildemerket, og at palett, kontrast, logo, figurkvalitet og motion-profil samsvarer med det redigerbare dokumentet.",
   },
 ] as const;
 
@@ -147,7 +285,11 @@ export interface RoleRoomBrandBasedMockupInput {
 }
 
 export type RoleRoomMockupSlideRole =
-  "hook" | "context" | "mechanism" | "proof" | "cta";
+  | "hook"
+  | "context"
+  | "mechanism"
+  | "proof"
+  | "cta";
 
 export type RoleRoomMockupSlideLayout =
   | "photo-product-bridge"
@@ -182,6 +324,146 @@ export interface RoleRoomMockupCampaignPlan {
     | "vertical-product-story";
 }
 
+export type RoleRoomMockupMotionProfile =
+  | "calm-precise"
+  | "warm-human"
+  | "bold-editorial"
+  | "energetic-social";
+
+export interface RoleRoomBrandMotionPlan {
+  profile: RoleRoomMockupMotionProfile;
+  source: "brand-guide" | "research-signals" | "safe-default";
+  durationSeconds: number;
+  easing: "smooth" | "out";
+  staggerSeconds: number;
+  revealDistance: number;
+  revealScale: number;
+  overshoot: number;
+  holdSeconds: number;
+  cameraPushIn: number;
+  beatPunch: number;
+  bpm: number | null;
+  reducedMotion: "fade";
+  rationale: string[];
+}
+
+export interface RoleRoomFigurePlan {
+  style: "cinematic-3d-v1";
+  renderQuality: "cinematic";
+  provenance: "deterministic-procedural";
+  assetStrategy: "generated-preferred";
+  qualityTarget: "cinematic-feature-animation";
+  fallbackStyle: "cinematic-3d-canvas-v1";
+  subjectRole: "clinician" | "professional";
+  presentation: "female" | "male";
+  ageRange: "adult";
+  faceShape: "balanced";
+  outfit: "legefrakk" | "skjorte";
+  accessory: "stetoskop" | "id-kort";
+  scenario: "laptop" | "presenter";
+  skin: string;
+  hair: string;
+  hairStyle: "kort" | "buffert" | "krøller";
+  altText: string;
+  disclosure: "representative-concept-illustration";
+  generationPrompt: string;
+  negativePrompt: string;
+  seed: number;
+  qualityCriteria: string[];
+  consistencyKey: string;
+}
+
+export interface RoleRoomCinematicScenePlan {
+  style: "cinematic-scene-v1";
+  renderQuality: "cinematic";
+  environment: "clinical-editorial" | "workplace-editorial";
+  lighting: "soft-key-fill-rim";
+  colorGrade: "warm-clinical" | "brand-editorial";
+  depthLayers: ["environment", "subject", "product", "copy", "cta"];
+  deviceTreatment: "screen-light-and-perspective";
+  cardTreatment: "layered-glass-panel";
+  logoTreatment: "clean-safe-zone";
+  materialDetail: "high";
+  brandHarmony: { primary: string; accent: string };
+  camera: { parallax: number; pushIn: number };
+  qualityCriteria: string[];
+}
+
+export interface RoleRoomFigureRigPlan {
+  manualControl: true;
+  defaultMode: "editable-rig";
+  modes: ["editable-rig", "generated-raster", "sprite-sequence", "video"];
+  wholeLayerChannels: ["x", "y", "rotation", "scale", "opacity"];
+  jointChannels: [
+    "hands",
+    "fingers",
+    "screen",
+    "blink",
+    "headTilt",
+    "mouthCurve",
+    "eyeSize",
+    "bodyBob",
+    "leanX",
+    "brow",
+    "tears",
+    "walk",
+  ];
+  reducedMotion: "fade";
+  highEndJointRequirement: "rigged-3d-or-sprite-sequence";
+}
+
+export interface RoleRoomHighFidelitySubjectRenderPlan {
+  provider: "openai";
+  model: "gpt-image-2";
+  quality: "high";
+  size: "1024x1536";
+  background: "transparent";
+  outputFormat: "png";
+  consistencyStrategy: "reference-edit";
+  generatedAssetMode: "generated-raster";
+  animationBridge: "sprite-sequence-or-rigged-3d";
+}
+
+export interface RoleRoomFigureProductionPlan {
+  characterMaster: {
+    views: ["front", "three-quarter", "profile"];
+    approvedView: "three-quarter";
+    locks: ["face", "hair", "outfit", "palette"];
+  };
+  spritePackage: {
+    framePoseIds: ["neutral", "presenting", "listening", "pointing"];
+    layers: ["contact-shadow", "legs-body", "left-arm-hand", "right-arm-hand", "head-face", "eyes-mouth", "hair", "prop"];
+    interpolation: "crossfade";
+    deduplicateBy: "sha256";
+  };
+  poseExpression: {
+    poses: ["neutral", "presenting", "listening", "pointing", "walking"];
+    expressions: ["calm", "warm", "focused", "surprised"];
+    defaultPose: "neutral";
+    defaultExpression: "calm";
+  };
+  compositing: {
+    channels: ["contactShadow", "rimLight", "ambientMatch", "depthBlur", "perspective", "groundOffset"];
+    fit: "transparent-contain";
+  };
+  animation: {
+    presets: ["calm-idle", "friendly-wave", "present-proof"];
+    keyframeEasing: true;
+    interruptible: true;
+    reducedMotion: "fade";
+  };
+  variants: { cap: 8; deduplicateBy: "sha256"; compare: true };
+  visualQa: {
+    pixelChecks: ["resolution", "alpha", "silhouette", "safe-crop", "brand-colour"];
+    semanticChecks: ["anatomy", "hands", "symmetry", "collisions", "subject-isolation", "brand-harmony", "identity-continuity"];
+  };
+  productionSmoke: {
+    provider: "render-post-agent";
+    requiresRealGeneration: true;
+    checks: ["gpt-image-2", "private-asset", "reference-edit", "alpha-pixels", "qa-response", "cloud-reload"];
+  };
+}
+
 export interface RoleRoomBrandBasedMockupPlan {
   inputFingerprint: string;
   qualityStatus: RoleRoomMockupSkillStatus;
@@ -191,12 +473,22 @@ export interface RoleRoomBrandBasedMockupPlan {
   accentTextColor: string;
   logoDataUrl: string | null;
   logoPlacement:
-    "top-left" | "top-right" | "bottom-left" | "bottom-right" | "center";
+    | "top-left"
+    | "top-right"
+    | "bottom-left"
+    | "bottom-right"
+    | "center";
   width: number;
   height: number;
   toneOfVoice: string | null;
   visualStyle: string | null;
   campaign: RoleRoomMockupCampaignPlan;
+  motion: RoleRoomBrandMotionPlan;
+  figure: RoleRoomFigurePlan;
+  figureRender: RoleRoomHighFidelitySubjectRenderPlan;
+  figureRig: RoleRoomFigureRigPlan;
+  figureProduction: RoleRoomFigureProductionPlan;
+  scene: RoleRoomCinematicScenePlan;
   slides: RoleRoomMockupSlidePlan[];
   skillRuns: RoleRoomMockupSkillRun[];
 }
@@ -226,9 +518,7 @@ function unique(values: readonly string[]): string[] {
 }
 
 function claimEvidence(values: readonly string[]): string[] {
-  return unique(values).filter(
-    (value) => !/(?:^|\.)companyName$/i.test(value),
-  );
+  return unique(values).filter((value) => !/(?:^|\.)companyName$/i.test(value));
 }
 
 function stable(value: unknown): unknown {
@@ -338,6 +628,301 @@ function buildCampaign(
         : input.mediaType === "reel"
           ? "vertical-product-story"
           : "editorial-product-bridge",
+  };
+}
+
+function buildBrandMotion(
+  input: RoleRoomBrandBasedMockupInput,
+): RoleRoomBrandMotionPlan {
+  const tone = clean(input.toneOfVoice);
+  const visualStyle = clean(input.visualStyle);
+  const industry = clean(input.industry);
+  const signals = `${tone} ${visualStyle} ${industry}`.toLocaleLowerCase("nb");
+  const source =
+    tone || visualStyle
+      ? "brand-guide"
+      : industry
+        ? "research-signals"
+        : "safe-default";
+  const profile: RoleRoomMockupMotionProfile =
+    /trygg|presis|profesjon|klinisk|helse|medisin|rolig|seriøs|trust|precise/.test(
+      signals,
+    )
+      ? "calm-precise"
+      : /varm|menneskelig|empat|vennlig|inkluder|human|warm/.test(signals)
+        ? "warm-human"
+        : /energ|lek|ung|rask|sport|dynam|playful|vibrant/.test(signals)
+          ? "energetic-social"
+          : /modig|tydelig|redaksjon|premium|bold|editorial/.test(signals)
+            ? "bold-editorial"
+            : "calm-precise";
+  const base = {
+    "calm-precise": {
+      durationSeconds: input.mediaType === "reel" ? 5.4 : 5.8,
+      easing: "smooth" as const,
+      staggerSeconds: 0.16,
+      revealDistance: 14,
+      revealScale: 0.01,
+      overshoot: 0,
+      holdSeconds: 1.15,
+      cameraPushIn: 0.06,
+      beatPunch: 0,
+      bpm: null,
+    },
+    "warm-human": {
+      durationSeconds: input.mediaType === "reel" ? 4.7 : 5.1,
+      easing: "out" as const,
+      staggerSeconds: 0.13,
+      revealDistance: 20,
+      revealScale: 0.018,
+      overshoot: 0.012,
+      holdSeconds: 0.9,
+      cameraPushIn: 0.1,
+      beatPunch: 0,
+      bpm: null,
+    },
+    "bold-editorial": {
+      durationSeconds: input.mediaType === "reel" ? 4.2 : 4.6,
+      easing: "out" as const,
+      staggerSeconds: 0.11,
+      revealDistance: 18,
+      revealScale: 0.024,
+      overshoot: 0.008,
+      holdSeconds: 0.75,
+      cameraPushIn: 0.12,
+      beatPunch: 0.015,
+      bpm: 96,
+    },
+    "energetic-social": {
+      durationSeconds: input.mediaType === "reel" ? 3.6 : 4,
+      easing: "out" as const,
+      staggerSeconds: 0.08,
+      revealDistance: 30,
+      revealScale: 0.035,
+      overshoot: 0.035,
+      holdSeconds: 0.55,
+      cameraPushIn: 0.18,
+      beatPunch: 0.04,
+      bpm: 112,
+    },
+  }[profile];
+  return {
+    profile,
+    source,
+    ...base,
+    reducedMotion: "fade",
+    rationale: unique([
+      ...(tone ? [`tone:${tone}`] : []),
+      ...(visualStyle ? [`visual_style:${visualStyle}`] : []),
+      ...(industry ? [`industry:${industry}`] : []),
+      `format:${input.mediaType}`,
+    ]),
+  };
+}
+
+function buildFigureDirection(
+  input: RoleRoomBrandBasedMockupInput,
+  campaign: RoleRoomMockupCampaignPlan,
+): RoleRoomFigurePlan {
+  const consistencyKey = crypto
+    .createHash("sha256")
+    .update(
+      `${clean(input.companyName, "brand")}|${clean(input.industry, campaign.scene)}|cinematic-3d-v1`,
+    )
+    .digest("hex")
+    .slice(0, 16);
+  const characterPalettes = [
+    { skin: "#D9A17D", hair: "#352923", hairStyle: "kort" as const },
+    { skin: "#9B6548", hair: "#201817", hairStyle: "krøller" as const },
+    { skin: "#6F4637", hair: "#171313", hairStyle: "kort" as const },
+    { skin: "#E6BA98", hair: "#694936", hairStyle: "buffert" as const },
+  ];
+  const palette =
+    characterPalettes[
+      Number.parseInt(consistencyKey.slice(0, 8), 16) % characterPalettes.length
+    ];
+  const clinical = campaign.scene === "clinical";
+  const presentation =
+    Number.parseInt(consistencyKey.slice(0, 8), 16) % 2 === 0
+      ? "female"
+      : "male";
+  const subject = clinical
+    ? `an original Norwegian ${presentation} clinician wearing a clean white medical coat and stethoscope`
+    : `an original Norwegian ${presentation} professional wearing a tailored shirt and subtle ID badge`;
+  const action =
+    input.mediaType === "reel"
+      ? "presenting confidently with a warm, intelligent expression"
+      : "working naturally at a laptop with an attentive, reassuring expression";
+  const hairDirection = {
+    kort: "short professional hair",
+    buffert: "medium-volume styled hair",
+    krøller: "defined natural curls",
+  }[palette.hairStyle];
+  const generationPrompt = [
+    "Premium cinematic 3D feature-animation character portrait",
+    "original character design, not based on a real person or an existing film franchise",
+    subject,
+    `adult age range, balanced facial structure, skin tone ${palette.skin}, hair colour ${palette.hair}, ${hairDirection}`,
+    action,
+    `wardrobe accents in brand colours ${normalizedHex(input.primaryColor) || "#102A43"} and ${normalizedHex(input.accentColor) || "#2CB67D"}`,
+    "appealing facial proportions, expressive eyes, natural hands",
+    "subtle subsurface skin shading, detailed hair strands and believable fabric",
+    "soft key light, warm fill, delicate rim light, cinematic depth",
+    "full upper body, three-quarter view, isolated clean silhouette on a fully transparent background",
+    "premium campaign art, clean silhouette, no text, no logo",
+  ].join(", ");
+  const negativePrompt =
+    "existing movie character, franchise likeness, celebrity, photoreal identity, uncanny face, plastic skin, malformed hands, extra fingers, asymmetrical eyes, flat lighting, low detail, text, logo, watermark";
+
+  return {
+    style: "cinematic-3d-v1",
+    renderQuality: "cinematic",
+    provenance: "deterministic-procedural",
+    assetStrategy: "generated-preferred",
+    qualityTarget: "cinematic-feature-animation",
+    fallbackStyle: "cinematic-3d-canvas-v1",
+    subjectRole: clinical ? "clinician" : "professional",
+    presentation,
+    ageRange: "adult",
+    faceShape: "balanced",
+    outfit: clinical ? "legefrakk" : "skjorte",
+    accessory: clinical ? "stetoskop" : "id-kort",
+    scenario: input.mediaType === "reel" ? "presenter" : "laptop",
+    ...palette,
+    altText: clinical
+      ? "Representativ redaksjonell illustrasjon av en kliniker i arbeid."
+      : "Representativ redaksjonell illustrasjon av en fagperson i arbeid.",
+    disclosure: "representative-concept-illustration",
+    generationPrompt,
+    negativePrompt,
+    seed: Number.parseInt(consistencyKey.slice(0, 8), 16) % 2_147_483_647,
+    qualityCriteria: [
+      "natural-proportions",
+      "expressive-face",
+      "natural-hands",
+      "subsurface-skin-depth",
+      "strand-and-fabric-detail",
+      "three-point-cinematic-lighting",
+      "brand-color-integration",
+      "original-character-design",
+    ],
+    consistencyKey,
+  };
+}
+
+function buildFigureRig(): RoleRoomFigureRigPlan {
+  return {
+    manualControl: true,
+    defaultMode: "editable-rig",
+    modes: ["editable-rig", "generated-raster", "sprite-sequence", "video"],
+    wholeLayerChannels: ["x", "y", "rotation", "scale", "opacity"],
+    jointChannels: [
+      "hands",
+      "fingers",
+      "screen",
+      "blink",
+      "headTilt",
+      "mouthCurve",
+      "eyeSize",
+      "bodyBob",
+      "leanX",
+      "brow",
+      "tears",
+      "walk",
+    ],
+    reducedMotion: "fade",
+    highEndJointRequirement: "rigged-3d-or-sprite-sequence",
+  };
+}
+
+function buildHighFidelityFigureRender(): RoleRoomHighFidelitySubjectRenderPlan {
+  return {
+    provider: "openai",
+    model: "gpt-image-2",
+    quality: "high",
+    size: "1024x1536",
+    background: "transparent",
+    outputFormat: "png",
+    consistencyStrategy: "reference-edit",
+    generatedAssetMode: "generated-raster",
+    animationBridge: "sprite-sequence-or-rigged-3d",
+  };
+}
+
+function buildFigureProduction(): RoleRoomFigureProductionPlan {
+  return {
+    characterMaster: {
+      views: ["front", "three-quarter", "profile"],
+      approvedView: "three-quarter",
+      locks: ["face", "hair", "outfit", "palette"],
+    },
+    spritePackage: {
+      framePoseIds: ["neutral", "presenting", "listening", "pointing"],
+      layers: ["contact-shadow", "legs-body", "left-arm-hand", "right-arm-hand", "head-face", "eyes-mouth", "hair", "prop"],
+      interpolation: "crossfade",
+      deduplicateBy: "sha256",
+    },
+    poseExpression: {
+      poses: ["neutral", "presenting", "listening", "pointing", "walking"],
+      expressions: ["calm", "warm", "focused", "surprised"],
+      defaultPose: "neutral",
+      defaultExpression: "calm",
+    },
+    compositing: {
+      channels: ["contactShadow", "rimLight", "ambientMatch", "depthBlur", "perspective", "groundOffset"],
+      fit: "transparent-contain",
+    },
+    animation: {
+      presets: ["calm-idle", "friendly-wave", "present-proof"],
+      keyframeEasing: true,
+      interruptible: true,
+      reducedMotion: "fade",
+    },
+    variants: { cap: 8, deduplicateBy: "sha256", compare: true },
+    visualQa: {
+      pixelChecks: ["resolution", "alpha", "silhouette", "safe-crop", "brand-colour"],
+      semanticChecks: ["anatomy", "hands", "symmetry", "collisions", "subject-isolation", "brand-harmony", "identity-continuity"],
+    },
+    productionSmoke: {
+      provider: "render-post-agent",
+      requiresRealGeneration: true,
+      checks: ["gpt-image-2", "private-asset", "reference-edit", "alpha-pixels", "qa-response", "cloud-reload"],
+    },
+  };
+}
+
+function buildCinematicScene(
+  campaign: RoleRoomMockupCampaignPlan,
+  motion: RoleRoomBrandMotionPlan,
+  primary: string,
+  accent: string,
+): RoleRoomCinematicScenePlan {
+  const clinical = campaign.scene === "clinical";
+  return {
+    style: "cinematic-scene-v1",
+    renderQuality: "cinematic",
+    environment: clinical ? "clinical-editorial" : "workplace-editorial",
+    lighting: "soft-key-fill-rim",
+    colorGrade: clinical ? "warm-clinical" : "brand-editorial",
+    depthLayers: ["environment", "subject", "product", "copy", "cta"],
+    deviceTreatment: "screen-light-and-perspective",
+    cardTreatment: "layered-glass-panel",
+    logoTreatment: "clean-safe-zone",
+    materialDetail: "high",
+    brandHarmony: { primary, accent },
+    camera: {
+      parallax: motion.profile === "calm-precise" ? 0.018 : 0.028,
+      pushIn: motion.cameraPushIn,
+    },
+    qualityCriteria: [
+      "single-lighting-language",
+      "brand-colour-reflections",
+      "five-layer-depth-hierarchy",
+      "legible-editable-copy",
+      "logo-safe-zone",
+      "grounded-subject-and-props",
+      "reduced-motion-compatible",
+    ],
   };
 }
 
@@ -487,6 +1072,38 @@ export function buildBrandBasedMockupPlan(
       ? Math.max(2, Math.min(10, Math.floor(input.slideCount ?? 5)))
       : 1;
   const campaign = buildCampaign(input);
+  const motion = buildBrandMotion(input);
+  const figure = buildFigureDirection(input, campaign);
+  const figureRender = buildHighFidelityFigureRender();
+  const figureRig = buildFigureRig();
+  const figureProduction = buildFigureProduction();
+  const scene = buildCinematicScene(
+    campaign,
+    motion,
+    primaryColor,
+    accentColor,
+  );
+  const identityCustomization = {
+    presentation: figure.presentation,
+    appearance: {
+      ageRange: figure.ageRange,
+      skinTone: figure.skin,
+      hairColor: figure.hair,
+      hairStyle: figure.hairStyle,
+      faceShape: figure.faceShape,
+      customDirection: null,
+    },
+    editableFields: [
+      "presentation",
+      "ageRange",
+      "skinTone",
+      "hairColor",
+      "hairStyle",
+      "faceShape",
+      "customDirection",
+    ],
+    seed: figure.seed,
+  };
   const slides = buildSlides(input, slideCount, campaign);
   const runs: RoleRoomMockupSkillRun[] = [];
 
@@ -641,15 +1258,181 @@ export function buildBrandBasedMockupPlan(
       { logoPlacement, logoIncluded: hasLogo },
     ),
   );
+  const motionLimitations =
+    motion.source === "safe-default" ? ["motion_brand_signals_incomplete"] : [];
+  runs.push(
+    run(
+      fingerprint,
+      "compose_brand_motion",
+      motionLimitations.length ? "limited" : "ready",
+      [
+        ...(input.toneOfVoice ? ["tone_of_voice"] : []),
+        ...(input.visualStyle ? ["visual_style"] : []),
+        ...(input.industry ? ["industry"] : []),
+        "selected_media_type",
+      ],
+      motionLimitations,
+      { ...motion },
+    ),
+  );
+  runs.push(
+    run(
+      fingerprint,
+      "direct_subject_figure",
+      "ready",
+      [
+        ...(input.industry ? ["industry"] : []),
+        "campaign_scene",
+        "brand_palette",
+      ],
+      [],
+      { ...figure },
+    ),
+  );
+  runs.push(
+    run(
+      fingerprint,
+      "customize_subject_identity",
+      "ready",
+      ["subject_figure_direction", "brand_palette", "stable_character_seed"],
+      [],
+      identityCustomization,
+    ),
+  );
+  runs.push(
+    run(
+      fingerprint,
+      "build_character_master",
+      "ready",
+      ["subject_identity_choices", "stable_character_seed", "three_view_contract"],
+      [],
+      { ...figureProduction.characterMaster },
+    ),
+  );
+  runs.push(
+    run(
+      fingerprint,
+      "render_high_fidelity_subject",
+      "ready",
+      [
+        "subject_figure_direction",
+        "subject_identity_choices",
+        "transparent_compositing_contract",
+      ],
+      [],
+      { ...figureRender },
+    ),
+  );
+  runs.push(
+    run(
+      fingerprint,
+      "direct_pose_expression",
+      "ready",
+      ["character_master_contract", "editable_rig_mapping"],
+      [],
+      { ...figureProduction.poseExpression },
+    ),
+  );
+  runs.push(
+    run(
+      fingerprint,
+      "generate_layered_sprite_package",
+      "ready",
+      ["character_master_contract", "transparent_compositing_contract", "content_hash_contract"],
+      [],
+      { ...figureProduction.spritePackage },
+    ),
+  );
+  runs.push(
+    run(
+      fingerprint,
+      "rig_subject_motion",
+      "ready",
+      [
+        "subject_figure_direction",
+        "subject_identity_choices",
+        "high_fidelity_subject_render",
+        "brand_motion_profile",
+      ],
+      [],
+      { ...figureRig },
+    ),
+  );
+  runs.push(
+    run(
+      fingerprint,
+      "composite_subject_scene",
+      "ready",
+      ["transparent_compositing_contract", "brand_palette", "scene_depth_contract"],
+      [],
+      { ...figureProduction.compositing },
+    ),
+  );
+  runs.push(
+    run(
+      fingerprint,
+      "author_subject_animation",
+      "ready",
+      ["brand_motion_profile", "sprite_crossfade_contract", "manual_keyframe_channels"],
+      [],
+      { ...figureProduction.animation },
+    ),
+  );
+  runs.push(
+    run(
+      fingerprint,
+      "curate_subject_variants",
+      "ready",
+      ["private_asset_reference_contract", "content_hash_contract"],
+      [],
+      { ...figureProduction.variants },
+    ),
+  );
+  runs.push(
+    run(
+      fingerprint,
+      "audit_subject_visual_quality",
+      "ready",
+      ["pixel_audit_contract", "structured_vision_audit_contract"],
+      [],
+      { ...figureProduction.visualQa },
+    ),
+  );
+  runs.push(
+    run(
+      fingerprint,
+      "compose_cinematic_scene",
+      "ready",
+      [
+        "campaign_scene",
+        "brand_palette",
+        "brand_motion_profile",
+        "subject_figure_direction",
+        "high_fidelity_subject_render",
+      ],
+      [],
+      { ...scene },
+    ),
+  );
+  runs.push(
+    run(
+      fingerprint,
+      "verify_subject_production",
+      "ready",
+      ["render_smoke_harness", "gpt_image_2_contract", "cloud_reload_contract"],
+      [],
+      { ...figureProduction.productionSmoke, state: "runs-after-user-generation" },
+    ),
+  );
 
   const checks: RoleRoomMockupSkillCheck[] = [
     {
       id: "upstream_skills_once",
       passed:
-        runs.length === 8 &&
+        runs.length === 22 &&
         new Set(runs.map((item) => item.id)).size === runs.length,
       detail:
-        "Åtte relevante oppstrøms mockup-skills skal kjøre nøyaktig én gang.",
+        "Tjueto relevante upstream mockup-skills skal kjore noyaktig en gang.",
     },
     {
       id: "format_specialist_applied",
@@ -703,6 +1486,94 @@ export function buildBrandBasedMockupPlan(
       passed: !hasLogo || Boolean(input.logoDataUrl),
       detail: "Logo kan bare markeres inkludert når dokumentet har logo-bytes.",
     },
+    {
+      id: "brand_motion_is_explicit",
+      passed:
+        motion.durationSeconds >= 3 &&
+        motion.reducedMotion === "fade" &&
+        (motion.profile !== "calm-precise" || motion.overshoot === 0),
+      detail:
+        "Motion må ha eksplisitt brand-profil, fade-alternativ og ingen overshoot for rolige/tillitsbaserte merker.",
+    },
+    {
+      id: "subject_figure_has_quality_and_provenance",
+      passed:
+        figure.renderQuality === "cinematic" &&
+        figure.style === "cinematic-3d-v1" &&
+        figure.assetStrategy === "generated-preferred" &&
+        figure.qualityTarget === "cinematic-feature-animation" &&
+        figure.generationPrompt.length > 180 &&
+        figure.negativePrompt.length > 80 &&
+        figure.provenance === "deterministic-procedural" &&
+        figure.disclosure === "representative-concept-illustration",
+      detail:
+        "Figuren må ha genereringsklar kinematisk 3D-retning, stabil karakteridentitet, kvalitetsgrenser, deterministisk fallback og eksplisitt konsept-proveniens.",
+    },
+    {
+      id: "high_fidelity_render_is_compositing_ready",
+      passed:
+        figureRender.provider === "openai" &&
+        figureRender.model === "gpt-image-2" &&
+        figureRender.quality === "high" &&
+        figureRender.size === "1024x1536" &&
+        figureRender.background === "transparent" &&
+        figureRender.outputFormat === "png" &&
+        figureRender.consistencyStrategy === "reference-edit",
+      detail:
+        "High-end figurmaster maa bruke gpt-image-2 high, transparent PNG og referansebasert kontinuitet.",
+    },
+    {
+      id: "cinematic_scene_is_coherent",
+      passed:
+        scene.renderQuality === "cinematic" &&
+        scene.style === "cinematic-scene-v1" &&
+        scene.lighting === "soft-key-fill-rim" &&
+        scene.depthLayers.length === 5 &&
+        new Set(scene.depthLayers).size === scene.depthLayers.length &&
+        scene.brandHarmony.primary === primaryColor &&
+        scene.brandHarmony.accent === accentColor &&
+        scene.logoTreatment === "clean-safe-zone" &&
+        scene.qualityCriteria.length >= 7,
+      detail:
+        "Hele scenen skal dele lys, brandfarger, fem unike dybdelag, materialnivaa og trygg logoplassering.",
+    },
+    {
+      id: "subject_identity_is_editable_and_reproducible",
+      passed:
+        ["female", "male"].includes(figure.presentation) &&
+        identityCustomization.editableFields.length === 7 &&
+        identityCustomization.seed === figure.seed,
+      detail:
+        "Figurvalg maa lagre presentasjon, utseendefelter og stabil seed gjennom customize_subject_identity.",
+    },
+    {
+      id: "subject_rig_supports_manual_motion_control",
+      passed:
+        figureRig.manualControl &&
+        figureRig.defaultMode === "editable-rig" &&
+        figureRig.wholeLayerChannels.length === 5 &&
+        figureRig.jointChannels.length >= 12 &&
+        figureRig.reducedMotion === "fade" &&
+        figureRig.highEndJointRequirement === "rigged-3d-or-sprite-sequence",
+      detail:
+        "Figuren maa kunne styres uten AI med ledd- og transform-keyframes, samtidig som high-end leddkontroll peker til rigget 3D eller sprite-sekvens.",
+    },
+    {
+      id: "subject_production_pipeline_has_all_eight_layers",
+      passed:
+        figureProduction.characterMaster.views.length === 3 &&
+        figureProduction.spritePackage.framePoseIds.length === 4 &&
+        figureProduction.spritePackage.layers.length === 8 &&
+        figureProduction.poseExpression.poses.length === 5 &&
+        figureProduction.compositing.channels.length === 6 &&
+        figureProduction.animation.presets.length === 3 &&
+        figureProduction.variants.cap === 8 &&
+        figureProduction.visualQa.pixelChecks.length === 5 &&
+        figureProduction.visualQa.semanticChecks.length === 7 &&
+        figureProduction.productionSmoke.requiresRealGeneration,
+      detail:
+        "Karakter-master, spritepakke, pose/uttrykk, compositing, manuell animasjon, variantbank, visuell QA og produksjons-smoke skal alle være eksplisitte i planen.",
+    },
   ];
   const auditStatus: RoleRoomMockupSkillStatus = checks.every(
     (check) => check.passed,
@@ -741,6 +1612,12 @@ export function buildBrandBasedMockupPlan(
     toneOfVoice: clean(input.toneOfVoice) || null,
     visualStyle: clean(input.visualStyle) || null,
     campaign,
+    motion,
+    figure,
+    figureRender,
+    figureRig,
+    figureProduction,
+    scene,
     slides,
     skillRuns: runs,
   };

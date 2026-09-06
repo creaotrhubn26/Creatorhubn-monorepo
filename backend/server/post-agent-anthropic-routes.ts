@@ -39,6 +39,10 @@ import { sendEmail } from './casting-reminder-sender.js';
 import { presignTakeReadUrl } from './coverage-take-service.js';
 import { presignRoleRoomB2Download } from './b2-archive-helper.js';
 import {
+  getUserFileContent,
+  uploadUserFile,
+} from './role-room-user-storage-service.js';
+import {
   POST_AGENT_MODULES,
   getUserModules,
   isPostAgentModule,
@@ -86,6 +90,110 @@ interface SessionData {
   role: string;
   loginAt: string;
   [key: string]: unknown;
+}
+
+export function postAgentOpenAiImageSize(
+  imageSize?: string,
+): '1024x1024' | '1024x1536' | '1536x1024' {
+  if (String(imageSize ?? '').startsWith('portrait')) return '1024x1536';
+  if (String(imageSize ?? '').startsWith('landscape')) return '1536x1024';
+  return '1024x1024';
+}
+
+export function buildPostAgentOpenAiImagePayload(input: {
+  prompt: string;
+  imageSize?: string;
+  quality: string;
+  background: string;
+  outputFormat: string;
+}): Record<string, unknown> {
+  return {
+    model: 'gpt-image-2',
+    prompt: input.prompt,
+    n: 1,
+    size: postAgentOpenAiImageSize(input.imageSize),
+    quality: input.quality,
+    background: input.background,
+    output_format: input.outputFormat,
+  };
+}
+
+export function buildPostAgentVisualAuditPayload(input: {
+  imageDataUrl: string;
+  referenceDataUrl?: string | null;
+  primaryColor?: string | null;
+  accentColor?: string | null;
+  model?: string;
+}): Record<string, unknown> {
+  const content: Array<Record<string, unknown>> = [
+    {
+      type: 'input_text',
+      text: [
+        'Audit this original feature-animation-style campaign character.',
+        'Judge only visible evidence. Check anatomical coherence, both hands and fingers, facial/eye symmetry, collisions between body/wardrobe/props, clean subject isolation, brand-colour harmony, and identity continuity when a reference image follows.',
+        `Expected brand colours: ${input.primaryColor || 'unspecified'} and ${input.accentColor || 'unspecified'}.`,
+      ].join(' '),
+    },
+    { type: 'input_image', image_url: input.imageDataUrl, detail: 'high' },
+  ];
+  if (input.referenceDataUrl) {
+    content.push({ type: 'input_text', text: 'Identity reference:' });
+    content.push({ type: 'input_image', image_url: input.referenceDataUrl, detail: 'high' });
+  }
+  const checkSchema = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      passed: { type: 'boolean' },
+      score: { type: 'integer', minimum: 0, maximum: 100 },
+      detail: { type: 'string' },
+    },
+    required: ['passed', 'score', 'detail'],
+  };
+  return {
+    model: input.model || process.env.OPENAI_VISUAL_QA_MODEL || 'gpt-5-mini',
+    store: false,
+    max_output_tokens: 900,
+    input: [{ role: 'user', content }],
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'mockup_figure_visual_qa',
+        strict: true,
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            score: { type: 'integer', minimum: 0, maximum: 100 },
+            summary: { type: 'string' },
+            anatomy: checkSchema,
+            hands: checkSchema,
+            symmetry: checkSchema,
+            collisions: checkSchema,
+            subject_isolation: checkSchema,
+            brand_harmony: checkSchema,
+            identity_continuity: checkSchema,
+          },
+          required: ['score', 'summary', 'anatomy', 'hands', 'symmetry', 'collisions', 'subject_isolation', 'brand_harmony', 'identity_continuity'],
+        },
+      },
+    },
+  };
+}
+
+function responseOutputText(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null;
+  const output = (value as { output?: unknown }).output;
+  if (!Array.isArray(output)) return null;
+  for (const item of output) {
+    if (!item || typeof item !== 'object' || !Array.isArray((item as { content?: unknown }).content)) continue;
+    for (const part of (item as { content: unknown[] }).content) {
+      if (part && typeof part === 'object' && (part as { type?: unknown }).type === 'output_text' && typeof (part as { text?: unknown }).text === 'string') {
+        return (part as { text: string }).text;
+      }
+    }
+  }
+  return null;
 }
 
 type AuthedRequest = Request & { userId: string; bearerToken: string };
@@ -665,20 +773,20 @@ Tidspunkt: ${new Date().toISOString()}
   // ---- AI image generation ----
 
   /**
-   * POST /ai/generate-image — proxer mot fal.ai Flux 1.1 Pro for å lage
-   * et bilde fra et prompt. Brukes av Post Agent som Phase 2 av
+   * POST /ai/generate-image — proxer mot valgt, eksplisitt bildeprovider.
+   * Brukes av Post Agent som Phase 2 av
    * "AI-to-editable-PSD"-pipelinen. Resultatet er en URL eller base64
    * som klienten henter ned og lagrer som en fil for å bruke som
    * smart-object-innhold i scaffolded PSD.
    *
-   * Body: { prompt, options?: { width?, height?, image_size? } }
+   * Body: { prompt, options?: { image_size?, model?, quality?, background?, output_format? } }
    * Returns: { image_url, model, seed? }
    */
   router.post('/ai/generate-image', postAgentAuth,
     aiRateLimit({ windowMs: 60_000, max: 20, label: 'post-agent-image-gen' }),
     async (req: Request, res: Response) => {
     const userId = (req as AuthedRequest).userId;
-    // Entitlement-gate (som /anthropic/messages) — dette kaller betalt FAL flux-pro.
+    // Entitlement-gate (som /anthropic/messages) — dette kaller en betalt bildeprovider.
     // Uten den kunne enhver PARET (men ikke-abonnert) konto generere ubegrenset →
     // wallet-DoS. Admin/abonnement/team-seat kreves, ellers 402.
     {
@@ -696,6 +804,19 @@ Tidspunkt: ${new Date().toISOString()}
         num_inference_steps?: number;
         guidance_scale?: number;
         seed?: number | null;
+        model?: string;
+        quality?: string;
+        background?: string;
+        output_format?: string;
+        reference_image?: string;
+        audit_image?: boolean;
+        brand_primary?: string;
+        brand_accent?: string;
+        asset_context?: {
+          project_id?: string;
+          image_id?: string;
+          variant_key?: string;
+        };
       };
     };
     const prompt = (body.prompt ?? '').toString().trim();
@@ -704,70 +825,328 @@ Tidspunkt: ${new Date().toISOString()}
       return;
     }
 
-    const falKey = process.env.FAL_KEY?.trim();
-    if (!falKey) {
-      res.status(503).json({
-        error: 'image_provider_not_configured',
-        detail: 'FAL_KEY env var er ikke satt på serveren. Sett FAL_KEY i Render env og restart.',
+    const opts = body.options ?? {};
+    const requestedModel = opts.model ?? 'fal-flux-pro-1.1';
+    if (!['fal-flux-pro-1.1', 'gpt-image-2'].includes(requestedModel)) {
+      res.status(400).json({ error: 'unsupported_image_model' });
+      return;
+    }
+    const quality = opts.quality ?? (requestedModel === 'gpt-image-2' ? 'high' : 'medium');
+    const background = opts.background ?? (requestedModel === 'gpt-image-2' ? 'transparent' : 'auto');
+    const outputFormat = opts.output_format ?? 'png';
+    if (!['low', 'medium', 'high'].includes(quality)) {
+      res.status(400).json({ error: 'unsupported_image_quality' });
+      return;
+    }
+    if (!['transparent', 'opaque', 'auto'].includes(background)) {
+      res.status(400).json({ error: 'unsupported_image_background' });
+      return;
+    }
+    if (!['png', 'webp', 'jpeg'].includes(outputFormat)) {
+      res.status(400).json({ error: 'unsupported_image_output_format' });
+      return;
+    }
+    if (background === 'transparent' && outputFormat === 'jpeg') {
+      res.status(400).json({
+        error: 'transparent_background_requires_png_or_webp',
       });
       return;
     }
 
-    const opts = body.options ?? {};
-    const falBody = {
-      prompt,
-      image_size: opts.image_size ?? 'square_hd',
-      num_inference_steps: opts.num_inference_steps ?? 28,
-      guidance_scale: opts.guidance_scale ?? 3.5,
-      ...(opts.seed != null ? { seed: opts.seed } : {}),
-    };
-
     try {
-      const r = await fetch('https://fal.run/fal-ai/flux-pro/v1.1', {
-        method: 'POST',
-        headers: {
-          Authorization: `Key ${falKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(falBody),
-      });
-      if (!r.ok) {
-        const txt = await r.text();
-        res.status(r.status).json({
-          error: 'image_provider_failed',
-          status: r.status,
-          detail: txt.slice(0, 500),
+      let imageUrl: string;
+      let width: number | null = null;
+      let height: number | null = null;
+      let model: string;
+      let seed: number | null = null;
+      let providerSupportsSeed = false;
+      let providerMode = 'text-generation';
+      let generatedBytes: Buffer | null = null;
+      let generatedContentType = 'image/png';
+      let referenceDataUrl: string | null = null;
+      let visualAudit: Record<string, unknown> | null = null;
+      let assetRef: string | null = null;
+      let assetHash: string | null = null;
+
+      if (requestedModel === 'gpt-image-2') {
+        const openAiKey = process.env.OPENAI_API_KEY?.trim();
+        if (!openAiKey) {
+          res.status(503).json({
+            error: 'image_provider_not_configured',
+            detail: 'OPENAI_API_KEY er ikke satt på serveren.',
+          });
+          return;
+        }
+        const providerSize = postAgentOpenAiImageSize(opts.image_size);
+        const referenceImage = opts.reference_image?.trim();
+        let openAiResponse: Awaited<ReturnType<typeof fetch>>;
+        if (referenceImage) {
+          providerMode = 'reference-edit';
+          const inlineMatch = referenceImage.match(
+            /^data:(image\/(?:png|webp|jpeg));base64,([A-Za-z0-9+/=]+)$/,
+          );
+          const cloudMatch = referenceImage.match(
+            /^mockup-cloud-file:[^:]{1,255}:([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i,
+          );
+          let bytes: Buffer | null = null;
+          let mime = 'image/png';
+          if (inlineMatch) {
+            bytes = Buffer.from(inlineMatch[2], 'base64');
+            mime = inlineMatch[1];
+          } else if (cloudMatch) {
+            const stored = await getUserFileContent(pool, {
+              userId,
+              fileId: cloudMatch[1],
+            });
+            if (stored.ok) {
+              bytes = Buffer.from(stored.body);
+              mime = stored.contentType;
+            }
+          }
+          if (!/^image\/(?:png|webp|jpeg)$/i.test(mime)) {
+            res.status(400).json({ error: 'invalid_reference_image_type' });
+            return;
+          }
+          if (!bytes) {
+            res.status(400).json({
+              error: 'invalid_reference_image',
+              detail: 'reference_image må være en inline eller privat Mockup Studio PNG, WEBP eller JPEG.',
+            });
+            return;
+          }
+          if (bytes.length === 0 || bytes.length > 20 * 1024 * 1024) {
+            res.status(400).json({ error: 'invalid_reference_image_size' });
+            return;
+          }
+          const form = new FormData();
+          form.set('model', 'gpt-image-2');
+          form.set('prompt', prompt);
+          form.set('size', providerSize);
+          form.set('quality', quality);
+          form.set('background', background);
+          form.set('output_format', outputFormat);
+          form.append(
+            'image[]',
+            new Blob([
+              bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+            ], { type: mime }),
+            `figure-reference.${mime.split('/')[1] || 'png'}`,
+          );
+          referenceDataUrl = `data:${mime};base64,${bytes.toString('base64')}`;
+          openAiResponse = await fetch('https://api.openai.com/v1/images/edits', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${openAiKey}` },
+            body: form,
+          });
+        } else {
+          openAiResponse = await fetch('https://api.openai.com/v1/images/generations', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${openAiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(buildPostAgentOpenAiImagePayload({
+              prompt,
+              imageSize: opts.image_size,
+              quality,
+              background,
+              outputFormat,
+            })),
+          });
+        }
+        if (!openAiResponse.ok) {
+          const detail = await openAiResponse.text();
+          res.status(
+            openAiResponse.status === 402 || openAiResponse.status === 429
+              ? openAiResponse.status
+              : 502,
+          ).json({
+            error: 'image_provider_failed',
+            status: openAiResponse.status,
+            detail: detail.slice(0, 500),
+          });
+          return;
+        }
+        const data = await openAiResponse.json() as {
+          data?: Array<{ b64_json?: string }>;
+        };
+        const imageBase64 = data.data?.[0]?.b64_json;
+        if (!imageBase64) {
+          res.status(502).json({ error: 'no_image_in_response' });
+          return;
+        }
+        generatedBytes = Buffer.from(imageBase64, 'base64');
+        generatedContentType = `image/${outputFormat === 'jpeg' ? 'jpeg' : outputFormat}`;
+        imageUrl = `data:${generatedContentType};base64,${imageBase64}`;
+        [width, height] = providerSize.split('x').map(Number);
+        model = 'gpt-image-2';
+      } else {
+        const falKey = process.env.FAL_KEY?.trim();
+        if (!falKey) {
+          res.status(503).json({
+            error: 'image_provider_not_configured',
+            detail: 'FAL_KEY env var er ikke satt på serveren.',
+          });
+          return;
+        }
+        const falResponse = await fetch('https://fal.run/fal-ai/flux-pro/v1.1', {
+          method: 'POST',
+          headers: {
+            Authorization: `Key ${falKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            prompt,
+            image_size: opts.image_size ?? 'square_hd',
+            num_inference_steps: opts.num_inference_steps ?? 28,
+            guidance_scale: opts.guidance_scale ?? 3.5,
+            ...(opts.seed != null ? { seed: opts.seed } : {}),
+          }),
         });
-        return;
-      }
-      const data = await r.json() as {
-        images?: Array<{ url?: string; width?: number; height?: number }>;
-        seed?: number;
-        timings?: unknown;
-      };
-      const firstImage = data.images?.[0];
-      if (!firstImage?.url) {
-        res.status(502).json({ error: 'no_image_in_response', detail: JSON.stringify(data).slice(0, 500) });
-        return;
+        if (!falResponse.ok) {
+          const detail = await falResponse.text();
+          res.status(falResponse.status).json({
+            error: 'image_provider_failed',
+            status: falResponse.status,
+            detail: detail.slice(0, 500),
+          });
+          return;
+        }
+        const data = await falResponse.json() as {
+          images?: Array<{ url?: string; width?: number; height?: number }>;
+          seed?: number;
+        };
+        const firstImage = data.images?.[0];
+        if (!firstImage?.url) {
+          res.status(502).json({
+            error: 'no_image_in_response',
+            detail: JSON.stringify(data).slice(0, 500),
+          });
+          return;
+        }
+        imageUrl = firstImage.url;
+        width = firstImage.width ?? null;
+        height = firstImage.height ?? null;
+        model = 'black-forest-labs/flux-pro-1.1';
+        seed = data.seed ?? null;
+        providerSupportsSeed = true;
       }
 
-      // Audit-log: lagre en rad så vi har historikk på hva brukerne genererer.
-      // Best-effort — hvis tabellen mangler, fortsett uten.
+      if (requestedModel === 'gpt-image-2' && generatedBytes) {
+        assetHash = crypto.createHash('sha256').update(generatedBytes).digest('hex');
+
+        if (opts.audit_image === true) {
+          try {
+            const auditResponse = await fetch('https://api.openai.com/v1/responses', {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${process.env.OPENAI_API_KEY?.trim()}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(buildPostAgentVisualAuditPayload({
+                imageDataUrl: imageUrl,
+                referenceDataUrl,
+                primaryColor: opts.brand_primary,
+                accentColor: opts.brand_accent,
+              })),
+            });
+            if (auditResponse.ok) {
+              const responseJson = await auditResponse.json() as Record<string, unknown>;
+              const outputText = responseOutputText(responseJson);
+              visualAudit = outputText ? JSON.parse(outputText) as Record<string, unknown> : null;
+              if (visualAudit) visualAudit.model = responseJson.model || process.env.OPENAI_VISUAL_QA_MODEL || 'gpt-5-mini';
+            } else {
+              visualAudit = {
+                unavailable: true,
+                detail: `visual_audit_provider_${auditResponse.status}`,
+              };
+            }
+          } catch (auditError) {
+            visualAudit = {
+              unavailable: true,
+              detail: (auditError as Error).message.slice(0, 240),
+            };
+          }
+        }
+
+        const projectId = String(opts.asset_context?.project_id || '').trim().slice(0, 255);
+        const imageId = String(opts.asset_context?.image_id || '').trim().slice(0, 255);
+        const variantKey = String(opts.asset_context?.variant_key || 'figure').trim().slice(0, 120);
+        if (projectId && imageId) {
+          try {
+            const existing = await pool.query<{ id: string }>(
+              `SELECT id::text FROM role_room_user_files
+                WHERE user_id=$1 AND source_module='mockup-studio-ai'
+                  AND attached_to_entity_type='mockup-project'
+                  AND attached_to_entity_id=$2
+                  AND metadata->>'sha256'=$3 AND deleted_at IS NULL
+                LIMIT 1`,
+              [userId, projectId, assetHash],
+            );
+            let fileId = existing.rows[0]?.id || null;
+            if (!fileId) {
+              const extension = outputFormat === 'jpeg' ? 'jpg' : outputFormat;
+              const uploaded = await uploadUserFile(pool, {
+                userId,
+                displayName: `${imageId}-${variantKey}.${extension}`,
+                body: generatedBytes,
+                contentType: generatedContentType,
+                sourceModule: 'mockup-studio-ai',
+                metadata: {
+                  sha256: assetHash,
+                  provider: 'openai',
+                  model,
+                  quality,
+                  variantKey,
+                  visualAudit,
+                },
+                context: {
+                  attachedToEntityType: 'mockup-project',
+                  attachedToEntityId: projectId,
+                  attachmentNote: `High-fidelity figure asset for ${imageId}`,
+                },
+              });
+              if (uploaded.ok) fileId = uploaded.file.id;
+              else if (uploaded.reason === 'upload_failed') {
+                const raced = await pool.query<{ id: string }>(
+                  `SELECT id::text FROM role_room_user_files
+                    WHERE user_id=$1 AND source_module='mockup-studio-ai'
+                      AND attached_to_entity_type='mockup-project'
+                      AND attached_to_entity_id=$2
+                      AND metadata->>'sha256'=$3 AND deleted_at IS NULL
+                    LIMIT 1`,
+                  [userId, projectId, assetHash],
+                );
+                fileId = raced.rows[0]?.id || null;
+              }
+            }
+            if (fileId) assetRef = `mockup-cloud-file:${projectId}:${fileId}`;
+          } catch (storageError) {
+            console.warn('[post-agent ai/generate-image] asset persistence unavailable:', (storageError as Error).message);
+          }
+        }
+      }
+
+      // Audit-loggen opprettes av migrasjon. Inline bilder lagres som fingerprint,
+      // ikke som store base64-felter i Postgres.
       try {
+        const auditImageRef = imageUrl.startsWith('data:')
+          ? `inline:${model}:${crypto.createHash('sha256').update(imageUrl).digest('hex')}`
+          : imageUrl;
         await pool.query(
-          `CREATE TABLE IF NOT EXISTS post_agent_ai_image_log (
-            id          SERIAL PRIMARY KEY,
-            user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
-            prompt      TEXT NOT NULL,
-            image_url   TEXT NOT NULL,
-            seed        BIGINT,
-            created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-          )`,
-        );
-        await pool.query(
-          `INSERT INTO post_agent_ai_image_log (user_id, prompt, image_url, seed)
-           VALUES ($1, $2, $3, $4)`,
-          [userId, prompt, firstImage.url, data.seed ?? null],
+          `INSERT INTO post_agent_ai_image_log
+             (user_id, prompt, image_url, provider, model, seed, asset_file_id, visual_audit)
+           VALUES ($1, $2, $3, $4, $5, $6, $7::uuid, $8::jsonb)`,
+          [
+            userId,
+            prompt,
+            auditImageRef,
+            requestedModel === 'gpt-image-2' ? 'openai' : 'fal',
+            model,
+            seed,
+            assetRef?.split(':').at(-1) || null,
+            visualAudit ? JSON.stringify(visualAudit) : null,
+          ],
         );
         // Retention (personvern): ikke lagre bruker-prompts på ubestemt tid.
         await pool.query(`DELETE FROM post_agent_ai_image_log WHERE created_at < NOW() - INTERVAL '90 days'`).catch(() => {});
@@ -776,11 +1155,16 @@ Tidspunkt: ${new Date().toISOString()}
       }
 
       res.json({
-        image_url: firstImage.url,
-        width: firstImage.width ?? null,
-        height: firstImage.height ?? null,
-        model: 'black-forest-labs/flux-pro-1.1',
-        seed: data.seed ?? null,
+        image_url: imageUrl,
+        width,
+        height,
+        model,
+        seed,
+        provider_supports_seed: providerSupportsSeed,
+        provider_mode: providerMode,
+        asset_ref: assetRef,
+        asset_hash: assetHash,
+        visual_audit: visualAudit,
       });
     } catch (err) {
       res.status(500).json({

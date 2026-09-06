@@ -8,35 +8,42 @@
  * proportional time once a stage finishes.
  */
 
-import React from 'react';
-import { Box,
+import React from "react";
+import {
+  Box,
   Button,
-  Chip, LinearProgress, Stack, Typography,
-} from '@mui/material';
+  Chip,
+  LinearProgress,
+  Stack,
+  Typography,
+} from "@mui/material";
 import {
   CheckCircle as CheckCircleIcon,
   ErrorOutline as ErrorOutlineIcon,
   HourglassEmpty as HourglassIcon,
   WarningAmber as WarningAmberIcon,
-} from '@mui/icons-material';
+} from "@mui/icons-material";
 import type {
   ResearchMockupDraft,
-  ResearchStage, ResearchStageKey, ResearchProgressStatus } from '../../hooks/useResearchProgress';
+  ResearchStage,
+  ResearchStageKey,
+  ResearchProgressStatus,
+} from "../../hooks/useResearchProgress";
 
 const STAGE_LABELS: Record<ResearchStageKey, string> = {
-  brreg: 'Brønnøysundregistrene',
-  website: 'Nettsidescraping',
-  googlePlacesBusiness: 'Google Places (bedrift)',
-  googlePlacesCompetitors: 'Google Places (konkurrenter)',
-  webCompetitors: 'Websøk (produktkonkurrenter)',
-  googlePlacesLocal: 'Google Places (nærområde)',
-  competitorAnalysis: 'Konkurrentanalyse',
-  localPresence: 'Lokal tilstedeværelse',
-  merchSuppliers: 'Merch-leverandører',
-  metaPagesEnrichment: 'Meta Pages-berikelse',
-  colorExtraction: 'Logo-paletten',
-  claudeSynthesis: 'CI-syntese',
-  openaiSynthesis: 'OpenAI-syntese',
+  brreg: "Brønnøysundregistrene",
+  website: "Nettsidescraping",
+  googlePlacesBusiness: "Google Places (bedrift)",
+  googlePlacesCompetitors: "Google Places (konkurrenter)",
+  webCompetitors: "Websøk (produktkonkurrenter)",
+  googlePlacesLocal: "Google Places (nærområde)",
+  competitorAnalysis: "Konkurrentanalyse",
+  localPresence: "Lokal tilstedeværelse",
+  merchSuppliers: "Merch-leverandører",
+  metaPagesEnrichment: "Meta Pages-berikelse",
+  colorExtraction: "Logo-paletten",
+  claudeSynthesis: "CI-syntese",
+  openaiSynthesis: "OpenAI-syntese",
 };
 
 const CREATIVE_SKILL_LABELS: Record<string, string> = {
@@ -45,6 +52,20 @@ const CREATIVE_SKILL_LABELS: Record<string, string> = {
   compose_single_image_post: "Bildekomposisjon",
   compose_carousel_narrative: "Karusellfortelling",
   compose_reel_storyboard: "Reel-storyboard",
+  compose_brand_motion: "Brand motion",
+  direct_subject_figure: "Kinematisk 3D-figurretning",
+  customize_subject_identity: "Figuridentitet og utseende",
+  build_character_master: "3-visnings karakter-master",
+  render_high_fidelity_subject: "High-end figur-render",
+  direct_pose_expression: "Positur og uttrykk",
+  generate_layered_sprite_package: "Lagdelte spriteframes",
+  rig_subject_motion: "Figurrigg og bevegelse",
+  composite_subject_scene: "Figur-compositing",
+  author_subject_animation: "Manuell figur-animasjon",
+  curate_subject_variants: "Deduplisert variantbank",
+  audit_subject_visual_quality: "Visuell figur-QA",
+  compose_cinematic_scene: "Kinematisk scenekomposisjon",
+  verify_subject_production: "Produksjonsverifisering",
 };
 
 function creativeSkillSummary(draft: ResearchMockupDraft): string {
@@ -64,7 +85,7 @@ interface ResearchProgressLiveProps {
 }
 
 function formatMs(ms: number | undefined): string {
-  if (typeof ms !== 'number' || !Number.isFinite(ms)) return '—';
+  if (typeof ms !== "number" || !Number.isFinite(ms)) return "—";
   if (ms < 1000) return `${Math.round(ms)} ms`;
   return `${(ms / 1000).toFixed(1)} s`;
 }
@@ -111,11 +132,11 @@ const ResearchProgressLive: React.FC<ResearchProgressLiveProps> = ({
             sx={{ color: "rgba(226,232,240,0.65)", fontSize: "0.78rem" }}
           >
             {totalDone} fullført
-            {totalRunning > 0 ? ` · ${totalRunning} pågår` : ''}
-            {totalError > 0 ? ` · ${totalError} feil` : ''}
+            {totalRunning > 0 ? ` · ${totalRunning} pågår` : ""}
+            {totalError > 0 ? ` · ${totalError} feil` : ""}
           </Typography>
         </Stack>
-        {status === 'streaming' ? (
+        {status === "streaming" ? (
           <Box sx={{ minWidth: 120 }}>
             <LinearProgress sx={{ height: 6, borderRadius: 3 }} />
           </Box>
@@ -124,44 +145,64 @@ const ResearchProgressLive: React.FC<ResearchProgressLiveProps> = ({
 
       <Stack spacing={0.5}>
         {stages.length === 0 ? (
-          <Typography sx={{ color: 'rgba(226,232,240,0.5)', fontSize: '0.82rem' }}>
+          <Typography
+            sx={{ color: "rgba(226,232,240,0.5)", fontSize: "0.82rem" }}
+          >
             Venter på første stage…
           </Typography>
         ) : (
           stages.map((stage) => {
             const label = STAGE_LABELS[stage.key] ?? stage.key;
-            const isDone = stage.status === 'done';
-            const isRunning = stage.status === 'running';
-            const isError = stage.status === 'error';
+            const isDone = stage.status === "done";
+            const isRunning = stage.status === "running";
+            const isError = stage.status === "error";
             const hasFallback = Boolean(stage.fallback);
             const barColor = isError
-              ? 'rgba(239,68,68,0.32)'
+              ? "rgba(239,68,68,0.32)"
               : hasFallback
-                ? 'rgba(251,191,36,0.28)'
-                : 'rgba(52,211,153,0.28)';
-            const width = stage.ms ? Math.min(100, (stage.ms / maxMs) * 100) : isRunning ? 100 : 0;
-            const Icon = isError ? ErrorOutlineIcon : hasFallback ? WarningAmberIcon : isDone ? CheckCircleIcon : HourglassIcon;
-            const iconColor = isError ? '#f87171' : hasFallback ? '#fbbf24' : isDone ? '#34d399' : '#a5b4fc';
+                ? "rgba(251,191,36,0.28)"
+                : "rgba(52,211,153,0.28)";
+            const width = stage.ms
+              ? Math.min(100, (stage.ms / maxMs) * 100)
+              : isRunning
+                ? 100
+                : 0;
+            const Icon = isError
+              ? ErrorOutlineIcon
+              : hasFallback
+                ? WarningAmberIcon
+                : isDone
+                  ? CheckCircleIcon
+                  : HourglassIcon;
+            const iconColor = isError
+              ? "#f87171"
+              : hasFallback
+                ? "#fbbf24"
+                : isDone
+                  ? "#34d399"
+                  : "#a5b4fc";
             return (
               <Box
                 key={stage.key}
                 sx={{
-                  position: 'relative',
+                  position: "relative",
                   p: 0.7,
                   borderRadius: 1.4,
-                  border: `1px solid ${isRunning ? 'rgba(99,102,241,0.48)' : 'rgba(148,163,184,0.14)'}`,
-                  bgcolor: 'rgba(15,23,42,0.5)',
-                  overflow: 'hidden',
-                  animation: isRunning ? 'researchPulse 1.4s ease-in-out infinite' : 'none',
-                  '@keyframes researchPulse': {
-                    '0%, 100%': { borderColor: 'rgba(99,102,241,0.32)' },
-                    '50%': { borderColor: 'rgba(99,102,241,0.78)' },
+                  border: `1px solid ${isRunning ? "rgba(99,102,241,0.48)" : "rgba(148,163,184,0.14)"}`,
+                  bgcolor: "rgba(15,23,42,0.5)",
+                  overflow: "hidden",
+                  animation: isRunning
+                    ? "researchPulse 1.4s ease-in-out infinite"
+                    : "none",
+                  "@keyframes researchPulse": {
+                    "0%, 100%": { borderColor: "rgba(99,102,241,0.32)" },
+                    "50%": { borderColor: "rgba(99,102,241,0.78)" },
                   },
                 }}
               >
                 <Box
                   sx={{
-                    position: 'absolute',
+                    position: "absolute",
                     inset: 0,
                     width: `${width}%`,
                     bgcolor: isRunning ? "rgba(99,102,241,0.18)" : barColor,

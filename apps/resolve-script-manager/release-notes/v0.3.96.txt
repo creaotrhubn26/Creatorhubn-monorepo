@@ -16,3 +16,57 @@
 - Research-visningen viser hvilke kreative skills som ble brukt på hvert utkast, ikke bare en samlet brand-status.
 - Live-forhåndsvisningene bruker nå samme lyse, redaksjonelle kampanjeretning som de ferdige Mockup Studio-dokumentene.
 - Eksisterende JSONB-felt for skill-kjøringer og kreative beslutninger gjenbrukes; denne versjonen trenger ingen ny databasemigrasjon.
+
+## Brandstyrte animasjoner
+
+- En ny `compose_brand_motion`-skill oversetter tone of voice, visuell stil, bransje og postformat til en eksplisitt motion-profil.
+- MedSide og andre rolige/tillitsbaserte brands får myk timing, korte bevegelser, svak push-in og ingen bounce eller overshoot.
+- Hook, støttebudskap, dokumentert bevis og CTA får en lesbar, lagret rekkefølge i Mockup Studio-timelinen.
+- Tidslinjen viser hvilken brand-motion-profil som er aktiv. Systeminnstillingen for redusert bevegelse gir fade uten zoom eller forflytning.
+- Motion-planen lagres i eksisterende mockup-JSON, så endringen krever ingen ny databasemigrasjon og introduserer ingen nye dublettnøkler.
+
+## High-quality figurer i innlegg
+
+- `direct_subject_figure` v2 velger rolle, antrekk, handling og en stabil karakteridentitet fra researchen i stedet for å bruke én tilfeldig standardfigur.
+- Skillen lager nå en original, genereringsklar retning for kinematisk 3D-feature-animation-kvalitet: uttrykksfulle ansiktstrekk, naturlige hender, huddybde, hår-/stoffdetaljer og trepunktslys.
+- Mockup Studio har en egen «Generer kinematisk 3D-figur»-handling som bruker den innloggings- og kredittstyrte bildeproxyen. Resultatet lagres som en privat, stabil prosjektfil med autentisert visning; inline data-URL brukes bare som fallback når fillagring ikke er tilgjengelig.
+- Den redigerbare Canvas-figuren er oppgradert med mer volum, ansikts-/hårdetaljer, brandfarget iris, stoff/sømmer, riktige ermer, hender og filmatisk lys, og brukes automatisk som fallback hvis generering ikke er tilgjengelig.
+- Antrekk og aksenter følger prosjektets bransje og brandpalett; MedSide får en tydelig kliniker med legefrakk og stetoskop.
+- Figuren lagres som en representativ konseptillustrasjon med alt-tekst, modell, seed, proveniens og konsistensnøkkel. Den presenteres ikke som en ekte ansatt, kunde eller eksisterende franchisefigur.
+- Den deterministiske fallbacken vises umiddelbart mens research pågår; opplastede eller godkjente kundebilder kan fortsatt erstatte figursloten.
+
+## Kinematisk kvalitet i hele scenen
+
+- Den nye `compose_cinematic_scene`-skillen binder miljø, figur, produktflate, redigerbar tekst, CTA og logo til ett kontrollert femlags-hierarki.
+- Kliniske og redaksjonelle bakgrunner får nå samme key/fill/rim-lys, brandfargede refleksjoner, subtil dybde og vignett som figuren.
+- Produkt-/researchkort har fått lagdelt glassflate, brandgradient og kontaktskygge, samtidig som teksten forblir redigerbar og lesbar.
+- Sluttkontrollen verifiserer unike dybdelag, korrekt brandpalett, materialnivå og trygg logoplassering før dokumentet markeres klart.
+- Sceneretningen lagres i eksisterende mockup-JSON og krever derfor ingen ny databasemigrasjon.
+
+## Redigerbar figuridentitet og full bevegelseskontroll
+
+- `customize_subject_identity` lar brukeren velge kvinne, mann eller nøytral presentasjon, aldersuttrykk, ansiktsform, hudtone, hårfarge, hårform og egen utseendebeskrivelse.
+- Hvert strukturert valg oppdaterer både den manuelle riggen, en stabil seed, genereringsprompt og versjonert skill-proveniens. Egen fritekst brukes ved neste high-end-render; AI kjøres bare når brukeren ber om det.
+- `rig_subject_motion` dokumenterer og verifiserer den redigerbare Canvas-riggen med egne keyframes for transform, ansikt, kropp, hender, fingre, skjerm, blunk og gange.
+- Mockup Studio har to eksplisitte moduser: «Fullt redigerbar rigg» og «Generert high-end». Den genererte figuren kan animeres som ett lag, mens avansert high-end-leddkontroll bruker rigget 3D-asset eller sprite-sekvens.
+- Nettleserversjonen bruker samme innloggings- og kredittstyrte bildeproxy som desktop-appen. Generert modell, seed, tidspunkt og konseptmerking følger dokumentet.
+- Figurvalg, riggkontrakt og motion-data lagres i eksisterende mockup-JSON. Ingen ny databasekolonne eller migrasjon er nødvendig.
+
+## Imagen-lignende high-fidelity figurmaster
+
+- Den nye `render_high_fidelity_subject`-skillen binder figurretningen til `gpt-image-2`, high-kvalitet, 1024×1536 og ekte transparent PNG.
+- Transparensen gjør at high-end-figuren komponeres inn i brandscenen uten mørk eller generisk bakgrunnsflate.
+- Figurens stabile konsistensnøkkel beholdes i dokumentet. Senere utseende- og posevarianter skal bruke en godkjent master som bildereferanse; et flatt raster presenteres aldri som en leddrigget 3D-modell.
+- Desktop-klienten kan nå lagre både provider-URL-er og inline base64-bilder lokalt. Øvrige eksisterende bildegenereringer beholder sin nåværende provider med mindre de eksplisitt velger `gpt-image-2`.
+- Migrasjon `0511_post_agent_ai_image_log.sql` flytter audit-tabellen ut av request-koden, registrerer provider, modell, privat filreferanse og visuell QA, og dedupliserer genererte prosjektfiler på bruker, prosjekt og SHA-256.
+
+## Komplett high-end figurpipeline
+
+- En tredelt karakter-master (front, trekvart og profil) kan genereres med låser for ansikt, hår, antrekk og prop. Godkjent master brukes som referanse for senere varianter.
+- Pose- og uttrykksbiblioteket gir direkte valg av nøytral, presenterende, lyttende, pekende og gående positur samt fire ansiktsuttrykk. Valgene oppdaterer både prompt og den redigerbare riggen.
+- Sprite-pakken består av fire konsistente poseframes og en åttelags semantisk manifestkontrakt for skygge, kropp, armer/hender, ansikt, mimikk, hår og prop.
+- Kompositeringen har egne kontroller for kontaktskygge, rimlys, miljøtilpasning, dybde, perspektiv og bakkeposisjon. Transparent PNG beholdes uten svart bakgrunn eller tvungen beskjæring.
+- Tre brandtilpassede bevegelsespresets legger inn avbrytbare keyframes med eksplisitt easing. Alle ledd, ansikt og timing kan finjusteres manuelt, og venstre/høyre hånd har egne animerbare IK-mål.
+- Variantloggen beholder de åtte siste unike resultatene, deduplisert med SHA-256, og lar brukeren aktivere eller sammenligne to varianter side om side uten ny generering.
+- Automatisk QA kombinerer ekte pikselmålinger av oppløsning, alfa, silhuett, trygg beskjæring og brandfarger med en strukturert visuell kontroll av anatomi, hender, symmetri, kollisjoner og identitetskontinuitet.
+- Produksjons-smoke-testen verifiserer GPT Image 2, transparent PNG og referansebasert variant mot den ekte Role Room-proxyen uten å skrive bildepayload eller tokens til loggen.

@@ -323,14 +323,16 @@ describe("Role Room progressive research mockups", () => {
     expect(linkInserts).toHaveLength(24);
     expect(
       new Set(
-        projectInserts.map(
-          ([, params]) => String((params as unknown[] | undefined)?.[0]),
+        projectInserts.map(([, params]) =>
+          String((params as unknown[] | undefined)?.[0]),
         ),
       ).size,
     ).toBe(12);
-    const firstRunPayloads = projectInserts.slice(0, 12).map(([, params]) =>
-      JSON.parse(String((params as unknown[] | undefined)?.[5])),
-    ) as Array<Record<string, unknown>>;
+    const firstRunPayloads = projectInserts
+      .slice(0, 12)
+      .map(([, params]) =>
+        JSON.parse(String((params as unknown[] | undefined)?.[5])),
+      ) as Array<Record<string, unknown>>;
     const productStoryRoles = firstRunPayloads
       .filter((payload) => String(payload.name).includes("Utkast 2"))
       .map(
@@ -365,12 +367,121 @@ describe("Role Room progressive research mockups", () => {
         creativeDecision: expect.objectContaining({
           layout: "photo-product-bridge",
           role: "hook",
+          figureDirection: expect.objectContaining({
+            style: "cinematic-3d-v1",
+            renderQuality: "cinematic",
+            qualityTarget: "cinematic-feature-animation",
+            assetStrategy: "generated-preferred",
+            provenance: "deterministic-procedural",
+          }),
+          figureRenderDirection: expect.objectContaining({
+            provider: "openai",
+            model: "gpt-image-2",
+            quality: "high",
+            background: "transparent",
+            consistencyStrategy: "reference-edit",
+          }),
+          figureRigDirection: expect.objectContaining({
+            manualControl: true,
+            defaultMode: "editable-rig",
+            highEndJointRequirement: "rigged-3d-or-sprite-sequence",
+          }),
+          figureProductionDirection: expect.objectContaining({
+            characterMaster: expect.objectContaining({ views: ["front", "three-quarter", "profile"] }),
+            spritePackage: expect.objectContaining({ interpolation: "crossfade", deduplicateBy: "sha256" }),
+            variants: { cap: 8, deduplicateBy: "sha256", compare: true },
+          }),
+          sceneDirection: expect.objectContaining({
+            style: "cinematic-scene-v1",
+            renderQuality: "cinematic",
+            environment: "clinical-editorial",
+            lighting: "soft-key-fill-rim",
+            brandHarmony: {
+              primary: "#102030",
+              accent: "#40C0A0",
+            },
+          }),
+        }),
+        motion: expect.objectContaining({
+          profile: "calm-precise",
+          source: "research-signals",
+          overshoot: 0,
+          reducedMotion: "fade",
+        }),
+        timeline: expect.objectContaining({
+          clips: expect.arrayContaining([
+            expect.objectContaining({ label: "Hook", kind: "reveal" }),
+            expect.objectContaining({
+              label: "Dokumentert bevis",
+              kind: "reveal",
+            }),
+            expect.objectContaining({ label: "Neste steg", kind: "reveal" }),
+          ]),
+        }),
+        canvas: expect.objectContaining({
+          pushIn: 0.06,
         }),
         images: expect.arrayContaining([
-          expect.objectContaining({ illustration: "waiting-room-backdrop" }),
+          expect.objectContaining({
+            illustration: "waiting-room-backdrop",
+            sceneStyle: expect.objectContaining({
+              renderQuality: "cinematic",
+              style: "cinematic-scene-v1",
+              primary: "#102030",
+              accent: "#40C0A0",
+            }),
+          }),
           expect.objectContaining({
             illustration: "person-laptop",
-            personStyle: expect.objectContaining({ outfit: "legefrakk" }),
+            altText: expect.stringContaining("kliniker"),
+            mediaProvenance: expect.objectContaining({
+              source: "deterministic-procedural",
+              disclosure: "representative-concept-illustration",
+            }),
+            figureGeneration: expect.objectContaining({
+              qualityTarget: "cinematic-feature-animation",
+              renderMode: "editable-rig",
+              presentation: expect.stringMatching(/female|male/),
+              appearance: expect.objectContaining({
+                ageRange: "adult",
+                faceShape: "balanced",
+              }),
+              customizationSkill: expect.objectContaining({
+                id: "customize_subject_identity",
+                version: "1.0.0",
+              }),
+              renderSkill: expect.objectContaining({
+                id: "render_high_fidelity_subject",
+                version: "1.0.0",
+              }),
+              rigSkill: expect.objectContaining({
+                id: "rig_subject_motion",
+                version: "1.0.0",
+              }),
+              pipelineSkills: expect.objectContaining({
+                build_character_master: expect.objectContaining({ version: "1.0.0" }),
+                generate_layered_sprite_package: expect.objectContaining({ version: "1.0.0" }),
+                audit_subject_visual_quality: expect.objectContaining({ version: "1.0.0" }),
+                verify_subject_production: expect.objectContaining({ version: "1.0.0" }),
+              }),
+              status: "planned",
+              provider: "gpt-image-2",
+              consistencyStrategy: "reference-edit",
+              fallback: "cinematic-3d-canvas-v1",
+              poseId: "neutral",
+              expressionId: "calm",
+              variants: [],
+              compositing: expect.objectContaining({
+                contactShadow: 0.72,
+                rimLight: 0.36,
+                groundOffset: 0.93,
+              }),
+            }),
+            personStyle: expect.objectContaining({
+              outfit: "legefrakk",
+              renderQuality: "cinematic",
+              artDirection: "cinematic-3d-v1",
+            }),
           }),
           expect.objectContaining({
             infoCardContent: expect.objectContaining({
