@@ -14,12 +14,14 @@ import { Box, Stack, Typography, Button, CircularProgress, TextField, Avatar, Ic
 import { useLocation } from 'wouter';
 import GraphicEq from '@mui/icons-material/GraphicEq';
 import OpenInFull from '@mui/icons-material/OpenInFull';
+import OpenInNew from '@mui/icons-material/OpenInNew';
 import GroupAdd from '@mui/icons-material/GroupAdd';
 import ContentCopy from '@mui/icons-material/ContentCopy';
 import Check from '@mui/icons-material/Check';
 import Download from '@mui/icons-material/Download';
 import Close from '@mui/icons-material/Close';
 import { apiRequest } from '@/lib/queryClient';
+import { EASEVERSE_APP_URL } from '@/lib/easeverse';
 import { useTeamAccess } from '@/hooks/useTeamAccess';
 import { ws } from '../workspaceTheme';
 import { wsIcon } from '../crewIcons';
@@ -108,6 +110,15 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     catch (e: any) { wsAlert(e?.message || 'Kunne ikke lage paringskode'); }
     finally { setPtBusy(false); }
   };
+  const ptSetupHandled = useRef(false);
+  useEffect(() => {
+    if (ptSetupHandled.current || !isReal) return;
+    if (new URLSearchParams(window.location.search).get('setup') !== 'protools') return;
+    ptSetupHandled.current = true;
+    openPtDialog();
+    // Deep-link is intentionally handled once per mount; callbacks use current state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReal]);
   const unlinkPt = async () => {
     if (ptBusy || !await wsConfirm('Koble fra Pro Tools-companionen på denne maskinen?')) return; setPtBusy(true);
     try { await apiRequest(`/api/protools/web/unlink-device`, { method: 'POST' }); setPtCode(null); loadPt(); }
@@ -202,12 +213,16 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
 
   return (
     <Box sx={{ maxWidth: 920, mx: 'auto' }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="flex-end" sx={{ mb: 2 }}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'flex-end' }} spacing={1.5} sx={{ mb: 2 }}>
         <Box>
           <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Sound Room</Typography>
           <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Lyd-review for prosjektet — versjoner, tidsstemplede tilbakemeldinger, A/B-compare og leveranse. Samme «Universal Showcase»-rom klienten/bandet får.</Typography>
         </Box>
-        {roomId && <Button variant="contained" startIcon={<OpenInFull sx={{ fontSize: 17 }} />} onClick={openRoom} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Åpne lydrommet</Button>}
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          <Button component="a" href={EASEVERSE_APP_URL} target="_blank" rel="noopener noreferrer" variant="outlined" startIcon={<OpenInNew sx={{ fontSize: 16 }} />}
+            sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>Åpne EaseVerse</Button>
+          {roomId && <Button variant="contained" startIcon={<OpenInFull sx={{ fontSize: 17 }} />} onClick={openRoom} sx={{ bgcolor: ws.accent, color: ws.accentContrast, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: ws.accentHover } }}>Åpne lydrommet</Button>}
+        </Stack>
       </Stack>
 
       {err && <WsCard sx={{ mb: 2, borderColor: ws.redSoft }}><Typography sx={{ fontSize: 13, color: ws.red }}>{err}</Typography></WsCard>}

@@ -38,6 +38,11 @@ import type express from "express";
 import crypto from "crypto";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import {
+  pushProToolsSyncToEaseVerse,
+  type EaseVerseProToolsMarker,
+  type EaseVerseProToolsSyncResult,
+} from "./easeverse-protools-sync.js";
 import { broadcastSoundRoomUpdated } from "./sound-room-events";
 
 export interface ProToolsCompanionDeps {
@@ -183,8 +188,48 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
 
   // Sesjon eid av companion-bruker (eller 404)
   async function ownedSession(uid: string, sessionId: string): Promise<any | null> {
-    const r = await pool.query(`SELECT * FROM protools_companion_sessions WHERE id = $1::uuid AND user_id = $2 LIMIT 1`, [sessionId, uid]).catch(() => ({ rows: [] }));
+    const r = await pool.query(
+      `SELECT s.*, COALESCE(ar.external_track_id, s.easeverse_track_id) AS easeverse_external_track_id,
+              COALESCE(s.tempo, t.bpm) AS easeverse_bpm
+         FROM protools_companion_sessions s
+         LEFT JOIN audio_review_projects ar ON ar.id = s.audio_review_project_id
+         LEFT JOIN easeverse_tracks t ON t.id::text = s.easeverse_track_id AND t.user_id = s.user_id
+        WHERE s.id = $1::uuid AND s.user_id = $2 LIMIT 1`,
+      [sessionId, uid],
+    ).catch(() => ({ rows: [] }));
     return r.rows[0] || null;
+  }
+
+  async function mirrorSessionToEaseVerse(
+    sess: any,
+    markers?: EaseVerseProToolsMarker[],
+    bpm?: number | null,
+  ): Promise<EaseVerseProToolsSyncResult> {
+    if (!sess.easeverse_track_id) {
+      return { configured: false, synced: false, reason: "track_not_linked" };
+    }
+    let snapshot = markers;
+    if (!snapshot) {
+      const rows = await pool.query(
+        `SELECT name, start_seconds, end_seconds, timecode, color
+           FROM protools_companion_markers
+          WHERE session_id = $1::uuid ORDER BY order_index ASC, start_seconds ASC`,
+        [sess.id],
+      ).catch(() => ({ rows: [] }));
+      snapshot = rows.rows.map((row: any) => ({
+        name: String(row.name || "Markør"),
+        startSeconds: Number(row.start_seconds) || 0,
+        ...(Number.isFinite(Number(row.end_seconds)) ? { endSeconds: Number(row.end_seconds) } : {}),
+        ...(row.timecode ? { timecode: String(row.timecode) } : {}),
+        ...(row.color ? { color: String(row.color) } : {}),
+      }));
+    }
+    return pushProToolsSyncToEaseVerse({
+      externalTrackId: String(sess.easeverse_external_track_id || sess.easeverse_track_id),
+      projectId: sess.audio_review_project_id ? String(sess.audio_review_project_id) : undefined,
+      bpm: bpm ?? numOrNull(sess.easeverse_bpm) ?? numOrNull(sess.tempo) ?? undefined,
+      markers: snapshot ?? [],
+    });
   }
 
   // Finn-eller-opprett audio_review_project for en EaseVerse-track (speiler link-easeverse).
@@ -378,16 +423,25 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     const markers = Array.isArray(req.body?.markers) ? req.body.markers : [];
     await pool.query(`DELETE FROM protools_companion_markers WHERE session_id = $1::uuid`, [sess.id]).catch(() => {});
     let n = 0;
+    const markerSnapshot: EaseVerseProToolsMarker[] = [];
     for (const m of markers) {
       const start = Number(m?.startSeconds);
       if (!isFinite(start)) continue;
-      await pool.query(
+      const marker: EaseVerseProToolsMarker = {
+        name: String(m?.name || `Markør ${n + 1}`).slice(0, 200),
+        startSeconds: start,
+        ...(isFinite(Number(m?.endSeconds)) ? { endSeconds: Number(m.endSeconds) } : {}),
+        ...(m?.timecode ? { timecode: String(m.timecode).slice(0, 24) } : {}),
+        ...(m?.color ? { color: String(m.color).slice(0, 16) } : {}),
+      };
+      const inserted = await pool.query(
         `INSERT INTO protools_companion_markers (session_id, name, start_seconds, end_seconds, timecode, color, order_index)
          VALUES ($1::uuid,$2,$3,$4,$5,$6,$7)`,
-        [sess.id, String(m?.name || `Markør ${n + 1}`).slice(0, 200), start,
-         isFinite(Number(m?.endSeconds)) ? Number(m.endSeconds) : null,
-         m?.timecode ? String(m.timecode).slice(0, 24) : null, m?.color ? String(m.color).slice(0, 16) : null, n],
-      ).catch(() => {}); n++;
+        [sess.id, marker.name, marker.startSeconds, marker.endSeconds ?? null,
+         marker.timecode ?? null, marker.color ?? null, n],
+      ).then(() => true).catch(() => false);
+      if (!inserted) continue;
+      markerSnapshot.push(marker); n++;
     }
     await pool.query(`UPDATE protools_companion_sessions SET last_activity = NOW(), updated_at = NOW() WHERE id = $1::uuid`, [sess.id]).catch(() => {});
     // Speil til gjeldende review-versjon hvis koblet.
@@ -396,7 +450,8 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
       const vid = await currentVersionId(sess.audio_review_project_id);
       if (vid) syncedSections = await syncMarkersToVersion(sess.id, vid);
     }
-    res.json({ markersStored: n, sectionsSynced: syncedSections });
+    const easeverseSync = await mirrorSessionToEaseVerse(sess, markerSnapshot);
+    res.json({ markersStored: n, sectionsSynced: syncedSections, easeverseSync });
   });
 
   // POST /api/protools/sessions/:id/metadata — { tempo?, keySignature?, timeSignature?, sampleRate?, bitDepth?, tracks?:[{name,type}] }
@@ -421,7 +476,12 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
         [sess.easeverse_track_id, numOrNull(req.body?.tempo), strOrNull(req.body?.keySignature, 24), d.userId],
       ).catch(() => {});
     }
-    res.json({ ok: true });
+    // Session Info-watcher sender metadata rett etter markørene. Speil bare på
+    // nytt når tempo faktisk endres, så én filendring ikke gir doble API-kall.
+    const easeverseSync = req.body?.tempo != null
+      ? await mirrorSessionToEaseVerse(sess, undefined, numOrNull(req.body.tempo))
+      : undefined;
+    res.json({ ok: true, ...(easeverseSync ? { easeverseSync } : {}) });
   });
 
   // POST /api/protools/sessions/:id/playhead — { timecode?, seconds?, isPlaying? } (best-effort live)
