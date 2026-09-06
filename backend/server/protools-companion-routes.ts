@@ -228,7 +228,7 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
       externalTrackId: String(sess.easeverse_external_track_id || sess.easeverse_track_id),
       projectId: sess.audio_review_project_id ? String(sess.audio_review_project_id) : undefined,
       bpm: bpm ?? numOrNull(sess.easeverse_bpm) ?? numOrNull(sess.tempo) ?? undefined,
-      markers: snapshot,
+      markers: snapshot ?? [],
     });
   }
 
