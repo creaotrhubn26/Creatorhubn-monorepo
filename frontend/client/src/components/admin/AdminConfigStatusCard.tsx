@@ -33,6 +33,7 @@ import {
   Settings as ConfigIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
+import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { StatusChip } from './design-system';
 
 interface ConfigCheck {
@@ -59,6 +60,7 @@ const STATUS_LABEL: Record<string, { label: string; color: 'success' | 'warning'
 };
 
 const AdminConfigStatusCard: React.FC = () => {
+  const { auth } = useEnhancedMasterIntegration();
   const [data, setData] = useState<ConfigCheck | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +69,8 @@ const AdminConfigStatusCard: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const r: any = await apiRequest('/api/admin/config-check');
+      const headers = await auth.getAuthHeader();
+      const r: any = await apiRequest('/api/admin/config-check', { headers });
       setData(r);
     } catch (e: any) {
       setError(e?.message || 'Kunne ikke hente config-status');
