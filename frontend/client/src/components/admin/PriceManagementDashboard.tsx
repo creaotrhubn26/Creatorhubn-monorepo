@@ -116,7 +116,11 @@ interface CreatorHubEmailTemplateRow {
     | 'creatorhub_account_activated'
     | 'creatorhub_payment_failed'
     | 'creatorhub_payment_recovered'
-    | 'creatorhub_subscription_cancelled';
+    | 'creatorhub_subscription_cancelled'
+    | 'creatorhub_access_request_received'
+    | 'creatorhub_access_request_approved'
+    | 'creatorhub_access_request_rejected'
+    | 'creatorhub_tester_access_activated';
   name: string;
   description: string;
   subject: string;
@@ -420,6 +424,52 @@ const defaultCreatorHubEmailSettings: CreatorHubEmailSettings = {
         footerNote:
           'Dette er en systemmelding. Hvis du trenger hjelp, kan du kontakte oss via supportsiden i CreatorHub.',
       },
+      {
+        id: 'creatorhub_access_request_received',
+        name: 'Tilgangsforespørsel mottatt',
+        description: 'Sendes til søkeren når en CreatorHub- eller prototype-tester-søknad er registrert.',
+        subject: 'Vi har mottatt CreatorHub-søknaden din',
+        title: 'Søknaden din er mottatt',
+        body:
+          '<p>Hei {{recipientName}},</p><p>Takk for at du søkte om tilgang til CreatorHub som <strong>{{professionName}}</strong>.</p><p>CreatorHub-teamet gjennomgår søknaden personlig. Du får svar på e-post innen <strong>1–3 virkedager</strong>.</p>',
+        footerNote:
+          'Du trenger ikke sende inn søknaden på nytt. Svar på denne e-posten hvis du vil legge til noe.',
+      },
+      {
+        id: 'creatorhub_access_request_approved',
+        name: 'Tilgangsforespørsel godkjent',
+        description: 'Sendes når en prototype-tester er godkjent og skal lese vilkårene og signere NDA.',
+        subject: 'Du er godkjent som prototype-tester i CreatorHub',
+        title: 'Søknaden din er godkjent',
+        body:
+          '<p>Hei {{recipientName}},</p><p>Vi har godkjent søknaden din til CreatorHub sitt prototype-testerprogram.</p><p>Programmet varer i <strong>{{programDurationWeeks}} uker</strong>. Før tilgangen aktiveres må du lese programvilkårene og signere NDA-en via knappen under.</p>',
+        ctaLabel: 'Les vilkår og signer',
+        footerNote:
+          'Den personlige lenken utløper om {{inviteExpiresDays}} dager. Svar på denne e-posten hvis du trenger hjelp.',
+      },
+      {
+        id: 'creatorhub_access_request_rejected',
+        name: 'Tilgangsforespørsel avslått',
+        description: 'Sendes når teamet avslår en CreatorHub- eller prototype-tester-søknad.',
+        subject: 'En oppdatering om CreatorHub-søknaden din',
+        title: 'Takk for interessen',
+        body:
+          '<p>Hei {{recipientName}},</p><p>Takk for at du søkte om tilgang til CreatorHub.</p><p>Vi har dessverre ikke anledning til å tilby deg plass i prototype-testerprogrammet denne gangen. Du er velkommen til å søke igjen ved en senere opptaksrunde.</p>',
+        footerNote:
+          'Har du spørsmål til avgjørelsen, kan du svare direkte på denne e-posten.',
+      },
+      {
+        id: 'creatorhub_tester_access_activated',
+        name: 'Prototype-tilgang aktivert',
+        description: 'Sendes etter at testeren har signert NDA og kontoen er aktivert.',
+        subject: 'Tilgangen din til CreatorHub er aktivert',
+        title: 'Velkommen som prototype-tester',
+        body:
+          '<p>Hei {{recipientName}},</p><p>NDA-en og programvilkårene er registrert, og CreatorHub-kontoen din er nå aktiv.</p><p>Logg inn med <strong>{{recipientEmail}}</strong>. Testperioden varer til <strong>{{programEndsAt}}</strong>.</p>',
+        ctaLabel: 'Logg inn i CreatorHub',
+        footerNote:
+          'Svar på denne e-posten hvis du trenger hjelp med innlogging eller tilgang.',
+      },
     ],
   },
 };
@@ -429,6 +479,10 @@ function getCreatorHubTemplateSenderKind(
 ): CreatorHubEmailSenderKind {
   switch (templateId) {
     case 'creatorhub_account_activated':
+    case 'creatorhub_access_request_received':
+    case 'creatorhub_access_request_approved':
+    case 'creatorhub_access_request_rejected':
+    case 'creatorhub_tester_access_activated':
       return 'welcome';
     case 'creatorhub_subscription_cancelled':
       return 'system';
@@ -1937,7 +1991,7 @@ export default function PriceManagementDashboard({
                       CreatorHub e-postmaler
                     </Typography>
                     <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
-                      Samme settings brukes i checkout, webhook og i all automatisk billing-kommunikasjon.
+                      Samme oppsett brukes i checkout, webhook og i automatisk betalings- og tilgangskommunikasjon.
                     </Typography>
                   </Box>
                   <AdminButton
@@ -2151,7 +2205,7 @@ export default function PriceManagementDashboard({
                     </Typography>
                   </Box>
                   <Chip
-                    label={`${activeBillingTemplateCount} aktive billing-maler`}
+                    label={`${activeBillingTemplateCount} aktive automatiske maler`}
                     sx={{ bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)', fontWeight: 700 }}
                   />
                 </Stack>
@@ -2835,7 +2889,7 @@ export default function PriceManagementDashboard({
               label="Body (HTML tillatt)"
               value={editingEmailTemplateBody}
               onChange={(event) => setEditingEmailTemplateBody(event.target.value)}
-              helperText="Bruk variabler som {{recipientName}}, {{planName}}, {{amountLabel}} og {{billingCycleLabel}}."
+              helperText="Bruk variabler som {{recipientName}}, {{recipientEmail}}, {{professionName}}, {{planName}}, {{amountLabel}}, {{programDurationWeeks}}, {{inviteExpiresDays}} og {{programEndsAt}}."
             />
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 6 }}>

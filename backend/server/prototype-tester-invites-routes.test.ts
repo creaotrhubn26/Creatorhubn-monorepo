@@ -1,5 +1,10 @@
+import express from "express";
+import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createInviteFromApprovedRequest } from "./prototype-tester-invites-routes.js";
+import {
+  createInviteFromApprovedRequest,
+  setupPrototypeTesterInvitesRoutes,
+} from "./prototype-tester-invites-routes.js";
 
 const { sendTransactionalEmailMock, emailConfiguredMock } = vi.hoisted(() => ({
   sendTransactionalEmailMock: vi.fn(),
@@ -107,5 +112,148 @@ describe("prototype tester invitation delivery", () => {
       emailDelivery: null,
     });
     expect(sendTransactionalEmailMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the injected CreatorHub template sender for approved applications", async () => {
+    const query = vi.fn().mockImplementation(async (statement: unknown) => {
+      const sql = String(statement);
+      if (sql.includes("SELECT id, token FROM prototype_tester_invites")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (sql.includes("INSERT INTO prototype_tester_invites")) {
+        return {
+          rows: [{ id: "template-invite-id", token: "template-token" }],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const sendApprovalEmail = vi.fn().mockResolvedValue({
+      sent: true,
+      provider: "resend",
+      reason: null,
+      messageId: "template-email-id",
+    });
+
+    const result = await createInviteFromApprovedRequest(
+      { query },
+      "44444444-4444-4444-8444-444444444444",
+      "template.tester@example.com",
+      "Template Tester",
+      "daniel-admin",
+      [],
+      "https://creatorhubn.com",
+      "tester_all_access",
+      [],
+      1,
+      "photographer",
+      "Template AS",
+      sendApprovalEmail,
+    );
+
+    expect(result?.emailDelivery).toMatchObject({
+      sent: true,
+      provider: "resend",
+      messageId: "template-email-id",
+    });
+    expect(sendApprovalEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipientEmail: "template.tester@example.com",
+        recipientName: "Template Tester",
+        inviteRequestId: "44444444-4444-4444-8444-444444444444",
+        profession: "photographer",
+        company: "Template AS",
+        programDurationWeeks: 12,
+        inviteExpiresDays: 14,
+        ctaUrl: expect.stringContaining("/track/click/"),
+        trackingPixelUrl: expect.stringContaining("/track/open/"),
+      }),
+    );
+    expect(sendTransactionalEmailMock).not.toHaveBeenCalled();
+  });
+
+  it("sends access-activated email after NDA acceptance and account provisioning", async () => {
+    const programEndsAt = new Date("2027-01-31T12:00:00.000Z");
+    const acceptedRow = {
+      id: "activated-invite-id",
+      invite_request_id: "55555555-5555-4555-8555-555555555555",
+      token: "accept-token",
+      email: "activated.tester@example.com",
+      name: "Activated Tester",
+      status: "accepted",
+      expires_at: new Date("2027-02-01T12:00:00.000Z"),
+      program_started_at: new Date("2026-11-01T12:00:00.000Z"),
+      program_ends_at: programEndsAt,
+      member_profession: "videographer",
+      member_company: "Activated AS",
+      testing_areas: [],
+      granted_features: [],
+    };
+    const query = vi.fn().mockImplementation(async (statement: unknown) => {
+      const sql = String(statement);
+      if (sql.includes("SELECT id, status, expires_at")) {
+        return {
+          rows: [{
+            id: acceptedRow.id,
+            status: "pending",
+            expires_at: new Date("2099-01-01T00:00:00.000Z"),
+          }],
+          rowCount: 1,
+        };
+      }
+      if (sql.includes("SELECT master_invite_id")) {
+        return { rows: [{ master_invite_id: null }], rowCount: 1 };
+      }
+      if (sql.includes("RETURNING *")) {
+        return { rows: [acceptedRow], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    const sendAccessActivatedEmail = vi.fn().mockResolvedValue({
+      sent: true,
+      provider: "resend",
+      reason: null,
+      messageId: "activated-email-id",
+    });
+    const app = express();
+    app.use(express.json());
+    setupPrototypeTesterInvitesRoutes({
+      app,
+      pool: { query },
+      getPricingUserId: () => "",
+      requireUserSession: () => true,
+      requireAdminSession: () => true,
+      provisionTesterAccount: vi.fn().mockResolvedValue({ id: "tester-user-id" }),
+      sendAccessActivatedEmail,
+    });
+
+    const response = await request(app)
+      .post("/api/prototype-tester-invites/accept-token/accept")
+      .send({
+        ndaName: "Activated Tester",
+        acceptedProgramTerms: true,
+        programTermsVersion: "1.0",
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      success: true,
+      accountCreated: true,
+      accessActivatedEmailDelivery: {
+        sent: true,
+        provider: "resend",
+        messageId: "activated-email-id",
+      },
+    });
+    expect(sendAccessActivatedEmail).toHaveBeenCalledWith({
+      recipientEmail: acceptedRow.email,
+      recipientName: "Activated Tester",
+      loginUrl: "https://creatorhubn.com/login",
+      inviteRequestId: acceptedRow.invite_request_id,
+      inviteId: acceptedRow.id,
+      profession: acceptedRow.member_profession,
+      company: acceptedRow.member_company,
+      programEndsAt,
+    });
   });
 });
