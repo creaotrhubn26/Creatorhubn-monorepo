@@ -19,13 +19,19 @@ pub struct ParsedSession {
     pub sample_rate: Option<f64>,
     pub bit_depth: Option<i64>,
     pub tracks: Vec<String>,
+    pub tempo: Option<f64>,
+    pub key_signature: Option<String>,
+    pub time_signature: Option<String>,
     pub markers: Vec<Marker>,
 }
 
 /// Fjerner all whitespace og upper-caser — brukes til å kjenne igjen de
 /// bokstav-spredte seksjons-titlene («M A R K E R S  L I S T I N G»).
 fn normalize_heading(line: &str) -> String {
-    line.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_uppercase()
+    line.chars()
+        .filter(|c| !c.is_whitespace())
+        .collect::<String>()
+        .to_uppercase()
 }
 
 fn field_after_colon<'a>(line: &'a str, key: &str) -> Option<&'a str> {
@@ -103,7 +109,10 @@ pub fn parse_session_info(text: &str) -> ParsedSession {
             marker_header_seen = false;
             continue;
         }
-        if norm.contains("FILESINSESSION") || norm.contains("PLUGINLISTING") || norm.contains("CLIPSLISTING") {
+        if norm.contains("FILESINSESSION")
+            || norm.contains("PLUGINLISTING")
+            || norm.contains("CLIPSLISTING")
+        {
             section = Section::Header; // nøytral; vi plukker ikke felter herfra
             continue;
         }
@@ -123,6 +132,29 @@ pub fn parse_session_info(text: &str) -> ParsedSession {
                 if out.bit_depth.is_none() {
                     if let Some(v) = field_after_colon(line, "BIT DEPTH") {
                         out.bit_depth = parse_leading_number(v).map(|n| n as i64);
+                    }
+                }
+                if out.tempo.is_none() {
+                    if let Some(v) = field_after_colon(line, "TEMPO") {
+                        out.tempo = parse_leading_number(v);
+                    }
+                }
+                if out.key_signature.is_none() {
+                    if let Some(v) = field_after_colon(line, "KEY SIGNATURE") {
+                        let value = v.trim();
+                        if !value.is_empty() {
+                            out.key_signature = Some(value.to_string());
+                        }
+                    }
+                }
+                if out.time_signature.is_none() {
+                    let value = field_after_colon(line, "TIME SIGNATURE")
+                        .or_else(|| field_after_colon(line, "METER"));
+                    if let Some(v) = value {
+                        let candidate = v.split_whitespace().next().unwrap_or("").trim();
+                        if candidate.contains('/') && candidate.len() <= 12 {
+                            out.time_signature = Some(candidate.to_string());
+                        }
                     }
                 }
             }
@@ -185,7 +217,10 @@ pub fn parse_session_info(text: &str) -> ParsedSession {
                 }
 
                 if let Some(s) = start_seconds {
-                    out.markers.push(Marker { name, start_seconds: s });
+                    out.markers.push(Marker {
+                        name,
+                        start_seconds: s,
+                    });
                 }
             }
         }
@@ -203,7 +238,11 @@ fn timecode_to_seconds(tc: &str, fps: f64) -> Option<f64> {
     let h: f64 = parts[0].trim().parse().ok()?;
     let m: f64 = parts[1].trim().parse().ok()?;
     let s: f64 = parts[2].trim().parse().ok()?;
-    let f: f64 = if parts.len() >= 4 { parts[3].trim().parse().unwrap_or(0.0) } else { 0.0 };
+    let f: f64 = if parts.len() >= 4 {
+        parts[3].trim().parse().unwrap_or(0.0)
+    } else {
+        0.0
+    };
     let fps = if fps > 0.0 { fps } else { 25.0 };
     Some(h * 3600.0 + m * 60.0 + s + f / fps)
 }
@@ -216,6 +255,9 @@ mod tests {
 SAMPLE RATE:\t48000.000000\n\
 BIT DEPTH:\t24-bit\n\
 SESSION START TIMECODE:\t01:00:00:00\n\
+TEMPO:\t124.500 BPM\n\
+KEY SIGNATURE:\tF# minor\n\
+TIME SIGNATURE:\t7/8\n\
 TIMECODE FORMAT:\t25 Frame\n\
 # OF AUDIO TRACKS:\t2\n\
 \n\
@@ -237,6 +279,9 @@ M A R K E R S  L I S T I N G\n\
         assert_eq!(p.session_name.as_deref(), Some("Running Home"));
         assert_eq!(p.sample_rate, Some(48000.0));
         assert_eq!(p.bit_depth, Some(24));
+        assert_eq!(p.tempo, Some(124.5));
+        assert_eq!(p.key_signature.as_deref(), Some("F# minor"));
+        assert_eq!(p.time_signature.as_deref(), Some("7/8"));
     }
 
     #[test]
