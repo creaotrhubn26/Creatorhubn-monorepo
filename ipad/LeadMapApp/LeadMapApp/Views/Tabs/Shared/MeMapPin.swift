@@ -11,15 +11,13 @@
 //   - Ved offRoute: "AV RUTE" alarm-label under pinen
 //   - onRoute-status gir en subtil grønn glow
 //
-// Fallback-hierarki:
-//   1) `portrait-<email-local>` asset finnes → SmartPortrait
-//   2) Ellers → initialer på farget bakgrunn (samme som avatar-badges)
+// Avatar-kilde: serverprofilens URL, med initialer som robust fallback.
 
 import SwiftUI
 
 struct MeMapPin: View {
     let initials: String
-    let email: String?
+    let profileImageURL: URL?
 
     /// Puls-animasjon for outer-ring.
     @State private var pulse: Bool = false
@@ -29,14 +27,6 @@ struct MeMapPin: View {
 
     /// Adherence-observering: RouteTracker publiserer @Observable state.
     @Bindable private var routeTracker = RouteTracker.shared
-
-    private var portraitAsset: String? {
-        guard let email, let local = email.split(separator: "@").first else {
-            return nil
-        }
-        let candidate = "portrait-\(local.lowercased())"
-        return UIImage(named: candidate) != nil ? candidate : nil
-    }
 
     /// Farge-tema — kombinerer adherence + motion.
     /// Adherence har prioritet (rød alarm slår grønn bevegelse).
@@ -127,12 +117,8 @@ struct MeMapPin: View {
                 .fill(accentColor)
                 .frame(width: 40, height: 40)
 
-            // Portrait ELLER initialer-bakgrunn
-            if let asset = portraitAsset {
-                SmartPortrait(assetName: asset)
-                    .frame(width: 36, height: 36)
-                    .clipShape(Circle())
-            } else {
+            // Server-avatar med initialer ved tom URL eller nettverksfeil.
+            ZStack {
                 Text(initials)
                     .font(.appScaled(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
@@ -145,6 +131,17 @@ struct MeMapPin: View {
                         ),
                         in: Circle()
                     )
+                if let profileImageURL {
+                    AsyncImage(url: profileImageURL) { phase in
+                        if case .success(let image) = phase {
+                            image.resizable().scaledToFill()
+                        } else {
+                            Color.clear
+                        }
+                    }
+                    .frame(width: 36, height: 36)
+                    .clipShape(Circle())
+                }
             }
 
             // Retnings-arrow ved bevegelse — roterer med heading

@@ -67,7 +67,7 @@ struct NearbyTeamView: View {
         Map(position: $camera, interactionModes: [.pan, .zoom]) {
             if let coord = KartLocationManager.shared.currentCoordinate {
                 Annotation("Meg", coordinate: coord) {
-                    MeMapPin(initials: appState.initials, email: appState.userEmail)
+                    MeMapPin(initials: appState.initials, profileImageURL: appState.profileImageURL)
                 }
                 MapCircle(center: coord, radius: radiusKm * 1000)
                     .foregroundStyle(HUDPalette.blue.opacity(0.10))

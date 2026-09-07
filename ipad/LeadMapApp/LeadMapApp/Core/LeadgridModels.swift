@@ -388,12 +388,147 @@ struct MyProfile: Codable, Identifiable {
 
     var id: String { userId }
     var fullName: String {
-        [firstName, lastName].compactMap { $0 }.joined(separator: " ")
+        [firstName, lastName]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 }
 
 struct MyProfileResponse: Codable {
     let profile: MyProfile
+}
+
+enum ProfileField: String, CaseIterable, Hashable, Sendable {
+    case firstName = "first_name"
+    case lastName = "last_name"
+    case phone
+    case profession
+    case form
+    case profileImage = "profile_image"
+}
+
+struct ProfileDraft: Equatable, Sendable {
+    static let firstNameMaxLength = 80
+    static let lastNameMaxLength = 80
+    static let phoneMaxLength = 32
+    static let professionMaxLength = 120
+
+    var firstName: String
+    var lastName: String
+    var phone: String
+    var profession: String
+
+    init(
+        firstName: String = "",
+        lastName: String = "",
+        phone: String = "",
+        profession: String = ""
+    ) {
+        self.firstName = firstName
+        self.lastName = lastName
+        self.phone = phone
+        self.profession = profession
+    }
+
+    init(profile: MyProfile?) {
+        self.init(
+            firstName: profile?.firstName ?? "",
+            lastName: profile?.lastName ?? "",
+            phone: profile?.phone ?? "",
+            profession: profile?.profession ?? ""
+        )
+    }
+
+    var normalized: ProfileDraft {
+        ProfileDraft(
+            firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
+            lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines),
+            phone: phone.trimmingCharacters(in: .whitespacesAndNewlines),
+            profession: profession.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+    }
+
+    var validationErrors: [ProfileField: String] {
+        let value = normalized
+        var errors: [ProfileField: String] = [:]
+        validateText(value.firstName, field: .firstName, maximum: Self.firstNameMaxLength, errors: &errors)
+        validateText(value.lastName, field: .lastName, maximum: Self.lastNameMaxLength, errors: &errors)
+        validateText(value.profession, field: .profession, maximum: Self.professionMaxLength, errors: &errors)
+
+        if value.phone.count > Self.phoneMaxLength {
+            errors[.phone] = "Telefon kan ha maksimalt \(Self.phoneMaxLength) tegn."
+        } else if !value.phone.isEmpty {
+            let allowed = CharacterSet(charactersIn: "+0123456789().- ")
+            let containsInvalid = value.phone.unicodeScalars.contains { !allowed.contains($0) }
+            let digitCount = value.phone.unicodeScalars.filter(CharacterSet.decimalDigits.contains).count
+            if containsInvalid || !(5...15).contains(digitCount) {
+                errors[.phone] = "Skriv et gyldig telefonnummer."
+            }
+        }
+        return errors
+    }
+
+    var updateRequest: ProfileUpdateRequest {
+        let value = normalized
+        return ProfileUpdateRequest(
+            firstName: value.firstName.nilIfEmpty,
+            lastName: value.lastName.nilIfEmpty,
+            phone: value.phone.nilIfEmpty,
+            profession: value.profession.nilIfEmpty
+        )
+    }
+
+    private func validateText(
+        _ value: String,
+        field: ProfileField,
+        maximum: Int,
+        errors: inout [ProfileField: String]
+    ) {
+        if value.count > maximum {
+            errors[field] = "Kan ha maksimalt \(maximum) tegn."
+        } else if value.rangeOfCharacter(from: .controlCharacters) != nil {
+            errors[field] = "Inneholder ugyldige kontrolltegn."
+        }
+    }
+}
+
+struct ProfileUpdateRequest: Encodable, Equatable, Sendable {
+    let firstName: String?
+    let lastName: String?
+    let phone: String?
+    let profession: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case firstName = "first_name"
+        case lastName = "last_name"
+        case phone
+        case profession
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try Self.encode(firstName, forKey: .firstName, into: &container)
+        try Self.encode(lastName, forKey: .lastName, into: &container)
+        try Self.encode(phone, forKey: .phone, into: &container)
+        try Self.encode(profession, forKey: .profession, into: &container)
+    }
+
+    private static func encode(
+        _ value: String?,
+        forKey key: CodingKeys,
+        into container: inout KeyedEncodingContainer<CodingKeys>
+    ) throws {
+        if let value {
+            try container.encode(value, forKey: key)
+        } else {
+            try container.encodeNil(forKey: key)
+        }
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
 // ============================================================

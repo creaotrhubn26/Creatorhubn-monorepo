@@ -296,7 +296,7 @@ struct LeadgridAIUsageView: View {
             // Nye cases fra APIError-rapporterings-fix: LocalizedError gir
             // konkrete brukermeldinger på norsk, så fall til den.
             case .networkFailure, .decodingFailure, .unauthorized, .tooManyRequests,
-                 .duplicateLead, .idempotencyConflict:
+                 .duplicateLead, .idempotencyConflict, .validation:
                 return api.errorDescription ?? error.localizedDescription
             }
         }

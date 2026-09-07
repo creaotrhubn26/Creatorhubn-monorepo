@@ -48,6 +48,7 @@ import { load as loadHtml } from "cheerio";
 import Stripe from "stripe";
 import { creditFromStripeSession } from "./ai-credits";
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
@@ -2569,6 +2570,7 @@ app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
 {
   const r2cfg = buildCmsR2Config();
   let uploadImage: ((buf: Buffer, mime: string, key: string) => Promise<string>) | undefined;
+  let deleteImage: ((key: string) => Promise<void>) | undefined;
   if (r2cfg.enabled && r2cfg.endpoint && r2cfg.accessKeyId && r2cfg.secretAccessKey && r2cfg.bucket) {
     const client = new S3Client({
       region: "auto",
@@ -2588,7 +2590,11 @@ app.use("/api/role-room", createRoleRoomRouter(pool, activeSessions));
       }));
       return publicBase ? `${publicBase}/${key}` : `${r2cfg.endpoint}/${bucket}/${key}`;
     };
+    deleteImage = async (key) => {
+      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+    };
   }
+  registerLeadMapMeProfileRoutes({ app, pool, activeSessions, uploadImage, deleteImage });
   registerRoleRoomProfileRoutes(app, { pool, activeSessions, uploadImage, requireAdminSession });
 }
 registerRoleRoomProjectTabConfigRoutes(app, { pool, activeSessions });
@@ -25453,7 +25459,7 @@ registerLeadMapOrgRoutes({ app, pool, activeSessions });
 registerLeadMapProfileRoutes({ app, pool, activeSessions });
 // Lead Map ↔ Granulær tillatelses-styring (RBAC + per-bruker overstyringer)
 registerLeadMapPermissionRoutes({ app, pool, activeSessions });
-registerLeadMapMeProfileRoutes({ app, pool, activeSessions });
+// Self-profile routes are registered below after the shared R2 uploader exists.
 // Lead Map ↔ Logo-fetch fra bedrifts-website (favicon/og-image/apple-touch)
 registerLeadMapLogoRoutes({ app, pool, activeSessions });
 // /me/permissions — effektive tillatelser for innlogget bruker i org
