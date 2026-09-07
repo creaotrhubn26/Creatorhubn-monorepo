@@ -170,7 +170,22 @@ describe("prototype-tester application flow", () => {
       .send(baseBody);
 
     expect(response.status).toBe(201);
-    expect(response.body).toMatchObject({ success: true, status: "pending" });
+    expect(response.body).toMatchObject({
+      success: true,
+      status: "pending",
+      proffAnalysis: {
+        recommendation: "approve",
+        riskLevel: "low",
+        riskScore: 8,
+        screeningSource: "brreg",
+        summary: "Lav risiko",
+      },
+    });
+    expect(screening).toHaveBeenCalledWith(
+      "11111111-1111-4111-8111-111111111111",
+      "974760673",
+      analysis,
+    );
     const insertedValues = query.mock.calls[0][1] as unknown[];
     expect(insertedValues).toContain("[Tester-profesjon: Fotograf]\n\nJeg kan teste ukentlig.");
     expect(notifyAdminsMock).toHaveBeenCalledTimes(1);
@@ -180,6 +195,7 @@ describe("prototype-tester application flow", () => {
         type: "invite_request",
         source: "creatorhubn.com · prototype_tester_pricing",
         relatedId: "11111111-1111-4111-8111-111111111111",
+        summary: expect.stringContaining("Proff: approve/low"),
       }),
     );
   });
