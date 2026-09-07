@@ -15,6 +15,8 @@
  */
 
 import {
+  Suspense,
+  lazy,
   startTransition,
   useCallback,
   useEffect,
@@ -52,21 +54,14 @@ import {
   type WorkspaceItemId,
   type WorkspaceLinkTarget,
 } from './admin-workspace/workspaceItems';
-import { PanelEmpty } from './admin-workspace/panelKit';
 import CommandPalette from './admin-workspace/CommandPalette';
-import KalenderTab from './admin-workspace/KalenderTab';
-import OppgaverTab from './admin-workspace/OppgaverTab';
-import ProsjekterTab from './admin-workspace/ProsjekterTab';
-import DokumenterTab from './admin-workspace/DokumenterTab';
-import FilerTab from './admin-workspace/FilerTab';
-import TeamchatTab from './admin-workspace/TeamchatTab';
-import AutomatiseringerTab from './admin-workspace/AutomatiseringerTab';
-import KundeprosjektTab from './admin-workspace/KundeprosjektTab';
-import HrTab from './admin-workspace/HrTab';
-import InnstillingerTab, {
-  readStoredWorkspacePrefs,
-  type WorkspacePrefs,
-} from './admin-workspace/InnstillingerTab';
+import { resolvePanel, type ResolvedPanel } from './admin-workspace/panels';
+import MobileNavDrawer from './admin-workspace/MobileNavDrawer';
+import { buildNavSections, type NavItem, type NavSection } from './admin-workspace/navSections';
+import { readStoredWorkspacePrefs, type WorkspacePrefs } from './admin-workspace/prefs';
+
+// Teamchat-kolonnen er skjult som default — last den først når den åpnes.
+const TeamchatTab = lazy(() => import('./admin-workspace/TeamchatTab'));
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined';
 import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined';
 import GavelOutlinedIcon from '@mui/icons-material/GavelOutlined';
@@ -105,43 +100,24 @@ import RocketLaunchOutlinedIcon from '@mui/icons-material/RocketLaunchOutlined';
 import SsidChartOutlinedIcon from '@mui/icons-material/SsidChartOutlined';
 import HubOutlinedIcon from '@mui/icons-material/HubOutlined';
 
-import {
-  BusinessPlanTab,
-  FundingAppsTab,
-  InvestorContactsTab,
-  PartnerContactsTab,
-  ActivityLogTab,
-} from './AdminRoom';
-import { IndustryTargetsTab } from '../components/admin/content-marketing/IndustryTargetsTab';
-import { MarketingSegmentsTab } from '../components/admin/content-marketing/MarketingSegmentsTab';
-import { BusinessDnaOnboarding } from '../components/admin/content-marketing/BusinessDnaOnboarding';
-import { MarketingCatalogTab } from '../components/admin/content-marketing/MarketingCatalogTab';
 import AutoAwesomeOutlinedIcon from '@mui/icons-material/AutoAwesomeOutlined';
 import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
-import { ContentMarketingTab } from '../components/admin/content-marketing/ContentMarketingTab';
-import { OperatingSystemTab } from '../components/admin/content-marketing/OperatingSystemTab';
-import { AiCitationTab } from '../components/admin/content-marketing/AiCitationTab';
-import { RoleRoomEconomyTab } from '../components/admin/content-marketing/RoleRoomEconomyTab';
-import { NewsletterStudioTab } from '../components/admin/content-marketing/NewsletterStudioTab';
-import { MigrationsTab } from '../components/role-room/components/admin-room/MigrationsTab';
-import { WhatsNewTab } from '../components/role-room/components/admin-room/WhatsNewTab';
-import MarketingCockpitTab from './admin-room/MarketingCockpitTab';
-import RoleRoomAgentTab from './admin-room/RoleRoomAgentTab';
-import ContentCalendarTab from './admin-room/ContentCalendarTab';
-import { SakerTab } from './admin-workspace/SakerTab';
-import { LeadgridAppWaitlistTab } from './admin-workspace/LeadgridAppWaitlistTab';
 
 import {
   activityLogApi,
   type ActivityLogEntry,
-  workspaceAggregatorApi,
-  workspaceNotificationsApi,
+  type DeadlineItem,
   type WorkspaceNotification,
   type WorkspaceProductScope,
-  type AgendaItem,
-  type DeadlineItem,
   DEADLINE_SOURCE_LABEL,
 } from '../services/adminRoomApi';
+import {
+  queryError,
+  useMarkNotificationSeen,
+  useTodayAgenda,
+  useUpcomingDeadlines,
+  useWorkspaceNotifications,
+} from './admin-workspace/useWorkspaceData';
 import OpenInNewOutlinedIcon from '@mui/icons-material/OpenInNewOutlined';
 
 // ─────────────────────────────────────────────────────────
@@ -184,18 +160,8 @@ const workspaceTheme = createTheme({
 // Sidebar-struktur
 // ─────────────────────────────────────────────────────────
 
-interface NavItem {
-  id: WorkspaceItemId;
-  label: string;
-  icon: ReactNode;
-  badge?: number;
-}
-
-interface NavSection {
-  id: string;
-  label?: string;
-  items: NavItem[];
-}
+// NavItem/NavSection og selve nav-strukturen bor i ./admin-workspace/navSections.tsx,
+// slik at sidebaren og mobil-drawer-en ikke kan komme i utakt.
 
 // ─────────────────────────────────────────────────────────
 // Varsler
@@ -308,80 +274,7 @@ function Sidebar({
   // nåbare via kort-rutenettet på Oversikt. Nå er alle flatene bygget, og
   // grupperingen følger hva du holder på med: daglig arbeid øverst, drift
   // under, så de fagvise teamspacene.
-  const sections: NavSection[] = useMemo(
-    () => [
-      {
-        id: 'main',
-        items: [
-          { id: 'overview', label: 'Oversikt', icon: <DashboardOutlinedIcon /> },
-          {
-            id: 'inbox',
-            label: 'Innboks',
-            icon: <InboxOutlinedIcon />,
-            badge: inboxBadge,
-          },
-          { id: 'cases', label: 'Saker', icon: <GavelOutlinedIcon /> },
-          { id: 'tasks', label: 'Oppgaver', icon: <TaskAltOutlinedIcon /> },
-          { id: 'calendar', label: 'Kalender', icon: <EventOutlinedIcon /> },
-        ],
-      },
-      {
-        id: 'operations',
-        label: 'Drift',
-        items: [
-          { id: 'projects', label: 'Prosjekter', icon: <FolderOpenOutlinedIcon /> },
-          { id: 'kundeprosjekt', label: 'Kundeprosjekt', icon: <GroupsOutlinedIcon /> },
-          { id: 'documents', label: 'Dokumenter', icon: <DescriptionOutlinedIcon /> },
-          { id: 'files', label: 'Filer', icon: <InsertDriveFileOutlinedIcon /> },
-          { id: 'teamchat', label: 'Teamchat', icon: <ChatBubbleOutlineOutlinedIcon /> },
-          { id: 'automations', label: 'Automatiseringer', icon: <AutoFixHighOutlinedIcon /> },
-        ],
-      },
-      {
-        id: 'ledelse-group',
-        label: 'Ledelse',
-        items: [
-          { id: 'business-plan', label: 'Forretningsplan', icon: <ArticleOutlinedIcon /> },
-          { id: 'funding', label: 'Søknader (IN/EU)', icon: <DescriptionOutlinedIcon /> },
-          { id: 'investors', label: 'Investor-pipeline', icon: <LeaderboardOutlinedIcon /> },
-          { id: 'partners', label: 'Samarbeidspartnere', icon: <HubOutlinedIcon /> },
-          { id: 'role-room-economy', label: 'RR Økonomi', icon: <SsidChartOutlinedIcon /> },
-        ],
-      },
-      {
-        id: 'marketing-group',
-        label: 'Markedsføring',
-        items: [
-          { id: 'marketing-cockpit', label: 'Marketing Cockpit', icon: <SsidChartOutlinedIcon /> },
-          { id: 'industry-crm', label: 'Tier-1 outreach', icon: <LeaderboardOutlinedIcon /> },
-          { id: 'marketing-segments', label: 'Målgrupper', icon: <GroupsOutlinedIcon /> },
-          { id: 'newsletter-studio', label: 'Newsletter Studio', icon: <EmailOutlinedIcon /> },
-          { id: 'content-calendar', label: 'Content-kalender', icon: <CampaignOutlinedIcon /> },
-        ],
-      },
-      {
-        id: 'product-group',
-        label: 'Produkt',
-        items: [
-          { id: 'role-room-agent', label: 'Role Room Agent', icon: <SmartToyOutlinedIcon /> },
-          { id: 'operating-system', label: 'Operativsystem', icon: <HubOutlinedIcon /> },
-          { id: 'migrations', label: 'Migrasjoner', icon: <StorageOutlinedIcon /> },
-          { id: 'activity', label: 'Aktivitetslogg', icon: <HistoryOutlinedIcon /> },
-        ],
-      },
-      {
-        id: 'teamspaces',
-        label: 'Teamspaces',
-        items: [
-          { id: 'ledelse', label: 'Ledelse', icon: <BusinessCenterOutlinedIcon /> },
-          { id: 'markedsforing', label: 'Markedsføring', icon: <CampaignOutlinedIcon /> },
-          { id: 'produkt', label: 'Produkt', icon: <ScienceOutlinedIcon /> },
-          { id: 'hr', label: 'HR', icon: <PersonOutlineOutlinedIcon /> },
-        ],
-      },
-    ],
-    [inboxBadge],
-  );
+  const sections: NavSection[] = useMemo(() => buildNavSections(inboxBadge), [inboxBadge]);
 
   const width = collapsed ? 56 : 240;
 
@@ -505,7 +398,7 @@ function Sidebar({
       )}
 
       {/* Nav-seksjoner */}
-      <Box sx={{ flex: 1, overflowY: 'auto', py: 1 }}>
+      <Box component="nav" aria-label="Workspace-navigasjon" sx={{ flex: 1, overflowY: 'auto', py: 1 }}>
         {sections.map((section) => (
           <Box key={section.id} sx={{ mb: 1.5 }}>
             {!collapsed && section.label ? (
@@ -532,26 +425,41 @@ function Sidebar({
                   placement="right"
                   arrow
                 >
+                  {/* component="button": navigasjonen var klikkbare div-er,
+                      altså umulig å nå med tastatur. aria-current gir
+                      skjermlesere hvilken flate som er åpen. */}
                   <Stack
+                    component="button"
+                    type="button"
                     direction="row"
                     alignItems="center"
                     spacing={1.25}
                     onClick={() => onSelect(item.id)}
+                    aria-current={isSelected ? 'page' : undefined}
+                    aria-label={collapsed ? item.label : undefined}
                     sx={{
                       cursor: 'pointer',
+                      width: collapsed ? 'calc(100% - 8px)' : 'calc(100% - 16px)',
+                      font: 'inherit',
+                      textAlign: 'left',
+                      border: 'none',
+                      borderLeft: isSelected
+                        ? `3px solid ${BRAND.accent}`
+                        : '3px solid transparent',
                       px: collapsed ? 1.5 : 1.5,
                       mx: collapsed ? 0.5 : 1,
                       py: 0.75,
                       borderRadius: 1.5,
                       color: isSelected ? BRAND.text : BRAND.textMuted,
                       bgcolor: isSelected ? BRAND.selectedBg : 'transparent',
-                      borderLeft: isSelected
-                        ? `3px solid ${BRAND.accent}`
-                        : '3px solid transparent',
                       transition: 'background-color 120ms ease',
                       '&:hover': {
                         bgcolor: isSelected ? BRAND.selectedBg : BRAND.hoverBg,
                         color: BRAND.text,
+                      },
+                      '&:focus-visible': {
+                        outline: `2px solid ${BRAND.accent}`,
+                        outlineOffset: -2,
                       },
                       '& svg': { fontSize: 20 },
                     }}
@@ -600,12 +508,20 @@ function Sidebar({
       <Box sx={{ borderTop: `1px solid ${BRAND.border}`, py: 0.75 }}>
         <Tooltip title={collapsed ? 'Innstillinger' : ''} placement="right" arrow>
           <Stack
+            component="button"
+            type="button"
             direction="row"
             alignItems="center"
             spacing={1.25}
             onClick={() => onSelect('settings')}
+            aria-current={selected === 'settings' ? 'page' : undefined}
+            aria-label={collapsed ? 'Innstillinger' : undefined}
             sx={{
               cursor: 'pointer',
+              width: collapsed ? 'calc(100% - 8px)' : 'calc(100% - 16px)',
+              font: 'inherit',
+              textAlign: 'left',
+              border: 'none',
               px: 1.5,
               mx: collapsed ? 0.5 : 1,
               py: 0.75,
@@ -613,6 +529,7 @@ function Sidebar({
               color: selected === 'settings' ? BRAND.text : BRAND.textMuted,
               bgcolor: selected === 'settings' ? BRAND.selectedBg : 'transparent',
               '&:hover': { bgcolor: BRAND.hoverBg, color: BRAND.text },
+              '&:focus-visible': { outline: `2px solid ${BRAND.accent}`, outlineOffset: -2 },
               '& svg': { fontSize: 20 },
             }}
           >
@@ -639,17 +556,21 @@ function MobileBottomNav({
   selected,
   onSelect,
   inboxBadge,
+  onOpenMenu,
 }: {
   selected: WorkspaceItemId;
   onSelect: (id: WorkspaceItemId) => void;
   inboxBadge: number;
+  onOpenMenu: () => void;
 }) {
+  // «Meny» navigerte tidligere til `settings` — altså en knapp som lovet
+  // en meny og ga deg innstillinger, mens resten av navigasjonen ikke
+  // fantes på mobil i det hele tatt. Nå åpner den drawer-en.
   const items: NavItem[] = [
     { id: 'overview', label: 'Oversikt', icon: <DashboardOutlinedIcon /> },
     { id: 'inbox', label: 'Innboks', icon: <InboxOutlinedIcon />, badge: inboxBadge },
     { id: 'tasks', label: 'Oppgaver', icon: <TaskAltOutlinedIcon /> },
     { id: 'teamchat', label: 'Chat', icon: <ChatBubbleOutlineOutlinedIcon /> },
-    { id: 'settings', label: 'Meny', icon: <MenuIcon /> },
   ];
 
   return (
@@ -704,6 +625,22 @@ function MobileBottomNav({
           </IconButton>
         );
       })}
+
+      <IconButton
+        onClick={onOpenMenu}
+        aria-label="Åpne meny"
+        sx={{
+          flexDirection: 'column',
+          color: BRAND.textMuted,
+          fontSize: '0.66rem',
+          fontWeight: 600,
+          borderRadius: 1,
+          minWidth: 56,
+        }}
+      >
+        <MenuIcon />
+        <Typography sx={{ fontSize: '0.62rem', mt: 0.25 }}>Meny</Typography>
+      </IconButton>
     </Box>
   );
 }
@@ -754,7 +691,15 @@ function TeamchatPanel({ onClose }: { onClose: () => void }) {
       </Stack>
 
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        <TeamchatTab compact />
+        <Suspense
+          fallback={
+            <Stack alignItems="center" sx={{ flex: 1, py: 4 }}>
+              <CircularProgress size={20} sx={{ color: BRAND.accent }} />
+            </Stack>
+          }
+        >
+          <TeamchatTab compact />
+        </Suspense>
       </Box>
     </Stack>
   );
@@ -766,23 +711,11 @@ function TeamchatPanel({ onClose }: { onClose: () => void }) {
 // ─────────────────────────────────────────────────────────
 
 function TodayAgendaSection({ product }: { product: WorkspaceProductScope }) {
-  const [items, setItems] = useState<AgendaItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setInterval> | null = null;
-    const refresh = () => {
-      workspaceAggregatorApi.todayAgenda(product)
-        .then((rows) => { if (!cancelled) { setItems(rows); setError(null); } })
-        .catch((err) => { if (!cancelled) setError((err as Error).message); })
-        .finally(() => { if (!cancelled) setLoading(false); });
-    };
-    refresh();
-    timer = setInterval(refresh, 60_000);
-    return () => { cancelled = true; if (timer) clearInterval(timer); };
-  }, [product]);
+  // Delt nøkkel med Kalender-flaten: står begge åpne blir det ett kall.
+  const query = useTodayAgenda(product);
+  const items = query.data ?? [];
+  const loading = query.isPending;
+  const error = queryError(query.error, 'Kunne ikke laste agenda');
 
   return (
     <Box>
@@ -925,23 +858,10 @@ function UpcomingDeadlinesSection({
   product: WorkspaceProductScope;
   onNavigate: (target: WorkspaceLinkTarget) => void;
 }) {
-  const [items, setItems] = useState<DeadlineItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setInterval> | null = null;
-    const refresh = () => {
-      workspaceAggregatorApi.upcomingDeadlines(14, product)
-        .then((data) => { if (!cancelled) { setItems(data.items); setError(null); } })
-        .catch((err) => { if (!cancelled) setError((err as Error).message); })
-        .finally(() => { if (!cancelled) setLoading(false); });
-    };
-    refresh();
-    timer = setInterval(refresh, 120_000); // 2 min — frister endrer seg sjeldnere enn agenda
-    return () => { cancelled = true; if (timer) clearInterval(timer); };
-  }, [product]);
+  const query = useUpcomingDeadlines(14, product);
+  const items = query.data?.items ?? [];
+  const loading = query.isPending;
+  const error = queryError(query.error, 'Kunne ikke laste frister');
 
   return (
     <Box>
@@ -987,12 +907,24 @@ function UpcomingDeadlinesSection({
             return (
               <Box
                 key={item.id}
+                // Ekte knapp når raden er klikkbar, ellers en div — en
+                // tom knapp uten handling er verre enn ingen knapp.
+                component={item.link_path ? 'button' : 'div'}
+                type={item.link_path ? 'button' : undefined}
                 sx={{
+                  display: 'block',
+                  width: '100%',
+                  font: 'inherit',
+                  textAlign: 'left',
                   p: 0.75,
                   borderRadius: 1.5,
                   bgcolor: 'rgba(167,139,250,0.04)',
                   border: '1px solid rgba(167,139,250,0.12)',
                   '&:hover': { bgcolor: 'rgba(167,139,250,0.10)' },
+                  '&:focus-visible': {
+                    outline: `2px solid ${BRAND.accent}`,
+                    outlineOffset: 2,
+                  },
                   cursor: item.link_path ? 'pointer' : 'default',
                 }}
                 onClick={item.link_path ? () => {
@@ -1264,707 +1196,6 @@ function NotificationsAgendaPanel({
 }
 
 // ─────────────────────────────────────────────────────────
-// Innboks-side (hovedinnhold)
-// ─────────────────────────────────────────────────────────
-
-function InboxView({
-  notifications,
-  loading,
-  error,
-  onMarkSeen,
-}: {
-  notifications: WorkspaceNotification[];
-  loading: boolean;
-  error: string | null;
-  onMarkSeen: (id: string) => void;
-}) {
-  if (loading) {
-    return (
-      <Stack alignItems="center" sx={{ py: 8 }}>
-        <CircularProgress sx={{ color: BRAND.accent }} />
-      </Stack>
-    );
-  }
-
-  // Feil FØR tomhet. «Tom innboks» når backend er nede er den dyreste
-  // løgnen en driftsflate kan fortelle.
-  if (error) {
-    return (
-      <Alert
-        severity="error"
-        sx={{
-          bgcolor: 'rgba(220, 38, 38, 0.16)',
-          color: '#fecaca',
-          border: '1px solid rgba(220, 38, 38, 0.4)',
-        }}
-      >
-        Kunne ikke hente varsler — {error}. Listen under kan være utdatert eller ufullstendig.
-      </Alert>
-    );
-  }
-
-  if (notifications.length === 0) {
-    return (
-      <PanelEmpty
-        icon={<InboxOutlinedIcon />}
-        title="Tom innboks"
-        description="Du har ingen uleste varsler. Når noe trenger oppmerksomhet — fra leads, søknader, prosjekter eller systemvarsler — havner det her."
-      />
-    );
-  }
-
-  return (
-    <Stack spacing={1}>
-      {notifications.map((n) => (
-        <Box
-          key={n.id}
-          sx={{
-            p: 2,
-            borderRadius: 2,
-            bgcolor: BRAND.panelBg,
-            border: `1px solid ${BRAND.border}`,
-            '&:hover': { borderColor: BRAND.borderHover },
-          }}
-        >
-          <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
-            <Box sx={{ minWidth: 0, flex: 1 }}>
-              <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.92rem' }}>
-                {n.title ?? n.type ?? 'Varsel'}
-              </Typography>
-              {n.message ? (
-                <Typography sx={{ color: BRAND.textMuted, fontSize: '0.84rem', mt: 0.5, lineHeight: 1.5 }}>
-                  {n.message}
-                </Typography>
-              ) : null}
-              <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mt: 1 }}>
-                {n.createdAt ? (
-                  <Typography sx={{ color: BRAND.textDim, fontSize: '0.72rem' }}>
-                    {new Date(n.createdAt).toLocaleString('nb-NO')}
-                  </Typography>
-                ) : null}
-                {/* Click-through til kilden. Uten denne var innboksen en
-                    liste du ikke kunne gjøre noe fra. */}
-                {n.actionUrl ? (
-                  <Button
-                    size="small"
-                    href={n.actionUrl}
-                    endIcon={<OpenInNewOutlinedIcon sx={{ fontSize: 14 }} />}
-                    sx={{
-                      textTransform: 'none',
-                      color: BRAND.accent,
-                      fontSize: '0.76rem',
-                      p: 0,
-                      minWidth: 0,
-                      '&:hover': { bgcolor: 'transparent', textDecoration: 'underline' },
-                    }}
-                  >
-                    {n.actionLabel ?? 'Åpne'}
-                  </Button>
-                ) : null}
-              </Stack>
-            </Box>
-            <Stack direction="row" alignItems="center" spacing={0.5}>
-              {n.priority === 'urgent' || n.priority === 'high' ? (
-                <Chip
-                  label={n.priority === 'urgent' ? 'Haster' : 'Høy'}
-                  size="small"
-                  sx={{
-                    bgcolor: n.priority === 'urgent' ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)',
-                    color: n.priority === 'urgent' ? '#fca5a5' : '#fcd34d',
-                    fontWeight: 700,
-                    height: 22,
-                  }}
-                />
-              ) : null}
-              {/* En innboks du ikke kan tømme slutter folk å åpne. */}
-              <Tooltip title="Markér som lest">
-                <IconButton
-                  size="small"
-                  onClick={() => onMarkSeen(n.id)}
-                  aria-label={`Markér «${n.title ?? 'varsel'}» som lest`}
-                  sx={{ color: BRAND.textDim, '&:hover': { color: BRAND.success } }}
-                >
-                  <CheckCircleOutlineIcon sx={{ fontSize: 18 }} />
-                </IconButton>
-              </Tooltip>
-            </Stack>
-          </Stack>
-        </Box>
-      ))}
-    </Stack>
-  );
-}
-
-// ─────────────────────────────────────────────────────────
-// Oversikt-side (hovedinnhold)
-// ─────────────────────────────────────────────────────────
-
-function OverviewView({
-  onJumpTo,
-  product,
-}: {
-  onJumpTo: (id: WorkspaceItemId) => void;
-  product: AdminProductId;
-}) {
-  const cards: { id: WorkspaceItemId; label: string; description: string; icon: ReactNode }[] = [
-    {
-      id: 'business-plan',
-      label: 'Forretningsplan',
-      description: 'BBI-strukturert plan, autosave + Claude-generering per felt.',
-      icon: <ArticleOutlinedIcon />,
-    },
-    {
-      id: 'industry-crm',
-      label: 'Tier-1 outreach (CRM)',
-      description: 'Bransje-mål, produksjoner og kontakt-pipeline.',
-      icon: <LeaderboardOutlinedIcon />,
-    },
-    {
-      id: 'business-dna',
-      label: 'Business DNA',
-      description: 'Lim inn URL → merkevaren din + første kampanje, med dine egne bilder.',
-      icon: <AutoAwesomeOutlinedIcon />,
-    },
-    {
-      id: 'marketing-catalog',
-      label: 'Katalog',
-      description: 'Produkter og vertikaler kampanjene trekker fra — auto-oppdaget fra systemet.',
-      icon: <Inventory2OutlinedIcon />,
-    },
-    {
-      id: 'marketing-segments',
-      label: 'Målgrupper',
-      description: 'Segmenter → synkroniserte Google/Meta/LinkedIn-audiences.',
-      icon: <GroupsOutlinedIcon />,
-    },
-    {
-      id: 'marketing-cockpit',
-      label: 'Marketing Cockpit',
-      description: 'B2B-funnel, content-kalender, Claude lead-scoring.',
-      icon: <CampaignOutlinedIcon />,
-    },
-    {
-      id: 'role-room-agent',
-      label: 'Role Room Agent',
-      description: 'AI-assistent for research, kampanjer og innholds-utkast.',
-      icon: <SmartToyOutlinedIcon />,
-    },
-    {
-      id: 'operating-system',
-      label: 'Operativsystem',
-      description: 'Bransje-organisasjoner og kvalitets-partnere.',
-      icon: <HubOutlinedIcon />,
-    },
-    {
-      id: 'ai-citation',
-      label: 'GEO-effekt',
-      description: 'AI-citation-måling for søkemotor-LLM-svar.',
-      icon: <SsidChartOutlinedIcon />,
-    },
-    {
-      id: 'newsletter-studio',
-      label: 'Newsletter Studio',
-      description: 'Block-builder, segmenter og AI-genererte emnefelter.',
-      icon: <EmailOutlinedIcon />,
-    },
-    {
-      id: 'migrations',
-      label: 'Migrasjoner',
-      description: 'Pending DB-migrasjoner + auto-detect + trigger.',
-      icon: <StorageOutlinedIcon />,
-    },
-  ];
-
-  return (
-    <Stack spacing={3}>
-      <Box
-        sx={{
-          p: 3,
-          borderRadius: 3,
-          background:
-            product === 'leadgrid'
-              ? 'linear-gradient(135deg, rgba(34,211,238,0.18), rgba(167,139,250,0.10))'
-              : 'linear-gradient(135deg, rgba(167,139,250,0.18), rgba(124,58,237,0.08))',
-          border: `1px solid ${BRAND.border}`,
-        }}
-      >
-        <Stack direction="row" alignItems="center" spacing={1.5}>
-          <RocketLaunchOutlinedIcon sx={{ color: BRAND.accent, fontSize: 28 }} />
-          <Box>
-            <Typography sx={{ color: BRAND.text, fontWeight: 800, fontSize: '1.2rem' }}>
-              Velkommen tilbake, Daniel
-            </Typography>
-            <Typography sx={{ color: BRAND.textMuted, fontSize: '0.88rem' }}>
-              Aktivt produkt:{' '}
-              <strong style={{ color: BRAND.text }}>
-                {ADMIN_PRODUCTS.find((p) => p.id === product)?.label}
-              </strong>
-            </Typography>
-          </Box>
-        </Stack>
-      </Box>
-
-      <Box>
-        <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.96rem', mb: 1.5 }}>
-          Hurtigvalg
-        </Typography>
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: {
-              xs: '1fr',
-              sm: 'repeat(2, 1fr)',
-              md: 'repeat(3, 1fr)',
-              lg: 'repeat(4, 1fr)',
-            },
-            gap: 1.5,
-          }}
-        >
-          {cards.map((c) => (
-            <Box
-              key={c.id}
-              onClick={() => onJumpTo(c.id)}
-              sx={{
-                p: 2,
-                borderRadius: 2,
-                bgcolor: BRAND.panelBg,
-                border: `1px solid ${BRAND.border}`,
-                cursor: 'pointer',
-                transition: 'transform 120ms ease, border-color 120ms ease',
-                '&:hover': {
-                  borderColor: BRAND.borderHover,
-                  transform: 'translateY(-2px)',
-                  boxShadow: '0 8px 24px rgba(124, 58, 237, 0.18)',
-                },
-              }}
-            >
-              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-                <Box
-                  sx={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 1.5,
-                    bgcolor: 'rgba(167, 139, 250, 0.14)',
-                    color: BRAND.accent,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    '& svg': { fontSize: 18 },
-                  }}
-                >
-                  {c.icon}
-                </Box>
-                <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.88rem' }}>
-                  {c.label}
-                </Typography>
-              </Stack>
-              <Typography sx={{ color: BRAND.textMuted, fontSize: '0.76rem', lineHeight: 1.4 }}>
-                {c.description}
-              </Typography>
-            </Box>
-          ))}
-        </Box>
-      </Box>
-    </Stack>
-  );
-}
-
-// ─────────────────────────────────────────────────────────
-// Resolve hovedinnhold for valgt item
-// ─────────────────────────────────────────────────────────
-
-interface ResolvedContent {
-  title: string;
-  breadcrumbs: string[];
-  statusChip?: { label: string; color: string };
-  contentTabs?: string[];
-  render: (activeContentTab: number) => ReactNode;
-}
-
-interface ResolveContentDeps {
-  selected: WorkspaceItemId;
-  product: AdminProductId;
-  notifications: WorkspaceNotification[];
-  notificationsLoading: boolean;
-  notificationsError: string | null;
-  onMarkNotificationSeen: (id: string) => void;
-  onJumpTo: (id: WorkspaceItemId) => void;
-  onNavigate: (target: WorkspaceLinkTarget) => void;
-  onOpenCase: (caseId: string) => void;
-  pendingCaseId: string | null;
-  onCaseConsumed: () => void;
-  onPrefsChange: (prefs: WorkspacePrefs) => void;
-}
-
-function resolveContent({
-  selected,
-  product,
-  notifications,
-  notificationsLoading,
-  notificationsError,
-  onMarkNotificationSeen,
-  onJumpTo,
-  onNavigate,
-  onOpenCase,
-  pendingCaseId,
-  onCaseConsumed,
-  onPrefsChange,
-}: ResolveContentDeps): ResolvedContent {
-  switch (selected) {
-    case 'overview':
-      return {
-        title: 'Oversikt',
-        breadcrumbs: ['Creatorhub AS', 'Workspace', 'Oversikt'],
-        statusChip: { label: 'Live', color: '#22c55e' },
-        render: () => <OverviewView onJumpTo={onJumpTo} product={product} />,
-      };
-    case 'inbox':
-      return {
-        title: 'Innboks',
-        breadcrumbs: ['Creatorhub AS', 'Workspace', 'Innboks'],
-        statusChip: notificationsError
-          ? { label: 'Ukjent', color: BRAND.danger }
-          : notifications.length > 0
-            ? { label: `${notifications.length} uleste`, color: BRAND.accentStrong }
-            : { label: 'Alt klart', color: '#22c55e' },
-        render: () => (
-          <InboxView
-            notifications={notifications}
-            loading={notificationsLoading}
-            error={notificationsError}
-            onMarkSeen={onMarkNotificationSeen}
-          />
-        ),
-      };
-    case 'cases':
-      return {
-        title: 'Saker',
-        breadcrumbs: ['Creatorhub AS', 'Workspace', 'Saker'],
-        render: () => (
-          <SakerTab
-            parentProduct={product}
-            initialCaseId={pendingCaseId}
-            onInitialCaseConsumed={onCaseConsumed}
-          />
-        ),
-      };
-    case 'projects':
-      return {
-        title: 'Prosjekter',
-        breadcrumbs: ['Creatorhub AS', 'Workspace', 'Prosjekter'],
-        statusChip: { label: 'Live', color: '#22c55e' },
-        render: () => <ProsjekterTab product={product} />,
-      };
-    case 'documents':
-      return {
-        title: 'Dokumenter',
-        breadcrumbs: ['Creatorhub AS', 'Workspace', 'Dokumenter'],
-        statusChip: { label: 'Live', color: '#22c55e' },
-        render: () => <DokumenterTab product={product} />,
-      };
-    case 'tasks':
-      return {
-        title: 'Oppgaver',
-        breadcrumbs: ['Creatorhub AS', 'Workspace', 'Oppgaver'],
-        statusChip: { label: 'Live', color: '#22c55e' },
-        render: () => <OppgaverTab parentProduct={product} onOpenCase={onOpenCase} />,
-      };
-    case 'calendar':
-      return {
-        title: 'Kalender',
-        breadcrumbs: ['Creatorhub AS', 'Workspace', 'Kalender'],
-        statusChip: { label: 'Live', color: '#22c55e' },
-        render: () => <KalenderTab product={product} onNavigate={onNavigate} />,
-      };
-    case 'files':
-      return {
-        title: 'Filer',
-        breadcrumbs: ['Creatorhub AS', 'Workspace', 'Filer'],
-        statusChip: { label: 'Live', color: '#22c55e' },
-        render: () => <FilerTab product={product} />,
-      };
-    case 'teamchat':
-      return {
-        title: 'Teamchat',
-        breadcrumbs: ['Creatorhub AS', 'Workspace', 'Teamchat'],
-        statusChip: { label: 'Live', color: '#22c55e' },
-        render: () => <TeamchatTab />,
-      };
-    case 'automations':
-      return {
-        title: 'Automatiseringer',
-        breadcrumbs: ['Creatorhub AS', 'Workspace', 'Automatiseringer'],
-        statusChip: { label: 'Live', color: '#22c55e' },
-        render: () => <AutomatiseringerTab />,
-      };
-    case 'business-plan':
-      return {
-        title: 'Forretningsplan',
-        breadcrumbs: ['Creatorhub AS', 'Ledelse', 'Forretningsplan'],
-        statusChip: { label: 'Autosave', color: '#22c55e' },
-        contentTabs: ['Oversikt', 'Aktivitet'],
-        render: (activeTab) =>
-          activeTab === 1 ? <ActivityLogTab /> : <BusinessPlanTab />,
-      };
-    case 'funding':
-      return {
-        title: 'Søknader (IN/EU)',
-        breadcrumbs: ['Creatorhub AS', 'Ledelse', 'Søknader'],
-        render: () => <FundingAppsTab />,
-      };
-    case 'investors':
-      return {
-        title: 'Investor-pipeline',
-        breadcrumbs: ['Creatorhub AS', 'Ledelse', 'Investor-pipeline'],
-        render: () => <InvestorContactsTab />,
-      };
-    case 'partners':
-      return {
-        title: 'Samarbeidspartnere',
-        breadcrumbs: ['Creatorhub AS', 'Ledelse', 'Samarbeidspartnere'],
-        render: () => <PartnerContactsTab />,
-      };
-    case 'industry-crm':
-      return {
-        title: 'Tier-1 outreach (CRM)',
-        breadcrumbs: ['Creatorhub AS', 'Markedsføring', 'Tier-1 CRM'],
-        render: () => <IndustryTargetsTab />,
-      };
-    case 'business-dna':
-      return {
-        title: 'Business DNA',
-        breadcrumbs: ['Creatorhub AS', 'Markedsføring', 'Business DNA'],
-        render: () => <BusinessDnaOnboarding />,
-      };
-    case 'marketing-catalog':
-      return {
-        title: 'Katalog',
-        breadcrumbs: ['Creatorhub AS', 'Markedsføring', 'Katalog'],
-        render: () => <MarketingCatalogTab />,
-      };
-    case 'marketing-segments':
-      return {
-        title: 'Målgrupper',
-        breadcrumbs: ['Creatorhub AS', 'Markedsføring', 'Målgrupper'],
-        render: () => <MarketingSegmentsTab />,
-      };
-    case 'content-marketing':
-      return {
-        title: 'Content marketing',
-        breadcrumbs: ['Creatorhub AS', 'Markedsføring', 'Content marketing'],
-        render: () => <ContentMarketingTab />,
-      };
-    case 'marketing-cockpit':
-      return {
-        title: 'Marketing Cockpit',
-        breadcrumbs: ['Creatorhub AS', 'Markedsføring', 'Cockpit'],
-        render: () => <MarketingCockpitTab />,
-      };
-    case 'leadgrid-app-waitlist':
-      return {
-        title: 'App-venteliste',
-        breadcrumbs: ['Creatorhub AS', 'Markedsføring', 'Leadgrid: App-venteliste'],
-        render: () => <LeadgridAppWaitlistTab />,
-      };
-    case 'operating-system':
-      return {
-        title: 'Operativsystem',
-        breadcrumbs: ['Creatorhub AS', 'Produkt', 'Operativsystem'],
-        render: () => <OperatingSystemTab />,
-      };
-    case 'role-room-agent':
-      return {
-        title: 'Role Room Agent',
-        breadcrumbs: ['Creatorhub AS', 'Produkt', 'AI Agent'],
-        render: () => <RoleRoomAgentTab />,
-      };
-    case 'content-calendar':
-      return {
-        title: 'Content-kalender',
-        breadcrumbs: ['Creatorhub AS', 'Markedsføring', 'Kalender'],
-        render: () => <ContentCalendarTab />,
-      };
-    case 'role-room-economy':
-      return {
-        title: 'RR Økonomi',
-        breadcrumbs: ['Creatorhub AS', 'Ledelse', 'Økonomi'],
-        render: () => <RoleRoomEconomyTab />,
-      };
-    case 'newsletter-studio':
-      return {
-        title: 'Newsletter Studio',
-        breadcrumbs: ['Creatorhub AS', 'Markedsføring', 'Newsletter'],
-        render: () => <NewsletterStudioTab />,
-      };
-    case 'ai-citation':
-      return {
-        title: 'GEO-effekt',
-        breadcrumbs: ['Creatorhub AS', 'Markedsføring', 'GEO-effekt'],
-        render: () => <AiCitationTab />,
-      };
-    case 'whats-new':
-      return {
-        title: 'Hva er nytt',
-        breadcrumbs: ['Creatorhub AS', 'Produkt', 'Hva er nytt'],
-        render: () => <WhatsNewTab />,
-      };
-    case 'activity':
-      return {
-        title: 'Aktivitets-logg',
-        breadcrumbs: ['Creatorhub AS', 'Workspace', 'Aktivitet'],
-        render: () => <ActivityLogTab />,
-      };
-    case 'migrations':
-      return {
-        title: 'Migrasjoner',
-        breadcrumbs: ['Creatorhub AS', 'Produkt', 'Migrasjoner'],
-        render: () => <MigrationsTab />,
-      };
-    case 'ledelse':
-      return {
-        title: 'Ledelse',
-        breadcrumbs: ['Creatorhub AS', 'Teamspaces', 'Ledelse'],
-        render: () => (
-          <TeamspaceLanding
-            label="Ledelse"
-            cards={[
-              { id: 'business-plan', label: 'Forretningsplan' },
-              { id: 'funding', label: 'Søknader (IN/EU)' },
-              { id: 'investors', label: 'Investor-pipeline' },
-              { id: 'partners', label: 'Samarbeidspartnere' },
-              { id: 'role-room-economy', label: 'RR Økonomi' },
-            ]}
-            onJumpTo={onJumpTo}
-          />
-        ),
-      };
-    case 'kundeprosjekt':
-      return {
-        title: 'Kundeprosjekt',
-        breadcrumbs: ['Creatorhub AS', 'Teamspaces', 'Kundeprosjekt'],
-        statusChip: { label: 'Live', color: '#22c55e' },
-        render: () => <KundeprosjektTab />,
-      };
-    case 'markedsforing':
-      return {
-        title: 'Markedsføring',
-        breadcrumbs: ['Creatorhub AS', 'Teamspaces', 'Markedsføring'],
-        render: () => (
-          <TeamspaceLanding
-            label="Markedsføring"
-            cards={[
-              { id: 'business-dna', label: 'Business DNA' },
-              { id: 'marketing-catalog', label: 'Katalog' },
-              { id: 'marketing-cockpit', label: 'Marketing Cockpit' },
-              { id: 'leadgrid-app-waitlist', label: 'Leadgrid: App-venteliste' },
-              { id: 'content-marketing', label: 'Content marketing' },
-              { id: 'content-calendar', label: 'Content-kalender' },
-              { id: 'newsletter-studio', label: 'Newsletter Studio' },
-              { id: 'ai-citation', label: 'GEO-effekt' },
-              { id: 'industry-crm', label: 'Tier-1 outreach' },
-              { id: 'marketing-segments', label: 'Målgrupper' },
-            ]}
-            onJumpTo={onJumpTo}
-          />
-        ),
-      };
-    case 'produkt':
-      return {
-        title: 'Produkt',
-        breadcrumbs: ['Creatorhub AS', 'Teamspaces', 'Produkt'],
-        render: () => (
-          <TeamspaceLanding
-            label="Produkt"
-            cards={[
-              { id: 'operating-system', label: 'Operativsystem' },
-              { id: 'role-room-agent', label: 'Role Room Agent' },
-              { id: 'whats-new', label: 'Hva er nytt' },
-              { id: 'migrations', label: 'Migrasjoner' },
-            ]}
-            onJumpTo={onJumpTo}
-          />
-        ),
-      };
-    case 'hr':
-      return {
-        title: 'HR',
-        breadcrumbs: ['Creatorhub AS', 'Teamspaces', 'HR'],
-        statusChip: { label: 'Live', color: '#22c55e' },
-        render: () => <HrTab product={product} />,
-      };
-    case 'settings':
-      return {
-        title: 'Innstillinger',
-        breadcrumbs: ['Creatorhub AS', 'Innstillinger'],
-        statusChip: { label: 'Live', color: '#22c55e' },
-        render: () => <InnstillingerTab onPrefsChange={onPrefsChange} />,
-      };
-    default:
-      return {
-        title: 'Workspace',
-        breadcrumbs: ['Creatorhub AS', 'Workspace'],
-        render: () => null,
-      };
-  }
-}
-
-// ─────────────────────────────────────────────────────────
-// Teamspace-landing (lister cards som hopper til sub-items)
-// ─────────────────────────────────────────────────────────
-
-function TeamspaceLanding({
-  label,
-  cards,
-  onJumpTo,
-}: {
-  label: string;
-  cards: { id: WorkspaceItemId; label: string }[];
-  onJumpTo: (id: WorkspaceItemId) => void;
-}) {
-  return (
-    <Stack spacing={2}>
-      <Typography sx={{ color: BRAND.textMuted, fontSize: '0.86rem' }}>
-        {label}-team bruker disse verktøyene:
-      </Typography>
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: {
-            xs: '1fr',
-            sm: 'repeat(2, 1fr)',
-            md: 'repeat(3, 1fr)',
-          },
-          gap: 1.5,
-        }}
-      >
-        {cards.map((c) => (
-          <Stack
-            key={c.id}
-            direction="row"
-            alignItems="center"
-            justifyContent="space-between"
-            onClick={() => onJumpTo(c.id)}
-            sx={{
-              p: 2,
-              borderRadius: 2,
-              bgcolor: BRAND.panelBg,
-              border: `1px solid ${BRAND.border}`,
-              cursor: 'pointer',
-              '&:hover': { borderColor: BRAND.borderHover, bgcolor: BRAND.hoverBg },
-            }}
-          >
-            <Typography sx={{ color: BRAND.text, fontWeight: 700, fontSize: '0.88rem' }}>
-              {c.label}
-            </Typography>
-            <ChevronRightIcon sx={{ color: BRAND.accent }} />
-          </Stack>
-        ))}
-      </Box>
-    </Stack>
-  );
-}
-
-// ─────────────────────────────────────────────────────────
 // Top bar (brødsmuler + tittel + status + søk)
 // ─────────────────────────────────────────────────────────
 
@@ -1977,7 +1208,7 @@ function TopBar({
   onToggleTeamchat,
   showTeamchatToggle,
 }: {
-  resolved: ResolvedContent;
+  resolved: ResolvedPanel;
   contentTab: number;
   onContentTabChange: (next: number) => void;
   onOpenPalette: () => void;
@@ -2150,14 +1381,12 @@ export default function AdminWorkspace() {
     return readStoredWorkspacePrefs().defaultProduct;
   });
   const [contentTab, setContentTab] = useState(0);
-  const [notifications, setNotifications] = useState<WorkspaceNotification[]>([]);
-  const [notificationsLoading, setNotificationsLoading] = useState(true);
-  const [notificationsError, setNotificationsError] = useState<string | null>(null);
   // ⌘K-palett
   const [paletteOpen, setPaletteOpen] = useState(false);
   // Teamchat-kolonnen er skjult som default: den er en låst composer inntil
   // et workspace-bredt chat-endepunkt finnes, og 320px permanent til en
   // tom lovnad er dyrere enn en toggle.
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [teamchatOpen, setTeamchatOpen] = useState(
     () => (typeof window === 'undefined' ? false : readStoredWorkspacePrefs().teamchatOpenByDefault),
   );
@@ -2201,46 +1430,20 @@ export default function AdminWorkspace() {
     setContentTab(0);
   }, [selected]);
 
-  // Last varsler ved mount + poll hvert 60s.
-  // Ved feil BEHOLDER vi forrige liste og setter en feilmelding: en
-  // driftsflate skal ikke tømme skjermen fordi ett poll-kall feilet, og
-  // den skal aldri påstå «Alt klart» når den ikke vet.
-  useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setInterval> | null = null;
-    const load = async () => {
-      try {
-        const items = await workspaceNotificationsApi.inbox();
-        if (cancelled) return;
-        setNotifications(items);
-        setNotificationsError(null);
-      } catch (err) {
-        if (cancelled) return;
-        setNotificationsError((err as Error).message || 'Kunne ikke hente varsler');
-      } finally {
-        if (!cancelled) setNotificationsLoading(false);
-      }
-    };
-    void load();
-    timer = setInterval(load, Math.max(15, prefs.notificationPollSeconds) * 1000);
-    return () => {
-      cancelled = true;
-      if (timer) clearInterval(timer);
-    };
-  }, [prefs.notificationPollSeconds]);
+  // Varsler via React Query. Deduper på tvers av innboksen, badgen og
+  // høyre kolonne — én timer, ett kall, uansett hvor mange lesere.
+  const notificationsQuery = useWorkspaceNotifications(prefs.notificationPollSeconds);
+  const notifications = notificationsQuery.data ?? [];
+  const notificationsLoading = notificationsQuery.isPending;
+  const notificationsError = queryError(notificationsQuery.error, 'Kunne ikke hente varsler');
 
-  // Markér ett varsel som lest. Backend fjerner det fra inbox-spørringen,
-  // så vi tar det ut av listen optimistisk og ruller tilbake ved feil.
-  const handleMarkNotificationSeen = useCallback(async (id: string) => {
-    const previous = notifications;
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-    try {
-      await workspaceNotificationsApi.markSeen(id);
-    } catch (err) {
-      setNotifications(previous);
-      setNotificationsError((err as Error).message || 'Kunne ikke markere varselet som lest');
-    }
-  }, [notifications]);
+  const markSeen = useMarkNotificationSeen();
+  const handleMarkNotificationSeen = useCallback(
+    (id: string) => {
+      markSeen.mutate(id);
+    },
+    [markSeen],
+  );
 
   // ⌘K / Ctrl+K åpner hopp-til-paletten.
   useEffect(() => {
@@ -2398,9 +1601,9 @@ export default function AdminWorkspace() {
     );
   }
 
-  const resolved = resolveContent({
-    selected,
+  const resolved = resolvePanel(selected, {
     product,
+    productScope,
     notifications,
     notificationsLoading,
     notificationsError,
@@ -2411,6 +1614,7 @@ export default function AdminWorkspace() {
     pendingCaseId,
     onCaseConsumed: handleCaseConsumed,
     onPrefsChange: handlePrefsChange,
+    activeContentTab: contentTab,
   });
   const inboxBadge = notifications.length;
 
@@ -2493,7 +1697,18 @@ export default function AdminWorkspace() {
               </Box>
             }
           >
-            {resolved.render(contentTab)}
+            {/* Suspense: hver flate er lazy, så det må finnes en grense
+                her. Fallbacken er bevisst lav-profil — en spinner der
+                innholdet kommer, ikke en full skjerm som blinker. */}
+            <Suspense
+              fallback={
+                <Stack alignItems="center" sx={{ py: 8 }}>
+                  <CircularProgress sx={{ color: BRAND.accent }} />
+                </Stack>
+              }
+            >
+              {resolved.render()}
+            </Suspense>
           </ErrorBoundary>
         </Box>
       </Box>
@@ -2519,8 +1734,22 @@ export default function AdminWorkspace() {
           selected={selected}
           onSelect={handleSelect}
           inboxBadge={inboxBadge}
+          onOpenMenu={() => setMobileMenuOpen(true)}
         />
       ) : null}
+
+      {/* Hele navigasjonen på mobil. Uten denne er 27 av 32 flater
+          utilgjengelige når sidebaren skjules. */}
+      <MobileNavDrawer
+        open={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+        selected={selected}
+        onSelect={handleSelect}
+        inboxBadge={inboxBadge}
+        product={product}
+        onProductChange={setProduct}
+        onOpenPalette={() => setPaletteOpen(true)}
+      />
 
       <CommandPalette
         open={paletteOpen}

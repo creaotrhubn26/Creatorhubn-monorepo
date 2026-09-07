@@ -12,7 +12,7 @@
  * møter, budsjett). Kundeprosjekt er utestående mot klient.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Box, Chip, Stack, Typography } from '@mui/material';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import MarkEmailUnreadOutlinedIcon from '@mui/icons-material/MarkEmailUnreadOutlined';
@@ -20,10 +20,7 @@ import RateReviewOutlinedIcon from '@mui/icons-material/RateReviewOutlined';
 import OpenInNewOutlinedIcon from '@mui/icons-material/OpenInNewOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 
-import {
-  workspaceCollabApi,
-  type WorkspaceClientProject,
-} from '../../services/adminRoomApi';
+import type { WorkspaceClientProject } from '../../services/adminRoomApi';
 import { BRAND } from './brand';
 import {
   PanelEmpty,
@@ -32,28 +29,13 @@ import {
   SectionHeading,
   formatDate,
 } from './panelKit';
+import { queryError, useWorkspaceClientProjects } from './useWorkspaceData';
 
 export function KundeprosjektTab() {
-  const [items, setItems] = useState<WorkspaceClientProject[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setItems(await workspaceCollabApi.clientProjects());
-    } catch (err) {
-      setError((err as Error).message || 'Kunne ikke laste kundeprosjekter');
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const query = useWorkspaceClientProjects();
+  const items = query.data ?? [];
+  const loading = query.isPending;
+  const error = queryError(query.error, 'Kunne ikke laste kundeprosjekter');
 
   // Prosjekter med utestående først — det er hele poenget med flaten.
   const { needsAttention, rest } = useMemo(() => {
@@ -155,7 +137,7 @@ export function KundeprosjektTab() {
 
   return (
     <Stack spacing={3}>
-      {error ? <PanelError message={error} onClose={() => setError(null)} /> : null}
+      {error ? <PanelError message={error} /> : null}
 
       {items.length === 0 ? (
         <PanelEmpty

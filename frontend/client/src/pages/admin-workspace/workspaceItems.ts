@@ -255,3 +255,15 @@ export function parseWorkspaceLink(linkPath: string | null | undefined): Workspa
     return null;
   }
 }
+
+/**
+ * Produkt-toggelen øverst i sidebaren. Bodde tidligere i
+ * AdminWorkspace.tsx; flyttet hit da panel-registeret ble innført, siden
+ * både sidebaren, Oversikt og panel-registeret trenger den.
+ */
+export const ADMIN_PRODUCTS = [
+  { id: 'roleroom', label: 'The Role Room', color: '#a78bfa' },
+  { id: 'leadgrid', label: 'Leadgrid', color: '#22d3ee' },
+] as const;
+
+export type AdminProductId = (typeof ADMIN_PRODUCTS)[number]['id'];

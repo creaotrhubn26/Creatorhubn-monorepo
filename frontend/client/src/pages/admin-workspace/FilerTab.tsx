@@ -10,7 +10,7 @@
  * hvor mye plass går med, og hvor kommer den fra.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Box,
   Chip,
@@ -28,8 +28,6 @@ import PictureAsPdfOutlinedIcon from '@mui/icons-material/PictureAsPdfOutlined';
 import StorageOutlinedIcon from '@mui/icons-material/StorageOutlined';
 
 import {
-  workspaceModulesApi,
-  type WorkspaceFile,
   type WorkspaceProductScope,
 } from '../../services/adminRoomApi';
 import { BRAND } from './brand';
@@ -42,6 +40,7 @@ import {
   formatBytes,
   formatDateTime,
 } from './panelKit';
+import { queryError, useWorkspaceFiles } from './useWorkspaceData';
 
 function fileIcon(contentType: string | null) {
   const t = (contentType ?? '').toLowerCase();
@@ -53,32 +52,14 @@ function fileIcon(contentType: string | null) {
 }
 
 export function FilerTab({ product }: { product: WorkspaceProductScope }) {
-  const [items, setItems] = useState<WorkspaceFile[]>([]);
-  const [unavailable, setUnavailable] = useState<string[]>([]);
-  const [totalBytes, setTotalBytes] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [moduleFilter, setModuleFilter] = useState<string>('all');
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await workspaceModulesApi.files(product);
-      setItems(data.items);
-      setUnavailable(data.unavailable ?? []);
-      setTotalBytes(data.totalBytes ?? 0);
-    } catch (err) {
-      setError((err as Error).message || 'Kunne ikke laste filer');
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [product]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const query = useWorkspaceFiles(product);
+  const items = query.data?.items ?? [];
+  const unavailable = query.data?.unavailable ?? [];
+  const totalBytes = query.data?.totalBytes ?? 0;
+  const loading = query.isPending;
+  const error = queryError(query.error, 'Kunne ikke laste filer');
 
   // Forbruk per modul — svarer på «hva spiser plassen».
   const byModule = useMemo(() => {
@@ -105,7 +86,7 @@ export function FilerTab({ product }: { product: WorkspaceProductScope }) {
 
   return (
     <Stack spacing={3}>
-      {error ? <PanelError message={error} onClose={() => setError(null)} /> : null}
+      {error ? <PanelError message={error} /> : null}
       <UnavailableSources sources={unavailable} />
 
       {items.length === 0 ? (

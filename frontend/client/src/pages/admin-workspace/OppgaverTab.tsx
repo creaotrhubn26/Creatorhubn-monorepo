@@ -14,7 +14,7 @@
  * ett-klikks «Ferdig».
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -34,7 +34,6 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 
 import {
-  workspaceCasesApi,
   WORKSPACE_CASE_PRIORITY_COLORS,
   WORKSPACE_CASE_PRIORITY_LABELS,
   WORKSPACE_CASE_STATUS_LABELS,
@@ -42,6 +41,7 @@ import {
   type WorkspaceCaseListFilter,
 } from '../../services/adminRoomApi';
 import { BRAND } from './brand';
+import { queryError, useCompleteCase, useWorkspaceCases } from './useWorkspaceData';
 
 type ProductFilterId = 'all' | 'role_room' | 'leadgrid' | 'internal';
 
@@ -96,43 +96,40 @@ export function OppgaverTab({ parentProduct, onOpenCase }: OppgaverTabProps) {
   const [productFilter, setProductFilter] = useState<ProductFilterId>(
     parentProduct === 'leadgrid' ? 'leadgrid' : 'all',
   );
-  const [cases, setCases] = useState<WorkspaceCase[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [completing, setCompleting] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const filter: WorkspaceCaseListFilter = {};
-      if (productFilter !== 'all') filter.product = productFilter;
-      const items = await workspaceCasesApi.list(filter);
-      // Arbeidskøen viser bare det som faktisk står igjen.
-      setCases(items.filter((c) => c.status !== 'done' && c.status !== 'archived'));
-    } catch (err) {
-      setError((err as Error).message || 'Kunne ikke laste oppgaver');
-      setCases([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [productFilter]);
+  // Samme query-nøkkel som Saker-fanen når filteret matcher — ett kall,
+  // og «Ferdig» her oppdaterer begge flatene.
+  const listFilter = useMemo<WorkspaceCaseListFilter>(
+    () => (productFilter === 'all' ? {} : { product: productFilter }),
+    [productFilter],
+  );
+  const query = useWorkspaceCases(listFilter);
+  const completeCase = useCompleteCase();
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  // Arbeidskøen viser bare det som faktisk står igjen.
+  const cases = useMemo(
+    () => (query.data ?? []).filter((c) => c.status !== 'done' && c.status !== 'archived'),
+    [query.data],
+  );
+  const loading = query.isPending;
+  const error = actionError ?? queryError(query.error, 'Kunne ikke laste oppgaver');
 
-  const handleComplete = useCallback(async (item: WorkspaceCase) => {
-    setCompleting(item.id);
-    try {
-      await workspaceCasesApi.update(item.id, { status: 'done' });
-      setCases((prev) => prev.filter((c) => c.id !== item.id));
-    } catch (err) {
-      setError((err as Error).message || 'Kunne ikke markere oppgaven som ferdig');
-    } finally {
-      setCompleting(null);
-    }
-  }, []);
+  const handleComplete = useCallback(
+    async (item: WorkspaceCase) => {
+      setCompleting(item.id);
+      setActionError(null);
+      try {
+        await completeCase.mutateAsync(item.id);
+      } catch (err) {
+        setActionError((err as Error).message || 'Kunne ikke markere oppgaven som ferdig');
+      } finally {
+        setCompleting(null);
+      }
+    },
+    [completeCase],
+  );
 
   const buckets = useMemo(() => {
     const now = new Date();
@@ -216,7 +213,7 @@ export function OppgaverTab({ parentProduct, onOpenCase }: OppgaverTabProps) {
       {error ? (
         <Alert
           severity="error"
-          onClose={() => setError(null)}
+          onClose={() => setActionError(null)}
           sx={{
             bgcolor: 'rgba(220, 38, 38, 0.16)',
             color: '#fecaca',
@@ -295,8 +292,25 @@ export function OppgaverTab({ parentProduct, onOpenCase }: OppgaverTabProps) {
                     </Tooltip>
 
                     <Box
+                      component="button"
+                      type="button"
                       onClick={() => onOpenCase(item.id)}
-                      sx={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
+                      aria-label={`Åpne saken «${item.title}»`}
+                      sx={{
+                        flex: 1,
+                        minWidth: 0,
+                        cursor: 'pointer',
+                        border: 'none',
+                        bgcolor: 'transparent',
+                        font: 'inherit',
+                        textAlign: 'left',
+                        p: 0,
+                        '&:focus-visible': {
+                          outline: `2px solid ${BRAND.accent}`,
+                          outlineOffset: 2,
+                          borderRadius: 4,
+                        },
+                      }}
                     >
                       <Typography
                         sx={{

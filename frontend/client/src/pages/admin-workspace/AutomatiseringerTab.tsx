@@ -13,7 +13,7 @@
  * fortsatt hører hjemme i kode.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   Box,
   Chip,
@@ -31,13 +31,16 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined';
 import BoltOutlinedIcon from '@mui/icons-material/BoltOutlined';
 
-import {
-  workspaceAutomationsApi,
-  type WorkspaceAutomation,
-  type WorkspaceAutomationRun,
-} from '../../services/adminRoomApi';
+import type { WorkspaceAutomation } from '../../services/adminRoomApi';
 import { BRAND } from './brand';
 import { PanelEmpty, PanelError, PanelLoading, formatDateTime } from './panelKit';
+import {
+  queryError,
+  useAutomationRuns,
+  useRunAutomation,
+  useToggleAutomation,
+  useWorkspaceAutomations,
+} from './useWorkspaceData';
 
 const TRIGGER_LABEL: Record<string, string> = {
   cron: 'Tidsplan',
@@ -60,82 +63,60 @@ function triggerSummary(a: WorkspaceAutomation): string {
 }
 
 export function AutomatiseringerTab() {
-  const [items, setItems] = useState<WorkspaceAutomation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [runs, setRuns] = useState<Record<string, WorkspaceAutomationRun[]>>({});
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setItems(await workspaceAutomationsApi.list());
-    } catch (err) {
-      setError((err as Error).message || 'Kunne ikke laste automatiseringer');
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const query = useWorkspaceAutomations();
+  const items = query.data ?? [];
+  const loading = query.isPending;
+  const error = actionError ?? queryError(query.error, 'Kunne ikke laste automatiseringer');
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  // Historikken hentes først når raden åpnes, og cacher per automasjon.
+  const runsQuery = useAutomationRuns(expandedId);
 
-  const handleToggle = useCallback(async (a: WorkspaceAutomation) => {
-    setBusyId(a.id);
-    // Optimistisk — en bryter som henger til serveren svarer føles ødelagt.
-    setItems((prev) => prev.map((x) => (x.id === a.id ? { ...x, isEnabled: !x.isEnabled } : x)));
-    try {
-      await workspaceAutomationsApi.toggle(a.id);
-    } catch (err) {
-      setItems((prev) => prev.map((x) => (x.id === a.id ? { ...x, isEnabled: a.isEnabled } : x)));
-      setError((err as Error).message || 'Kunne ikke endre status');
-    } finally {
-      setBusyId(null);
-    }
-  }, []);
+  const toggle = useToggleAutomation();
+  const run = useRunAutomation();
 
-  const handleRun = useCallback(async (a: WorkspaceAutomation) => {
-    setBusyId(a.id);
-    try {
-      await workspaceAutomationsApi.run(a.id);
-      await load();
-      // Er historikken åpen skal den vise kjøringen du nettopp startet.
-      if (expandedId === a.id) {
-        const fresh = await workspaceAutomationsApi.runs(a.id);
-        setRuns((prev) => ({ ...prev, [a.id]: fresh }));
-      }
-    } catch (err) {
-      setError((err as Error).message || 'Kunne ikke kjøre automatiseringen');
-    } finally {
-      setBusyId(null);
-    }
-  }, [load, expandedId]);
-
-  const handleExpand = useCallback(async (a: WorkspaceAutomation) => {
-    if (expandedId === a.id) {
-      setExpandedId(null);
-      return;
-    }
-    setExpandedId(a.id);
-    if (!runs[a.id]) {
+  const handleToggle = useCallback(
+    async (a: WorkspaceAutomation) => {
+      setBusyId(a.id);
+      setActionError(null);
       try {
-        const fresh = await workspaceAutomationsApi.runs(a.id);
-        setRuns((prev) => ({ ...prev, [a.id]: fresh }));
+        await toggle.mutateAsync(a.id);
       } catch (err) {
-        setError((err as Error).message || 'Kunne ikke hente kjørings-historikk');
+        setActionError((err as Error).message || 'Kunne ikke endre status');
+      } finally {
+        setBusyId(null);
       }
-    }
-  }, [expandedId, runs]);
+    },
+    [toggle],
+  );
+
+  const handleRun = useCallback(
+    async (a: WorkspaceAutomation) => {
+      setBusyId(a.id);
+      setActionError(null);
+      try {
+        await run.mutateAsync(a.id);
+      } catch (err) {
+        setActionError((err as Error).message || 'Kunne ikke kjøre automatiseringen');
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [run],
+  );
+
+  const handleExpand = useCallback((a: WorkspaceAutomation) => {
+    setExpandedId((current) => (current === a.id ? null : a.id));
+  }, []);
 
   if (loading) return <PanelLoading />;
 
   return (
     <Stack spacing={2}>
-      {error ? <PanelError message={error} onClose={() => setError(null)} /> : null}
+      {error ? <PanelError message={error} onClose={() => setActionError(null)} /> : null}
 
       {items.length === 0 ? (
         <PanelEmpty
@@ -253,7 +234,7 @@ export function AutomatiseringerTab() {
 
                   <IconButton
                     size="small"
-                    onClick={() => void handleExpand(a)}
+                    onClick={() => handleExpand(a)}
                     aria-label="Vis historikk"
                     sx={{
                       color: BRAND.textDim,
@@ -267,17 +248,17 @@ export function AutomatiseringerTab() {
 
                 <Collapse in={expanded} unmountOnExit>
                   <Box sx={{ px: 1.75, pb: 1.75, borderTop: `1px solid ${BRAND.border}`, pt: 1.25 }}>
-                    {!runs[a.id] ? (
+                    {runsQuery.isPending ? (
                       <Stack alignItems="center" sx={{ py: 2 }}>
                         <CircularProgress size={16} sx={{ color: BRAND.accent }} />
                       </Stack>
-                    ) : runs[a.id].length === 0 ? (
+                    ) : (runsQuery.data ?? []).length === 0 ? (
                       <Typography sx={{ color: BRAND.textDim, fontSize: '0.78rem' }}>
                         Ingen kjøringer registrert.
                       </Typography>
                     ) : (
                       <Stack spacing={0.5}>
-                        {runs[a.id].slice(0, 10).map((run) => (
+                        {(runsQuery.data ?? []).slice(0, 10).map((run) => (
                           <Stack
                             key={run.id}
                             direction="row"

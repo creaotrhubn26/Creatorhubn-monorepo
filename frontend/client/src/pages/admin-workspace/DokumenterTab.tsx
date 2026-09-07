@@ -14,7 +14,7 @@
  * krever handling.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Box,
   Chip,
@@ -32,7 +32,6 @@ import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import OpenInNewOutlinedIcon from '@mui/icons-material/OpenInNewOutlined';
 
 import {
-  workspaceModulesApi,
   type WorkspaceDocument,
   type WorkspaceProductScope,
 } from '../../services/adminRoomApi';
@@ -44,6 +43,7 @@ import {
   UnavailableSources,
   formatDate,
 } from './panelKit';
+import { queryError, useWorkspaceDocuments } from './useWorkspaceData';
 
 type SourceFilter = 'all' | WorkspaceDocument['source'];
 
@@ -87,30 +87,13 @@ function expiringSoon(doc: WorkspaceDocument): boolean {
 }
 
 export function DokumenterTab({ product }: { product: WorkspaceProductScope }) {
-  const [items, setItems] = useState<WorkspaceDocument[]>([]);
-  const [unavailable, setUnavailable] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await workspaceModulesApi.documents(product);
-      setItems(data.items);
-      setUnavailable(data.unavailable ?? []);
-    } catch (err) {
-      setError((err as Error).message || 'Kunne ikke laste dokumenter');
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [product]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const query = useWorkspaceDocuments(product);
+  const items = query.data?.items ?? [];
+  const unavailable = query.data?.unavailable ?? [];
+  const loading = query.isPending;
+  const error = queryError(query.error, 'Kunne ikke laste dokumenter');
 
   const visible = useMemo(
     () => (sourceFilter === 'all' ? items : items.filter((d) => d.source === sourceFilter)),
@@ -123,7 +106,7 @@ export function DokumenterTab({ product }: { product: WorkspaceProductScope }) {
 
   return (
     <Stack spacing={2}>
-      {error ? <PanelError message={error} onClose={() => setError(null)} /> : null}
+      {error ? <PanelError message={error} /> : null}
       <UnavailableSources sources={unavailable} />
 
       <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap>

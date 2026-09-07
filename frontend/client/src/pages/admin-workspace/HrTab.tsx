@@ -46,6 +46,12 @@ import {
 } from '../../services/adminRoomApi';
 import { BRAND } from './brand';
 import { PanelEmpty, PanelError, PanelLoading, SectionHeading, formatDate } from './panelKit';
+import {
+  queryError,
+  useDeleteTeamMember,
+  useSaveTeamMember,
+  useWorkspaceTeam,
+} from './useWorkspaceData';
 
 const STATUS_COLOR: Record<WorkspaceMemberStatus, string> = {
   active: '#22c55e',
@@ -87,9 +93,14 @@ const EMPTY_DRAFT: MemberDraft = {
 };
 
 export function HrTab({ product }: { product: WorkspaceProductScope }) {
-  const [members, setMembers] = useState<WorkspaceTeamMember[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const query = useWorkspaceTeam(product);
+  const members = query.data ?? [];
+  const loading = query.isPending;
+  const [actionError, setActionError] = useState<string | null>(null);
+  const error = actionError ?? queryError(query.error, 'Kunne ikke laste teamet');
+
+  const saveMember = useSaveTeamMember(product);
+  const removeMember = useDeleteTeamMember(product);
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -101,22 +112,7 @@ export function HrTab({ product }: { product: WorkspaceProductScope }) {
   const [absenceStart, setAbsenceStart] = useState('');
   const [absenceEnd, setAbsenceEnd] = useState('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setMembers(await workspaceCollabApi.team(product));
-    } catch (err) {
-      setError((err as Error).message || 'Kunne ikke laste teamet');
-      setMembers([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [product]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const refresh = useCallback(() => query.refetch(), [query]);
 
   const openCreate = useCallback(() => {
     setEditingId(null);
@@ -153,26 +149,23 @@ export function HrTab({ product }: { product: WorkspaceProductScope }) {
         hourlyRate: draft.hourlyRate.trim() ? Number(draft.hourlyRate) : null,
         notes: draft.notes.trim() || null,
       };
-      if (editingId) await workspaceCollabApi.updateMember(editingId, payload);
-      else await workspaceCollabApi.createMember(payload);
+      await saveMember.mutateAsync({ id: editingId, input: payload });
       setEditorOpen(false);
-      await load();
     } catch (err) {
-      setError((err as Error).message || 'Kunne ikke lagre medlemmet');
+      setActionError((err as Error).message || 'Kunne ikke lagre medlemmet');
     } finally {
       setSaving(false);
     }
-  }, [draft, editingId, load]);
+  }, [draft, editingId, saveMember]);
 
   const handleDelete = useCallback(async (m: WorkspaceTeamMember) => {
     if (!window.confirm(`Fjerne ${m.fullName} fra teamet?`)) return;
     try {
-      await workspaceCollabApi.deleteMember(m.id);
-      setMembers((prev) => prev.filter((x) => x.id !== m.id));
+      await removeMember.mutateAsync(m.id);
     } catch (err) {
-      setError((err as Error).message || 'Kunne ikke fjerne medlemmet');
+      setActionError((err as Error).message || 'Kunne ikke fjerne medlemmet');
     }
-  }, []);
+  }, [removeMember]);
 
   const handleAddAbsence = useCallback(async () => {
     if (!absenceFor || !absenceStart || !absenceEnd) return;
@@ -185,11 +178,11 @@ export function HrTab({ product }: { product: WorkspaceProductScope }) {
       setAbsenceFor(null);
       setAbsenceStart('');
       setAbsenceEnd('');
-      await load();
+      await refresh();
     } catch (err) {
-      setError((err as Error).message || 'Kunne ikke registrere fraværet');
+      setActionError((err as Error).message || 'Kunne ikke registrere fraværet');
     }
-  }, [absenceFor, absenceType, absenceStart, absenceEnd, load]);
+  }, [absenceFor, absenceType, absenceStart, absenceEnd, refresh]);
 
   const activeCount = useMemo(() => members.filter((m) => m.status === 'active').length, [members]);
   const awayNow = useMemo(() => members.filter((m) => currentAbsence(m) !== null), [members]);
@@ -198,7 +191,7 @@ export function HrTab({ product }: { product: WorkspaceProductScope }) {
 
   return (
     <Stack spacing={2}>
-      {error ? <PanelError message={error} onClose={() => setError(null)} /> : null}
+      {error ? <PanelError message={error} onClose={() => setActionError(null)} /> : null}
 
       <Stack direction="row" alignItems="center" spacing={1.5} flexWrap="wrap" useFlexGap>
         <Chip
@@ -361,9 +354,9 @@ export function HrTab({ product }: { product: WorkspaceProductScope }) {
                           onDelete={async () => {
                             try {
                               await workspaceCollabApi.deleteAbsence(a.id);
-                              await load();
+                              await refresh();
                             } catch (err) {
-                              setError((err as Error).message || 'Kunne ikke slette fraværet');
+                              setActionError((err as Error).message || 'Kunne ikke slette fraværet');
                             }
                           }}
                           sx={{

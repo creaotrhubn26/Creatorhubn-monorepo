@@ -62,6 +62,7 @@ import {
   type WorkspaceCaseProductKey,
 } from '../../services/adminRoomApi';
 import { BRAND } from './brand';
+import { queryError, useWorkspaceCases } from './useWorkspaceData';
 
 // ─────────────────────────────────────────────────────────
 // Brand (mirror av AdminWorkspace.tsx — holdt lokalt så denne
@@ -170,7 +171,6 @@ interface SakerTabProps {
 
 export function SakerTab({ parentProduct, initialCaseId, onInitialCaseConsumed }: SakerTabProps) {
   const [cases, setCases] = useState<WorkspaceCase[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]['id']>(
@@ -213,25 +213,24 @@ export function SakerTab({ parentProduct, initialCaseId, onInitialCaseConsumed }
     window.history.replaceState(null, '', next);
   }, [statusFilter, productFilter]);
 
-  const refreshList = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const filter: WorkspaceCaseListFilter = {};
-      if (statusFilter !== 'all') filter.status = statusFilter;
-      if (productFilter !== 'all') filter.product = productFilter;
-      const items = await workspaceCasesApi.list(filter);
-      setCases(items);
-    } catch (err) {
-      setError((err as Error).message || 'Kunne ikke laste saker');
-    } finally {
-      setLoading(false);
-    }
+  // Listen går gjennom React Query, så Oppgaver-flaten og Saker deler
+  // cache i stedet for å hente det samme hver for seg.
+  const listFilter = useMemo<WorkspaceCaseListFilter>(() => {
+    const filter: WorkspaceCaseListFilter = {};
+    if (statusFilter !== 'all') filter.status = statusFilter;
+    if (productFilter !== 'all') filter.product = productFilter;
+    return filter;
   }, [statusFilter, productFilter]);
 
+  const listQuery = useWorkspaceCases(listFilter);
+  const refreshList = useCallback(() => listQuery.refetch(), [listQuery]);
+
   useEffect(() => {
-    void refreshList();
-  }, [refreshList]);
+    setCases(listQuery.data ?? []);
+  }, [listQuery.data]);
+
+  const loading = listQuery.isPending;
+  const listError = queryError(listQuery.error, 'Kunne ikke laste saker');
 
   // Last detalj når valgt
   useEffect(() => {

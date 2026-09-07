@@ -9,7 +9,7 @@
  * først, ikke bare en liste med navn.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Box,
   Chip,
@@ -25,9 +25,7 @@ import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined
 import OpenInNewOutlinedIcon from '@mui/icons-material/OpenInNewOutlined';
 
 import {
-  workspaceModulesApi,
   type WorkspaceProductScope,
-  type WorkspaceProjectSummary,
 } from '../../services/adminRoomApi';
 import { BRAND } from './brand';
 import {
@@ -37,6 +35,7 @@ import {
   UnavailableSources,
   formatDate,
 } from './panelKit';
+import { queryError, useWorkspaceProjects } from './useWorkspaceData';
 
 type StatusFilter = 'active' | 'all' | 'archived';
 
@@ -51,30 +50,13 @@ function isArchived(status: string): boolean {
 }
 
 export function ProsjekterTab({ product }: { product: WorkspaceProductScope }) {
-  const [items, setItems] = useState<WorkspaceProjectSummary[]>([]);
-  const [unavailable, setUnavailable] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await workspaceModulesApi.projects(product);
-      setItems(data.items);
-      setUnavailable(data.unavailable ?? []);
-    } catch (err) {
-      setError((err as Error).message || 'Kunne ikke laste prosjekter');
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [product]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const query = useWorkspaceProjects(product);
+  const items = query.data?.items ?? [];
+  const unavailable = query.data?.unavailable ?? [];
+  const loading = query.isPending;
+  const error = queryError(query.error, 'Kunne ikke laste prosjekter');
 
   const visible = useMemo(() => {
     if (statusFilter === 'all') return items;
@@ -86,7 +68,7 @@ export function ProsjekterTab({ product }: { product: WorkspaceProductScope }) {
 
   return (
     <Stack spacing={2}>
-      {error ? <PanelError message={error} onClose={() => setError(null)} /> : null}
+      {error ? <PanelError message={error} /> : null}
       <UnavailableSources sources={unavailable} />
 
       <Stack direction="row" alignItems="center" spacing={1}>

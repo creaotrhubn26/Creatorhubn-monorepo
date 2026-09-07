@@ -37,48 +37,18 @@ import {
 } from '../../services/adminRoomApi';
 import { BRAND } from './brand';
 import { PanelError, PanelLoading, SectionHeading } from './panelKit';
+import { queryError, useWorkspaceSettings } from './useWorkspaceData';
+import {
+  DEFAULT_WORKSPACE_PREFS,
+  WORKSPACE_PREFS_KEY,
+  normalizeWorkspacePrefs,
+  writeStoredWorkspacePrefs,
+  type WorkspacePrefs,
+} from './prefs';
 
-/**
- * Workspace-preferanser. Nøkkelen `workspace_prefs` speiles i
- * localStorage av AdminWorkspace, slik at oppstart ikke må vente på et
- * nettverkskall før layouten settes.
- */
-export interface WorkspacePrefs {
-  defaultProduct: 'roleroom' | 'leadgrid';
-  teamchatOpenByDefault: boolean;
-  notificationPollSeconds: number;
-}
-
-export const WORKSPACE_PREFS_KEY = 'workspace_prefs';
-export const WORKSPACE_PREFS_STORAGE_KEY = 'admin_workspace_prefs';
-
-export const DEFAULT_WORKSPACE_PREFS: WorkspacePrefs = {
-  defaultProduct: 'roleroom',
-  teamchatOpenByDefault: false,
-  notificationPollSeconds: 60,
-};
-
-export function normalizeWorkspacePrefs(raw: unknown): WorkspacePrefs {
-  const v = (raw ?? {}) as Partial<WorkspacePrefs>;
-  const poll = Number(v.notificationPollSeconds);
-  return {
-    defaultProduct: v.defaultProduct === 'leadgrid' ? 'leadgrid' : 'roleroom',
-    teamchatOpenByDefault: v.teamchatOpenByDefault === true,
-    notificationPollSeconds:
-      Number.isFinite(poll) && poll >= 15 && poll <= 600 ? Math.round(poll) : 60,
-  };
-}
-
-/** Leser speilet fra localStorage — brukes ved oppstart, før API-svaret. */
-export function readStoredWorkspacePrefs(): WorkspacePrefs {
-  try {
-    const raw = localStorage.getItem(WORKSPACE_PREFS_STORAGE_KEY);
-    if (!raw) return DEFAULT_WORKSPACE_PREFS;
-    return normalizeWorkspacePrefs(JSON.parse(raw));
-  } catch {
-    return DEFAULT_WORKSPACE_PREFS;
-  }
-}
+// Preferanse-typen og lesing/skriving av det lokale speilet ligger i
+// ./prefs.ts, slik at AdminWorkspace kan lese preferansene ved oppstart
+// uten å dra inn hele denne flaten.
 
 const STATUS_VISUAL: Record<
   WorkspaceIntegrationStatus['status'],
@@ -109,54 +79,38 @@ interface InnstillingerTabProps {
 
 export function InnstillingerTab({ onPrefsChange }: InnstillingerTabProps) {
   const [prefs, setPrefs] = useState<WorkspacePrefs>(DEFAULT_WORKSPACE_PREFS);
-  const [integrations, setIntegrations] = useState<WorkspaceIntegrationStatus[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
+  const query = useWorkspaceSettings();
+  const integrations: WorkspaceIntegrationStatus[] = query.data?.integrations ?? [];
+  const loading = query.isPending;
+  const error = saveError ?? queryError(query.error, 'Kunne ikke laste innstillinger');
+
+  // Speil serverens verdi inn i lokal state når den kommer, og meld fra
+  // til AdminWorkspace så poll-intervall og layout følger med.
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await workspaceModulesApi.settings();
-        if (cancelled) return;
-        const next = normalizeWorkspacePrefs(data.settings?.[WORKSPACE_PREFS_KEY]);
-        setPrefs(next);
-        setIntegrations(data.integrations ?? []);
-        onPrefsChange(next);
-      } catch (err) {
-        if (!cancelled) setError((err as Error).message || 'Kunne ikke laste innstillinger');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // onPrefsChange er stabil (useCallback i parent) — bevisst utelatt
-    // for å unngå re-fetch ved hver render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!query.data) return;
+    const next = normalizeWorkspacePrefs(query.data.settings?.[WORKSPACE_PREFS_KEY]);
+    setPrefs(next);
+    onPrefsChange(next);
+  }, [query.data, onPrefsChange]);
 
   const persist = useCallback(
     async (next: WorkspacePrefs) => {
       setPrefs(next);
       onPrefsChange(next);
       // Speil lokalt med én gang så neste oppstart ikke venter på nettet.
-      try {
-        localStorage.setItem(WORKSPACE_PREFS_STORAGE_KEY, JSON.stringify(next));
-      } catch {
-        /* ignore */
-      }
+      writeStoredWorkspacePrefs(next);
       try {
         await workspaceModulesApi.saveSetting(
           WORKSPACE_PREFS_KEY,
           next as unknown as Record<string, unknown>,
         );
         setSavedAt(Date.now());
-        setError(null);
+        setSaveError(null);
       } catch (err) {
-        setError((err as Error).message || 'Kunne ikke lagre innstillingen');
+        setSaveError((err as Error).message || 'Kunne ikke lagre innstillingen');
       }
     },
     [onPrefsChange],
@@ -166,7 +120,7 @@ export function InnstillingerTab({ onPrefsChange }: InnstillingerTabProps) {
 
   return (
     <Stack spacing={3} sx={{ maxWidth: 720 }}>
-      {error ? <PanelError message={error} onClose={() => setError(null)} /> : null}
+      {error ? <PanelError message={error} onClose={() => setSaveError(null)} /> : null}
 
       {/* Integrasjoner */}
       <Box>

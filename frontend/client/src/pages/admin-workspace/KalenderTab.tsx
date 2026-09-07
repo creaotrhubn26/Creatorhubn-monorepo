@@ -13,7 +13,7 @@
  * i workspacet navigerer internt via `onNavigate` — ingen full sidelast.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -32,12 +32,11 @@ import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 
 import {
-  workspaceAggregatorApi,
   DEADLINE_SOURCE_LABEL,
-  type AgendaItem,
   type DeadlineItem,
   type WorkspaceProductScope,
 } from '../../services/adminRoomApi';
+import { queryError, useTodayAgenda, useUpcomingDeadlines } from './useWorkspaceData';
 import { BRAND } from './brand';
 import { parseWorkspaceLink, type WorkspaceLinkTarget } from './workspaceItems';
 
@@ -101,39 +100,18 @@ function formatTime(iso: string): string | null {
 
 export function KalenderTab({ product, onNavigate }: KalenderTabProps) {
   const [windowDays, setWindowDays] = useState<WindowDays>(14);
-  const [agenda, setAgenda] = useState<AgendaItem[]>([]);
-  const [deadlines, setDeadlines] = useState<DeadlineItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
+  // Begge disse deles med høyre kolonne via React Query-nøklene, så
+  // samme vindu gir ett kall — ikke ett per komponent som før.
+  const agendaQuery = useTodayAgenda(product);
+  const deadlinesQuery = useUpcomingDeadlines(windowDays, product);
 
-    Promise.all([
-      workspaceAggregatorApi.todayAgenda(product),
-      workspaceAggregatorApi.upcomingDeadlines(windowDays, product),
-    ])
-      .then(([agendaItems, deadlineResult]) => {
-        if (cancelled) return;
-        setAgenda(agendaItems);
-        setDeadlines(deadlineResult.items);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError((err as Error).message || 'Kunne ikke laste kalenderen');
-        setAgenda([]);
-        setDeadlines([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [windowDays, product]);
+  const agenda = agendaQuery.data ?? [];
+  const deadlines = deadlinesQuery.data?.items ?? [];
+  const loading = agendaQuery.isPending || deadlinesQuery.isPending;
+  const error =
+    queryError(agendaQuery.error, 'Kunne ikke laste dagens agenda') ??
+    queryError(deadlinesQuery.error, 'Kunne ikke laste kalenderen');
 
   const grouped = useMemo(() => {
     const map = new Map<string, DeadlineItem[]>();
@@ -333,11 +311,18 @@ export function KalenderTab({ product, onNavigate }: KalenderTabProps) {
                     return (
                       <Stack
                         key={item.id}
+                        // Klikkbare rader må være ekte knapper, ellers er
+                        // de usynlige for tastatur og skjermleser.
+                        component={clickable ? 'button' : 'div'}
+                        type={clickable ? 'button' : undefined}
                         direction="row"
                         alignItems="center"
                         spacing={1.25}
                         onClick={clickable ? () => handleOpen(item) : undefined}
                         sx={{
+                          width: '100%',
+                          font: 'inherit',
+                          textAlign: 'left',
                           p: 1.25,
                           borderRadius: 2,
                           bgcolor: BRAND.panelBg,
@@ -345,6 +330,10 @@ export function KalenderTab({ product, onNavigate }: KalenderTabProps) {
                           borderLeft: `3px solid ${SOURCE_COLOR[item.source]}`,
                           cursor: clickable ? 'pointer' : 'default',
                           '&:hover': clickable ? { borderColor: BRAND.borderHover } : undefined,
+                          '&:focus-visible': {
+                            outline: `2px solid ${BRAND.accent}`,
+                            outlineOffset: 2,
+                          },
                         }}
                       >
                         <Box sx={{ color: SOURCE_COLOR[item.source], display: 'flex' }}>

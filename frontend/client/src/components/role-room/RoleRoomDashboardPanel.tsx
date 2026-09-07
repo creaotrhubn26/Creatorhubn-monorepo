@@ -50,7 +50,12 @@ import RoleRoomAgentChatPanel from './components/ai/RoleRoomAgentChatPanel';
 import CarouselPanel from './components/producer/carousel/CarouselPanel';
 import GrantedAssetsCard from './components/producer/GrantedAssetsCard';
 import ClientEconomyPanel from './components/producer/ClientEconomyPanel';
-import AdminRoom from '../../pages/AdminRoom';
+// AdminRoom.tsx er 4786 linjer og drar med seg MarketingCockpitTab →
+// LeadMapPanel → leaflet. Den vises bare bak subTab 'admin-room' for
+// produkteieren, men en statisk import ga hele kjeden til ALLE som
+// lastet dette panelet — inkludert AdminWorkspace, som selv lazy-laster
+// nøyaktig de samme flatene.
+const AdminRoom = React.lazy(() => import('../../pages/AdminRoom'));
 import { useRoleRoomAgentContext } from './hooks/useRoleRoomAgentContext';
 import { useRoleRoomBrand } from './hooks/useRoleRoomBrand';
 import { executeSetupAgentTool } from './services/roleRoomSetupToolExecutor';
@@ -67,6 +72,7 @@ import {
   Box,
   Card,
   CardContent,
+  CircularProgress,
   CardHeader,
   Typography,
   Button,
@@ -1394,7 +1400,15 @@ const RoleRoomDashboardPanel: React.FC<RoleRoomDashboardPanelProps> = ({
                 )}
                 {subTab === 'admin-room'
                   && (profileEmail || '').trim().toLowerCase() === ADMIN_ROOM_OWNER_EMAIL && (
-                    <AdminRoom />
+                    <React.Suspense
+                      fallback={
+                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+                          <CircularProgress />
+                        </Box>
+                      }
+                    >
+                      <AdminRoom />
+                    </React.Suspense>
                 )}
               </CardContent>
               </Card>

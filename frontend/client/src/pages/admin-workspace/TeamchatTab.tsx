@@ -35,15 +35,16 @@ import TagIcon from '@mui/icons-material/Tag';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import ChatBubbleOutlineOutlinedIcon from '@mui/icons-material/ChatBubbleOutlineOutlined';
 
-import {
-  workspaceCollabApi,
-  type WorkspaceChannel,
-  type WorkspaceMessage,
-} from '../../services/adminRoomApi';
 import { BRAND } from './brand';
 import { PanelError, PanelLoading } from './panelKit';
-
-const POLL_MS = 20_000;
+import {
+  queryError,
+  useCreateChannel,
+  useDeleteMessage,
+  useSendMessage,
+  useWorkspaceChannels,
+  useWorkspaceMessages,
+} from './useWorkspaceData';
 
 interface TeamchatTabProps {
   /** Smal variant for høyre kolonne — kanal-listen blir en enkel velger. */
@@ -66,64 +67,37 @@ function formatMessageTime(iso: string): string {
 }
 
 export function TeamchatTab({ compact = false }: TeamchatTabProps) {
-  const [channels, setChannels] = useState<WorkspaceChannel[]>([]);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<WorkspaceMessage[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [messagesLoading, setMessagesLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
-  const [sending, setSending] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  // Kanaler. Backend oppretter «Generelt» ved første kall, så listen er
-  // aldri tom — du møter aldri en chat uten et sted å skrive.
-  const loadChannels = useCallback(async () => {
-    try {
-      const items = await workspaceCollabApi.channels();
-      setChannels(items);
-      setActiveChannelId((current) => current ?? items[0]?.id ?? null);
-      setError(null);
-    } catch (err) {
-      setError((err as Error).message || 'Kunne ikke laste kanaler');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const channelsQuery = useWorkspaceChannels();
+  const channels = useMemo(() => channelsQuery.data ?? [], [channelsQuery.data]);
 
+  // Backend oppretter «Generelt» ved første kall, så listen er aldri tom
+  // — du møter aldri en chat uten et sted å skrive.
   useEffect(() => {
-    void loadChannels();
-  }, [loadChannels]);
+    setActiveChannelId((current) => current ?? channels[0]?.id ?? null);
+  }, [channels]);
 
-  const loadMessages = useCallback(async (channelId: string, showSpinner: boolean) => {
-    if (showSpinner) setMessagesLoading(true);
-    try {
-      const items = await workspaceCollabApi.messages(channelId);
-      setMessages(items);
-      setError(null);
-    } catch (err) {
-      setError((err as Error).message || 'Kunne ikke laste meldinger');
-    } finally {
-      if (showSpinner) setMessagesLoading(false);
-    }
-  }, []);
+  const messagesQuery = useWorkspaceMessages(activeChannelId);
+  const messages = messagesQuery.data ?? [];
 
-  // Poll så en åpen fane holder seg fersk uten manuell refresh.
-  useEffect(() => {
-    if (!activeChannelId) return;
-    let cancelled = false;
-    void loadMessages(activeChannelId, true);
-    const timer = setInterval(() => {
-      if (!cancelled) void loadMessages(activeChannelId, false);
-    }, POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [activeChannelId, loadMessages]);
+  const sendMessage = useSendMessage(activeChannelId);
+  const deleteMessage = useDeleteMessage(activeChannelId);
+  const createChannel = useCreateChannel();
+
+  const loading = channelsQuery.isPending;
+  const messagesLoading = messagesQuery.isPending && Boolean(activeChannelId);
+  const sending = sendMessage.isPending;
+  const error =
+    actionError ??
+    queryError(channelsQuery.error, 'Kunne ikke laste kanaler') ??
+    queryError(messagesQuery.error, 'Kunne ikke laste meldinger');
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' });
@@ -132,43 +106,38 @@ export function TeamchatTab({ compact = false }: TeamchatTabProps) {
   const handleSend = useCallback(async () => {
     const body = draft.trim();
     if (!body || !activeChannelId || sending) return;
-    setSending(true);
     try {
-      const created = await workspaceCollabApi.sendMessage(activeChannelId, body);
-      setMessages((prev) => [...prev, created]);
+      await sendMessage.mutateAsync(body);
       setDraft('');
-      setError(null);
+      setActionError(null);
     } catch (err) {
-      setError((err as Error).message || 'Kunne ikke sende meldingen');
-    } finally {
-      setSending(false);
+      setActionError((err as Error).message || 'Kunne ikke sende meldingen');
     }
-  }, [draft, activeChannelId, sending]);
+  }, [draft, activeChannelId, sending, sendMessage]);
 
-  const handleDelete = useCallback(async (id: string) => {
-    const previous = messages;
-    setMessages((prev) => prev.filter((m) => m.id !== id));
-    try {
-      await workspaceCollabApi.deleteMessage(id);
-    } catch (err) {
-      setMessages(previous);
-      setError((err as Error).message || 'Kunne ikke slette meldingen');
-    }
-  }, [messages]);
+  const handleDelete = useCallback(
+    async (id: string) => {
+      try {
+        await deleteMessage.mutateAsync(id);
+      } catch (err) {
+        setActionError((err as Error).message || 'Kunne ikke slette meldingen');
+      }
+    },
+    [deleteMessage],
+  );
 
   const handleCreateChannel = useCallback(async () => {
     const name = newChannelName.trim();
     if (!name) return;
     try {
-      const created = await workspaceCollabApi.createChannel({ name });
-      setChannels((prev) => [...prev, created]);
+      const created = await createChannel.mutateAsync({ name });
       setActiveChannelId(created.id);
       setCreateOpen(false);
       setNewChannelName('');
     } catch (err) {
-      setError((err as Error).message || 'Kunne ikke opprette kanalen');
+      setActionError((err as Error).message || 'Kunne ikke opprette kanalen');
     }
-  }, [newChannelName]);
+  }, [newChannelName, createChannel]);
 
   const activeChannel = useMemo(
     () => channels.find((c) => c.id === activeChannelId) ?? null,
@@ -325,7 +294,7 @@ export function TeamchatTab({ compact = false }: TeamchatTabProps) {
         </Stack>
         {error ? (
           <Box sx={{ px: 1.5, pt: 1 }}>
-            <PanelError message={error} onClose={() => setError(null)} />
+            <PanelError message={error} onClose={() => setActionError(null)} />
           </Box>
         ) : null}
         {messageList}
@@ -424,7 +393,7 @@ export function TeamchatTab({ compact = false }: TeamchatTabProps) {
 
         {error ? (
           <Box sx={{ pt: 1 }}>
-            <PanelError message={error} onClose={() => setError(null)} />
+            <PanelError message={error} onClose={() => setActionError(null)} />
           </Box>
         ) : null}
 
