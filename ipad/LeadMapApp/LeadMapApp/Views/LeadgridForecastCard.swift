@@ -7,6 +7,7 @@ import SwiftUI
 
 struct LeadgridForecastCard: View {
     let api: APIClient
+    let projectId: String
     @State private var forecast: LeadgridForecast?
     @State private var loading = true
     @State private var errorText: String?
@@ -54,7 +55,10 @@ struct LeadgridForecastCard: View {
         }
         .padding()
         .background(Color.purple.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
-        .task { await load() }
+        .task(id: projectId) {
+            forecast = nil
+            await load()
+        }
     }
 
     @ViewBuilder
@@ -151,7 +155,7 @@ struct LeadgridForecastCard: View {
         loading = true
         errorText = nil
         do {
-            forecast = try await api.fetchPipelineForecast()
+            forecast = try await api.fetchPipelineForecast(projectId: projectId)
         } catch {
             errorText = "Kunne ikke laste forecast: \(error.localizedDescription)"
         }
@@ -163,7 +167,7 @@ struct LeadgridForecastCard: View {
         refreshing = true
         defer { refreshing = false }
         do {
-            forecast = try await api.refreshPipelineForecast()
+            forecast = try await api.refreshPipelineForecast(projectId: projectId)
         } catch {
             errorText = "Refresh feilet: \(error.localizedDescription)"
         }

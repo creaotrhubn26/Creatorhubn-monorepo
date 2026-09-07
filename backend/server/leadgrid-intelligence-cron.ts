@@ -42,11 +42,18 @@ function adaptiveChunkSize(totalLeads: number): number {
 async function expireOldRecommendations(pool: Pool): Promise<number> {
   try {
     const r = await pool.query(
-      `UPDATE lead_recommendations
+      `UPDATE lead_recommendations recommendation
           SET status = 'expired'
-        WHERE status IN ('pending','accepted')
-          AND expires_at IS NOT NULL
-          AND expires_at < NOW()`,
+         FROM crm_customers customer
+         JOIN leadgrid_projects project
+           ON project.id = customer.project_id
+          AND project.organization_id = customer.organization_id
+        WHERE recommendation.lead_id = customer.id
+          AND recommendation.organization_id = customer.organization_id
+          AND recommendation.project_id = customer.project_id
+          AND recommendation.status IN ('pending','accepted')
+          AND recommendation.expires_at IS NOT NULL
+          AND recommendation.expires_at < NOW()`,
     );
     return r.rowCount ?? 0;
   } catch (err) {
@@ -58,76 +65,80 @@ async function expireOldRecommendations(pool: Pool): Promise<number> {
 async function emitFollowUpEvents(pool: Pool): Promise<{ due: number; overdue: number }> {
   let due = 0;
   let overdue = 0;
-  // Prefer the lead's explicit organization. Legacy rows without that field
-  // fall back to the owner's primary organization membership.
   try {
     const overdueRows = await pool.query<{
       id: string;
-      organization_id: string | null;
+      organization_id: string;
+      project_id: string;
       assigned_user_id: string | null;
       name: string;
       next_follow_up_at: string;
     }>(
       `SELECT c.id::text,
-              COALESCE(
-                c.organization_id::text,
-                (SELECT om.organization_id::text FROM organization_members om
-                  WHERE om.user_id = c.owner_user_id ORDER BY om.joined_at ASC LIMIT 1)
-              )
-              AS organization_id,
+              c.organization_id::text AS organization_id,
+              c.project_id::text AS project_id,
               c.assigned_user_id::text,
               c.name,
               c.next_follow_up_at::text
          FROM crm_customers c
+         JOIN leadgrid_projects project
+           ON project.id = c.project_id
+          AND project.organization_id = c.organization_id
         WHERE c.archived_at IS NULL
+          AND c.organization_id IS NOT NULL
+          AND c.project_id IS NOT NULL
           AND c.next_follow_up_at IS NOT NULL
           AND c.next_follow_up_at < NOW() - INTERVAL '24 hours'
-          AND c.owner_user_id IS NOT NULL`,
+          AND (project.status IS NULL OR project.status NOT IN ('archived', 'deleted'))`,
     );
     overdue = overdueRows.rowCount ?? 0;
     for (const row of overdueRows.rows) {
-      if (!row.organization_id) continue;
       void emitWebhook(pool, "followup.overdue", {
         lead_id: row.id,
+        organization_id: row.organization_id,
+        project_id: row.project_id,
         assigned_user_id: row.assigned_user_id,
         name: row.name,
         next_follow_up_at: row.next_follow_up_at,
-      }, row.organization_id);
+      }, row.organization_id, row.project_id);
     }
 
     const dueRows = await pool.query<{
       id: string;
-      organization_id: string | null;
+      organization_id: string;
+      project_id: string;
       assigned_user_id: string | null;
       name: string;
       next_follow_up_at: string;
     }>(
       `SELECT c.id::text,
-              COALESCE(
-                c.organization_id::text,
-                (SELECT om.organization_id::text FROM organization_members om
-                  WHERE om.user_id = c.owner_user_id ORDER BY om.joined_at ASC LIMIT 1)
-              )
-              AS organization_id,
+              c.organization_id::text AS organization_id,
+              c.project_id::text AS project_id,
               c.assigned_user_id::text,
               c.name,
               c.next_follow_up_at::text
          FROM crm_customers c
+         JOIN leadgrid_projects project
+           ON project.id = c.project_id
+          AND project.organization_id = c.organization_id
         WHERE c.archived_at IS NULL
+          AND c.organization_id IS NOT NULL
+          AND c.project_id IS NOT NULL
           AND c.next_follow_up_at IS NOT NULL
           AND c.next_follow_up_at >= NOW()
           AND c.next_follow_up_at < NOW() + INTERVAL '24 hours'
-          AND c.owner_user_id IS NOT NULL`,
+          AND (project.status IS NULL OR project.status NOT IN ('archived', 'deleted'))`,
     );
     due = dueRows.rowCount ?? 0;
     for (const row of dueRows.rows) {
-      if (!row.organization_id) continue;
       void emitWebhook(pool, "followup.due", {
         lead_id: row.id,
+        organization_id: row.organization_id,
+        project_id: row.project_id,
         assigned_user_id: row.assigned_user_id,
         name: row.name,
         next_follow_up_at: row.next_follow_up_at,
-      }, row.organization_id);
+      }, row.organization_id, row.project_id);
     }
   } catch (err) {
     console.warn("[intelligence-cron] emitFollowUpEvents failed:", err);
@@ -161,22 +172,33 @@ export function registerLeadgridIntelligenceCron(deps: Deps): void {
 
       const startedAt = Date.now();
       try {
-        // Intelligence krever en eier. Org-relasjonen valideres nedstrøms
-        // via organization_members før resultatet persisteres.
-        const rows = await pool.query<{ id: string }>(
-          `SELECT id::text
-             FROM crm_customers
-            WHERE archived_at IS NULL
-              AND owner_user_id IS NOT NULL
-              AND lead_status != 'do_not_contact'
-            ORDER BY scored_at ASC NULLS FIRST
+        // The persisted customer/project tuple is authoritative. Legacy leads
+        // without both keys are intentionally skipped rather than inferred.
+        const rows = await pool.query<{
+          id: string;
+          organization_id: string;
+          project_id: string;
+        }>(
+          `SELECT customer.id::text,
+                  customer.organization_id::text,
+                  customer.project_id::text
+             FROM crm_customers customer
+             JOIN leadgrid_projects project
+               ON project.id = customer.project_id
+              AND project.organization_id = customer.organization_id
+            WHERE customer.archived_at IS NULL
+              AND customer.organization_id IS NOT NULL
+              AND customer.project_id IS NOT NULL
+              AND customer.lead_status != 'do_not_contact'
+              AND (project.status IS NULL OR project.status NOT IN ('archived', 'deleted'))
+            ORDER BY customer.scored_at ASC NULLS FIRST
             LIMIT $1`,
           [MAX_PER_RUN],
         );
 
         let ok = 0;
         let failed = 0;
-        let skippedNoOrganization = 0;
+        let skippedNoProjectScope = 0;
         const chunkSize = adaptiveChunkSize(rows.rows.length);
         for (let i = 0; i < rows.rows.length; i += chunkSize) {
           const chunk = rows.rows.slice(i, i + chunkSize);
@@ -186,12 +208,22 @@ export function registerLeadgridIntelligenceCron(deps: Deps): void {
                 const result = await computeIntelligenceForLead(pool, r.id, {
                   trigger: "cron",
                   persist: true,
+                  expectedScope: {
+                    organizationId: r.organization_id,
+                    projectId: r.project_id,
+                  },
                 });
                 if (result) ok += 1;
-                else skippedNoOrganization += 1;
+                else skippedNoProjectScope += 1;
               } catch (err) {
                 failed += 1;
-                console.warn("[intelligence-cron] lead failed", r.id, err);
+                console.warn(
+                  "[intelligence-cron] lead failed",
+                  r.id,
+                  r.organization_id,
+                  r.project_id,
+                  err,
+                );
               }
             }),
           );
@@ -200,12 +232,13 @@ export function registerLeadgridIntelligenceCron(deps: Deps): void {
         const followUp = await emitFollowUpEvents(pool);
         const expired = await expireOldRecommendations(pool);
 
-        const allProcessed = failed === 0 && skippedNoOrganization === 0;
+        const allProcessed = failed === 0 && skippedNoProjectScope === 0;
         res.status(allProcessed ? 200 : 500).json({
           ok: allProcessed,
           processed: ok,
           failed,
-          skipped_no_organization: skippedNoOrganization,
+          skipped_no_organization: skippedNoProjectScope,
+          skipped_no_project_scope: skippedNoProjectScope,
           total_candidates: rows.rowCount,
           chunk_size: chunkSize,
           followup_due: followUp.due,

@@ -17,17 +17,20 @@ import {
 } from "./leadgrid-discovery-contract.js";
 import {
   createDiscoveryRegistryProvider,
+  DISCOVERY_BRREG_PAGE_SIZE,
   DISCOVERY_PUBLIC_DATA_SOURCES,
   distanceBetweenRegistryPoints,
   DiscoveryRegistryError,
   type DiscoveryRegistryCandidate,
   type DiscoveryRegistrySearchInput,
   type DiscoveryRegistrySearchResult,
+  type DiscoveryWebsiteQualityAssessment,
 } from "./leadgrid-discovery-brreg-provider.js";
 import {
   scoreDiscoveryCandidate,
   type DiscoveryCandidateScore,
 } from "./leadgrid-discovery-scoring.js";
+import { normalizeWebsiteDomain } from "./lead-map-create-contract.js";
 import type { LeadgridAccessibleProject } from "./leadgrid-project-access.js";
 import type { BackgroundJob, JobHandler } from "./job-queue.js";
 import { broadcastLeadCreated, leadgridRealtime } from "./leadgrid-realtime.js";
@@ -78,11 +81,13 @@ export type DiscoveryServiceErrorCode =
   | "idempotency_conflict"
   | "plan_changed"
   | "profile_version_conflict"
+  | "place_confirmation_required"
   | "invalid_state"
   | "invalid_cursor"
   | "provider_not_configured"
   | "provider_unavailable"
   | "classification_resolution_failed"
+  | "municipality_resolution_failed"
   | "discovery_not_enabled"
   | "monthly_candidate_budget_exhausted"
   | "run_already_executing"
@@ -119,6 +124,12 @@ const SERVICE_ERROR_DEFAULTS: Record<
     status: 409,
     retryable: false,
   },
+  place_confirmation_required: {
+    message:
+      "Google Place ID must come from a recent explicit detail lookup by the approving user.",
+    status: 409,
+    retryable: false,
+  },
   invalid_state: {
     message: "The Discovery resource is not in a valid state for this action.",
     status: 409,
@@ -142,6 +153,12 @@ const SERVICE_ERROR_DEFAULTS: Record<
   classification_resolution_failed: {
     message:
       "Discovery could not map the customer segment to an official industry code.",
+    status: 422,
+    retryable: false,
+  },
+  municipality_resolution_failed: {
+    message:
+      "Discovery could not map one or more municipality names to official municipality numbers.",
     status: 422,
     retryable: false,
   },
@@ -284,6 +301,40 @@ export interface DiscoveryRunMutationDto {
   replayed: boolean;
 }
 
+export interface DiscoveryProfileObservationDto {
+  profile_id: string | null;
+  profile_name: string | null;
+  profile_version: number | null;
+  territory_code: string | null;
+  run_count: number;
+  last_seen_at: string;
+}
+
+export type DiscoveryObservationOrigin =
+  | "provider_observation"
+  | "rolling_deploy_canonical_fallback"
+  | "legacy_backfill_current_canonical"
+  | "unknown";
+
+export interface DiscoveryObservationMetadataDto {
+  origin: DiscoveryObservationOrigin;
+  observed_at: string | null;
+  captured_at: string | null;
+  is_approximate: boolean;
+}
+
+export interface DiscoveryWebsiteQualityDto {
+  status: "assessed" | "unknown";
+  score: number | null;
+  reason: DiscoveryWebsiteQualityAssessment["reason"];
+  fetched_at: string;
+  source_uri: string;
+  final_url: string | null;
+  http_status: number | null;
+  redirect_count: number;
+  signals: DiscoveryWebsiteQualityAssessment["signals"];
+}
+
 export interface DiscoveryCandidateDto {
   id: string;
   run_id: string;
@@ -301,10 +352,23 @@ export interface DiscoveryCandidateDto {
   source_uri: string | null;
   organization_number: string | null;
   organization_form: string | null;
+  organization_form_code: string | null;
+  organization_structure: "independent" | "chain" | "unknown";
   nace_code: string | null;
   nace_description: string | null;
   employee_count: number | null;
   registered_in_vat_register: boolean | null;
+  registered_in_business_register: boolean | null;
+  website_quality: DiscoveryWebsiteQualityDto | null;
+  observation: DiscoveryObservationMetadataDto;
+  discovery_profile: {
+    id: string | null;
+    name: string | null;
+    version: number | null;
+    territory_code: string | null;
+  };
+  observed_run_count: number;
+  observed_in_profiles: DiscoveryProfileObservationDto[];
   sources: DiscoveryDataSourceDto[];
   status: string;
   research_status: string;
@@ -466,6 +530,75 @@ function objectValue(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+type DiscoverySourceCursorMap = Record<string, number>;
+
+function sourceOffsetCursor(value: unknown, fallback = 0): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 && parsed <= 2_147_483_647
+    ? parsed
+    : fallback;
+}
+
+/**
+ * Ties a cursor to one stable source universe. Reordering queries preserves the
+ * cursor, while any filter or scoring-context change safely starts at zero.
+ */
+export function discoverySourceQueryFingerprint(
+  brief: DiscoveryBrief,
+  queryText: string,
+): string {
+  return discoveryHash({
+    version: 1,
+    source: "brreg_open_data",
+    query_mode: "industry",
+    query: queryText,
+    area: {
+      city: brief.city ?? null,
+      geo: brief.geo ?? null,
+      municipality_numbers: brief.municipality_numbers,
+      municipality_names: brief.municipality_names,
+    },
+    organization_forms: brief.organization_forms,
+    employee_count: brief.employee_count,
+    organization_structure: brief.organization_structure,
+    website_requirement: brief.website_requirement,
+    website_quality: brief.website_quality,
+    commercial_signals: brief.commercial_signals,
+    exclusion_terms: brief.exclusion_terms,
+    minimum_fit_score: brief.minimum_fit_score,
+    ideal_customer: brief.ideal_customer ?? null,
+    goal: brief.goal ?? null,
+  });
+}
+
+function sourceCursorMapForPlan(
+  value: unknown,
+  brief: DiscoveryBrief,
+  plan: DiscoverySearchPlan,
+): DiscoverySourceCursorMap {
+  const stored = objectValue(value);
+  return Object.fromEntries(
+    plan.queries.map((query) => {
+      const fingerprint = discoverySourceQueryFingerprint(
+        brief,
+        query.text_query,
+      );
+      return [fingerprint, sourceOffsetCursor(stored[fingerprint])];
+    }),
+  );
+}
+
+function parsedSourceCursorMap(value: unknown): DiscoverySourceCursorMap {
+  const record = objectValue(value);
+  return Object.fromEntries(
+    Object.entries(record).flatMap(([fingerprint, cursor]) =>
+      /^[a-f0-9]{64}$/.test(fingerprint)
+        ? [[fingerprint, sourceOffsetCursor(cursor)]]
+        : [],
+    ),
+  );
 }
 
 function parseBrief(value: unknown): DiscoveryBrief {
@@ -674,6 +807,17 @@ export async function createDiscoveryRun(
     planHash?: string | null;
     triggerKind?: DiscoveryTriggerKind;
     scheduledFor?: string | Date | null;
+    /**
+     * Internal-only campaign snapshot. HTTP routes use a strict schema and
+     * explicit field mapping, so this capability cannot be supplied by a
+     * client. It preserves the profile attribution captured when a campaign
+     * was confirmed without letting later profile edits alter that campaign.
+     */
+    trustedProfileSnapshot?: {
+      profileId: string;
+      profileVersion: number;
+      sourceCursorMap: unknown;
+    };
   },
 ): Promise<DiscoveryRunMutationDto> {
   assertProject(input.project);
@@ -694,18 +838,72 @@ export async function createDiscoveryRun(
       field: "trigger_kind",
     });
   }
-  const profileId = input.profileId
-    ? requiredText(input.profileId, "profile_id")
+  const trustedProfileSnapshot = input.trustedProfileSnapshot;
+  if (
+    trustedProfileSnapshot &&
+    triggerKind !== "workflow" &&
+    triggerKind !== "retry"
+  ) {
+    throw new DiscoveryServiceError("validation_error", {
+      field: "trusted_profile_snapshot",
+    });
+  }
+  const trustedProfileId = trustedProfileSnapshot
+    ? requiredText(trustedProfileSnapshot.profileId, "profile_id")
     : null;
-  if (input.expectedProfileVersion != null && !profileId) {
+  const trustedProfileVersion = trustedProfileSnapshot
+    ? numberValue(trustedProfileSnapshot.profileVersion)
+    : null;
+  if (
+    trustedProfileSnapshot &&
+    (trustedProfileVersion == null ||
+      !Number.isInteger(trustedProfileVersion) ||
+      trustedProfileVersion < 1)
+  ) {
     throw new DiscoveryServiceError("validation_error", {
       field: "expected_profile_version",
+    });
+  }
+  const suppliedProfileId = input.profileId
+    ? requiredText(input.profileId, "profile_id")
+    : null;
+  if (
+    trustedProfileSnapshot &&
+    ((suppliedProfileId && suppliedProfileId !== trustedProfileId) ||
+      (input.expectedProfileVersion != null &&
+        input.expectedProfileVersion !== trustedProfileVersion))
+  ) {
+    throw new DiscoveryServiceError("validation_error", {
+      field: "trusted_profile_snapshot",
+    });
+  }
+  const profileId = trustedProfileId ?? suppliedProfileId;
+  const expectedProfileVersion =
+    trustedProfileVersion ?? input.expectedProfileVersion ?? null;
+  const trustedSourceCursorMap = trustedProfileSnapshot
+    ? parsedSourceCursorMap(trustedProfileSnapshot.sourceCursorMap)
+    : {};
+  if (profileId && expectedProfileVersion == null) {
+    throw new DiscoveryServiceError("validation_error", {
+      field: "expected_profile_version",
+    });
+  }
+  if (!profileId && expectedProfileVersion != null) {
+    throw new DiscoveryServiceError("validation_error", {
+      field: "profile_id",
     });
   }
   const requestHash = discoveryHash({
     project_id: input.project.id,
     profile_id: profileId,
-    expected_profile_version: input.expectedProfileVersion ?? null,
+    expected_profile_version: expectedProfileVersion,
+    trusted_profile_snapshot: trustedProfileSnapshot
+      ? {
+          profile_id: profileId,
+          profile_version: expectedProfileVersion,
+          source_cursor_map: trustedSourceCursorMap,
+        }
+      : null,
     brief: preview.brief,
     start_immediately: input.startImmediately,
     plan_hash: input.planHash ?? null,
@@ -742,12 +940,22 @@ export async function createDiscoveryRun(
     }
 
     let profileVersion: number | null = null;
-    if (profileId) {
+    let persistedSourceCursorMap: unknown = {};
+    let effectivePreview = preview;
+    if (profileId && trustedProfileSnapshot) {
+      profileVersion = expectedProfileVersion;
+      persistedSourceCursorMap = trustedSourceCursorMap;
+      // Campaign items hold a canonical, immutable brief. Do not re-read the
+      // mutable live profile here: patch/archive applies to the next campaign.
+      effectivePreview = preview;
+    } else if (profileId) {
       const profile = await client.query<{
         version: number;
         status: string;
+        brief: unknown;
+        source_cursor_map: unknown;
       }>(
-        `SELECT version, status
+        `SELECT version, status, brief, source_cursor_map
            FROM leadgrid_discovery_profiles
           WHERE id = $3::uuid
             AND organization_id = $1::uuid
@@ -760,16 +968,35 @@ export async function createDiscoveryRun(
       if (!row || row.status === "archived") {
         throw new DiscoveryServiceError("not_found", { field: "profile_id" });
       }
+      if (triggerKind === "scheduled" && row.status !== "active") {
+        throw new DiscoveryServiceError("invalid_state", {
+          field: "profile_id",
+        });
+      }
       profileVersion = numberValue(row.version);
-      if (
-        input.expectedProfileVersion != null &&
-        profileVersion !== input.expectedProfileVersion
-      ) {
+      persistedSourceCursorMap = row.source_cursor_map;
+      if (profileVersion !== expectedProfileVersion) {
         throw new DiscoveryServiceError("profile_version_conflict", {
           field: "expected_profile_version",
         });
       }
+      const storedProfilePreview = previewDiscovery(row.brief);
+      if (
+        discoveryHash(storedProfilePreview.brief) !==
+        discoveryHash(preview.brief)
+      ) {
+        throw new DiscoveryServiceError("profile_version_conflict", {
+          field: "brief",
+        });
+      }
+      effectivePreview = storedProfilePreview;
     }
+
+    const sourceCursorStart = sourceCursorMapForPlan(
+      persistedSourceCursorMap,
+      effectivePreview.brief,
+      effectivePreview.plan,
+    );
 
     const reservationKey = capacityReservationKey(
       input.project.id,
@@ -781,7 +1008,7 @@ export async function createDiscoveryRun(
         {
           organizationId: input.project.organizationId,
           idempotencyKey: reservationKey,
-          requestedCandidates: preview.brief.target_count,
+          requestedCandidates: effectivePreview.brief.target_count,
         },
       );
       if (!reservation.allowed) {
@@ -813,15 +1040,22 @@ export async function createDiscoveryRun(
         triggerKind,
         initialStatus,
         userId,
-        preview.brief.target_count,
-        preview.brief.enrichment_count,
+        effectivePreview.brief.target_count,
+        effectivePreview.brief.enrichment_count,
         dateText(input.scheduledFor),
         idempotencyKey,
         requestHash,
-        JSON.stringify(preview.brief),
-        JSON.stringify({ ...preview.plan, plan_hash: preview.plan_hash }),
+        JSON.stringify(effectivePreview.brief),
         JSON.stringify({
-          version: 2,
+          ...effectivePreview.plan,
+          plan_hash: effectivePreview.plan_hash,
+        }),
+        JSON.stringify({
+          version: 3,
+          source_cursor_start: sourceCursorStart,
+          source_cursor_next: sourceCursorStart,
+          source_page_start: 0,
+          source_page_next: 0,
           completed_queries: [],
           query_errors: [],
           query_results: {},
@@ -934,8 +1168,64 @@ export async function cancelDiscoveryRun(
 ): Promise<DiscoveryRunMutationDto> {
   assertProject(input.project);
   requiredText(input.userId, "user_id");
+  return cancelDiscoveryRunInProject(pool, {
+    project: input.project,
+    runId: input.runId,
+  });
+}
+
+/**
+ * Internal-only cancellation for a child owned by an already-authorized,
+ * durable workflow. HTTP routes always use cancelDiscoveryRun and require a
+ * current user; the campaign worker uses this only after reading a scoped
+ * parent in cancel_requested state.
+ */
+export async function cancelDiscoveryRunFromTrustedWorkflow(
+  pool: Pool,
+  input: {
+    project: LeadgridAccessibleProject;
+    campaignId: string;
+    runId: string;
+  },
+): Promise<DiscoveryRunMutationDto> {
+  assertProject(input.project);
+  return cancelDiscoveryRunInProject(pool, input);
+}
+
+async function cancelDiscoveryRunInProject(
+  pool: Pool,
+  input: {
+    project: LeadgridAccessibleProject;
+    runId: string;
+    campaignId?: string;
+  },
+): Promise<DiscoveryRunMutationDto> {
   return withTransaction(pool, async (client) => {
-    const run = await loadRun(client, input.project, input.runId, true);
+    const run = input.campaignId
+      ? (
+          await client.query<RunRow>(
+            `SELECT ${RUN_COLUMNS}
+               FROM leadgrid_discovery_runs r
+               JOIN leadgrid_discovery_campaign_runs c
+                 ON c.organization_id = r.organization_id
+                AND c.project_id = r.project_id
+                AND c.active_run_id = r.id
+              WHERE r.organization_id = $1::uuid
+                AND r.project_id = $2
+                AND r.id = $3::uuid
+                AND c.id = $4::uuid
+                AND c.status = 'cancel_requested'
+              FOR UPDATE OF r, c
+              LIMIT 1`,
+            [
+              input.project.organizationId,
+              input.project.id,
+              input.runId,
+              input.campaignId,
+            ],
+          )
+        ).rows[0] ?? null
+      : await loadRun(client, input.project, input.runId, true);
     if (!run) throw new DiscoveryServiceError("not_found");
     if (run.status === "cancelled") {
       return { run: toRunDto(run), replayed: true };
@@ -1078,10 +1368,23 @@ interface CandidateListRow {
   source_uri: string | null;
   organization_number: string | null;
   organization_form: string | null;
+  organization_form_code: string | null;
+  organization_structure: string | null;
   nace_code: string | null;
   nace_description: string | null;
   employee_count: number | null;
   registered_in_vat_register: boolean | null;
+  registered_in_business_register: boolean | null;
+  website_quality: Record<string, unknown> | null;
+  observation_origin: string | null;
+  observation_observed_at: string | Date | null;
+  observation_captured_at: string | Date | null;
+  profile_id: string | null;
+  profile_name: string | null;
+  profile_version: number | null;
+  territory_code: string | null;
+  observed_run_count: number | string;
+  observed_in_profiles: unknown[] | null;
   status: string;
   research_status: string;
   disposition: DiscoveryOccurrenceDisposition;
@@ -1101,7 +1404,55 @@ interface CandidateListRow {
   cursor_sort_value: number | string | null;
 }
 
+function observationMetadata(input: {
+  origin: unknown;
+  observedAt: string | Date | null | undefined;
+  capturedAt: string | Date | null | undefined;
+}): DiscoveryObservationMetadataDto {
+  const origin: DiscoveryObservationOrigin =
+    input.origin === "provider_observation" ||
+    input.origin === "rolling_deploy_canonical_fallback" ||
+    input.origin === "legacy_backfill_current_canonical"
+      ? input.origin
+      : "unknown";
+  return {
+    origin,
+    observed_at: dateText(input.observedAt),
+    captured_at: dateText(input.capturedAt),
+    is_approximate: origin !== "provider_observation",
+  };
+}
+
 function toCandidateDto(row: CandidateListRow): DiscoveryCandidateDto {
+  const observedInProfiles: DiscoveryProfileObservationDto[] = Array.isArray(
+    row.observed_in_profiles,
+  )
+    ? row.observed_in_profiles.flatMap((value) => {
+        const observation = objectValue(value);
+        const lastSeenAt = dateText(
+          observation.last_seen_at as string | Date | null,
+        );
+        if (!lastSeenAt) return [];
+        return [
+          {
+            profile_id: nullableText(observation.profile_id),
+            profile_name: nullableText(observation.profile_name),
+            profile_version:
+              observation.profile_version == null
+                ? null
+                : numberValue(observation.profile_version),
+            territory_code: nullableText(observation.territory_code),
+            run_count: numberValue(observation.run_count),
+            last_seen_at: lastSeenAt,
+          },
+        ];
+      })
+    : [];
+  const organizationStructure =
+    row.organization_structure === "independent" ||
+    row.organization_structure === "chain"
+      ? row.organization_structure
+      : "unknown";
   return {
     id: row.id,
     run_id: row.run_id,
@@ -1119,10 +1470,28 @@ function toCandidateDto(row: CandidateListRow): DiscoveryCandidateDto {
     source_uri: row.source_uri,
     organization_number: row.organization_number,
     organization_form: row.organization_form,
+    organization_form_code: row.organization_form_code,
+    organization_structure: organizationStructure,
     nace_code: row.nace_code,
     nace_description: row.nace_description,
     employee_count: row.employee_count,
     registered_in_vat_register: row.registered_in_vat_register,
+    registered_in_business_register: row.registered_in_business_register,
+    website_quality: websiteQualityDto(row.website_quality),
+    observation: observationMetadata({
+      origin: row.observation_origin,
+      observedAt: row.observation_observed_at,
+      capturedAt: row.observation_captured_at,
+    }),
+    discovery_profile: {
+      id: row.profile_id,
+      name: row.profile_name,
+      version:
+        row.profile_version == null ? null : numberValue(row.profile_version),
+      territory_code: row.territory_code,
+    },
+    observed_run_count: numberValue(row.observed_run_count),
+    observed_in_profiles: observedInProfiles,
     sources: DISCOVERY_DATA_SOURCES,
     status: row.status,
     research_status: row.research_status,
@@ -1236,27 +1605,49 @@ export async function listDiscoveryCandidates(
   const result = await pool.query<CandidateListRow>(
     `SELECT c.id::text,
             rc.run_id::text,
-            c.name,
-            c.address,
-            c.city,
-            c.postal_code,
-            c.country_code,
-            c.latitude,
-            c.longitude,
-            c.website_url,
-            c.phone,
-            c.email,
-            c.raw_data->>'source_uri' AS source_uri,
-            c.organization_number,
-            c.raw_data->>'organization_form' AS organization_form,
-            c.raw_data->>'nace_code' AS nace_code,
-            c.raw_data->>'nace_description' AS nace_description,
-            CASE WHEN jsonb_typeof(c.raw_data->'employee_count') = 'number'
-              THEN (c.raw_data->>'employee_count')::int ELSE NULL END
+            observation.name,
+            observation.address,
+            observation.city,
+            observation.postal_code,
+            observation.country_code,
+            observation.latitude,
+            observation.longitude,
+            observation.website_url,
+            observation.phone,
+            observation.email,
+            observation.raw_data->>'source_uri' AS source_uri,
+            observation.organization_number,
+            observation.raw_data->>'organization_form' AS organization_form,
+            observation.raw_data->>'organization_form_code' AS organization_form_code,
+            observation.raw_data->>'organization_structure' AS organization_structure,
+            observation.raw_data->>'nace_code' AS nace_code,
+            observation.raw_data->>'nace_description' AS nace_description,
+            CASE WHEN jsonb_typeof(observation.raw_data->'employee_count') = 'number'
+              THEN (observation.raw_data->>'employee_count')::int ELSE NULL END
               AS employee_count,
-            CASE WHEN jsonb_typeof(c.raw_data->'registered_in_vat_register') = 'boolean'
-              THEN (c.raw_data->>'registered_in_vat_register')::boolean
+            CASE WHEN jsonb_typeof(observation.raw_data->'registered_in_vat_register') = 'boolean'
+              THEN (observation.raw_data->>'registered_in_vat_register')::boolean
               ELSE NULL END AS registered_in_vat_register,
+            CASE WHEN jsonb_typeof(observation.raw_data->'registered_in_business_register') = 'boolean'
+              THEN (observation.raw_data->>'registered_in_business_register')::boolean
+              ELSE NULL END AS registered_in_business_register,
+            observation.raw_data->'website_quality' AS website_quality,
+            rc.observation_snapshot->>'snapshot_origin'
+              AS observation_origin,
+            rc.observation_snapshot->>'observed_at'
+              AS observation_observed_at,
+            rc.observation_snapshot->>'captured_at'
+              AS observation_captured_at,
+            r.profile_id::text AS profile_id,
+            p.name AS profile_name,
+            r.profile_version,
+            r.brief_snapshot->>'territory_code' AS territory_code,
+            COALESCE(observations.observed_run_count, 0)
+              AS observed_run_count,
+            COALESCE(
+              observations.observed_in_profiles,
+              '[]'::jsonb
+            ) AS observed_in_profiles,
             c.status,
             c.research_status,
             rc.disposition,
@@ -1286,6 +1677,93 @@ export async function listDiscoveryCandidates(
          ON c.id = rc.candidate_id
         AND c.organization_id = rc.organization_id
         AND c.project_id = rc.project_id
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(
+                  NULLIF(rc.observation_snapshot->>'name', ''),
+                  'Ukjent virksomhet'
+                ) AS name,
+                NULLIF(rc.observation_snapshot->>'address', '') AS address,
+                NULLIF(rc.observation_snapshot->>'city', '') AS city,
+                NULLIF(
+                  rc.observation_snapshot->>'postal_code',
+                  ''
+                ) AS postal_code,
+                NULLIF(
+                  rc.observation_snapshot->>'country_code',
+                  ''
+                ) AS country_code,
+                CASE
+                  WHEN jsonb_typeof(rc.observation_snapshot->'latitude') = 'number'
+                    THEN (rc.observation_snapshot->>'latitude')::double precision
+                  ELSE NULL
+                END AS latitude,
+                CASE
+                  WHEN jsonb_typeof(rc.observation_snapshot->'longitude') = 'number'
+                    THEN (rc.observation_snapshot->>'longitude')::double precision
+                  ELSE NULL
+                END AS longitude,
+                NULLIF(
+                  rc.observation_snapshot->>'website_url',
+                  ''
+                ) AS website_url,
+                NULLIF(rc.observation_snapshot->>'phone', '') AS phone,
+                NULLIF(rc.observation_snapshot->>'email', '') AS email,
+                NULLIF(
+                  rc.observation_snapshot->>'organization_number',
+                  ''
+                ) AS organization_number,
+                CASE
+                  WHEN jsonb_typeof(rc.observation_snapshot->'raw_data') = 'object'
+                    THEN rc.observation_snapshot->'raw_data'
+                  ELSE '{}'::jsonb
+                END AS raw_data
+       ) observation ON TRUE
+       LEFT JOIN leadgrid_discovery_profiles p
+         ON p.id = r.profile_id
+        AND p.organization_id = r.organization_id
+        AND p.project_id = r.project_id
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(history.run_count), 0)::int
+                  AS observed_run_count,
+                COALESCE(
+                  jsonb_agg(
+                    jsonb_build_object(
+                      'profile_id', history.profile_id,
+                      'profile_name', history.profile_name,
+                      'profile_version', history.profile_version,
+                      'territory_code', history.territory_code,
+                      'run_count', history.run_count,
+                      'last_seen_at', history.last_seen_at
+                    )
+                    ORDER BY history.last_seen_at DESC,
+                             history.profile_id NULLS LAST
+                  ),
+                  '[]'::jsonb
+                ) AS observed_in_profiles
+           FROM (
+             SELECT history_run.profile_id::text AS profile_id,
+                    history_profile.name AS profile_name,
+                    MAX(history_run.profile_version)::int AS profile_version,
+                    history_run.brief_snapshot->>'territory_code'
+                      AS territory_code,
+                    COUNT(DISTINCT history_rc.run_id)::int AS run_count,
+                    MAX(history_rc.created_at) AS last_seen_at
+               FROM leadgrid_discovery_run_candidates history_rc
+               JOIN leadgrid_discovery_runs history_run
+                 ON history_run.id = history_rc.run_id
+                AND history_run.organization_id = history_rc.organization_id
+                AND history_run.project_id = history_rc.project_id
+               LEFT JOIN leadgrid_discovery_profiles history_profile
+                 ON history_profile.id = history_run.profile_id
+                AND history_profile.organization_id = history_run.organization_id
+                AND history_profile.project_id = history_run.project_id
+              WHERE history_rc.organization_id = $1::uuid
+                AND history_rc.project_id = $2
+                AND history_rc.candidate_id = c.id
+              GROUP BY history_run.profile_id, history_profile.name,
+                       history_run.brief_snapshot->>'territory_code'
+           ) history
+       ) observations ON TRUE
       WHERE ${conditions.join("\n        AND ")}
       ORDER BY ${sortExpression} DESC NULLS LAST, rc.candidate_id ASC
       LIMIT $${limitParam}`,
@@ -1363,6 +1841,14 @@ interface DecisionCandidateRow {
   longitude: number | string | null;
   website_url: string | null;
   organization_number: string | null;
+  observation_origin: string | null;
+  observation_observed_at: string | Date | null;
+  observation_captured_at: string | Date | null;
+  profile_id: string | null;
+  profile_version: number | null;
+  brief_snapshot: Record<string, unknown> | null;
+  source_hits: unknown[] | null;
+  provenance: unknown[] | null;
   enrichment_data: Record<string, unknown> | null;
   imported_lead_id: string | null;
   existing_lead_id: string | null;
@@ -1382,17 +1868,28 @@ async function loadDecisionCandidate(
             r.status AS run_status,
             c.status AS candidate_status,
             rc.disposition,
-            c.name,
-            c.phone,
-            c.email,
-            c.address,
-            c.city,
-            c.postal_code,
-            c.latitude,
-            c.longitude,
-            c.website_url,
-            c.organization_number,
-            c.enrichment_data,
+            observation.name,
+            observation.phone,
+            observation.email,
+            observation.address,
+            observation.city,
+            observation.postal_code,
+            observation.latitude,
+            observation.longitude,
+            observation.website_url,
+            observation.organization_number,
+            rc.observation_snapshot->>'snapshot_origin'
+              AS observation_origin,
+            rc.observation_snapshot->>'observed_at'
+              AS observation_observed_at,
+            rc.observation_snapshot->>'captured_at'
+              AS observation_captured_at,
+            r.profile_id::text,
+            r.profile_version,
+            r.brief_snapshot,
+            rc.source_hits,
+            observation.provenance,
+            observation.enrichment_data,
             c.imported_lead_id::text,
             c.existing_lead_id::text
        FROM leadgrid_discovery_runs r
@@ -1404,6 +1901,52 @@ async function loadDecisionCandidate(
          ON c.id = rc.candidate_id
         AND c.organization_id = rc.organization_id
         AND c.project_id = rc.project_id
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(
+                  NULLIF(rc.observation_snapshot->>'name', ''),
+                  'Ukjent virksomhet'
+                ) AS name,
+                NULLIF(rc.observation_snapshot->>'phone', '') AS phone,
+                NULLIF(rc.observation_snapshot->>'email', '') AS email,
+                NULLIF(rc.observation_snapshot->>'address', '') AS address,
+                NULLIF(rc.observation_snapshot->>'city', '') AS city,
+                NULLIF(
+                  rc.observation_snapshot->>'postal_code',
+                  ''
+                ) AS postal_code,
+                CASE
+                  WHEN jsonb_typeof(rc.observation_snapshot->'latitude') = 'number'
+                    THEN (rc.observation_snapshot->>'latitude')::double precision
+                  ELSE NULL
+                END AS latitude,
+                CASE
+                  WHEN jsonb_typeof(rc.observation_snapshot->'longitude') = 'number'
+                    THEN (rc.observation_snapshot->>'longitude')::double precision
+                  ELSE NULL
+                END AS longitude,
+                NULLIF(
+                  rc.observation_snapshot->>'website_url',
+                  ''
+                ) AS website_url,
+                NULLIF(
+                  rc.observation_snapshot->>'organization_number',
+                  ''
+                ) AS organization_number,
+                CASE
+                  WHEN jsonb_typeof(
+                    rc.observation_snapshot->'provenance'
+                  ) = 'array'
+                    THEN rc.observation_snapshot->'provenance'
+                  ELSE '[]'::jsonb
+                END AS provenance,
+                CASE
+                  WHEN jsonb_typeof(
+                    rc.observation_snapshot->'enrichment_data'
+                  ) = 'object'
+                    THEN rc.observation_snapshot->'enrichment_data'
+                  ELSE '{}'::jsonb
+                END AS enrichment_data
+       ) observation ON TRUE
       WHERE r.organization_id = $1::uuid
         AND r.project_id = $2
         AND r.id = $3::uuid
@@ -1589,62 +2132,185 @@ export async function decideDiscoveryCandidate(
 
     let leadId: string | null = null;
     let createdLead = false;
-    let candidateStatus = "rejected";
+    let candidateStatus = candidate.candidate_status;
     let disposition: DiscoveryOccurrenceDisposition = "rejected";
     if (decision.decision === "approve") {
       const promotionEnrichment = safePromotionEnrichment(candidate);
       if (!promotionEnrichment.organizationNumber) {
         throw new DiscoveryServiceError("invalid_state");
       }
-      await client.query(
-        `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
-        [
+      const websiteDomain = normalizeWebsiteDomain(candidate.website_url);
+      const confirmedGooglePlaceId = decision.confirmed_google_place_id ?? null;
+      const googlePlaceConfirmedAt = confirmedGooglePlaceId
+        ? new Date().toISOString()
+        : null;
+      const briefSnapshot = objectValue(candidate.brief_snapshot);
+      const territoryCode = nullableText(briefSnapshot.territory_code);
+      const municipalityNumbers = Array.isArray(
+        briefSnapshot.municipality_numbers,
+      )
+        ? briefSnapshot.municipality_numbers.filter(
+            (value): value is string =>
+              typeof value === "string" && /^\d{4}$/.test(value),
+          )
+        : [];
+      const municipalityNames = Array.isArray(briefSnapshot.municipality_names)
+        ? briefSnapshot.municipality_names.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : [];
+      const observation = observationMetadata({
+        origin: candidate.observation_origin,
+        observedAt: candidate.observation_observed_at,
+        capturedAt: candidate.observation_captured_at,
+      });
+      const promotionMetadata = {
+        discovery: {
+          run_id: runId,
+          candidate_id: candidateId,
+          profile_id: candidate.profile_id,
+          profile_version: candidate.profile_version,
+          territory_code: territoryCode,
+          municipality_numbers: municipalityNumbers,
+          municipality_names: municipalityNames,
+          source: "brreg_open_data",
+          observation,
+          source_hits: Array.isArray(candidate.source_hits)
+            ? candidate.source_hits
+            : [],
+          candidate_provenance: Array.isArray(candidate.provenance)
+            ? candidate.provenance
+            : [],
+          dedupe_checks: {
+            organization_number: "checked",
+            normalized_domain: websiteDomain ? "checked" : "not_available",
+            google_place_id: confirmedGooglePlaceId
+              ? "confirmed_match_checked"
+              : "not_performed_no_confirmed_place_id",
+          },
+          google_places: confirmedGooglePlaceId
+            ? {
+                place_id: confirmedGooglePlaceId,
+                confirmed_at: googlePlaceConfirmedAt,
+                persisted_fields: ["place_id"],
+              }
+            : {
+                status: "not_performed_no_confirmed_place_id",
+                persisted_fields: [],
+              },
+        },
+      };
+      if (confirmedGooglePlaceId) {
+        const confirmation = await client.query<{ place_id: string }>(
+          `SELECT place_id
+             FROM leadgrid_discovery_place_confirmations
+            WHERE organization_id = $1::uuid
+              AND project_id = $2
+              AND run_id = $3::uuid
+              AND candidate_id = $4::uuid
+              AND place_id = $5
+              AND requested_by = $6
+              AND consumed_at IS NULL
+              AND expires_at > NOW()
+            FOR UPDATE`,
           [
             input.project.organizationId,
             input.project.id,
-            "crm_promotion",
-            `orgnr:${promotionEnrichment.organizationNumber}`,
-          ].join("|"),
-        ],
-      );
-      const existingLead = await client.query<{ id: string }>(
-        `SELECT id::text
+            runId,
+            candidateId,
+            confirmedGooglePlaceId,
+            userId,
+          ],
+        );
+        if (!confirmation.rows[0]) {
+          throw new DiscoveryServiceError("place_confirmation_required");
+        }
+      }
+      const identityLocks = [
+        `organization_number:${promotionEnrichment.organizationNumber}`,
+        websiteDomain ? `website_domain:${websiteDomain}` : null,
+        confirmedGooglePlaceId
+          ? `google_place_id:${confirmedGooglePlaceId}`
+          : null,
+      ]
+        .filter((value): value is string => value !== null)
+        .map((identity) =>
+          ["leadgrid", input.project.organizationId, identity].join(":"),
+        )
+        .sort();
+      for (const identity of identityLocks) {
+        await client.query(
+          `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+          [identity],
+        );
+      }
+      const existingLead = await client.query<{
+        id: string;
+        google_place_id: string | null;
+      }>(
+        `SELECT id::text, google_place_id
                FROM crm_customers
               WHERE organization_id = $1::uuid
                 AND project_id IS NOT DISTINCT FROM $2
-                AND enrichment_org_nr = $3
+                AND archived_at IS NULL
+                AND (
+                  enrichment_org_nr = $3
+                  OR ($4::text IS NOT NULL AND website_domain_normalized = $4)
+                  OR ($5::text IS NOT NULL AND google_place_id = $5)
+              )
               ORDER BY created_at ASC, id ASC
-              FOR UPDATE
-              LIMIT 1`,
+              LIMIT 2
+              FOR UPDATE`,
         [
           input.project.organizationId,
           input.project.id,
           promotionEnrichment.organizationNumber,
+          websiteDomain,
+          confirmedGooglePlaceId,
         ],
       );
+      const existingIds = new Set([
+        ...existingLead.rows.map((row) => row.id),
+        ...(candidate.imported_lead_id ? [candidate.imported_lead_id] : []),
+        ...(candidate.existing_lead_id ? [candidate.existing_lead_id] : []),
+      ]);
+      if (existingIds.size > 1) {
+        throw new DiscoveryServiceError("invalid_state");
+      }
+      const existingRow = existingLead.rows[0] ?? null;
+      if (
+        confirmedGooglePlaceId &&
+        existingRow?.google_place_id &&
+        existingRow.google_place_id !== confirmedGooglePlaceId
+      ) {
+        throw new DiscoveryServiceError("invalid_state");
+      }
       leadId =
         candidate.imported_lead_id ??
         candidate.existing_lead_id ??
-        existingLead.rows[0]?.id ??
+        existingRow?.id ??
         null;
 
       if (!leadId) {
         const promoted = await client.query<{ id: string }>(
           `INSERT INTO crm_customers (
               id, name, company, phone, email, address, city, postal_code,
-              latitude, longitude, website_url,
+              latitude, longitude, website_url, website_domain_normalized,
               enrichment_org_nr, enrichment_data, enriched_at,
+              google_place_id, google_place_id_confirmed_at,
+              discovery_territory_code,
               status, source, owner_user_id, organization_id, project_id,
               lead_status, lead_source, draft_status,
               import_source, import_raw_data, created_at, updated_at
             ) VALUES (
               gen_random_uuid(), $1, $1, $2, $3, $4, $5, $6,
-              $7, $8, $9,
-              $10, $11::jsonb,
-              COALESCE($12::timestamptz, NOW()),
-              'lead', 'leadgrid_discovery', $13, $14::uuid, $15,
+              $7, $8, $9, $10,
+              $11, $12::jsonb,
+              COALESCE($13::timestamptz, NOW()),
+              $14, $15::timestamptz, $16,
+              'lead', 'leadgrid_discovery', $17, $18::uuid, $19,
               'unvisited', 'leadgrid_discovery', 'lead',
-              'leadgrid_discovery', $16::jsonb, NOW(), NOW()
+              'leadgrid_discovery', $20::jsonb, NOW(), NOW()
             )
             RETURNING id::text`,
           [
@@ -1657,24 +2323,88 @@ export async function decideDiscoveryCandidate(
             candidate.latitude,
             candidate.longitude,
             candidate.website_url,
+            websiteDomain,
             promotionEnrichment.organizationNumber,
             promotionEnrichment.data
               ? JSON.stringify(promotionEnrichment.data)
               : null,
             promotionEnrichment.enrichedAt,
+            confirmedGooglePlaceId,
+            googlePlaceConfirmedAt,
+            territoryCode,
             userId,
             input.project.organizationId,
             input.project.id,
-            JSON.stringify({
-              discovery_run_id: runId,
-              discovery_candidate_id: candidateId,
-              source: "brreg_open_data",
-            }),
+            JSON.stringify(promotionMetadata),
           ],
         );
         leadId = promoted.rows[0]?.id ?? null;
         if (!leadId) throw new DiscoveryServiceError("internal_error");
         createdLead = true;
+      } else {
+        await client.query(
+          `UPDATE crm_customers
+              SET website_domain_normalized = COALESCE(
+                    website_domain_normalized,
+                    $4
+                  ),
+                  google_place_id = COALESCE(google_place_id, $5),
+                  google_place_id_confirmed_at = COALESCE(
+                    google_place_id_confirmed_at,
+                    $6::timestamptz
+                  ),
+                  discovery_territory_code = COALESCE(
+                    discovery_territory_code,
+                    $7
+                  ),
+                  import_raw_data = (
+                    CASE WHEN jsonb_typeof(import_raw_data) = 'object'
+                      THEN import_raw_data ELSE '{}'::jsonb END
+                  ) || jsonb_build_object(
+                    'discovery_last_approval',
+                    $8::jsonb->'discovery'
+                  ),
+                  updated_at = NOW()
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id IS NOT DISTINCT FROM $3`,
+          [
+            leadId,
+            input.project.organizationId,
+            input.project.id,
+            websiteDomain,
+            confirmedGooglePlaceId,
+            googlePlaceConfirmedAt,
+            territoryCode,
+            JSON.stringify(promotionMetadata),
+          ],
+        );
+      }
+
+      if (confirmedGooglePlaceId) {
+        const consumed = await client.query(
+          `UPDATE leadgrid_discovery_place_confirmations
+              SET consumed_at = NOW()
+            WHERE organization_id = $1::uuid
+              AND project_id = $2
+              AND run_id = $3::uuid
+              AND candidate_id = $4::uuid
+              AND place_id = $5
+              AND requested_by = $6
+              AND consumed_at IS NULL
+              AND expires_at > NOW()`,
+          [
+            input.project.organizationId,
+            input.project.id,
+            runId,
+            candidateId,
+            confirmedGooglePlaceId,
+            userId,
+          ],
+        );
+        if ((consumed.rowCount ?? 0) !== 1) {
+          throw new DiscoveryServiceError("place_confirmation_required");
+        }
       }
 
       candidateStatus = "imported";
@@ -1700,44 +2430,86 @@ export async function decideDiscoveryCandidate(
           input.project.id,
         ],
       );
-    } else {
-      await client.query(
-        `UPDATE leadgrid_discovery_candidates
-            SET status = 'rejected',
-                decided_by = $2,
-                decided_at = NOW(),
-                updated_by = $2,
-                version = version + 1
-          WHERE id = $1::uuid
-            AND organization_id = $3::uuid
-            AND project_id = $4`,
-        [candidateId, userId, input.project.organizationId, input.project.id],
-      );
     }
 
-    // A candidate is canonical per organization/project and may be present in
-    // several overlapping runs. Propagate the terminal decision to every open
-    // occurrence atomically; feedback and idempotency remain scoped to the run
-    // where the human made the decision.
-    const propagated = await client.query<{ run_id: string }>(
-      `UPDATE leadgrid_discovery_run_candidates
-          SET disposition = $2,
-              updated_at = NOW()
-        WHERE candidate_id = $1::uuid
-          AND organization_id = $3::uuid
-          AND project_id = $4
-          AND disposition IN (
-            'found', 'existing_candidate', 'research_pending',
-            'researching', 'review_ready', 'failed'
+    // Import is a project-wide terminal identity decision because every
+    // occurrence points to the same CRM lead. Rejection is an ICP decision:
+    // propagate it only to the same saved profile snapshot. An ad-hoc run has
+    // no reusable profile identity and therefore only rejects its own row.
+    const propagated =
+      decision.decision === "approve"
+        ? await client.query<{ run_id: string }>(
+            `UPDATE leadgrid_discovery_run_candidates
+                SET disposition = $2,
+                    updated_at = NOW()
+              WHERE candidate_id = $1::uuid
+                AND organization_id = $3::uuid
+                AND project_id = $4
+                AND disposition IN (
+                  'found', 'existing_candidate', 'research_pending',
+                  'researching', 'review_ready', 'failed'
+                )
+              RETURNING run_id::text`,
+            [
+              candidateId,
+              disposition,
+              input.project.organizationId,
+              input.project.id,
+            ],
           )
-        RETURNING run_id::text`,
-      [
-        candidateId,
-        disposition,
-        input.project.organizationId,
-        input.project.id,
-      ],
-    );
+        : candidate.profile_id
+          ? await client.query<{ run_id: string }>(
+              `UPDATE leadgrid_discovery_run_candidates rc
+                  SET disposition = 'rejected',
+                      updated_at = NOW()
+                 FROM leadgrid_discovery_runs occurrence_run
+                WHERE rc.candidate_id = $1::uuid
+                  AND rc.organization_id = $2::uuid
+                  AND rc.project_id = $3
+                  AND occurrence_run.id = rc.run_id
+                  AND occurrence_run.organization_id = rc.organization_id
+                  AND occurrence_run.project_id = rc.project_id
+                  AND (
+                    rc.run_id = $4::uuid
+                    OR (
+                      occurrence_run.profile_id = $5::uuid
+                      AND occurrence_run.brief_snapshot = $6::jsonb
+                    )
+                  )
+                  AND rc.disposition IN (
+                    'found', 'existing_candidate', 'research_pending',
+                    'researching', 'review_ready', 'failed'
+                  )
+                RETURNING rc.run_id::text AS run_id`,
+              [
+                candidateId,
+                input.project.organizationId,
+                input.project.id,
+                runId,
+                candidate.profile_id,
+                JSON.stringify(objectValue(candidate.brief_snapshot)),
+              ],
+            )
+          : await client.query<{ run_id: string }>(
+              `UPDATE leadgrid_discovery_run_candidates
+                  SET disposition = 'rejected',
+                      updated_at = NOW()
+                WHERE candidate_id = $1::uuid
+                  AND organization_id = $2::uuid
+                  AND project_id = $3
+                  AND run_id = $4::uuid
+                  AND disposition IN (
+                    'found', 'existing_candidate', 'research_pending',
+                    'researching', 'review_ready', 'failed'
+                  )
+                RETURNING run_id::text`,
+              [
+                candidateId,
+                input.project.organizationId,
+                input.project.id,
+                runId,
+              ],
+            );
     const affectedRunIds = Array.from(
       new Set([runId, ...propagated.rows.map((row) => row.run_id)]),
     );
@@ -2003,16 +2775,30 @@ interface PersistedCandidateRow {
 }
 
 interface ExecutionCheckpoint {
-  version: 2;
+  version: 3;
+  source_cursor_start: DiscoverySourceCursorMap;
+  source_cursor_next: DiscoverySourceCursorMap;
+  /** Deprecated aggregate diagnostics retained in the run DTO. */
+  source_page_start: number;
+  source_page_next: number;
   completed_queries: number[];
   query_errors: Array<{ query_index: number; code: string }>;
   query_results: Record<
     string,
     {
+      query_fingerprint: string;
       raw: number;
+      source_offset_start: number;
+      source_offset_next: number;
+      source_page_start: number;
+      source_page_next: number;
+      source_page_count: number;
       duplicates: number;
       invalid: number;
       geo_filtered: number;
+      company_filtered: number;
+      website_assessment_candidates: number;
+      website_assessment_requests: number;
       pages: number;
       external_requests: number;
       geocodes: number;
@@ -2020,51 +2806,116 @@ interface ExecutionCheckpoint {
       source_limit_reached: boolean;
       limit_reason: string | null;
       resolved_nace_codes: string[];
+      resolved_municipalities: Array<{
+        number: string;
+        name: string | null;
+        source_uri: string;
+      }>;
     }
   >;
 }
 
-function executionCheckpoint(value: unknown): ExecutionCheckpoint {
+function executionCheckpoint(
+  value: unknown,
+  brief: DiscoveryBrief,
+  plan: DiscoverySearchPlan,
+): ExecutionCheckpoint {
   const checkpoint = objectValue(value);
-  const completed = Array.isArray(checkpoint.completed_queries)
-    ? checkpoint.completed_queries.filter(
-        (entry): entry is number =>
-          typeof entry === "number" &&
-          Number.isInteger(entry) &&
-          entry >= 0 &&
-          entry < 100,
-      )
-    : [];
-  const errors = Array.isArray(checkpoint.query_errors)
-    ? checkpoint.query_errors.flatMap((entry) => {
-        const record = objectValue(entry);
-        return typeof record.query_index === "number" &&
-          typeof record.code === "string"
-          ? [
-              {
-                query_index: record.query_index,
-                code: record.code.slice(0, 80),
-              },
-            ]
-          : [];
-      })
-    : [];
-  const results = objectValue(checkpoint.query_results);
+  const isCursorMapCheckpoint = checkpoint.version === 3;
+  // Version-2 stored only a page scalar shared across queries. It cannot be
+  // converted without risking skipped rows, so legacy runs resume from zero.
+  const sourceCursorStart = sourceCursorMapForPlan(
+    isCursorMapCheckpoint ? checkpoint.source_cursor_start : {},
+    brief,
+    plan,
+  );
+  const persistedNext = parsedSourceCursorMap(
+    isCursorMapCheckpoint ? checkpoint.source_cursor_next : {},
+  );
+  const sourceCursorNext = Object.fromEntries(
+    Object.entries(sourceCursorStart).map(([fingerprint, start]) => [
+      fingerprint,
+      sourceOffsetCursor(persistedNext[fingerprint], start),
+    ]),
+  );
+  const completed =
+    isCursorMapCheckpoint && Array.isArray(checkpoint.completed_queries)
+      ? checkpoint.completed_queries.filter(
+          (entry): entry is number =>
+            typeof entry === "number" &&
+            Number.isInteger(entry) &&
+            entry >= 0 &&
+            entry < plan.queries.length,
+        )
+      : [];
+  const errors =
+    isCursorMapCheckpoint && Array.isArray(checkpoint.query_errors)
+      ? checkpoint.query_errors.flatMap((entry) => {
+          const record = objectValue(entry);
+          return typeof record.query_index === "number" &&
+            Number.isInteger(record.query_index) &&
+            record.query_index >= 0 &&
+            record.query_index < plan.queries.length &&
+            typeof record.code === "string"
+            ? [
+                {
+                  query_index: record.query_index,
+                  code: record.code.slice(0, 80),
+                },
+              ]
+            : [];
+        })
+      : [];
+  const results = isCursorMapCheckpoint
+    ? objectValue(checkpoint.query_results)
+    : {};
   return {
-    version: 2,
+    version: 3,
+    source_cursor_start: sourceCursorStart,
+    source_cursor_next: sourceCursorNext,
+    source_page_start: sourceOffsetCursor(checkpoint.source_page_start),
+    source_page_next: sourceOffsetCursor(checkpoint.source_page_next),
     completed_queries: [...new Set(completed)].sort((a, b) => a - b),
     query_errors: errors,
     query_results: Object.fromEntries(
       Object.entries(results).flatMap(([key, value]) => {
+        const queryIndex = Number(key);
+        const query = Number.isInteger(queryIndex)
+          ? plan.queries[queryIndex]
+          : undefined;
+        if (!query) return [];
+        const fingerprint = discoverySourceQueryFingerprint(
+          brief,
+          query.text_query,
+        );
         const record = objectValue(value);
         return [
           [
             key,
             {
+              query_fingerprint: fingerprint,
               raw: numberValue(record.raw),
+              source_offset_start: sourceOffsetCursor(
+                record.source_offset_start,
+                sourceCursorStart[fingerprint],
+              ),
+              source_offset_next: sourceOffsetCursor(
+                record.source_offset_next,
+                sourceCursorNext[fingerprint],
+              ),
+              source_page_start: sourceOffsetCursor(record.source_page_start),
+              source_page_next: sourceOffsetCursor(record.source_page_next),
+              source_page_count: sourceOffsetCursor(record.source_page_count),
               duplicates: numberValue(record.duplicates),
               invalid: numberValue(record.invalid),
               geo_filtered: numberValue(record.geo_filtered),
+              company_filtered: numberValue(record.company_filtered),
+              website_assessment_candidates: numberValue(
+                record.website_assessment_candidates,
+              ),
+              website_assessment_requests: numberValue(
+                record.website_assessment_requests,
+              ),
               pages: numberValue(record.pages),
               external_requests: numberValue(record.external_requests),
               geocodes: numberValue(record.geocodes),
@@ -2075,6 +2926,26 @@ function executionCheckpoint(value: unknown): ExecutionCheckpoint {
                 ? record.resolved_nace_codes.filter(
                     (code): code is string => typeof code === "string",
                   )
+                : [],
+              resolved_municipalities: Array.isArray(
+                record.resolved_municipalities,
+              )
+                ? record.resolved_municipalities.flatMap((value) => {
+                    const municipality = objectValue(value);
+                    const municipalityNumber = nullableText(
+                      municipality.number,
+                    );
+                    const sourceUri = nullableText(municipality.source_uri);
+                    return municipalityNumber && sourceUri
+                      ? [
+                          {
+                            number: municipalityNumber,
+                            name: nullableText(municipality.name),
+                            source_uri: sourceUri,
+                          },
+                        ]
+                      : [];
+                  })
                 : [],
             },
           ],
@@ -2098,6 +2969,9 @@ function rawCandidateData(
     source_uri: candidate.sourceUri,
     organization_number: candidate.organizationNumber,
     organization_form: candidate.organizationForm,
+    organization_form_code: candidate.organizationFormCode ?? null,
+    organization_form_description:
+      candidate.organizationFormDescription ?? null,
     display_name: candidate.name,
     address: candidate.address,
     postal_code: candidate.postalCode,
@@ -2108,10 +2982,20 @@ function rawCandidateData(
     distance_meters: candidate.distanceFromSearchCenterMeters,
     website: candidate.website,
     employee_count: candidate.employeeCount,
+    employee_count_known: candidate.hasRegisteredEmployeeCount ?? null,
     nace_code: candidate.naceCode,
     nace_description: candidate.naceDescription,
+
     registered_at: candidate.registeredAt,
     registered_in_vat_register: candidate.registeredInVatRegister,
+    registered_in_vat_register_known:
+      candidate.registeredInVatRegisterKnown ?? null,
+    registered_in_business_register_known:
+      candidate.registeredInBusinessRegisterKnown ?? null,
+    organization_structure: candidate.organizationStructure ?? "unknown",
+    organization_structure_evidence:
+      candidate.organizationStructureEvidence ?? null,
+    website_quality: candidate.websiteQuality ?? null,
     registered_in_business_register: candidate.registeredInBusinessRegister,
     company_status: candidate.status,
   };
@@ -2121,10 +3005,90 @@ function nullableText(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function websiteQualityAssessment(
+  value: unknown,
+): DiscoveryWebsiteQualityAssessment | null {
+  const assessment = objectValue(value);
+  const status = assessment.status;
+  const reason = nullableText(assessment.reason);
+  const sourceUri =
+    typeof assessment.sourceUri === "string" ? assessment.sourceUri : null;
+  const fetchedAt = nullableText(assessment.fetchedAt);
+  const allowedReasons = new Set<DiscoveryWebsiteQualityAssessment["reason"]>([
+    "assessed",
+    "no_registered_url",
+    "invalid_url",
+    "unsafe_host",
+    "request_failed",
+    "response_too_large",
+    "unsupported_content_type",
+    "external_request_limit",
+    "not_selected_for_assessment",
+  ]);
+  if (
+    (status !== "assessed" && status !== "unknown") ||
+    !reason ||
+    !allowedReasons.has(
+      reason as DiscoveryWebsiteQualityAssessment["reason"],
+    ) ||
+    sourceUri === null ||
+    !fetchedAt
+  ) {
+    return null;
+  }
+  const rawScore = assessment.score;
+  const score =
+    typeof rawScore === "number" && rawScore >= 0 && rawScore <= 100
+      ? rawScore
+      : null;
+  if (status === "assessed" && score === null) return null;
+  const signals = objectValue(assessment.signals);
+  const signal = (key: string): boolean | null =>
+    typeof signals[key] === "boolean" ? (signals[key] as boolean) : null;
+  return {
+    status,
+    score: status === "assessed" ? score : null,
+    fetchedAt,
+    sourceUri,
+    finalUrl: nullableText(assessment.finalUrl),
+    httpStatus:
+      typeof assessment.httpStatus === "number" ? assessment.httpStatus : null,
+    redirectCount: Math.max(0, numberValue(assessment.redirectCount)),
+    reason: reason as DiscoveryWebsiteQualityAssessment["reason"],
+    signals: {
+      https: signal("https"),
+      reachable: signal("reachable"),
+      title: signal("title"),
+      meta_description: signal("meta_description"),
+      viewport: signal("viewport"),
+      contact_path: signal("contact_path"),
+      call_to_action: signal("call_to_action"),
+    },
+  };
+}
+
+function websiteQualityDto(value: unknown): DiscoveryWebsiteQualityDto | null {
+  const assessment = websiteQualityAssessment(value);
+  return assessment
+    ? {
+        status: assessment.status,
+        score: assessment.score,
+        reason: assessment.reason,
+        fetched_at: assessment.fetchedAt,
+        source_uri: assessment.sourceUri,
+        final_url: assessment.finalUrl,
+        http_status: assessment.httpStatus,
+        redirect_count: assessment.redirectCount,
+        signals: assessment.signals,
+      }
+    : null;
+}
+
 function scorePersistedCandidate(
   candidate: PersistedCandidateRow,
   brief: DiscoveryBrief,
   distanceMeters: number | null,
+  resolvedMunicipalityNumbers: string[] = [],
 ): DiscoveryCandidateScore {
   const raw = objectValue(candidate.raw_data);
   const enrichment = objectValue(candidate.enrichment_data);
@@ -2133,6 +3097,28 @@ function scorePersistedCandidate(
     nullableText(raw.company_status) ?? nullableText(company.status);
   const safelyLinkedToBrreg =
     enrichment.autoLinked === true && nullableText(company.name) !== null;
+  const structureText = nullableText(raw.organization_structure);
+  const organizationStructure =
+    structureText === "independent" ||
+    structureText === "chain" ||
+    structureText === "unknown"
+      ? structureText
+      : "unknown";
+  const structureEvidenceRecord = objectValue(
+    raw.organization_structure_evidence,
+  );
+  const organizationStructureEvidence =
+    nullableText(structureEvidenceRecord.sourceUri) &&
+    nullableText(structureEvidenceRecord.basis)
+      ? {
+          sourceUri: nullableText(structureEvidenceRecord.sourceUri) as string,
+          basis: nullableText(structureEvidenceRecord.basis) as string,
+          relatedOrganizationCount:
+            structureEvidenceRecord.relatedOrganizationCount == null
+              ? null
+              : numberValue(structureEvidenceRecord.relatedOrganizationCount),
+        }
+      : null;
   const latitude =
     candidate.latitude == null ? null : numberValue(candidate.latitude);
   const longitude =
@@ -2170,6 +3156,48 @@ function scorePersistedCandidate(
     idealCustomer: brief.ideal_customer ?? null,
     exclusionTerms: brief.exclusion_terms,
     minimumFitScore: brief.minimum_fit_score,
+    municipalityNumber: nullableText(raw.municipality_number),
+    requiredMunicipalityNumbers: [
+      ...new Set([
+        ...brief.municipality_numbers,
+        ...resolvedMunicipalityNumbers,
+      ]),
+    ],
+    organizationFormCode: nullableText(raw.organization_form_code),
+    requiredOrganizationForms: brief.organization_forms,
+    employeeCount:
+      typeof raw.employee_count === "number" ? raw.employee_count : null,
+    employeeCountKnown:
+      raw.employee_count_known === true ||
+      (safelyLinkedToBrreg && typeof raw.employee_count === "number"),
+    minimumEmployees: brief.employee_count?.minimum ?? null,
+    maximumEmployees: brief.employee_count?.maximum ?? null,
+    organizationStructure,
+    requiredOrganizationStructure: brief.organization_structure,
+    organizationStructureEvidence,
+    websiteRequirement: brief.website_requirement,
+    minimumWebsiteQualityScore: brief.website_quality.minimum_score,
+    websiteQuality: websiteQualityAssessment(raw.website_quality),
+    registeredInVatRegister:
+      typeof raw.registered_in_vat_register === "boolean"
+        ? raw.registered_in_vat_register
+        : undefined,
+    registeredInVatRegisterKnown:
+      raw.registered_in_vat_register_known === true ||
+      (safelyLinkedToBrreg &&
+        typeof raw.registered_in_vat_register === "boolean"),
+    requiredVatRegistration:
+      brief.commercial_signals.registered_in_vat_register,
+    registeredInBusinessRegister:
+      typeof raw.registered_in_business_register === "boolean"
+        ? raw.registered_in_business_register
+        : undefined,
+    registeredInBusinessRegisterKnown:
+      raw.registered_in_business_register_known === true ||
+      (safelyLinkedToBrreg &&
+        typeof raw.registered_in_business_register === "boolean"),
+    requiredBusinessRegistration:
+      brief.commercial_signals.registered_in_business_register,
     websiteKnown: Boolean(candidate.website_url) || safelyLinkedToBrreg,
     phoneKnown: Boolean(candidate.phone),
     organizationNumberKnown: Boolean(candidate.organization_number),
@@ -2335,6 +3363,14 @@ async function updateCheckpoint(
     0,
   );
   const geocodes = summaries.reduce((sum, item) => sum + item.geocodes, 0);
+  const websiteAssessmentCandidates = summaries.reduce(
+    (sum, item) => sum + item.website_assessment_candidates,
+    0,
+  );
+  const websiteAssessmentRequests = summaries.reduce(
+    (sum, item) => sum + item.website_assessment_requests,
+    0,
+  );
   const updated = await pool.query(
     `UPDATE leadgrid_discovery_runs r
         SET checkpoint = $2::jsonb,
@@ -2352,8 +3388,14 @@ async function updateCheckpoint(
       JSON.stringify({
         source: "brreg_open_data",
         query_count: checkpoint.completed_queries.length,
+        source_cursor_start: checkpoint.source_cursor_start,
+        source_cursor_next: checkpoint.source_cursor_next,
+        source_page_start: checkpoint.source_page_start,
+        source_page_next: checkpoint.source_page_next,
         pages: summaries.reduce((sum, item) => sum + item.pages, 0),
         external_requests: externalRequests,
+        website_assessment_candidates: websiteAssessmentCandidates,
+        website_assessment_requests: websiteAssessmentRequests,
         geocodes,
         geocode_misses: summaries.reduce(
           (sum, item) => sum + item.geocode_misses,
@@ -2460,12 +3502,21 @@ async function persistProviderCandidate(
     run: RunRow;
     brief: DiscoveryBrief;
     candidate: DiscoveryRegistryCandidate;
+    resolvedMunicipalities: DiscoveryRegistrySearchResult["resolvedMunicipalities"];
     queryIndex: number;
     queryText: string;
     sourceRank: number;
     executionLeaseToken?: string;
   },
 ): Promise<void> {
+  const observedAt = new Date().toISOString();
+  const resolvedMunicipalities = input.resolvedMunicipalities.map(
+    (municipality) => ({
+      number: municipality.number,
+      name: municipality.name,
+      source_uri: municipality.sourceUri,
+    }),
+  );
   const provenance = [
     {
       source: "brreg_open_data",
@@ -2473,6 +3524,10 @@ async function persistProviderCandidate(
       source_uri: input.candidate.sourceUri,
       license: "NLOD 2.0",
       run_id: input.run.id,
+      profile_id: input.run.profile_id,
+      profile_version: input.run.profile_version,
+      territory_code: input.brief.territory_code ?? null,
+      resolved_municipalities: resolvedMunicipalities,
       query_index: input.queryIndex,
       query: input.queryText,
     },
@@ -2481,7 +3536,7 @@ async function persistProviderCandidate(
   const enrichmentData = {
     found: true,
     source: "brreg",
-    fetchedAt: new Date().toISOString(),
+    fetchedAt: observedAt,
     autoLinked: true,
     matchedName: input.candidate.name,
     company: {
@@ -2498,6 +3553,26 @@ async function persistProviderCandidate(
       naceCode: input.candidate.naceCode,
       naceDescription: input.candidate.naceDescription,
     },
+  };
+  const observationSnapshot = {
+    schema_version: 1,
+    snapshot_origin: "provider_observation",
+    observed_at: observedAt,
+    captured_at: observedAt,
+    name: input.candidate.name,
+    address: input.candidate.address,
+    city: input.candidate.city,
+    postal_code: input.candidate.postalCode,
+    country_code: "NO",
+    latitude: input.candidate.location?.latitude ?? null,
+    longitude: input.candidate.location?.longitude ?? null,
+    website_url: input.candidate.website,
+    phone: null,
+    email: null,
+    organization_number: input.candidate.organizationNumber,
+    raw_data: rawData,
+    enrichment_data: enrichmentData,
+    provenance,
   };
   await withTransaction(pool, async (client) => {
     await lockRunExecutionLease(
@@ -2519,6 +3594,11 @@ async function persistProviderCandidate(
         )
         ON CONFLICT (organization_id, project_id, identity_key)
         DO UPDATE SET
+          status = CASE
+            WHEN leadgrid_discovery_candidates.status = 'rejected'
+              THEN 'review_ready'
+            ELSE leadgrid_discovery_candidates.status
+          END,
           name = EXCLUDED.name,
           website_url = COALESCE(EXCLUDED.website_url, leadgrid_discovery_candidates.website_url),
           address = COALESCE(EXCLUDED.address, leadgrid_discovery_candidates.address),
@@ -2599,18 +3679,58 @@ async function persistProviderCandidate(
     }
 
     const score = scorePersistedCandidate(
-      row,
+      {
+        ...row,
+        name: input.candidate.name,
+        address: input.candidate.address,
+        latitude: input.candidate.location?.latitude ?? null,
+        longitude: input.candidate.location?.longitude ?? null,
+        website_url: input.candidate.website,
+        phone: null,
+        organization_number: input.candidate.organizationNumber,
+        enrichment_data: enrichmentData,
+        raw_data: rawData,
+      },
       input.brief,
       input.candidate.distanceFromSearchCenterMeters,
+      input.resolvedMunicipalities.map((municipality) => municipality.number),
     );
+    let rejectedForProfileSnapshot = false;
+    if (input.run.profile_id) {
+      const priorRejection = await client.query<{ rejected: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1
+             FROM leadgrid_discovery_feedback feedback
+             JOIN leadgrid_discovery_runs rejection_run
+               ON rejection_run.id = feedback.run_id
+              AND rejection_run.organization_id = feedback.organization_id
+              AND rejection_run.project_id = feedback.project_id
+            WHERE feedback.organization_id = $1::uuid
+              AND feedback.project_id = $2
+              AND feedback.candidate_id = $3::uuid
+              AND feedback.event_type = 'decision'
+              AND feedback.value = 'reject'
+              AND rejection_run.profile_id = $4::uuid
+              AND rejection_run.brief_snapshot = $5::jsonb
+         ) AS rejected`,
+        [
+          input.run.organization_id,
+          input.run.project_id,
+          row.id,
+          input.run.profile_id,
+          JSON.stringify(input.brief),
+        ],
+      );
+      rejectedForProfileSnapshot = priorRejection.rows[0]?.rejected === true;
+    }
     let disposition: DiscoveryOccurrenceDisposition;
     if (score.excluded) disposition = "excluded";
-    else if (row.status === "rejected") disposition = "rejected";
     else if (row.status === "archived") disposition = "duplicate";
     else if (row.status === "approved") disposition = "approved";
     else if (existingLeadId || row.status === "imported") {
       disposition = "duplicate";
-    } else disposition = "review_ready";
+    } else if (rejectedForProfileSnapshot) disposition = "rejected";
+    else disposition = "review_ready";
 
     const sourceHits = [
       {
@@ -2619,6 +3739,10 @@ async function persistProviderCandidate(
         organization_number: input.candidate.organizationNumber,
         nace_code: input.candidate.naceCode,
         source_uri: input.candidate.sourceUri,
+        profile_id: input.run.profile_id,
+        profile_version: input.run.profile_version,
+        territory_code: input.brief.territory_code ?? null,
+        resolved_municipalities: resolvedMunicipalities,
       },
     ];
     await client.query(
@@ -2627,12 +3751,13 @@ async function persistProviderCandidate(
           disposition, source_hits, matched_on, source_rank,
           fit_score, fit_coverage, data_quality_score,
           data_quality_coverage, excluded, exclusion_matches,
-          score_model_version, score_components, score_explanation, evidence
+          score_model_version, score_components, score_explanation, evidence,
+          observation_snapshot
         ) VALUES (
           $1::uuid, $2, $3::uuid, $4::uuid,
           $5, $6::jsonb, ARRAY['organization_number']::text[], $7,
           $8, $9, $10, $11, $12, $13::jsonb,
-          $14, $15::jsonb, $16::jsonb, $17::jsonb
+          $14, $15::jsonb, $16::jsonb, $17::jsonb, $18::jsonb
         )
         ON CONFLICT (run_id, candidate_id)
         DO UPDATE SET
@@ -2661,6 +3786,7 @@ async function persistProviderCandidate(
           score_components = EXCLUDED.score_components,
           score_explanation = EXCLUDED.score_explanation,
           evidence = EXCLUDED.evidence,
+          -- observation_snapshot is immutable for this run occurrence.
           updated_at = NOW()`,
       [
         input.run.organization_id,
@@ -2683,6 +3809,7 @@ async function persistProviderCandidate(
         }),
         JSON.stringify(score.explanation),
         JSON.stringify(scoreEvidence(score)),
+        JSON.stringify(observationSnapshot),
       ],
     );
   });
@@ -2696,6 +3823,11 @@ function mapProviderError(error: unknown): DiscoveryServiceError {
     }
     if (error.code === "classification_resolution_failed") {
       return new DiscoveryServiceError("classification_resolution_failed");
+    }
+    if (error.code === "municipality_resolution_failed") {
+      return new DiscoveryServiceError("municipality_resolution_failed", {
+        field: "municipality_names",
+      });
     }
     return new DiscoveryServiceError("provider_unavailable", {
       retryable: error.retryable,
@@ -2735,7 +3867,7 @@ export async function executeDiscoveryRun(
 
   const brief = parseBrief(run.brief_snapshot);
   const plan = buildDiscoverySearchPlan(brief);
-  const checkpoint = executionCheckpoint(run.checkpoint);
+  const checkpoint = executionCheckpoint(run.checkpoint, brief, plan);
   const searchRegistry =
     overrides.searchRegistry ?? createDiscoveryRegistryProvider().search;
 
@@ -2778,6 +3910,9 @@ export async function executeDiscoveryRun(
   });
 
   let sourceRank = numberValue(run.candidate_count);
+  let websiteAssessmentCandidatesUsed = Object.values(
+    checkpoint.query_results,
+  ).reduce((sum, item) => sum + item.website_assessment_candidates, 0);
   try {
     for (let index = 0; index < plan.queries.length; index += 1) {
       assertExecutionActive(overrides.signal);
@@ -2807,6 +3942,15 @@ export async function executeDiscoveryRun(
       const queryBudget = Math.ceil(remaining / remainingQueries);
 
       const query = plan.queries[index];
+      const queryFingerprint = discoverySourceQueryFingerprint(
+        brief,
+        query.text_query,
+      );
+      // The immutable run checkpoint owns the start offset. Retries always use
+      // this same value until the query is durably marked completed.
+      const queryStartOffset = sourceOffsetCursor(
+        checkpoint.source_cursor_start[queryFingerprint],
+      );
       let result: DiscoveryRegistrySearchResult;
       try {
         result = await withExecutionSignal(
@@ -2814,6 +3958,7 @@ export async function executeDiscoveryRun(
             query: query.text_query,
             queryMode: "industry",
             maxResults: Math.min(queryBudget, 60),
+            sourceOffset: queryStartOffset,
             city: brief.city ?? null,
             geo: brief.geo
               ? {
@@ -2824,6 +3969,22 @@ export async function executeDiscoveryRun(
                   radiusMeters: brief.geo.radius_km * 1_000,
                 }
               : null,
+            municipalityNumbers: brief.municipality_numbers,
+            municipalityNames: brief.municipality_names,
+            organizationForms: brief.organization_forms,
+            minimumEmployees: brief.employee_count?.minimum ?? null,
+            maximumEmployees: brief.employee_count?.maximum ?? null,
+            organizationStructure: brief.organization_structure,
+            websiteRequirement: brief.website_requirement,
+            minimumWebsiteQualityScore: brief.website_quality.minimum_score,
+            websiteAssessmentLimit: Math.max(
+              0,
+              brief.enrichment_count - websiteAssessmentCandidatesUsed,
+            ),
+            registeredInVatRegister:
+              brief.commercial_signals.registered_in_vat_register,
+            registeredInBusinessRegister:
+              brief.commercial_signals.registered_in_business_register,
             signal: overrides.signal,
           }),
           overrides.signal,
@@ -2832,7 +3993,8 @@ export async function executeDiscoveryRun(
         const safeError = mapProviderError(error);
         if (
           safeError.code === "execution_lease_lost" ||
-          safeError.code === "classification_resolution_failed"
+          safeError.code === "classification_resolution_failed" ||
+          safeError.code === "municipality_resolution_failed"
         ) {
           throw safeError;
         }
@@ -2869,6 +4031,7 @@ export async function executeDiscoveryRun(
           candidate,
           queryIndex: index,
           queryText: query.text_query,
+          resolvedMunicipalities: result.resolvedMunicipalities,
           sourceRank,
           executionLeaseToken: overrides.executionLease?.leaseToken,
         });
@@ -2879,20 +4042,67 @@ export async function executeDiscoveryRun(
       checkpoint.query_errors = checkpoint.query_errors.filter(
         (entry) => entry.query_index !== index,
       );
+      const fallbackNextOffset =
+        sourceOffsetCursor(result.sourcePageNext) * DISCOVERY_BRREG_PAGE_SIZE;
+      const queryNextOffset = sourceOffsetCursor(
+        result.sourceOffsetNext,
+        fallbackNextOffset,
+      );
+      checkpoint.source_cursor_next[queryFingerprint] = queryNextOffset;
+      // Deprecated aggregate page diagnostics are not used for resumption.
+      checkpoint.source_page_start = Math.floor(
+        queryStartOffset / DISCOVERY_BRREG_PAGE_SIZE,
+      );
+      checkpoint.source_page_next = Math.floor(
+        queryNextOffset / DISCOVERY_BRREG_PAGE_SIZE,
+      );
       checkpoint.completed_queries.push(index);
       checkpoint.completed_queries.sort((a, b) => a - b);
+      const websiteAssessmentCandidates = Math.max(
+        0,
+        Math.min(
+          brief.enrichment_count - websiteAssessmentCandidatesUsed,
+          numberValue(result.websiteAssessmentCandidates),
+        ),
+      );
+      websiteAssessmentCandidatesUsed += websiteAssessmentCandidates;
       checkpoint.query_results[String(index)] = {
+        query_fingerprint: queryFingerprint,
         raw: result.sourceResultsSeen,
+        source_offset_start: sourceOffsetCursor(
+          result.sourceOffsetStart,
+          queryStartOffset,
+        ),
+        source_offset_next: queryNextOffset,
+        source_page_start: sourceOffsetCursor(
+          result.sourcePageStart,
+          Math.floor(queryStartOffset / DISCOVERY_BRREG_PAGE_SIZE),
+        ),
+        source_page_next: sourceOffsetCursor(
+          result.sourcePageNext,
+          Math.floor(queryNextOffset / DISCOVERY_BRREG_PAGE_SIZE),
+        ),
+        source_page_count: sourceOffsetCursor(result.sourcePageCount),
         duplicates: result.duplicateResultsSkipped,
         invalid: result.invalidResultsSkipped,
         geo_filtered: result.geoFilteredResults,
         pages: result.pagesFetched,
         external_requests: result.externalRequests,
+        company_filtered: result.companyFilteredResults,
+        website_assessment_candidates: websiteAssessmentCandidates,
+        website_assessment_requests: result.websiteAssessmentRequests,
         geocodes: result.geocodeRequests,
         geocode_misses: result.geocodeMisses,
         source_limit_reached: result.sourceLimitReached,
         limit_reason: result.limitReason,
         resolved_nace_codes: result.resolvedNaceCodes,
+        resolved_municipalities: result.resolvedMunicipalities.map(
+          (municipality) => ({
+            number: municipality.number,
+            name: municipality.name,
+            source_uri: municipality.sourceUri,
+          }),
+        ),
       };
       await updateCheckpoint(
         pool,
@@ -3008,22 +4218,64 @@ export async function executeDiscoveryRun(
         : hasPartialSources
           ? "partial"
           : "completed";
-    const finished = await pool.query(
-      `UPDATE leadgrid_discovery_runs r
-          SET status = $2,
-              finished_at = NOW(),
-              error_code = CASE WHEN $2 = 'partial'
-                THEN 'partial_results' ELSE NULL END,
-              error_message = CASE WHEN $2 = 'partial'
-                THEN 'Discovery fullførte med enkelte utilgjengelige kilder.'
-                ELSE NULL END,
-              version = r.version + 1
-        WHERE r.id = $1::uuid
-          AND r.status = 'researching'
-          AND ${runExecutionFenceSql("r", "$3")}`,
-      [run.id, finalStatus, overrides.executionLease?.leaseToken ?? null],
-    );
-    if ((finished.rowCount ?? 0) !== 1) {
+    const finishingRun = run;
+    const finished = await withTransaction(pool, async (client) => {
+      const statusUpdate = await client.query(
+        `UPDATE leadgrid_discovery_runs r
+            SET status = $2,
+                finished_at = NOW(),
+                error_code = CASE WHEN $2 = 'partial'
+                  THEN 'partial_results' ELSE NULL END,
+                error_message = CASE WHEN $2 = 'partial'
+                  THEN 'Discovery fullførte med enkelte utilgjengelige kilder.'
+                  ELSE NULL END,
+                version = r.version + 1
+          WHERE r.id = $1::uuid
+            AND r.status = 'researching'
+            AND ${runExecutionFenceSql("r", "$3")}`,
+        [
+          finishingRun.id,
+          finalStatus,
+          overrides.executionLease?.leaseToken ?? null,
+        ],
+      );
+      if ((statusUpdate.rowCount ?? 0) !== 1) return false;
+      if (finishingRun.profile_id && finishingRun.profile_version !== null) {
+        const cursorUpdate = await client.query(
+          `UPDATE leadgrid_discovery_profiles AS profile
+              SET source_cursor_map =
+                COALESCE(profile.source_cursor_map, '{}'::jsonb) || $5::jsonb
+            WHERE profile.organization_id = $1::uuid
+              AND profile.project_id = $2
+              AND profile.id = $3::uuid
+              AND profile.version = $4
+              AND NOT EXISTS (
+                SELECT 1
+                  FROM jsonb_each_text($6::jsonb) AS expected(key, value)
+                 WHERE expected.value !~ '^[0-9]+$'
+                    OR COALESCE(
+                         profile.source_cursor_map -> expected.key,
+                         '0'::jsonb
+                       ) <> to_jsonb(expected.value::bigint)
+              )`,
+          [
+            finishingRun.organization_id,
+            finishingRun.project_id,
+            finishingRun.profile_id,
+            finishingRun.profile_version,
+            JSON.stringify(checkpoint.source_cursor_next),
+            JSON.stringify(checkpoint.source_cursor_start),
+          ],
+        );
+        if ((cursorUpdate.rowCount ?? 0) === 0) {
+          // Another successful run advanced one of the same query universes.
+          // Keep that newer cursor and accept duplicate discovery on a later
+          // run rather than overwriting progress and risking skipped rows.
+        }
+      }
+      return true;
+    });
+    if (!finished) {
       return resolveExecutionFenceMiss(
         pool,
         run,

@@ -19,6 +19,8 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { notifyAssignment } from "./lead-assignment-notification-service.js";
+import { loadAccessibleLeadgridLead } from "./leadgrid-lead-access.js";
+import { loadAccessibleLeadgridProject } from "./leadgrid-project-access.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps { app: Express; pool: Pool; activeSessions: Map<string, SessionData>; }
@@ -61,17 +63,22 @@ interface CustomerSnapshot {
   project_id: string | null;
 }
 
-/** Hent kunde-data + org via leadgrid_projects-join. */
-async function getCustomer(pool: Pool, id: string): Promise<CustomerSnapshot | null> {
+/** Hent kunde-data innenfor en allerede autorisert, lagret tenant-tuple. */
+async function getCustomer(
+  pool: Pool,
+  scope: { id: string; organizationId: string; projectId: string },
+): Promise<CustomerSnapshot | null> {
   const r = await pool.query<CustomerSnapshot>(
     `SELECT c.id::text, c.name, c.status, c.lead_category,
-            p.organization_id::text AS organization_id,
+            c.organization_id::text AS organization_id,
             c.assigned_team_leader_id, c.assigned_user_id,
-            c.project_id
+            c.project_id::text
        FROM crm_customers c
-       LEFT JOIN leadgrid_projects p ON p.id = c.project_id
-      WHERE c.id = $1`,
-    [id],
+      WHERE c.id = $1::uuid
+        AND c.organization_id = $2::uuid
+        AND c.project_id = $3
+      LIMIT 1`,
+    [scope.id, scope.organizationId, scope.projectId],
   );
   return r.rows[0] ?? null;
 }
@@ -87,6 +94,124 @@ async function getOrgManagerUserIds(pool: Pool, orgId: string): Promise<string[]
   return r.rows.map((row) => row.user_id);
 }
 
+function parseRequiredWonLostProjectId(value: unknown): string {
+  if (value === undefined || value === null || value === "") {
+    throw new Error("project_id_required");
+  }
+  if (typeof value !== "string") throw new Error("invalid_project_id");
+  const projectId = value.trim();
+  if (!projectId || projectId.length > 255) {
+    throw new Error("invalid_project_id");
+  }
+  return projectId;
+}
+
+export async function buildWonLostStats(
+  pool: Pick<Pool, "query">,
+  input: { organizationId: string; projectId: string; days: number },
+) {
+  const { organizationId, projectId, days } = input;
+  const [statsR, lostR, momR, topRepR, funnelR] = await Promise.all([
+    pool.query<any>(
+      `WITH base AS (
+         SELECT c.*
+           FROM crm_customers c
+          WHERE c.organization_id = $1::uuid
+            AND c.project_id = $2
+            AND COALESCE(c.won_at, c.lost_at, c.status_changed_at)
+                > now() - ($3::int * INTERVAL '1 day')
+       )
+       SELECT
+         COUNT(*) FILTER (WHERE status = 'won') AS won_count,
+         COUNT(*) FILTER (WHERE status = 'lost') AS lost_count,
+         COALESCE(SUM(won_amount_oere) FILTER (WHERE status = 'won'), 0) AS total_won_oere,
+         COALESCE(SUM(won_recurring_oere) FILTER (WHERE status = 'won'), 0) AS total_recurring_oere,
+         COUNT(*) FILTER (WHERE status IN ('contacted', 'meeting_booked', 'proposal_sent', 'negotiating')) AS in_pipeline
+        FROM base`,
+      [organizationId, projectId, days],
+    ),
+    pool.query(
+      `SELECT c.lost_reason, COUNT(*) AS n
+         FROM crm_customers c
+        WHERE c.organization_id = $1::uuid
+          AND c.project_id = $2
+          AND c.status = 'lost'
+          AND c.lost_at > now() - ($3::int * INTERVAL '1 day')
+          AND c.lost_reason IS NOT NULL
+        GROUP BY c.lost_reason
+        ORDER BY n DESC LIMIT 5`,
+      [organizationId, projectId, days],
+    ),
+    pool.query(
+      `WITH months AS (
+         SELECT date_trunc('month', generate_series(
+           now() - INTERVAL '5 months', now(), INTERVAL '1 month'
+         )) AS m
+       )
+       SELECT
+         to_char(months.m, 'YYYY-MM') AS month,
+         COUNT(c.id) FILTER (WHERE c.status = 'won'
+                              AND date_trunc('month', c.won_at) = months.m) AS won,
+         COUNT(c.id) FILTER (WHERE c.status = 'lost'
+                              AND date_trunc('month', c.lost_at) = months.m) AS lost,
+         COALESCE(SUM(c.won_amount_oere) FILTER (WHERE c.status = 'won'
+                       AND date_trunc('month', c.won_at) = months.m), 0) AS won_amount_oere,
+         COALESCE(SUM(c.won_recurring_oere) FILTER (WHERE c.status = 'won'
+                       AND date_trunc('month', c.won_at) = months.m), 0) AS won_recurring_oere
+        FROM months
+        LEFT JOIN crm_customers c
+          ON c.organization_id = $1::uuid
+         AND c.project_id = $2
+       GROUP BY months.m
+       ORDER BY months.m`,
+      [organizationId, projectId],
+    ),
+    pool.query(
+      `SELECT c.assigned_user_id, u.first_name, u.last_name, u.profile_image_url,
+              COUNT(*) FILTER (WHERE c.status = 'won') AS won_count,
+              COALESCE(SUM(c.won_amount_oere) FILTER (WHERE c.status = 'won'), 0) AS won_amount_oere
+         FROM crm_customers c
+         LEFT JOIN users u ON u.id = c.assigned_user_id
+        WHERE c.organization_id = $1::uuid
+          AND c.project_id = $2
+          AND c.assigned_user_id IS NOT NULL
+          AND COALESCE(c.won_at, c.lost_at, c.status_changed_at)
+              > now() - ($3::int * INTERVAL '1 day')
+        GROUP BY c.assigned_user_id, u.first_name, u.last_name, u.profile_image_url
+        HAVING COUNT(*) FILTER (WHERE c.status = 'won') > 0
+        ORDER BY won_amount_oere DESC LIMIT 5`,
+      [organizationId, projectId, days],
+    ),
+    pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE c.status IN ('new', 'lead', 'active')) AS new_leads,
+         COUNT(*) FILTER (WHERE c.status = 'contacted') AS contacted,
+         COUNT(*) FILTER (WHERE c.status = 'meeting_booked') AS meeting_booked,
+         COUNT(*) FILTER (WHERE c.status = 'proposal_sent') AS proposal_sent,
+         COUNT(*) FILTER (WHERE c.status = 'negotiating') AS negotiating,
+         COUNT(*) FILTER (WHERE c.status = 'won') AS won,
+         COUNT(*) FILTER (WHERE c.status = 'lost') AS lost
+        FROM crm_customers c
+       WHERE c.organization_id = $1::uuid
+         AND c.project_id = $2
+         AND c.created_at > now() - ($3::int * INTERVAL '1 day')`,
+      [organizationId, projectId, days],
+    ),
+  ]);
+
+  const stats = statsR.rows[0] ?? {};
+  return {
+    period_days: days,
+    ...stats,
+    top_lost_reasons: lostR.rows,
+    win_rate: Number(stats.won_count) /
+      Math.max(1, Number(stats.won_count) + Number(stats.lost_count)),
+    month_over_month: momR.rows,
+    top_reps: topRepR.rows,
+    funnel: funnelR.rows[0] ?? {},
+  };
+}
+
 export function registerLeadStatusRoutes({ app, pool, activeSessions }: Deps): void {
 
   // ============================================================
@@ -95,15 +220,29 @@ export function registerLeadStatusRoutes({ app, pool, activeSessions }: Deps): v
   app.get("/api/leadgrid/customers/:id", async (req, res) => {
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
-    const r = await pool.query(
-      `SELECT id::text, name, email, phone, website_url, logo_url,
-              status, lead_category, ai_opportunity_score, assignment_note,
-              assigned_team_leader_id, assigned_user_id
-         FROM crm_customers WHERE id = $1`,
-      [req.params.id],
-    );
-    if (r.rows.length === 0) return res.status(404).json({ error: "Ikke funnet" });
-    res.json(r.rows[0]);
+    try {
+      const lead = await loadAccessibleLeadgridLead(pool, {
+        leadId: req.params.id,
+        userId: s.userId,
+      });
+      if (!lead) return res.status(404).json({ error: "Ikke funnet" });
+      const r = await pool.query(
+        `SELECT id::text, name, email, phone, website_url, logo_url,
+                status, lead_category, ai_opportunity_score, assignment_note,
+                assigned_team_leader_id, assigned_user_id
+           FROM crm_customers
+          WHERE id = $1::uuid
+            AND organization_id = $2::uuid
+            AND project_id = $3
+          LIMIT 1`,
+        [lead.id, lead.organizationId, lead.projectId],
+      );
+      if (r.rows.length === 0) return res.status(404).json({ error: "Ikke funnet" });
+      return res.json(r.rows[0]);
+    } catch (error) {
+      console.error("[lead-status/customer] fetch failed", error);
+      return res.status(500).json({ error: "customer_failed" });
+    }
   });
 
   // ============================================================
@@ -130,7 +269,13 @@ export function registerLeadStatusRoutes({ app, pool, activeSessions }: Deps): v
       });
     }
 
-    const customer = await getCustomer(pool, req.params.id);
+    const lead = await loadAccessibleLeadgridLead(pool, {
+      leadId: req.params.id,
+      userId: s.userId,
+    });
+    if (!lead) return res.status(404).json({ error: "Ikke funnet" });
+
+    const customer = await getCustomer(pool, lead);
     if (!customer) return res.status(404).json({ error: "Ikke funnet" });
 
     // Tilgang: må være markedssjef+, teamleder for leaden, eller rep for leaden
@@ -178,21 +323,36 @@ export function registerLeadStatusRoutes({ app, pool, activeSessions }: Deps): v
       sets.push(`lost_reason_detail = $${n++}`); params.push(lost_reason_detail ?? null);
     }
 
-    params.push(req.params.id);
-    await pool.query(
-      `UPDATE crm_customers SET ${sets.join(", ")} WHERE id = $${n}`,
+    const leadIdParam = n++;
+    params.push(lead.id);
+    const organizationIdParam = n++;
+    params.push(lead.organizationId);
+    const projectIdParam = n++;
+    params.push(lead.projectId);
+    const updated = await pool.query(
+      `UPDATE crm_customers
+          SET ${sets.join(", ")}
+        WHERE id = $${leadIdParam}::uuid
+          AND organization_id = $${organizationIdParam}::uuid
+          AND project_id = $${projectIdParam}
+        RETURNING id`,
       params,
     );
+    if (!updated.rows.length) return res.status(404).json({ error: "Ikke funnet" });
 
     // Audit-log
     await pool.query(
       `INSERT INTO crm_customer_status_history
          (customer_id, from_status, to_status, changed_by_user_id, note, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
-      [req.params.id, fromStatus, to_status, s.userId, note ?? null,
+       SELECT c.id, $2, $3, $4, $5, $6::jsonb
+         FROM crm_customers c
+        WHERE c.id = $1::uuid
+          AND c.organization_id = $7::uuid
+          AND c.project_id = $8`,
+      [lead.id, fromStatus, to_status, s.userId, note ?? null,
        JSON.stringify({
          won_amount_oere, won_recurring_oere, lost_reason, lost_reason_detail,
-       })],
+       }), lead.organizationId, lead.projectId],
     );
 
     // ============================================================
@@ -243,139 +403,74 @@ export function registerLeadStatusRoutes({ app, pool, activeSessions }: Deps): v
   app.get("/api/leadgrid/customers/:id/status-history", async (req, res) => {
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
-    const r = await pool.query(
-      `SELECT h.id::text, h.from_status, h.to_status, h.note, h.metadata,
-              h.changed_at::text, h.changed_by_user_id,
-              u.first_name, u.last_name, u.profile_image_url
-         FROM crm_customer_status_history h
-         LEFT JOIN users u ON u.id = h.changed_by_user_id
-        WHERE h.customer_id = $1
-        ORDER BY h.changed_at DESC LIMIT 50`,
-      [req.params.id],
-    );
-    res.json({ history: r.rows });
+    try {
+      const lead = await loadAccessibleLeadgridLead(pool, {
+        leadId: req.params.id,
+        userId: s.userId,
+      });
+      if (!lead) return res.status(404).json({ error: "Ikke funnet" });
+      const r = await pool.query(
+        `SELECT h.id::text, h.from_status, h.to_status, h.note, h.metadata,
+                h.changed_at::text, h.changed_by_user_id,
+                u.first_name, u.last_name, u.profile_image_url
+           FROM crm_customer_status_history h
+           JOIN crm_customers c ON c.id = h.customer_id
+           LEFT JOIN users u ON u.id = h.changed_by_user_id
+          WHERE h.customer_id = $1::uuid
+            AND c.organization_id = $2::uuid
+            AND c.project_id = $3
+          ORDER BY h.changed_at DESC LIMIT 50`,
+        [lead.id, lead.organizationId, lead.projectId],
+      );
+      return res.json({ history: r.rows });
+    } catch (error) {
+      console.error("[lead-status/history] fetch failed", error);
+      return res.status(500).json({ error: "history_failed" });
+    }
   });
 
   // ============================================================
-  // GET /won-lost-stats
+  // GET /won-lost-stats — alltid ett eksplisitt Leadgrid-kundeprosjekt
   // ============================================================
   app.get("/api/leadgrid/won-lost-stats", async (req, res) => {
-    const s = getSession(req, activeSessions);
-    if (!s) return res.status(401).json({ error: "Ikke innlogget" });
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "Ikke innlogget" });
 
-    const orgR = await pool.query<{ organization_id: string }>(
-      `SELECT organization_id::text FROM organization_members
-        WHERE user_id = $1 LIMIT 1`,
-      [s.userId],
-    );
-    const orgId = orgR.rows[0]?.organization_id;
-    if (!orgId) return res.status(403).json({ error: "Ikke i noen org" });
+    let projectId: string;
+    try {
+      projectId = parseRequiredWonLostProjectId(
+        req.query.projectId ?? req.query.project_id,
+      );
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "invalid_project_id";
+      return res.status(400).json({ error: code });
+    }
 
-    const period = (req.query.period as string) ?? "30d";
-    const days = period === "7d" ? 7 : period === "90d" ? 90 : 30;
+    try {
+      const project = await loadAccessibleLeadgridProject(
+        pool,
+        projectId,
+        session.userId,
+      );
+      if (!project) {
+        return res.status(404).json({ error: "project_not_found" });
+      }
 
-    const r = await pool.query(
-      `WITH base AS (
-         SELECT c.*
-           FROM crm_customers c
-           JOIN leadgrid_projects p ON p.id = c.project_id
-          WHERE p.organization_id::text = $1
-            AND COALESCE(c.won_at, c.lost_at, c.status_changed_at)
-                > now() - ($2::int * INTERVAL '1 day')
-       )
-       SELECT
-         COUNT(*) FILTER (WHERE status = 'won') AS won_count,
-         COUNT(*) FILTER (WHERE status = 'lost') AS lost_count,
-         COALESCE(SUM(won_amount_oere) FILTER (WHERE status = 'won'), 0) AS total_won_oere,
-         COALESCE(SUM(won_recurring_oere) FILTER (WHERE status = 'won'), 0) AS total_recurring_oere,
-         COUNT(*) FILTER (WHERE status IN ('contacted', 'meeting_booked', 'proposal_sent', 'negotiating')) AS in_pipeline
-        FROM base`,
-      [orgId, days],
-    );
-
-    // Top lost-årsaker
-    const lostR = await pool.query(
-      `SELECT lost_reason, COUNT(*) AS n
-         FROM crm_customers c
-         JOIN leadgrid_projects p ON p.id = c.project_id
-        WHERE p.organization_id::text = $1
-          AND c.status = 'lost'
-          AND c.lost_at > now() - ($2::int * INTERVAL '1 day')
-          AND c.lost_reason IS NOT NULL
-        GROUP BY lost_reason
-        ORDER BY n DESC LIMIT 5`,
-      [orgId, days],
-    );
-
-    // Month-over-month: siste 6 mnd
-    const momR = await pool.query(
-      `WITH months AS (
-         SELECT date_trunc('month', generate_series(
-           now() - INTERVAL '5 months', now(), INTERVAL '1 month'
-         )) AS m
-       )
-       SELECT
-         to_char(months.m, 'YYYY-MM') AS month,
-         COUNT(c.id) FILTER (WHERE c.status = 'won'
-                              AND date_trunc('month', c.won_at) = months.m) AS won,
-         COUNT(c.id) FILTER (WHERE c.status = 'lost'
-                              AND date_trunc('month', c.lost_at) = months.m) AS lost,
-         COALESCE(SUM(c.won_amount_oere) FILTER (WHERE c.status = 'won'
-                       AND date_trunc('month', c.won_at) = months.m), 0) AS won_amount_oere,
-         COALESCE(SUM(c.won_recurring_oere) FILTER (WHERE c.status = 'won'
-                       AND date_trunc('month', c.won_at) = months.m), 0) AS won_recurring_oere
-        FROM months
-        LEFT JOIN leadgrid_projects p ON p.organization_id::text = $1
-        LEFT JOIN crm_customers c ON c.project_id = p.id
-       GROUP BY months.m
-       ORDER BY months.m`,
-      [orgId],
-    );
-
-    // Top performers: rep + teamleder
-    const topRepR = await pool.query(
-      `SELECT c.assigned_user_id, u.first_name, u.last_name, u.profile_image_url,
-              COUNT(*) FILTER (WHERE c.status = 'won') AS won_count,
-              COALESCE(SUM(c.won_amount_oere) FILTER (WHERE c.status = 'won'), 0) AS won_amount_oere
-         FROM crm_customers c
-         JOIN leadgrid_projects p ON p.id = c.project_id
-         LEFT JOIN users u ON u.id = c.assigned_user_id
-        WHERE p.organization_id::text = $1
-          AND c.assigned_user_id IS NOT NULL
-          AND COALESCE(c.won_at, c.lost_at, c.status_changed_at)
-              > now() - ($2::int * INTERVAL '1 day')
-        GROUP BY c.assigned_user_id, u.first_name, u.last_name, u.profile_image_url
-        HAVING COUNT(*) FILTER (WHERE c.status = 'won') > 0
-        ORDER BY won_amount_oere DESC LIMIT 5`,
-      [orgId, days],
-    );
-
-    // Conversion-funnel: alle leads i org siste period, telle per status
-    const funnelR = await pool.query(
-      `SELECT
-         COUNT(*) FILTER (WHERE c.status IN ('new', 'lead', 'active')) AS new_leads,
-         COUNT(*) FILTER (WHERE c.status = 'contacted') AS contacted,
-         COUNT(*) FILTER (WHERE c.status = 'meeting_booked') AS meeting_booked,
-         COUNT(*) FILTER (WHERE c.status = 'proposal_sent') AS proposal_sent,
-         COUNT(*) FILTER (WHERE c.status = 'negotiating') AS negotiating,
-         COUNT(*) FILTER (WHERE c.status = 'won') AS won,
-         COUNT(*) FILTER (WHERE c.status = 'lost') AS lost
-        FROM crm_customers c
-        JOIN leadgrid_projects p ON p.id = c.project_id
-       WHERE p.organization_id::text = $1
-         AND c.created_at > now() - ($2::int * INTERVAL '1 day')`,
-      [orgId, days],
-    );
-
-    res.json({
-      period_days: days,
-      ...r.rows[0],
-      top_lost_reasons: lostR.rows,
-      win_rate: Number(r.rows[0].won_count) /
-                Math.max(1, Number(r.rows[0].won_count) + Number(r.rows[0].lost_count)),
-      month_over_month: momR.rows,
-      top_reps: topRepR.rows,
-      funnel: funnelR.rows[0] ?? {},
-    });
+      const period = (req.query.period as string) ?? "30d";
+      const days = period === "7d" ? 7 : period === "90d" ? 90 : 30;
+      const stats = await buildWonLostStats(pool, {
+        organizationId: project.organizationId,
+        projectId: project.id,
+        days,
+      });
+      return res.json({
+        project_id: project.id,
+        project_name: project.name,
+        ...stats,
+      });
+    } catch (error) {
+      console.error("[lead-status/won-lost] report failed", error);
+      return res.status(500).json({ error: "report_failed" });
+    }
   });
 }

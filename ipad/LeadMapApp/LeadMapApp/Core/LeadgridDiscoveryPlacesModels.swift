@@ -7,6 +7,7 @@ struct DiscoveryV2PlaceDetailsResponse: Codable, Hashable, Sendable {
     var provider: DiscoveryV2PlaceProvider
     var notice: String
     var rankingNotice: String
+    var confirmationExpiresAt: String?
     var matches: [DiscoveryV2PlaceMatch]
 
     enum CodingKeys: String, CodingKey {
@@ -14,6 +15,7 @@ struct DiscoveryV2PlaceDetailsResponse: Codable, Hashable, Sendable {
         case candidateId = "candidate_id"
         case fetchedAt = "fetched_at"
         case rankingNotice = "ranking_notice"
+        case confirmationExpiresAt = "confirmation_expires_at"
     }
 }
 
@@ -57,6 +59,9 @@ struct DiscoveryV2PlaceMatch: Codable, Hashable, Sendable, Identifiable {
     var attributions: [DiscoveryV2PlaceAttribution]
     var matchQuality: String
     var matchReasons: [String]
+    /// Copied from the response envelope only after the user explicitly
+    /// selects this match. It is transient and is never sent as lead data.
+    var confirmationExpiresAt: String?
 
     var id: String { placeId }
     var phoneNumber: String? { internationalPhoneNumber ?? nationalPhoneNumber }
@@ -67,6 +72,23 @@ struct DiscoveryV2PlaceMatch: Codable, Hashable, Sendable, Identifiable {
         let normalized = phoneNumber.filter { $0.isNumber || $0 == "+" }
         guard normalized.filter(\.isNumber).count >= 3 else { return nil }
         return URL(string: "tel:" + normalized)
+    }
+
+    func hasFreshConfirmation(at date: Date = Date()) -> Bool {
+        guard let confirmationExpiresAt,
+              let expiresAt = Self.parseISO8601(confirmationExpiresAt)
+        else { return false }
+        return expiresAt > date
+    }
+
+    var confirmationExpiryDate: Date? {
+        confirmationExpiresAt.flatMap(Self.parseISO8601)
+    }
+
+    private static func parseISO8601(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
 
     var matchQualityTitle: String {
@@ -101,6 +123,7 @@ struct DiscoveryV2PlaceMatch: Codable, Hashable, Sendable, Identifiable {
         case googleMapsUri = "google_maps_uri"
         case matchQuality = "match_quality"
         case matchReasons = "match_reasons"
+        case confirmationExpiresAt = "confirmation_expires_at"
     }
 }
 

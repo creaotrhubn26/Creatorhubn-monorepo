@@ -51,7 +51,6 @@ struct LeadgridDropPinSheet: View {
     @State private var geocodeFailed = false
     @State private var creating = false
     @State private var createError: String? = nil
-    @State private var showUrlResearch = false
 
     @FocusState private var nameFocused: Bool
 
@@ -83,11 +82,6 @@ struct LeadgridDropPinSheet: View {
                     }
                     .disabled(creating || name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
-            }
-            .sheet(isPresented: $showUrlResearch) {
-                // Vi gjenbruker URL-research-flyten. statusMessage er en
-                // binding-passthrough — vi cacher kun lokalt her.
-                StandaloneUrlResearchSheet()
             }
             .task {
                 nameFocused = true
@@ -201,12 +195,6 @@ struct LeadgridDropPinSheet: View {
     @ViewBuilder
     private var actionSection: some View {
         Section {
-            Button {
-                showUrlResearch = true
-            } label: {
-                Label("Forsk på denne adressen først", systemImage: "sparkle.magnifyingglass")
-                    .foregroundStyle(Self.brandPurple)
-            }
             if let err = createError {
                 Text(err)
                     .font(.caption)
@@ -263,6 +251,10 @@ struct LeadgridDropPinSheet: View {
 
     private func createLead() async {
         guard let api = appState.api else { return }
+        guard let projectId = appState.activeLeadgridProjectId else {
+            createError = "Velg et kundeprosjekt før du lager leaden."
+            return
+        }
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         guard !trimmedName.isEmpty else { return }
         creating = true
@@ -282,7 +274,8 @@ struct LeadgridDropPinSheet: View {
                 leadStatus: LeadStatus.unvisited.rawValue,
                 address: resolvedAddress,
                 locationConfidence: "exact",
-                leadSource: "manual_pin_drop"
+                leadSource: "manual_pin_drop",
+                projectID: projectId
             ), organizationId: appState.activeOrganizationId)
             // Success-haptic
             UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -302,28 +295,6 @@ struct LeadgridDropPinSheet: View {
         } catch {
             createError = "Kunne ikke lage lead. Prøv igjen."
             print("[DropPin] createLeadAtPin failed: \(error)")
-        }
-    }
-}
-
-/// Tynt wrapper rundt LeadgridUrlResearchView for stand-alone presentasjon
-/// (sheet-i-sheet). LeadgridUrlResearchView krever et `Binding<String?>`-
-/// statusMessage som ellers eies av LeadgridImportSheet.
-@MainActor
-private struct StandaloneUrlResearchSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var statusMessage: String? = nil
-
-    var body: some View {
-        NavigationStack {
-            LeadgridUrlResearchView(statusMessage: $statusMessage)
-                .navigationTitle("URL-research")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Lukk") { dismiss() }
-                    }
-                }
         }
     }
 }

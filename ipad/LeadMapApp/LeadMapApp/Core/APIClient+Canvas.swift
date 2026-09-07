@@ -245,23 +245,31 @@ extension APIClient {
     /// Backend lagrer oppgavene (leadgrid_oppgaver, kilde canvas) og
     /// møtelogg-innslag — neste brief åpner med notatet.
     func analyserCanvasNotat(selskap: String?, tekst: String,
-                             leadId: String?) async throws -> CanvasAnalyseDTO {
+                             leadId: String?, projectId: String,
+                             requestId: UUID, persist: Bool = true) async throws -> CanvasAnalyseDTO {
         struct Body: Encodable {
             let selskap: String?
             let tekst: String
             let leadId: String?
+            let projectId: String
+            let requestId: String
+            let persist: Bool
         }
         struct Resp: Decodable { let resultat: CanvasAnalyseDTO }
         let r: Resp = try await _post(
             "/api/leadgrid/canvas/analyse",
-            body: Body(selskap: selskap, tekst: tekst, leadId: leadId))
+            body: Body(selskap: selskap, tekst: tekst, leadId: leadId,
+                       projectId: projectId,
+                       requestId: requestId.uuidString.lowercased(),
+                       persist: persist))
         return r.resultat
     }
 
     /// Apple Intelligence: analysen ble gjort ON-DEVICE — backend skal
     /// bare persistere (oppgaver + møtelogg). Ingen AI-kost, ingen gate.
     func persisterCanvasAnalyse(selskap: String?, leadId: String?,
-                                resultat: CanvasAnalyseDTO) async throws {
+                                resultat: CanvasAnalyseDTO, projectId: String,
+                                requestId: UUID) async throws {
         struct Ferdig: Encodable {
             let oppsummering: String
             let oppgaver: [[String: String?]]
@@ -272,6 +280,8 @@ extension APIClient {
             let leadId: String?
             let tekst: String
             let ferdigResultat: Ferdig
+            let projectId: String
+            let requestId: String
         }
         struct Resp: Decodable { let resultat: CanvasAnalyseDTO }
         let ferdig = Ferdig(
@@ -283,7 +293,8 @@ extension APIClient {
         let _: Resp = try await _post(
             "/api/leadgrid/canvas/analyse",
             body: Body(selskap: selskap, leadId: leadId, tekst: "",
-                       ferdigResultat: ferdig))
+                       ferdigResultat: ferdig, projectId: projectId,
+                       requestId: requestId.uuidString.lowercased()))
     }
 
     /// Time Travel: notatets versjoner (eldst → nyest).

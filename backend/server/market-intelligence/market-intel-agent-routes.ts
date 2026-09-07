@@ -17,6 +17,7 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { getMarketIntelAgentContext } from "./market-intel-agent-context-service.js";
+import { loadAccessibleLeadgridProject } from "../leadgrid-project-access.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -61,16 +62,28 @@ export function registerMarketIntelAgentRoutes({
   app.get("/api/role-room/agent/market-intel-context", async (req, res) => {
     const session = requireAdmin(req, res);
     if (!session) return;
-    const projectId = req.query.projectId
-      ? String(req.query.projectId)
-      : "theroleroom";
     try {
-      const context = await getMarketIntelAgentContext(pool, {
+      const projectId = typeof req.query.projectId === "string"
+        ? req.query.projectId.trim()
+        : "";
+      if (!projectId) {
+        return res.status(400).json({ error: "project_id_required" });
+      }
+      const project = await loadAccessibleLeadgridProject(
+        pool,
         projectId,
+        session.userId,
+      );
+      if (!project) {
+        return res.status(404).json({ error: "project_not_found" });
+      }
+      const context = await getMarketIntelAgentContext(pool, {
+        projectId: project.id,
+        organizationId: project.organizationId,
         workspaceOwnerUserId: session.userId,
-        maxScans: req.query.maxScans ? Number(req.query.maxScans) : 3,
-        maxOpportunities: req.query.maxOpportunities ? Number(req.query.maxOpportunities) : 4,
-        maxWorkflows: req.query.maxWorkflows ? Number(req.query.maxWorkflows) : 5,
+        maxScans: Math.max(1, Math.min(10, Number(req.query.maxScans) || 3)),
+        maxOpportunities: Math.max(1, Math.min(20, Number(req.query.maxOpportunities) || 4)),
+        maxWorkflows: Math.max(1, Math.min(20, Number(req.query.maxWorkflows) || 5)),
       });
       return res.json({ context });
     } catch (err) {

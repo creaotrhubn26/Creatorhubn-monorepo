@@ -62,14 +62,11 @@ describe("continuous Discovery v2 adapter", () => {
     service.isLeadgridDiscoveryEnabled.mockReturnValue(false);
     const query = vi.fn();
 
-    const result = await runDiscoveryForProject(
-      { query } as unknown as Pool,
-      {
-        projectId: "project-a",
-        organizationId,
-        ownerUserId: "user-a",
-      },
-    );
+    const result = await runDiscoveryForProject({ query } as unknown as Pool, {
+      projectId: "project-a",
+      organizationId,
+      ownerUserId: "user-a",
+    });
 
     expect(result).toEqual({
       ok: false,
@@ -148,6 +145,92 @@ describe("continuous Discovery v2 adapter", () => {
           city: "Oslo",
           target_count: 20,
           enrichment_count: 10,
+        }),
+      }),
+    );
+  });
+
+  it("keeps explicit municipality names authoritative over profile city filters", async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("FROM leadgrid_discovery_runs")) return { rows: [] };
+      return {
+        rows: [
+          sourceRow({
+            city_filters: ["Bærum", "Asker"],
+            profile_brief: {
+              municipality_numbers: ["3201", "3203"],
+              municipality_names: ["Bærum", "Asker"],
+              exclusion_terms: [],
+              minimum_fit_score: 65,
+            },
+          }),
+        ],
+      };
+    });
+
+    const result = await runDiscoveryForProject({ query } as unknown as Pool, {
+      projectId: "project-a",
+      organizationId,
+      ownerUserId: "user-a",
+      profileId,
+      idempotencyKey: "municipalities-with-names",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      discoveryQuery: "regnskapsbyrå i Asker, Bærum",
+    });
+    expect(service.createDiscoveryRun).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        brief: expect.objectContaining({
+          city: null,
+          geo: null,
+          municipality_numbers: ["3201", "3203"],
+          municipality_names: ["Asker", "Bærum"],
+        }),
+      }),
+    );
+  });
+
+  it("does not add the Norge city fallback to municipality-number profiles", async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("FROM leadgrid_discovery_runs")) return { rows: [] };
+      return {
+        rows: [
+          sourceRow({
+            city_filters: [],
+            profile_brief: {
+              municipality_numbers: ["0301"],
+              municipality_names: [],
+              exclusion_terms: [],
+              minimum_fit_score: 65,
+            },
+          }),
+        ],
+      };
+    });
+
+    const result = await runDiscoveryForProject({ query } as unknown as Pool, {
+      projectId: "project-a",
+      organizationId,
+      ownerUserId: "user-a",
+      profileId,
+      idempotencyKey: "municipality-number-only",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      discoveryQuery: "regnskapsbyrå i kommune 0301",
+    });
+    expect(service.createDiscoveryRun).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        brief: expect.objectContaining({
+          city: null,
+          geo: null,
+          municipality_numbers: ["0301"],
+          municipality_names: [],
         }),
       }),
     );
@@ -326,6 +409,52 @@ describe("continuous Discovery v2 adapter", () => {
     expect(advance?.[0]).toContain("id = $3::uuid");
   });
 
+  it("revalidates active profile state immediately before enqueue", async () => {
+    const due = {
+      source_kind: "profile" as const,
+      source_id: profileId,
+      profile_id: profileId,
+      profile_version: 7,
+      project_id: "project-a",
+      organization_id: organizationId,
+      actor_user_id: "user-a",
+      schedule_cron: "0 6 * * *",
+      schedule_timezone: "Europe/Oslo",
+      next_run_at: "2026-08-30T04:00:00.000Z",
+    };
+    let dueChecks = 0;
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes("pg_try_advisory_lock")) {
+          return { rows: [{ acquired: true }] };
+        }
+        if (sql.includes("FROM leadgrid_discovery_profiles")) {
+          dueChecks += 1;
+          return { rows: dueChecks === 1 ? [{ "?column?": 1 }] : [] };
+        }
+        if (sql.includes("FROM organization_members")) {
+          return { rows: [{ "?column?": 1 }] };
+        }
+        return { rows: [{ pg_advisory_unlock: true }] };
+      }),
+      release: vi.fn(),
+    };
+    const query = vi.fn();
+    const pool = {
+      query,
+      connect: vi.fn(async () => client),
+    } as unknown as Pool;
+
+    await expect(
+      __test.processDueSource(pool, due, new Date("2026-08-30T05:00:00.000Z")),
+    ).resolves.toBeNull();
+
+    expect(dueChecks).toBe(2);
+    expect(service.createDiscoveryRun).not.toHaveBeenCalled();
+    expect(query).not.toHaveBeenCalled();
+    expect(client.release).toHaveBeenCalledTimes(1);
+  });
+
   it("pauses an invalid stored schedule with a scoped compare-and-set", async () => {
     const due = {
       source_kind: "profile" as const,
@@ -377,6 +506,7 @@ describe("continuous Discovery v2 adapter", () => {
       "project-a",
       profileId,
       "2026-08-30T04:00:00.000Z",
+      7,
     ]);
   });
 
@@ -437,6 +567,7 @@ describe("continuous Discovery v2 adapter", () => {
       "project-a",
       profileId,
       "2026-08-30T04:00:00.000Z",
+      7,
     ]);
   });
 

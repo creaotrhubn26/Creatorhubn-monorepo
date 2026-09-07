@@ -14,6 +14,7 @@ import SwiftUI
 
 struct LeadNeedsView: View {
     let leadId: String
+    let projectId: String
     let leadName: String
     let canRunScout: Bool          // marketing.scout.run-permission
 
@@ -24,6 +25,7 @@ struct LeadNeedsView: View {
     @State private var isLoading = true
     @State private var error: String?
     @State private var isScouting = false
+    @State private var scoutIdempotencyKey = UUID().uuidString.lowercased()
 
     var body: some View {
         NavigationStack {
@@ -32,7 +34,12 @@ struct LeadNeedsView: View {
         .salesHierarchyBackdrop(.research)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbar }
-                .task { await load() }
+                .task(id: projectId) {
+                    overview = nil
+                    error = nil
+                    isLoading = true
+                    await load()
+                }
                 .refreshable { await load() }
         }
     }
@@ -278,25 +285,58 @@ struct LeadNeedsView: View {
     // MARK: - Actions
 
     private func load() async {
-        guard let api = appState.api else { return }
+        guard let api = appState.api,
+              let organizationId = appState.activeOrganizationId else {
+            error = "Velg et kundeprosjekt før du åpner behov og signaler."
+            isLoading = false
+            return
+        }
         do {
-            let resp = try await api.fetchLeadNeedsOverview(leadId: leadId)
+            let resp = try await api.fetchLeadNeedsOverview(
+                leadId: leadId,
+                projectId: projectId
+            )
+            guard appState.activeOrganizationId == organizationId else { return }
+            guard resp.projectId == projectId,
+                  resp.organizationId == organizationId else {
+                error = "Serveren returnerte data fra et annet kundeprosjekt."
+                isLoading = false
+                return
+            }
             overview = resp
             isLoading = false
         } catch {
+            guard appState.activeOrganizationId == organizationId else { return }
             self.error = String(describing: error)
             isLoading = false
         }
     }
 
     private func runScout() async {
-        guard let api = appState.api else { return }
+        guard let api = appState.api,
+              let organizationId = appState.activeOrganizationId else {
+            error = "Velg et kundeprosjekt før du kjører Scout."
+            return
+        }
+        let requestKey = scoutIdempotencyKey
         isScouting = true
         defer { isScouting = false }
         do {
-            _ = try await api.runScoutForLead(leadId: leadId)
+            let result = try await api.runScoutForLead(
+                leadId: leadId,
+                projectId: projectId,
+                idempotencyKey: requestKey
+            )
+            guard appState.activeOrganizationId == organizationId else { return }
+            guard result.projectId == projectId,
+                  result.organizationId == organizationId else {
+                error = "Serveren returnerte et Scout-resultat fra et annet kundeprosjekt."
+                return
+            }
+            scoutIdempotencyKey = UUID().uuidString.lowercased()
             await load()
         } catch {
+            guard appState.activeOrganizationId == organizationId else { return }
             self.error = String(describing: error)
         }
     }

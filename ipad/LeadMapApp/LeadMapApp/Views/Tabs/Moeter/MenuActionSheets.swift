@@ -489,6 +489,10 @@ struct StatusPickerSheet: View {
             saveError = "Ingen aktiv tilkobling. Status ble ikke endret."
             return
         }
+        guard let projectId = appState.activeLeadgridProjectId else {
+            saveError = "Velg et kundeprosjekt før møtestatus endres."
+            return
+        }
         saving = true
         saveError = nil
         defer { saving = false }
@@ -497,7 +501,9 @@ struct StatusPickerSheet: View {
             try await api.oppdaterMote(
                 leadId: meeting.id.uuidString.lowercased(),
                 meetingStatus: status.backendValue,
-                note: trimmedNote.isEmpty ? nil : trimmedNote
+                note: trimmedNote.isEmpty ? nil : trimmedNote,
+                projectId: projectId,
+                organizationId: appState.activeOrganizationId
             )
             await appState.refreshAll()
             dismiss()
@@ -746,6 +752,10 @@ struct CancelMeetingSheet: View {
             saveError = "Ingen aktiv tilkobling. Møtet ble ikke avlyst."
             return
         }
+        guard let projectId = appState.activeLeadgridProjectId else {
+            saveError = "Velg et kundeprosjekt før møtet avlyses."
+            return
+        }
         saving = true
         saveError = nil
         defer { saving = false }
@@ -753,7 +763,9 @@ struct CancelMeetingSheet: View {
             try await api.oppdaterMote(
                 leadId: meeting.id.uuidString.lowercased(),
                 meetingStatus: Meeting.Status.cancelled.backendValue,
-                note: "Avlyst: \(resolvedReason)"
+                note: "Avlyst: \(resolvedReason)",
+                projectId: projectId,
+                organizationId: appState.activeOrganizationId
             )
             await appState.refreshAll()
             if notify { openCancellationDraft() }

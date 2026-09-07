@@ -10,10 +10,10 @@
  *   - Won-count, Møter, Close-rate
  *   - Active leads
  *
- * Topp-summary-kort viser org-totaler.
+ * Topp-summary-kort viser totaler for aktivt kundeprosjekt.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert, Avatar, Badge, Box, Button, Card, CardContent, Chip, CircularProgress,
   Grid2 as Grid, LinearProgress, MenuItem, Select, Stack, Table, TableBody,
@@ -53,6 +53,7 @@ interface LeaderboardEntry {
 }
 
 interface LeaderboardSummary {
+  projectId: string;
   period: string;
   totalTargetNok: number;
   totalAchievedNok: number;
@@ -75,6 +76,11 @@ type SortBy = 'progress' | 'achieved' | 'won' | 'meetings';
 function getActiveOrgId(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('rr_lead_map_active_org');
+}
+
+function getActiveProjectId(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('rr_lead_map_active_project');
 }
 
 function getAuthToken(): string {
@@ -113,6 +119,7 @@ function medalForRank(rank: number): { color: string; label: string } | null {
 export default function LeadMapLeaderboardPanel() {
   const { role: myRole } = usePermissions();
   const [orgId, setOrgId] = useState<string | null>(getActiveOrgId());
+  const [projectId, setProjectId] = useState<string | null>(getActiveProjectId());
   const [period, setPeriod] = useState<Period>('this_month');
   const [sortBy, setSortBy] = useState<SortBy>('progress');
   const [teamFilter, setTeamFilter] = useState<string>('');
@@ -123,6 +130,7 @@ export default function LeadMapLeaderboardPanel() {
   const [error, setError] = useState<string | null>(null);
   const [autoAssignOpen, setAutoAssignOpen] = useState(false);
   const [quotaOpen, setQuotaOpen] = useState(false);
+  const loadGeneration = useRef(0);
 
   const headers = useMemo<HeadersInit>(
     () => ({ Authorization: `Bearer ${getAuthToken()}` }),
@@ -133,9 +141,21 @@ export default function LeadMapLeaderboardPanel() {
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'rr_lead_map_active_org') setOrgId(getActiveOrgId());
+      if (e.key === 'rr_lead_map_active_project') setProjectId(getActiveProjectId());
     };
+    const onActiveProjectChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId?: unknown }>).detail;
+      setProjectId(typeof detail?.projectId === 'string' && detail.projectId.trim()
+        ? detail.projectId.trim()
+        : null);
+    };
+
     window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+    window.addEventListener('leadgrid:active-project-changed', onActiveProjectChanged);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('leadgrid:active-project-changed', onActiveProjectChanged);
+    };
   }, []);
 
   // ─── Load teams ─────────────────────────────────────────────────
@@ -157,14 +177,23 @@ export default function LeadMapLeaderboardPanel() {
 
   // ─── Load leaderboard + summary ─────────────────────────────────
   const load = useCallback(async () => {
-    if (!orgId) return;
+    const generation = ++loadGeneration.current;
+    if (!orgId || !projectId) {
+      setEntries([]);
+      setSummary(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true); setError(null);
     try {
-      const qs = new URLSearchParams({ period, sort: sortBy });
+      const qs = new URLSearchParams({ period, sort: sortBy, projectId });
       if (teamFilter) qs.set('team_id', teamFilter);
+      const summaryQs = new URLSearchParams({ period, projectId });
+      if (teamFilter) summaryQs.set('team_id', teamFilter);
       const [lbRes, sumRes] = await Promise.all([
         fetch(`/api/admin-room/lead-map/organizations/${orgId}/leaderboard?${qs.toString()}`, { headers }),
-        fetch(`/api/admin-room/lead-map/organizations/${orgId}/leaderboard-summary?period=${period}`, { headers }),
+        fetch(`/api/admin-room/lead-map/organizations/${orgId}/leaderboard-summary?${summaryQs.toString()}`, { headers }),
       ]);
       if (!lbRes.ok) {
         const j = await lbRes.json().catch(() => ({}));
@@ -173,15 +202,30 @@ export default function LeadMapLeaderboardPanel() {
         }
         throw new Error(j.error ?? `HTTP ${lbRes.status}`);
       }
-      const lbJson = await lbRes.json();
+      const lbJson = await lbRes.json() as {
+        projectId?: unknown;
+        leaderboard?: LeaderboardEntry[];
+      };
+      if (lbJson.projectId !== projectId) {
+        throw new Error('Leaderboard svarte med feil prosjektkontekst.');
+      }
+      if (generation !== loadGeneration.current) return;
       setEntries(Array.isArray(lbJson.leaderboard) ? lbJson.leaderboard : []);
       if (sumRes.ok) {
-        setSummary(await sumRes.json());
+        const summaryJson = await sumRes.json() as LeaderboardSummary;
+        if (summaryJson.projectId !== projectId) {
+          throw new Error('Leaderboard-oppsummeringen svarte med feil prosjektkontekst.');
+        }
+        if (generation === loadGeneration.current) setSummary(summaryJson);
+      } else {
+        setSummary(null);
       }
     } catch (err) {
-      setError(String(err));
-    } finally { setLoading(false); }
-  }, [orgId, period, sortBy, teamFilter, headers]);
+      if (generation === loadGeneration.current) setError(String(err));
+    } finally {
+      if (generation === loadGeneration.current) setLoading(false);
+    }
+  }, [orgId, projectId, period, sortBy, teamFilter, headers]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -230,6 +274,12 @@ export default function LeadMapLeaderboardPanel() {
           )}
         </Stack>
       </Stack>
+
+      {!projectId && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Velg et kundeprosjekt i Leadgrid før leaderboardet kan vises.
+        </Alert>
+      )}
 
       {error && (
         <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 2 }}>

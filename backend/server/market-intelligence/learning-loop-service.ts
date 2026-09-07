@@ -65,13 +65,38 @@ interface DraftPerformance {
 async function fetchDraftPerformance(
   pool: Pool,
   draftIds: number[],
+  scope: { organizationId: string; projectId: string },
 ): Promise<DraftPerformance[]> {
   if (draftIds.length === 0) return [];
   const r = await pool.query(
-    `SELECT id::int as "draftId", status, published_at::text, latest_engagement
-       FROM marketing_post_drafts
-      WHERE id = ANY($1::bigint[])`,
-    [draftIds],
+    `SELECT draft.id::int as "draftId",
+            draft.status,
+            draft.published_at::text,
+            (
+              SELECT row_to_json(snapshot)
+                FROM (
+                  SELECT engagement.impressions,
+                         engagement.reach,
+                         COALESCE(
+                           engagement.engaged_users,
+                           COALESCE(engagement.reactions_total, 0)
+                             + COALESCE(engagement.comments_count, 0)
+                             + COALESCE(engagement.shares_count, 0)
+                         ) AS engagements,
+                         engagement.reactions_total AS reactions,
+                         engagement.clicks
+                    FROM post_engagement_snapshots engagement
+                   WHERE engagement.draft_id = draft.id
+                     AND engagement.fetch_error IS NULL
+                   ORDER BY engagement.snapshot_at DESC
+                   LIMIT 1
+                ) snapshot
+            ) AS latest_engagement
+       FROM marketing_post_drafts draft
+      WHERE draft.id = ANY($1::bigint[])
+        AND draft.organization_id = $2::uuid
+        AND draft.leadgrid_project_id = $3`,
+    [draftIds, scope.organizationId, scope.projectId],
   );
   return r.rows;
 }
@@ -207,14 +232,17 @@ async function generateInsight(
 export async function processWorkflowAnalytics(
   pool: Pool,
   workflowId: string,
+  scope: { organizationId: string; projectId: string },
 ): Promise<WorkflowAnalyticsResult | null> {
   // 1. Hent workflow + draft-IDer
   const wfR = await pool.query(
     `SELECT id::text, opportunity_id::text, market_scan_id::text, brand_kit_id::text,
             campaign_draft_id, content_pack_draft_ids
        FROM marketing_workflows
-      WHERE id = $1::uuid`,
-    [workflowId],
+      WHERE id = $1::uuid
+        AND organization_id = $2::uuid
+        AND project_id = $3`,
+    [workflowId, scope.organizationId, scope.projectId],
   );
   if (wfR.rows.length === 0) return null;
   const wf = wfR.rows[0];
@@ -226,7 +254,7 @@ export async function processWorkflowAnalytics(
   if (allDraftIds.length === 0) return null;
 
   // 2. Hent draft-performance
-  const drafts = await fetchDraftPerformance(pool, allDraftIds);
+  const drafts = await fetchDraftPerformance(pool, allDraftIds, scope);
   const agg = aggregateEngagement(drafts);
   const { score, tier } = computePerformanceScore({
     impressions: agg.impressions,
@@ -244,8 +272,13 @@ export async function processWorkflowAnalytics(
   if (tier !== "unrated" && agg.impressions >= 100 && wf.opportunity_id) {
     try {
       const oppR = await pool.query(
-        `SELECT title, simple_summary FROM market_scan_opportunities WHERE id=$1::uuid`,
-        [wf.opportunity_id],
+        `SELECT opportunity.title, opportunity.simple_summary
+           FROM market_scan_opportunities opportunity
+           JOIN market_scans scan ON scan.id = opportunity.market_scan_id
+          WHERE opportunity.id = $1::uuid
+            AND scan.organization_id = $2::uuid
+            AND scan.project_id = $3`,
+        [wf.opportunity_id, scope.organizationId, scope.projectId],
       );
       const oppTitle = oppR.rows[0]?.title;
       const oppSummary = oppR.rows[0]?.simple_summary;
@@ -313,8 +346,15 @@ export async function processWorkflowAnalytics(
           SET learned_performance_tier = $2,
               times_acted_on = times_acted_on + 1,
               last_action_at = NOW()
-        WHERE id = $1::uuid`,
-      [wf.opportunity_id, tier],
+        WHERE id = $1::uuid
+          AND EXISTS (
+            SELECT 1
+              FROM market_scans scan
+             WHERE scan.id = market_scan_opportunities.market_scan_id
+               AND scan.organization_id = $3::uuid
+               AND scan.project_id = $4
+          )`,
+      [wf.opportunity_id, tier, scope.organizationId, scope.projectId],
     );
   }
 
@@ -325,7 +365,9 @@ export async function processWorkflowAnalytics(
         SET current_status = $2,
             next_recommended_action = $3,
             updated_at = NOW()
-      WHERE id = $1::uuid`,
+      WHERE id = $1::uuid
+        AND organization_id = $4::uuid
+        AND project_id = $5`,
     [
       workflowId,
       nextStatus,
@@ -334,6 +376,8 @@ export async function processWorkflowAnalytics(
         : tier === "low"
           ? "Sjekk om vi bør justere copy eller målgruppe før neste forsøk"
           : "Samler fortsatt data — sjekk på nytt om 24 timer",
+      scope.organizationId,
+      scope.projectId,
     ],
   );
 
@@ -358,20 +402,31 @@ export async function processWorkflowAnalytics(
 
 /** Cron-entry: prosesser alle workflows som trenger ny compute */
 export async function processAllDueWorkflows(pool: Pool): Promise<number> {
-  const r = await pool.query<{ id: string }>(
-    `SELECT mw.id::text
+  const r = await pool.query<{
+    id: string;
+    organization_id: string;
+    project_id: string;
+  }>(
+    `SELECT mw.id::text,
+            mw.organization_id::text,
+            mw.project_id
        FROM marketing_workflows mw
        LEFT JOIN marketing_workflow_analytics mwa
          ON mwa.workflow_id = mw.id
         AND mwa.next_compute_at > NOW()
       WHERE mw.current_status IN ('published', 'analytics_collecting', 'analytics_completed')
+        AND mw.organization_id IS NOT NULL
+        AND mw.project_id IS NOT NULL
         AND mwa.id IS NULL
       LIMIT 50`,
   );
   let processed = 0;
   for (const row of r.rows) {
     try {
-      const result = await processWorkflowAnalytics(pool, row.id);
+      const result = await processWorkflowAnalytics(pool, row.id, {
+        organizationId: row.organization_id,
+        projectId: row.project_id,
+      });
       if (result) processed += 1;
     } catch (err) {
       console.warn(`[learning-loop] failed for workflow ${row.id}:`, err);

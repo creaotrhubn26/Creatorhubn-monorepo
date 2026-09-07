@@ -11,6 +11,7 @@ import Charts
 import SwiftUI
 
 struct LeadgridMomentumTrendChart: View {
+    @Environment(AppState.self) private var appState
     let api: APIClient
     @State private var trend: LeadgridMomentumTrend?
     @State private var loading = true
@@ -29,7 +30,9 @@ struct LeadgridMomentumTrendChart: View {
                 }
             }
 
-            if loading {
+            if appState.activeLeadgridProjectId == nil {
+                projectRequiredState
+            } else if loading {
                 HStack { Spacer(); ProgressView(); Spacer() }
                     .frame(height: 100)
             } else if let t = trend {
@@ -45,8 +48,16 @@ struct LeadgridMomentumTrendChart: View {
         }
         .padding()
         .background(Color.purple.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
-        .task { await load() }
+        .task(id: appState.activeLeadgridProjectId) { await load() }
     }
+
+    @ViewBuilder
+    private var projectRequiredState: some View {
+        Label("Velg et kundeprosjekt for å vise momentum-trenden.", systemImage: "folder.badge.questionmark")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+
 
     @ViewBuilder
     private var emptyState: some View {
@@ -167,13 +178,30 @@ struct LeadgridMomentumTrendChart: View {
 
     @MainActor
     private func load() async {
+        guard let projectId = appState.activeLeadgridProjectId else {
+            trend = nil
+            selectedPoint = nil
+            errorText = nil
+            loading = false
+            return
+        }
+        trend = nil
+        selectedPoint = nil
         loading = true
         errorText = nil
+        defer {
+            if appState.activeLeadgridProjectId == projectId { loading = false }
+        }
         do {
-            trend = try await api.fetchMomentumTrend()
+            let loaded = try await api.fetchMomentumTrend(projectId: projectId)
+            guard appState.activeLeadgridProjectId == projectId,
+                  loaded.projectId == projectId else { return }
+            trend = loaded
+            selectedPoint = nil
         } catch {
+            guard !Task.isCancelled, appState.activeLeadgridProjectId == projectId else { return }
+            trend = nil
             errorText = "Kunne ikke laste trend: \(error.localizedDescription)"
         }
-        loading = false
     }
 }

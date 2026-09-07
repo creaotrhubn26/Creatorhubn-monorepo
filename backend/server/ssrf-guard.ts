@@ -24,6 +24,7 @@ import dns from "node:dns";
 import net from "node:net";
 import http from "node:http";
 import https from "node:https";
+import { Agent } from "undici";
 
 /** True if `ip` (a numeric IPv4 or IPv6 literal) is private/loopback/link-local/etc. */
 export function isPrivateAddress(ip: string): boolean {
@@ -36,7 +37,10 @@ export function isPrivateAddress(ip: string): boolean {
 
 function isPrivateIPv4(ip: string): boolean {
   const parts = ip.split(".").map((p) => Number(p));
-  if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
+  if (
+    parts.length !== 4 ||
+    parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)
+  ) {
     return true;
   }
   const [a, b] = parts;
@@ -56,9 +60,22 @@ function isPrivateIPv4(ip: string): boolean {
 function isPrivateIPv6(ip: string): boolean {
   const addr = ip.toLowerCase().replace(/^\[|\]$/g, "");
   if (addr === "::1" || addr === "::") return true; // loopback / unspecified
-  // IPv4-mapped (::ffff:127.0.0.1) and IPv4-compatible — validate the embedded v4.
-  const mapped = addr.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-  if (mapped) return isPrivateIPv4(mapped[1]);
+  // IPv4-mapped forms may use a dotted or hexadecimal tail. Validate the
+  // embedded IPv4 address instead of allowing it through IPv6 range checks.
+  const mappedDotted = addr.match(
+    /^(?:::ffff:|::|(?:0:){5}ffff:|(?:0:){6})(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/,
+  );
+  if (mappedDotted) return isPrivateIPv4(mappedDotted[1]);
+  const mappedHex = addr.match(
+    /^(?:::ffff:|::|(?:0:){5}ffff:|(?:0:){6})([0-9a-f]{1,4}):([0-9a-f]{1,4})$/,
+  );
+  if (mappedHex) {
+    const high = Number.parseInt(mappedHex[1], 16);
+    const low = Number.parseInt(mappedHex[2], 16);
+    return isPrivateIPv4(
+      [high >>> 8, high & 0xff, low >>> 8, low & 0xff].join("."),
+    );
+  }
   const firstHextet = addr.split(":")[0];
   const hv = parseInt(firstHextet || "0", 16);
   if (!Number.isNaN(hv)) {
@@ -96,6 +113,14 @@ export const ssrfSafeLookup: typeof dns.lookup = ((
   });
 }) as unknown as typeof dns.lookup;
 
+/**
+ * Dispatcher used by fetch callers. Unlike a resolve-then-fetch precheck, the
+ * lookup runs on the exact socket connection, closing the DNS-rebinding gap.
+ */
+export const ssrfSafeDispatcher = new Agent({
+  connect: { lookup: ssrfSafeLookup },
+});
+
 /** Agents that enforce `ssrfSafeLookup` on every connection (incl. redirect hops). */
 export const ssrfSafeHttpAgent = new http.Agent({ lookup: ssrfSafeLookup });
 export const ssrfSafeHttpsAgent = new https.Agent({ lookup: ssrfSafeLookup });
@@ -116,9 +141,13 @@ export function assertPublicUrl(rawUrl: string): URL {
     throw new Error("SSRF: kun http/https er tillatt");
   }
   const host = u.hostname.replace(/^\[|\]$/g, "");
-  if (host === "localhost" || host.endsWith(".localhost") ||
-      host.endsWith(".internal") || host.endsWith(".local") ||
-      host === "metadata.google.internal") {
+  if (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".internal") ||
+    host.endsWith(".local") ||
+    host === "metadata.google.internal"
+  ) {
     throw new Error("SSRF: intern adresse ikke tillatt");
   }
   if (net.isIP(host) && isPrivateAddress(host)) {
@@ -157,18 +186,57 @@ export async function ssrfSafeFetch(
   init: RequestInit = {},
   maxRedirects = 5,
 ): Promise<Response> {
+  return (await ssrfSafeFetchWithMetadata(rawUrl, init, maxRedirects)).response;
+}
+
+export interface SsrfSafeFetchMetadata {
+  response: Response;
+  finalUrl: string;
+  redirectCount: number;
+  requestCount: number;
+}
+
+/**
+ * Metadata-preserving variant for bounded crawlers. The optional hook runs
+ * immediately before every guarded network request and can enforce a caller's
+ * request budget without weakening the per-hop DNS and redirect checks.
+ */
+export async function ssrfSafeFetchWithMetadata(
+  rawUrl: string,
+  init: RequestInit = {},
+  maxRedirects = 5,
+  beforeRequest?: (url: string, hop: number) => void | Promise<void>,
+): Promise<SsrfSafeFetchMetadata> {
   let current = rawUrl;
   for (let hop = 0; hop <= maxRedirects; hop++) {
-    await assertPublicUrlResolved(current);
-    const resp = await fetch(current, { ...init, redirect: "manual" });
+    // Literal/protocol screening is synchronous. DNS is deliberately resolved
+    // only once, by the guarded dispatcher on the exact socket connection.
+    assertPublicUrl(current);
+    await beforeRequest?.(current, hop);
+    const resp = await fetch(current, {
+      ...init,
+      redirect: "manual",
+      dispatcher: ssrfSafeDispatcher,
+    } as RequestInit & { dispatcher: Agent });
     if (resp.status >= 300 && resp.status < 400) {
       const loc = resp.headers.get("location");
       if (loc) {
+        try {
+          await resp.body?.cancel();
+        } catch {
+          // Cleanup must not make a safe redirect fail. The next hop still
+          // receives the full literal and socket-level SSRF validation.
+        }
         current = new URL(loc, current).toString();
         continue;
       }
     }
-    return resp;
+    return {
+      response: resp,
+      finalUrl: current,
+      redirectCount: hop,
+      requestCount: hop + 1,
+    };
   }
   throw new Error("SSRF: for mange redirects");
 }

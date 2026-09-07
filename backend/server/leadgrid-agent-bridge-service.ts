@@ -80,13 +80,16 @@ interface LeadRow {
 async function fetchLeadBasic(
   pool: Pool,
   leadId: string,
+  scope?: { organizationId: string; projectId: string },
 ): Promise<LeadRow | null> {
   const r = await pool.query<LeadRow>(
     `SELECT name, lead_category, city, website_url, owner_user_id::text
        FROM crm_customers
       WHERE id = $1::uuid
+        AND ($2::uuid IS NULL OR organization_id = $2::uuid)
+        AND ($3::text IS NULL OR project_id = $3)
       LIMIT 1`,
-    [leadId],
+    [leadId, scope?.organizationId ?? null, scope?.projectId ?? null],
   );
   return r.rows[0] ?? null;
 }
@@ -96,6 +99,7 @@ async function runBrreg(
   pool: Pool,
   leadId: string,
   workspaceOwnerUserId: string,
+  organizationId?: string,
 ): Promise<unknown | null> {
   try {
     const mod = await import("./lead-brreg-service.js");
@@ -103,6 +107,7 @@ async function runBrreg(
     return await mod.enrichLeadWithBrreg(pool, {
       leadId,
       workspaceOwnerUserId,
+      organizationId,
     });
   } catch (err) {
     console.warn("[agent-bridge] brreg feilet:", err);
@@ -225,11 +230,16 @@ Returner KUN gyldig JSON:
 async function runSWOT(
   pool: Pool,
   leadId: string,
+  scope?: { organizationId: string; projectId: string },
 ): Promise<unknown | null> {
   try {
     const r = await pool.query<{ enrichment_data: Record<string, unknown> | null }>(
-      `SELECT enrichment_data FROM crm_customers WHERE id=$1::uuid`,
-      [leadId],
+      `SELECT enrichment_data
+         FROM crm_customers
+        WHERE id = $1::uuid
+          AND ($2::uuid IS NULL OR organization_id = $2::uuid)
+          AND ($3::text IS NULL OR project_id = $3)`,
+      [leadId, scope?.organizationId ?? null, scope?.projectId ?? null],
     );
     const data = r.rows[0]?.enrichment_data;
     if (!data || typeof data !== "object") return null;
@@ -244,6 +254,7 @@ async function runOutreach(
   pool: Pool,
   leadId: string,
   workspaceOwnerUserId: string,
+  organizationId?: string,
 ): Promise<unknown | null> {
   if (!process.env.ANTHROPIC_API_KEY) return null;
   try {
@@ -252,6 +263,7 @@ async function runOutreach(
     return await mod.recommendOutreachStrategy(pool, {
       leadId,
       workspaceOwnerUserId,
+      organizationId,
     });
   } catch (err) {
     console.warn("[agent-bridge] outreach feilet:", err);
@@ -263,7 +275,11 @@ async function runOutreach(
 export async function generateFullIntelligenceReport(
   pool: Pool,
   leadId: string,
-  opts?: { modules?: ModuleKey[]; callerUserId?: string },
+  opts?: {
+    modules?: ModuleKey[];
+    callerUserId?: string;
+    scope?: { organizationId: string; projectId: string };
+  },
 ): Promise<FullLeadIntelligenceReport> {
   const modules: ModuleKey[] = opts?.modules ?? [
     "brreg",
@@ -276,7 +292,7 @@ export async function generateFullIntelligenceReport(
   ];
   const errors: Record<string, string> = {};
 
-  const lead = await fetchLeadBasic(pool, leadId);
+  const lead = await fetchLeadBasic(pool, leadId, opts?.scope);
   if (!lead) {
     return {
       leadId,
@@ -300,7 +316,12 @@ export async function generateFullIntelligenceReport(
   // 1) Kjør brreg + website først (andre moduler kan bruke website).
   const [brreg, website] = await Promise.all([
     want("brreg") && workspaceOwnerUserId
-      ? runBrreg(pool, leadId, workspaceOwnerUserId).catch((e) => {
+      ? runBrreg(
+          pool,
+          leadId,
+          workspaceOwnerUserId,
+          opts?.scope?.organizationId,
+        ).catch((e) => {
           errors.brreg = String(e);
           return null;
         })
@@ -328,13 +349,18 @@ export async function generateFullIntelligenceReport(
         })
       : Promise.resolve(null),
     want("swot")
-      ? runSWOT(pool, leadId).catch((e) => {
+      ? runSWOT(pool, leadId, opts?.scope).catch((e) => {
           errors.swot = String(e);
           return null;
         })
       : Promise.resolve(null),
     want("outreach") && workspaceOwnerUserId
-      ? runOutreach(pool, leadId, workspaceOwnerUserId).catch((e) => {
+      ? runOutreach(
+          pool,
+          leadId,
+          workspaceOwnerUserId,
+          opts?.scope?.organizationId,
+        ).catch((e) => {
           errors.outreach = String(e);
           return null;
         })
@@ -378,8 +404,15 @@ export async function generateFullIntelligenceReport(
                                    'full_intelligence', $1::jsonb,
                                    'full_intelligence_at', NOW()::text
                                  )
-        WHERE id=$2::uuid`,
-      [JSON.stringify(report), leadId],
+        WHERE id = $2::uuid
+          AND ($3::uuid IS NULL OR organization_id = $3::uuid)
+          AND ($4::text IS NULL OR project_id = $4)`,
+      [
+        JSON.stringify(report),
+        leadId,
+        opts?.scope?.organizationId ?? null,
+        opts?.scope?.projectId ?? null,
+      ],
     );
   } catch (err) {
     console.warn("[agent-bridge] cache write feilet:", err);

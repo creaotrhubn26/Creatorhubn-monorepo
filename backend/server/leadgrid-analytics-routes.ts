@@ -30,6 +30,16 @@ import {
   computeConversionFunnel,
   type SegmentDimension,
 } from "./leadgrid-analytics-service.js";
+import {
+  computeOutcomeEventPerformance,
+  computeOutcomeProfileCohorts,
+  LEADGRID_OUTCOME_COHORT_DEFINITION,
+} from "./leadgrid-outcome-analytics.js";
+import { loadAccessibleLeadgridProject } from "./leadgrid-project-access.js";
+import {
+  parseOptionalReportProjectId,
+  LeadgridReportProjectScopeError,
+} from "./leadgrid-report-project-scope.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -56,6 +66,25 @@ async function resolveOrgIdSmart(
   pool: Pool,
   userId: string,
 ): Promise<string | null> {
+  const rawProjectId =
+    (req.query && (
+      (req.query as Record<string, unknown>).projectId ??
+      (req.query as Record<string, unknown>).project_id
+    )) ??
+    (req.body && (
+      (req.body as Record<string, unknown>).projectId ??
+      (req.body as Record<string, unknown>).project_id
+    ));
+  try {
+    const projectId = parseOptionalReportProjectId(rawProjectId);
+    if (projectId) {
+      const project = await loadAccessibleLeadgridProject(pool, projectId, userId);
+      return project?.organizationId ?? null;
+    }
+  } catch {
+    return null;
+  }
+
   const explicit =
     (req.query && (req.query as Record<string, unknown>).organization_id) ??
     (req.body && (req.body as Record<string, unknown>).organization_id);
@@ -87,6 +116,34 @@ function parseSinceDays(q: unknown, fallback: number): number {
   return Math.min(Math.max(Math.floor(n), 1), 730);
 }
 
+type AnalyticsRequestScope =
+  | { organizationId: string; projectId: string }
+  | { error: "invalid_project_id" | "project_id_required" | "project_not_found"; status: 400 | 404 };
+
+async function resolveAnalyticsRequestScope(
+  req: Request,
+  pool: Pool,
+  userId: string,
+): Promise<AnalyticsRequestScope> {
+  const rawProjectId =
+    (req.query as Record<string, unknown>).projectId ??
+    (req.query as Record<string, unknown>).project_id;
+  let projectId: string | null;
+  try {
+    projectId = parseOptionalReportProjectId(rawProjectId);
+  } catch (error) {
+    if (error instanceof LeadgridReportProjectScopeError) {
+      return { error: error.code, status: error.status };
+    }
+    return { error: "invalid_project_id", status: 400 };
+  }
+
+  if (!projectId) return { error: "project_id_required", status: 400 };
+  const project = await loadAccessibleLeadgridProject(pool, projectId, userId);
+  if (!project) return { error: "project_not_found", status: 404 };
+  return { organizationId: project.organizationId, projectId: project.id };
+}
+
 export function registerLeadgridAnalyticsRoutes(deps: Deps): void {
   const { app, pool, activeSessions } = deps;
   const common = { pool, activeSessions, resolveOrgId: resolveOrgIdSmart };
@@ -103,12 +160,16 @@ export function registerLeadgridAnalyticsRoutes(deps: Deps): void {
   app.get("/api/leadgrid/analytics/overview", permOverview, async (req: Request, res: Response) => {
     const session = getSession(req, activeSessions);
     if (!session) return res.status(401).json({ error: "Innlogging kreves" });
-    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-    if (!orgId) return res.status(400).json({ error: "mangler_organization_id" });
+    const scope = await resolveAnalyticsRequestScope(req, pool, session.userId);
+    if ("error" in scope) {
+      return res.status(scope.status).json({ error: scope.error });
+    }
+    const orgId = scope.organizationId;
+    const projectId = scope.projectId;
     const sinceDays = parseSinceDays(req.query.sinceDays, 90);
     try {
-      const overview = await computeOrgAnalyticsOverview(pool, orgId, sinceDays);
-      return res.json({ organization_id: orgId, sinceDays, overview });
+      const overview = await computeOrgAnalyticsOverview(pool, orgId, sinceDays, projectId);
+      return res.json({ organization_id: orgId, project_id: projectId, sinceDays, overview });
     } catch (err) {
       console.error("[leadgrid/analytics/overview] failed", err);
       return res.status(500).json({ error: "overview_failed", detail: "internal_error" });
@@ -121,12 +182,16 @@ export function registerLeadgridAnalyticsRoutes(deps: Deps): void {
   app.get("/api/leadgrid/analytics/channels", permChannels, async (req: Request, res: Response) => {
     const session = getSession(req, activeSessions);
     if (!session) return res.status(401).json({ error: "Innlogging kreves" });
-    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-    if (!orgId) return res.status(400).json({ error: "mangler_organization_id" });
+    const scope = await resolveAnalyticsRequestScope(req, pool, session.userId);
+    if ("error" in scope) {
+      return res.status(scope.status).json({ error: scope.error });
+    }
+    const orgId = scope.organizationId;
+    const projectId = scope.projectId;
     const sinceDays = parseSinceDays(req.query.sinceDays, 90);
     try {
-      const channels = await computeChannelPerformance(pool, orgId, sinceDays);
-      return res.json({ organization_id: orgId, sinceDays, channels });
+      const channels = await computeChannelPerformance(pool, orgId, sinceDays, projectId);
+      return res.json({ organization_id: orgId, project_id: projectId, sinceDays, channels });
     } catch (err) {
       console.error("[leadgrid/analytics/channels] failed", err);
       return res.status(500).json({ error: "channels_failed", detail: "internal_error" });
@@ -139,11 +204,15 @@ export function registerLeadgridAnalyticsRoutes(deps: Deps): void {
   app.get("/api/leadgrid/analytics/sources", permSources, async (req: Request, res: Response) => {
     const session = getSession(req, activeSessions);
     if (!session) return res.status(401).json({ error: "Innlogging kreves" });
-    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-    if (!orgId) return res.status(400).json({ error: "mangler_organization_id" });
+    const scope = await resolveAnalyticsRequestScope(req, pool, session.userId);
+    if ("error" in scope) {
+      return res.status(scope.status).json({ error: scope.error });
+    }
+    const orgId = scope.organizationId;
+    const projectId = scope.projectId;
     try {
-      const sources = await computeSourcePerformance(pool, orgId);
-      return res.json({ organization_id: orgId, sources });
+      const sources = await computeSourcePerformance(pool, orgId, projectId);
+      return res.json({ organization_id: orgId, project_id: projectId, sources });
     } catch (err) {
       console.error("[leadgrid/analytics/sources] failed", err);
       return res.status(500).json({ error: "sources_failed", detail: "internal_error" });
@@ -157,15 +226,19 @@ export function registerLeadgridAnalyticsRoutes(deps: Deps): void {
   app.get("/api/leadgrid/analytics/segments", permSegments, async (req: Request, res: Response) => {
     const session = getSession(req, activeSessions);
     if (!session) return res.status(401).json({ error: "Innlogging kreves" });
-    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-    if (!orgId) return res.status(400).json({ error: "mangler_organization_id" });
+    const scope = await resolveAnalyticsRequestScope(req, pool, session.userId);
+    if ("error" in scope) {
+      return res.status(scope.status).json({ error: scope.error });
+    }
+    const orgId = scope.organizationId;
+    const projectId = scope.projectId;
     const by = (typeof req.query.by === "string" ? req.query.by : "category") as SegmentDimension;
     if (!VALID_DIMS.includes(by)) {
       return res.status(400).json({ error: "ugyldig_by", valid: VALID_DIMS });
     }
     try {
-      const segments = await computeSegmentPerformance(pool, orgId, by);
-      return res.json({ organization_id: orgId, by, segments });
+      const segments = await computeSegmentPerformance(pool, orgId, by, projectId);
+      return res.json({ organization_id: orgId, project_id: projectId, by, segments });
     } catch (err) {
       console.error("[leadgrid/analytics/segments] failed", err);
       return res.status(500).json({ error: "segments_failed", detail: "internal_error" });
@@ -178,11 +251,15 @@ export function registerLeadgridAnalyticsRoutes(deps: Deps): void {
   app.get("/api/leadgrid/analytics/territories", permSegments, async (req: Request, res: Response) => {
     const session = getSession(req, activeSessions);
     if (!session) return res.status(401).json({ error: "Innlogging kreves" });
-    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-    if (!orgId) return res.status(400).json({ error: "mangler_organization_id" });
+    const scope = await resolveAnalyticsRequestScope(req, pool, session.userId);
+    if ("error" in scope) {
+      return res.status(scope.status).json({ error: scope.error });
+    }
+    const orgId = scope.organizationId;
+    const projectId = scope.projectId;
     try {
-      const territories = await computeTerritoryPerformance(pool, orgId);
-      return res.json({ organization_id: orgId, territories });
+      const territories = await computeTerritoryPerformance(pool, orgId, projectId);
+      return res.json({ organization_id: orgId, project_id: projectId, territories });
     } catch (err) {
       console.error("[leadgrid/analytics/territories] failed", err);
       return res.status(500).json({ error: "territories_failed", detail: "internal_error" });
@@ -195,12 +272,16 @@ export function registerLeadgridAnalyticsRoutes(deps: Deps): void {
   app.get("/api/leadgrid/analytics/velocity-history", permVelocity, async (req: Request, res: Response) => {
     const session = getSession(req, activeSessions);
     if (!session) return res.status(401).json({ error: "Innlogging kreves" });
-    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-    if (!orgId) return res.status(400).json({ error: "mangler_organization_id" });
+    const scope = await resolveAnalyticsRequestScope(req, pool, session.userId);
+    if ("error" in scope) {
+      return res.status(scope.status).json({ error: scope.error });
+    }
+    const orgId = scope.organizationId;
+    const projectId = scope.projectId;
     const days = parseSinceDays(req.query.days, 90);
     try {
-      const history = await computeVelocityHistory(pool, orgId, days);
-      return res.json({ organization_id: orgId, days, history });
+      const history = await computeVelocityHistory(pool, orgId, days, projectId);
+      return res.json({ organization_id: orgId, project_id: projectId, days, history });
     } catch (err) {
       console.error("[leadgrid/analytics/velocity-history] failed", err);
       return res.status(500).json({ error: "velocity_failed", detail: "internal_error" });
@@ -213,14 +294,56 @@ export function registerLeadgridAnalyticsRoutes(deps: Deps): void {
   app.get("/api/leadgrid/analytics/conversion-funnel", permOverview, async (req: Request, res: Response) => {
     const session = getSession(req, activeSessions);
     if (!session) return res.status(401).json({ error: "Innlogging kreves" });
-    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-    if (!orgId) return res.status(400).json({ error: "mangler_organization_id" });
+    const scope = await resolveAnalyticsRequestScope(req, pool, session.userId);
+    if ("error" in scope) {
+      return res.status(scope.status).json({ error: scope.error });
+    }
+    const orgId = scope.organizationId;
+    const projectId = scope.projectId;
     try {
-      const funnel = await computeConversionFunnel(pool, orgId);
-      return res.json({ organization_id: orgId, funnel });
+      const funnel = await computeConversionFunnel(pool, orgId, projectId);
+      return res.json({ organization_id: orgId, project_id: projectId, funnel });
     } catch (err) {
       console.error("[leadgrid/analytics/conversion-funnel] failed", err);
       return res.status(500).json({ error: "funnel_failed", detail: "internal_error" });
+    }
+  });
+
+  // Closed-loop project outcomes (pilot → attendance).
+  app.get("/api/leadgrid/analytics/outcomes", permOverview, async (req: Request, res: Response) => {
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "Innlogging kreves" });
+    const scope = await resolveAnalyticsRequestScope(req, pool, session.userId);
+    if ("error" in scope) {
+      return res.status(scope.status).json({ error: scope.error });
+    }
+    const sinceDays = parseSinceDays(req.query.sinceDays, 90);
+    try {
+      const [outcomes, profileCohorts] = await Promise.all([
+        computeOutcomeEventPerformance(
+          pool,
+          scope.organizationId,
+          sinceDays,
+          scope.projectId,
+        ),
+        computeOutcomeProfileCohorts(
+          pool,
+          scope.organizationId,
+          scope.projectId,
+          sinceDays,
+        ),
+      ]);
+      return res.json({
+        organization_id: scope.organizationId,
+        project_id: scope.projectId,
+        sinceDays,
+        outcomes,
+        profileCohorts,
+        cohortDefinition: LEADGRID_OUTCOME_COHORT_DEFINITION,
+      });
+    } catch (err) {
+      console.error("[leadgrid/analytics/outcomes] failed", err);
+      return res.status(500).json({ error: "outcomes_failed", detail: "internal_error" });
     }
   });
 }

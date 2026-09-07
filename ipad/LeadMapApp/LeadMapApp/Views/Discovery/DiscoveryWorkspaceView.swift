@@ -2,6 +2,62 @@
 
 import SwiftUI
 
+private enum DiscoveryWorkspaceSection: String, CaseIterable, Identifiable {
+    case candidates, marketing
+    var id: String { rawValue }
+}
+
+private enum DiscoveryAreaMode: String, CaseIterable, Identifiable {
+    case municipalities
+    case mapArea
+    case city
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .municipalities: return "Kommuner"
+        case .mapArea: return "Kart-radius"
+        case .city: return "By"
+        }
+    }
+}
+
+private enum DiscoveryOptionalBoolean: String, CaseIterable, Identifiable {
+    case any
+    case required
+    case excluded
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .any: return "Alle"
+        case .required: return "Ja"
+        case .excluded: return "Nei"
+        }
+    }
+
+    init(_ value: Bool?) {
+        self = switch value {
+        case true: .required
+        case false: .excluded
+        case nil: .any
+        }
+    }
+
+    var value: Bool? {
+        switch self {
+        case .any: return nil
+        case .required: return true
+        case .excluded: return false
+        }
+    }
+}
+
+private enum DiscoveryEmployeeBoundary {
+    case minimum
+    case maximum
+}
+
 struct DiscoveryWorkspaceView: View {
     @Bindable var coordinator: DiscoveryRunCoordinator
     @Environment(AppState.self) private var appState
@@ -10,18 +66,11 @@ struct DiscoveryWorkspaceView: View {
     @State private var rejectingCandidate: DiscoveryV2Candidate?
     @State private var rejectionReason: DiscoveryV2ReasonCode = .notRelevant
     @State private var placeDetailsCandidate: DiscoveryV2Candidate?
+    @State private var selectedSection: DiscoveryWorkspaceSection = .candidates
 
     var body: some View {
         NavigationStack {
-            Group {
-                switch coordinator.phase {
-                case .brief: briefView
-                case .preview: previewView
-                case .running: runningView
-                case .review: reviewView
-                case .completed: completedView
-                }
-            }
+            workspaceContent
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(LeadgridDiscoveryTheme.background.ignoresSafeArea())
             .navigationTitle(navigationTitle)
@@ -32,15 +81,17 @@ struct DiscoveryWorkspaceView: View {
                         coordinator.dismissWorkspace()
                         dismiss()
                     }
-                    .accessibilityIdentifier("discovery.close")
+                        .accessibilityIdentifier("discovery.close")
                 }
-                if coordinator.phase == .brief {
+                if coordinator.run != nil, !coordinator.campaigns.isEmpty {
                     ToolbarItem(placement: .primaryAction) {
-                        Button("Lagre som standard") {
-                            Task { await coordinator.saveDefaultProfile() }
+                        Button {
+                            coordinator.showCampaignOverview()
+                        } label: {
+                            Label("Kampanje", systemImage: "rectangle.stack")
                         }
-                        .disabled(coordinator.brief.validationMessage != nil || coordinator.isBusy)
-                        .accessibilityIdentifier("discovery.profile.save")
+                        .accessibilityIdentifier("discovery.campaign.overview")
+                        .disabled(!coordinator.canNavigateToCampaignOverview)
                     }
                 }
             }
@@ -72,22 +123,91 @@ struct DiscoveryWorkspaceView: View {
         .sheet(item: $placeDetailsCandidate) { candidate in
             DiscoveryPlaceDetailsSheet(
                 candidate: candidate,
+                confirmedMatch: coordinator.confirmedPlaceMatches[candidate.id],
                 load: {
                     try await coordinator.fetchTransientPlaceDetails(
                         candidateId: candidate.id)
+                },
+                onConfirmMatch: { match in
+                    coordinator.confirmPlaceMatch(match, candidateId: candidate.id)
+                },
+                onClearConfirmation: {
+                    coordinator.clearConfirmedPlaceMatch(candidateId: candidate.id)
                 })
             .presentationDetents([.medium, .large])
         }
     }
 
 
-    private var navigationTitle: String {
+    @ViewBuilder
+    private var workspaceContent: some View {
+        if showsMarketingSwitcher {
+            VStack(spacing: 0) {
+                Picker("Discovery-visning", selection: $selectedSection) {
+                    Text("Kandidater").tag(DiscoveryWorkspaceSection.candidates)
+                    Text("Markedsinnsikt").tag(DiscoveryWorkspaceSection.marketing)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .accessibilityIdentifier("discovery.workspace.section")
+                Divider().overlay(LeadgridDiscoveryTheme.stroke)
+                if selectedSection == .marketing {
+                    marketingInsightsView
+                } else {
+                    phaseContent
+                }
+            }
+        } else {
+            phaseContent
+        }
+    }
+
+    @ViewBuilder
+    private var phaseContent: some View {
         switch coordinator.phase {
-        case .brief: "Hvem vil du finne?"
-        case .preview: "Se planen før du starter"
-        case .running: "Discovery arbeider"
-        case .review: "Vurder kandidater"
-        case .completed: "Discovery fullført"
+        case .brief: briefView
+        case .preview: previewView
+        case .running: runningView
+        case .review: reviewView
+        case .completed: completedView
+        }
+    }
+
+    @ViewBuilder
+    private var marketingInsightsView: some View {
+        if let projectId = coordinator.projectId, let runId = coordinator.run?.id {
+            DiscoveryMarketingInsightsView(
+                api: appState.api,
+                projectId: projectId,
+                runId: runId,
+                canGenerate: appState.permissions.contains("marketing.discovery_insights.run"),
+                canReview: appState.permissions.contains("marketing.discovery_insights.review"))
+        } else {
+            EmptyView()
+        }
+    }
+
+    private var showsMarketingSwitcher: Bool {
+        guard appState.permissions.contains("marketing.discovery_insights.view") else {
+            return false
+        }
+        switch coordinator.phase {
+        case .review, .completed: return coordinator.run != nil
+        default: return false
+        }
+    }
+
+    private var navigationTitle: String {
+        if selectedSection == .marketing && showsMarketingSwitcher {
+            return "Markedsinnsikt"
+        }
+        switch coordinator.phase {
+        case .brief: return "Hvem vil du finne?"
+        case .preview: return "Se planen før du starter"
+        case .running: return "Discovery arbeider"
+        case .review: return "Vurder kandidater"
+        case .completed: return "Discovery fullført"
         }
     }
 
@@ -95,6 +215,7 @@ struct DiscoveryWorkspaceView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 introCard
+                DiscoveryProfileManagerView(coordinator: coordinator)
                 fieldSection("Kundetyper", detail: "Én per linje. Bruk konkrete beskrivelser markedet selv bruker.") {
                     TextEditor(text: industryQueriesBinding)
                         .frame(minHeight: 96)
@@ -104,13 +225,32 @@ struct DiscoveryWorkspaceView: View {
                         .accessibilityLabel("Kundetyper")
                         .accessibilityIdentifier("discovery.brief.queries")
                 }
-                fieldSection("Område", detail: "Et kartområde håndheves som en faktisk radius. By gir et bredere tekstsøk.") {
-                    Picker("Område", selection: usesMapAreaBinding) {
-                        Text("Synlig kartområde").tag(true)
-                        Text("By").tag(false)
+                fieldSection("Område", detail: "Kommuner er et hardt utvalg. By og kart-radius er beholdt for eldre og bredere profiler.") {
+                    Picker("Område", selection: areaModeBinding) {
+                        ForEach(DiscoveryAreaMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
                     }
                     .pickerStyle(.segmented)
-                    if coordinator.brief.geo != nil {
+
+                    switch areaModeBinding.wrappedValue {
+                    case .municipalities:
+                        VStack(alignment: .leading, spacing: 7) {
+                            TextEditor(text: municipalitiesBinding)
+                                .frame(minHeight: 100)
+                                .scrollContentBackground(.hidden)
+                                .padding(10)
+                                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+                                .accessibilityLabel("Kommuner")
+                                .accessibilityIdentifier("discovery.brief.municipalities")
+                            Text("Én kommune per linje: Bærum | 3201. Du kan også skrive bare offisielt kommunenavn; serveren verifiserer det før søket.")
+                                .font(.caption2)
+                                .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                            Label("Hardt kommuneutvalg: kandidater utenfor valgte kommuner tas ikke med.", systemImage: "checkmark.shield")
+                                .font(.caption)
+                                .foregroundStyle(LeadgridDiscoveryTheme.success)
+                        }
+                    case .mapArea:
                         HStack {
                             Image(systemName: "scope")
                             Text("Radius")
@@ -121,10 +261,24 @@ struct DiscoveryWorkspaceView: View {
                                 in: 1...50)
                         }
                         .accessibilityIdentifier("discovery.brief.radius")
-                    } else {
+                    case .city:
                         TextField("For eksempel Oslo", text: cityBinding)
                             .textFieldStyle(.roundedBorder)
                             .accessibilityIdentifier("discovery.brief.city")
+                    }
+
+                    Divider().overlay(LeadgridDiscoveryTheme.stroke)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Territorium-tag")
+                            .font(.subheadline.bold())
+                        TextField("for eksempel vest eller ost-nord", text: territoryCodeBinding)
+                            .textFieldStyle(.roundedBorder)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .accessibilityIdentifier("discovery.brief.territory-code")
+                        Text("En stabil kode som følger profilen og gjør regionene sammenlignbare i kjøringer, kandidater og rapporter.")
+                            .font(.caption2)
+                            .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
                     }
                 }
                 fieldSection("Idealkunde", detail: "Beskriv signalene som gjør en bedrift verdt tiden deres.") {
@@ -140,7 +294,17 @@ struct DiscoveryWorkspaceView: View {
                         .textFieldStyle(.roundedBorder)
                         .accessibilityIdentifier("discovery.brief.exclusions")
                 }
+                fitFiltersCard
                 countsCard
+
+                if let validationMessage = coordinator.brief.validationMessage {
+                    Label(validationMessage, systemImage: "exclamationmark.triangle.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(LeadgridDiscoveryTheme.warning)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .discoverySurface()
+                        .accessibilityIdentifier("discovery.brief.validation")
+                }
 
                 Button {
                     Task { await coordinator.requestPreview() }
@@ -178,6 +342,121 @@ struct DiscoveryWorkspaceView: View {
         .discoverySurface()
     }
 
+    private var fitFiltersCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Label("Kvalifiseringsfilter", systemImage: "line.3.horizontal.decrease.circle")
+                    .font(.headline)
+                Text("Filtrene avgrenser markedet før scoring. Resultatet skal kunne forklares med registrerte foretaksdata.")
+                    .font(.caption)
+                    .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+            }
+
+            Stepper(
+                "Minimum match: \(coordinator.brief.minimumFitScore)",
+                value: $coordinator.brief.minimumFitScore,
+                in: 0...100,
+                step: 5)
+                .accessibilityIdentifier("discovery.brief.minimum-fit-score")
+
+            Divider().overlay(LeadgridDiscoveryTheme.stroke)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Foretaksformer")
+                    .font(.subheadline.bold())
+                TextField("AS, ENK", text: organizationFormsBinding)
+                    .textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.characters)
+                    .accessibilityIdentifier("discovery.brief.organization-forms")
+                Text("Tomt felt inkluderer alle foretaksformer.")
+                    .font(.caption2)
+                    .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Antall ansatte")
+                    .font(.subheadline.bold())
+                HStack(spacing: 12) {
+                    TextField("Minimum", text: employeeCountBinding(.minimum))
+                        .textFieldStyle(.roundedBorder)
+                        .keyboardType(.numberPad)
+                        .accessibilityIdentifier("discovery.brief.employee-minimum")
+                    TextField("Maksimum", text: employeeCountBinding(.maximum))
+                        .textFieldStyle(.roundedBorder)
+                        .keyboardType(.numberPad)
+                        .accessibilityIdentifier("discovery.brief.employee-maximum")
+                }
+                Text("Brønnøysund støtter minimum 0, 1 eller 5+ og maksimum 0, 4 eller 5+.")
+                    .font(.caption2)
+                    .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+            }
+
+            Picker("Brreg-konserntilknytning", selection: $coordinator.brief.organizationStructure) {
+                ForEach(DiscoveryV2OrganizationStructure.allCases, id: \.self) { value in
+                    Text(value.title).tag(value)
+                }
+            }
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("discovery.brief.organization-structure")
+            Text(DiscoveryV2OrganizationStructure.evidenceNotice)
+                .font(.caption2)
+                .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+
+            Picker("Nettsted", selection: websiteRequirementBinding) {
+                ForEach(DiscoveryV2WebsiteRequirement.allCases, id: \.self) { value in
+                    Text(value.title).tag(value)
+                }
+            }
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("discovery.brief.website-requirement")
+
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle("Vurder nettsidekvalitet", isOn: websiteQualityEnabledBinding)
+                    .accessibilityIdentifier("discovery.brief.website-quality-enabled")
+                if coordinator.brief.websiteQuality.minimumScore != nil {
+                    Stepper(
+                        "Minimum nettsidescore: \(coordinator.brief.websiteQuality.minimumScore ?? 60)",
+                        value: websiteQualityScoreBinding,
+                        in: 0...100,
+                        step: 5)
+                        .accessibilityIdentifier("discovery.brief.website-quality-score")
+                }
+                Text("Leadgrid vurderer bare Brønnøysund-registrert URL med et avgrenset, sikkert oppslag. Utilgjengelige eller utrygge nettsteder beholdes som ukjent for manuell vurdering.")
+                    .font(.caption2)
+                    .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+            }
+
+            Divider().overlay(LeadgridDiscoveryTheme.stroke)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Kommersielle signaler")
+                    .font(.subheadline.bold())
+                Picker(
+                    "MVA-registeret",
+                    selection: commercialSignalBinding(\.registeredInVatRegister)
+                ) {
+                    ForEach(DiscoveryOptionalBoolean.allCases) { value in
+                        Text(value.title).tag(value)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("discovery.brief.vat-register")
+
+                Picker(
+                    "Foretaksregisteret",
+                    selection: commercialSignalBinding(\.registeredInBusinessRegister)
+                ) {
+                    ForEach(DiscoveryOptionalBoolean.allCases) { value in
+                        Text(value.title).tag(value)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("discovery.brief.business-register")
+            }
+        }
+        .discoverySurface()
+    }
+
     private var countsCard: some View {
         VStack(spacing: 14) {
             countRow(
@@ -187,10 +466,11 @@ struct DiscoveryWorkspaceView: View {
                 range: 1...60)
             Divider().overlay(LeadgridDiscoveryTheme.stroke)
             countRow(
-                title: "Undersøk grundig",
-                detail: "Foretaksinfo og dokumentert match",
+                title: "Registrerte nettsider (maks)",
+                detail: coordinator.brief.websiteAssessmentLimitDescription,
                 value: enrichmentCountBinding,
-                range: 1...coordinator.brief.targetCount)
+                range: 1...coordinator.brief.targetCount,
+                isEnabled: coordinator.brief.effectiveWebsiteAssessmentLimit != nil)
             Divider().overlay(LeadgridDiscoveryTheme.stroke)
             Toggle(isOn: placesDetailsBinding) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -214,7 +494,9 @@ struct DiscoveryWorkspaceView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     HStack(spacing: 12) {
                         metric("Treff", "\(preview.plan.requestedCandidates)")
-                        metric("Undersøkes", "\(preview.plan.enrichmentCandidates)")
+                        if preview.brief.effectiveWebsiteAssessmentLimit != nil {
+                            metric("Nettsider (maks)", "\(preview.plan.enrichmentCandidates)")
+                        }
                         metric("Søk", "\(preview.plan.queries.count)")
                     }
                     VStack(alignment: .leading, spacing: 12) {
@@ -233,6 +515,7 @@ struct DiscoveryWorkspaceView: View {
                         }
                     }
                     .discoverySurface()
+                    previewRunLineageCard
                     if let sources = preview.sources, !sources.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             Label("Datagrunnlag", systemImage: "checkmark.seal")
@@ -286,6 +569,35 @@ struct DiscoveryWorkspaceView: View {
         }
     }
 
+    @ViewBuilder
+    private var previewRunLineageCard: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: coordinator.previewRunProfile == nil ? "doc.badge.plus" : "link.circle.fill")
+                .foregroundStyle(LeadgridDiscoveryTheme.accentSoft)
+                .font(.title3)
+            VStack(alignment: .leading, spacing: 4) {
+                if let profile = coordinator.previewRunProfile {
+                    Text("Knyttet til «\(profile.name)»")
+                        .font(.subheadline.bold())
+                    Text("Resultater og tilbakemeldinger blir knyttet til versjon \(profile.version) av den lagrede profilen.")
+                        .font(.caption)
+                        .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                } else {
+                    Text("Enkeltstående kjøring")
+                        .font(.subheadline.bold())
+                    Text(coordinator.selectedProfile == nil
+                         ? "Denne søkeplanen kjøres uten en lagret profil."
+                         : "Søkeplanen har usavede endringer og kjøres derfor som ad hoc. Lagre profilen først hvis resultatene skal følge profilen.")
+                        .font(.caption)
+                        .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .discoverySurface()
+        .accessibilityIdentifier("discovery.preview.profile-lineage")
+    }
+
     private var runningView: some View {
         VStack(spacing: 24) {
             Spacer()
@@ -301,6 +613,11 @@ struct DiscoveryWorkspaceView: View {
             Text(coordinator.bannerTitle).font(.title2.bold())
             Text(coordinator.bannerDetail)
                 .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+            if let activeTerritoryCode {
+                Label("Kjøring #\(activeTerritoryCode)", systemImage: "tag.fill")
+                    .font(.caption.bold())
+                    .foregroundStyle(LeadgridDiscoveryTheme.accentSoft)
+            }
             Text("Du kan lukke denne visningen. Discovery fortsetter på tjeneren og kan åpnes igjen fra kartet.")
                 .font(.subheadline)
                 .multilineTextAlignment(.center)
@@ -335,6 +652,14 @@ struct DiscoveryWorkspaceView: View {
                 Spacer()
             }
             .padding()
+            if let activeTerritoryCode {
+                Label("Kandidater fra #\(activeTerritoryCode)", systemImage: "tag.fill")
+                    .font(.caption.bold())
+                    .foregroundStyle(LeadgridDiscoveryTheme.accentSoft)
+                    .padding(.horizontal)
+                    .padding(.bottom, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             Divider().overlay(LeadgridDiscoveryTheme.stroke)
 
             ScrollView {
@@ -361,6 +686,8 @@ struct DiscoveryWorkspaceView: View {
                     ForEach(coordinator.candidates) { candidate in
                         DiscoveryCandidateRow(
                             candidate: candidate,
+                            territoryCode: activeTerritoryCode,
+                            confirmedPlaceMatch: coordinator.confirmedPlaceMatches[candidate.id],
                             selected: coordinator.selectedCandidateIds.contains(candidate.id),
                             busy: coordinator.busyCandidateIds.contains(candidate.id),
                             canShowPlaceDetails: coordinator.placesDetailsEnabled,
@@ -426,6 +753,11 @@ struct DiscoveryWorkspaceView: View {
                 .foregroundStyle(coordinator.run?.status == .failed ? LeadgridDiscoveryTheme.danger : LeadgridDiscoveryTheme.success)
             Text(coordinator.bannerTitle).font(.title2.bold())
             Text(coordinator.bannerDetail).foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+            if let activeTerritoryCode {
+                Label("Kjøring #\(activeTerritoryCode)", systemImage: "tag.fill")
+                    .font(.caption.bold())
+                    .foregroundStyle(LeadgridDiscoveryTheme.accentSoft)
+            }
             HStack {
                 Button("Lukk") {
                     coordinator.dismissWorkspace()
@@ -454,16 +786,29 @@ struct DiscoveryWorkspaceView: View {
         .discoverySurface()
     }
 
-    private func countRow(title: String, detail: String, value: Binding<Int>, range: ClosedRange<Int>) -> some View {
+    private func countRow(
+        title: String,
+        detail: String,
+        value: Binding<Int>,
+        range: ClosedRange<Int>,
+        isEnabled: Bool = true
+    ) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.subheadline.bold())
                 Text(detail).font(.caption).foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
             }
             Spacer()
-            Stepper("\(value.wrappedValue)", value: value, in: range)
-                .fixedSize()
-                .accessibilityLabel(title)
+            if isEnabled {
+                Stepper("\(value.wrappedValue)", value: value, in: range)
+                    .fixedSize()
+                    .accessibilityLabel(title)
+                    .accessibilityHint(detail)
+            } else {
+                Text("Ikke aktiv")
+                    .font(.caption.bold())
+                    .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+            }
         }
     }
 
@@ -505,6 +850,18 @@ struct DiscoveryWorkspaceView: View {
             set: { coordinator.brief.industryQueries = $0.components(separatedBy: .newlines) })
     }
 
+    private var territoryCodeBinding: Binding<String> {
+        Binding(
+            get: { coordinator.brief.territoryCode ?? "" },
+            set: { coordinator.brief.territoryCode = $0.lowercased() })
+    }
+
+    private var activeTerritoryCode: String? {
+        coordinator.run?.briefSnapshot?.normalized.territoryCode
+            ?? coordinator.selectedProfile?.brief.normalized.territoryCode
+            ?? coordinator.brief.normalized.territoryCode
+    }
+
     private var exclusionsBinding: Binding<String> {
         Binding(
             get: { coordinator.brief.exclusionTerms.joined(separator: ", ") },
@@ -512,21 +869,59 @@ struct DiscoveryWorkspaceView: View {
     }
 
     private var cityBinding: Binding<String> {
-        Binding(get: { coordinator.brief.city ?? "" }, set: { coordinator.brief.city = $0 })
+        Binding(
+            get: { coordinator.brief.city ?? "" },
+            set: {
+                coordinator.brief.city = $0
+                coordinator.brief.geo = nil
+                coordinator.brief.municipalityNames = []
+                coordinator.brief.municipalityNumbers = []
+            })
     }
 
-    private var usesMapAreaBinding: Binding<Bool> {
+    private var areaModeBinding: Binding<DiscoveryAreaMode> {
         Binding(
-            get: { coordinator.brief.geo != nil },
-            set: { usesMap in
-                if usesMap {
+            get: {
+                if !coordinator.brief.municipalityNames.isEmpty
+                    || !coordinator.brief.municipalityNumbers.isEmpty {
+                    return .municipalities
+                }
+                if coordinator.brief.geo != nil { return .mapArea }
+                return .city
+            },
+            set: { mode in
+                switch mode {
+                case .municipalities:
+                    coordinator.brief.geo = nil
+                    coordinator.brief.city = nil
+                case .mapArea:
                     coordinator.brief.geo = coordinator.brief.geo
                         ?? .init(latitude: 59.9139, longitude: 10.7522, radiusKm: 10)
                     coordinator.brief.city = nil
-                } else {
+                    coordinator.brief.municipalityNames = []
+                    coordinator.brief.municipalityNumbers = []
+                case .city:
                     coordinator.brief.geo = nil
                     coordinator.brief.city = coordinator.brief.city ?? ""
+                    coordinator.brief.municipalityNames = []
+                    coordinator.brief.municipalityNumbers = []
                 }
+            })
+    }
+
+    private var municipalitiesBinding: Binding<String> {
+        Binding(
+            get: {
+                DiscoveryV2MunicipalityTextCodec.text(
+                    names: coordinator.brief.municipalityNames,
+                    numbers: coordinator.brief.municipalityNumbers)
+            },
+            set: { text in
+                let municipalities = DiscoveryV2MunicipalityTextCodec.values(from: text)
+                coordinator.brief.municipalityNames = municipalities.names
+                coordinator.brief.municipalityNumbers = municipalities.numbers
+                coordinator.brief.city = nil
+                coordinator.brief.geo = nil
             })
     }
 
@@ -550,6 +945,78 @@ struct DiscoveryWorkspaceView: View {
             })
     }
 
+    private var organizationFormsBinding: Binding<String> {
+        Binding(
+            get: { coordinator.brief.organizationForms.joined(separator: ", ") },
+            set: { value in
+                coordinator.brief.organizationForms = value
+                    .components(separatedBy: CharacterSet(charactersIn: ",\n"))
+            })
+    }
+
+    private var websiteQualityEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { coordinator.brief.websiteQuality.minimumScore != nil },
+            set: { enabled in
+                if enabled && coordinator.brief.websiteRequirement == .missing {
+                    coordinator.brief.websiteRequirement = .present
+                }
+                coordinator.brief.websiteQuality.minimumScore = enabled
+                    ? coordinator.brief.websiteQuality.minimumScore ?? 60
+                    : nil
+            })
+    }
+
+    private var websiteRequirementBinding: Binding<DiscoveryV2WebsiteRequirement> {
+        Binding(
+            get: { coordinator.brief.websiteRequirement },
+            set: { requirement in
+                coordinator.brief.websiteRequirement = requirement
+                if requirement == .missing {
+                    coordinator.brief.websiteQuality.minimumScore = nil
+                }
+            })
+    }
+
+    private var websiteQualityScoreBinding: Binding<Int> {
+        Binding(
+            get: { coordinator.brief.websiteQuality.minimumScore ?? 60 },
+            set: { coordinator.brief.websiteQuality.minimumScore = min(100, max(0, $0)) })
+    }
+
+    private func employeeCountBinding(_ boundary: DiscoveryEmployeeBoundary) -> Binding<String> {
+        Binding(
+            get: {
+                let value = switch boundary {
+                case .minimum: coordinator.brief.employeeCount?.minimum
+                case .maximum: coordinator.brief.employeeCount?.maximum
+                }
+                return value.map(String.init) ?? ""
+            },
+            set: { text in
+                var filter = coordinator.brief.employeeCount
+                    ?? .init(minimum: nil, maximum: nil)
+                let value = Int(text.trimmingCharacters(in: .whitespacesAndNewlines))
+                switch boundary {
+                case .minimum: filter.minimum = value
+                case .maximum: filter.maximum = value
+                }
+                coordinator.brief.employeeCount = filter.minimum == nil && filter.maximum == nil
+                    ? nil
+                    : filter
+            })
+    }
+
+    private func commercialSignalBinding(
+        _ keyPath: WritableKeyPath<DiscoveryV2CommercialSignals, Bool?>
+    ) -> Binding<DiscoveryOptionalBoolean> {
+        Binding(
+            get: { DiscoveryOptionalBoolean(coordinator.brief.commercialSignals[keyPath: keyPath]) },
+            set: { selection in
+                coordinator.brief.commercialSignals[keyPath: keyPath] = selection.value
+            })
+    }
+
     private func optionalTextBinding(_ keyPath: WritableKeyPath<DiscoveryV2Brief, String?>) -> Binding<String> {
         Binding(
             get: { coordinator.brief[keyPath: keyPath] ?? "" },
@@ -559,6 +1026,8 @@ struct DiscoveryWorkspaceView: View {
 
 struct DiscoveryCandidateRow: View {
     let candidate: DiscoveryV2Candidate
+    let territoryCode: String?
+    let confirmedPlaceMatch: DiscoveryV2PlaceMatch?
     let selected: Bool
     let busy: Bool
     let canShowPlaceDetails: Bool
@@ -587,6 +1056,42 @@ struct DiscoveryCandidateRow: View {
             if candidate.excluded == true {
                 Label("Treffer en eksklusjonsregel", systemImage: "nosign")
                     .font(.caption.bold()).foregroundStyle(LeadgridDiscoveryTheme.danger)
+            }
+            if let reviewNotice = candidate.observation?.reviewNotice {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("Approksimert historikk", systemImage: "clock.badge.exclamationmark")
+                        .font(.caption.bold())
+                        .foregroundStyle(LeadgridDiscoveryTheme.warning)
+                    Text(reviewNotice)
+                        .font(.caption2)
+                        .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                }
+                .accessibilityIdentifier("discovery.candidate.observation-warning")
+            }
+            if let confirmedPlaceMatch {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("Google Maps-identitet bekreftet", systemImage: "checkmark.shield.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(LeadgridDiscoveryTheme.success)
+                    Text("\(confirmedPlaceMatch.displayName) · \(confirmedPlaceMatch.matchQualityTitle)")
+                        .font(.caption)
+                    Text("Place-ID sendes og lagres først når du godkjenner kandidaten som lead.")
+                        .font(.caption2)
+                        .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+                }
+            }
+            if let websiteQuality = candidate.scoreExplanation?.websiteQuality ?? candidate.websiteQuality,
+               let presentation = websiteQuality.presentation {
+                Label(
+                    presentation,
+                    systemImage: websiteQuality.status == "assessed"
+                        ? "globe.badge.chevron.backward"
+                        : "questionmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(
+                        websiteQuality.status == "assessed"
+                            ? LeadgridDiscoveryTheme.accentSoft
+                            : LeadgridDiscoveryTheme.secondaryText)
             }
             if let reasons = candidate.reasons, !reasons.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
@@ -670,7 +1175,44 @@ private var identity: some View {
                 .font(.caption)
                 .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
         }
+        if let primaryTerritoryCode {
+            Label(primaryProfileLabel(territoryCode: primaryTerritoryCode), systemImage: "tag.fill")
+                .font(.caption2.bold())
+                .foregroundStyle(LeadgridDiscoveryTheme.accentSoft)
+        }
+        if !otherTerritoryCodes.isEmpty {
+            Text("Også observert i \(otherTerritoryCodes.map { "#\($0)" }.joined(separator: ", "))")
+                .font(.caption2)
+                .foregroundStyle(LeadgridDiscoveryTheme.secondaryText)
+        }
     }
+}
+
+private var primaryTerritoryCode: String? {
+    nonEmpty(candidate.discoveryProfile?.territoryCode) ?? nonEmpty(territoryCode)
+}
+
+private var otherTerritoryCodes: [String] {
+    var seen = Set<String>()
+    if let primaryTerritoryCode { seen.insert(primaryTerritoryCode) }
+    return (candidate.observedInProfiles ?? []).compactMap { observation in
+        guard let code = nonEmpty(observation.territoryCode),
+              seen.insert(code).inserted else { return nil }
+        return code
+    }
+}
+
+private func primaryProfileLabel(territoryCode: String) -> String {
+    if let profileName = nonEmpty(candidate.discoveryProfile?.name) {
+        return "Funnet via \(profileName) · #\(territoryCode)"
+    }
+    return "Funnet via #\(territoryCode)"
+}
+
+private func nonEmpty(_ value: String?) -> String? {
+    guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !trimmed.isEmpty else { return nil }
+    return trimmed
 }
 
 private var scores: some View {

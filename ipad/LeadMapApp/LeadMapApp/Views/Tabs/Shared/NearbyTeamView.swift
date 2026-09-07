@@ -58,7 +58,10 @@ struct NearbyTeamView: View {
         .presentationBackground(.clear)
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
-        .task { await refresh() }
+        .task(id: appState.activeProjectId) {
+            members = []
+            await refresh()
+        }
     }
 
     // MARK: - Map background
@@ -430,21 +433,30 @@ struct NearbyTeamView: View {
     private func refresh() async {
         loading = true
         errorMessage = nil
-        defer { loading = false }
         guard let api = appState.api,
+              let projectId = appState.activeProjectId,
               let coord = KartLocationManager.shared.currentCoordinate else {
             errorMessage = "Trenger posisjon for å søke i nærheten."
+            loading = false
             return
         }
+        let requestedRadius = radiusKm
         do {
             let list = try await api.fetchTeamNearby(
                 lat: coord.latitude, lon: coord.longitude,
-                radiusKm: radiusKm
+                radiusKm: requestedRadius,
+                projectId: projectId
             )
+            guard appState.activeProjectId == projectId,
+                  radiusKm == requestedRadius else { return }
             members = list
+            loading = false
             fitCamera()
         } catch {
+            guard appState.activeProjectId == projectId,
+                  radiusKm == requestedRadius else { return }
             errorMessage = "Kunne ikke hente team-data: \(error.localizedDescription)"
+            loading = false
         }
     }
 }

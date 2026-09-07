@@ -11,7 +11,9 @@
 import SwiftUI
 
 struct LeadgridSetGoalSheet: View {
+    @Environment(AppState.self) private var appState
     let api: APIClient
+    let projectId: String
     let onSaved: () -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -28,6 +30,10 @@ struct LeadgridSetGoalSheet: View {
     @State private var dailyFollowups: Int = 5
     @State private var dailyMeetings: Int = 1
     @State private var dailyPipelineMoves: Int = 2
+
+    private var scopeIsCurrent: Bool {
+        appState.activeLeadgridProjectId == projectId
+    }
 
     var body: some View {
         NavigationStack {
@@ -71,18 +77,29 @@ struct LeadgridSetGoalSheet: View {
                     Button(saving ? "Lagrer..." : "Lagre") {
                         Task { await save() }
                     }
-                    .disabled(saving)
+                    .disabled(saving || loading || !scopeIsCurrent)
                 }
             }
-            .task { await load() }
+            .task(id: appState.activeLeadgridProjectId) { await load() }
         }
     }
 
     @MainActor
     private func load() async {
+        guard scopeIsCurrent else {
+            goal = nil
+            errorText = "Prosjektet ble endret. Lukk arket og åpne salgsmålet på nytt."
+            loading = false
+            return
+        }
         loading = true
+        errorText = nil
+        defer {
+            if scopeIsCurrent { loading = false }
+        }
         do {
-            let g = try await api.fetchSalesGoal()
+            let g = try await api.fetchSalesGoal(projectId: projectId)
+            guard scopeIsCurrent, g.projectId == projectId else { return }
             goal = g
             revenueTarget = g.revenueTarget.map { String(Int($0)) } ?? ""
             dealsTarget = g.dealsTarget ?? 3
@@ -92,18 +109,27 @@ struct LeadgridSetGoalSheet: View {
             dailyMeetings = g.dailyMeetingsTarget
             dailyPipelineMoves = g.dailyPipelineMovesTarget
         } catch {
-            errorText = "Kunne ikke laste mål: \(error.localizedDescription)"
+            guard !Task.isCancelled else { return }
+            goal = nil
+            if scopeIsCurrent {
+                errorText = "Kunne ikke laste mål: \(error.localizedDescription)"
+            }
         }
-        loading = false
     }
 
     @MainActor
     private func save() async {
+        guard scopeIsCurrent else {
+            errorText = "Prosjektet ble endret. Målet ble ikke lagret."
+            return
+        }
         saving = true
         errorText = nil
+        defer { saving = false }
         do {
             let revenue = Double(revenueTarget.replacingOccurrences(of: " ", with: ""))
-            _ = try await api.saveSalesGoal(
+            let saved = try await api.saveSalesGoal(
+                projectId: projectId,
                 revenueTarget: revenue,
                 dealsTarget: dealsTarget,
                 meetingsTarget: meetingsTarget,
@@ -112,11 +138,17 @@ struct LeadgridSetGoalSheet: View {
                 dailyMeetingsTarget: dailyMeetings,
                 dailyPipelineMovesTarget: dailyPipelineMoves
             )
+            guard scopeIsCurrent, saved.projectId == projectId else {
+                errorText = "Prosjektet ble endret før målet var ferdig lagret."
+                return
+            }
             onSaved()
             dismiss()
         } catch {
-            errorText = "Kunne ikke lagre: \(error.localizedDescription)"
+            guard !Task.isCancelled else { return }
+            if scopeIsCurrent {
+                errorText = "Kunne ikke lagre: \(error.localizedDescription)"
+            }
         }
-        saving = false
     }
 }

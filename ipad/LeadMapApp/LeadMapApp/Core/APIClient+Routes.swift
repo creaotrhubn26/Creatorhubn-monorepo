@@ -1,144 +1,190 @@
 // APIClient+Routes.swift
 //
-// Klient-metoder mot /api/leadgrid/routes/* — MeMapPin tap-actions +
-// route-adherence-dashboard (pakke 2026-07-02).
-//
-// Backend: backend/server/routes-adherence-routes.ts
-// DTOer:   RouteModels.swift
+// Project-explicit client contract for route planning, GPS samples and
+// adherence reports. Every active call carries the selected customer project;
+// retryable creations additionally carry a stable idempotency key.
 
 import Foundation
 
 extension APIClient {
+    private func routesPath(
+        _ path: String,
+        projectId: String,
+        queryItems: [URLQueryItem] = []
+    ) throws -> String {
+        let trimmedProjectId = projectId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedProjectId.isEmpty else { throw URLError(.badURL) }
+        var components = URLComponents()
+        components.path = path
+        components.queryItems = [URLQueryItem(name: "projectId", value: trimmedProjectId)]
+            + queryItems
+        guard let value = components.string else { throw URLError(.badURL) }
+        return value
+    }
 
-    // MARK: - Position samples (batch flush)
+    // MARK: - Position samples
 
-    /// Batch-log posisjons-samples. Klienten sender hvert 30s (eller 30
-    /// samples). Idempotent på sampled_at (dedup-index på backend).
     @discardableResult
-    func flushPositionSamples(_ samples: [PositionSampleDTO]) async throws -> Int {
+    func flushPositionSamples(
+        _ samples: [PositionSampleDTO],
+        projectId: String
+    ) async throws -> Int {
         let payload = PositionSamplesBatchPayload(samples: samples)
-        let resp: PositionSamplesBatchResponse = try await _post(
-            "/api/leadgrid/routes/positions", body: payload
+        let path = try routesPath(
+            "/api/leadgrid/routes/positions",
+            projectId: projectId
         )
-        return resp.inserted
+        let response: PositionSamplesBatchResponse = try await _post(path, body: payload)
+        return response.inserted
     }
 
     // MARK: - My route
 
-    /// Dagens rute for innlogget bruker. `date` = "YYYY-MM-DD" (default i dag).
-    func fetchMyRoute(date: String? = nil) async throws -> MyRouteResponse {
-        var path = "/api/leadgrid/routes/my-route"
-        if let d = date, !d.isEmpty {
-            path += "?date=\(d)"
+    func fetchMyRoute(
+        projectId: String,
+        date: String? = nil
+    ) async throws -> MyRouteResponse {
+        var queryItems: [URLQueryItem] = []
+        if let date, !date.isEmpty {
+            queryItems.append(URLQueryItem(name: "date", value: date))
         }
-        return try await _get(path)
+        return try await _get(routesPath(
+            "/api/leadgrid/routes/my-route",
+            projectId: projectId,
+            queryItems: queryItems
+        ))
     }
 
-    // MARK: - Assignments (salgssjef+)
+    // MARK: - Assignments
 
-    /// Opprett en ny planlagt rute. Krever sales_manager+.
     @discardableResult
     func createRouteAssignment(
-        _ payload: CreateRouteAssignmentPayload
+        _ payload: CreateRouteAssignmentPayload,
+        projectId: String,
+        idempotencyKey: String
     ) async throws -> RouteAssignmentDTO {
-        try await _post("/api/leadgrid/routes/assignments", body: payload)
+        let path = try routesPath(
+            "/api/leadgrid/routes/assignments",
+            projectId: projectId
+        )
+        return try await _post(
+            path,
+            body: payload,
+            headers: ["Idempotency-Key": idempotencyKey]
+        )
     }
 
-    /// Oppdater rute (status/stops/name). Eier kan bytte status; salgssjef+
-    /// kan endre navn + stops.
     @discardableResult
     func updateRouteAssignment(
         id: UUID,
-        _ payload: UpdateRouteAssignmentPayload
+        _ payload: UpdateRouteAssignmentPayload,
+        projectId: String
     ) async throws -> RouteAssignmentDTO {
-        try await _patch(
-            "/api/leadgrid/routes/assignments/\(id.uuidString)",
-            body: payload
+        let path = try routesPath(
+            "/api/leadgrid/routes/assignments/\(id.uuidString.lowercased())",
+            projectId: projectId
         )
+        let encoded = try Self._sharedEncoder.encode(payload)
+        let data = try await _request(path, method: "PATCH", body: encoded)
+        return try Self._sharedDecoder.decode(RouteAssignmentDTO.self, from: data)
     }
 
-    /// Log at bruker ankom en stopp. Backend beregner
-    /// `deviationFromPlannedM` + `wasOnRoute`.
     @discardableResult
     func logRouteVisit(
         assignmentId: UUID,
-        _ payload: LogRouteVisitPayload
+        _ payload: LogRouteVisitPayload,
+        projectId: String,
+        idempotencyKey: String
     ) async throws -> RouteVisitDTO {
-        try await _post(
-            "/api/leadgrid/routes/assignments/\(assignmentId.uuidString)/visits",
-            body: payload
+        let path = try routesPath(
+            "/api/leadgrid/routes/assignments/\(assignmentId.uuidString.lowercased())/visits",
+            projectId: projectId
+        )
+        return try await _post(
+            path,
+            body: payload,
+            headers: ["Idempotency-Key": idempotencyKey]
         )
     }
 
-    // MARK: - Team-nearby
+    // MARK: - Team nearby
 
-    /// Team-medlemmer innen `radiusKm` km fra (lat, lon), sortert
-    /// nærmeste-først. Selv-brukeren er ekskludert.
     func fetchTeamNearby(
-        lat: Double, lon: Double, radiusKm: Double = 5
+        lat: Double,
+        lon: Double,
+        radiusKm: Double = 5,
+        projectId: String
     ) async throws -> [NearbyTeamMemberDTO] {
-        let path = "/api/leadgrid/routes/team-nearby"
-            + "?lat=\(lat)&lon=\(lon)&radius_km=\(radiusKm)"
-        let resp: NearbyTeamResponse = try await _get(path)
-        return resp.members
+        let path = try routesPath(
+            "/api/leadgrid/routes/team-nearby",
+            projectId: projectId,
+            queryItems: [
+                URLQueryItem(name: "lat", value: String(lat)),
+                URLQueryItem(name: "lon", value: String(lon)),
+                URLQueryItem(name: "radius_km", value: String(radiusKm)),
+            ]
+        )
+        let response: NearbyTeamResponse = try await _get(path)
+        return response.members
     }
 
-    // MARK: - Adherence report
+    // MARK: - Adherence reports
 
-    /// Adherence-rapport for en bruker (default = innlogget). Uten
-    /// `userId` returneres egen data; salgssjef+ kan sette hvilken som helst.
     func fetchAdherenceReport(
+        projectId: String,
         userId: String? = nil,
         from: String? = nil,
         to: String? = nil
     ) async throws -> RouteAdherenceReportDTO {
-        var qs: [String] = []
-        if let u = userId, !u.isEmpty,
-           let enc = u.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
-        { qs.append("user_id=\(enc)") }
-        if let f = from, !f.isEmpty { qs.append("from=\(f)") }
-        if let t = to, !t.isEmpty { qs.append("to=\(t)") }
-        let path = "/api/leadgrid/routes/adherence-report"
-            + (qs.isEmpty ? "" : "?\(qs.joined(separator: "&"))")
-        return try await _get(path)
+        var queryItems: [URLQueryItem] = []
+        if let userId, !userId.isEmpty {
+            queryItems.append(URLQueryItem(name: "user_id", value: userId))
+        }
+        if let from, !from.isEmpty {
+            queryItems.append(URLQueryItem(name: "from", value: from))
+        }
+        if let to, !to.isEmpty {
+            queryItems.append(URLQueryItem(name: "to", value: to))
+        }
+        return try await _get(routesPath(
+            "/api/leadgrid/routes/adherence-report",
+            projectId: projectId,
+            queryItems: queryItems
+        ))
     }
 
-    /// Salgssjef+: team-summary for gitt dato (default i dag), rangert
-    /// etter compliance (best → verst).
     func fetchTeamAdherenceSummary(
+        projectId: String,
         date: String? = nil
     ) async throws -> TeamAdherenceReportDTO {
-        var path = "/api/leadgrid/routes/adherence-report/team-summary"
-        if let d = date, !d.isEmpty { path += "?date=\(d)" }
-        return try await _get(path)
-    }
-
-    // MARK: - Create lead at position
-
-    /// Opprett et lead på bestemt koordinat. Backend reverse-geocoder via
-    /// Places. Klienten kan navigere til AddLeadSheet m/ lead-id prefilled.
-    func createLeadAtPosition(
-        lat: Double, lon: Double, orgId: String? = nil
-    ) async throws -> CreatedLeadAtPositionDTO {
-        let payload = CreateLeadAtPositionPayload(lat: lat, lon: lon, orgId: orgId)
-        return try await _post(
-            "/api/leadgrid/routes/leads/at-position",
-            body: payload
-        )
+        var queryItems: [URLQueryItem] = []
+        if let date, !date.isEmpty {
+            queryItems.append(URLQueryItem(name: "date", value: date))
+        }
+        return try await _get(routesPath(
+            "/api/leadgrid/routes/adherence-report/team-summary",
+            projectId: projectId,
+            queryItems: queryItems
+        ))
     }
 
     // MARK: - Cleanup
 
-    /// Cleanup av gamle position-samples. Kun for job-scheduler /
-    /// salgssjef+. `beforeDate` = "YYYY-MM-DD".
     @discardableResult
-    func cleanupOldPositions(beforeDate: String) async throws -> Int {
-        struct CleanupResp: Decodable { let deleted: Int; let before: String }
-        let data = try await _request(
-            "/api/leadgrid/routes/positions/before?date=\(beforeDate)",
-            method: "DELETE"
+    func cleanupOldPositions(
+        beforeDate: String,
+        projectId: String
+    ) async throws -> Int {
+        struct CleanupResponse: Decodable {
+            let deleted: Int
+            let before: String
+        }
+        let path = try routesPath(
+            "/api/leadgrid/routes/positions/before",
+            projectId: projectId,
+            queryItems: [URLQueryItem(name: "date", value: beforeDate)]
         )
-        let resp = try Self._sharedDecoder.decode(CleanupResp.self, from: data)
-        return resp.deleted
+        let data = try await _request(path, method: "DELETE")
+        return try Self._sharedDecoder.decode(CleanupResponse.self, from: data).deleted
     }
 }

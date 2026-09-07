@@ -38,7 +38,6 @@ struct LeadgridNotificationBellView: View {
 struct LeadgridNotificationInboxView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
-    @State private var showPrefs = false
 
     var body: some View {
         NavigationStack {
@@ -53,7 +52,7 @@ struct LeadgridNotificationInboxView: View {
                     List(appState.leadgridNotifications) { notif in
                         notifRow(notif)
                             .onTapGesture {
-                                Task { await markRead(notif) }
+                                Task { await open(notif) }
                             }
                     }
                     .listStyle(.plain)
@@ -67,27 +66,17 @@ struct LeadgridNotificationInboxView: View {
                     Button("Lukk") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button {
-                            Task { await appState.markLeadgridNotificationsRead() }
-                        } label: {
-                            Label("Marker alle som lest", systemImage: "checkmark.circle")
-                        }
-                        Button { showPrefs = true } label: {
-                            Label("Varsels-innstillinger", systemImage: "gearshape")
-                        }
+                    Button {
+                        Task { await appState.markLeadgridNotificationsRead() }
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        Image(systemName: "checkmark.circle")
                     }
+                    .disabled(appState.leadgridUnreadCount == 0)
+                    .accessibilityLabel("Marker alle varsler som lest")
                 }
             }
             .refreshable {
                 await appState.refreshLeadgridNotifications()
-            }
-            .sheet(isPresented: $showPrefs) {
-                if let api = appState.api {
-                    LeadgridNotificationPrefsView(api: api)
-                }
             }
             .task {
                 await appState.refreshLeadgridNotifications()
@@ -143,6 +132,21 @@ struct LeadgridNotificationInboxView: View {
     private func markRead(_ notif: LeadgridNotification) async {
         if notif.isUnread {
             await appState.markLeadgridNotificationsRead(ids: [notif.id])
+        }
+    }
+
+    @MainActor
+    private func open(_ notif: LeadgridNotification) async {
+        await markRead(notif)
+        var payload: [String: String] = ["event_type": notif.eventType]
+        if let leadId = notif.leadId { payload["lead_id"] = leadId }
+        if let deepLink = notif.deepLink { payload["deep_link"] = deepLink }
+        if let projectId = notif.projectId { payload["project_id"] = projectId }
+        if let organizationId = notif.organizationId {
+            payload["organization_id"] = organizationId
+        }
+        if await appState.handleLeadgridNotificationTap(payload) {
+            dismiss()
         }
     }
 }

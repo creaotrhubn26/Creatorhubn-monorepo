@@ -21,15 +21,18 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import Anthropic from "@anthropic-ai/sdk";
-import { searchPlaces } from "./lead-map-service.js";
+import { buildCsvDocument } from "./leadgrid-csv.js";
+import {
+  LeadgridExportAccessError,
+  requireLeadgridExportProject,
+} from "./leadgrid-export-access.js";
 import { assessCompetitorThreat } from "./competitor-threat-assessment.js";
 import { fetchBestLogo } from "./lead-logo-fetcher.js";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 import { resolveLeadMapSession } from "./lead-map-session-helper.js";
+import { loadAccessibleLeadgridProject } from "./leadgrid-project-access.js";
 import {
   requestedLeadMapOrganizationId,
-  resolveAuthorizedLeadMapOrganization,
-  resolveLeadOrganizationScope,
   sendLeadMapOrganizationScopeError,
 } from "./lead-map-org-scope.js";
 
@@ -101,10 +104,20 @@ async function getUser(
  * Returner null hvis ikke satt → ingen filtering.
  */
 function getProjectId(req: Request): string | null {
-  const q = req.query.projectId;
-  if (typeof q === "string" && q.length > 0) return q;
-  const b = (req.body as { projectId?: unknown } | undefined)?.projectId;
-  if (typeof b === "string" && b.length > 0) return b;
+  const q = req.query.projectId ?? req.query.project_id;
+  if (typeof q === "string") {
+    const normalized = q.trim();
+    if (normalized.length > 0 && normalized.length <= 255) return normalized;
+  }
+  const requestBody = req.body as {
+    projectId?: unknown;
+    project_id?: unknown;
+  } | undefined;
+  const b = requestBody?.projectId ?? requestBody?.project_id;
+  if (typeof b === "string") {
+    const normalized = b.trim();
+    if (normalized.length > 0 && normalized.length <= 255) return normalized;
+  }
   return null;
 }
 
@@ -161,11 +174,60 @@ export function registerLeadMapCompetitorRoutes({
   pool,
   activeSessions,
 }: Deps): void {
-  async function organizationScope(req: Request, userId: string, leadId?: string) {
-    const requested = requestedLeadMapOrganizationId(req);
-    return leadId
-      ? resolveLeadOrganizationScope(pool, userId, leadId, requested)
-      : resolveAuthorizedLeadMapOrganization(pool, userId, requested);
+  async function requiredProjectScope(
+    req: Request,
+    res: Response,
+    userId: string,
+  ) {
+    const projectId = getProjectId(req);
+    if (!projectId) {
+      res.status(400).json({ error: "project_id_required" });
+      return null;
+    }
+    const project = await loadAccessibleLeadgridProject(pool, projectId, userId);
+    const requestedOrganizationId = requestedLeadMapOrganizationId(req);
+    if (
+      !project
+      || (requestedOrganizationId
+        && requestedOrganizationId !== project.organizationId)
+    ) {
+      res.status(404).json({ error: "project_not_found" });
+      return null;
+    }
+    return project;
+  }
+
+  async function competitorBelongsToProject(
+    project: { id: string; organizationId: string },
+    competitorId: string,
+  ): Promise<boolean> {
+    const result = await pool.query(
+      `SELECT 1
+         FROM market_scan_competitors
+        WHERE id = $1::uuid
+          AND organization_id = $2::uuid
+          AND project_id = $3
+        LIMIT 1`,
+      [competitorId, project.organizationId, project.id],
+    );
+    return result.rows.length > 0;
+  }
+
+  async function leadBelongsToProject(
+    project: { id: string; organizationId: string },
+    leadId: string,
+  ): Promise<boolean> {
+    const result = await pool.query(
+      `SELECT 1
+         FROM crm_customers
+        WHERE id = $1::uuid
+          AND organization_id = $2::uuid
+          AND project_id = $3
+          AND archived_at IS NULL
+        LIMIT 1`,
+      [leadId, project.organizationId, project.id],
+    );
+    return result.rows.length > 0;
   }
   // ─── GET /competitors ─────────────────────────────────────────────
   app.get(
@@ -173,21 +235,9 @@ export function registerLeadMapCompetitorRoutes({
     async (req: Request, res: Response) => {
       const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
-      const projectId = getProjectId(req);
       try {
-        const organizationId = await organizationScope(req, session.userId);
-        const params: unknown[] = [organizationId ?? session.userId];
-        const competitorScopeClause = organizationId
-          ? "organization_id = $1::uuid"
-          : "workspace_owner_user_id = $1";
-        let projectClause = "";
-        if (projectId) {
-          params.push(projectId);
-          projectClause = `AND (project_id = $${params.length} OR project_id IS NULL)`;
-        }
-        const competitorScope = organizationId
-          ? "organization_id = $2::uuid"
-          : "workspace_owner_user_id = $2";
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
         const r = await pool.query<CompetitorRow>(
           `SELECT id::text, name, domain, category, positioning, primary_offer,
                   latitude, longitude, google_address, google_phone, google_rating,
@@ -195,8 +245,8 @@ export function registerLeadMapCompetitorRoutes({
                   claude_threat_summary, claude_what_to_worry_about, claude_what_to_ignore,
                   claude_assessed_at::text, priority_rank, created_at::text
              FROM market_scan_competitors
-            WHERE ${competitorScopeClause}
-              ${projectClause}
+            WHERE organization_id = $1::uuid
+              AND project_id = $2
             ORDER BY
               priority_rank DESC NULLS LAST,
               CASE threat_level
@@ -208,7 +258,7 @@ export function registerLeadMapCompetitorRoutes({
               threat_score DESC NULLS LAST,
               created_at DESC
             LIMIT 200`,
-          params,
+          [project.organizationId, project.id],
         );
         return res.json({ competitors: r.rows.map(rowToCompetitor) });
       } catch (err) {
@@ -231,51 +281,28 @@ export function registerLeadMapCompetitorRoutes({
         category?: string;
         positioning?: string;
         primaryOffer?: string;
-        region?: string;
+        projectId?: string;
+        project_id?: string;
         threatLevel?: "near" | "medium" | "far";
       };
       if (!body.name || !body.domain) {
         return res.status(400).json({ error: "name_og_domain_kreves" });
       }
       try {
-        const organizationId = await organizationScope(req, session.userId);
-        // Best-effort Google Places-oppslag
-        let geo = { lat: null as number | null, lng: null as number | null, placeId: null as string | null, address: null as string | null, phone: null as string | null, rating: null as number | null };
-        try {
-          const query = body.region ? `${body.name} ${body.region}` : body.name;
-          const places = await searchPlaces(pool, {
-            query,
-            ownerUserId: session.userId,
-            organizationId,
-          } as Parameters<typeof searchPlaces>[1]);
-          if (places.ok && places.results[0]) {
-            const top = places.results[0];
-            geo = {
-              lat: top.latitude,
-              lng: top.longitude,
-              placeId: top.placeId,
-              address: top.address,
-              phone: top.phone,
-              rating: top.rating,
-            };
-          }
-        } catch { /* noop */ }
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
 
         const ins = await pool.query<CompetitorRow>(
           `INSERT INTO market_scan_competitors (
-             market_scan_id, workspace_owner_user_id, organization_id,
+             market_scan_id, workspace_owner_user_id, organization_id, project_id,
              name, domain, category, positioning, primary_offer,
-             confidence, evidence_urls,
-             latitude, longitude, google_place_id, google_address,
-             google_phone, google_rating, google_lookup_at,
+             confidence, source_urls,
              is_manual_addition, added_by_user_id, threat_level
            )
            VALUES (
-             NULL, $1, $14::uuid, $2, $3, $4, $5, $6,
-             'high', '{}'::text[],
-             $7, $8, $9, $10, $11, $12,
-             CASE WHEN $9 IS NOT NULL THEN NOW() ELSE NULL END,
-             TRUE, $1, $13
+             NULL, $1, $2::uuid, $3, $4, $5, $6, $7, $8,
+             'high', '[]'::jsonb,
+             TRUE, $1, $9
            )
            RETURNING id::text, name, domain, category, positioning, primary_offer,
                      latitude, longitude, google_address, google_phone, google_rating,
@@ -285,19 +312,14 @@ export function registerLeadMapCompetitorRoutes({
                      priority_rank, created_at::text`,
           [
             session.userId,
-            body.name,
-            body.domain,
+            project.organizationId,
+            project.id,
+            body.name.trim(),
+            body.domain.trim(),
             body.category ?? null,
             body.positioning ?? null,
             body.primaryOffer ?? null,
-            geo.lat,
-            geo.lng,
-            geo.placeId,
-            geo.address,
-            geo.phone,
-            geo.rating,
             body.threatLevel ?? null,
-            organizationId,
           ],
         );
         const competitor = rowToCompetitor(ins.rows[0]);
@@ -311,6 +333,8 @@ export function registerLeadMapCompetitorRoutes({
               await assessCompetitorThreat(pool, {
                 competitorId: competitor.id,
                 workspaceOwnerUserId: session.userId,
+                organizationId: project.organizationId,
+                projectId: project.id,
               });
               console.log(`[competitor-add] Auto-assessed threat for ${competitor.name}`);
             } catch (err) {
@@ -341,19 +365,20 @@ export function registerLeadMapCompetitorRoutes({
         threatLevel?: "near" | "medium" | "far";
         priorityRank?: number;
         positioning?: string;
+        projectId?: string;
+        project_id?: string;
       };
       try {
-        const organizationId = await organizationScope(req, session.userId);
-        const scopeValue = organizationId ?? session.userId;
-        const scopeClause = organizationId
-          ? "organization_id = $2::uuid"
-          : "workspace_owner_user_id = $2";
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
         const r = await pool.query<CompetitorRow>(
           `UPDATE market_scan_competitors
-              SET threat_level = COALESCE($3, threat_level),
-                  priority_rank = COALESCE($4, priority_rank),
-                  positioning = COALESCE($5, positioning)
-            WHERE id = $1::uuid AND ${scopeClause}
+              SET threat_level = COALESCE($4, threat_level),
+                  priority_rank = COALESCE($5, priority_rank),
+                  positioning = COALESCE($6, positioning)
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id = $3
           RETURNING id::text, name, domain, category, positioning, primary_offer,
                     latitude, longitude, google_address, google_phone, google_rating,
                     is_manual_addition, threat_level, threat_score,
@@ -362,7 +387,8 @@ export function registerLeadMapCompetitorRoutes({
                     priority_rank, created_at::text`,
           [
             req.params.id,
-            scopeValue,
+            project.organizationId,
+            project.id,
             body.threatLevel ?? null,
             body.priorityRank ?? null,
             body.positioning ?? null,
@@ -385,16 +411,15 @@ export function registerLeadMapCompetitorRoutes({
       const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       try {
-        const organizationId = await organizationScope(req, session.userId);
-        const scopeValue = organizationId ?? session.userId;
-        const scopeClause = organizationId
-          ? "organization_id = $2::uuid"
-          : "workspace_owner_user_id = $2";
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
         const r = await pool.query(
           `DELETE FROM market_scan_competitors
-            WHERE id = $1::uuid AND ${scopeClause}
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id = $3
           RETURNING id::text`,
-          [req.params.id, scopeValue],
+          [req.params.id, project.organizationId, project.id],
         );
         if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
         return res.json({ ok: true, deleted: r.rows[0].id });
@@ -413,17 +438,15 @@ export function registerLeadMapCompetitorRoutes({
       const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       const projectId = getProjectId(req);
+      if (!projectId) {
+        return res.status(400).json({ error: "project_id_required" });
+      }
       try {
-        const organizationId = await organizationScope(req, session.userId);
-        const params: unknown[] = [organizationId ?? session.userId];
-        const leadScopeClause = organizationId
-          ? "c.organization_id = $1::uuid"
-          : "c.owner_user_id = $1";
-        let projectClause = "";
-        if (projectId) {
-          params.push(projectId);
-          projectClause = `AND c.project_id = $${params.length}`;
-        }
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        const params: unknown[] = [project.organizationId, project.id];
+        const leadScopeClause = "c.organization_id = $1::uuid";
+        const projectClause = "AND c.project_id = $2";
         const r = await pool.query<{
           id: string;
           name: string;
@@ -523,11 +546,8 @@ export function registerLeadMapCompetitorRoutes({
         return res.status(400).json({ error: "bad_request", detail: "datetime, durationMinutes eller meetingStatus er påkrevd" });
       }
       try {
-        const organizationId = await organizationScope(req, session.userId, req.params.leadId);
-        const scopeValue = organizationId ?? session.userId;
-        const scopeClause = organizationId
-          ? "organization_id = $5::uuid"
-          : "owner_user_id = $5";
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
         const r = await pool.query(
           `WITH updated AS (
              UPDATE crm_customers
@@ -535,18 +555,20 @@ export function registerLeadMapCompetitorRoutes({
                     meeting_duration_minutes = COALESCE($2::integer, meeting_duration_minutes),
                     meeting_status = COALESCE($3, meeting_status),
                     updated_at = NOW()
-              WHERE id = $4::uuid AND ${scopeClause}
+              WHERE id = $4::uuid
+                AND organization_id = $5::uuid
+                AND project_id = $6
               RETURNING id, next_follow_up_at, meeting_duration_minutes, meeting_status
            )
            INSERT INTO crm_lead_activities
              (customer_id, user_id, activity_type, new_value, description)
-           SELECT id, $6, 'follow_up_set',
+           SELECT id, $7, 'follow_up_set',
                   CONCAT(next_follow_up_at::text, '|', meeting_duration_minutes::text, '|', meeting_status),
-                  COALESCE(NULLIF($7, ''), 'Møtetid, varighet eller møtestatus endret')
+                  COALESCE(NULLIF($8, ''), 'Møtetid, varighet eller møtestatus endret')
              FROM updated
            RETURNING customer_id`,
           [dt?.toISOString() ?? null, duration, meetingStatus, req.params.leadId,
-           scopeValue, session.userId, note],
+           project.organizationId, project.id, session.userId, note],
         );
         if (r.rowCount === 0) return res.status(404).json({ error: "not_found" });
         return res.json({ ok: true });
@@ -564,17 +586,15 @@ export function registerLeadMapCompetitorRoutes({
       const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       const projectId = getProjectId(req);
+      if (!projectId) {
+        return res.status(400).json({ error: "project_id_required" });
+      }
       try {
-        const organizationId = await organizationScope(req, session.userId);
-        const params: unknown[] = [organizationId ?? session.userId];
-        const leadScopeClause = organizationId
-          ? "organization_id = $1::uuid"
-          : "owner_user_id = $1";
-        let projectClause = "";
-        if (projectId) {
-          params.push(projectId);
-          projectClause = `AND project_id = $${params.length}`;
-        }
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        const params: unknown[] = [project.organizationId, project.id];
+        const leadScopeClause = "organization_id = $1::uuid";
+        const projectClause = "AND project_id = $2";
         const stale = await pool.query<{
           id: string; name: string; lead_status: string; city: string | null;
           days_silent: number; updated_at: string;
@@ -646,19 +666,16 @@ export function registerLeadMapCompetitorRoutes({
       const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       const projectId = getProjectId(req);
+      if (!projectId) {
+        return res.status(400).json({ error: "project_id_required" });
+      }
       try {
-        const organizationId = await organizationScope(req, session.userId);
-        const params: unknown[] = [organizationId ?? session.userId];
-        const leadScopeClause = organizationId
-          ? "organization_id = $1::uuid"
-          : "owner_user_id = $1";
-        let projectClause = "";
-        let subqueryProjectClause = "";
-        if (projectId) {
-          params.push(projectId);
-          projectClause = `AND project_id = $${params.length}`;
-          subqueryProjectClause = `AND project_id = $${params.length}`;
-        }
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        const params: unknown[] = [project.organizationId, project.id];
+        const leadScopeClause = "organization_id = $1::uuid";
+        const projectClause = "AND project_id = $2";
+        const subqueryProjectClause = "AND project_id = $2";
         const r = await pool.query<{
           new_leads_7d: number;
           won_7d: number;
@@ -706,7 +723,7 @@ export function registerLeadMapCompetitorRoutes({
         }
         if (row.new_leads_7d === 0) {
           recommendations.push(
-            "Ingen nye leads siste uken — kjør 'Discover leads' eller importer fra Google Places",
+            "Ingen nye leads siste uken — kjør Discovery V2 eller importer en kvalitetssikret fil",
           );
         } else if (row.new_leads_7d >= 5 && row.meetings_7d === 0) {
           recommendations.push(
@@ -744,17 +761,15 @@ export function registerLeadMapCompetitorRoutes({
       const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       const projectId = getProjectId(req);
+      if (!projectId) {
+        return res.status(400).json({ error: "project_id_required" });
+      }
       try {
-        const organizationId = await organizationScope(req, session.userId);
-        const params: unknown[] = [organizationId ?? session.userId];
-        const tenantClause = organizationId
-          ? "c.organization_id = $1::uuid"
-          : "c.owner_user_id = $1";
-        let projectClause = "";
-        if (projectId) {
-          params.push(projectId);
-          projectClause = `AND c.project_id = $${params.length}`;
-        }
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        const params: unknown[] = [project.organizationId, project.id];
+        const tenantClause = "c.organization_id = $1::uuid";
+        const projectClause = "AND c.project_id = $2";
         const r = await pool.query<{
           owner_user_id: string | null;
           user_name: string | null;
@@ -822,11 +837,16 @@ export function registerLeadMapCompetitorRoutes({
       const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       try {
-        const organizationId = await organizationScope(req, session.userId);
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        if (!await competitorBelongsToProject(project, req.params.id)) {
+          return res.status(404).json({ error: "competitor_not_found" });
+        }
         const campaign = await generateCounterCampaign(pool, {
           competitorId: req.params.id,
           workspaceOwnerUserId: session.userId,
-          organizationId,
+          organizationId: project.organizationId,
+          projectId: project.id,
         });
         return res.json({ campaign });
       } catch (err) {
@@ -853,11 +873,16 @@ export function registerLeadMapCompetitorRoutes({
       const body = req.body as { campaign?: CounterCampaign };
       if (!body.campaign) return res.status(400).json({ error: "campaign_kreves_i_body" });
       try {
-        const organizationId = await organizationScope(req, session.userId);
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        if (!await competitorBelongsToProject(project, req.params.id)) {
+          return res.status(404).json({ error: "competitor_not_found" });
+        }
         const result = await saveCounterCampaignToWorkflow(pool, {
           workspaceOwnerUserId: session.userId,
           competitorId: req.params.id,
-          organizationId,
+          organizationId: project.organizationId,
+          projectId: project.id,
           campaign: body.campaign,
         });
         return res.json(result);
@@ -875,16 +900,18 @@ export function registerLeadMapCompetitorRoutes({
       const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       try {
-        const organizationId = await organizationScope(req, session.userId);
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        if (!await competitorBelongsToProject(project, req.params.id)) {
+          return res.status(404).json({ error: "competitor_not_found" });
+        }
         await assessCompetitorThreat(pool, {
           competitorId: req.params.id,
           workspaceOwnerUserId: session.userId,
-          organizationId,
+          organizationId: project.organizationId,
+          projectId: project.id,
         });
         // Hent oppdatert rad så frontend ikke trenger ny round-trip
-        const competitorScope = organizationId
-          ? "organization_id = $2::uuid"
-          : "workspace_owner_user_id = $2";
         const r = await pool.query<CompetitorRow>(
           `SELECT id::text, name, domain, category, positioning, primary_offer,
                   latitude, longitude, google_address, google_phone, google_rating,
@@ -893,8 +920,10 @@ export function registerLeadMapCompetitorRoutes({
                   claude_what_to_ignore, claude_assessed_at::text,
                   priority_rank, created_at::text
              FROM market_scan_competitors
-            WHERE id = $1 AND ${competitorScope}`,
-          [req.params.id, organizationId ?? session.userId],
+            WHERE id = $1
+              AND organization_id = $2::uuid
+              AND project_id = $3`,
+          [req.params.id, project.organizationId, project.id],
         );
         if (r.rows.length === 0) return res.status(404).json({ error: "not_found" });
         return res.json({ competitor: rowToCompetitor(r.rows[0]) });
@@ -918,12 +947,15 @@ export function registerLeadMapCompetitorRoutes({
       const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       try {
-        const organizationId = await organizationScope(req, session.userId, req.params.id);
-        const leadScope = organizationId ? "organization_id = $2::uuid" : "owner_user_id = $2";
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
         const lr = await pool.query<{ city: string | null; postal_code: string | null }>(
           `SELECT city, postal_code FROM crm_customers
-            WHERE id = $1::uuid AND ${leadScope}`,
-          [req.params.id, organizationId ?? session.userId],
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id = $3
+              AND archived_at IS NULL`,
+          [req.params.id, project.organizationId, project.id],
         );
         if (lr.rows.length === 0) return res.status(404).json({ error: "lead_not_found" });
         const lead = lr.rows[0];
@@ -938,7 +970,7 @@ export function registerLeadMapCompetitorRoutes({
     },
   );
 
-  // ─── GET /leads/export-csv (CSV-eksport av brukerens leads) ──
+  // ─── GET /leads/export-csv (prosjektisolert CSV-eksport) ──
   app.get(
     "/api/admin-room/lead-map/leads/export-csv",
     async (req: Request, res: Response) => {
@@ -947,8 +979,10 @@ export function registerLeadMapCompetitorRoutes({
         return res.status(401).send("Innlogging kreves");
       }
       try {
-        const organizationId = await organizationScope(req, session.userId);
-        const exportScope = organizationId ? "c.organization_id = $1::uuid" : "c.owner_user_id = $1";
+        const project = await requireLeadgridExportProject(pool, {
+          userId: session.userId,
+          projectId: req.query.projectId ?? req.query.project_id,
+        });
         const r = await pool.query(
           `SELECT c.name, c.company, c.lead_category, c.lead_status,
                   c.address, c.postal_code, c.city, c.country,
@@ -962,11 +996,11 @@ export function registerLeadMapCompetitorRoutes({
                   u.email AS assigned_user_email
              FROM crm_customers c
              LEFT JOIN users u ON u.id = c.owner_user_id
-            WHERE ${exportScope}
+            WHERE c.organization_id = $1::uuid
+              AND c.project_id = $2
             ORDER BY c.created_at DESC`,
-          [organizationId ?? session.userId],
+          [project.organizationId, project.id],
         );
-        // Bygg CSV med BOM for Excel-kompatibilitet
         const headers = [
           "name", "company", "category", "status",
           "address", "postal_code", "city", "country",
@@ -978,32 +1012,36 @@ export function registerLeadMapCompetitorRoutes({
           "created_at", "updated_at",
           "assigned_user", "assigned_email",
         ];
-        const escape = (v: unknown): string => {
-          if (v === null || v === undefined) return "";
-          const s = String(v);
-          if (s.includes(",") || s.includes('"') || s.includes("\n")) {
-            return `"${s.replace(/"/g, '""')}"`;
-          }
-          return s;
-        };
-        const lines: string[] = ["﻿" + headers.join(",")];
-        for (const row of r.rows) {
-          lines.push([
-            escape(row.name), escape(row.company), escape(row.lead_category),
-            escape(row.lead_status), escape(row.address), escape(row.postal_code),
-            escape(row.city), escape(row.country), escape(row.phone), escape(row.email),
-            escape(row.website_url), escape(row.latitude), escape(row.longitude),
-            escape(row.google_rating), escape(row.ai_opportunity_score),
-            escape(row.claude_recommendation_rank), escape(row.notes),
-            escape(row.last_visit_at), escape(row.next_follow_up_at), escape(row.next_action),
-            escape(row.created_at), escape(row.updated_at),
-            escape(row.assigned_user_name), escape(row.assigned_user_email),
-          ].join(","));
-        }
+        const csv = buildCsvDocument(
+          headers,
+          r.rows.map((row) => [
+            row.name, row.company, row.lead_category, row.lead_status,
+            row.address, row.postal_code, row.city, row.country,
+            row.phone, row.email, row.website_url,
+            row.latitude, row.longitude,
+            row.google_rating, row.ai_opportunity_score,
+            row.claude_recommendation_rank, row.notes,
+            row.last_visit_at, row.next_follow_up_at, row.next_action,
+            row.created_at, row.updated_at,
+            row.assigned_user_name, row.assigned_user_email,
+          ]),
+          { delimiter: "," },
+        );
         res.setHeader("Content-Type", "text/csv; charset=utf-8");
-        res.setHeader("Content-Disposition", `attachment; filename="leads-${new Date().toISOString().slice(0, 10)}.csv"`);
-        return res.send(lines.join("\n"));
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="leads-${new Date().toISOString().slice(0, 10)}.csv"`,
+        );
+        return res.send(csv);
       } catch (err) {
+        if (err instanceof LeadgridExportAccessError) {
+          return res.status(err.status).json({
+            error: err.code,
+            ...(err.code === "mangler_tillatelse"
+              ? { required: "leads.export" }
+              : {}),
+          });
+        }
         return res.status(500).json({ error: "export_failed", detail: "internal_error" });
       }
     },
@@ -1021,6 +1059,7 @@ export function registerLeadMapCompetitorRoutes({
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       const body = req.body as {
         projectId?: string | null;
+        project_id?: string | null;
         leads?: Array<{
           name?: string;
           address?: string;
@@ -1042,14 +1081,8 @@ export function registerLeadMapCompetitorRoutes({
       if (body.leads.length > 1000) {
         return res.status(400).json({ error: "max_1000_per_import" });
       }
-      let organizationId: string | null;
-      try {
-        organizationId = await organizationScope(req, session.userId);
-      } catch (error) {
-        if (sendLeadMapOrganizationScopeError(error, res)) return;
-        return res.status(500).json({ error: "import_scope_failed" });
-      }
-      const projectId = body.projectId ?? null;
+      const project = await requiredProjectScope(req, res, session.userId);
+      if (!project) return;
       const skipped: Array<{ name: string; reason: string }> = [];
       let imported = 0;
       for (const lead of body.leads) {
@@ -1085,8 +1118,8 @@ export function registerLeadMapCompetitorRoutes({
               lead.latitude ?? null,
               lead.longitude ?? null,
               session.userId,
-              organizationId,
-              projectId,
+              project.organizationId,
+              project.id,
             ],
           );
           imported += 1;
@@ -1108,11 +1141,15 @@ export function registerLeadMapCompetitorRoutes({
       const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       try {
-        const organizationId = await organizationScope(req, session.userId, req.params.id);
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        if (!await leadBelongsToProject(project, req.params.id)) {
+          return res.status(404).json({ error: "lead_not_found" });
+        }
         const enrichment = await getStoredEnrichment(pool, {
           leadId: req.params.id,
           workspaceOwnerUserId: session.userId,
-          organizationId,
+          organizationId: project.organizationId,
         });
         return res.json({ enrichment });
       } catch (err) {
@@ -1133,11 +1170,15 @@ export function registerLeadMapCompetitorRoutes({
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       const force = req.body?.force === true;
       try {
-        const organizationId = await organizationScope(req, session.userId, req.params.id);
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        if (!await leadBelongsToProject(project, req.params.id)) {
+          return res.status(404).json({ error: "lead_not_found" });
+        }
         const result = await enrichLeadWithBrreg(pool, {
           leadId: req.params.id,
           workspaceOwnerUserId: session.userId,
-          organizationId,
+          organizationId: project.organizationId,
           forceRefresh: force,
         });
         return res.json({ enrichment: result });
@@ -1163,11 +1204,15 @@ export function registerLeadMapCompetitorRoutes({
       const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       try {
-        const organizationId = await organizationScope(req, session.userId, req.params.id);
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
+        if (!await leadBelongsToProject(project, req.params.id)) {
+          return res.status(404).json({ error: "lead_not_found" });
+        }
         const strategy = await recommendOutreachStrategy(pool, {
           leadId: req.params.id,
           workspaceOwnerUserId: session.userId,
-          organizationId,
+          organizationId: project.organizationId,
         });
         return res.json({ strategy });
       } catch (err) {
@@ -1193,25 +1238,24 @@ export function registerLeadMapCompetitorRoutes({
       if (!apiKey) return res.status(500).json({ error: "anthropic_key_missing" });
 
       try {
-        const organizationId = await organizationScope(req, session.userId);
-        const leadScopeClause = organizationId
-          ? "organization_id = $1::uuid"
-          : "owner_user_id = $1";
+        const project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
         const leads = await pool.query<{
           id: string; name: string; category: string | null;
           positioning: string | null;
           city: string | null; website_url: string | null;
           google_rating: number | null;
         }>(
-          `SELECT id::text, name, category,
+          `SELECT id::text, name, lead_category AS category,
                   notes AS positioning,
                   city, website_url, google_rating
              FROM crm_customers
-            WHERE ${leadScopeClause}
+            WHERE organization_id = $1::uuid
+              AND project_id = $2
               AND lead_status NOT IN ('won', 'lost', 'do_not_contact')
             ORDER BY created_at DESC
             LIMIT 50`,
-          [organizationId ?? session.userId],
+          [project.organizationId, project.id],
         );
         if (leads.rows.length === 0) {
           return res.json({ ranked: 0 });
@@ -1233,7 +1277,7 @@ export function registerLeadMapCompetitorRoutes({
           max_tokens: 4000,
           messages: [{
             role: "user",
-            content: `Du er Role Room Agent. Ranger disse potensielle kundene etter
+            content: `Du er Leadgrids markedsanalytiker. Ranger disse potensielle kundene etter
 hvor anbefalt det er for vår bedrift å nå ut til dem.
 
 VÅR POSISJONERING:
@@ -1268,11 +1312,13 @@ Rangering 100 = bestmatch (kjør outreach nå). 0 = ikke relevant.`,
           if (!validIds.has(r.id)) continue;
           await pool.query(
             `UPDATE crm_customers
-                SET claude_recommendation_rank = $3,
-                    claude_recommendation_reason = $4,
+                SET claude_recommendation_rank = $4,
+                    claude_recommendation_reason = $5,
                     claude_ranked_at = NOW()
-              WHERE id = $1 AND ${leadScopeClause}`,
-            [r.id, organizationId ?? session.userId, r.rank, r.reason],
+              WHERE id = $1
+                AND organization_id = $2::uuid
+                AND project_id = $3`,
+            [r.id, project.organizationId, project.id, r.rank, r.reason],
           );
           updates += 1;
         }
@@ -1295,16 +1341,23 @@ Rangering 100 = bestmatch (kjør outreach nå). 0 = ikke relevant.`,
       const session = await getUser(req, pool, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       const include = String(req.query.include ?? "both"); // 'leads' | 'competitors' | 'both'
+      if (!new Set(["leads", "competitors", "both"]).has(include)) {
+        return res.status(400).json({ error: "invalid_include" });
+      }
       const projectId = getProjectId(req);
+      if (!projectId) {
+        return res.status(400).json({ error: "project_id_required" });
+      }
       const out: {
         leads: unknown[];
         competitors: unknown[];
         warnings?: string[];
       } = { leads: [], competitors: [] };
       const warnings: string[] = [];
-      let organizationId: string | null;
+      let project: Awaited<ReturnType<typeof loadAccessibleLeadgridProject>>;
       try {
-        organizationId = await organizationScope(req, session.userId);
+        project = await requiredProjectScope(req, res, session.userId);
+        if (!project) return;
       } catch (error) {
         if (sendLeadMapOrganizationScopeError(error, res)) return;
         return res.status(500).json({ error: "market_points_scope_failed" });
@@ -1325,15 +1378,9 @@ Rangering 100 = bestmatch (kjør outreach nå). 0 = ikke relevant.`,
             ? "claude_recommendation_rank, claude_recommendation_reason"
             : "NULL::int AS claude_recommendation_rank, NULL::text AS claude_recommendation_reason";
 
-          const leadParams: unknown[] = [organizationId ?? session.userId];
-          const leadTenantClause = organizationId
-            ? "c.organization_id = $1::uuid"
-            : "c.owner_user_id = $1";
-          let leadProjectClause = "";
-          if (projectId) {
-            leadParams.push(projectId);
-            leadProjectClause = `AND c.project_id = $${leadParams.length}`;
-          }
+          const leadParams: unknown[] = [project.organizationId, project.id];
+          const leadTenantClause = "c.organization_id = $1::uuid";
+          const leadProjectClause = "AND c.project_id = $2";
           const l = await pool.query(
             // Kolonnen heter `lead_category` på crm_customers (mig 271) — ikke `category`.
             // JOIN users for å vise eier-navn ('skaffet av').
@@ -1410,12 +1457,10 @@ Rangering 100 = bestmatch (kjør outreach nå). 0 = ikke relevant.`,
                       claude_what_to_ignore, claude_assessed_at::text,
                       priority_rank, created_at::text
                  FROM market_scan_competitors
-                WHERE ${organizationId ? "organization_id = $1::uuid" : "workspace_owner_user_id = $1"}
-                  ${projectId ? `AND (project_id = $2 OR project_id IS NULL)` : ""}
+                WHERE organization_id = $1::uuid
+                  AND project_id = $2
                   AND latitude IS NOT NULL AND longitude IS NOT NULL`,
-              projectId
-                ? [organizationId ?? session.userId, projectId]
-                : [organizationId ?? session.userId],
+              [project.organizationId, project.id],
             );
             out.competitors = c.rows.map((r) => ({
               kind: "competitor",

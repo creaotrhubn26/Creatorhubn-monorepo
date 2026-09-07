@@ -8,25 +8,21 @@
 import SwiftUI
 
 struct LeadgridPlanUsageBar: View {
-    let api: APIClient
-    let orgId: String
-
-    @State private var summary: LeadgridPlanSummary?
-    @State private var loading = true
-    @State private var errorText: String?
+    @Environment(AppState.self) private var appState
 
     var body: some View {
         HStack(spacing: 10) {
-            if loading {
+            if appState.workspacePlanLoadState == .loading {
                 ProgressView().scaleEffect(0.7)
                 Text("Henter plan-bruk…").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-            } else if let s = summary {
+            } else if appState.workspacePlanOrganizationId == appState.activeOrganizationId,
+                      let s = appState.workspacePlanSummary {
                 content(s)
-            } else if let errorText {
+            } else if appState.workspacePlanLoadState == .failed {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
-                Text(errorText).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text("Plan utilgjengelig").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 Spacer()
                 Button("Prøv igjen") { Task { await load() } }
                     .font(.caption2)
@@ -35,7 +31,11 @@ struct LeadgridPlanUsageBar: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(barBackground, in: RoundedRectangle(cornerRadius: 10))
-        .task { await load() }
+        .task(id: appState.activeOrganizationId) {
+            guard appState.workspacePlanSummary == nil,
+                  appState.workspacePlanLoadState != .loading else { return }
+            await load()
+        }
     }
 
     // MARK: - Content
@@ -93,7 +93,8 @@ struct LeadgridPlanUsageBar: View {
     // MARK: - Helpers
 
     private var barBackground: Color {
-        guard let s = summary else { return Color.secondary.opacity(0.08) }
+        guard appState.workspacePlanOrganizationId == appState.activeOrganizationId,
+              let s = appState.workspacePlanSummary else { return Color.secondary.opacity(0.08) }
         if s.inGrace { return Color.orange.opacity(0.10) }
         if s.worstPct >= 90 { return Color.red.opacity(0.08) }
         if s.worstPct >= 75 { return Color.orange.opacity(0.08) }
@@ -107,29 +108,12 @@ struct LeadgridPlanUsageBar: View {
     }
 
     private func planIcon(_ key: String) -> String {
-        switch key {
-        case "agency", "pro_agency": return "building.2.fill"
-        case "solo_pro", "pro": return "person.crop.circle.fill"
-        case "starter", "free": return "leaf.fill"
-        default: return "circle.fill"
-        }
+        LeadgridPlanPresentation.icon(for: key)
     }
 
     // MARK: - Load
 
     private func load() async {
-        do {
-            let s = try await api.fetchLeadgridPlanSummary(orgId: orgId)
-            await MainActor.run {
-                summary = s
-                loading = false
-                errorText = nil
-            }
-        } catch {
-            await MainActor.run {
-                errorText = "Plan utilgjengelig"
-                loading = false
-            }
-        }
+        await appState.loadWorkspacePlanSummary()
     }
 }

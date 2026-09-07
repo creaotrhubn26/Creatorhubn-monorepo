@@ -151,7 +151,7 @@ export default function LeadgridDeveloperApplicationPage() {
                          label="Hva vil dere bruke API-en til?"
                          value={useCase} onChange={(e) => setUseCase(e.target.value)}
                          sx={inputSx}
-                         placeholder="F.eks. 'Vi vil synkronisere våre eksisterende kunder fra HubSpot inn i Leadgrid, og motta webhooks når Leadgrid finner nye behov.'"
+                         placeholder="F.eks. 'Vi vil opprette nye klinikkleads fra kundesystemet og sende booking_confirmed tilbake til riktig Leadgrid-prosjekt.'"
                          helperText={`${useCase.length}/2000 tegn (min 20)`}
                          FormHelperTextProps={{ sx: { color: PALETTE.textFaint } }} />
 

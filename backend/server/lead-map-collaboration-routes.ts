@@ -7,9 +7,14 @@ import {
 } from "./lead-map-collaboration-service.js";
 import {
   requestedLeadMapOrganizationId,
-  resolveLeadOrganizationScope,
-  sendLeadMapOrganizationScopeError,
 } from "./lead-map-org-scope.js";
+import { loadAccessibleLeadgridLead } from "./leadgrid-lead-access.js";
+import { getLeadgridSession } from "./leadgrid-project-access.js";
+import {
+  LeadMapProjectScopeError,
+  requestedLeadMapProjectId,
+  sendLeadMapProjectScopeError,
+} from "./lead-map-project-scope.js";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 import { resolveLeadMapSession } from "./lead-map-session-helper.js";
 
@@ -23,16 +28,28 @@ export function registerLeadMapCollaborationRoutes(deps: {
   const { app, pool, activeSessions } = deps;
 
   async function session(req: Request) {
-    return resolveLeadMapSession(req, pool, activeSessions);
+    return getLeadgridSession(req, activeSessions)
+      ?? resolveLeadMapSession(req, pool, activeSessions);
   }
 
-  async function organizationId(req: Request, userId: string): Promise<string | null> {
-    return resolveLeadOrganizationScope(
-      pool,
+  async function leadScope(req: Request, userId: string) {
+    const projectId = requestedLeadMapProjectId(req);
+    if (!projectId) {
+      throw new LeadMapProjectScopeError(400, "project_id_required");
+    }
+    const lead = await loadAccessibleLeadgridLead(pool, {
+      leadId: req.params.id,
       userId,
-      req.params.id,
-      requestedLeadMapOrganizationId(req),
-    );
+    });
+    const organizationId = requestedLeadMapOrganizationId(req);
+    if (
+      !lead
+      || lead.projectId !== projectId
+      || (organizationId && lead.organizationId !== organizationId)
+    ) {
+      throw new LeadMapProjectScopeError(404, "project_not_found");
+    }
+    return lead;
   }
 
   app.get(
@@ -41,15 +58,15 @@ export function registerLeadMapCollaborationRoutes(deps: {
       const current = await session(req);
       if (!current?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       try {
-        const orgId = await organizationId(req, current.userId);
-        if (!orgId) return res.status(409).json({ error: "workspace_scope_required" });
+        const scope = await leadScope(req, current.userId);
         const notes = await listLeadNotes(pool, {
-          leadId: req.params.id,
-          organizationId: orgId,
+          leadId: scope.id,
+          organizationId: scope.organizationId,
+          projectId: scope.projectId,
         });
         return res.json({ notes });
       } catch (error) {
-        if (sendLeadMapOrganizationScopeError(error, res)) return;
+        if (sendLeadMapProjectScopeError(error, res)) return;
         return res.status(500).json({ error: "notes_failed", detail: "internal_error" });
       }
     },
@@ -66,11 +83,11 @@ export function registerLeadMapCollaborationRoutes(deps: {
         return res.status(400).json({ error: "invalid_note" });
       }
       try {
-        const orgId = await organizationId(req, current.userId);
-        if (!orgId) return res.status(409).json({ error: "workspace_scope_required" });
+        const scope = await leadScope(req, current.userId);
         const note = await createLeadNote(pool, {
-          leadId: req.params.id,
-          organizationId: orgId,
+          leadId: scope.id,
+          organizationId: scope.organizationId,
+          projectId: scope.projectId,
           authorUserId: current.userId,
           body,
           pinned: req.body?.pinned === true,
@@ -78,7 +95,7 @@ export function registerLeadMapCollaborationRoutes(deps: {
         if (!note) return res.status(404).json({ error: "not_found" });
         return res.status(201).json({ note });
       } catch (error) {
-        if (sendLeadMapOrganizationScopeError(error, res)) return;
+        if (sendLeadMapProjectScopeError(error, res)) return;
         return res.status(500).json({ error: "note_create_failed", detail: "internal_error" });
       }
     },
@@ -93,18 +110,18 @@ export function registerLeadMapCollaborationRoutes(deps: {
         return res.status(400).json({ error: "favorite_boolean_required" });
       }
       try {
-        const orgId = await organizationId(req, current.userId);
-        if (!orgId) return res.status(409).json({ error: "workspace_scope_required" });
+        const scope = await leadScope(req, current.userId);
         const favorite = await setLeadFavorite(pool, {
-          leadId: req.params.id,
-          organizationId: orgId,
+          leadId: scope.id,
+          organizationId: scope.organizationId,
+          projectId: scope.projectId,
           userId: current.userId,
           favorite: req.body.favorite,
         });
         if (favorite === null) return res.status(404).json({ error: "not_found" });
         return res.json({ favorite });
       } catch (error) {
-        if (sendLeadMapOrganizationScopeError(error, res)) return;
+        if (sendLeadMapProjectScopeError(error, res)) return;
         return res.status(500).json({ error: "favorite_failed", detail: "internal_error" });
       }
     },

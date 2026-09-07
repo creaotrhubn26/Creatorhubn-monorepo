@@ -1,7 +1,7 @@
 // LeadgridAIUsageModels.swift
 //
 // Modeller for /api/leadgrid/ai-usage/summary og /history (PR #871).
-// Backend gate: billing.view_ai_usage (admin/salgssjef).
+// Backend gate: explicit workspace plus administrator/superadmin membership.
 //
 // Backend bruker snake_case; APIClient.decoder har convertFromSnakeCase
 // så camelCase her mappes automatisk:

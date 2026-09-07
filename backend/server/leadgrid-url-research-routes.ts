@@ -41,6 +41,11 @@ import type { Pool } from "pg";
 import crypto from "crypto";
 
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+import { loadAccessibleLeadgridLead } from "./leadgrid-lead-access.js";
+import {
+  loadAccessibleLeadgridProject,
+  type LeadgridAccessibleProject,
+} from "./leadgrid-project-access.js";
 import { classifyIndustryForLead } from "./leadgrid-industry-classify.js";
 import { runOrchestratedBootstrap } from "./role-room-agent-bootstrap-orchestrator.js";
 import {
@@ -149,22 +154,79 @@ function getSession(
   return null;
 }
 
-async function resolveOrgId(
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function requestedProjectId(req: Request): string {
+  const value =
+    (req.body as Record<string, unknown> | undefined)?.project_id ??
+    (req.body as Record<string, unknown> | undefined)?.projectId ??
+    req.query?.project_id ??
+    req.query?.projectId;
+  return typeof value === "string" ? value.trim() : "";
+}
+
+async function resolveRequestedProject(
   req: Request,
   pool: Pool,
   userId: string,
-): Promise<string | null> {
-  const explicit =
-    (req.query?.organization_id ??
-      (req.body as { organization_id?: string } | undefined)
-        ?.organization_id) as string | undefined;
-  if (typeof explicit === "string" && explicit.length > 0) return explicit;
-  const r = await pool.query<{ organization_id: string }>(
-    `SELECT organization_id::text FROM organization_members
-      WHERE user_id = $1 ORDER BY joined_at ASC LIMIT 1`,
-    [userId],
+): Promise<LeadgridAccessibleProject | null> {
+  const projectId = requestedProjectId(req);
+  if (!projectId) return null;
+  return loadAccessibleLeadgridProject(pool, projectId, userId);
+}
+
+interface AccessibleUrlBatchScope {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  createdBy: string;
+  status: string;
+}
+
+async function loadAccessibleUrlBatch(
+  pool: Pool,
+  batchId: string,
+  userId: string,
+): Promise<AccessibleUrlBatchScope | null> {
+  if (!UUID_PATTERN.test(batchId) || !userId.trim()) return null;
+  const result = await pool.query<{
+    id: string;
+    organization_id: string;
+    project_id: string;
+    created_by: string;
+    status: string;
+  }>(
+    `SELECT id::text, organization_id::text, project_id,
+            created_by::text, status
+       FROM leadgrid_url_research_batches
+      WHERE id = $1::uuid
+        AND organization_id IS NOT NULL
+        AND project_id IS NOT NULL
+      LIMIT 1`,
+    [batchId],
   );
-  return r.rows[0]?.organization_id ?? null;
+  const batch = result.rows[0];
+  if (!batch) return null;
+  const project = await loadAccessibleLeadgridProject(
+    pool,
+    batch.project_id,
+    userId,
+  );
+  if (
+    !project ||
+    project.id !== batch.project_id ||
+    project.organizationId !== batch.organization_id
+  ) {
+    return null;
+  }
+  return {
+    id: batch.id,
+    organizationId: batch.organization_id,
+    projectId: batch.project_id,
+    createdBy: batch.created_by,
+    status: batch.status,
+  };
 }
 
 // =====================================================================
@@ -671,7 +733,8 @@ export async function enrichCompanyProfileWithContact(
 
 interface DraftLeadRow {
   id: string;
-  organization_id: string | null;
+  organization_id: string;
+  project_id: string;
   owner_user_id: string;
   website_url: string | null;
   city: string | null;
@@ -683,20 +746,27 @@ async function selectDraft(
   draftId: string,
   userId: string,
 ): Promise<DraftLeadRow | null> {
+  const accessibleLead = await loadAccessibleLeadgridLead(pool, {
+    leadId: draftId,
+    userId,
+  });
+  if (!accessibleLead) return null;
   const r = await pool.query<DraftLeadRow>(
-    `SELECT id::text, organization_id::text, owner_user_id,
+    `SELECT id::text, organization_id::text, project_id, owner_user_id,
             website_url, city, draft_status
        FROM crm_customers
-      WHERE id = $1::uuid AND owner_user_id = $2
+      WHERE id = $1::uuid
+        AND organization_id = $2::uuid
+        AND project_id = $3
       LIMIT 1`,
-    [draftId, userId],
+    [draftId, accessibleLead.organizationId, accessibleLead.projectId],
   );
   return r.rows[0] ?? null;
 }
 
 async function applyResearchToDraft(
   pool: Pool,
-  draftId: string,
+  draft: DraftLeadRow,
   result: ResearchRunResult,
 ): Promise<void> {
   const { companyProfile, location, bootstrapPayload } = result;
@@ -723,9 +793,11 @@ async function applyResearchToDraft(
        draft_status            = 'researched',
        import_raw_data         = $18::jsonb,
        updated_at              = NOW()
-     WHERE id = $1::uuid`,
+     WHERE id = $1::uuid
+       AND organization_id = $19::uuid
+       AND project_id = $20`,
     [
-      draftId,
+      draft.id,
       companyProfile.name,
       companyProfile.company,
       companyProfile.email,
@@ -743,6 +815,8 @@ async function applyResearchToDraft(
       companyProfile.aiOpportunityScore,
       companyProfile.estimatedValueOere,
       JSON.stringify(bootstrapPayload ?? {}),
+      draft.organization_id,
+      draft.project_id,
     ],
   );
   // Facebook har egen kolonne hvis tilgjengelig — separat query for å
@@ -751,8 +825,15 @@ async function applyResearchToDraft(
     try {
       await pool.query(
         `UPDATE crm_customers SET facebook_url = COALESCE($2, facebook_url)
-          WHERE id = $1::uuid`,
-        [draftId, companyProfile.socials.facebook],
+          WHERE id = $1::uuid
+            AND organization_id = $3::uuid
+            AND project_id = $4`,
+        [
+          draft.id,
+          companyProfile.socials.facebook,
+          draft.organization_id,
+          draft.project_id,
+        ],
       );
     } catch {
       // Stille fail — kolonnen kan mangle i eldre miljøer.
@@ -776,8 +857,15 @@ async function applyResearchToDraft(
     if (classification.industryId) {
       await pool.query(
         `UPDATE crm_customers SET industry_id = $2::uuid, updated_at = NOW()
-          WHERE id = $1::uuid`,
-        [draftId, classification.industryId],
+          WHERE id = $1::uuid
+            AND organization_id = $3::uuid
+            AND project_id = $4`,
+        [
+          draft.id,
+          classification.industryId,
+          draft.organization_id,
+          draft.project_id,
+        ],
       );
     }
   } catch (err) {
@@ -803,7 +891,7 @@ interface CommitOverrides {
 
 async function applyOverridesAndPromote(
   pool: Pool,
-  draftId: string,
+  draft: DraftLeadRow,
   overrides: CommitOverrides,
 ): Promise<void> {
   // Bygg dynamisk SET-list slik at vi bare oppdaterer det som ble sendt.
@@ -812,7 +900,7 @@ async function applyOverridesAndPromote(
     "lead_status = COALESCE(NULLIF(lead_status, ''), 'unvisited')",
     "updated_at = NOW()",
   ];
-  const params: unknown[] = [draftId];
+  const params: unknown[] = [draft.id];
   function add(col: string, value: unknown) {
     if (value === undefined) return;
     params.push(value);
@@ -834,8 +922,10 @@ async function applyOverridesAndPromote(
 
   await pool.query(
     `UPDATE crm_customers SET ${sets.join(", ")}
-      WHERE id = $1::uuid`,
-    params,
+      WHERE id = $1::uuid
+        AND organization_id = $${params.length + 1}::uuid
+        AND project_id = $${params.length + 2}`,
+    [...params, draft.organization_id, draft.project_id],
   );
 }
 
@@ -845,7 +935,7 @@ async function applyOverridesAndPromote(
 
 async function fetchLeadForResponse(
   pool: Pool,
-  leadId: string,
+  lead: Pick<DraftLeadRow, "id" | "organization_id" | "project_id">,
 ): Promise<Record<string, unknown> | null> {
   const r = await pool.query(
     `SELECT id::text,
@@ -876,8 +966,10 @@ async function fetchLeadForResponse(
             updated_at
        FROM crm_customers
       WHERE id = $1::uuid
+        AND organization_id = $2::uuid
+        AND project_id = $3
       LIMIT 1`,
-    [leadId],
+    [lead.id, lead.organization_id, lead.project_id],
   );
   return (r.rows[0] as Record<string, unknown>) ?? null;
 }
@@ -892,6 +984,25 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
   const permUrl = requireLeadMapPermission("leads.import_url", {
     pool,
     activeSessions,
+    resolveOrgId: async (request, db, userId) => {
+      const project = await resolveRequestedProject(request, db, userId);
+      if (project) return project.organizationId;
+
+      const draftId =
+        (request.body as Record<string, unknown> | undefined)?.draft_lead_id ??
+        request.params?.draft_lead_id;
+      if (typeof draftId === "string") {
+        const lead = await loadAccessibleLeadgridLead(db, { leadId: draftId, userId });
+        if (lead) return lead.organizationId;
+      }
+
+      const batchId = request.params?.id;
+      if (typeof batchId === "string") {
+        const batch = await loadAccessibleUrlBatch(db, batchId, userId);
+        if (batch) return batch.organizationId;
+      }
+      return null;
+    },
   });
 
   // -------------------------------------------------------------------
@@ -905,7 +1016,11 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
       if (!session?.userId) {
         return res.status(401).json({ error: "Innlogging kreves" });
       }
-      const body = (req.body ?? {}) as { url?: string };
+      const body = (req.body ?? {}) as {
+        url?: string;
+        project_id?: string;
+        projectId?: string;
+      };
       const rawUrl = typeof body.url === "string" ? body.url.trim() : "";
       if (!rawUrl) {
         return res.status(400).json({ error: "missing_url" });
@@ -922,14 +1037,20 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
         return res.status(400).json({ error: "invalid_url" });
       }
 
-      const orgId = await resolveOrgId(req, pool, session.userId);
+      if (!requestedProjectId(req)) {
+        return res.status(400).json({ error: "project_id_required" });
+      }
+      const project = await resolveRequestedProject(req, pool, session.userId);
+      if (!project) {
+        return res.status(404).json({ error: "project_not_found" });
+      }
       const batchId = crypto.randomUUID();
 
       try {
         const r = await pool.query<{ id: string }>(
           `INSERT INTO crm_customers (
               id, name, status, source,
-              owner_user_id, organization_id,
+              owner_user_id, organization_id, project_id,
               website_url,
               lead_status, lead_source,
               draft_status,
@@ -937,18 +1058,19 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
               created_at, updated_at
             ) VALUES (
               gen_random_uuid(), $1, 'lead', 'url_research',
-              $2, $3::uuid,
-              $4,
+              $2, $3::uuid, $4,
+              $5,
               'unvisited', 'url_research',
               'draft',
-              'url_research', $5::uuid,
+              'url_research', $6::uuid,
               NOW(), NOW()
             )
             RETURNING id::text`,
           [
             "Research pågår…",
             session.userId,
-            orgId,
+            project.organizationId,
+            project.id,
             url,
             batchId,
           ],
@@ -1002,9 +1124,9 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
         if (!result) {
           return res.status(502).json({ error: "orchestrator_unavailable" });
         }
-        await applyResearchToDraft(pool, draftId, result);
+        await applyResearchToDraft(pool, draft, result);
 
-        const lead = await fetchLeadForResponse(pool, draftId);
+        const lead = await fetchLeadForResponse(pool, draft);
         return res.json({
           draft_lead_id: draftId,
           lead,
@@ -1058,9 +1180,13 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
       if (!accept) {
         // Bruker forkastet — slett drafted-rad.
         try {
-          await pool.query(`DELETE FROM crm_customers WHERE id = $1::uuid`, [
-            draftId,
-          ]);
+          await pool.query(
+            `DELETE FROM crm_customers
+              WHERE id = $1::uuid
+                AND organization_id = $2::uuid
+                AND project_id = $3`,
+            [draft.id, draft.organization_id, draft.project_id],
+          );
           return res.json({ ok: true, deleted: true });
         } catch (err) {
           return res
@@ -1070,8 +1196,8 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
       }
 
       try {
-        await applyOverridesAndPromote(pool, draftId, body.overrides ?? {});
-        const lead = await fetchLeadForResponse(pool, draftId);
+        await applyOverridesAndPromote(pool, draft, body.overrides ?? {});
+        const lead = await fetchLeadForResponse(pool, draft);
         // Forsiktighet: hvis lat/lng fortsatt er null etter commit, gi
         // klart signal til klient slik at UX kan be om manuell pin.
         const requiresManualPin =
@@ -1112,11 +1238,14 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
         draft_status: string | null;
       }>(
         `SELECT import_raw_data, location_confidence, draft_status
-           FROM crm_customers WHERE id = $1::uuid`,
-        [draftId],
+           FROM crm_customers
+          WHERE id = $1::uuid
+            AND organization_id = $2::uuid
+            AND project_id = $3`,
+        [draft.id, draft.organization_id, draft.project_id],
       );
       const row = r.rows[0];
-      const lead = await fetchLeadForResponse(pool, draftId);
+      const lead = await fetchLeadForResponse(pool, draft);
       return res.json({
         draft_lead_id: draftId,
         lead,
@@ -1164,8 +1293,8 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
         if (!result) {
           return res.status(502).json({ error: "orchestrator_unavailable" });
         }
-        await applyResearchToDraft(pool, draftId, result);
-        const lead = await fetchLeadForResponse(pool, draftId);
+        await applyResearchToDraft(pool, draft, result);
+        const lead = await fetchLeadForResponse(pool, draft);
         return res.json({
           ok: true,
           section: body.section ?? "all",
@@ -1208,7 +1337,11 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
       if (!session?.userId) {
         return res.status(401).json({ error: "Innlogging kreves" });
       }
-      const body = (req.body ?? {}) as { urls?: unknown };
+      const body = (req.body ?? {}) as {
+        urls?: unknown;
+        project_id?: string;
+        projectId?: string;
+      };
       const { valid, invalid } = normalizeAndValidateUrls(body.urls);
       if (valid.length === 0) {
         return res.status(400).json({
@@ -1224,16 +1357,28 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
         });
       }
 
-      const orgId = await resolveOrgId(req, pool, session.userId);
+      if (!requestedProjectId(req)) {
+        return res.status(400).json({ error: "project_id_required" });
+      }
+      const project = await resolveRequestedProject(req, pool, session.userId);
+      if (!project) {
+        return res.status(404).json({ error: "project_not_found" });
+      }
       const batchId = crypto.randomUUID();
 
       try {
         // 1. Lag batch-rad
         await pool.query(
           `INSERT INTO leadgrid_url_research_batches (
-              id, organization_id, created_by, total_urls, status
-            ) VALUES ($1::uuid, $2::uuid, $3, $4, 'pending')`,
-          [batchId, orgId, session.userId, valid.length],
+              id, organization_id, project_id, created_by, total_urls, status
+            ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'pending')`,
+          [
+            batchId,
+            project.organizationId,
+            project.id,
+            session.userId,
+            valid.length,
+          ],
         );
 
         // 2. Lag draft-leads + item-rader (inline INSERT...RETURNING for å
@@ -1243,7 +1388,7 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
           const draftRes = await pool.query<{ id: string }>(
             `INSERT INTO crm_customers (
                 id, name, status, source,
-                owner_user_id, organization_id,
+                owner_user_id, organization_id, project_id,
                 website_url,
                 lead_status, lead_source,
                 draft_status,
@@ -1251,14 +1396,21 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
                 created_at, updated_at
               ) VALUES (
                 gen_random_uuid(), $1, 'lead', 'url_research_bulk',
-                $2, $3::uuid,
-                $4,
+                $2, $3::uuid, $4,
+                $5,
                 'unvisited', 'url_research',
                 'draft',
-                'url_research_bulk', $5::uuid,
+                'url_research_bulk', $6::uuid,
                 NOW(), NOW()
               ) RETURNING id::text`,
-            ["Research pågår…", session.userId, orgId, url, batchId],
+            [
+              "Research pågår…",
+              session.userId,
+              project.organizationId,
+              project.id,
+              url,
+              batchId,
+            ],
           );
           const draftId = draftRes.rows[0].id;
           await pool.query(
@@ -1310,6 +1462,14 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
       }
       const batchId = req.params.id;
       try {
+        const scope = await loadAccessibleUrlBatch(
+          pool,
+          batchId,
+          session.userId,
+        );
+        if (!scope) {
+          return res.status(404).json({ error: "batch_not_found" });
+        }
         const batchRes = await pool.query<{
           id: string;
           organization_id: string | null;
@@ -1323,12 +1483,14 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
           finished_at: Date | null;
           created_at: Date;
         }>(
-          `SELECT id::text, organization_id::text, created_by::text,
+          `SELECT id::text, organization_id::text, project_id, created_by::text,
                   total_urls, completed_urls, failed_urls, pinned_leads,
                   status, started_at, finished_at, created_at
              FROM leadgrid_url_research_batches
-            WHERE id = $1::uuid AND created_by = $2`,
-          [batchId, session.userId],
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id = $3`,
+          [batchId, scope.organizationId, scope.projectId],
         );
         const batch = batchRes.rows[0];
         if (!batch) {
@@ -1357,6 +1519,7 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
           batch: {
             id: batch.id,
             organization_id: batch.organization_id,
+            project_id: scope.projectId,
             created_by: batch.created_by,
             total_urls: batch.total_urls,
             completed_urls: batch.completed_urls,
@@ -1400,17 +1563,13 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
       }
       const batchId = req.params.id;
       try {
-        // Verifiser eierskap (created_by == userId)
-        const own = await pool.query<{ created_by: string }>(
-          `SELECT created_by::text FROM leadgrid_url_research_batches
-            WHERE id = $1::uuid`,
-          [batchId],
+        const scope = await loadAccessibleUrlBatch(
+          pool,
+          batchId,
+          session.userId,
         );
-        if (!own.rows[0]) {
+        if (!scope) {
           return res.status(404).json({ error: "batch_not_found" });
-        }
-        if (own.rows[0].created_by !== session.userId) {
-          return res.status(403).json({ error: "forbidden" });
         }
         const progress = await readBatchProgress(pool, batchId);
         if (!progress) {
@@ -1475,16 +1634,13 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
         skip_unknown_location?: boolean;
       };
       try {
-        const own = await pool.query<{ created_by: string; status: string }>(
-          `SELECT created_by::text, status FROM leadgrid_url_research_batches
-            WHERE id = $1::uuid`,
-          [batchId],
+        const scope = await loadAccessibleUrlBatch(
+          pool,
+          batchId,
+          session.userId,
         );
-        if (!own.rows[0]) {
+        if (!scope) {
           return res.status(404).json({ error: "batch_not_found" });
-        }
-        if (own.rows[0].created_by !== session.userId) {
-          return res.status(403).json({ error: "forbidden" });
         }
 
         // Bygg confidence-filter
@@ -1507,12 +1663,17 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
           draft_lead_id: string;
           location_confidence: string | null;
         }>(
-          `SELECT id::text, draft_lead_id::text, location_confidence
-             FROM leadgrid_url_research_items
-            WHERE batch_id = $1::uuid
+          `SELECT item.id::text, item.draft_lead_id::text,
+                  item.location_confidence
+             FROM leadgrid_url_research_items item
+             JOIN crm_customers lead
+               ON lead.id = item.draft_lead_id
+              AND lead.organization_id = $2::uuid
+              AND lead.project_id = $3
+            WHERE item.batch_id = $1::uuid
               AND status = 'completed'
-              AND draft_lead_id IS NOT NULL`,
-          [batchId],
+              AND item.draft_lead_id IS NOT NULL`,
+          [batchId, scope.organizationId, scope.projectId],
         );
         let committed = 0;
         let skipped = 0;
@@ -1530,14 +1691,21 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
                 SET draft_status = 'lead',
                     lead_status  = COALESCE(NULLIF(lead_status, ''), 'unvisited'),
                     updated_at   = NOW()
-              WHERE id = $1::uuid`,
-            [item.draft_lead_id],
+              WHERE id = $1::uuid
+                AND organization_id = $2::uuid
+                AND project_id = $3`,
+            [
+              item.draft_lead_id,
+              scope.organizationId,
+              scope.projectId,
+            ],
           );
           await pool.query(
             `UPDATE leadgrid_url_research_items
                 SET final_lead_id = draft_lead_id
-              WHERE id = $1::uuid`,
-            [item.id],
+              WHERE id = $1::uuid
+                AND batch_id = $2::uuid`,
+            [item.id, batchId],
           );
           committed++;
         }
@@ -1570,32 +1738,31 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
       }
       const batchId = req.params.id;
       try {
-        const own = await pool.query<{ created_by: string; status: string }>(
-          `SELECT created_by::text, status FROM leadgrid_url_research_batches
-            WHERE id = $1::uuid`,
-          [batchId],
+        const scope = await loadAccessibleUrlBatch(
+          pool,
+          batchId,
+          session.userId,
         );
-        if (!own.rows[0]) {
+        if (!scope) {
           return res.status(404).json({ error: "batch_not_found" });
         }
-        if (own.rows[0].created_by !== session.userId) {
-          return res.status(403).json({ error: "forbidden" });
-        }
         if (
-          own.rows[0].status === "completed" ||
-          own.rows[0].status === "failed" ||
-          own.rows[0].status === "partial"
+          scope.status === "completed" ||
+          scope.status === "failed" ||
+          scope.status === "partial"
         ) {
           return res.status(409).json({
             error: "batch_already_finished",
-            status: own.rows[0].status,
+            status: scope.status,
           });
         }
         await pool.query(
           `UPDATE leadgrid_url_research_batches
               SET status = 'cancelled', finished_at = COALESCE(finished_at, NOW())
-            WHERE id = $1::uuid`,
-          [batchId],
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id = $3`,
+          [batchId, scope.organizationId, scope.projectId],
         );
         await pool.query(
           `UPDATE leadgrid_url_research_items
@@ -1633,21 +1800,31 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
       const batchId = req.params.id;
       const itemId = req.params.itemId;
       try {
-        // Verifiser eierskap
-        const own = await pool.query<{ created_by: string }>(
-          `SELECT b.created_by::text
-             FROM leadgrid_url_research_items i
-             JOIN leadgrid_url_research_batches b ON b.id = i.batch_id
-            WHERE i.id = $1::uuid AND i.batch_id = $2::uuid`,
-          [itemId, batchId],
+        const scope = await loadAccessibleUrlBatch(
+          pool,
+          batchId,
+          session.userId,
         );
-        if (!own.rows[0]) {
+        if (!scope) {
           return res.status(404).json({ error: "item_not_found" });
         }
-        if (own.rows[0].created_by !== session.userId) {
-          return res.status(403).json({ error: "forbidden" });
+        const item = await pool.query(
+          `SELECT 1
+             FROM leadgrid_url_research_items
+            WHERE id = $1::uuid
+              AND batch_id = $2::uuid
+            LIMIT 1`,
+          [itemId, batchId],
+        );
+        if (!item.rows[0]) {
+          return res.status(404).json({ error: "item_not_found" });
         }
-        const result = await retrySingleItem(pool, itemId);
+        const result = await retrySingleItem(pool, itemId, {
+          expectedScope: {
+            organizationId: scope.organizationId,
+            projectId: scope.projectId,
+          },
+        });
         return res.json({
           ok: result.ok,
           status: result.status,
@@ -1680,20 +1857,19 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
       const batchId = req.params.id;
       const itemId = req.params.itemId;
       try {
-        const own = await pool.query<{ created_by: string }>(
-          `SELECT b.created_by::text
-             FROM leadgrid_url_research_items i
-             JOIN leadgrid_url_research_batches b ON b.id = i.batch_id
-            WHERE i.id = $1::uuid AND i.batch_id = $2::uuid`,
-          [itemId, batchId],
+        const scope = await loadAccessibleUrlBatch(
+          pool,
+          batchId,
+          session.userId,
         );
-        if (!own.rows[0]) {
+        if (!scope) {
           return res.status(404).json({ error: "item_not_found" });
         }
-        if (own.rows[0].created_by !== session.userId) {
-          return res.status(403).json({ error: "forbidden" });
-        }
-        const result = await markItemSkipped(pool, itemId);
+        const result = await markItemSkipped(pool, itemId, {
+          batchId,
+          organizationId: scope.organizationId,
+          projectId: scope.projectId,
+        });
         return res.json({ ok: result.ok });
       } catch (err) {
         return res.status(500).json({
@@ -1721,18 +1897,13 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
       const batchId = req.params.id;
       const itemId = req.params.itemId;
       try {
-        const own = await pool.query<{ created_by: string }>(
-          `SELECT b.created_by::text
-             FROM leadgrid_url_research_items i
-             JOIN leadgrid_url_research_batches b ON b.id = i.batch_id
-            WHERE i.id = $1::uuid AND i.batch_id = $2::uuid`,
-          [itemId, batchId],
+        const scope = await loadAccessibleUrlBatch(
+          pool,
+          batchId,
+          session.userId,
         );
-        if (!own.rows[0]) {
+        if (!scope) {
           return res.status(404).json({ error: "item_not_found" });
-        }
-        if (own.rows[0].created_by !== session.userId) {
-          return res.status(403).json({ error: "forbidden" });
         }
         // Hent item — tolerér at retry_count/quality_score-kolonner
         // mangler i pre-mig-0353 miljø.
@@ -1758,8 +1929,9 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
                     retry_count, last_attempted_at, quality_score,
                     started_at, finished_at
                FROM leadgrid_url_research_items
-              WHERE id = $1::uuid`,
-            [itemId],
+              WHERE id = $1::uuid
+                AND batch_id = $2::uuid`,
+            [itemId, batchId],
           )
           .catch(async () => {
             // Fallback uten retry_count/quality_score
@@ -1786,8 +1958,9 @@ export function registerLeadgridUrlResearchRoutes(deps: Deps): void {
                       NULL::integer AS quality_score,
                       started_at, finished_at
                  FROM leadgrid_url_research_items
-                WHERE id = $1::uuid`,
-              [itemId],
+                WHERE id = $1::uuid
+                  AND batch_id = $2::uuid`,
+              [itemId, batchId],
             );
           });
         const item = itemRes.rows[0];

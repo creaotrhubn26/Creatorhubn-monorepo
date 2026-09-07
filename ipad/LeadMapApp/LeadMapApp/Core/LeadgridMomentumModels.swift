@@ -10,8 +10,23 @@
 
 import Foundation
 
+enum LeadgridMomentumScopeError: LocalizedError, Equatable {
+    case missingProjectID
+    case responseProjectMismatch
+
+    var errorDescription: String? {
+        switch self {
+        case .missingProjectID:
+            return "Velg et kundeprosjekt før du åpner momentum."
+        case .responseProjectMismatch:
+            return "Momentum-svaret tilhører ikke det aktive kundeprosjektet."
+        }
+    }
+}
+
 struct LeadgridMomentum: Codable, Hashable {
     let organizationId: String
+    let projectId: String
     let date: String
     let score: Double
     let breakdown: Breakdown
@@ -54,11 +69,13 @@ struct LeadgridMomentum: Codable, Hashable {
 }
 
 struct LeadgridMomentumResponse: Codable {
+    let projectId: String
     let momentum: LeadgridMomentum
 }
 
 struct LeadgridSalesGoal: Codable, Hashable {
     let organizationId: String
+    let projectId: String
     let yearMonth: String
     let revenueTarget: Double?
     let dealsTarget: Int?
@@ -72,6 +89,7 @@ struct LeadgridSalesGoal: Codable, Hashable {
 }
 
 struct LeadgridSalesGoalResponse: Codable {
+    let projectId: String
     let goal: LeadgridSalesGoal
 }
 
@@ -79,6 +97,7 @@ struct LeadgridSalesGoalResponse: Codable {
 
 struct LeadgridMomentumTrend: Codable, Hashable {
     let organizationId: String
+    let projectId: String
     let days: Int
     let points: [TrendPoint]
     let avg: Double

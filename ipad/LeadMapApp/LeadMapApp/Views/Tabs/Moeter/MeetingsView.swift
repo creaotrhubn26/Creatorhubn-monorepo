@@ -48,6 +48,7 @@ struct Meeting: Identifiable, Hashable {
     let location: String        // "Oslo, Norge"
     let contactName: String
     let contactRole: String
+    var contactPhone: String? = nil
     var contactEmail: String? = nil
     let status: Status
     let icon: String            // company-icon
@@ -117,6 +118,8 @@ struct UpcomingMeetingMini: Identifiable, Hashable {
     let address: String
     let contactName: String
     let contactRole: String
+    var contactPhone: String? = nil
+    var contactEmail: String? = nil
     let status: Meeting.Status
     let icon: String
     let iconColor: Color
@@ -161,6 +164,7 @@ struct UpcomingMeetingMini: Identifiable, Hashable {
             startTime: time, endTime: endTime,
             company: company, location: location,
             contactName: contactName, contactRole: contactRole,
+            contactPhone: contactPhone, contactEmail: contactEmail,
             status: status,
             icon: icon, iconColor: iconColor,
             address: address, meetingRoom: nil,
@@ -386,7 +390,8 @@ extension Meeting {
             location: location,
             contactName: "",
             contactRole: "",
-            contactEmail: event.email,
+            contactPhone: lead?.phone,
+            contactEmail: lead?.email ?? event.email,
             status: .fromBackend(event.meetingStatus),
             icon: "building.2.fill",
             iconColor: MeetingMapping.stableColor(for: event.leadName),
@@ -421,6 +426,8 @@ extension UpcomingMeetingMini {
             address: lead?.address ?? event.city ?? "",
             contactName: "",
             contactRole: "",
+            contactPhone: lead?.phone,
+            contactEmail: lead?.email ?? event.email,
             status: .confirmed,
             icon: "building.2.fill",
             iconColor: MeetingMapping.stableColor(for: event.leadName),
@@ -623,11 +630,17 @@ struct MeetingsView: View {
             demoTidOverstyringer[m.id] = (nyStart, nySlutt, dagKol)
             return
         }
+        guard let projectId = appState.activeLeadgridProjectId else {
+            konfliktMelding = "Velg et kundeprosjekt før møtet endres."
+            return
+        }
         Task { @MainActor in
             do {
                 try await appState.api?.oppdaterMote(
                     leadId: m.id.uuidString.lowercased(),
-                    tidspunkt: start, varighetMin: varighetMin)
+                    tidspunkt: start, varighetMin: varighetMin,
+                    projectId: projectId,
+                    organizationId: appState.activeOrganizationId)
                 await appState.refreshAll()
             } catch {
                 print("[Møter] flytting feilet: \(error)")
@@ -689,9 +702,18 @@ struct MeetingsView: View {
         guard let basis = Calendar.current.date(from: comps),
               let nyDato = Calendar.current.date(byAdding: .day, value: deltaDager, to: basis)
         else { return }
+        guard let projectId = appState.activeLeadgridProjectId else {
+            konfliktMelding = "Velg et kundeprosjekt før møtet flyttes."
+            return
+        }
         Task { @MainActor in
             do {
-                try await appState.api?.flyttMoteTid(leadId: m.id.uuidString.lowercased(), til: nyDato)
+                try await appState.api?.flyttMoteTid(
+                    leadId: m.id.uuidString.lowercased(),
+                    til: nyDato,
+                    projectId: projectId,
+                    organizationId: appState.activeOrganizationId
+                )
                 await appState.refreshAll()
                 // Reisetids-sjekken kjenner bare dagens agenda — hopp over
                 // ved dag-bytte (måldagens agenda er ukjent her).
@@ -861,11 +883,19 @@ struct MeetingsView: View {
         let dagKol = forrige?.2
         demoTidOverstyringer[m.id] = (m.startTime, nySlutt, dagKol)
         guard !isDemo else { return }
+        guard let projectId = appState.activeLeadgridProjectId else {
+            demoTidOverstyringer[m.id] = forrige
+            konfliktMelding = "Velg et kundeprosjekt før varigheten endres."
+            return
+        }
         let nyVarighet = nySluttMin - startMin
         Task { @MainActor in
             do {
                 try await appState.api?.oppdaterMote(
-                    leadId: m.id.uuidString.lowercased(), varighetMin: nyVarighet)
+                    leadId: m.id.uuidString.lowercased(),
+                    varighetMin: nyVarighet,
+                    projectId: projectId,
+                    organizationId: appState.activeOrganizationId)
                 await appState.refreshAll()
                 demoTidOverstyringer[m.id] = nil
             } catch {
@@ -2155,6 +2185,7 @@ struct MeetingDetailSidebar: View {
         }
         .sheet(isPresented: $showMoteBrief) {
             MoteBriefSheet(selskap: meeting.company,
+                           leadId: meeting.id.uuidString.lowercased(),
                            kontakt: meeting.contactName,
                            kontaktRolle: meeting.contactRole,
                            motetid: "\(meeting.startTime)–\(meeting.endTime)",
@@ -2175,6 +2206,11 @@ struct MeetingDetailSidebar: View {
 
     private func toggleFavorite() {
         guard !savingFavorite, let api = appState.api else { return }
+        guard let projectId = appState.activeProjectId,
+              !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            flashToast("Velg et kundeprosjekt først")
+            return
+        }
         let leadId = meeting.id.uuidString.lowercased()
         let previous = favorited
         favorited.toggle()
@@ -2185,6 +2221,7 @@ struct MeetingDetailSidebar: View {
                 favorited = try await api.setLeadFavorite(
                     leadId: leadId,
                     favorite: favorited,
+                    projectId: projectId,
                     organizationId: appState.activeOrganizationId
                 )
                 await appState.refreshLeads()
@@ -2317,15 +2354,6 @@ struct MeetingDetailSidebar: View {
                 }
             }
             Section("Del") {
-                if DemoModeManager.isActiveNonisolated {
-                    Button {
-                        let link = "https://leadgrid.app/m/\(meeting.id.uuidString.prefix(8))"
-                        UIPasteboard.general.string = link
-                        flashToast("Demo-møtelenke kopiert")
-                    } label: {
-                        Label("Kopier demo-møtelenke", systemImage: "link")
-                    }
-                }
                 Menu {
                     Button { calMode = .agenda; flashToast("Byttet til Agenda") } label: {
                         Label("Agenda", systemImage: "list.bullet.rectangle")
@@ -2411,13 +2439,38 @@ struct MeetingDetailSidebar: View {
                     .foregroundStyle(MtBrand.textSecondary)
             }
             Spacer()
-            iconCircle("phone", color: MtBrand.green) {
-                openURL("tel://+4790012345")
+            if let phoneURL = contactPhoneURL {
+                iconCircle("phone", color: MtBrand.green) {
+                    openURL(phoneURL.absoluteString)
+                }
+                .accessibilityLabel("Åpne Telefon med lagret nummer")
             }
-            iconCircle("envelope", color: MtBrand.blue) {
-                openURL("mailto:\(meeting.contactName.replacingOccurrences(of: " ", with: ".").lowercased())@\(meeting.company.replacingOccurrences(of: " AS", with: "").replacingOccurrences(of: " ", with: "").lowercased()).no")
+            if let emailURL = contactEmailURL {
+                iconCircle("envelope", color: MtBrand.blue) {
+                    openURL(emailURL.absoluteString)
+                }
+                .accessibilityLabel("Åpne e-post med lagret adresse")
+            }
+            if contactPhoneURL == nil && contactEmailURL == nil {
+                Text("Ingen kontaktkanal lagret")
+                    .font(.appScaled(size: 10))
+                    .foregroundStyle(MtBrand.textTertiary)
             }
         }
+    }
+
+    private var contactPhoneURL: URL? {
+        guard let phone = meeting.contactPhone?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !phone.isEmpty else { return nil }
+        let normalized = phone.filter { $0.isNumber || $0 == "+" }
+        guard !normalized.isEmpty else { return nil }
+        return URL(string: "tel://\(normalized)")
+    }
+
+    private var contactEmailURL: URL? {
+        guard let email = meeting.contactEmail?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !email.isEmpty else { return nil }
+        return URL(string: "mailto:\(email)")
     }
 
     private func iconCircle(_ icon: String, color: Color, action: @escaping () -> Void) -> some View {

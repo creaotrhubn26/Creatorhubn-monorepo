@@ -16,6 +16,8 @@ struct LeadgridImportPreview: Codable, Sendable {
     let columns: [String]
     let rows: [[String: String]]   // første 20 rader
     let totalRows: Int
+    let projectId: String
+    let projectName: String
 }
 
 // MARK: - Commit-respons (CSV)
@@ -25,4 +27,6 @@ struct LeadgridImportCommit: Codable, Sendable {
     let imported: Int
     let skippedDuplicates: Int
     let errorsCount: Int
+    let projectId: String
+    let projectName: String
 }

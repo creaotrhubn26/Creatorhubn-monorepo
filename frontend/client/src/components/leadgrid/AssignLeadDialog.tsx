@@ -1,16 +1,15 @@
 /**
  * AssignLeadDialog.tsx
  *
- * 2-stegs tildelings-dialog. Brukes både:
- *   1. Når markedssjef klikker "Godta som prosjekt" på en ny lead
- *      (kan velge teamleder + ev. rep med en gang)
- *   2. På et eksisterende prosjekt for å re-tildele
+ * 2-stegs tildelings-dialog for en allerede persistert Leadgrid CRM-lead.
+ * Agency inbox-leads må promoteres først; denne komponenten skal aldri motta
+ * en agency_leads.id som customerId.
  *
  * Sorterer kandidater på workload (færrest aktive først) — auto-suggest.
  * Viser online-status, profilbilde, og antall aktive leads per person.
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box, Dialog, DialogTitle, DialogContent, DialogActions, Button, Stack,
   Typography, Avatar, Chip, TextField, MenuItem, Tab, Tabs, Alert,
@@ -21,6 +20,7 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
 import SortIcon from "@mui/icons-material/Sort";
 import PersonIcon from "@mui/icons-material/Person";
+import { buildAssignableUsersPath } from "./leadInboxPromotionContract";
 
 interface AssignableUser {
   user_id: string;
@@ -33,27 +33,42 @@ interface AssignableUser {
   is_online: boolean;
 }
 
-type Mode = "accept" | "reassign";
+type Mode = "assign" | "reassign";
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** Kunde-/lead-ID. Hvis 'accept'-mode, er det leadId i agency_leads. */
+  /** Persisted crm_customers.id. Never an agency_leads.id. */
   customerId: string;
+  /** Required for a newly promoted lead; checked against the persisted lead. */
+  projectId?: string;
   /** Lead-data (vises i header) */
   lead?: { agency_name?: string; contact_name?: string; claude_temperature?: string };
   mode: Mode;
   /** Hvilket nivå skal tildeles? team_leader, rep, eller begge (markedssjef-flow) */
   level: "team_leader" | "rep" | "both";
-  onSubmit?: (data: {
-    assigned_team_leader_id: string | null;
-    assigned_rep_id: string | null;
-    assignment_note: string | null;
-  }) => Promise<void> | void;
+  onComplete?: () => Promise<void> | void;
+}
+
+function authHeaders(): HeadersInit {
+  const token = typeof window === "undefined"
+    ? null
+    : localStorage.getItem("rr_bearer");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function responseError(response: Response, fallback: string): Promise<Error> {
+  const body = await response.json().catch(() => ({}));
+  const message = typeof body?.message === "string"
+    ? body.message
+    : typeof body?.error === "string"
+      ? body.error
+      : fallback;
+  return new Error(message);
 }
 
 export function AssignLeadDialog({
-  open, onClose, customerId, lead, mode, level, onSubmit,
+  open, onClose, customerId, projectId, lead, mode, level, onComplete,
 }: Props) {
   const [step, setStep] = useState<"team_leader" | "rep">(
     level === "rep" ? "rep" : "team_leader"
@@ -66,65 +81,140 @@ export function AssignLeadDialog({
   const [sortBy, setSortBy] = useState<"workload" | "online" | "alphabet">("workload");
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [teamLeaderAssigned, setTeamLeaderAssigned] = useState(false);
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
+    setStep(level === "rep" ? "rep" : "team_leader");
+    setPickedTeamLeader("");
+    setPickedRep("");
+    setNote("");
+    setLoadError(null);
+    setSubmitError(null);
+    setTeamLeaderAssigned(false);
+    if (mode === "assign" && !projectId?.trim()) {
+      setTeamLeaders([]);
+      setReps([]);
+      setLoading(false);
+      setLoadError("Leadet mangler valgt Leadgrid-prosjekt. Tildeling er stoppet.");
+      return;
+    }
+    const controller = new AbortController();
     setLoading(true);
+    const fetchUsers = async (role: "team_leader" | "rep") => {
+      const url = projectId?.trim()
+        ? buildAssignableUsersPath({
+            role,
+            crmLeadId: customerId,
+            projectId,
+          })
+        : `/api/leadgrid/assignable-users?${new URLSearchParams({
+            role,
+            leadId: customerId,
+          }).toString()}`;
+      const response = await fetch(url, {
+        credentials: "include",
+        headers: authHeaders(),
+        signal: controller.signal,
+      });
+      if (!response.ok) throw await responseError(response, "Kunne ikke hente teamet");
+      return response.json();
+    };
     Promise.all([
-      fetch("/api/leadgrid/assignable-users?role=team_leader", { credentials: "include" })
-        .then((r) => r.ok ? r.json() : { users: [] }),
-      fetch("/api/leadgrid/assignable-users?role=rep", { credentials: "include" })
-        .then((r) => r.ok ? r.json() : { users: [] }),
+      fetchUsers("team_leader"),
+      fetchUsers("rep"),
     ]).then(([tl, rep]) => {
+      if (controller.signal.aborted) return;
       setTeamLeaders(tl.users ?? []);
       setReps(rep.users ?? []);
-    }).finally(() => setLoading(false));
-  }, [open]);
+    }).catch((error) => {
+      if (controller.signal.aborted) return;
+      setTeamLeaders([]);
+      setReps([]);
+      setLoadError(error instanceof Error ? error.message : "Kunne ikke hente teamet");
+    }).finally(() => {
+      if (!controller.signal.aborted) setLoading(false);
+    });
+    return () => controller.abort();
+  }, [customerId, level, mode, open, projectId]);
 
   const sortedTeamLeaders = useMemo(() => sortUsers(teamLeaders, sortBy), [teamLeaders, sortBy]);
   const sortedReps = useMemo(() => sortUsers(reps, sortBy), [reps, sortBy]);
 
   const canNext = () => {
     if (step === "team_leader") return level === "team_leader" ? !!pickedTeamLeader : true;
-    return !!pickedRep || (mode === "accept" && level === "both");
+    return !!pickedRep || level === "both";
   };
 
   const handleSubmit = async () => {
+    if (loadError || submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
+    setSubmitError(null);
+    let leaderPersisted = teamLeaderAssigned;
     try {
-      if (mode === "accept" && onSubmit) {
-        await onSubmit({
-          assigned_team_leader_id: pickedTeamLeader || null,
-          assigned_rep_id: pickedRep || null,
-          assignment_note: note || null,
-        });
-      } else if (mode === "reassign") {
-        // Direkte API-kall
-        if (step === "team_leader" && pickedTeamLeader) {
-          await fetch(`/api/leadgrid/customers/${customerId}/assign-team-leader`, {
-            method: "POST", credentials: "include",
-            headers: { "Content-Type": "application/json" },
+      if (
+        (level === "team_leader" || level === "both") &&
+        pickedTeamLeader &&
+        !teamLeaderAssigned
+      ) {
+        const response = await fetch(
+          `/api/leadgrid/customers/${encodeURIComponent(customerId)}/assign-team-leader`,
+          {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
             body: JSON.stringify({ team_leader_user_id: pickedTeamLeader, note }),
-          });
+          },
+        );
+        if (!response.ok) {
+          throw await responseError(response, "Kunne ikke tildele teamleder");
         }
-        if (step === "rep" && pickedRep) {
-          await fetch(`/api/leadgrid/customers/${customerId}/assign-rep`, {
-            method: "POST", credentials: "include",
-            headers: { "Content-Type": "application/json" },
+        leaderPersisted = true;
+        setTeamLeaderAssigned(true);
+      }
+      if ((level === "rep" || level === "both") && pickedRep) {
+        const response = await fetch(
+          `/api/leadgrid/customers/${encodeURIComponent(customerId)}/assign-rep`,
+          {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
             body: JSON.stringify({ rep_user_id: pickedRep, note }),
-          });
+          },
+        );
+        if (!response.ok) {
+          const cause = await responseError(response, "Kunne ikke tildele rep");
+          throw new Error(
+            leaderPersisted
+              ? `Teamleder er lagret, men rep kunne ikke tildeles: ${cause.message}`
+              : cause.message,
+          );
         }
       }
+      await onComplete?.();
       onClose();
-    } finally { setSubmitting(false); }
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Tildeling feilet");
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  };
+
+  const handleClose = () => {
+    if (!submitting) onClose();
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle>
         <Stack direction="row" alignItems="center" spacing={1.5}>
           <Box sx={{ flex: 1 }}>
-            {mode === "accept" ? "Godta som prosjekt + tildel" : "Re-tildel lead"}
+            {mode === "assign" ? "Tildel nytt Leadgrid-lead" : "Re-tildel lead"}
             {lead?.agency_name && (
               <Typography variant="body2" color="text.secondary">
                 {lead.agency_name}
@@ -169,6 +259,8 @@ export function AssignLeadDialog({
       )}
 
       <DialogContent dividers>
+        {loadError && <Alert severity="error" sx={{ mb: 2 }}>{loadError}</Alert>}
+        {submitError && <Alert severity="error" sx={{ mb: 2 }}>{submitError}</Alert>}
         {loading ? (
           <Box sx={{ p: 4, textAlign: "center" }}><CircularProgress /></Box>
         ) : step === "team_leader" ? (
@@ -195,9 +287,10 @@ export function AssignLeadDialog({
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={onClose}>Avbryt</Button>
+        <Button onClick={handleClose} disabled={submitting}>Avbryt</Button>
         {level === "both" && step === "rep" && (
-          <Button onClick={() => handleSubmit()}>
+          <Button onClick={() => handleSubmit()}
+                  disabled={submitting || loading || !!loadError || !pickedTeamLeader}>
             Hopp over rep (teamleder velger selv)
           </Button>
         )}
@@ -207,9 +300,9 @@ export function AssignLeadDialog({
           </Button>
         ) : (
           <Button variant="contained" color="success" onClick={handleSubmit}
-                  disabled={submitting || !canNext()}
+                  disabled={submitting || loading || !!loadError || !canNext()}
                   startIcon={<CheckCircleIcon />}>
-            {submitting ? "Tildeler…" : mode === "accept" ? "Godta + tildel" : "Tildel"}
+            {submitting ? "Tildeler…" : "Tildel"}
           </Button>
         )}
       </DialogActions>

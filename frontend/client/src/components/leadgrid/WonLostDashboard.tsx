@@ -14,9 +14,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   Box, Card, CardContent, Stack, Typography, Chip, ToggleButton,
   ToggleButtonGroup, Avatar, LinearProgress, Tooltip, CircularProgress,
-  Divider,
+  Divider, Alert, MenuItem, TextField,
 } from "@mui/material";
-import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelIcon from "@mui/icons-material/Cancel";
@@ -26,6 +25,19 @@ import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import IconButton from "@mui/material/IconButton";
 import { LeadExportDialog } from "./LeadExportDialog";
+
+function authHeaders(): HeadersInit {
+  const token = typeof window === "undefined"
+    ? null
+    : localStorage.getItem("rr_bearer");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+interface ProjectListItem {
+  id: string;
+  name: string;
+  description: string | null;
+}
 
 interface Stats {
   period_days: number;
@@ -68,17 +80,114 @@ function nokFmt(oere: string | number): string {
 
 export function WonLostDashboard() {
   const [period, setPeriod] = useState<"7d" | "30d" | "90d">("30d");
+  const [projects, setProjects] = useState<ProjectListItem[]>([]);
+  const [projectId, setProjectId] = useState(() =>
+    typeof window === "undefined"
+      ? ""
+      : localStorage.getItem("rr_lead_map_active_project") ?? "",
+  );
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [projectError, setProjectError] = useState<string | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
 
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === projectId) ?? null,
+    [projectId, projects],
+  );
+
   useEffect(() => {
-    setLoading(true);
-    fetch(`/api/leadgrid/won-lost-stats?period=${period}`, { credentials: "include" })
-      .then((r) => r.ok ? r.json() : null)
-      .then(setStats)
-      .finally(() => setLoading(false));
-  }, [period]);
+    const controller = new AbortController();
+    const loadProjects = async () => {
+      setProjectsLoading(true);
+      setProjectError(null);
+      try {
+        const organizationId =
+          typeof window === "undefined"
+            ? null
+            : localStorage.getItem("rr_lead_map_active_org");
+        const params = new URLSearchParams();
+        if (organizationId) params.set("organization_id", organizationId);
+        const suffix = params.size > 0 ? `?${params.toString()}` : "";
+        const response = await fetch(
+          `/api/admin-room/lead-map/projects${suffix}`,
+          { credentials: "include", headers: authHeaders(), signal: controller.signal },
+        );
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body?.error ?? "Kunne ikke hente kundeprosjekter");
+        }
+        const nextProjects = Array.isArray(body.projects) ? body.projects : [];
+        setProjects(nextProjects);
+        setProjectId((current) => {
+          if (nextProjects.some((project: ProjectListItem) => project.id === current)) {
+            return current;
+          }
+          return nextProjects.length === 1 ? nextProjects[0].id : "";
+        });
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setProjects([]);
+          setProjectError(
+            error instanceof Error ? error.message : "Kunne ikke hente kundeprosjekter",
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) setProjectsLoading(false);
+      }
+    };
+    void loadProjects();
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (projectId) localStorage.setItem("rr_lead_map_active_project", projectId);
+    else localStorage.removeItem("rr_lead_map_active_project");
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!selectedProject) {
+      setStats(null);
+      setStatsError(null);
+      setLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const loadStats = async () => {
+      setLoading(true);
+      setStatsError(null);
+      try {
+        const params = new URLSearchParams({
+          period,
+          projectId: selectedProject.id,
+        });
+        const response = await fetch(
+          `/api/leadgrid/won-lost-stats?${params.toString()}`,
+          { credentials: "include", headers: authHeaders(), signal: controller.signal },
+        );
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body?.error ?? "Kunne ikke hente salgsresultat");
+        }
+        setStats(body);
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setStats(null);
+          setStatsError(
+            error instanceof Error ? error.message : "Kunne ikke hente salgsresultat",
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    };
+    void loadStats();
+    return () => controller.abort();
+  }, [period, selectedProject]);
 
   const maxMomWon = useMemo(() => {
     if (!stats) return 1;
@@ -89,31 +198,92 @@ export function WonLostDashboard() {
     <Card sx={{ bgcolor: "rgba(155,225,93,0.04)",
                  border: "1px solid rgba(155,225,93,0.20)" }}>
       <CardContent>
-        <Stack direction="row" alignItems="center" mb={2}>
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          alignItems={{ xs: "stretch", md: "center" }}
+          spacing={2}
+          mb={2}
+        >
           <Box sx={{ flex: 1 }}>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
               Vunnet / Tapt
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Salgsresultat for hele organisasjonen
+              {selectedProject
+                ? `Salgsresultat for ${selectedProject.name}`
+                : "Velg kundeprosjekt for å se isolerte salgsresultater"}
             </Typography>
           </Box>
-          <Tooltip title="Eksporter (CSV / PDF-rapport)">
-            <IconButton size="small" onClick={() => setExportOpen(true)}>
-              <FileDownloadIcon />
-            </IconButton>
-          </Tooltip>
-          <ToggleButtonGroup size="small" value={period}
-                              exclusive onChange={(_, v) => v && setPeriod(v)}>
-            <ToggleButton value="7d">7d</ToggleButton>
-            <ToggleButton value="30d">30d</ToggleButton>
-            <ToggleButton value="90d">90d</ToggleButton>
-          </ToggleButtonGroup>
+          <TextField
+            select
+            size="small"
+            label="Kundeprosjekt"
+            value={projectId}
+            onChange={(event) => setProjectId(event.target.value)}
+            disabled={projectsLoading}
+            sx={{ minWidth: { xs: "100%", md: 240 } }}
+          >
+            <MenuItem value="" disabled>
+              Velg kundeprosjekt
+            </MenuItem>
+            {projects.map((project) => (
+              <MenuItem key={project.id} value={project.id}>
+                {project.name}
+              </MenuItem>
+            ))}
+          </TextField>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Tooltip
+              title={
+                selectedProject
+                  ? "Eksporter valgt kundeprosjekt (CSV / PDF-rapport)"
+                  : "Velg kundeprosjekt før eksport"
+              }
+            >
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => setExportOpen(true)}
+                  disabled={!selectedProject}
+                >
+                  <FileDownloadIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <ToggleButtonGroup
+              size="small"
+              value={period}
+              exclusive
+              onChange={(_, value) => value && setPeriod(value)}
+            >
+              <ToggleButton value="7d">7d</ToggleButton>
+              <ToggleButton value="30d">30d</ToggleButton>
+              <ToggleButton value="90d">90d</ToggleButton>
+            </ToggleButtonGroup>
+          </Stack>
         </Stack>
 
-        <LeadExportDialog open={exportOpen} onClose={() => setExportOpen(false)} />
+        {selectedProject && (
+          <LeadExportDialog
+            open={exportOpen}
+            onClose={() => setExportOpen(false)}
+            projectId={selectedProject.id}
+            projectName={selectedProject.name}
+          />
+        )}
 
-        {loading ? (
+        {projectsLoading ? (
+          <Box sx={{ p: 4, textAlign: "center" }}><CircularProgress /></Box>
+        ) : projectError ? (
+          <Alert severity="error">{projectError}</Alert>
+        ) : !selectedProject ? (
+          <Alert severity="info">
+            Velg ett Leadgrid-kundeprosjekt. Role Room- og castingprosjekter er
+            ikke del av denne rapporten.
+          </Alert>
+        ) : statsError ? (
+          <Alert severity="error">{statsError}</Alert>
+        ) : loading ? (
           <Box sx={{ p: 4, textAlign: "center" }}><CircularProgress /></Box>
         ) : !stats ? (
           <Typography variant="body2" color="text.secondary"

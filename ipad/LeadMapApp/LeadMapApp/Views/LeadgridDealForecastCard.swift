@@ -11,6 +11,7 @@ import SwiftUI
 
 struct LeadgridDealForecastCard: View {
     let api: APIClient
+    let projectId: String
 
     @State private var forecast: LeadgridDealForecast?
     @State private var atRisk: [LeadgridDealAtRisk] = []
@@ -114,8 +115,8 @@ struct LeadgridDealForecastCard: View {
         loading = true
         defer { loading = false }
         do {
-            async let f = api.fetchDealForecast()
-            async let r = api.fetchDealsAtRisk(limit: 5)
+            async let f = api.fetchDealForecast(projectId: projectId)
+            async let r = api.fetchDealsAtRisk(projectId: projectId, limit: 5)
             forecast = try await f
             atRisk = (try? await r) ?? []
         } catch {

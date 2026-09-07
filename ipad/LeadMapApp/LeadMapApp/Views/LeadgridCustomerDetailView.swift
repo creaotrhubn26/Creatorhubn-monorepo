@@ -16,6 +16,7 @@ import SwiftUI
 struct LeadgridCustomerDetailView: View {
     let customerId: String
     let api: APIClient
+    let organizationId: String
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
 
@@ -29,6 +30,7 @@ struct LeadgridCustomerDetailView: View {
     @State private var leadStatus: String = ""
     @State private var showResearch = false
     @State private var showNoteEditor = false
+    @State private var contactRequest: LeadgridExternalContactRequest?
 
     /// Slå opp matchende LeadModel fra AppState så vi får lead-score,
     /// temperatur, next-action, expected-value, telefon etc. uten et
@@ -81,6 +83,7 @@ struct LeadgridCustomerDetailView: View {
                     LeadgridAssignSheet(
                         customerId: customerId,
                         customerName: c.name,
+                        projectId: matchingLead?.projectId ?? appState.activeLeadgridProjectId,
                         level: assignLevel,
                         api: api,
                     )
@@ -99,8 +102,12 @@ struct LeadgridCustomerDetailView: View {
         .task {
             await load()
             // Auto-mark-seen ved åpning (paritet m/ web)
-            try? await api.markLeadSeen(customerId: customerId)
+            try? await api.markLeadSeen(
+                customerId: customerId,
+                organizationId: organizationId
+            )
         }
+        .leadgridContactHandoff(request: $contactRequest)
     }
 
     private func load() async {
@@ -150,9 +157,9 @@ struct LeadgridCustomerDetailView: View {
         HStack(spacing: 10) {
             actionButton(title: "Ring",
                          icon: "phone.fill",
-                         enabled: (c.phone ?? "").isEmpty == false) {
-                if let p = c.phone, let url = URL(string: "tel:\(p)") {
-                    UIApplication.shared.open(url)
+                         enabled: phoneURL(c.phone ?? "") != nil) {
+                if let phone = c.phone, let url = phoneURL(phone) {
+                    requestContact(url: url, channel: .phone)
                 }
             }
             actionButton(title: "Notat", icon: "square.and.pencil") {
@@ -340,17 +347,23 @@ struct LeadgridCustomerDetailView: View {
     @ViewBuilder
     private func contactCard(_ c: LeadgridCustomerDetail) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            if let email = c.email, !email.isEmpty {
-                Link(destination: URL(string: "mailto:\(email)")!) {
+            if let email = c.email, !email.isEmpty, let url = emailURL(email) {
+                Button {
+                    requestContact(url: url, channel: .email)
+                } label: {
                     Label(email, systemImage: "envelope.fill")
                         .font(.callout).foregroundStyle(.purple)
                 }
+                .buttonStyle(.plain)
             }
-            if let phone = c.phone, !phone.isEmpty {
-                Link(destination: URL(string: "tel:\(phone)")!) {
+            if let phone = c.phone, !phone.isEmpty, let url = phoneURL(phone) {
+                Button {
+                    requestContact(url: url, channel: .phone)
+                } label: {
                     Label(phone, systemImage: "phone.fill")
                         .font(.callout).foregroundStyle(.purple)
                 }
+                .buttonStyle(.plain)
             }
             if let web = c.websiteUrl, !web.isEmpty,
                let url = URL(string: web.hasPrefix("http") ? web : "https://\(web)") {
@@ -365,6 +378,34 @@ struct LeadgridCustomerDetailView: View {
         .padding()
         .background(Color(.secondarySystemBackground),
                      in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func requestContact(
+        url: URL,
+        channel: LeadgridExternalContactChannel
+    ) {
+        contactRequest = .init(
+            url: url,
+            channel: channel,
+            leadId: customerId,
+            leadProjectId: matchingLead?.projectId)
+    }
+
+    private func phoneURL(_ phone: String) -> URL? {
+        let cleaned = phone.filter { character in
+            character.isNumber || character == "+"
+        }
+        guard !cleaned.isEmpty else { return nil }
+        return URL(string: "tel:\(cleaned)")
+    }
+
+    private func emailURL(_ email: String) -> URL? {
+        let cleaned = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return nil }
+        var components = URLComponents()
+        components.scheme = "mailto"
+        components.path = cleaned
+        return components.url
     }
 
     @ViewBuilder

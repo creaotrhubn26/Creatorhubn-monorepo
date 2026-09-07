@@ -29,6 +29,7 @@ import {
 interface BatchRow {
   id: string;
   organization_id: string | null;
+  project_id?: string | null;
   created_by: string;
   total_urls: number;
   completed_urls: number;
@@ -71,13 +72,38 @@ function buildMockPool(seed: {
   items: ItemRow[];
   drafts: DraftRow[];
 }): Pool {
-  const batches: BatchRow[] = [seed.batch];
+  const batches: BatchRow[] = [{
+    ...seed.batch,
+    organization_id:
+      seed.batch.organization_id ?? "11111111-1111-4111-8111-111111111111",
+    project_id: seed.batch.project_id ?? "project-a",
+  }];
   const items: ItemRow[] = [...seed.items];
   const drafts: DraftRow[] = [...seed.drafts];
 
   // Veldig løs SQL-parser — vi matcher kun de SQL-strings prosessoren faktisk bruker.
   const query = vi.fn(async (sql: string, params?: unknown[]) => {
     const text = sql.replace(/\s+/g, " ").trim();
+    if (text.includes("FROM leadgrid_projects p")) {
+      const projectId = String(params?.[0]);
+      const userId = String(params?.[1]);
+      const batch = batches.find((candidate) => candidate.project_id === projectId);
+      return {
+        rows: batch
+          ? [{
+              id: projectId,
+              organization_id: batch.organization_id,
+              name: "Test project",
+              description: null,
+              project_type: "b2b_sales",
+              industry: null,
+              status: "active",
+              created_by: userId,
+              member_role: "owner",
+            }]
+          : [],
+      };
+    }
     // --- batch reads ---
     if (
       text.startsWith("SELECT status FROM leadgrid_url_research_batches")
@@ -88,7 +114,7 @@ function buildMockPool(seed: {
     }
     if (
       text.startsWith(
-        "SELECT organization_id::text, created_by::text FROM leadgrid_url_research_batches",
+        "SELECT organization_id::text, project_id, created_by::text FROM leadgrid_url_research_batches",
       )
     ) {
       const id = String(params?.[0]);
@@ -98,6 +124,7 @@ function buildMockPool(seed: {
           ? [
               {
                 organization_id: b.organization_id,
+                project_id: b.project_id,
                 created_by: b.created_by,
               },
             ]
@@ -238,7 +265,7 @@ function buildMockPool(seed: {
     // --- item reads ---
     if (
       text.startsWith(
-        "SELECT id::text, url, draft_lead_id::text, status FROM leadgrid_url_research_items",
+        "SELECT item.id::text, item.url, item.draft_lead_id::text, item.status FROM leadgrid_url_research_items item",
       )
     ) {
       const batchId = String(params?.[0]);
@@ -383,6 +410,7 @@ function buildMockPool(seed: {
             draft_lead_id: item.draft_lead_id,
             status: item.status,
             organization_id: b?.organization_id ?? null,
+            project_id: b?.project_id ?? null,
             created_by: b?.created_by ?? null,
           },
         ],

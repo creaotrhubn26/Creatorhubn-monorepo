@@ -37,7 +37,7 @@ const PALETTE = {
   textFaint: 'rgba(244, 240, 255, 0.45)',
 };
 
-const LAST_UPDATED = '17. juni 2026';
+const LAST_UPDATED = '5. september 2026';
 
 export default function LeadgridPersonvern() {
   useEffect(() => {
@@ -99,7 +99,7 @@ export default function LeadgridPersonvern() {
           </P>
           <Bullets items={[
             <><strong>Brukerkonto:</strong> navn, e-postadresse, telefon, profilbilde, rolle i organisasjonen, push-token (APNs).</>,
-            <><strong>Lead-data:</strong> bedriftsnavn, adresse, kontaktperson, telefon, e-post, bransje, åpen kildeinformasjon (Google Places, BRREG).</>,
+            <><strong>Lead-data:</strong> bedriftsnavn, organisasjonsnummer, adresse, kontaktperson, telefon, e-post, bransje og annen bedriftsinformasjon fra brukeren eller offentlige kilder som Brønnøysundregistrene. Google Places-resultater vises som et midlertidig detaljoppslag; bare en Place ID som brukeren uttrykkelig bekrefter kan knyttes til leadet.</>,
             <><strong>Posisjonsdata (GPS):</strong> selgerens nåværende posisjon når app-en er aktiv (for «leads i nærheten»), og automatisk koordinat-fanging ved logging av fysiske besøk. Background-sporing skjer kun for «nær-lead»-varsling og krever eksplisitt samtykke.</>,
             <><strong>Visit-logg:</strong> tidsstempel, kontaktperson, samtale-sammendrag, neste handling, oppfølgings­dato. Stemme-dikterte notater behandles på enheten av Apple Speech og lagres som transkribert tekst på vår server.</>,
             <><strong>Visittkort-skanning:</strong> kameraet brukes lokalt på enheten via Apple VisionKit. Bildet sendes ikke til oss; kun ekstrahert tekst lagres.</>,
@@ -114,7 +114,7 @@ export default function LeadgridPersonvern() {
           </P>
           <Bullets items={[
             <><strong>Avtaleoppfyllelse</strong> (GDPR art. 6(1)(b)): drift av Leadgrid-tjenesten for kunden vår, det vil si kartvisning, lead-CRM og pitch-deck-bygging.</>,
-            <><strong>Berettiget interesse</strong> (GDPR art. 6(1)(f)): kart-visualisering av kontaktinfo registrert offentlig (BRREG, Google Places), funksjons-forbedring basert på anonymisert telemetri.</>,
+            <><strong>Berettiget interesse</strong> (GDPR art. 6(1)(f)): kartvisualisering og arbeidsflyt for relevant, offentlig bedriftsinformasjon fra blant annet Brønnøysundregistrene, samt forbedring av tjenesten basert på aggregert eller anonymisert telemetri.</>,
             <><strong>Samtykke</strong> (GDPR art. 6(1)(a)): bakgrunns-GPS for «nær-lead»-varsling, push-notifikasjoner, lokasjons-deling mellom team-medlemmer.</>,
             <><strong>Lovpålagt</strong> (GDPR art. 6(1)(c)): bokførings­plikt for fakturerings­data (5 år iflg. bokføringsloven).</>,
           ]} />
@@ -138,14 +138,14 @@ export default function LeadgridPersonvern() {
           </P>
         </Section>
 
-        <Section title="5. Tredjepart-prosessorer">
+        <Section title="5. Eksterne tjenester og databehandlere">
           <P>
-            Følgende tjenester behandler personopplysninger på vegne av oss
-            etter databehandler-avtaler:
+            Leadgrid bruker følgende eksterne tjenester. Der en leverandør er
+            databehandler, reguleres behandlingen av en databehandleravtale:
           </P>
           <Bullets items={[
             <><strong>Apple Inc.</strong>: App Store, TestFlight, APNs, iCloud Keychain.</>,
-            <><strong>Google LLC</strong>: Google Places API (geo-oppslag av bedriftsnavn). Sender kun søke-streng + brukerens grov-region, ikke andre personopplysninger.</>,
+            <><strong>Google LLC:</strong> Google Places API brukes bare når en bruker åpner et detaljoppslag. Leadgrid sender kandidatens offentlige bedriftsnavn, adresse, postnummer og sted, og kan sende kandidatens koordinater som geografisk søkebias. Google-resultatet vises midlertidig og brukes ikke i Discovery-score. Vi lagrer ikke navn, adresse, rating, telefon, nettside eller andre Place-detaljer fra resultatet. For å validere et senere valg lagrer backend opptil tre returnerte Place ID-er som bruker-, kandidat-, prosjekt- og kjøringsavgrensede attesteringer. De er gyldige i 15 minutter og deretter ikke brukbare. Utløpte attesteringer slettes i avgrensede puljer av den daglige oppryddingen; kø eller driftsavbrudd kan gjøre at fysisk sletting skjer i en senere vellykket kjøring. Bare Place ID-en brukeren uttrykkelig bekrefter, kan knyttes til leadet. Bruken er også underlagt <Link href="https://maps.google.com/help/terms_maps/">Google Maps-vilkårene</Link> og <Link href="https://policies.google.com/privacy">Googles personvernerklæring</Link>.</>,
             <><strong>Anthropic PBC</strong>: Claude AI for pitch-deck-generering, brief-generering og tale-analyse av visit-notater. Vi sender kun det som er strengt nødvendig for spørringen, og det er ingen treningsbruk i henhold til Anthropics API-avtale.</>,
             <><strong>Twilio Ireland</strong>: SMS-utsending (kun ved aktivt salgs-flyt-bruk).</>,
             <><strong>Resend, Inc.</strong>: Transaksjons-e-poster.</>,
@@ -156,7 +156,7 @@ export default function LeadgridPersonvern() {
         <Section title="6. Hvor lenge vi oppbevarer data">
           <Bullets items={[
             'Brukerkonti: så lenge du har et aktivt abonnement, deretter inaktiveres innen 90 dager.',
-            'Lead-data: så lenge organisasjonen din opprettholder abonnementet. Du kan slette enkelt-leads umiddelbart.',
+            'Lead-data: så lenge organisasjonen din opprettholder abonnementet. Du kan slette enkelt-leads umiddelbart. En uttrykkelig bekreftet Google Place ID følger leadets levetid. Midlertidige attesteringer av returnerte Place ID-er er ugyldige etter 15 minutter og slettes i avgrensede puljer av den daglige oppryddingen. Ved kø eller driftsavbrudd kan fysisk sletting skje i en senere vellykket kjøring; øvrige Place-detaljer lagres ikke av Leadgrid.',
             'GPS-posisjon: brukeren sin nåværende posisjon overskrives kontinuerlig; visit-koordinat lagres som del av besøks-loggen.',
             'Voice-notater: transkribert tekst lagres så lenge visit-loggen eksisterer; lyd-data lagres aldri på server.',
             'Pitch-deck-eksporter (PDF): 30 dager, deretter slettes B2-objektet automatisk.',

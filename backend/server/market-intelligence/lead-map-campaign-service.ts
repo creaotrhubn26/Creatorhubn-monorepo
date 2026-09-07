@@ -29,6 +29,8 @@ export const PIPELINE_STATUSES: LeadStatus[] = [
 export interface LeadMapCampaign {
   id: string;
   workspaceOwnerUserId: string;
+  organizationId: string;
+  projectId: string;
   agentConfigId?: string | null;
   name: string;
   description?: string | null;
@@ -53,6 +55,8 @@ export interface LeadMapCampaign {
 interface CampaignRow {
   id: string;
   workspace_owner_user_id: string;
+  organization_id: string;
+  project_id: string;
   agent_config_id: string | null;
   name: string;
   description: string | null;
@@ -78,6 +82,8 @@ function rowToCampaign(r: CampaignRow): LeadMapCampaign {
   return {
     id: r.id,
     workspaceOwnerUserId: r.workspace_owner_user_id,
+    organizationId: r.organization_id,
+    projectId: r.project_id,
     agentConfigId: r.agent_config_id,
     name: r.name,
     description: r.description,
@@ -108,6 +114,8 @@ export async function createCampaign(
   pool: Pool,
   input: {
     workspaceOwnerUserId: string;
+    organizationId: string;
+    projectId: string;
     agentConfigId?: string | null;
     name: string;
     description?: string;
@@ -124,22 +132,26 @@ export async function createCampaign(
 ): Promise<LeadMapCampaign> {
   const r = await pool.query<CampaignRow>(
     `INSERT INTO lead_map_campaigns (
-       workspace_owner_user_id, agent_config_id, name, description,
+       workspace_owner_user_id, organization_id, project_id,
+       agent_config_id, name, description,
        filter_category, filter_region, filter_city, filter_lead_status,
        target_total_leads, target_won_leads,
        market_scan_id, brand_kit_id, re_engagement_days,
        status, started_at
      ) VALUES (
-       $1, $2::uuid, $3, $4, $5, $6, $7, $8::jsonb,
-       $9, $10, $11::uuid, $12::uuid, $13,
+       $1, $2::uuid, $3, $4::uuid, $5, $6, $7, $8, $9, $10::jsonb,
+       $11, $12, $13::uuid, $14::uuid, $15,
        'active', NOW()
      )
      RETURNING *,
-       id::text, agent_config_id::text, market_scan_id::text,
+       id::text, organization_id::text, project_id,
+       agent_config_id::text, market_scan_id::text,
        brand_kit_id::text, related_workflow_id::text,
        started_at::text, completed_at::text, created_at::text, updated_at::text`,
     [
       input.workspaceOwnerUserId,
+      input.organizationId,
+      input.projectId,
       input.agentConfigId ?? null,
       input.name,
       input.description ?? null,
@@ -159,10 +171,19 @@ export async function createCampaign(
 
 export async function listCampaigns(
   pool: Pool,
-  args: { workspaceOwnerUserId: string; status?: string; limit?: number },
+  args: {
+    workspaceOwnerUserId: string;
+    organizationId: string;
+    projectId: string;
+    status?: string;
+    limit?: number;
+  },
 ): Promise<LeadMapCampaign[]> {
-  const conditions = ["workspace_owner_user_id = $1"];
-  const params: unknown[] = [args.workspaceOwnerUserId];
+  const conditions = ["organization_id = $1::uuid", "project_id = $2"];
+  const params: unknown[] = [
+    args.organizationId,
+    args.projectId,
+  ];
   if (args.status) {
     params.push(args.status);
     conditions.push(`status = $${params.length}`);
@@ -184,6 +205,11 @@ export async function listCampaigns(
 export async function getCampaign(
   pool: Pool,
   campaignId: string,
+  scope: {
+    workspaceOwnerUserId: string;
+    organizationId: string;
+    projectId: string;
+  },
 ): Promise<LeadMapCampaign | null> {
   const r = await pool.query<CampaignRow>(
     `SELECT *,
@@ -191,8 +217,10 @@ export async function getCampaign(
        brand_kit_id::text, related_workflow_id::text,
        started_at::text, completed_at::text, created_at::text, updated_at::text
      FROM lead_map_campaigns
-     WHERE id = $1::uuid`,
-    [campaignId],
+     WHERE id = $1::uuid
+       AND organization_id = $2::uuid
+       AND project_id = $3`,
+    [campaignId, scope.organizationId, scope.projectId],
   );
   if (r.rows.length === 0) return null;
   return rowToCampaign(r.rows[0]);
@@ -232,17 +260,17 @@ export interface CampaignStatusAggregate {
 /** Bygger SQL-fragment for filter-matching basert på kampanje. */
 function buildLeadFilterSql(
   campaign: LeadMapCampaign,
-  paramStart: number,
 ): { sql: string; params: unknown[] } {
-  const conditions = ["c.owner_user_id = $1"];
-  const params: unknown[] = [campaign.workspaceOwnerUserId];
-  let next = paramStart;
+  const conditions = [
+    "c.organization_id = $1::uuid",
+    "c.project_id = $2",
+  ];
+  const params: unknown[] = [campaign.organizationId, campaign.projectId];
+  let next = params.length;
 
   if (campaign.agentConfigId) {
     params.push(campaign.agentConfigId);
     conditions.push(`c.agent_config_id = $${++next}::uuid`);
-  } else {
-    conditions.push("c.agent_config_id IS NULL");
   }
   if (campaign.filterCategory) {
     params.push(campaign.filterCategory);
@@ -261,7 +289,7 @@ function buildLeadFilterSql(
     NOT EXISTS (
       SELECT 1 FROM lead_map_campaign_members lmcm
       WHERE lmcm.campaign_id = $${++next}::uuid
-        AND lmcm.customer_id = c.id
+        AND lmcm.customer_id = c.id::text
         AND lmcm.membership_type = 'forced_out'
     )
   `);
@@ -273,11 +301,16 @@ function buildLeadFilterSql(
 export async function getCampaignAggregate(
   pool: Pool,
   campaignId: string,
+  scope: {
+    workspaceOwnerUserId: string;
+    organizationId: string;
+    projectId: string;
+  },
 ): Promise<CampaignStatusAggregate | null> {
-  const campaign = await getCampaign(pool, campaignId);
+  const campaign = await getCampaign(pool, campaignId, scope);
   if (!campaign) return null;
 
-  const { sql: whereSql, params } = buildLeadFilterSql(campaign, 1);
+  const { sql: whereSql, params } = buildLeadFilterSql(campaign);
 
   const r = await pool.query<{ lead_status: LeadStatus; count: number }>(
     `SELECT c.lead_status, COUNT(*)::int as count
@@ -379,7 +412,7 @@ export interface AreaResponseStat {
 
 export async function getCategoryConversionStats(
   pool: Pool,
-  workspaceOwnerUserId: string,
+  scope: { organizationId: string; projectId: string },
 ): Promise<CategoryConversionStat[]> {
   const r = await pool.query<{
     category: string;
@@ -393,13 +426,13 @@ export async function getCategoryConversionStats(
        COUNT(*) FILTER (WHERE lead_status='won')::int as won,
        COALESCE(AVG(estimated_value), 0)::numeric as avg_value
      FROM crm_customers
-     WHERE owner_user_id = $1
-       AND agent_config_id IS NULL
+     WHERE organization_id = $1::uuid
+       AND project_id = $2
      GROUP BY lead_category
      HAVING COUNT(*) >= 5
      ORDER BY (COUNT(*) FILTER (WHERE lead_status='won')::float / NULLIF(COUNT(*), 0)::float) DESC NULLS LAST
      LIMIT 20`,
-    [workspaceOwnerUserId],
+    [scope.organizationId, scope.projectId],
   );
   return r.rows.map((row) => ({
     category: row.category,
@@ -412,7 +445,7 @@ export async function getCategoryConversionStats(
 
 export async function getAreaResponseStats(
   pool: Pool,
-  workspaceOwnerUserId: string,
+  scope: { organizationId: string; projectId: string },
 ): Promise<AreaResponseStat[]> {
   const r = await pool.query<{
     area: string;
@@ -430,13 +463,13 @@ export async function getAreaResponseStats(
          WHERE lead_status IN ('interested','meeting_booked','proposal_sent','won')
        )::int as interested
      FROM crm_customers
-     WHERE owner_user_id = $1
-       AND agent_config_id IS NULL
+     WHERE organization_id = $1::uuid
+       AND project_id = $2
      GROUP BY city
      HAVING COUNT(*) >= 5
      ORDER BY (COUNT(*) FILTER (WHERE lead_status='interested')::float / NULLIF(COUNT(*), 0)::float) DESC NULLS LAST
      LIMIT 20`,
-    [workspaceOwnerUserId],
+    [scope.organizationId, scope.projectId],
   );
   return r.rows.map((row) => ({
     area: row.area,
@@ -453,20 +486,29 @@ export async function getAreaResponseStats(
 
 export async function runReEngagementCron(
   pool: Pool,
+  scope?: { organizationId: string; projectId: string },
 ): Promise<{ campaignsProcessed: number; leadsReactivated: number }> {
+  const params: unknown[] = [];
+  const scopeSql = scope
+    ? (() => {
+        params.push(scope.organizationId, scope.projectId);
+        return " AND organization_id = $1::uuid AND project_id = $2";
+      })()
+    : "";
   const campaigns = await pool.query<CampaignRow>(
     `SELECT *,
        id::text, agent_config_id::text, market_scan_id::text,
        brand_kit_id::text, related_workflow_id::text,
        started_at::text, completed_at::text, created_at::text, updated_at::text
      FROM lead_map_campaigns
-     WHERE status='active' AND auto_re_engagement_enabled=true`,
+     WHERE status='active' AND auto_re_engagement_enabled=true${scopeSql}`,
+    params,
   );
 
   let leadsReactivated = 0;
   for (const cRow of campaigns.rows) {
     const campaign = rowToCampaign(cRow);
-    const { sql: whereSql, params } = buildLeadFilterSql(campaign, 1);
+    const { sql: whereSql, params } = buildLeadFilterSql(campaign);
 
     // Finn declined leads forbi re-engagement window
     const candidates = await pool.query<{ id: string }>(

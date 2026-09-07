@@ -18,7 +18,7 @@
  *   GET   /api/leadgrid/leads/:id/deal       — deal-info
  *   PATCH /api/leadgrid/leads/:id/deal       — oppdater deal-felt
  */
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import {
@@ -85,6 +85,11 @@ interface DealAtRisk {
   daysOverdue: number;
 }
 
+interface ProjectOption {
+  id: string;
+  name: string;
+}
+
 const fmtNok = (v: number | null | undefined): string => {
   if (v === null || v === undefined) return "—";
   return `${Math.round(v).toLocaleString("nb-NO")} kr`;
@@ -93,27 +98,64 @@ const fmtNok = (v: number | null | undefined): string => {
 export default function LeadgridDealsPage(): JSX.Element {
   const [sortBy, setSortBy] = useState<"close_date" | "weighted">("weighted");
   const [filterCloseSoon, setFilterCloseSoon] = useState(false);
+  const [projectId, setProjectId] = useState<string | null>(() =>
+    typeof window === "undefined"
+      ? null
+      : localStorage.getItem("rr_lead_map_active_project"),
+  );
+
+  const { data: projectsData, isLoading: projectsLoading } = useQuery<{
+    projects: ProjectOption[];
+  }>({
+    queryKey: ["leadgrid-projects-for-deals"],
+    queryFn: () => apiRequest("/api/admin-room/lead-map/projects"),
+  });
+  const projects = projectsData?.projects ?? [];
+
+  useEffect(() => {
+    if (!projectsData) return;
+    const nextProjectId = projects.some((project) => project.id === projectId)
+      ? projectId
+      : projects[0]?.id ?? null;
+    if (nextProjectId !== projectId) setProjectId(nextProjectId);
+    if (typeof window !== "undefined") {
+      if (nextProjectId) {
+        localStorage.setItem("rr_lead_map_active_project", nextProjectId);
+      } else {
+        localStorage.removeItem("rr_lead_map_active_project");
+      }
+    }
+  }, [projectId, projects, projectsData]);
+
+  const projectQuery = projectId
+    ? `projectId=${encodeURIComponent(projectId)}`
+    : "";
 
   // Forecast
   const { data: forecastData } = useQuery<{
     forecast: { summary: ForecastSummary; byMonth: Array<{ period: string; weightedValue: number; dealsCount: number }> };
   }>({
-    queryKey: ["leadgrid-deals-forecast"],
-    queryFn: () => apiRequest("/api/leadgrid/deals/forecast"),
+    queryKey: ["leadgrid-deals-forecast", projectId],
+    queryFn: () => apiRequest(`/api/leadgrid/deals/forecast?${projectQuery}`),
+    enabled: Boolean(projectId),
   });
 
   // At-risk
   const { data: atRiskData } = useQuery<{ deals: DealAtRisk[] }>({
-    queryKey: ["leadgrid-deals-at-risk"],
-    queryFn: () => apiRequest("/api/leadgrid/deals/at-risk?limit=10"),
+    queryKey: ["leadgrid-deals-at-risk", projectId],
+    queryFn: () =>
+      apiRequest(`/api/leadgrid/deals/at-risk?limit=10&${projectQuery}`),
+    enabled: Boolean(projectId),
   });
 
   // Leads (vi henter via eksisterende leadgrid-leads endepunkt; appen kan
   // tilby /api/admin-room/lead-map/leads-listen)
   const { data: leadsData, isLoading } = useQuery<{ leads: Lead[] }>({
-    queryKey: ["leadgrid-leads-for-deals"],
+    queryKey: ["leadgrid-leads-for-deals", projectId],
     queryFn: async () => {
-      const res = await apiRequest("/api/admin-room/lead-map/leads");
+      const res = await apiRequest(
+        `/api/admin-room/lead-map/leads?${projectQuery}`,
+      );
       // Normaliser fra backend-snake til camelCase
       const leads = (res.leads ?? []).map((l: Record<string, unknown>) => ({
         id: String(l.id),
@@ -141,6 +183,7 @@ export default function LeadgridDealsPage(): JSX.Element {
       }));
       return { leads };
     },
+    enabled: Boolean(projectId),
   });
 
   const leads = leadsData?.leads ?? [];
@@ -212,6 +255,27 @@ export default function LeadgridDealsPage(): JSX.Element {
           </Typography>
         </Box>
         <Stack direction="row" gap={2} alignItems="center">
+          <FormControl size="small" sx={{ minWidth: 220 }}>
+            <InputLabel>Kundeprosjekt</InputLabel>
+            <Select
+              label="Kundeprosjekt"
+              value={projectId ?? ""}
+              disabled={projectsLoading || projects.length === 0}
+              onChange={(event) => {
+                const next = String(event.target.value);
+                setProjectId(next || null);
+                if (next) {
+                  localStorage.setItem("rr_lead_map_active_project", next);
+                }
+              }}
+            >
+              {projects.map((project) => (
+                <MenuItem key={project.id} value={project.id}>
+                  {project.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <FormControlLabel
             control={
               <Switch
@@ -236,6 +300,13 @@ export default function LeadgridDealsPage(): JSX.Element {
           </FormControl>
         </Stack>
       </Stack>
+
+      {!projectsLoading && projects.length === 0 && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Opprett eller bli invitert til et Leadgrid-kundeprosjekt før du
+          arbeider med pipeline og prognoser.
+        </Alert>
+      )}
 
       {/* Forecast-sammendrag */}
       {forecast && (

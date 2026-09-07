@@ -51,7 +51,8 @@ export function registerLeadMapNotificationRoutes({ app, pool, activeSessions }:
       const limit = Math.min(parseInt(String(req.query.limit ?? "50"), 10) || 50, 200);
       try {
         const r = await pool.query(
-          `SELECT id::text, event_type, title, body, lead_id, visit_id,
+          `SELECT id::text, project_id::text, event_type, title, body,
+                  lead_id, visit_id,
                   triggered_by_user_id, deep_link, meta,
                   email_sent, apns_sent,
                   read_at::text, created_at::text

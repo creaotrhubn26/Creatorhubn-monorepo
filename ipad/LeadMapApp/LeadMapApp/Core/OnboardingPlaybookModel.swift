@@ -9,12 +9,15 @@ import Foundation
 
 struct AutoOnboardResponse: Codable, Sendable {
     let auditId: String
+    let projectId: String?
     let status: String
+    let replayed: Bool?
     let message: String?
 
     enum CodingKeys: String, CodingKey {
         case auditId = "audit_id"
-        case status, message
+        case projectId = "project_id"
+        case status, replayed, message
     }
 }
 
@@ -32,7 +35,8 @@ struct AutoOnboardAudit: Codable, Sendable {
     let needsCount: Int?
     let signalsCount: Int?
     let compositeScore: Int?
-    let clientToken: String?
+    let portalReady: Bool?
+    let invitationStatus: String?
     let errorMessage: String?
     let startedAt: String
     let finishedAt: String?
@@ -50,7 +54,8 @@ struct AutoOnboardAudit: Codable, Sendable {
         case needsCount = "needs_count"
         case signalsCount = "signals_count"
         case compositeScore = "composite_score"
-        case clientToken = "client_token"
+        case portalReady = "portal_ready"
+        case invitationStatus = "invitation_status"
         case errorMessage = "error_message"
         case startedAt = "started_at"
         case finishedAt = "finished_at"
@@ -81,6 +86,7 @@ struct FocusRequestRow: Identifiable, Codable, Sendable {
     let websiteUrl: String?
     let leadCategory: String?
     let projectName: String?
+    let deliverableId: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -96,6 +102,7 @@ struct FocusRequestRow: Identifiable, Codable, Sendable {
         case websiteUrl = "website_url"
         case leadCategory = "lead_category"
         case projectName = "project_name"
+        case deliverableId = "deliverable_id"
     }
 
     var displayNeedLabel: String {
@@ -106,9 +113,11 @@ struct FocusRequestRow: Identifiable, Codable, Sendable {
 }
 
 struct FocusRequestsResponse: Codable, Sendable {
+    let projectId: String?
     let focusRequests: [FocusRequestRow]
 
     enum CodingKeys: String, CodingKey {
+        case projectId = "project_id"
         case focusRequests = "focus_requests"
     }
 }
@@ -146,16 +155,19 @@ struct PlaybookVerification: Codable, Hashable, Sendable {
 struct StartDeliveryResponse: Codable, Sendable {
     let deliverableId: String
     let playbookId: String
+    let projectId: String?
     let stepsCount: Int
     let requirementsCount: Int
+    let replayed: Bool?
     let message: String
 
     enum CodingKeys: String, CodingKey {
         case deliverableId = "deliverable_id"
         case playbookId = "playbook_id"
+        case projectId = "project_id"
         case stepsCount = "steps_count"
         case requirementsCount = "requirements_count"
-        case message
+        case replayed, message
     }
 }
 

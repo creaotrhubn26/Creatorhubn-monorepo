@@ -2,8 +2,9 @@
  * lead-map-org-routes.ts
  *
  * Organisasjons-håndtering for Lead Map. En organisasjon er et
- * paraply-objekt over flere prosjekter. Org-medlemmer arver tilgang
- * til alle prosjekter i org-en.
+ * paraply-objekt over flere prosjekter. Prosjekttilgang avgjøres separat
+ * av direkte prosjektmedlemskap og den effektive projects.view_all-
+ * tillatelsen.
  *
  * Endepunkter:
  *   GET    /organizations                       — liste mine org-er
@@ -22,12 +23,39 @@ import type { Pool } from "pg";
 import crypto from "crypto";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
 import { resolveLeadMapSession } from "./lead-map-session-helper.js";
+import { leadgridPublicOrigin } from "./leadgrid-public-origin.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
   app: Express;
   pool: Pool;
   activeSessions: Map<string, SessionData>;
+}
+
+export const VALID_ORGANIZATION_MEMBER_ROLES = [
+  "admin",
+  "salgssjef",
+  "teamleder",
+  "salgskonsulent",
+  "promotor",
+  "markedssjef",
+  "markedskoordinator",
+  "seo_spesialist",
+  "content_ansvarlig",
+  "performance_marketer",
+  "markedsanalytiker",
+  "member",
+  "viewer",
+] as const;
+
+const VALID_ORGANIZATION_MEMBER_ROLE_SET = new Set<string>(
+  VALID_ORGANIZATION_MEMBER_ROLES,
+);
+
+export function isValidOrganizationMemberRole(
+  role: unknown,
+): role is (typeof VALID_ORGANIZATION_MEMBER_ROLES)[number] {
+  return typeof role === "string" && VALID_ORGANIZATION_MEMBER_ROLE_SET.has(role);
 }
 
 // RT-5: tynn wrapper rundt sentral resolveLeadMapSession (DB-fallback
@@ -86,21 +114,22 @@ function buildOrgInviteEmail(args: {
       : args.role === "viewer"
         ? "Leser (kun visning)"
         : "Medlem (full skrive-tilgang)";
-  const subject = `${args.inviterName} har invitert deg til ${args.orgName} på Lead Map`;
+  const subject = `${args.inviterName} har invitert deg til ${args.orgName} på Leadgrid`;
   const text = `Hei!
 
-${args.inviterName} har invitert deg til organisasjonen "${args.orgName}" på Lead Map.
+${args.inviterName} har invitert deg til organisasjonen "${args.orgName}" på Leadgrid.
 
 Rolle: ${roleLabel}
 
-Som org-medlem får du tilgang til alle prosjekter i ${args.orgName}.
+Som org-medlem får du tilgang til arbeidsområdet og prosjektene du er tildelt
+eller har tillatelse til å se i ${args.orgName}.
 
 Klikk her for å akseptere invitasjonen og logge inn:
 ${args.acceptUrl}
 
 Lenken er gyldig i 7 dager.
 
-— Lead Map · theroleroom.com`;
+— Leadgrid · leadgrid.no`;
   const html = `<!DOCTYPE html>
 <html><body style="margin:0;padding:0;background:#f4f4f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f4f4f7;padding:40px 16px;">
@@ -116,7 +145,8 @@ Lenken er gyldig i 7 dager.
           <p style="margin:0 0 12px;font-size:15px;color:#444;line-height:1.6;">
             Du har fått tilgang til organisasjonen med rollen
             <strong style="color:#c084fc;">${escapeHtml(roleLabel)}</strong>.
-            Som medlem får du tilgang til alle prosjekter i organisasjonen.
+            Prosjekttilgang styres av hvilke prosjekter du er tildelt og
+            tillatelsene dine i organisasjonen.
           </p>
         </td></tr>
         <tr><td align="center" style="padding:8px 32px 24px;">
@@ -130,7 +160,7 @@ Lenken er gyldig i 7 dager.
             Lenken er gyldig i 7 dager. Hvis du ikke kjenner igjen ${escapeHtml(args.inviterName)} eller ${escapeHtml(args.orgName)}, ignorér denne e-posten.
           </p>
           <p style="margin:8px 0 0;font-size:11px;color:#bbb;">
-            Lead Map · theroleroom.com
+            Leadgrid · leadgrid.no
           </p>
         </td></tr>
       </table>
@@ -326,12 +356,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
       if (!email || !email.includes("@")) {
         return res.status(400).json({ error: "ugyldig_email" });
       }
-      const VALID_ORG_ROLES = [
-        "admin", "salgssjef", "teamleder",
-        "salgskonsulent", "promotor",
-        "member", "viewer",
-      ];
-      if (!VALID_ORG_ROLES.includes(role)) {
+      if (!isValidOrganizationMemberRole(role)) {
         return res.status(400).json({ error: "ugyldig_rolle" });
       }
       try {
@@ -367,7 +392,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
           [req.params.id, email, role, body.sales_team_id ?? null, token, session.userId],
         );
         const invitationId = ins.rows[0].id;
-        const acceptUrl = `https://theroleroom.com/lead-map/accept?token=${token}`;
+        const acceptUrl = `${leadgridPublicOrigin()}/lead-map/accept?token=${encodeURIComponent(token)}`;
         const { subject, html, text } = buildOrgInviteEmail({
           orgName: org.rows[0].name,
           inviterName,
@@ -379,6 +404,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
           subject,
           html,
           text,
+          fromLabel: "Leadgrid",
           kind: "lead_map_org_invite",
           sentByUserId: session.userId,
           pool,
@@ -495,7 +521,7 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
         return res.status(403).json({ error: "kun_admin_kan_endre" });
       }
       const body = req.body as { role?: string };
-      if (!body.role || !["admin", "member", "viewer"].includes(body.role)) {
+      if (!isValidOrganizationMemberRole(body.role)) {
         return res.status(400).json({ error: "ugyldig_rolle" });
       }
       try {
@@ -508,113 +534,6 @@ export function registerLeadMapOrgRoutes({ app, pool, activeSessions }: Deps): v
         return res.json({ ok: true });
       } catch (err) {
         return res.status(500).json({ error: "update_failed", detail: "internal_error" });
-      }
-    },
-  );
-
-  // ─── GET /invitations/:token (preview, ingen auth) ──────────────
-  app.get(
-    "/api/lead-map/invitations/:token",
-    async (req: Request, res: Response) => {
-      try {
-        const r = await pool.query<{
-          email: string; role: string;
-          expires_at: string; accepted_at: string | null;
-          organization_id: string | null; project_id: string | null;
-          org_name: string | null; project_name: string | null;
-          inviter_name: string | null;
-        }>(
-          `SELECT pi.email, pi.role, pi.expires_at::text, pi.accepted_at::text,
-                  pi.organization_id::text, pi.project_id,
-                  o.name AS org_name,
-                  cp.name AS project_name,
-                  NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS inviter_name
-             FROM project_invitations pi
-             LEFT JOIN organizations o ON o.id = pi.organization_id
-             LEFT JOIN leadgrid_projects cp ON cp.id = pi.project_id
-             LEFT JOIN users u ON u.id = pi.invited_by
-            WHERE pi.token = $1
-            LIMIT 1`,
-          [req.params.token],
-        );
-        if (r.rows.length === 0) return res.status(404).json({ error: "ugyldig_token" });
-        const row = r.rows[0];
-        if (row.accepted_at) return res.status(409).json({ error: "allerede_akseptert" });
-        if (new Date(row.expires_at) < new Date()) {
-          return res.status(410).json({ error: "utlopt" });
-        }
-        return res.json({
-          email: row.email,
-          role: row.role,
-          targetType: row.organization_id ? "organization" : "project",
-          targetName: row.org_name ?? row.project_name,
-          inviterName: row.inviter_name,
-          expiresAt: row.expires_at,
-        });
-      } catch (err) {
-        return res.status(500).json({ error: "preview_failed", detail: "internal_error" });
-      }
-    },
-  );
-
-  // ─── POST /invitations/:token/accept ────────────────────────────
-  app.post(
-    "/api/lead-map/invitations/:token/accept",
-    async (req: Request, res: Response) => {
-      const session = await getUser(req, pool, activeSessions);
-      if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
-      try {
-        const invRes = await pool.query<{
-          id: string; organization_id: string | null; project_id: string | null;
-          email: string; role: string; sales_team_id: string | null;
-          expires_at: string; accepted_at: string | null;
-        }>(
-          `SELECT id::text, organization_id::text, project_id, email, role,
-                  sales_team_id::text, expires_at::text, accepted_at::text
-             FROM project_invitations WHERE token = $1 LIMIT 1`,
-          [req.params.token],
-        );
-        if (invRes.rows.length === 0) return res.status(404).json({ error: "ugyldig_token" });
-        const inv = invRes.rows[0];
-        if (inv.accepted_at) return res.status(409).json({ error: "allerede_akseptert" });
-        if (new Date(inv.expires_at) < new Date()) {
-          return res.status(410).json({ error: "utlopt" });
-        }
-        if (session.email && session.email.toLowerCase() !== inv.email.toLowerCase()) {
-          return res.status(403).json({ error: "feil_bruker" });
-        }
-        if (inv.organization_id) {
-          await pool.query(
-            `INSERT INTO organization_members (
-               organization_id, user_id, role, sales_team_id
-             ) VALUES ($1, $2, $3, $4)
-             ON CONFLICT (organization_id, user_id) DO UPDATE
-               SET role = EXCLUDED.role,
-                   sales_team_id = EXCLUDED.sales_team_id`,
-            [inv.organization_id, session.userId, inv.role, inv.sales_team_id],
-          );
-        } else if (inv.project_id) {
-          await pool.query(
-            `INSERT INTO project_members (project_id, user_id, role)
-             VALUES ($1, $2, $3)
-             ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
-            [inv.project_id, session.userId, inv.role],
-          );
-        }
-        await pool.query(
-          `UPDATE project_invitations
-              SET accepted_at = NOW(), accepted_by_user_id = $2
-            WHERE id = $1`,
-          [inv.id, session.userId],
-        );
-        return res.json({
-          ok: true,
-          target: inv.organization_id ? "organization" : "project",
-          targetId: inv.organization_id ?? inv.project_id,
-          role: inv.role,
-        });
-      } catch (err) {
-        return res.status(500).json({ error: "accept_failed", detail: "internal_error" });
       }
     },
   );

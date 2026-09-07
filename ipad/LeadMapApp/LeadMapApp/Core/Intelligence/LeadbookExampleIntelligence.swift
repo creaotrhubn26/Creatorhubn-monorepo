@@ -139,7 +139,7 @@ struct LeadbookPhrasingIntelligence: Sendable {
 
 @MainActor
 enum LeadbookExampleIntelligenceFactory {
-    static func make(api: APIClient) -> LeadbookExampleIntelligence {
+    static func make(api: APIClient, projectId: String) -> LeadbookExampleIntelligence {
         var checker: OnDeviceAvailabilityChecking = UnsupportedOSAvailabilityChecker()
         var analyzer: (any LeadbookExampleAnalyzing)? = nil
 
@@ -154,12 +154,17 @@ enum LeadbookExampleIntelligenceFactory {
             availability: checker,
             onDevice: analyzer,
             backend: { rawText in
-                try await api.structureLeadbookExample(rawText: rawText)
+                try await api.structureLeadbookExample(
+                    projectId: projectId,
+                    rawText: rawText)
             }
         )
     }
 
-    static func makePhrasing(api: APIClient) -> LeadbookPhrasingIntelligence {
+    static func makePhrasing(
+        api: APIClient,
+        projectId: String
+    ) -> LeadbookPhrasingIntelligence {
         var checker: OnDeviceAvailabilityChecking = UnsupportedOSAvailabilityChecker()
         var suggester: (any LeadbookPhrasingSuggesting)? = nil
 
@@ -174,7 +179,10 @@ enum LeadbookExampleIntelligenceFactory {
             availability: checker,
             onDevice: suggester,
             backend: { text, charLimit in
-                try await api.strengthenLeadbookPhrase(text: text, maxChars: charLimit)
+                try await api.strengthenLeadbookPhrase(
+                    projectId: projectId,
+                    text: text,
+                    maxChars: charLimit)
             }
         )
     }

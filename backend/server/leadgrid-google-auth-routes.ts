@@ -28,6 +28,10 @@ import {
   loadOauthState,
   persistOauthState,
 } from "./role-room-oauth-store";
+import {
+  leadgridPublicOrigin,
+  validatedPublicOrigin,
+} from "./leadgrid-public-origin.js";
 
 type SessionData = {
   userId: string;
@@ -57,37 +61,6 @@ function firstConfiguredValue(...values: Array<string | undefined>): string {
     if (normalized) return normalized;
   }
   return "";
-}
-
-function publicOrigin(
-  label: string,
-  ...values: Array<string | undefined>
-): string {
-  const configured = firstConfiguredValue(...values);
-  let url: URL;
-  try {
-    url = new URL(configured);
-  } catch {
-    throw new Error(`${label} må være en gyldig absolutt URL`);
-  }
-  const isLocalHttp =
-    url.protocol === "http:" &&
-    ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
-  if (url.protocol !== "https:" && !isLocalHttp) {
-    throw new Error(`${label} må bruke HTTPS (HTTP er kun tillatt lokalt)`);
-  }
-  if (
-    url.username ||
-    url.password ||
-    (url.pathname && url.pathname !== "/") ||
-    url.search ||
-    url.hash
-  ) {
-    throw new Error(
-      `${label} må være et origin uten sti, query eller fragment`,
-    );
-  }
-  return url.origin;
 }
 
 function oauthClientConfig(
@@ -135,13 +108,8 @@ const LEADGRID_GOOGLE_CLIENT = DEDICATED_LEADGRID_CLIENT.configured
   ? DEDICATED_LEADGRID_CLIENT
   : LEGACY_GOOGLE_CLIENT;
 
-const LEADGRID_PUBLIC_BASE = publicOrigin(
-  "LEADGRID_PUBLIC_URL",
-  process.env.LEADGRID_PUBLIC_URL,
-  process.env.ROLE_ROOM_PUBLIC_URL,
-  "https://theroleroom.com",
-);
-const LEGACY_PUBLIC_BASE = publicOrigin(
+const LEADGRID_PUBLIC_BASE = leadgridPublicOrigin();
+const LEGACY_PUBLIC_BASE = validatedPublicOrigin(
   "ROLE_ROOM_PUBLIC_URL",
   process.env.ROLE_ROOM_PUBLIC_URL,
   "https://theroleroom.com",

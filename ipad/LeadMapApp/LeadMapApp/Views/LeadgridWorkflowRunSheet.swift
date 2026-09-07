@@ -44,37 +44,37 @@ struct LeadgridWorkflowRunSheet: View {
     }
 
     enum Filter: String, CaseIterable, Identifiable {
-        case all = "Alle"
-        case project = "Prosjekt"
+        case all = "Alle i prosjektet"
         case hot = "Hot"
-        case unvisited = "Uvisited"
+        case unvisited = "Ikke besøkt"
         var id: String { rawValue }
     }
 
+    private var hasAuthoritativeProjectScope: Bool {
+        appState.activeLeadgridProjectId == workflow.projectId
+    }
+
     private var canRun: Bool {
-        // Tom permissions-liste = ikke lastet enda → tillat for å unngå
-        // false-blokk i offline-bootstrap. Ekte tom = backend returnerte
-        // tom liste (sjeldent for autentisert bruker).
-        appState.permissions.isEmpty
-            || appState.permissions.contains("workflows.execute")
+        hasAuthoritativeProjectScope
+            && appState.permissions.contains("workflows.execute")
     }
 
     private var filteredLeads: [LeadModel] {
+        let projectLeads = appState.leads.filter {
+            $0.projectId == workflow.projectId
+        }
         let base: [LeadModel] = {
             switch filter {
-            case .all: return appState.leads
-            case .project:
-                guard let pid = appState.activeProjectId else { return [] }
-                return appState.leads.filter { $0.projectId == pid }
+            case .all: return projectLeads
             case .hot:
-                return appState.leads.filter { lead in
+                return projectLeads.filter { lead in
                     if let t = lead.leadTemperature?.lowercased(),
                        t == "hot" || t == "ready" { return true }
                     if let s = lead.leadScore, s >= 80 { return true }
                     return false
                 }
             case .unvisited:
-                return appState.leads.filter { $0.status == .unvisited }
+                return projectLeads.filter { $0.status == .unvisited }
             }
         }()
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
@@ -88,9 +88,21 @@ struct LeadgridWorkflowRunSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                header
-                content
+            Group {
+                if hasAuthoritativeProjectScope {
+                    VStack(spacing: 0) {
+                        header
+                        content
+                    }
+                } else {
+                    ContentUnavailableView(
+                        "Velg riktig kundeprosjekt",
+                        systemImage: "folder.badge.questionmark",
+                        description: Text(
+                            "Denne workflowen kan bare kjøres i prosjektet den tilhører."
+                        )
+                    )
+                }
             }
             .navigationTitle(workflow.name)
             .navigationBarTitleDisplayMode(.inline)
@@ -100,10 +112,28 @@ struct LeadgridWorkflowRunSheet: View {
                 }
             }
             .task {
-                if !preselectedLeadIds.isEmpty {
-                    selectedLeadIds = preselectedLeadIds
-                    phase = .confirming
+                guard hasAuthoritativeProjectScope else {
+                    selectedLeadIds.removeAll()
+                    feedback = "Velg workflowens kundeprosjekt før du kjører den."
+                    return
                 }
+                if !preselectedLeadIds.isEmpty {
+                    let projectLeadIDs = Set(
+                        appState.leads
+                            .filter { $0.projectId == workflow.projectId }
+                            .map(\.id)
+                    )
+                    selectedLeadIds = preselectedLeadIds.intersection(projectLeadIDs)
+                    if !selectedLeadIds.isEmpty {
+                        phase = .confirming
+                    }
+                }
+            }
+            .onChange(of: appState.activeLeadgridProjectId) { _, _ in
+                guard !hasAuthoritativeProjectScope else { return }
+                selectedLeadIds.removeAll()
+                phase = .picking
+                feedback = "Prosjektet ble endret. Velg workflowens kundeprosjekt for å fortsette."
             }
         }
     }
@@ -413,10 +443,31 @@ struct LeadgridWorkflowRunSheet: View {
             feedback = "Ikke innlogget."
             return
         }
+        guard hasAuthoritativeProjectScope else {
+            feedback = "Velg workflowens kundeprosjekt før du kjører den."
+            phase = .picking
+            return
+        }
+        let projectLeadIDs = Set(
+            appState.leads
+                .filter { $0.projectId == workflow.projectId }
+                .map(\.id)
+        )
+        guard !selectedLeadIds.isEmpty,
+              selectedLeadIds.isSubset(of: projectLeadIDs) else {
+            feedback = "Leadutvalget inneholder data utenfor workflowens kundeprosjekt."
+            selectedLeadIds.formIntersection(projectLeadIDs)
+            phase = .picking
+            return
+        }
         let ids = Array(selectedLeadIds)
         phase = .running
         do {
-            let resp = try await api.executeWorkflowBulk(workflow.id, leadIds: ids)
+            let resp = try await api.executeWorkflowBulk(
+                workflow.id,
+                projectId: workflow.projectId,
+                leadIds: ids
+            )
             executionResp = resp
             // Lar engine få et lite forsprang før vi henter executions.
             try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -431,10 +482,12 @@ struct LeadgridWorkflowRunSheet: View {
 
     @MainActor
     private func loadRecentExecutions() async {
-        guard let api = appState.api else { return }
+        guard let api = appState.api, hasAuthoritativeProjectScope else { return }
         do {
             let execs = try await api.fetchWorkflowExecutions(
-                workflow.id, limit: max(selectedLeadIds.count, 10),
+                workflow.id,
+                projectId: workflow.projectId,
+                limit: max(selectedLeadIds.count, 10)
             )
             recentExecutions = execs
         } catch {

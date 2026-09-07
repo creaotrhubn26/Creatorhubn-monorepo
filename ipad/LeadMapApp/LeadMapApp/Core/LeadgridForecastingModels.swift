@@ -4,8 +4,9 @@
 // Predikert revenue for konfigurert horisont (default 90d) m/ p10/p50/p90-bånd,
 // Claude-reasoning + contributing factors.
 //
-// Backend: GET  /api/leadgrid/forecasting/pipeline?horizon=N
-//          POST /api/leadgrid/forecasting/pipeline/refresh  (body: { horizon })
+// Backend: GET  /api/leadgrid/forecasting/pipeline?projectId=...&horizon=N
+//          POST /api/leadgrid/forecasting/pipeline/refresh
+//               (body: { projectId, horizon })
 //
 // Decoder bruker .convertFromSnakeCase — snake_case fra backend mappes
 // automatisk til camelCase her.
@@ -14,6 +15,7 @@ import Foundation
 
 struct LeadgridForecast: Codable, Hashable {
     let organizationId: String
+    let projectId: String
     let horizonDays: Int
     let predictedRevenueLow: Double
     let predictedRevenueMid: Double

@@ -6,9 +6,17 @@
 
 import Foundation
 
+private func leadbookRecordingProjectPath(_ path: String, projectId: String) -> String {
+    var components = URLComponents()
+    components.queryItems = [URLQueryItem(name: "projectId", value: projectId)]
+    guard let query = components.percentEncodedQuery, !query.isEmpty else { return path }
+    return "\(path)?\(query)"
+}
+
 struct LeadbookRecordingConsentDTO: Decodable, Sendable {
     let id: String
     let consentedAt: String
+    let projectId: String
 }
 
 struct LeadbookComplianceAckDTO: Decodable, Sendable {
@@ -34,30 +42,38 @@ extension APIClient {
     /// Logg samtykke FØR mikrofonen startes (§4). `consentVersion` er
     /// ordlyd-versjonen av samtykke-teksten som ble vist/lest opp.
     func leadbookLogRecordingConsent(
-        consentVersion: String, customerLabel: String
+        projectId: String, consentVersion: String, customerLabel: String
     ) async throws -> LeadbookRecordingConsentDTO {
         struct Payload: Encodable { let consentVersion: String; let customerLabel: String }
         return try await _post(
-            "/api/leadgrid/leadbook/recording-consent",
+            leadbookRecordingProjectPath(
+                "/api/leadgrid/leadbook/recording-consent",
+                projectId: projectId),
             body: Payload(consentVersion: consentVersion, customerLabel: customerLabel)
         )
     }
 
     /// Kladd (aldri delt) slettes umiddelbart; publisert flagges + varsler ledere.
-    func leadbookRequestExampleDeletion(exampleId: String) async throws {
+    func leadbookRequestExampleDeletion(exampleId: String, projectId: String) async throws {
         struct Ignored: Decodable {}
-        let _: Ignored = try await _postEmpty("/api/leadgrid/leadbook/examples/\(exampleId)/request-deletion")
+        let _: Ignored = try await _postEmpty(leadbookRecordingProjectPath(
+            "/api/leadgrid/leadbook/examples/\(exampleId)/request-deletion",
+            projectId: projectId))
     }
 
     /// Leder/admin: anonymiser + arkiver en sletteforespørsel.
-    func leadbookApproveExampleDeletion(exampleId: String) async throws {
+    func leadbookApproveExampleDeletion(exampleId: String, projectId: String) async throws {
         struct Ignored: Decodable {}
-        let _: Ignored = try await _postEmpty("/api/leadgrid/admin/leadbook/examples/\(exampleId)/approve-deletion")
+        let _: Ignored = try await _postEmpty(leadbookRecordingProjectPath(
+            "/api/leadgrid/admin/leadbook/examples/\(exampleId)/approve-deletion",
+            projectId: projectId))
     }
 
-    func leadbookDeletionQueue() async throws -> [LeadbookDeletionQueueRowDTO] {
+    func leadbookDeletionQueue(projectId: String) async throws -> [LeadbookDeletionQueueRowDTO] {
         struct Resp: Decodable { let pendingDeletions: [LeadbookDeletionQueueRowDTO] }
-        let r: Resp = try await _get("/api/leadgrid/admin/leadbook/deletion-queue")
+        let r: Resp = try await _get(leadbookRecordingProjectPath(
+            "/api/leadgrid/admin/leadbook/deletion-queue",
+            projectId: projectId))
         return r.pendingDeletions
     }
 

@@ -84,6 +84,7 @@ struct MinProfilSheet: View {
                         hero
                         kpiRow
                         infoCard
+                        WorkspacePlanProfileCard()
                         // achievementsCard fjernet 2026-07-17: badges var hardkodet
                         // mock («4 av 12») — kommer tilbake når det finnes en ekte
                         // achievements-kilde i backend.
@@ -117,9 +118,17 @@ struct MinProfilSheet: View {
             }
             .task { myProfile = try? await appState.api?.fetchMyProfile().profile }
             // Dørsalg-KPI-ene (kun for dørsalg-profil-orger).
-            .task {
-                guard erDorsalgProfil, let api = appState.api else { return }
-                dorsalgMeg = await KartverketService.shared.fetchDorsalgStats(using: api)?.meg
+            .task(id: appState.activeLeadgridProjectId) {
+                dorsalgMeg = nil
+                guard erDorsalgProfil,
+                      let api = appState.api,
+                      let projectId = appState.activeLeadgridProjectId else { return }
+                let loaded = await KartverketService.shared.fetchDorsalgStats(
+                    projectId: projectId, using: api
+                )?.meg
+                guard !Task.isCancelled,
+                      appState.activeLeadgridProjectId == projectId else { return }
+                dorsalgMeg = loaded
             }
             // 2026-07-17: Mitt utstyr — hentes kun i ekte modus.
             .task {

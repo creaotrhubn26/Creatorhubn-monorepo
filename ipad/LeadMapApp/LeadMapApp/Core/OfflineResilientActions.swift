@@ -12,6 +12,13 @@ import Foundation
 @MainActor
 enum OfflineResilientActions {
 
+    private static func projectEndpoint(_ path: String, projectId: String) -> String {
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: "projectId", value: projectId)]
+        guard let query = components.percentEncodedQuery, !query.isEmpty else { return path }
+        return "\(path)?\(query)"
+    }
+
     enum WriteDisposition: Sendable {
         case sent
         case queued
@@ -31,6 +38,39 @@ enum OfflineResilientActions {
         let newStatus: String?
         let nextAction: String?
         let nextFollowUpAt: String?
+        let visitDatetime: String?
+        let activityKind: String?
+        let objectionReason: String?
+        let visitLatitude: Double?
+        let visitLongitude: Double?
+
+        init(
+            visitType: String,
+            conversationSummary: String,
+            contactPerson: String?,
+            notes: String?,
+            newStatus: String?,
+            nextAction: String?,
+            nextFollowUpAt: String?,
+            visitDatetime: String? = nil,
+            activityKind: String? = nil,
+            objectionReason: String? = nil,
+            visitLatitude: Double? = nil,
+            visitLongitude: Double? = nil
+        ) {
+            self.visitType = visitType
+            self.conversationSummary = conversationSummary
+            self.contactPerson = contactPerson
+            self.notes = notes
+            self.newStatus = newStatus
+            self.nextAction = nextAction
+            self.nextFollowUpAt = nextFollowUpAt
+            self.visitDatetime = visitDatetime
+            self.activityKind = activityKind
+            self.objectionReason = objectionReason
+            self.visitLatitude = visitLatitude
+            self.visitLongitude = visitLongitude
+        }
     }
 
     struct AgentFollowUpPayload: Encodable, Sendable, Equatable {
@@ -49,6 +89,7 @@ enum OfflineResilientActions {
     static func createLeadbookExample(
         api: APIClient,
         organizationId: String,
+        projectId: String,
         body: [String: Any],
         actionId: UUID = UUID()
     ) async -> WriteDisposition {
@@ -63,7 +104,10 @@ enum OfflineResilientActions {
             action: .init(
                 id: actionId,
                 organizationId: organizationId,
-                endpoint: "/api/leadgrid/leadbook/examples",
+                projectId: projectId,
+                endpoint: projectEndpoint(
+                    "/api/leadgrid/leadbook/examples",
+                    projectId: projectId),
                 httpMethod: "POST",
                 bodyJson: data
             )
@@ -104,6 +148,7 @@ enum OfflineResilientActions {
     static func addLeadbookFeedback(
         api: APIClient,
         organizationId: String,
+        projectId: String,
         exampleId: String,
         payload: [String: Any],
         actionId: UUID = UUID()
@@ -119,7 +164,10 @@ enum OfflineResilientActions {
             action: .init(
                 id: actionId,
                 organizationId: organizationId,
-                endpoint: "/api/leadgrid/leadbook/examples/\(exampleId)/feedback",
+                projectId: projectId,
+                endpoint: projectEndpoint(
+                    "/api/leadgrid/leadbook/examples/\(exampleId)/feedback",
+                    projectId: projectId),
                 httpMethod: "POST",
                 bodyJson: data
             )
@@ -130,6 +178,7 @@ enum OfflineResilientActions {
     static func replyLeadbookFeedback(
         api: APIClient,
         organizationId: String,
+        projectId: String,
         feedbackId: String,
         body text: String,
         actionId: UUID = UUID()
@@ -144,7 +193,10 @@ enum OfflineResilientActions {
             action: .init(
                 id: actionId,
                 organizationId: organizationId,
-                endpoint: "/api/leadgrid/leadbook/feedback/\(feedbackId)/replies",
+                projectId: projectId,
+                endpoint: projectEndpoint(
+                    "/api/leadgrid/leadbook/feedback/\(feedbackId)/replies",
+                    projectId: projectId),
                 httpMethod: "POST",
                 bodyJson: data
             )
@@ -235,6 +287,7 @@ enum OfflineResilientActions {
 
     static func makeAgentVisitAction(
         organizationId: String,
+        projectId: String,
         leadId: String,
         payload: AgentVisitPayload,
         actionId: UUID = UUID()
@@ -244,7 +297,10 @@ enum OfflineResilientActions {
         return .init(
             id: actionId,
             organizationId: organizationId,
-            endpoint: "/api/admin-room/lead-map/leads/\(leadId)/visits",
+            projectId: projectId,
+            endpoint: projectEndpoint(
+                "/api/admin-room/lead-map/leads/\(leadId)/visits",
+                projectId: projectId),
             httpMethod: "POST",
             bodyJson: body
         )
@@ -252,6 +308,7 @@ enum OfflineResilientActions {
 
     static func makeAgentFollowUpAction(
         organizationId: String,
+        projectId: String,
         leadId: String,
         payload: AgentFollowUpPayload,
         actionId: UUID = UUID()
@@ -262,7 +319,10 @@ enum OfflineResilientActions {
         return .init(
             id: actionId,
             organizationId: organizationId,
-            endpoint: "/api/admin-room/lead-map/leads/\(leadId)/follow-up",
+            projectId: projectId,
+            endpoint: projectEndpoint(
+                "/api/admin-room/lead-map/leads/\(leadId)/follow-up",
+                projectId: projectId),
             httpMethod: "PATCH",
             bodyJson: body
         )
@@ -272,6 +332,7 @@ enum OfflineResilientActions {
     static func logVisit(
         api: APIClient,
         organizationId: String,
+        projectId: String,
         leadId: String,
         payload: AgentVisitPayload,
         actionId: UUID = UUID()
@@ -282,6 +343,7 @@ enum OfflineResilientActions {
                 organizationId: organizationId,
                 action: try makeAgentVisitAction(
                     organizationId: organizationId,
+                    projectId: projectId,
                     leadId: leadId,
                     payload: payload,
                     actionId: actionId
@@ -296,6 +358,7 @@ enum OfflineResilientActions {
     static func planFollowUp(
         api: APIClient,
         organizationId: String,
+        projectId: String,
         leadId: String,
         payload: AgentFollowUpPayload,
         actionId: UUID = UUID()
@@ -306,6 +369,7 @@ enum OfflineResilientActions {
                 organizationId: organizationId,
                 action: try makeAgentFollowUpAction(
                     organizationId: organizationId,
+                    projectId: projectId,
                     leadId: leadId,
                     payload: payload,
                     actionId: actionId
@@ -321,13 +385,19 @@ enum OfflineResilientActions {
         organizationId: String,
         action: OfflineActionQueue.PendingAction
     ) async -> WriteDisposition {
+        guard let actorUserId = await api.offlineActorUserId() else {
+            return .rejected("Brukeridentiteten er ikke bekreftet. Logg inn på nytt før handlingen lagres.")
+        }
+        let securedAction = action.bound(actorUserId: actorUserId)
         if NetworkMonitor.shared.isOnline {
             do {
                 _ = try await api.executeRaw(
-                    method: action.httpMethod,
-                    path: action.endpoint,
-                    body: action.bodyJson,
-                    idempotencyKey: "leadgrid:\(organizationId):\(action.id.uuidString)",
+                    method: securedAction.httpMethod,
+                    path: securedAction.endpoint,
+                    body: securedAction.bodyJson,
+                    idempotencyKey: OfflineActionIdempotency.key(
+                        for: securedAction,
+                        organizationId: organizationId),
                     organizationId: organizationId
                 )
                 return .sent
@@ -335,13 +405,15 @@ enum OfflineResilientActions {
                 return .rejected("Du har ikke tilgang til organisasjonen eller leaden lenger.")
             } catch APIError.unauthorized {
                 return .rejected("Økten er utløpt. Logg inn på nytt.")
+            } catch APIError.idempotencyConflict {
+                return .rejected("Samme handling finnes med andre data. Oppdater visningen før du prøver igjen.")
             } catch APIError.statusCode(let code) where (400...499).contains(code) && code != 429 {
                 return .rejected("Handlingen ble avvist av tjeneren (HTTP \(code)).")
             } catch APIError.serverError(let code, _) where (400...499).contains(code) && code != 429 {
                 return .rejected("Handlingen ble avvist av tjeneren (HTTP \(code)).")
             } catch { }
         }
-        let persisted = await OfflineActionQueue.shared.enqueue(action)
+        let persisted = await OfflineActionQueue.shared.enqueue(securedAction)
         return persisted
             ? .queued
             : .rejected("Handlingen kunne ikke lagres sikkert på iPad. Frigjør plass og prøv igjen.")
@@ -353,23 +425,18 @@ enum OfflineResilientActions {
     static func acceptRecommendation(
         api: APIClient,
         organizationId: String,
+        projectId: String,
         id: String
     ) async -> Bool {
-        if NetworkMonitor.shared.isOnline {
-            do {
-                _ = try await api.acceptRecommendation(id)
-                return true
-            } catch {
-                // Fall gjennom til kø — connectivity blip eller server-feil
-            }
-        }
-        let body = try? JSONSerialization.data(withJSONObject: ["recommendation_id": id])
-        await OfflineActionQueue.shared.enqueue(.init(
+        let disposition = await sendOrQueue(
+            api: api,
             organizationId: organizationId,
-            endpoint: "/api/leadgrid/intelligence/recommendations/\(id)/accept",
-            httpMethod: "POST",
-            bodyJson: body
-        ))
+            action: .init(
+                organizationId: organizationId,
+                projectId: projectId,
+                endpoint: LeadgridNBARequestPath.mutation(
+                    id: id, action: "accept", projectId: projectId)))
+        if case .sent = disposition { return true }
         return false
     }
 
@@ -378,20 +445,18 @@ enum OfflineResilientActions {
     static func dismissRecommendation(
         api: APIClient,
         organizationId: String,
+        projectId: String,
         id: String
     ) async -> Bool {
-        if NetworkMonitor.shared.isOnline {
-            do {
-                _ = try await api.dismissRecommendation(id)
-                return true
-            } catch { }
-        }
-        await OfflineActionQueue.shared.enqueue(.init(
+        let disposition = await sendOrQueue(
+            api: api,
             organizationId: organizationId,
-            endpoint: "/api/leadgrid/intelligence/recommendations/\(id)/dismiss",
-            httpMethod: "POST",
-            bodyJson: nil
-        ))
+            action: .init(
+                organizationId: organizationId,
+                projectId: projectId,
+                endpoint: LeadgridNBARequestPath.mutation(
+                    id: id, action: "dismiss", projectId: projectId)))
+        if case .sent = disposition { return true }
         return false
     }
 
@@ -400,25 +465,25 @@ enum OfflineResilientActions {
     static func executeRecommendation(
         api: APIClient,
         organizationId: String,
+        projectId: String,
         id: String,
-        outcome: String,
+        outcome: LeadgridNBAOutcome,
         notes: String?
     ) async -> Bool {
-        if NetworkMonitor.shared.isOnline {
-            do {
-                _ = try await api.executeRecommendation(id, outcome: outcome, notes: notes)
-                return true
-            } catch { }
-        }
-        var bodyDict: [String: Any] = ["outcome": outcome]
+        var bodyDict: [String: Any] = ["outcome": outcome.rawValue]
         if let n = notes { bodyDict["outcome_notes"] = n }
         let body = try? JSONSerialization.data(withJSONObject: bodyDict)
-        await OfflineActionQueue.shared.enqueue(.init(
+        let disposition = await sendOrQueue(
+            api: api,
             organizationId: organizationId,
-            endpoint: "/api/leadgrid/intelligence/recommendations/\(id)/execute",
-            httpMethod: "POST",
-            bodyJson: body
-        ))
+            action: .init(
+                organizationId: organizationId,
+                projectId: projectId,
+                endpoint: LeadgridNBARequestPath.mutation(
+                    id: id, action: "execute", projectId: projectId),
+                httpMethod: "POST",
+                bodyJson: body))
+        if case .sent = disposition { return true }
         return false
     }
 
@@ -427,15 +492,21 @@ enum OfflineResilientActions {
     static func updateLeadStatus(
         api: APIClient,
         organizationId: String,
+        projectId: String,
         leadId: String,
         status: String,
         actionId: UUID = UUID()
     ) async -> WriteDisposition {
+        guard let actorUserId = await api.offlineActorUserId() else {
+            return .rejected("Brukeridentiteten er ikke bekreftet. Logg inn på nytt.")
+        }
         let body = try? JSONSerialization.data(withJSONObject: ["status": status])
         let action = OfflineActionQueue.PendingAction(
             id: actionId,
             organizationId: organizationId,
-            endpoint: "/api/admin-room/lead-map/leads/\(leadId)/status",
+            actorUserId: actorUserId,
+            projectId: projectId,
+            endpoint: "/api/admin-room/lead-map/leads/\(leadId)/status?projectId=\(projectId)",
             httpMethod: "PATCH",
             bodyJson: body
         )
@@ -445,7 +516,9 @@ enum OfflineResilientActions {
                     method: action.httpMethod,
                     path: action.endpoint,
                     body: action.bodyJson,
-                    idempotencyKey: "leadgrid:\(organizationId):\(actionId.uuidString)",
+                    idempotencyKey: OfflineActionIdempotency.key(
+                        for: action,
+                        organizationId: organizationId),
                     organizationId: organizationId
                 )
                 return .sent
@@ -453,6 +526,8 @@ enum OfflineResilientActions {
                 return .rejected("Du har ikke tilgang til organisasjonen eller leaden lenger.")
             } catch APIError.unauthorized {
                 return .rejected("Økten på iPhone er utløpt. Logg inn igjen før du prøver fra Watch.")
+            } catch APIError.idempotencyConflict {
+                return .rejected("Samme statushandling finnes med andre data. Oppdater Leadgrid før nytt forsøk.")
             } catch { }
         }
         let persisted = await OfflineActionQueue.shared.enqueue(action)
@@ -467,9 +542,13 @@ enum OfflineResilientActions {
     static func logPhoneCall(
         api: APIClient,
         organizationId: String,
+        projectId: String,
         leadId: String,
         actionId: UUID = UUID()
     ) async -> WriteDisposition {
+        guard let actorUserId = await api.offlineActorUserId() else {
+            return .rejected("Brukeridentiteten er ikke bekreftet. Logg inn på nytt.")
+        }
         let body: [String: Any] = [
             "visitType": "phone",
             "conversationSummary": "Telefonkontakt registrert fra Apple Watch",
@@ -478,7 +557,9 @@ enum OfflineResilientActions {
         let action = OfflineActionQueue.PendingAction(
             id: actionId,
             organizationId: organizationId,
-            endpoint: "/api/admin-room/lead-map/leads/\(leadId)/visits",
+            actorUserId: actorUserId,
+            projectId: projectId,
+            endpoint: "/api/admin-room/lead-map/leads/\(leadId)/visits?projectId=\(projectId)",
             httpMethod: "POST",
             bodyJson: json
         )
@@ -488,7 +569,9 @@ enum OfflineResilientActions {
                     method: action.httpMethod,
                     path: action.endpoint,
                     body: action.bodyJson,
-                    idempotencyKey: "leadgrid:\(organizationId):\(actionId.uuidString)",
+                    idempotencyKey: OfflineActionIdempotency.key(
+                        for: action,
+                        organizationId: organizationId),
                     organizationId: organizationId
                 )
                 return .sent
@@ -496,6 +579,8 @@ enum OfflineResilientActions {
                 return .rejected("Du har ikke tilgang til organisasjonen eller leaden lenger.")
             } catch APIError.unauthorized {
                 return .rejected("Økten på iPhone er utløpt. Logg inn igjen før du prøver fra Watch.")
+            } catch APIError.idempotencyConflict {
+                return .rejected("Kontakten er allerede registrert med andre data. Oppdater Leadgrid før nytt forsøk.")
             } catch { }
         }
         let persisted = await OfflineActionQueue.shared.enqueue(action)
@@ -541,10 +626,14 @@ enum OfflineResilientActions {
         if !issues.isEmpty {
             return .rejected(issues.joined(separator: "\n"))
         }
+        guard let actorUserId = await api.offlineActorUserId() else {
+            return .rejected("Brukeridentiteten er ikke bekreftet. Logg inn på nytt.")
+        }
 
         let action: OfflineActionQueue.PendingAction
         do {
             action = try makeLeadCreationAction(draft: draft)
+                .bound(actorUserId: actorUserId, projectId: draft.projectId)
         } catch {
             return .rejected("Lead-dataene kunne ikke klargjøres for sikker lagring.")
         }

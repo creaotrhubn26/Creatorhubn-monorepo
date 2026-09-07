@@ -68,7 +68,10 @@ struct RouteAdherenceDashboardView: View {
         .sheet(item: $selectedMember) { member in
             MemberAdherenceDetailView(member: member)
         }
-        .task { await refresh() }
+        .task(id: appState.activeProjectId) {
+            teamReport = nil
+            await refresh()
+        }
     }
 
     // MARK: - Background
@@ -402,16 +405,28 @@ struct RouteAdherenceDashboardView: View {
     private func refresh() async {
         loading = true
         errorMessage = nil
-        defer { loading = false }
-        guard let api = appState.api else {
+        guard let api = appState.api,
+              let projectId = appState.activeProjectId else {
             errorMessage = "Ingen API-klient"
+            loading = false
             return
         }
+        let requestedDate = dateISO
         do {
-            let r = try await api.fetchTeamAdherenceSummary(date: dateISO)
+            let r = try await api.fetchTeamAdherenceSummary(
+                projectId: projectId,
+                date: requestedDate
+            )
+            guard appState.activeProjectId == projectId,
+                  dateISO == requestedDate,
+                  r.projectId == projectId else { return }
             teamReport = r
+            loading = false
         } catch {
+            guard appState.activeProjectId == projectId,
+                  dateISO == requestedDate else { return }
             errorMessage = "Kunne ikke hente rapport: \(error.localizedDescription)"
+            loading = false
         }
     }
 }
@@ -465,7 +480,10 @@ struct MemberAdherenceDetailView: View {
                 Spacer()
             }
         }
-        .task { await load() }
+        .task(id: appState.activeProjectId) {
+            report = nil
+            await load()
+        }
     }
 
     private var memberHeader: some View {
@@ -626,9 +644,10 @@ struct MemberAdherenceDetailView: View {
     private func load() async {
         loading = true
         errorMessage = nil
-        defer { loading = false }
-        guard let api = appState.api else {
+        guard let api = appState.api,
+              let projectId = appState.activeProjectId else {
             errorMessage = "Ingen API-klient"
+            loading = false
             return
         }
         do {
@@ -638,11 +657,19 @@ struct MemberAdherenceDetailView: View {
             let from = f.string(from: now.addingTimeInterval(-30 * 24 * 3600))
             let to = f.string(from: now)
             let r = try await api.fetchAdherenceReport(
-                userId: member.userId, from: from, to: to
+                projectId: projectId,
+                userId: member.userId,
+                from: from,
+                to: to
             )
+            guard appState.activeProjectId == projectId,
+                  r.projectId == projectId else { return }
             report = r
+            loading = false
         } catch {
+            guard appState.activeProjectId == projectId else { return }
             errorMessage = "Kunne ikke hente rapport: \(error.localizedDescription)"
+            loading = false
         }
     }
 }

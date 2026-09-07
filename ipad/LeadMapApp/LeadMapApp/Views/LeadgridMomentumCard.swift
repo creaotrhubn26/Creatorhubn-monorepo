@@ -9,16 +9,20 @@
 import SwiftUI
 
 struct LeadgridMomentumCard: View {
+    @Environment(AppState.self) private var appState
     let api: APIClient
     @State private var momentum: LeadgridMomentum?
     @State private var loading = true
     @State private var errorText: String?
     @State private var presentingSetGoal = false
+    @State private var goalProjectId: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            if loading && momentum == nil {
+            if appState.activeLeadgridProjectId == nil {
+                projectRequiredState
+            } else if loading && momentum == nil {
                 HStack { Spacer(); ProgressView(); Spacer() }
             } else if let m = momentum {
                 scoreRow(m)
@@ -38,13 +42,25 @@ struct LeadgridMomentumCard: View {
         }
         .padding()
         .background(Color.purple.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
-        .task { await load() }
-        .sheet(isPresented: $presentingSetGoal) {
-            LeadgridSetGoalSheet(api: api, onSaved: {
-                Task { await load() }
-            })
+        .task(id: appState.activeLeadgridProjectId) { await load() }
+        .sheet(isPresented: $presentingSetGoal, onDismiss: { goalProjectId = nil }) {
+            if let projectId = goalProjectId {
+                LeadgridSetGoalSheet(api: api, projectId: projectId, onSaved: {
+                    Task { await load() }
+                })
+            } else {
+                EmptyView()
+            }
         }
     }
+
+    @ViewBuilder
+    private var projectRequiredState: some View {
+        Label("Velg et kundeprosjekt for å vise momentum.", systemImage: "folder.badge.questionmark")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+
 
     @ViewBuilder
     private var header: some View {
@@ -55,12 +71,15 @@ struct LeadgridMomentumCard: View {
             Text("Momentum i dag").font(.headline)
             Spacer()
             Button {
+                guard let projectId = appState.activeLeadgridProjectId else { return }
+                goalProjectId = projectId
                 presentingSetGoal = true
             } label: {
                 Image(systemName: "target")
                     .font(.caption)
             }
             .accessibilityLabel("Sett salgsmål")
+            .disabled(appState.activeLeadgridProjectId == nil)
             Button {
                 Task { await load() }
             } label: {
@@ -68,6 +87,7 @@ struct LeadgridMomentumCard: View {
                     .font(.caption)
             }
             .accessibilityLabel("Oppdater momentum")
+            .disabled(appState.activeLeadgridProjectId == nil)
         }
     }
 
@@ -172,13 +192,27 @@ struct LeadgridMomentumCard: View {
 
     @MainActor
     private func load() async {
+        guard let projectId = appState.activeLeadgridProjectId else {
+            momentum = nil
+            errorText = nil
+            loading = false
+            return
+        }
+        momentum = nil
         loading = true
         errorText = nil
+        defer {
+            if appState.activeLeadgridProjectId == projectId { loading = false }
+        }
         do {
-            momentum = try await api.fetchMomentumToday()
+            let loaded = try await api.fetchMomentumToday(projectId: projectId)
+            guard appState.activeLeadgridProjectId == projectId,
+                  loaded.projectId == projectId else { return }
+            momentum = loaded
         } catch {
+            guard !Task.isCancelled, appState.activeLeadgridProjectId == projectId else { return }
+            momentum = nil
             errorText = "Kunne ikke laste momentum: \(error.localizedDescription)"
         }
-        loading = false
     }
 }

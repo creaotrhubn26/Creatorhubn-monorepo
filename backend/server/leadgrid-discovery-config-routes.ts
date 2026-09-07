@@ -61,7 +61,8 @@ const configBodySchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["enrichment_count"],
-        message: "Antall som berikes kan ikke være høyere enn måltallet.",
+        message:
+          "Taket for registrerte nettsider som kan vurderes, kan ikke være høyere enn antall kandidater.",
       });
     }
   });

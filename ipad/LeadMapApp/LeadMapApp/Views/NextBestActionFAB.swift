@@ -5,7 +5,7 @@
 // (Naviger / Ring / Marker status).
 //
 // Data fra eksisterende Intelligence-engine:
-//   • GET  /api/leadgrid/intelligence/recommendations?limit=1
+//   • GET  /api/leadgrid/intelligence/recommendations?projectId=…&limit=1
 //   • POST /api/leadgrid/intelligence/recommendations/:id/execute
 //
 // Hvis NBA-engine er tom (orgen har ikke Intelligence) → fall-back på
@@ -55,12 +55,18 @@ struct NextBestActionFAB: View {
                     radius: 10, x: 0, y: 4)
         }
         .buttonStyle(.plain)
-        .opacity(hasRecommendation ? 1 : 0)
-        .task { await load() }
+        .opacity(hasRecommendation || needsProjectSelection ? 1 : 0)
+        .task(id: appState.activeLeadgridProjectId) { await load() }
+        .onChange(of: appState.activeLeadgridProjectId) { _, _ in
+            // A recommendation belongs to the project it was fetched from.
+            // Close stale sheets instead of rebinding an old recommendation.
+            presentSheet = false
+        }
         .sheet(isPresented: $presentSheet) {
             NextBestActionSheet(
                 nba: topNBA,
                 fallback: fallbackLead,
+                requiresProjectSelection: needsProjectSelection,
                 onOpenLead: { id in
                     presentSheet = false
                     onOpenLead(id)
@@ -78,7 +84,12 @@ struct NextBestActionFAB: View {
         topNBA != nil || fallbackLead != nil
     }
 
+    private var needsProjectSelection: Bool {
+        appState.activeLeadgridProjectId == nil
+    }
+
     private var summaryLine: String {
+        if needsProjectSelection { return "Velg kundeprosjekt" }
         if let nba = topNBA {
             let parts = [nba.leadName ?? "Lead", actionLabel(for: nba.actionType)].compactMap { $0 }
             return parts.joined(separator: " · ")
@@ -107,9 +118,17 @@ struct NextBestActionFAB: View {
         loading = true
         defer { loading = false }
         guard let api = appState.api else { return }
+        guard let projectId = appState.activeLeadgridProjectId else {
+            topNBA = nil
+            fallbackLead = nil
+            return
+        }
         // Prøv NBA-engine først (PR #855)
         do {
-            let list = try await api.fetchNBARecommendations(priority: nil, limit: 5)
+            let list = try await api.fetchNBARecommendations(
+                projectId: projectId,
+                priority: nil,
+                limit: 5)
             // Velg første som ikke er dismissed/executed.
             let candidate = list.first(where: { rec in
                 rec.status == "pending" || rec.status == "accepted"
@@ -118,10 +137,15 @@ struct NextBestActionFAB: View {
         } catch {
             self.topNBA = nil
         }
-        // Fall-back: Claude-rangert workload-lead
-        self.fallbackLead = appState.workloadLeads.first {
+        // Workload is organization-wide. Only use a fallback whose id also
+        // exists in the leads fetched for the selected Leadgrid project.
+        let scopedLeadIds = Set(appState.leads.lazy
+            .filter { $0.projectId == projectId }
+            .map(\.id))
+        let scopedWorkload = appState.workloadLeads.filter { scopedLeadIds.contains($0.id) }
+        self.fallbackLead = scopedWorkload.first {
             ($0.claudeRecommendationRank ?? 9999) <= 5
-        } ?? appState.workloadLeads.first
+        } ?? scopedWorkload.first
     }
 }
 
@@ -132,17 +156,27 @@ struct NextBestActionSheet: View {
     @Environment(\.dismiss) private var dismiss
     let nba: LeadgridNBARecommendation?
     let fallback: WorkloadLead?
+    let requiresProjectSelection: Bool
     var onOpenLead: (String) -> Void
     var onExecuted: () -> Void
 
     @State private var executing = false
+    @State private var executionError: String?
+    @State private var contactHandoffRequest: LeadgridExternalContactRequest?
 
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
-                header
-                reasonCard
-                quickActionGrid
+                if requiresProjectSelection {
+                    ContentUnavailableView(
+                        "Velg kundeprosjekt",
+                        systemImage: "folder.badge.questionmark",
+                        description: Text("Neste beste handling vises bare for det aktive Leadgrid-kundeprosjektet."))
+                } else {
+                    header
+                    reasonCard
+                    quickActionGrid
+                }
                 Spacer()
             }
             .padding()
@@ -155,6 +189,7 @@ struct NextBestActionSheet: View {
                 }
             }
         }
+        .leadgridContactHandoff(request: $contactHandoffRequest)
     }
 
     @ViewBuilder
@@ -204,9 +239,13 @@ struct NextBestActionSheet: View {
                     UIApplication.shared.open(mapsURL)
                 }
             }
-            if let phoneURL {
+            if let phoneURL, let scopedLead {
                 actionButton(label: "Ring", icon: "phone.fill", tint: .green) {
-                    UIApplication.shared.open(phoneURL)
+                    contactHandoffRequest = .init(
+                        url: phoneURL,
+                        channel: .phone,
+                        leadId: scopedLead.id,
+                        leadProjectId: scopedLead.projectId)
                 }
             }
             actionButton(label: "Åpne lead", icon: "person.crop.circle", tint: .blue) {
@@ -214,7 +253,7 @@ struct NextBestActionSheet: View {
             }
             if let id = nba?.id {
                 actionButton(
-                    label: executing ? "Markerer …" : "Marker som utført",
+                    label: executing ? "Bekrefter …" : "Marker anbefaling utført",
                     icon: "checkmark.circle.fill",
                     tint: Color(red: 0.30, green: 0.92, blue: 0.55)
                 ) {
@@ -222,6 +261,19 @@ struct NextBestActionSheet: View {
                 }
                 .disabled(executing)
             }
+        }
+        if nba != nil {
+            Text("Dette markerer selve anbefalingen som utført. For telefon og e-post betyr det ikke at Leadgrid har bekreftet levering eller svar.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        if let executionError {
+            Label(executionError, systemImage: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("next-best-action.execution-error")
         }
     }
 
@@ -269,10 +321,18 @@ struct NextBestActionSheet: View {
         nba?.leadId ?? fallback?.id ?? ""
     }
 
+    private var scopedLead: LeadModel? {
+        guard let projectId = appState.activeLeadgridProjectId else { return nil }
+        return appState.leads.first {
+            $0.id == leadId && $0.projectId == projectId
+        }
+    }
+
     private var phoneURL: URL? {
-        let phone = fallback?.phone
-        guard let phone, !phone.isEmpty else { return nil }
-        return URL(string: "tel:\(phone.replacingOccurrences(of: " ", with: ""))")
+        guard let phone = scopedLead?.phone else { return nil }
+        let normalized = phone.filter { $0.isNumber || $0 == "+" }
+        guard !normalized.isEmpty else { return nil }
+        return URL(string: "tel:\(normalized)")
     }
 
     private var mapsURL: URL? {
@@ -281,11 +341,31 @@ struct NextBestActionSheet: View {
 
     @MainActor
     private func execute(id: String) async {
-        guard let api = appState.api else { return }
+        guard let api = appState.api else {
+            executionError = "Kan ikke bekrefte nå. Logg inn på nytt og prøv igjen."
+            return
+        }
+        guard let projectId = appState.activeLeadgridProjectId else {
+            executionError = "Velg et Leadgrid-kundeprosjekt før anbefalingen markeres som utført."
+            return
+        }
         executing = true
+        executionError = nil
         defer { executing = false }
-        _ = try? await api.executeRecommendation(id, outcome: "completed", notes: nil)
-        onExecuted()
-        dismiss()
+        do {
+            let result = try await api.executeRecommendation(
+                id,
+                projectId: projectId,
+                outcome: .positive,
+                notes: nil)
+            guard result.confirmsExecution else {
+                executionError = "Serveren bekreftet ikke at anbefalingen ble markert som utført."
+                return
+            }
+            onExecuted()
+            dismiss()
+        } catch {
+            executionError = "Kunne ikke markere anbefalingen som utført: \(error.localizedDescription)"
+        }
     }
 }

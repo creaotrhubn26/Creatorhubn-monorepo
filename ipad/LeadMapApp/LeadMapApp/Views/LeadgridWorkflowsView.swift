@@ -12,6 +12,7 @@ import SwiftUI
 
 struct LeadgridWorkflowsView: View {
     let api: APIClient
+    @Environment(AppState.self) private var appState
     @State private var workflows: [LeadgridWorkflow] = []
     @State private var templates: [LeadgridWorkflowTemplate] = []
     @State private var loading = true
@@ -25,32 +26,60 @@ struct LeadgridWorkflowsView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("Visning", selection: $selectedTab) {
-                    Text("Mine (\(workflows.count))").tag(Tab.workflows)
-                    Text("Templates (\(templates.count))").tag(Tab.templates)
-                }
-                .pickerStyle(.segmented)
-                .padding()
+                if let project = appState.activeLeadgridProject {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label(project.name, systemImage: "folder.fill")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
 
-                if loading {
-                    ProgressView().padding()
-                } else if let errorText {
-                    Text(errorText).foregroundStyle(.red).padding()
-                } else if selectedTab == .workflows {
-                    workflowsList
+                        Picker("Visning", selection: $selectedTab) {
+                            Text("Mine (\(workflows.count))").tag(Tab.workflows)
+                            Text("Templates (\(templates.count))").tag(Tab.templates)
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                    .padding()
+
+                    if loading {
+                        ProgressView().padding()
+                    } else if let errorText {
+                        ContentUnavailableView(
+                            "Kunne ikke laste workflows",
+                            systemImage: "exclamationmark.triangle",
+                            description: Text(errorText)
+                        )
+                    } else if selectedTab == .workflows {
+                        workflowsList
+                    } else {
+                        templatesList
+                    }
                 } else {
-                    templatesList
+                    ContentUnavailableView(
+                        "Velg kundeprosjekt",
+                        systemImage: "folder.badge.questionmark",
+                        description: Text(
+                            "Workflows, templates og historikk vises bare for ett aktivt Leadgrid-kundeprosjekt."
+                        )
+                    )
                 }
             }
             .navigationTitle("Workflows")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    ProjectPicker()
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showBuilder = true } label: {
                         Image(systemName: "plus")
                     }
+                    .disabled(appState.activeLeadgridProjectId == nil)
                 }
             }
-            .task { await reload() }
+            .task(id: appState.activeLeadgridProjectId) {
+                selectedWorkflow = nil
+                showBuilder = false
+                await reload()
+            }
             .refreshable { await reload() }
             .sheet(item: $selectedWorkflow) { wf in
                 LeadgridWorkflowDetailSheet(workflow: wf, api: api) {
@@ -58,9 +87,21 @@ struct LeadgridWorkflowsView: View {
                 }
             }
             .sheet(isPresented: $showBuilder) {
-                LeadgridWorkflowBuilderView(api: api, templates: templates) {
-                    showBuilder = false
-                    Task { await reload() }
+                if let projectId = appState.activeLeadgridProjectId {
+                    LeadgridWorkflowBuilderView(
+                        api: api,
+                        projectId: projectId,
+                        templates: templates
+                    ) {
+                        showBuilder = false
+                        Task { await reload() }
+                    }
+                } else {
+                    ContentUnavailableView(
+                        "Velg kundeprosjekt",
+                        systemImage: "folder.badge.questionmark",
+                        description: Text("En workflow kan ikke opprettes uten prosjektkontekst.")
+                    )
                 }
             }
         }
@@ -105,25 +146,48 @@ struct LeadgridWorkflowsView: View {
     }
 
     private func reload() async {
-        loading = true
+        workflows = []
+        templates = []
         errorText = nil
+        guard let projectId = appState.activeLeadgridProjectId else {
+            loading = false
+            return
+        }
+        loading = true
         do {
-            async let w = api.fetchWorkflows()
-            async let t = api.fetchWorkflowTemplates()
-            workflows = try await w
-            templates = try await t
+            async let workflowRequest = api.fetchWorkflows(projectId: projectId)
+            async let templateRequest = api.fetchWorkflowTemplates(projectId: projectId)
+            let (loadedWorkflows, loadedTemplates) = try await (
+                workflowRequest,
+                templateRequest
+            )
+            guard appState.activeLeadgridProjectId == projectId else { return }
+            workflows = loadedWorkflows.filter { $0.projectId == projectId }
+            templates = loadedTemplates
         } catch {
+            guard appState.activeLeadgridProjectId == projectId else { return }
             errorText = "Kunne ikke laste: \(error.localizedDescription)"
         }
-        loading = false
+        if appState.activeLeadgridProjectId == projectId {
+            loading = false
+        }
     }
 
     private func useTemplate(_ tpl: LeadgridWorkflowTemplate) async {
+        guard let projectId = appState.activeLeadgridProjectId else {
+            errorText = "Velg et kundeprosjekt før du bruker en template."
+            return
+        }
         do {
-            _ = try await api.createWorkflowFromTemplate(templateKey: tpl.key)
+            _ = try await api.createWorkflowFromTemplate(
+                templateKey: tpl.key,
+                projectId: projectId
+            )
+            guard appState.activeLeadgridProjectId == projectId else { return }
             await reload()
             selectedTab = .workflows
         } catch {
+            guard appState.activeLeadgridProjectId == projectId else { return }
             errorText = "Klarte ikke å bruke template: \(error.localizedDescription)"
         }
     }

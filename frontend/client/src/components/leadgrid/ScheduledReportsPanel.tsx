@@ -20,8 +20,14 @@ import EmailIcon from "@mui/icons-material/Email";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ErrorIcon from "@mui/icons-material/Error";
 
+interface ProjectListItem {
+  id: string;
+  name: string;
+}
+
 interface ReportSub {
   id: string;
+  project_id: string | null;
   name: string;
   report_type: "summary" | "leads_list" | "both";
   period_days: number;
@@ -46,6 +52,19 @@ interface ReportSub {
 
 const DAYS = ["Søn", "Man", "Tir", "Ons", "Tor", "Fre", "Lør"];
 
+function authHeaders(): HeadersInit {
+  const token = typeof window === "undefined"
+    ? null
+    : localStorage.getItem("rr_bearer");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function activeOrganizationId(): string | null {
+  return typeof window === "undefined"
+    ? null
+    : localStorage.getItem("rr_lead_map_active_org");
+}
+
 function formatNextSend(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleString("no-NO", {
@@ -56,25 +75,96 @@ function formatNextSend(iso: string): string {
 
 export function ScheduledReportsPanel() {
   const [items, setItems] = useState<ReportSub[]>([]);
+  const [projects, setProjects] = useState<ProjectListItem[]>([]);
+  const [projectId, setProjectId] = useState(() =>
+    typeof window === "undefined"
+      ? ""
+      : localStorage.getItem("rr_lead_map_active_project") ?? "",
+  );
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [projectError, setProjectError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<ReportSub | null>(null);
   const [creating, setCreating] = useState(false);
   const [snack, setSnack] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
 
+  const selectedProject = projects.find((project) => project.id === projectId) ?? null;
+  const visibleItems = selectedProject
+    ? items.filter((item) => item.project_id === selectedProject.id)
+    : [];
+  const unscopedCount = items.filter((item) => !item.project_id).length;
+
   const load = () => {
     setLoading(true);
-    fetch("/api/leadgrid/scheduled-reports", { credentials: "include" })
+    const params = new URLSearchParams();
+    const organizationId = activeOrganizationId();
+    if (organizationId) params.set("organization_id", organizationId);
+    const suffix = params.size > 0 ? `?${params.toString()}` : "";
+    fetch(`/api/leadgrid/scheduled-reports${suffix}`, {
+      credentials: "include",
+      headers: authHeaders(),
+    })
       .then((r) => r.ok ? r.json() : { items: [] })
       .then((d) => setItems(d.items ?? []))
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadProjects = async () => {
+      setProjectsLoading(true);
+      setProjectError(null);
+      try {
+        const params = new URLSearchParams();
+        const organizationId = activeOrganizationId();
+        if (organizationId) params.set("organization_id", organizationId);
+        const suffix = params.size > 0 ? `?${params.toString()}` : "";
+        const response = await fetch(
+          `/api/admin-room/lead-map/projects${suffix}`,
+          {
+            credentials: "include",
+            headers: authHeaders(),
+            signal: controller.signal,
+          },
+        );
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body?.error ?? "Kunne ikke hente kundeprosjekter");
+        }
+        const nextProjects = Array.isArray(body.projects) ? body.projects : [];
+        setProjects(nextProjects);
+        setProjectId((current) => {
+          if (nextProjects.some((project: ProjectListItem) => project.id === current)) {
+            return current;
+          }
+          return nextProjects.length === 1 ? nextProjects[0].id : "";
+        });
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setProjects([]);
+          setProjectError(
+            error instanceof Error ? error.message : "Kunne ikke hente kundeprosjekter",
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) setProjectsLoading(false);
+      }
+    };
+    void loadProjects();
+    load();
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (projectId) localStorage.setItem("rr_lead_map_active_project", projectId);
+    else localStorage.removeItem("rr_lead_map_active_project");
+  }, [projectId]);
 
   const del = async (id: string) => {
     if (!confirm("Slett dette abonnementet?")) return;
     const r = await fetch(`/api/leadgrid/scheduled-reports/${id}`, {
-      method: "DELETE", credentials: "include",
+      method: "DELETE", credentials: "include", headers: authHeaders(),
     });
     if (r.ok) { setSnack({ kind: "ok", msg: "Slettet" }); load(); }
   };
@@ -82,6 +172,8 @@ export function ScheduledReportsPanel() {
   const sendNow = async (id: string) => {
     const r = await fetch(`/api/leadgrid/scheduled-reports/${id}/send-now`, {
       method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ organization_id: activeOrganizationId() }),
     });
     if (r.ok) {
       setSnack({ kind: "ok", msg: "Rapporten sendes innen 1 time" });
@@ -92,18 +184,27 @@ export function ScheduledReportsPanel() {
   const toggle = async (sub: ReportSub) => {
     const r = await fetch(`/api/leadgrid/scheduled-reports/${sub.id}`, {
       method: "PUT", credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_active: !sub.is_active }),
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({
+        is_active: !sub.is_active,
+        organization_id: activeOrganizationId(),
+      }),
     });
     if (r.ok) { setSnack({ kind: "ok", msg: sub.is_active ? "Pauset" : "Aktivert" }); load(); }
   };
 
   const bulkAutoCreate = async () => {
-    if (!confirm("Opprett rapport-abonnement for hver selger + teamleder i organisasjonen? Idempotent — eksisterende hoppes over.")) return;
+    if (!selectedProject) {
+      setSnack({ kind: "err", msg: "Velg kundeprosjekt først" });
+      return;
+    }
+    if (!confirm(`Opprett rapport-abonnement for hver selger og teamleder i ${selectedProject.name}? Eksisterende abonnement hoppes over.`)) return;
     const r = await fetch("/api/leadgrid/scheduled-reports/auto-create-for-team", {
       method: "POST", credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({
+        organization_id: activeOrganizationId(),
+        project_id: selectedProject.id,
         frequency: "weekly", day_of_week: 1, time_of_day: "08:00",
         period_days: 7, report_type: "summary",
         include_reps: true, include_team_leaders: true,
@@ -131,28 +232,52 @@ export function ScheduledReportsPanel() {
               </Typography>
             </Stack>
             <Typography variant="caption" color="text.secondary">
-              Selgere får sin egen, teamledere får team-rapport, markedssjef får org
+              Rapporter er alltid avgrenset til valgt kundeprosjekt
             </Typography>
           </Box>
-          <Stack direction="row" spacing={1}>
-            <Button variant="outlined" size="small" onClick={bulkAutoCreate}>
+          <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
+            <TextField
+              select
+              size="small"
+              label="Kundeprosjekt"
+              value={projectId}
+              onChange={(event) => setProjectId(event.target.value)}
+              disabled={projectsLoading}
+              sx={{ minWidth: 220 }}
+            >
+              <MenuItem value="" disabled>Velg kundeprosjekt</MenuItem>
+              {projects.map((project) => (
+                <MenuItem key={project.id} value={project.id}>{project.name}</MenuItem>
+              ))}
+            </TextField>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={bulkAutoCreate}
+              disabled={!selectedProject}
+            >
               Auto-aktiver per person
             </Button>
             <Button variant="contained" size="small" startIcon={<AddIcon />}
+                    disabled={!selectedProject}
                     onClick={() => setCreating(true)}>
               Nytt abonnement
             </Button>
           </Stack>
         </Stack>
 
-        {items.length === 0 && !loading ? (
+        {projectError ? (
+          <Alert severity="error">{projectError}</Alert>
+        ) : !selectedProject ? (
+          <Alert severity="info">Velg et Leadgrid-kundeprosjekt for å se rapportene.</Alert>
+        ) : visibleItems.length === 0 && !loading ? (
           <Typography variant="body2" color="text.secondary"
                       sx={{ textAlign: "center", py: 3 }}>
-            Ingen schedulerte rapporter ennå. Klikk "Nytt abonnement" for å starte.
+            Ingen schedulerte rapporter for {selectedProject.name} ennå.
           </Typography>
         ) : (
           <Stack spacing={1.5}>
-            {items.map((sub) => (
+            {visibleItems.map((sub) => (
               <Box key={sub.id} sx={{
                 p: 2, borderRadius: 1,
                 bgcolor: sub.is_active ? "rgba(0,0,0,0.20)" : "rgba(0,0,0,0.10)",
@@ -168,7 +293,7 @@ export function ScheduledReportsPanel() {
                       </Typography>
                       <Chip size="small"
                             label={sub.scope === "individual" ? "Personlig"
-                                  : sub.scope === "team" ? "Team" : "Org"}
+                                  : sub.scope === "team" ? "Team" : "Prosjekt"}
                             sx={{ fontSize: 10, height: 18, fontWeight: 700,
                                   bgcolor: sub.scope === "individual" ? "rgba(155,225,93,0.20)"
                                          : sub.scope === "team" ? "rgba(255,184,107,0.20)"
@@ -243,8 +368,16 @@ export function ScheduledReportsPanel() {
           </Stack>
         )}
 
-        {(editing || creating) && (
+        {unscopedCount > 0 && (
+          <Alert severity="warning" sx={{ mt: 2 }}>
+            {unscopedCount} eldre abonnement mangler kundeprosjekt og blir ikke sendt.
+          </Alert>
+        )}
+
+        {(editing || creating) && selectedProject && (
           <SubscriptionDialog sub={editing}
+                              projectId={selectedProject.id}
+                              projectName={selectedProject.name}
                               onClose={() => { setEditing(null); setCreating(false); }}
                               onSaved={() => { setEditing(null); setCreating(false); load();
                                                 setSnack({ kind: "ok", msg: "Lagret" }); }} />
@@ -259,10 +392,15 @@ export function ScheduledReportsPanel() {
   );
 }
 
-function SubscriptionDialog({ sub, onClose, onSaved }: {
-  sub: ReportSub | null; onClose: () => void; onSaved: () => void;
+function SubscriptionDialog({ sub, projectId, projectName, onClose, onSaved }: {
+  sub: ReportSub | null;
+  projectId: string;
+  projectName: string;
+  onClose: () => void;
+  onSaved: () => void;
 }) {
   const [form, setForm] = useState({
+    project_id: sub?.project_id ?? projectId,
     name: sub?.name ?? "Ukentlig salgs-rapport",
     report_type: sub?.report_type ?? "summary",
     period_days: sub?.period_days ?? 7,
@@ -284,10 +422,13 @@ function SubscriptionDialog({ sub, onClose, onSaved }: {
   const [assignableUsers, setAssignableUsers] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch("/api/leadgrid/assignable-users?role=all", { credentials: "include" })
+    fetch(
+      `/api/leadgrid/assignable-users?role=all&projectId=${encodeURIComponent(projectId)}`,
+      { credentials: "include" },
+    )
       .then((r) => r.ok ? r.json() : { users: [] })
       .then((d) => setAssignableUsers(d.users ?? []));
-  }, []);
+  }, [projectId]);
 
   const save = async () => {
     setSaving(true);
@@ -298,8 +439,12 @@ function SubscriptionDialog({ sub, onClose, onSaved }: {
       const r = await fetch(url, {
         method: sub ? "PUT" : "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          ...form,
+          project_id: projectId,
+          organization_id: activeOrganizationId(),
+        }),
       });
       if (r.ok) onSaved();
     } finally { setSaving(false); }
@@ -318,6 +463,7 @@ function SubscriptionDialog({ sub, onClose, onSaved }: {
       <DialogTitle>{sub ? "Rediger abonnement" : "Nytt schedulert rapport-abonnement"}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2} sx={{ mt: 1 }}>
+          <Alert severity="info">Kundeprosjekt: {projectName}</Alert>
           <TextField label="Navn" value={form.name}
                      onChange={(e) => upd("name", e.target.value)}
                      fullWidth size="small" />
@@ -332,7 +478,7 @@ function SubscriptionDialog({ sub, onClose, onSaved }: {
               <TextField select label="Scope" value={form.scope}
                          onChange={(e) => upd("scope", e.target.value)}
                          size="small" sx={{ flex: 1 }}>
-                <MenuItem value="org">Hele org (alle leads)</MenuItem>
+                <MenuItem value="org">Hele prosjektet (alle leads i kundeprosjektet)</MenuItem>
                 <MenuItem value="team">Ett team (én teamleder)</MenuItem>
                 <MenuItem value="individual">Én person (én selger)</MenuItem>
               </TextField>

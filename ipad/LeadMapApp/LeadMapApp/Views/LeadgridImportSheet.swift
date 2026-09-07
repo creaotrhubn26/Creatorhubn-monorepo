@@ -1,21 +1,16 @@
 // LeadgridImportSheet.swift
 //
-// Bottom-sheet for å importere leads til Leadgrid fra iPad. To moduser:
+// Bottom-sheet for å importere leads til Leadgrid fra iPad.
 //
 //   1. CSV / Excel    — DocumentPicker → preview → enkel auto-mapping →
 //                       commit. Vi viser ikke full column-mapping på iPad
 //                       (det er en web-flate), men vi sender mappingen vi
 //                       auto-utleder.
-//   2. URL Research   — lim inn EN nettside-URL → Role Room Agents
-//                       orchestrator-stack kjører Brreg + website +
-//                       Google Places + Claude synthesis → draft-lead
-//                       opprettes → preview m/ lokasjons-konfidens →
-//                       commit → pin på kartet.
-//
 // Bruker eksisterende APIClient-metoder:
 //   CSV: uploadImportFile, commitImportCsv
-//   URL Research: startUrlResearch, runUrlResearch, commitDraftLead,
-//                 refreshUrlResearchSection
+//
+// URL Research ble tatt ut fordi den gamle flyten kunne lagre rå Places-data
+// uten Discovery V2-attestering. Nye kandidater opprettes i Discovery V2.
 
 import SwiftUI
 import UniformTypeIdentifiers
@@ -25,39 +20,12 @@ struct LeadgridImportSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
 
-    @State private var mode: ImportMode = .csv
     @State private var statusMessage: String?
-
-    enum ImportMode: String, CaseIterable, Identifiable {
-        case csv, url
-        var id: String { rawValue }
-        var label: String {
-            switch self {
-            case .csv: return "CSV / Excel-fil"
-            case .url: return "URL Research"
-            }
-        }
-    }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("", selection: $mode) {
-                    ForEach(ImportMode.allCases) { m in
-                        Text(m.label).tag(m)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding()
-
-                Divider()
-
-                switch mode {
-                case .csv:
-                    CsvImportTab(statusMessage: $statusMessage)
-                case .url:
-                    LeadgridUrlResearchView(statusMessage: $statusMessage)
-                }
+                CsvImportTab(statusMessage: $statusMessage)
             }
             .navigationTitle("Importer leads")
             .navigationBarTitleDisplayMode(.inline)
@@ -96,6 +64,7 @@ private struct CsvImportTab: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                projectContext
                 if let result = commitResult {
                     successView(result)
                 } else if let preview {
@@ -119,6 +88,33 @@ private struct CsvImportTab: View {
             case .failure(let err):
                 statusMessage = "Kunne ikke velge fil: \(err.localizedDescription)"
             }
+        }
+    }
+
+    @ViewBuilder
+    private var projectContext: some View {
+        if let projectId = appState.activeProjectId,
+           let project = appState.projects.first(where: { $0.id == projectId }) {
+            Label {
+                Text("Importerer til **\(project.name)**")
+            } icon: {
+                Image(systemName: "folder.fill")
+                    .foregroundStyle(.purple)
+            }
+            .font(.callout)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.purple.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
+        } else {
+            Label(
+                "Velg et kundeprosjekt før du importerer.",
+                systemImage: "exclamationmark.triangle.fill"
+            )
+            .font(.callout)
+            .foregroundStyle(.orange)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 
@@ -149,7 +145,7 @@ private struct CsvImportTab: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(.purple)
-            .disabled(uploading)
+            .disabled(uploading || appState.activeProjectId == nil)
 
             if uploading {
                 ProgressView("Laster opp og parser …")
@@ -271,7 +267,12 @@ private struct CsvImportTab: View {
                 statusMessage = "Innlogging utløpt"
                 return
             }
+            guard let projectId = appState.activeProjectId else {
+                statusMessage = "Velg et kundeprosjekt først"
+                return
+            }
             let p = try await api.uploadImportFile(
+                projectId: projectId,
                 data: data,
                 fileName: url.lastPathComponent,
                 mimeType: mime,
@@ -318,10 +319,21 @@ private struct CsvImportTab: View {
     @MainActor
     private func commit(_ p: LeadgridImportPreview) async {
         guard let api = appState.api else { return }
+        guard let projectId = appState.activeProjectId else {
+            statusMessage = "Velg et kundeprosjekt først"
+            return
+        }
+        guard projectId == p.projectId else {
+            statusMessage = "Prosjektet ble byttet. Last opp filen på nytt."
+            preview = nil
+            mapping = [:]
+            return
+        }
         uploading = true
         defer { uploading = false }
         do {
             let res = try await api.commitImportCsv(
+                projectId: projectId,
                 fileToken: p.fileToken,
                 mapping: mapping,
                 dedupeStrategy: dedupe,
@@ -502,22 +514,7 @@ struct LeadgridUrlResearchView: View {
 
     @MainActor
     private func startBulkResearch() async {
-        guard let api = appState.api else {
-            statusMessage = "Innlogging utløpt"
-            return
-        }
-        let urls = parseBulkUrls(bulkUrlsText)
-        guard !urls.isEmpty else { return }
-        bulkStarting = true
-        statusMessage = nil
-        defer { bulkStarting = false }
-        do {
-            let resp = try await api.startBulkUrlResearch(urls)
-            bulkBatchId = resp.batchId
-            bulkTotalUrls = resp.totalUrls
-        } catch {
-            statusMessage = "Kunne ikke starte: \(error.localizedDescription)"
-        }
+        statusMessage = "URL Research er avviklet. Bruk Discovery V2-profiler for nye kandidater."
     }
 
     private func resetBulkState() {
@@ -808,62 +805,17 @@ struct LeadgridUrlResearchView: View {
 
     @MainActor
     private func startResearch() async {
-        guard let api = appState.api else {
-            statusMessage = "Innlogging utløpt"
-            return
-        }
-        statusMessage = nil
-        stage = .running
-        do {
-            let start = try await api.startUrlResearch(urlText)
-            draftLeadId = start.draftLeadId
-            let run = try await api.runUrlResearch(draftLeadId: start.draftLeadId)
-            lastRun = run
-            stage = .ready
-        } catch {
-            statusMessage = "Research feilet: \(error.localizedDescription)"
-            stage = .idle
-        }
+        statusMessage = "URL Research er avviklet. Bruk Discovery V2-profiler for nye kandidater."
+        stage = .idle
     }
 
     @MainActor
     private func commit() async {
-        guard let api = appState.api, let id = draftLeadId else { return }
-        committing = true
-        defer { committing = false }
-        do {
-            let res = try await api.commitDraftLead(
-                draftLeadId: id, accept: true, overrides: overrides)
-            committedLead = res.lead
-            stage = .committed
-            // Pin-garanti: hvis lat/lng er populert, injekt direkte i
-            // AppState.leads slik at MapScreen rendrer pin umiddelbart
-            // uten å vente på refreshAll-syklusen.
-            if let leadModel = res.lead?.toLeadModelForMap() {
-                if !appState.leads.contains(where: { $0.id == leadModel.id }) {
-                    appState.leads.append(leadModel)
-                }
-            }
-            // Refresh i bakgrunnen så vi får eventuelle felter vi ikke
-            // satte selv (assignment, projectId, etc.).
-            Task { await appState.refreshAll() }
-        } catch {
-            statusMessage = "Commit feilet: \(error.localizedDescription)"
-        }
+        statusMessage = "Denne gamle utkastflyten kan ikke lenger opprette leads. Bruk Discovery V2."
     }
 
     @MainActor
     private func discard() async {
-        guard let api = appState.api, let id = draftLeadId else {
-            resetState()
-            return
-        }
-        do {
-            _ = try await api.commitDraftLead(
-                draftLeadId: id, accept: false, overrides: nil)
-        } catch {
-            statusMessage = "Forkasting feilet: \(error.localizedDescription)"
-        }
         resetState()
     }
 }

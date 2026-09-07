@@ -23,6 +23,8 @@ import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
 import { emitWebhook } from "./webhook-emitter.js";
+import { loadAccessibleLeadgridLead } from "./leadgrid-lead-access.js";
+import { loadAccessibleLeadgridProject } from "./leadgrid-project-access.js";
 import {
   computeWeightedForecast,
   getDealForLead,
@@ -50,56 +52,33 @@ function getSession(
   return null;
 }
 
-async function orgIdFromLead(
-  pool: Pool,
-  leadId: string,
-): Promise<string | null> {
-  try {
-    const r = await pool.query<{ organization_id: string | null }>(
-      `SELECT (SELECT om.organization_id::text FROM organization_members om
-                WHERE om.user_id = c.owner_user_id
-                ORDER BY om.joined_at ASC LIMIT 1) AS organization_id
-         FROM crm_customers c
-        WHERE c.id = $1::uuid LIMIT 1`,
-      [leadId],
-    );
-    return r.rows[0]?.organization_id ?? null;
-  } catch {
-    return null;
-  }
+function requestedProjectId(req: Request): string | null {
+  const raw = req.query.projectId ?? req.query.project_id;
+  if (typeof raw !== "string") return null;
+  const projectId = raw.trim();
+  return projectId && projectId.length <= 255 ? projectId : null;
 }
 
-async function resolveOrgIdSmart(
+async function resolveProjectOrgId(
   req: Request,
   pool: Pool,
   userId: string,
 ): Promise<string | null> {
-  const explicit =
-    (req.body as { organization_id?: string } | undefined)?.organization_id ??
-    (req.query?.organization_id as string | undefined);
-  if (typeof explicit === "string" && explicit.length > 0) return explicit;
+  const projectId = requestedProjectId(req);
+  if (!projectId) return null;
+  const project = await loadAccessibleLeadgridProject(pool, projectId, userId);
+  return project?.organizationId ?? null;
+}
 
+async function resolveLeadOrgId(
+  req: Request,
+  pool: Pool,
+  userId: string,
+): Promise<string | null> {
   const leadId = req.params?.id ?? req.params?.leadId;
-  if (typeof leadId === "string" && leadId.length > 0) {
-    const o = await orgIdFromLead(pool, leadId);
-    if (o) return o;
-  }
-
-  const r = await pool.query<{ organization_id: string }>(
-    `SELECT organization_id::text
-       FROM organization_members
-      WHERE user_id = $1
-      ORDER BY
-        CASE role
-          WHEN 'admin' THEN 1
-          WHEN 'salgssjef' THEN 2
-          ELSE 3
-        END,
-        joined_at ASC
-      LIMIT 1`,
-    [userId],
-  );
-  return r.rows[0]?.organization_id ?? null;
+  if (typeof leadId !== "string") return null;
+  const lead = await loadAccessibleLeadgridLead(pool, { leadId, userId });
+  return lead?.organizationId ?? null;
 }
 
 function parseHorizon(req: Request): number {
@@ -115,17 +94,17 @@ export function registerLeadgridDealsRoutes(deps: Deps): void {
   const permViewForecast = requireLeadMapPermission("deals.view_forecast", {
     pool,
     activeSessions,
-    resolveOrgId: resolveOrgIdSmart,
+    resolveOrgId: resolveProjectOrgId,
   });
   const permViewAmount = requireLeadMapPermission("deals.view_amount", {
     pool,
     activeSessions,
-    resolveOrgId: resolveOrgIdSmart,
+    resolveOrgId: resolveLeadOrgId,
   });
   const permEdit = requireLeadMapPermission("deals.edit", {
     pool,
     activeSessions,
-    resolveOrgId: resolveOrgIdSmart,
+    resolveOrgId: resolveLeadOrgId,
   });
 
   // ── GET /api/leadgrid/deals/forecast ───────────────────────────────
@@ -138,30 +117,27 @@ export function registerLeadgridDealsRoutes(deps: Deps): void {
         res.status(401).json({ error: "Innlogging kreves" });
         return;
       }
-      const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-      if (!orgId) {
-        res.json({
-          forecast: {
-            summary: {
-              organizationId: null,
-              totalWeightedValue: 0,
-              totalPipelineValue: 0,
-              dealsCount: 0,
-              averageProbability: 0,
-              currency: "NOK",
-            },
-            byMonth: [],
-            byQuarter: [],
-          },
-        });
+      const projectId = requestedProjectId(req);
+      if (!projectId) {
+        res.status(400).json({ error: "project_id_required" });
         return;
       }
       try {
+        const project = await loadAccessibleLeadgridProject(
+          pool,
+          projectId,
+          session.userId,
+        );
+        if (!project) {
+          res.status(404).json({ error: "project_not_found" });
+          return;
+        }
         const horizon = parseHorizon(req);
-        const forecast = await computeWeightedForecast(pool, orgId, {
+        const forecast = await computeWeightedForecast(pool, project.organizationId, {
           horizonDays: horizon,
+          projectId: project.id,
         });
-        res.json({ forecast });
+        res.json({ project_id: project.id, forecast });
       } catch (err) {
         console.error("[deals/forecast]", err);
         res.status(500).json({ error: "forecast_failed" });
@@ -179,17 +155,27 @@ export function registerLeadgridDealsRoutes(deps: Deps): void {
         res.status(401).json({ error: "Innlogging kreves" });
         return;
       }
-      const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-      if (!orgId) {
-        res.json({ byMonth: [] });
+      const projectId = requestedProjectId(req);
+      if (!projectId) {
+        res.status(400).json({ error: "project_id_required" });
         return;
       }
       try {
+        const project = await loadAccessibleLeadgridProject(
+          pool,
+          projectId,
+          session.userId,
+        );
+        if (!project) {
+          res.status(404).json({ error: "project_not_found" });
+          return;
+        }
         const horizon = parseHorizon(req);
-        const forecast = await computeWeightedForecast(pool, orgId, {
+        const forecast = await computeWeightedForecast(pool, project.organizationId, {
           horizonDays: horizon,
+          projectId: project.id,
         });
-        res.json({ byMonth: forecast.byMonth });
+        res.json({ project_id: project.id, byMonth: forecast.byMonth });
       } catch (err) {
         console.error("[deals/by-month]", err);
         res.status(500).json({ error: "by_month_failed" });
@@ -207,19 +193,33 @@ export function registerLeadgridDealsRoutes(deps: Deps): void {
         res.status(401).json({ error: "Innlogging kreves" });
         return;
       }
-      const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-      if (!orgId) {
-        res.json({ deals: [] });
+      const projectId = requestedProjectId(req);
+      if (!projectId) {
+        res.status(400).json({ error: "project_id_required" });
         return;
       }
       try {
+        const project = await loadAccessibleLeadgridProject(
+          pool,
+          projectId,
+          session.userId,
+        );
+        if (!project) {
+          res.status(404).json({ error: "project_not_found" });
+          return;
+        }
         const limitRaw = req.query.limit;
         const limit =
           typeof limitRaw === "string"
             ? Math.min(100, Math.max(1, parseInt(limitRaw, 10) || 20))
             : 20;
-        const deals = await listDealsAtRisk(pool, orgId, limit);
-        res.json({ deals });
+        const deals = await listDealsAtRisk(
+          pool,
+          project.organizationId,
+          limit,
+          project.id,
+        );
+        res.json({ project_id: project.id, deals });
       } catch (err) {
         console.error("[deals/at-risk]", err);
         res.status(500).json({ error: "at_risk_failed" });
@@ -238,7 +238,19 @@ export function registerLeadgridDealsRoutes(deps: Deps): void {
         return;
       }
       try {
-        const deal = await getDealForLead(pool, req.params.id);
+        const lead = await loadAccessibleLeadgridLead(pool, {
+          leadId: req.params.id,
+          userId: session.userId,
+        });
+        if (!lead) {
+          res.status(404).json({ error: "lead_ikke_funnet" });
+          return;
+        }
+        const scope = {
+          organizationId: lead.organizationId,
+          projectId: lead.projectId,
+        };
+        const deal = await getDealForLead(pool, lead.id, scope);
         if (!deal) {
           res.status(404).json({ error: "lead_ikke_funnet" });
           return;
@@ -322,16 +334,29 @@ export function registerLeadgridDealsRoutes(deps: Deps): void {
       }
 
       try {
-        const before = await getDealForLead(pool, req.params.id);
+        const lead = await loadAccessibleLeadgridLead(pool, {
+          leadId: req.params.id,
+          userId: session.userId,
+        });
+        if (!lead) {
+          res.status(404).json({ error: "lead_ikke_funnet" });
+          return;
+        }
+        const scope = {
+          organizationId: lead.organizationId,
+          projectId: lead.projectId,
+        };
+        const before = await getDealForLead(pool, lead.id, scope);
         if (!before) {
           res.status(404).json({ error: "lead_ikke_funnet" });
           return;
         }
         const after = await updateDealFields(
           pool,
-          req.params.id,
+          lead.id,
           session.userId,
           patch,
+          scope,
         );
         if (!after) {
           res.status(404).json({ error: "lead_ikke_funnet" });
@@ -339,7 +364,7 @@ export function registerLeadgridDealsRoutes(deps: Deps): void {
         }
 
         // Emit fire-and-forget webhooks for hver endret felt
-        const orgId = await orgIdFromLead(pool, req.params.id);
+        const orgId = lead.organizationId;
         if (orgId) {
           if (
             patch.dealProbability !== undefined &&
@@ -349,7 +374,7 @@ export function registerLeadgridDealsRoutes(deps: Deps): void {
               pool,
               "deal.probability_changed",
               {
-                lead_id: req.params.id,
+                lead_id: lead.id,
                 old_probability: before.dealProbability,
                 new_probability: after.dealProbability,
                 changed_by: session.userId,
@@ -366,7 +391,7 @@ export function registerLeadgridDealsRoutes(deps: Deps): void {
               pool,
               "deal.amount_changed",
               {
-                lead_id: req.params.id,
+                lead_id: lead.id,
                 old_amount: before.dealAmount,
                 new_amount: after.dealAmount,
                 currency: after.dealCurrency,
@@ -383,7 +408,7 @@ export function registerLeadgridDealsRoutes(deps: Deps): void {
               pool,
               "deal.expected_close_changed",
               {
-                lead_id: req.params.id,
+                lead_id: lead.id,
                 old_date: before.expectedCloseDate,
                 new_date: after.expectedCloseDate,
                 changed_by: session.userId,
@@ -404,8 +429,9 @@ export function registerLeadgridDealsRoutes(deps: Deps): void {
             void bus.publishEvent({
               pool,
               organizationId: orgId,
+              projectId: lead.projectId,
               type: "deal.probability_changed",
-              leadId: req.params.id,
+              leadId: lead.id,
               actorUserId: session.userId,
               data: {
                 old_probability: before.dealProbability,
@@ -423,8 +449,9 @@ export function registerLeadgridDealsRoutes(deps: Deps): void {
             void bus.publishEvent({
               pool,
               organizationId: orgId,
+              projectId: lead.projectId,
               type: "deal.amount_changed",
-              leadId: req.params.id,
+              leadId: lead.id,
               actorUserId: session.userId,
               data: {
                 old_amount: before.dealAmount,
@@ -462,12 +489,23 @@ export function registerLeadgridDealsRoutes(deps: Deps): void {
         return;
       }
       try {
+        const lead = await loadAccessibleLeadgridLead(pool, {
+          leadId: req.params.id,
+          userId: session.userId,
+        });
+        if (!lead) {
+          res.status(404).json({ error: "lead_ikke_funnet" });
+          return;
+        }
         const limitRaw = req.query.limit;
         const limit =
           typeof limitRaw === "string"
             ? Math.min(200, Math.max(1, parseInt(limitRaw, 10) || 50))
             : 50;
-        const history = await fetchStageHistory(pool, req.params.id, limit);
+        const history = await fetchStageHistory(pool, lead.id, limit, {
+          organizationId: lead.organizationId,
+          projectId: lead.projectId,
+        });
         res.json({ history });
       } catch (err) {
         console.error("[leads/:id/deal-history]", err);

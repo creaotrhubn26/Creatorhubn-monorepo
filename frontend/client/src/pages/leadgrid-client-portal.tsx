@@ -132,7 +132,7 @@ export default function LeadgridClientPortalPage() {
         load(token);
       } else {
         const d = await r.json();
-        setSnackbar({ msg: d.error ?? "Feil", severity: "error" });
+        setSnackbar({ msg: d.message ?? d.error ?? "Feil", severity: "error" });
       }
     } catch (e: any) {
       setSnackbar({ msg: String(e?.message ?? e), severity: "error" });
@@ -382,6 +382,8 @@ export default function LeadgridClientPortalPage() {
                 {data.audit.needs.map((n) => {
                   const isFocused = n.focus_status === "pending" || n.focus_status === "acknowledged"
                                  || n.focus_status === "in_progress";
+                  const focusLocked = n.focus_status === "in_progress"
+                                   || n.focus_status === "completed";
                   const priorityColor = n.priority >= 80 ? "#ff6b6b"
                                       : n.priority >= 60 ? "#ffb86b" : "#7ab8ff";
                   return (
@@ -392,7 +394,7 @@ export default function LeadgridClientPortalPage() {
                       <Stack direction="row" alignItems="flex-start" spacing={2}>
                         <Checkbox
                           checked={isFocused}
-                          disabled={focusBusy === n.need_type}
+                          disabled={focusBusy === n.need_type || focusLocked}
                           onChange={(e) => requestFocus(n.need_type, e.target.checked)}
                           sx={{ color: "rgba(255,255,255,0.4)",
                                 "&.Mui-checked": { color: "#a78bfa" }, p: 0.5 }}

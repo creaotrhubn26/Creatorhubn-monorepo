@@ -417,6 +417,11 @@ struct EtterMoteSheet: View {
             feil = "Krever innlogget modus."
             return
         }
+        guard let projectId = appState.activeProjectId,
+              !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            feil = "Velg et kundeprosjekt før møteetterarbeidet lagres."
+            return
+        }
         analyserer = true
         defer { analyserer = false }
         do {
@@ -424,7 +429,8 @@ struct EtterMoteSheet: View {
                 selskap: selskap, tekst: samletTekst,
                 kontakt: kontakt, moteMaal: moteMaal,
                 leadId: moteId?.uuidString.lowercased(),
-                meetingAt: meetingAt, requestId: requestId)
+                meetingAt: meetingAt, requestId: requestId,
+                projectId: projectId)
             merkSomLogget()
             await appState.refreshAll()
         } catch {

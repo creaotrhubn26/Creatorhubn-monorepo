@@ -9,11 +9,17 @@ import CoreLocation
 
 struct WatchLead: Codable, Identifiable, Hashable, Sendable {
     let id: String
+    /// Brukeren som hentet snapshotet. Eldre actor-løse snapshots vises ikke
+    /// og kan aldri sende handlinger fra en delt Watch/iPhone.
+    let actorUserId: String?
     /// Organisasjonen lead-snapshotet ble hentet for. Optional gjør at vi
     /// fortsatt kan vise et eldre, persistert snapshot, men slike leads kan
     /// ikke sende handlinger før telefonen har levert et nytt org-scopet
     /// snapshot.
     let organizationId: String?
+    /// Kundeprosjektet leaden ble hentet fra. Holder Dentum-data adskilt fra
+    /// andre kundeprosjekter i samme workspace.
+    let projectId: String?
     let name: String
     let address: String?
     let latitude: Double
@@ -22,7 +28,9 @@ struct WatchLead: Codable, Identifiable, Hashable, Sendable {
 
     init(
         id: String,
+        actorUserId: String? = nil,
         organizationId: String? = nil,
+        projectId: String? = nil,
         name: String,
         address: String?,
         latitude: Double,
@@ -30,7 +38,9 @@ struct WatchLead: Codable, Identifiable, Hashable, Sendable {
         leadStatus: String
     ) {
         self.id = id
+        self.actorUserId = actorUserId
         self.organizationId = organizationId
+        self.projectId = projectId
         self.name = name
         self.address = address
         self.latitude = latitude

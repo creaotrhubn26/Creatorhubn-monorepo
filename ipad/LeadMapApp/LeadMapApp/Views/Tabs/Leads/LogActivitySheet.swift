@@ -242,7 +242,7 @@ struct LogActivitySheet: View {
                 Text(lead.company)
                     .font(.appScaled(size: 15, weight: .bold))
                     .foregroundStyle(.white)
-                Text("Logger som Lars Kristensen · \(formattedNow)")
+                Text("Logger som \(appState.displayName) · \(formattedNow)")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(LaBrand.textSecondary)
             }

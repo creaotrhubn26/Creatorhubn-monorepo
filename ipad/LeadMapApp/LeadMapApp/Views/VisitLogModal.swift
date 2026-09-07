@@ -18,6 +18,9 @@ struct VisitLogModal: View {
     @State private var draft = VisitDraft()
     @State private var saving = false
     @State private var errorMessage: String?
+    /// One logical visit uses one idempotency key across direct send, lost-
+    /// response retry and offline replay. Recreated only with a new sheet.
+    @State private var actionId = UUID()
 
     // GPS-state
     @State private var currentLocation: CLLocationCoordinate2D?
@@ -213,28 +216,33 @@ struct VisitLogModal: View {
     private func save() async {
         saving = true
         errorMessage = nil
-        do {
-            try await appState.enqueueOrSendVisit(leadId: lead.id, body: draft.toJSON())
+        let disposition = await appState.enqueueOrSendVisit(
+            leadId: lead.id,
+            draft: draft,
+            actionId: actionId)
+        switch disposition {
+        case .sent:
             await appState.refreshAll()
-            // Stopp Live Activity hvis aktiv (PR #642 — #184)
-            #if !targetEnvironment(macCatalyst)
-            if #available(iOS 16.1, *) {
-                await ActiveVisitManager.shared.stop()
-            }
-            #endif
+            await stopActiveVisit()
             dismiss()
-        } catch is OfflineEnqueuedError {
-            errorMessage = "✓ Lagret offline. Sendes når dekning er tilbake."
+        case .queued:
+            errorMessage = "✓ Loggføringen ligger i offline-køen og synkroniseres automatisk."
             try? await Task.sleep(nanoseconds: 1_500_000_000)
-            #if !targetEnvironment(macCatalyst)
-            if #available(iOS 16.1, *) {
-                await ActiveVisitManager.shared.stop()
-            }
-            #endif
+            await stopActiveVisit()
             dismiss()
-        } catch {
-            errorMessage = "Klarte ikke lagre: \(error.localizedDescription)"
+        case .rejected(let reason):
+            // Keep the same actionId for an explicit retry. The sheet remains
+            // open and never claims the visit was persisted or delivered.
+            errorMessage = reason
         }
         saving = false
+    }
+
+    private func stopActiveVisit() async {
+        #if !targetEnvironment(macCatalyst)
+        if #available(iOS 16.1, *) {
+            await ActiveVisitManager.shared.stop()
+        }
+        #endif
     }
 }

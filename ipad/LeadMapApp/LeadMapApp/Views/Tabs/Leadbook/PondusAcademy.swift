@@ -449,8 +449,12 @@ struct PondusAkademiSheet: View {
             qualityRejections = KvalitetDemoStore.shared.items.filter { $0.status == "rejected" }
             return
         }
-        guard let me = TeamLiveStore.shared.currentUserId else { return }
-        guard let q = await QualityService.shared.queue(using: appState.api) else { return }
+        guard let me = TeamLiveStore.shared.currentUserId,
+              let projectId = appState.activeProjectId else { return }
+        guard let q = await QualityService.shared.queue(
+            projectId: projectId,
+            using: appState.api
+        ) else { return }
         qualityRejections = q.items.filter { $0.status == "rejected" && $0.sellerUserId == me }
     }
 

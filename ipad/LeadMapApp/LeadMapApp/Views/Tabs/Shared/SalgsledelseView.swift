@@ -138,7 +138,8 @@ struct SalgsledelseView: View {
         #endif
         // Ekte team-data når demo er AV — attach er idempotent (samme
         // mønster som TeamView) og fyller memberDTOs → sellers re-evalueres.
-        .task {
+        .task(id: appState.activeLeadgridProjectId) {
+            dorsalgStats = nil
             guard !DemoModeManager.isActiveNonisolated else {
                 // Demo + ren dørsalg (QA_DORSALG_REN): demo-tall — aldri backend.
                 if erRenDorsalgOrg { dorsalgStats = Self.demoDorsalgStats }
@@ -146,8 +147,14 @@ struct SalgsledelseView: View {
             }
             if let api = appState.api {
                 TeamLiveStore.shared.attach(api: api, appState: appState)
-                if erRenDorsalgOrg {
-                    dorsalgStats = await KartverketService.shared.fetchDorsalgStats(using: api)
+                if erRenDorsalgOrg,
+                   let projectId = appState.activeLeadgridProjectId {
+                    let loaded = await KartverketService.shared.fetchDorsalgStats(
+                        projectId: projectId, using: api
+                    )
+                    guard !Task.isCancelled,
+                          appState.activeLeadgridProjectId == projectId else { return }
+                    dorsalgStats = loaded
                 }
             }
         }
@@ -303,7 +310,14 @@ private struct DorsalgMaalSheet: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .presentationDetents([.large])
-        .task { await reload() }
+        .task(id: appState.activeLeadgridProjectId) {
+            maal = nil
+            teamDagsmal = [:]
+            teamBudsjett = [:]
+            lagrer = false
+            lagret = false
+            await reload()
+        }
     }
 
     private var infoBanner: some View {
@@ -432,21 +446,33 @@ private struct DorsalgMaalSheet: View {
                 perTeam: [])
             return
         }
-        guard let api = appState.api else { return }
-        if let m = await KartverketService.shared.fetchDorsalgMaal(using: api) {
-            maal = m
-            orgDagsmal = m.orgDefault?.dagsmal ?? 3
-            orgBudsjett = m.orgDefault?.budsjett.map(String.init) ?? ""
-        }
+        guard let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else { return }
+        let loaded = await KartverketService.shared.fetchDorsalgMaal(
+            projectId: projectId, using: api
+        )
+        guard !Task.isCancelled,
+              appState.activeLeadgridProjectId == projectId,
+              let loaded else { return }
+        maal = loaded
+        orgDagsmal = loaded.orgDefault?.dagsmal ?? 3
+        orgBudsjett = loaded.orgDefault?.budsjett.map(String.init) ?? ""
     }
 
     private func lagre(teamId: String?, dagsmal: Int, budsjettTekst: String) async {
-        guard !isDemo, let api = appState.api else { return }
+        guard !isDemo,
+              let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else { return }
+        let idempotencyKey = UUID().uuidString
         lagrer = true; lagret = false
         let budsjett = Int(budsjettTekst.trimmingCharacters(in: .whitespaces))
         let ok = await KartverketService.shared.setDorsalgMaal(
             teamId: teamId, dagsmalPerSelger: dagsmal,
-            budsjettPerSelger: budsjett, using: api)
+            budsjettPerSelger: budsjett,
+            projectId: projectId,
+            idempotencyKey: idempotencyKey,
+            using: api)
+        guard appState.activeLeadgridProjectId == projectId else { return }
         lagrer = false
         if ok {
             lagret = true
@@ -517,6 +543,7 @@ private struct DorsalgProduktSheet: View {
     @State private var nyttNavn = ""
     @State private var nyVerdi = ""
     @State private var lagrer = false
+    @State private var createIdempotencyKey = UUID().uuidString
 
     private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
 
@@ -544,7 +571,15 @@ private struct DorsalgProduktSheet: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .presentationDetents([.large])
-        .task { await reload() }
+        .task(id: appState.activeLeadgridProjectId) {
+            envelope = nil
+            members = []
+            lagrer = false
+            nyttNavn = ""
+            nyVerdi = ""
+            createIdempotencyKey = UUID().uuidString
+            await reload()
+        }
     }
 
     private func reload() async {
@@ -574,9 +609,19 @@ private struct DorsalgProduktSheet: View {
             ]
             return
         }
-        guard let api = appState.api else { return }
-        envelope = await KartverketService.shared.fetchDorsalgProducts(using: api)
-        members = await KartverketService.shared.fetchDorsalgProductAccess(using: api)
+        guard let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else { return }
+        async let envelopeTask = KartverketService.shared.fetchDorsalgProducts(
+            projectId: projectId, using: api
+        )
+        async let membersTask = KartverketService.shared.fetchDorsalgProductAccess(
+            projectId: projectId, using: api
+        )
+        let (loadedEnvelope, loadedMembers) = await (envelopeTask, membersTask)
+        guard !Task.isCancelled,
+              appState.activeLeadgridProjectId == projectId else { return }
+        envelope = loadedEnvelope
+        members = loadedMembers
     }
 
     // MARK: Produktkatalogen
@@ -648,11 +693,17 @@ private struct DorsalgProduktSheet: View {
             oppdaterLokalt(p.id, aktiv: ny)
             return
         }
-        guard let api = appState.api else { return }
+        guard let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else { return }
         oppdaterLokalt(p.id, aktiv: ny)
         Task {
             await KartverketService.shared.patchDorsalgProduct(
-                id: p.id, aktiv: ny, verdiPerVunnet: nil, using: api)
+                id: p.id,
+                aktiv: ny,
+                verdiPerVunnet: nil,
+                projectId: projectId,
+                idempotencyKey: UUID().uuidString,
+                using: api)
         }
     }
 
@@ -674,7 +725,6 @@ private struct DorsalgProduktSheet: View {
         let navn = nyttNavn.trimmingCharacters(in: .whitespaces)
         guard !navn.isEmpty else { return }
         let verdi = Double(nyVerdi.replacingOccurrences(of: ",", with: "."))
-        nyttNavn = ""; nyVerdi = ""
         if isDemo {
             guard let env = envelope else { return }
             envelope = KartverketService.DorsalgProductsEnvelope(
@@ -684,14 +734,27 @@ private struct DorsalgProduktSheet: View {
                           aktiv: true, verdiPerVunnet: verdi,
                           bidrag: [], samtykkeTekst: "", signeringUrl: nil)
                 ])
+            nyttNavn = ""; nyVerdi = ""
             return
         }
-        guard let api = appState.api else { return }
+        guard let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else { return }
+        let key = createIdempotencyKey
         lagrer = true
         Task {
-            _ = await KartverketService.shared.createDorsalgProduct(
-                navn: navn, verdiPerVunnet: verdi, using: api)
-            await reload()
+            let ok = await KartverketService.shared.createDorsalgProduct(
+                navn: navn,
+                verdiPerVunnet: verdi,
+                projectId: projectId,
+                idempotencyKey: key,
+                using: api)
+            guard appState.activeLeadgridProjectId == projectId else { return }
+            if ok {
+                nyttNavn = ""
+                nyVerdi = ""
+                createIdempotencyKey = UUID().uuidString
+                await reload()
+            }
             lagrer = false
         }
     }
@@ -759,10 +822,16 @@ private struct DorsalgProduktSheet: View {
                 ? .init(userId: $0.userId, navn: $0.navn, role: $0.role, productIds: nye)
                 : $0
         }
-        guard !isDemo, let api = appState.api else { return }
+        guard !isDemo,
+              let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else { return }
         Task {
             await KartverketService.shared.setDorsalgProductAccess(
-                userId: medlem.userId, productIds: nye, using: api)
+                userId: medlem.userId,
+                productIds: nye,
+                projectId: projectId,
+                idempotencyKey: UUID().uuidString,
+                using: api)
         }
     }
 }

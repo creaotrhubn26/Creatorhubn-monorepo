@@ -1,7 +1,7 @@
 // LeadgridHubView.swift
 //
-// Ny tab i MapScreen — "Leadgrid"-hub som samler alle CRM-paritets-views.
-// Navigerer til inbox / dashboard / scheduled-reports / prefs / export.
+// Verktøy-hub for spesialiserte CRM-flater som ikke allerede har en
+// naturlig plass i hovedfanene, den globale headeren eller Profil.
 
 import SwiftUI
 
@@ -27,36 +27,31 @@ struct LeadgridHubView: View {
     private var content: some View {
             List {
                 // Plan-quota øverst (fase 16) — viser kun hvis api + orgId klar.
-                if let api = appState.api, let orgId = appState.activeOrganizationId {
+                if appState.api != nil, appState.activeOrganizationId != nil {
                     Section {
-                        LeadgridPlanUsageBar(api: api, orgId: orgId)
+                        LeadgridPlanUsageBar()
                             .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                     }
                 }
 
-                // Robusthet-pakke 3: offline-kø-banner. Skrur seg av ved online + tom kø.
-                Section {
-                    OfflineQueueBadge()
-                        .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                }
-
                 Section("CRM") {
-                    if let api = appState.api {
+                    if let api = appState.api,
+                       let projectId = appState.activeLeadgridProjectId {
                         NavigationLink {
-                            LeadgridLeadInboxView(api: api)
-                        } label: {
-                            Label("Mine tildelte leads", systemImage: "tray.fill")
-                        }
-                        NavigationLink {
-                            LeadgridWonLostDashboardView(api: api)
+                            LeadgridWonLostDashboardView(
+                                api: api,
+                                projectId: projectId
+                            )
                         } label: {
                             Label("Vunnet / Tapt-dashboard",
                                    systemImage: "chart.line.uptrend.xyaxis")
                         }
+                    } else {
+                        Label("Velg kundeprosjekt for Vunnet / Tapt",
+                              systemImage: "chart.line.uptrend.xyaxis")
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -71,14 +66,13 @@ struct LeadgridHubView: View {
                     }
                 }
 
-                Section("Market Scan") {
-                    if let api = appState.api {
-                        NavigationLink {
-                            LeadgridMarketScanListView(api: api)
-                        } label: {
-                            Label("Finn nye leads via Claude",
-                                   systemImage: "magnifyingglass.circle.fill")
-                        }
+                Section("Discovery") {
+                    Button {
+                        appState.discoveryCoordinator.showWorkspace()
+                    } label: {
+                        Label("Profiler, kandidater og markedsinnsikt",
+                              systemImage: "scope")
+                            .foregroundStyle(.primary)
                     }
                 }
 
@@ -128,78 +122,12 @@ struct LeadgridHubView: View {
                     }
                 }
 
-                Section("Varsler") {
-                    Button {
-                        appState.presentingLeadgridNotifications = true
-                    } label: {
-                        HStack {
-                            Label("Innboks", systemImage: "bell.fill")
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            if appState.leadgridUnreadCount > 0 {
-                                Text("\(appState.leadgridUnreadCount)")
-                                    .font(.caption.bold())
-                                    .padding(.horizontal, 6).padding(.vertical, 2)
-                                    .background(Color.red, in: Capsule())
-                                    .foregroundStyle(.white)
-                            }
-                        }
-                    }
-                    Button {
-                        appState.presentingLeadgridPrefs = true
-                    } label: {
-                        Label("Varsels-innstillinger", systemImage: "gearshape.fill")
-                            .foregroundStyle(.primary)
-                    }
-                }
-                Section("Klient-onboarding") {
-                    if let api = appState.api {
-                        NavigationLink {
-                            LeadgridChannelOnboardingWizardView(api: api)
-                        } label: {
-                            Label("Sett opp varslings-kanaler", systemImage: "checkmark.shield.fill")
-                        }
-                    }
-                }
                 Section("Rapporter & eksport") {
-                    if let api = appState.api {
-                        NavigationLink {
-                            LeadgridScheduledReportsView(api: api)
-                        } label: {
-                            Label("Schedulerte rapporter", systemImage: "clock.fill")
-                        }
-                    }
                     Button {
                         appState.presentingLeadgridExport = true
                     } label: {
                         Label("Eksporter leads (CSV)", systemImage: "square.and.arrow.up.fill")
                             .foregroundStyle(.primary)
-                    }
-                }
-
-                // Fase 16: Partner-program + Billing
-                Section("Partnere & faktura") {
-                    if let api = appState.api {
-                        NavigationLink {
-                            LeadgridPartnersView(api: api)
-                        } label: {
-                            Label("Partner-program", systemImage: "person.2.circle.fill")
-                        }
-                        NavigationLink {
-                            LeadgridBillingView(api: api)
-                        } label: {
-                            Label("Faktura & abonnement", systemImage: "creditcard.fill")
-                        }
-                    }
-                }
-
-                Section("Kost & bruk") {
-                    if let api = appState.api {
-                        NavigationLink {
-                            LeadgridAIUsageView(api: api)
-                        } label: {
-                            Label("AI-kost", systemImage: "dollarsign.circle.fill")
-                        }
                     }
                 }
 
@@ -216,27 +144,13 @@ struct LeadgridHubView: View {
                     }
                 }
             }
-            .navigationTitle("Leadgrid CRM")
+            .navigationTitle("Verktøy")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     OrgPickerToolbarMenu()
                 }
             }
             .marketingDirectorBackdrop(.crmHome)
-            .sheet(isPresented: Binding(
-                get: { appState.presentingLeadgridNotifications },
-                set: { appState.presentingLeadgridNotifications = $0 }
-            )) {
-                LeadgridNotificationInboxView()
-            }
-            .sheet(isPresented: Binding(
-                get: { appState.presentingLeadgridPrefs },
-                set: { appState.presentingLeadgridPrefs = $0 }
-            )) {
-                if let api = appState.api {
-                    LeadgridNotificationPrefsView(api: api)
-                }
-            }
             .sheet(isPresented: Binding(
                 get: { appState.presentingLeadgridExport },
                 set: { appState.presentingLeadgridExport = $0 }
@@ -245,15 +159,14 @@ struct LeadgridHubView: View {
                     LeadgridExportShareView(api: api)
                 }
             }
-            .task {
-                await appState.refreshLeadgridNotifications()
-            }
-            .onReceive(NotificationCenter.default.publisher(
-                for: .leadgridNotificationTapped
-            )) { notif in
-                if let payload = notif.userInfo as? [String: String] {
-                    appState.handleLeadgridNotificationTap(payload)
+            .fullScreenCover(isPresented: Binding(
+                get: { appState.discoveryCoordinator.isPresented },
+                set: { presented in
+                    if presented { appState.discoveryCoordinator.showWorkspace() }
+                    else { appState.discoveryCoordinator.dismissWorkspace() }
                 }
+            )) {
+                DiscoveryWorkspaceView(coordinator: appState.discoveryCoordinator)
             }
     }
 }

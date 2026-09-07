@@ -11,6 +11,7 @@ import SwiftUI
 
 struct LeadgridResearchListView: View {
     let api: APIClient
+    @Environment(AppState.self) private var appState
 
     @State private var assignments: [MyAssignmentItem] = []
     @State private var loading = true
@@ -59,7 +60,7 @@ struct LeadgridResearchListView: View {
             }
         }
         .navigationTitle("AI-research")
-        .task { await load() }
+        .task(id: appState.activeOrganizationId) { await load() }
         .refreshable { await load() }
         .sheet(item: $selected) { target in
             LeadgridResearchView(
@@ -122,8 +123,22 @@ struct LeadgridResearchListView: View {
 
     @MainActor
     private func load() async {
+        await MainActor.run {
+            loading = true
+            errorText = nil
+            assignments = []
+        }
+        guard let organizationId = appState.activeOrganizationId else {
+            await MainActor.run {
+                errorText = "Velg et workspace før tildelte leads hentes."
+                loading = false
+            }
+            return
+        }
         do {
-            let resp = try await api.fetchMyAssignments()
+            let resp = try await api.fetchMyAssignments(
+                organizationId: organizationId
+            )
             assignments = resp.items
             loading = false
         } catch {

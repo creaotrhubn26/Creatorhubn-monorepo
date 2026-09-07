@@ -72,7 +72,10 @@ struct SalesManagementWorkspaceView: View {
             }
         }
         .background(SMBrand.background)
-        .task { await load(refreshForecast: false) }
+        .task(id: appState.activeLeadgridProjectId) {
+            forecast = nil
+            await load(refreshForecast: false)
+        }
         .sheet(item: $selectedGoalMember) { member in
             SalesManagementGoalSheet(member: member) { target, won, meetings in
                 await saveGoal(member: member, target: target, won: won, meetings: meetings)
@@ -583,10 +586,20 @@ struct SalesManagementWorkspaceView: View {
         do {
             workspace = try await api.fetchSalesManagementWorkspace()
             commissionRate = (workspace?.commissionConfig.baseRate ?? 0.10) * 100
-            if refreshForecast {
-                forecast = try? await api.refreshPipelineForecast(horizon: 90)
+            if let projectId = appState.activeLeadgridProjectId {
+                if refreshForecast {
+                    forecast = try? await api.refreshPipelineForecast(
+                        projectId: projectId,
+                        horizon: 90
+                    )
+                } else {
+                    forecast = try? await api.fetchPipelineForecast(
+                        projectId: projectId,
+                        horizon: 90
+                    )
+                }
             } else {
-                forecast = try? await api.fetchPipelineForecast(horizon: 90)
+                forecast = nil
             }
             errorMessage = nil
         } catch {

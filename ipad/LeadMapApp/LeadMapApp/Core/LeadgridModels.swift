@@ -267,6 +267,8 @@ struct LeadgridNotificationPrefs: Codable {
 
 struct LeadgridNotification: Identifiable, Codable, Hashable {
     let id: String
+    let organizationId: String?
+    let projectId: String?
     let eventType: String
     let title: String
     let body: String?
@@ -302,6 +304,7 @@ struct LeadgridNotificationsResponse: Codable {
 
 struct ScheduledReport: Identifiable, Codable, Hashable {
     let id: String
+    let projectId: String?
     let name: String
     let reportType: String
     let periodDays: Int
@@ -534,6 +537,38 @@ struct LeadgridPlanSummary: Codable, Hashable {
             return "\(usage.customersActive) / \(max) leads"
         }
         return "\(usage.customersActive) leads"
+    }
+}
+
+/// Ett sted for å presentere backendens stabile plan-nøkler i native UI.
+/// Backend bruker `solo_free`/`solo_pro`/`agency`, mens eldre demo-/
+/// SuperAdmin-flater bruker Starter/Pro/Enterprise. Visningsnavn skal ikke
+/// hardkodes separat i Profil, Verktøy og Abonnement.
+enum LeadgridPlanPresentation {
+    static func displayName(for key: String?) -> String {
+        switch key?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "solo_free", "free", "starter": return "Solo (gratis)"
+        case "solo_pro", "pro": return "Solo Pro"
+        case "agency", "pro_agency": return "Agency"
+        case "enterprise": return "Enterprise"
+        case "trial": return "Prøveperiode"
+        case .some(let key) where !key.isEmpty:
+            return key.split(separator: "_")
+                .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+                .joined(separator: " ")
+        default:
+            return "Ingen aktiv plan"
+        }
+    }
+
+    static func icon(for key: String?) -> String {
+        switch key?.lowercased() {
+        case "agency", "pro_agency", "enterprise": return "building.2.fill"
+        case "solo_pro", "pro": return "person.crop.circle.fill"
+        case "solo_free", "free", "starter": return "leaf.fill"
+        case "trial": return "clock.fill"
+        default: return "creditcard.fill"
+        }
     }
 }
 

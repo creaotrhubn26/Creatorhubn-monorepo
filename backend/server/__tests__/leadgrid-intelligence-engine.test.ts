@@ -50,9 +50,14 @@ describe("fetchLeadIntelContext", () => {
     await fetchLeadIntelContext(pool as never, "00000000-0000-0000-0000-000000000000");
 
     expect(sql).toContain("crm_lead_activities");
-    expect(sql).toContain("COALESCE(\n                c.organization_id::text");
-    expect(sql.match(/customer_id = \$1::uuid/g)).toHaveLength(1);
-    expect(sql.match(/customer_id = \$1::text/g)).toHaveLength(2);
+    expect(sql).toContain("p.organization_id = c.organization_id");
+    expect(sql).toContain("c.organization_id IS NOT NULL");
+    expect(sql).toContain("c.project_id IS NOT NULL");
+    expect(sql).toContain("JOIN lead\n             ON lead.id::uuid = activity.customer_id");
+    expect(sql).toContain("fact.organization_id::text = lead.organization_id");
+    expect(sql).toContain("fact.project_id = lead.project_id");
+    expect(sql).not.toContain("organization_members");
+    expect(sql).not.toContain("COALESCE(\n                c.organization_id::text");
   });
 });
 

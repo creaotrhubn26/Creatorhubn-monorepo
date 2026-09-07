@@ -57,6 +57,7 @@ export async function getMarketIntelAgentContext(
   pool: Pool,
   args: {
     projectId: string;
+    organizationId: string;
     workspaceOwnerUserId: string;
     maxScans?: number;
     maxOpportunities?: number;
@@ -70,6 +71,7 @@ export async function getMarketIntelAgentContext(
   // 2. Recent scans (3 nyeste completed)
   const scans = await listMarketScans(pool, {
     workspaceOwnerUserId: args.workspaceOwnerUserId,
+    organizationId: args.organizationId,
     projectId: args.projectId,
     limit: args.maxScans ?? 3,
   });
@@ -115,6 +117,8 @@ export async function getMarketIntelAgentContext(
   // 4. Active workflows (states: campaign_draft_created, content_pack_created, approval_pending)
   const allWorkflows = await listWorkflowsForUser(pool, {
     workspaceOwnerUserId: args.workspaceOwnerUserId,
+    organizationId: args.organizationId,
+    projectId: args.projectId,
     limit: args.maxWorkflows ?? 5,
   });
   const activeWorkflows = allWorkflows
@@ -126,13 +130,19 @@ export async function getMarketIntelAgentContext(
   // 5. Lead Map-kampanjer (aktive) m/ status-aggregat
   const activeCampaigns = await listCampaigns(pool, {
     workspaceOwnerUserId: args.workspaceOwnerUserId,
+    organizationId: args.organizationId,
+    projectId: args.projectId,
     status: "active",
     limit: 5,
   });
   const leadMapCampaigns = await Promise.all(
     activeCampaigns.map(async (c) => ({
       campaign: c,
-      aggregate: await getCampaignAggregate(pool, c.id).catch(() => null),
+      aggregate: await getCampaignAggregate(pool, c.id, {
+        workspaceOwnerUserId: args.workspaceOwnerUserId,
+        organizationId: args.organizationId,
+        projectId: args.projectId,
+      }).catch(() => null),
     })),
   );
 

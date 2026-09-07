@@ -36,7 +36,8 @@ export type WorkflowInitiatingAction =
 export interface MarketingWorkflow {
   id: string;
   workspaceOwnerUserId: string;
-  projectId?: string | null;
+  organizationId: string;
+  projectId: string;
   brandKitId?: string | null;
   marketScanId?: string | null;
   opportunityId?: string | null;
@@ -57,7 +58,10 @@ export interface MarketingWorkflow {
 interface WorkflowRow {
   id: string;
   workspace_owner_user_id: string;
-  project_id: string | null;
+  organization_id: string;
+  // Every row returned by this service is project-scoped. Migration 0519
+  // backfills legacy rows before these routes are deployed.
+  project_id: string;
   brand_kit_id: string | null;
   market_scan_id: string | null;
   opportunity_id: string | null;
@@ -79,6 +83,7 @@ function rowToWorkflow(r: WorkflowRow): MarketingWorkflow {
   return {
     id: r.id,
     workspaceOwnerUserId: r.workspace_owner_user_id,
+    organizationId: r.organization_id,
     projectId: r.project_id,
     brandKitId: r.brand_kit_id,
     marketScanId: r.market_scan_id,
@@ -104,7 +109,8 @@ function rowToWorkflow(r: WorkflowRow): MarketingWorkflow {
 
 interface CreateWorkflowInput {
   workspaceOwnerUserId: string;
-  projectId?: string | null;
+  organizationId: string;
+  projectId: string;
   brandKitId?: string | null;
   marketScanId: string;
   opportunityId: string;
@@ -114,15 +120,15 @@ interface CreateWorkflowInput {
 async function createWorkflow(pool: Pool, input: CreateWorkflowInput): Promise<MarketingWorkflow> {
   const r = await pool.query<WorkflowRow>(
     `INSERT INTO marketing_workflows (
-       workspace_owner_user_id, project_id, brand_kit_id,
+       workspace_owner_user_id, organization_id, project_id, brand_kit_id,
        market_scan_id, opportunity_id, initiating_action,
        current_status, next_recommended_action
      ) VALUES (
-       $1, $2, $3, $4::uuid, $5::uuid, $6,
+       $1, $2::uuid, $3, $4, $5::uuid, $6::uuid, $7,
        'opportunities_ready',
        'Sett opp utkast og legg i godkjenningskø'
      )
-     RETURNING id::text, workspace_owner_user_id, project_id,
+     RETURNING id::text, workspace_owner_user_id, organization_id::text, project_id,
        brand_kit_id::text, market_scan_id::text, opportunity_id::text,
        campaign_draft_id, content_pack_draft_ids, approval_task_id,
        publishing_item_ids, analytics_result_ids, agent_thread_id,
@@ -130,7 +136,8 @@ async function createWorkflow(pool: Pool, input: CreateWorkflowInput): Promise<M
        created_at::text, updated_at::text`,
     [
       input.workspaceOwnerUserId,
-      input.projectId ?? null,
+      input.organizationId,
+      input.projectId,
       input.brandKitId ?? null,
       input.marketScanId,
       input.opportunityId,
@@ -180,17 +187,32 @@ async function transitionWorkflow(
 
 async function fetchOpportunity(
   pool: Pool,
-  opportunityId: string,
+  args: {
+    opportunityId: string;
+    marketScanId: string;
+    organizationId: string;
+    projectId: string;
+  },
 ): Promise<OpportunityRecommendation | null> {
   const r = await pool.query(
-    `SELECT id::text, market_scan_id::text, title, simple_summary,
-            why_it_matters, evidence_summary, recommended_action,
-            impact, difficulty, confidence,
-            can_create_campaign, can_create_content_pack, can_create_funnel_map,
-            source_competitor_ids, source_technique_ids
-       FROM market_scan_opportunities
-      WHERE id=$1::uuid`,
-    [opportunityId],
+    `SELECT opportunity.id::text, opportunity.market_scan_id::text,
+            opportunity.title, opportunity.simple_summary,
+            opportunity.why_it_matters, opportunity.evidence_summary,
+            opportunity.recommended_action, opportunity.impact,
+            opportunity.difficulty, opportunity.confidence,
+            opportunity.can_create_campaign,
+            opportunity.can_create_content_pack,
+            opportunity.can_create_funnel_map,
+            opportunity.source_competitor_ids,
+            opportunity.source_technique_ids
+       FROM market_scan_opportunities opportunity
+       JOIN market_scans scan ON scan.id = opportunity.market_scan_id
+      WHERE opportunity.id = $1::uuid
+        AND opportunity.market_scan_id = $2::uuid
+        AND scan.organization_id = $3::uuid
+        AND scan.project_id = $4
+      LIMIT 1`,
+    [args.opportunityId, args.marketScanId, args.organizationId, args.projectId],
   );
   if (r.rows.length === 0) return null;
   const row = r.rows[0];
@@ -219,8 +241,10 @@ async function fetchOpportunity(
 
 export interface CreateCampaignArgs {
   workspaceOwnerUserId: string;
-  projectId?: string | null;
-  brandKey: string; // F.eks. 'theroleroom' — bestemmer hvilken cockpit-konto draft tilhører
+  organizationId: string;
+  projectId: string;
+  marketScanId: string;
+  brandKey: string; // Autoritativ `leadgrid:<projectId>`-nøkkel for kundeprosjektet.
   opportunityId: string;
 }
 
@@ -230,7 +254,7 @@ export async function createCampaignFromOpportunity(
   pool: Pool,
   args: CreateCampaignArgs,
 ): Promise<{ workflow: MarketingWorkflow; draftId: number }> {
-  const opp = await fetchOpportunity(pool, args.opportunityId);
+  const opp = await fetchOpportunity(pool, args);
   if (!opp) throw new Error("opportunity_not_found");
 
   const brand = args.projectId ? await getBrandKit(pool, args.projectId) : null;
@@ -239,6 +263,7 @@ export async function createCampaignFromOpportunity(
   // 1. Workflow
   const wf = await createWorkflow(pool, {
     workspaceOwnerUserId: args.workspaceOwnerUserId,
+    organizationId: args.organizationId,
     projectId: args.projectId,
     brandKitId: brand?.id ?? null,
     marketScanId: opp.marketScanId,
@@ -254,12 +279,16 @@ export async function createCampaignFromOpportunity(
 
   const draftR = await pool.query<{ id: number }>(
     `INSERT INTO marketing_post_drafts (
-       brand_key, platform, status, caption, hashtags, image_brief,
+       brand_key, organization_id, leadgrid_project_id, created_by_user_id,
+       platform, status, caption, hashtags, image_brief,
        cta_text, generated_with_model, cost_nok
-     ) VALUES ($1, 'linkedin', 'draft', $2, $3::jsonb, $4, $5, 'claude-opus-4-7', 0)
+     ) VALUES ($1, $2::uuid, $3, $4, 'linkedin', 'draft', $5, $6::jsonb, $7, $8, 'claude-opus-4-7', 0)
      RETURNING id`,
     [
       args.brandKey,
+      args.organizationId,
+      args.projectId,
+      args.workspaceOwnerUserId,
       caption.slice(0, 3000),
       JSON.stringify(hashtags),
       `Visuelt forslag: ${opp.whyItMatters.slice(0, 200)}`,
@@ -281,13 +310,15 @@ export async function createCampaignFromOpportunity(
     nextRecommendedAction: "Send til godkjenning via Marketing Cockpit",
   });
 
-  const refreshed = await getWorkflow(pool, wf.id);
+  const refreshed = await getWorkflow(pool, wf.id, args);
   return { workflow: refreshed!, draftId };
 }
 
 export interface CreateContentPackArgs {
   workspaceOwnerUserId: string;
-  projectId?: string | null;
+  organizationId: string;
+  projectId: string;
+  marketScanId: string;
   brandKey: string;
   opportunityId: string;
 }
@@ -296,7 +327,7 @@ export async function createContentPackFromOpportunity(
   pool: Pool,
   args: CreateContentPackArgs,
 ): Promise<{ workflow: MarketingWorkflow; draftIds: number[]; items: ContentPackItem[] }> {
-  const opp = await fetchOpportunity(pool, args.opportunityId);
+  const opp = await fetchOpportunity(pool, args);
   if (!opp) throw new Error("opportunity_not_found");
 
   const brand = args.projectId ? await getBrandKit(pool, args.projectId) : null;
@@ -305,6 +336,7 @@ export async function createContentPackFromOpportunity(
   // 1. Workflow
   const wf = await createWorkflow(pool, {
     workspaceOwnerUserId: args.workspaceOwnerUserId,
+    organizationId: args.organizationId,
     projectId: args.projectId,
     brandKitId: brand?.id ?? null,
     marketScanId: opp.marketScanId,
@@ -324,12 +356,16 @@ export async function createContentPackFromOpportunity(
         : "linkedin"; // fallback for email/web
     const r = await pool.query<{ id: number }>(
       `INSERT INTO marketing_post_drafts (
-         brand_key, platform, status, caption, hashtags, image_brief,
+         brand_key, organization_id, leadgrid_project_id, created_by_user_id,
+         platform, status, caption, hashtags, image_brief,
          cta_text, generated_with_model, cost_nok
-       ) VALUES ($1, $2, 'draft', $3, $4::jsonb, $5, $6, 'claude-opus-4-7', 0)
+       ) VALUES ($1, $2::uuid, $3, $4, $5, 'draft', $6, $7::jsonb, $8, $9, 'claude-opus-4-7', 0)
        RETURNING id`,
       [
         args.brandKey,
+        args.organizationId,
+        args.projectId,
+        args.workspaceOwnerUserId,
         platformMapped,
         `[${item.title}]\n\n${item.body}`.slice(0, 3000),
         JSON.stringify(item.hashtags ?? []),
@@ -353,19 +389,26 @@ export async function createContentPackFromOpportunity(
     nextRecommendedAction: "Velg ut + tilpass drafts før godkjenning",
   });
 
-  const refreshed = await getWorkflow(pool, wf.id);
+  const refreshed = await getWorkflow(pool, wf.id, args);
   return { workflow: refreshed!, draftIds, items: pack.items };
 }
 
 export async function createFunnelMapFromOpportunity(
   pool: Pool,
-  args: { workspaceOwnerUserId: string; projectId?: string | null; opportunityId: string },
+  args: {
+    workspaceOwnerUserId: string;
+    organizationId: string;
+    projectId: string;
+    marketScanId: string;
+    opportunityId: string;
+  },
 ): Promise<MarketingWorkflow> {
-  const opp = await fetchOpportunity(pool, args.opportunityId);
+  const opp = await fetchOpportunity(pool, args);
   if (!opp) throw new Error("opportunity_not_found");
 
   const wf = await createWorkflow(pool, {
     workspaceOwnerUserId: args.workspaceOwnerUserId,
+    organizationId: args.organizationId,
     projectId: args.projectId,
     brandKitId: null,
     marketScanId: opp.marketScanId,
@@ -379,18 +422,26 @@ export async function createFunnelMapFromOpportunity(
     note: "Funnel map markert som under utvikling — implementerer i Fase 4b",
     nextRecommendedAction: "Bygg ut funnel-design i kommende fase",
   });
-  return (await getWorkflow(pool, wf.id))!;
+  return (await getWorkflow(pool, wf.id, args))!;
 }
 
 export async function sendOpportunityToAgent(
   pool: Pool,
-  args: { workspaceOwnerUserId: string; projectId?: string | null; opportunityId: string; agentThreadId?: string },
+  args: {
+    workspaceOwnerUserId: string;
+    organizationId: string;
+    projectId: string;
+    marketScanId: string;
+    opportunityId: string;
+    agentThreadId?: string;
+  },
 ): Promise<MarketingWorkflow> {
-  const opp = await fetchOpportunity(pool, args.opportunityId);
+  const opp = await fetchOpportunity(pool, args);
   if (!opp) throw new Error("opportunity_not_found");
 
   const wf = await createWorkflow(pool, {
     workspaceOwnerUserId: args.workspaceOwnerUserId,
+    organizationId: args.organizationId,
     projectId: args.projectId,
     brandKitId: null,
     marketScanId: opp.marketScanId,
@@ -410,7 +461,7 @@ export async function sendOpportunityToAgent(
     note: "Opportunity tilgjengelig i Role Room Agent-kontekst",
     nextRecommendedAction: "Spør Agent om campaign-utkast",
   });
-  return (await getWorkflow(pool, wf.id))!;
+  return (await getWorkflow(pool, wf.id, args))!;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -420,17 +471,24 @@ export async function sendOpportunityToAgent(
 export async function getWorkflow(
   pool: Pool,
   workflowId: string,
+  scope: {
+    workspaceOwnerUserId: string;
+    organizationId: string;
+    projectId: string;
+  },
 ): Promise<MarketingWorkflow | null> {
   const r = await pool.query<WorkflowRow>(
-    `SELECT id::text, workspace_owner_user_id, project_id,
+    `SELECT id::text, workspace_owner_user_id, organization_id::text, project_id,
             brand_kit_id::text, market_scan_id::text, opportunity_id::text,
             campaign_draft_id, content_pack_draft_ids, approval_task_id,
             publishing_item_ids, analytics_result_ids, agent_thread_id,
             current_status, next_recommended_action, initiating_action, notes,
             created_at::text, updated_at::text
-       FROM marketing_workflows
-      WHERE id = $1::uuid`,
-    [workflowId],
+      FROM marketing_workflows
+      WHERE id = $1::uuid
+        AND organization_id = $2::uuid
+        AND project_id = $3`,
+    [workflowId, scope.organizationId, scope.projectId],
   );
   if (r.rows.length === 0) return null;
   return rowToWorkflow(r.rows[0]);
@@ -438,10 +496,15 @@ export async function getWorkflow(
 
 export async function listWorkflowsForOpportunity(
   pool: Pool,
-  opportunityId: string,
+  args: {
+    opportunityId: string;
+    workspaceOwnerUserId: string;
+    organizationId: string;
+    projectId: string;
+  },
 ): Promise<MarketingWorkflow[]> {
   const r = await pool.query<WorkflowRow>(
-    `SELECT id::text, workspace_owner_user_id, project_id,
+    `SELECT id::text, workspace_owner_user_id, organization_id::text, project_id,
             brand_kit_id::text, market_scan_id::text, opportunity_id::text,
             campaign_draft_id, content_pack_draft_ids, approval_task_id,
             publishing_item_ids, analytics_result_ids, agent_thread_id,
@@ -449,28 +512,36 @@ export async function listWorkflowsForOpportunity(
             created_at::text, updated_at::text
        FROM marketing_workflows
       WHERE opportunity_id = $1::uuid
+        AND organization_id = $2::uuid
+        AND project_id = $3
       ORDER BY created_at DESC`,
-    [opportunityId],
+    [args.opportunityId, args.organizationId, args.projectId],
   );
   return r.rows.map(rowToWorkflow);
 }
 
 export async function listWorkflowsForUser(
   pool: Pool,
-  args: { workspaceOwnerUserId: string; limit?: number },
+  args: {
+    workspaceOwnerUserId: string;
+    organizationId: string;
+    projectId: string;
+    limit?: number;
+  },
 ): Promise<MarketingWorkflow[]> {
   const r = await pool.query<WorkflowRow>(
-    `SELECT id::text, workspace_owner_user_id, project_id,
+    `SELECT id::text, workspace_owner_user_id, organization_id::text, project_id,
             brand_kit_id::text, market_scan_id::text, opportunity_id::text,
             campaign_draft_id, content_pack_draft_ids, approval_task_id,
             publishing_item_ids, analytics_result_ids, agent_thread_id,
             current_status, next_recommended_action, initiating_action, notes,
             created_at::text, updated_at::text
-       FROM marketing_workflows
-      WHERE workspace_owner_user_id = $1
+      FROM marketing_workflows
+      WHERE organization_id = $1::uuid
+        AND project_id = $2
       ORDER BY updated_at DESC
-      LIMIT $2`,
-    [args.workspaceOwnerUserId, args.limit ?? 100],
+      LIMIT $3`,
+    [args.organizationId, args.projectId, args.limit ?? 100],
   );
   return r.rows.map(rowToWorkflow);
 }
