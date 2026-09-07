@@ -44,6 +44,11 @@ export interface DealStageChange {
   notes: string | null;
 }
 
+export interface LeadgridDealLeadScope {
+  organizationId: string;
+  projectId: string;
+}
+
 interface RowDealFields {
   deal_probability: number | null;
   deal_probability_overridden: boolean | null;
@@ -70,14 +75,16 @@ function toDealFields(r: RowDealFields | undefined): DealFields | null {
 export async function getDealForLead(
   pool: Pool,
   leadId: string,
+  scope?: LeadgridDealLeadScope,
 ): Promise<DealFields | null> {
   const r = await pool.query<RowDealFields>(
     `SELECT deal_probability, deal_probability_overridden, expected_close_date,
             deal_amount, deal_currency, pipeline_stage, deal_stage_changed_at
        FROM crm_customers
       WHERE id = $1::uuid
+        ${scope ? "AND organization_id = $2::uuid AND project_id = $3" : ""}
       LIMIT 1`,
-    [leadId],
+    scope ? [leadId, scope.organizationId, scope.projectId] : [leadId],
   );
   return toDealFields(r.rows[0]);
 }
@@ -99,8 +106,9 @@ export async function updateDealFields(
     dealAmount?: number | null;
     dealCurrency?: string | null;
   },
+  scope?: LeadgridDealLeadScope,
 ): Promise<DealFields | null> {
-  const before = await getDealForLead(pool, leadId);
+  const before = await getDealForLead(pool, leadId, scope);
   if (!before) return null;
 
   const sets: string[] = [];
@@ -137,43 +145,70 @@ export async function updateDealFields(
   if (sets.length === 0) return before;
 
   sets.push(`updated_at = NOW()`);
+  const leadIdParam = p++;
   vals.push(leadId);
+  let scopeClause = "";
+  if (scope) {
+    const organizationIdParam = p++;
+    vals.push(scope.organizationId);
+    const projectIdParam = p++;
+    vals.push(scope.projectId);
+    scopeClause = `
+        AND organization_id = $${organizationIdParam}::uuid
+        AND project_id = $${projectIdParam}`;
+  }
 
-  await pool.query(
+  const updated = await pool.query(
     `UPDATE crm_customers
         SET ${sets.join(", ")}
-      WHERE id = $${p}::uuid`,
+      WHERE id = $${leadIdParam}::uuid${scopeClause}
+      RETURNING id`,
     vals,
   );
+  if (!updated.rowCount) return null;
 
   // void audit-rad for amount/probability-endring uten stage-change
   // (vi logger som "manual_deal_update")
-  void pool
-    .query(
-      `INSERT INTO crm_deal_stage_history
+  const auditParams = [
+    leadId,
+    before.pipelineStage,
+    changedBy,
+    before.dealProbability,
+    patch.dealProbability === undefined
+      ? before.dealProbability
+      : patch.dealProbability,
+    before.dealAmount,
+    patch.dealAmount === undefined ? before.dealAmount : patch.dealAmount,
+    "manual_deal_update",
+    JSON.stringify({ kind: "manual_deal_update" }),
+  ];
+  const auditSql = scope
+    ? `INSERT INTO crm_deal_stage_history
          (customer_id, from_stage, to_stage, changed_by,
           probability_before, probability_after,
           amount_before, amount_after, notes, metadata)
-       VALUES ($1::uuid, $2, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`,
-      [
-        leadId,
-        before.pipelineStage,
-        changedBy,
-        before.dealProbability,
-        patch.dealProbability === undefined
-          ? before.dealProbability
-          : patch.dealProbability,
-        before.dealAmount,
-        patch.dealAmount === undefined ? before.dealAmount : patch.dealAmount,
-        "manual_deal_update",
-        JSON.stringify({ kind: "manual_deal_update" }),
-      ],
+       SELECT c.id, $2, $2, $3, $4, $5, $6, $7, $8, $9::jsonb
+         FROM crm_customers c
+        WHERE c.id = $1::uuid
+          AND c.organization_id = $10::uuid
+          AND c.project_id = $11`
+    : `INSERT INTO crm_deal_stage_history
+         (customer_id, from_stage, to_stage, changed_by,
+          probability_before, probability_after,
+          amount_before, amount_after, notes, metadata)
+       VALUES ($1::uuid, $2, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`;
+  void pool
+    .query(
+      auditSql,
+      scope
+        ? [...auditParams, scope.organizationId, scope.projectId]
+        : auditParams,
     )
     .catch((err: unknown) => {
       console.warn("[deals-service] manual_deal_update audit fail:", err);
     });
 
-  return getDealForLead(pool, leadId);
+  return getDealForLead(pool, leadId, scope);
 }
 
 /**
@@ -193,7 +228,12 @@ export async function applyStageChange(
   leadId: string,
   changedBy: string,
   toStage: LeadgridStage,
-  opts?: { client?: PoolClient; notes?: string; source?: string },
+  opts?: {
+    client?: PoolClient;
+    notes?: string;
+    source?: string;
+    scope?: LeadgridDealLeadScope;
+  },
 ): Promise<{
   oldStage: string | null;
   newStage: string;
@@ -214,8 +254,11 @@ export async function applyStageChange(
             deal_amount, deal_stage_changed_at
        FROM crm_customers
       WHERE id = $1::uuid
+        ${opts?.scope ? "AND organization_id = $2::uuid AND project_id = $3" : ""}
       LIMIT 1`,
-    [leadId],
+    opts?.scope
+      ? [leadId, opts.scope.organizationId, opts.scope.projectId]
+      : [leadId],
   );
   const before = beforeRes.rows[0];
   if (!before) throw new Error("lead_not_found");
@@ -243,7 +286,7 @@ export async function applyStageChange(
     }
   }
 
-  await q.query(
+  const updated = await q.query(
     `UPDATE crm_customers
         SET pipeline_stage = $1,
             deal_probability = $2,
@@ -251,33 +294,54 @@ export async function applyStageChange(
             last_pipeline_stage_change_at = NOW(),
             last_pipeline_stage_change_by = $3,
             updated_at = NOW()
-      WHERE id = $4::uuid`,
-    [toStage, newProbability, changedBy, leadId],
+      WHERE id = $4::uuid
+        ${opts?.scope ? "AND organization_id = $5::uuid AND project_id = $6" : ""}
+      RETURNING id`,
+    opts?.scope
+      ? [toStage, newProbability, changedBy, leadId,
+         opts.scope.organizationId, opts.scope.projectId]
+      : [toStage, newProbability, changedBy, leadId],
   );
+  if (!updated.rowCount) throw new Error("lead_not_found");
 
-  await q.query(
-    `INSERT INTO crm_deal_stage_history
+  const historyParams = [
+    leadId,
+    oldStage,
+    toStage,
+    changedBy,
+    oldProbability,
+    newProbability,
+    before.deal_amount,
+    durationMinutes,
+    opts?.notes ?? null,
+    JSON.stringify({
+      kind: "stage_change",
+      source: opts?.source ?? "service",
+      overridden,
+    }),
+  ];
+  const historySql = opts?.scope
+    ? `INSERT INTO crm_deal_stage_history
        (customer_id, from_stage, to_stage, changed_by,
         probability_before, probability_after,
         amount_before, amount_after,
         duration_in_previous_stage_minutes, notes, metadata)
-     VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $7, $8, $9, $10::jsonb)`,
-    [
-      leadId,
-      oldStage,
-      toStage,
-      changedBy,
-      oldProbability,
-      newProbability,
-      before.deal_amount,
-      durationMinutes,
-      opts?.notes ?? null,
-      JSON.stringify({
-        kind: "stage_change",
-        source: opts?.source ?? "service",
-        overridden,
-      }),
-    ],
+     SELECT c.id, $2, $3, $4, $5, $6, $7, $7, $8, $9, $10::jsonb
+       FROM crm_customers c
+      WHERE c.id = $1::uuid
+        AND c.organization_id = $11::uuid
+        AND c.project_id = $12`
+    : `INSERT INTO crm_deal_stage_history
+       (customer_id, from_stage, to_stage, changed_by,
+        probability_before, probability_after,
+        amount_before, amount_after,
+        duration_in_previous_stage_minutes, notes, metadata)
+     VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $7, $8, $9, $10::jsonb)`;
+  await q.query(
+    historySql,
+    opts?.scope
+      ? [...historyParams, opts.scope.organizationId, opts.scope.projectId]
+      : historyParams,
   );
 
   return {
@@ -293,6 +357,7 @@ export async function fetchStageHistory(
   pool: Pool,
   leadId: string,
   limit = 50,
+  scope?: LeadgridDealLeadScope,
 ): Promise<DealStageChange[]> {
   const r = await pool.query<{
     id: string;
@@ -308,16 +373,20 @@ export async function fetchStageHistory(
     duration_in_previous_stage_minutes: number | null;
     notes: string | null;
   }>(
-    `SELECT id::text, customer_id::text, from_stage, to_stage,
-            changed_by, changed_at,
-            probability_before, probability_after,
-            amount_before, amount_after,
-            duration_in_previous_stage_minutes, notes
-       FROM crm_deal_stage_history
-      WHERE customer_id = $1::uuid
-      ORDER BY changed_at DESC
+    `SELECT h.id::text, h.customer_id::text, h.from_stage, h.to_stage,
+            h.changed_by, h.changed_at,
+            h.probability_before, h.probability_after,
+            h.amount_before, h.amount_after,
+            h.duration_in_previous_stage_minutes, h.notes
+       FROM crm_deal_stage_history h
+       ${scope ? "JOIN crm_customers c ON c.id = h.customer_id" : ""}
+      WHERE h.customer_id = $1::uuid
+        ${scope ? "AND c.organization_id = $3::uuid AND c.project_id = $4" : ""}
+      ORDER BY h.changed_at DESC
       LIMIT $2`,
-    [leadId, limit],
+    scope
+      ? [leadId, limit, scope.organizationId, scope.projectId]
+      : [leadId, limit],
   );
   return r.rows.map((row) => ({
     id: row.id,
@@ -360,18 +429,13 @@ export interface WeightedForecast {
 }
 
 /**
- * computeWeightedForecast — aggregert weighted-pipeline for én org.
- *
- * Resolver org → owner_user_ids → leads.
- *
- * Stadig ikke en organization_id-kolonne på crm_customers; vi går
- * via organization_members.user_id som "tenant"-key (samme mønster
- * som intelligence-routes).
+ * computeWeightedForecast — aggregert weighted-pipeline for en autoritativ
+ * organisasjon/prosjekt-tuple når projectId er angitt.
  */
 export async function computeWeightedForecast(
   pool: Pool,
   organizationId: string,
-  opts?: { horizonDays?: number },
+  opts?: { horizonDays?: number; projectId?: string },
 ): Promise<WeightedForecast> {
   const horizonDays = opts?.horizonDays ?? 365;
 
@@ -395,12 +459,11 @@ export async function computeWeightedForecast(
         AND c.expected_close_date IS NOT NULL
         AND c.pipeline_stage NOT IN ('won','lost')
         AND c.expected_close_date <= (CURRENT_DATE + $2::int)
-        AND c.owner_user_id IN (
-          SELECT user_id::text
-            FROM organization_members
-           WHERE organization_id = $1::uuid
-        )`,
-    [organizationId, horizonDays],
+        AND c.organization_id = $1::uuid
+        ${opts?.projectId ? "AND c.project_id = $3" : ""}`,
+    opts?.projectId
+      ? [organizationId, horizonDays, opts.projectId]
+      : [organizationId, horizonDays],
   );
 
   let totalWeighted = 0;
@@ -511,6 +574,7 @@ export async function listDealsAtRisk(
   pool: Pool,
   organizationId: string,
   limit = 20,
+  projectId?: string,
 ): Promise<DealAtRisk[]> {
   const r = await pool.query<{
     lead_id: string;
@@ -537,15 +601,14 @@ export async function listDealsAtRisk(
         AND c.expected_close_date IS NOT NULL
         AND c.pipeline_stage NOT IN ('won','lost')
         AND c.expected_close_date < CURRENT_DATE
-        AND c.owner_user_id IN (
-          SELECT user_id::text
-            FROM organization_members
-           WHERE organization_id = $1::uuid
-        )
+        AND c.organization_id = $1::uuid
+        ${projectId ? "AND c.project_id = $3" : ""}
       ORDER BY (CURRENT_DATE - c.expected_close_date) DESC,
                (c.deal_amount * (c.deal_probability / 100.0)) DESC
       LIMIT $2`,
-    [organizationId, limit],
+    projectId
+      ? [organizationId, limit, projectId]
+      : [organizationId, limit],
   );
 
   return r.rows.map((row) => {

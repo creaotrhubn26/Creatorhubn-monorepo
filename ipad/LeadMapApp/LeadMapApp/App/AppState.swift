@@ -6,9 +6,9 @@
 // Offline-strategi:
 //   - bootstrap() laster fra cache først (umiddelbart synlig UI) →
 //     forsøker refresh (overskriver hvis suksess)
-//   - refreshAll() lagrer suksess til cache + flusher pending visits
+//   - refreshAll() lagrer vellykkede snapshots til cache
 //   - VisitLogModal sin save() går via enqueueOrSendVisit() som
-//     enten kaller backend direkte eller legger i offline-kø
+//     bruker actor-/workspace-bundet, idempotent offline-kø
 
 import Foundation
 import Observation
@@ -19,12 +19,20 @@ import UIKit
 import WidgetKit
 #endif
 
+enum WorkspacePlanLoadState: Equatable {
+    case idle
+    case loading
+    case loaded
+    case failed
+}
+
 @MainActor
 @Observable
 final class AppState {
     // Auth
     var authToken: String?
     var userEmail: String?
+    var currentUserId: String?
     var isAuthenticated: Bool { authToken != nil }
 
     /// Vist navn i header-avatarer og «Min profil». Baseres på userEmail
@@ -118,9 +126,16 @@ final class AppState {
     }
 
     @discardableResult
-    func handleLeadgridURL(_ url: URL) -> Bool {
-        guard let destination = LeadbookDeepLinkRouter.parse(url) else { return false }
-        switch destination {
+    func handleLeadgridURL(_ url: URL) async -> Bool {
+        guard let route = LeadbookDeepLinkRouter.parse(url) else { return false }
+        if let scope = route.scope {
+            guard await activateLeadgridDeepLinkScope(scope) else { return false }
+        } else {
+            // Legacy copied links contain no tenant identifiers. They may only
+            // resolve inside an already-selected, server-validated context.
+            guard activeOrganizationId != nil, activeProjectId != nil else { return false }
+        }
+        switch route.destination {
         case .example(let id):
             deepLinkLeadbookExampleId = id.uuidString.lowercased()
             deepLinkLeadbookRequestedAt = Date()
@@ -129,6 +144,49 @@ final class AppState {
             setPondusDeepLink(templateId: id.uuidString.lowercased())
         }
         return true
+    }
+
+    private func activateLeadgridDeepLinkScope(
+        _ scope: LeadbookDeepLinkScope
+    ) async -> Bool {
+        guard let api else { return false }
+        if organizations.isEmpty {
+            await loadOrganizations()
+        }
+        guard organizations.contains(where: {
+            $0.id.lowercased() == scope.organizationId
+        }) else { return false }
+
+        if activeOrganizationId?.lowercased() != scope.organizationId {
+            activeOrganizationId = scope.organizationId
+        }
+        await api.setActiveOrganizationId(scope.organizationId)
+
+        do {
+            let fetched = try await api.fetchProjects(
+                organizationId: scope.organizationId
+            )
+            guard activeOrganizationId?.lowercased() == scope.organizationId else {
+                return false
+            }
+            let scopedProjects = fetched.filter {
+                $0.organizationId == nil
+                    || $0.organizationId?.lowercased() == scope.organizationId
+            }
+            guard scopedProjects.contains(where: { $0.id == scope.projectId }) else {
+                return false
+            }
+            projects = scopedProjects
+            projectsLoadState = .loaded
+            if activeProjectId != scope.projectId {
+                activeProjectId = scope.projectId
+            }
+            return true
+        } catch {
+            handleAPIError(error)
+            print("[AppState] deep-link project scope failed: \(error)")
+            return false
+        }
     }
 
     func clearLeadbookExampleDeepLink() {
@@ -373,15 +431,26 @@ final class AppState {
     func refreshLeads() async {
         guard let api else { return }
         let organizationId = activeOrganizationId
+        let projectId = activeProjectId
         do {
-            let fresh = try await api.fetchLeads(projectId: activeProjectId, organizationId: activeOrganizationId)
-            // Et org-bytte mens requesten er i flight skal verken erstatte
+            let fresh = try await api.fetchLeads(projectId: projectId, organizationId: organizationId)
+            // Et org-/prosjektbytte mens requesten er i flight skal verken erstatte
             // skjermdata eller feilmerke et Watch-snapshot med ny aktiv org.
-            guard activeOrganizationId == organizationId else { return }
+            guard activeOrganizationId == organizationId,
+                  activeProjectId == projectId else { return }
             self.leads = fresh
             self.leadsLoadState = .loaded
-            if let organizationId {
-                WatchSession.shared.pushLeads(fresh, organizationId: organizationId)
+            if let actorUserId = currentUserId,
+               let organizationId,
+               let projectId {
+                WatchSession.shared.pushLeads(
+                    fresh,
+                    actorUserId: actorUserId,
+                    organizationId: organizationId,
+                    projectId: projectId
+                )
+            } else {
+                WatchSession.shared.clearLeads()
             }
         } catch {
             print("[AppState] refreshLeads failed: \(error)")
@@ -407,12 +476,24 @@ final class AppState {
     var activeProjectSummary: ProjectSummary?
     var activeProjectId: String? {
         didSet {
+            guard oldValue != activeProjectId else { return }
+            if let actorUserId = currentUserId {
+                Task {
+                    await OfflineActionQueue.shared.cancelDrains(
+                        actorUserId: actorUserId)
+                }
+            }
             if let id = activeProjectId {
                 UserDefaults.standard.set(id, forKey: "rr.lead_map.active_project")
             } else {
                 UserDefaults.standard.removeObject(forKey: "rr.lead_map.active_project")
             }
-            Task { await refreshAll() }
+            clearProjectBoundPresentation()
+            clearWidgetSnapshot()
+            Task {
+                await loadFromCache()
+                await refreshAll()
+            }
             if let id = activeProjectId {
                 Task { await loadProjectSummary(id: id) }
             } else {
@@ -430,6 +511,38 @@ final class AppState {
     var lastSyncAt: Date?
     var pendingVisitsCount: Int = 0
     var isUsingStaleCache: Bool = false
+
+    private var offlineCacheScope: OfflineCache.Scope? {
+        OfflineCache.Scope(
+            actorUserId: currentUserId,
+            organizationId: activeOrganizationId,
+            projectId: activeProjectId
+        )
+    }
+
+    private func clearProjectBoundPresentation() {
+        RouteTracker.shared.clearProjectScope()
+        WatchSession.shared.clearLeads()
+        leads = []
+        competitors = []
+        metrics = nil
+        calendar = []
+        reminders = nil
+        selectedLead = nil
+        selectedCompetitor = nil
+        activeProjectSummary = nil
+        lastSyncAt = nil
+        isUsingStaleCache = false
+        leadsLoadState = isAuthenticated && activeProjectId != nil ? .loading : .idle
+        calendarLoadState = isAuthenticated && activeProjectId != nil ? .loading : .idle
+    }
+
+    private func clearWidgetSnapshot() {
+        WidgetSnapshotStore.clear()
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.reloadAllTimelines()
+        #endif
+    }
 
     // ── Session-expiry (PR fix/leadmap-apierror-localized-description) ──
     /// True når en API-call returnerte 401 (token utløpt eller ugyldig).
@@ -470,10 +583,16 @@ final class AppState {
             // entitlements/gating må re-hentes for den nye aktive org-en
             // (før: kun ved bootstrap → gating frosset til primær-org).
             if oldValue != activeOrganizationId {
+                clearProjectBoundPresentation()
+                clearWidgetSnapshot()
                 organizationSelectionGeneration &+= 1
                 let generation = organizationSelectionGeneration
                 let selectedOrganizationId = activeOrganizationId
                 leadgridDiscoveryEnabled = false
+                workspacePlanSummary = nil
+                workspacePlanOrganizationId = selectedOrganizationId
+                workspacePlanLoadState = selectedOrganizationId == nil ? .idle : .loading
+                EntitlementStore.shared.resetForOrganization(selectedOrganizationId)
                 LeadbookLiveStore.shared.resetForOrganization(selectedOrganizationId)
                 AcademyLiveStore.shared.resetForOrganization(selectedOrganizationId)
                 pondusStore.resetForOrganization(selectedOrganizationId)
@@ -505,6 +624,32 @@ final class AppState {
     /// Effective permissions for current user i active org.
     var permissions: Set<String> = []
     var roleInOrg: String?
+    /// Abonnementet tilhører valgt workspace, ikke brukeren. Oppsummeringen
+    /// deles av Profil, Verktøy og Abonnement så flatene aldri viser ulike
+    /// plan-navn eller bruker tre parallelle nettverkskall.
+    var workspacePlanSummary: LeadgridPlanSummary?
+    var workspacePlanOrganizationId: String?
+    var workspacePlanLoadState: WorkspacePlanLoadState = .idle
+    var canManageWorkspaceBilling: Bool {
+        roleInOrg == "admin" || isSuperAdmin
+    }
+    var canManageWorkspaceReports: Bool {
+        ["owner", "admin", "markedssjef", "salgssjef"].contains(roleInOrg ?? "")
+            || isSuperAdmin
+    }
+    var activeWorkspacePlanDisplayName: String {
+        guard workspacePlanOrganizationId == activeOrganizationId else {
+            return "Laster …"
+        }
+        if let summary = workspacePlanSummary {
+            return summary.displayName
+        }
+        switch workspacePlanLoadState {
+        case .idle, .loading: return "Laster …"
+        case .loaded: return "Ingen aktiv plan"
+        case .failed: return "Utilgjengelig"
+        }
+    }
     /// Fail-closed server capability; never inferred from an entitlement plan.
     var leadgridDiscoveryEnabled = false
     var locationConsentGranted: Bool = false
@@ -622,14 +767,32 @@ final class AppState {
     /// Håndter et APNS-varsel som ble tap-pet. Backend sender 'event_type'
     /// + valgfri 'lead_id' / 'deep_link'. Vi setter relevant presentation-
     /// flag så LeadgridHubView (eller fallback i RootView) viser sheet.
-    func handleLeadgridNotificationTap(_ payload: [String: String]) {
+    @discardableResult
+    func handleLeadgridNotificationTap(_ payload: [String: String]) async -> Bool {
         // Trig refresh av notifikasjons-listen så badge-counter er aktuell.
         Task { await refreshLeadgridNotifications() }
 
         if let raw = payload["deep_link"],
            let url = URL(string: raw),
-           handleLeadgridURL(url) {
-            return
+           await handleLeadgridURL(url) {
+            return true
+        }
+
+        let rawProjectId = payload["project_id"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawOrganizationId = payload["organization_id"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let projectId = rawProjectId,
+           !projectId.isEmpty,
+           let organizationId = rawOrganizationId,
+           let normalizedOrganizationId = UUID(uuidString: organizationId)?
+            .uuidString.lowercased() {
+            guard await activateLeadgridDeepLinkScope(.init(
+                projectId: projectId,
+                organizationId: normalizedOrganizationId
+            )) else { return false }
+        } else if rawProjectId?.isEmpty == false || rawOrganizationId?.isEmpty == false {
+            return false
         }
 
         let eventType = payload["event_type"] ?? ""
@@ -638,30 +801,34 @@ final class AppState {
               "lead_assigned_as_rep",
               "lead_assigned_on_accept":
             // Vis innboks slik at brukeren ser den nye tildelingen.
-            presentingLeadgridNotifications = true
+            return false
         case "lead_won", "lead_lost", "lead_status_change":
-            // Lås på dashboard så de ser overordnet status.
-            presentingLeadgridDashboard = true
+            selectedSidebarItem = .oversikt
+            return true
         case "doffin_watch_hit":
             // Nye anbuds-treff (2026-08-03): varselet peker på
             // leadgrid://anbud — rett til Anbud-fanen, ikke innboksen.
             selectedSidebarItem = .anbud
+            return true
         case "brief_klar":
             // Kveldsbriefen: rett til Møter — briefene ligger klare der.
             selectedSidebarItem = .moter
+            return true
         case "etter_mote":
             // Lokalt «logg møtet»-varsel: rett til Møter, og MeetingsView
             // åpner etterarbeids-arket for selskapet.
             pendingEtterMoteSelskap = payload["selskap"]
             pendingEtterMoteId = payload["mote_id"]
             selectedSidebarItem = .moter
+            return true
         case "leadgrid_rute_tildelt":
             // Rute tildelt av salgssjef (nivå 3): hent ruta rett inn i
             // Kart-fanens rute-motor.
             selectedSidebarItem = .kart
             Task { await hentTildeltRute() }
+            return true
         default:
-            presentingLeadgridNotifications = true
+            return false
         }
     }
 
@@ -741,6 +908,20 @@ final class AppState {
         organizations.first { $0.id == activeOrganizationId }
     }
 
+    /// `projects` is populated exclusively from Leadgrid's
+    /// `/admin-room/lead-map/projects` endpoint. Resolving through this list
+    /// prevents stale ids — or unrelated Role Room/casting projects — from
+    /// being used as Leadgrid customer scope.
+    var activeLeadgridProject: ProjectListItem? {
+        guard let activeProjectId else { return nil }
+        return projects.first { project in
+            project.id == activeProjectId
+                && (project.organizationId == nil || project.organizationId == activeOrganizationId)
+        }
+    }
+
+    var activeLeadgridProjectId: String? { activeLeadgridProject?.id }
+
     func can(_ permissionKey: String) -> Bool {
         permissions.contains(permissionKey)
     }
@@ -755,6 +936,7 @@ func configureDiscovery() async {
     }
     await discoveryCoordinator.configure(
         api: api,
+        actorUserId: currentUserId,
         organizationId: activeOrganizationId,
         projectId: scopedProject?.id,
         projectName: scopedProject?.name
@@ -816,15 +998,20 @@ func configureDiscovery() async {
             self.activeOrganizationId = storedOrg
         }
 
-        // 2. Last fra cache umiddelbart så UI er responsivt selv før refresh
-        await loadFromCache()
+        // Legacy-snapshots manglet bruker/workspace/prosjekt og kan derfor
+        // aldri gjenbrukes trygt. Flytt dem til karantene før vi leser noe.
+        await OfflineCache.shared.quarantineLegacyUnscopedSnapshots()
 
-        // 3. Hvis vi har token, prøv refresh — overskriver cache ved suksess
+        // 2. Hvis vi har token, bind først cachen til sist verifiserte actor.
+        // Deretter prøver vi refresh og overskriver snapshot ved suksess.
         if let token = AuthClient.loadToken() {
             self.authToken = token
             self.userEmail = AuthClient.loadEmail()
-            self.api = APIClient(token: token)
+            let cachedActorUserId = AuthClient.loadActorUserId()
+            self.currentUserId = cachedActorUserId
+            self.api = APIClient(token: token, actorUserId: cachedActorUserId)
             await self.api?.setActiveOrganizationId(activeOrganizationId)
+            await loadFromCache()
             // Rolle + identitet FØRST — de gater UI (SuperAdmin-inngangen,
             // avatar-navn) og er ett billig kall. Lå sist i kjeden før →
             // super_admin så «Gjest/Salgssjef» til hele refreshen var
@@ -833,6 +1020,9 @@ func configureDiscovery() async {
             // Resolve tenant before the first project fetch; project lists are org-scoped.
             await loadOrganizations()
             await loadOrgContext()
+            // Org/prosjekt kan ha blitt korrigert av serveren. Forsøk det
+            // eksakte, verifiserte scopet før nettverksrefreshen.
+            await loadFromCache()
             // Entitlements fail-open og gater-viewene re-rendrer på @Published-
             // endringen → kjør samtidig med refreshAll i stedet for å blokkere
             // first paint på et kaldt backend (QA 2026-07-06).
@@ -894,12 +1084,19 @@ func configureDiscovery() async {
         do {
             let resp = try await api.fetchAuthUser()
             if let user = resp.user {
+                self.currentUserId = user.id
+                AuthClient.saveActorUserId(user.id)
+                await api.setAuthenticatedActorUserId(user.id)
                 self.userRole = user.role
                 // QA-hook/pairing lagrer ikke e-post i keychain — uten
                 // denne sto avataren som «Gjest» selv med gyldig sesjon.
                 if self.userEmail == nil || self.userEmail?.isEmpty == true {
                     self.userEmail = user.email
                 }
+            } else {
+                self.currentUserId = nil
+                AuthClient.saveActorUserId("")
+                await api.setAuthenticatedActorUserId(nil)
             }
         } catch {
             print("[AppState] loadUserRole failed: \(error)")
@@ -912,9 +1109,13 @@ func configureDiscovery() async {
     func loadMyEntitlements() async {
         guard let api, let requestedOrganizationId = activeOrganizationId else {
             leadgridDiscoveryEnabled = false
+            workspacePlanSummary = nil
+            workspacePlanOrganizationId = nil
+            workspacePlanLoadState = .idle
             return
         }
         leadgridDiscoveryEnabled = false
+        async let planLoad: Void = loadWorkspacePlanSummary()
         do {
             let envelope = try await api.fetchMyEntitlements(
                 organizationId: requestedOrganizationId)
@@ -926,7 +1127,36 @@ func configureDiscovery() async {
             leadgridDiscoveryEnabled = false
             print("[AppState] loadMyEntitlements failed: \(error)")
         }
+        await planLoad
         await configureDiscovery()
+    }
+
+    /// Kan også kalles separat av retry-knappene i Profil og Verktøy.
+    /// Resultatet bindes til org-ID-en som ble forespurt; et sent svar fra
+    /// forrige workspace får aldri overskrive den aktive planen.
+    func loadWorkspacePlanSummary() async {
+        guard let api, let requestedOrganizationId = activeOrganizationId else {
+            workspacePlanSummary = nil
+            workspacePlanOrganizationId = nil
+            workspacePlanLoadState = .idle
+            return
+        }
+        workspacePlanOrganizationId = requestedOrganizationId
+        workspacePlanLoadState = .loading
+        do {
+            let summary = try await api.fetchLeadgridPlanSummary(orgId: requestedOrganizationId)
+            guard requestedOrganizationId == activeOrganizationId else { return }
+            workspacePlanSummary = summary
+            workspacePlanOrganizationId = requestedOrganizationId
+            workspacePlanLoadState = .loaded
+        } catch {
+            guard requestedOrganizationId == activeOrganizationId else { return }
+            workspacePlanSummary = nil
+            workspacePlanOrganizationId = requestedOrganizationId
+            workspacePlanLoadState = .failed
+            handleAPIError(error)
+            print("[AppState] loadWorkspacePlanSummary failed: \(error)")
+        }
     }
 
     /// Last permissions + location-consent + member-locations for active org.
@@ -973,10 +1203,19 @@ func configureDiscovery() async {
 
     /// Last Min dag-data (workload + quota).
     func refreshWorkload() async {
-        guard let api, let orgId = activeOrganizationId else { return }
+        guard let api,
+              let orgId = activeOrganizationId,
+              let projectId = activeProjectId else {
+            self.workloadLeads = []
+            return
+        }
         let loc = LocationService.shared.currentLocation
         do {
-            let resp = try await api.fetchWorkload(organizationId: orgId, location: loc)
+            let resp = try await api.fetchWorkload(
+                organizationId: orgId,
+                projectId: projectId,
+                location: loc
+            )
             self.workloadLeads = resp.leads
             // Re-konfigurer geofence-monitorering for de 20 nærmeste tildelte leads
             ProximityMonitor.shared.updateAssignedLeads(resp.leads)
@@ -1073,9 +1312,14 @@ func configureDiscovery() async {
     }
 
     func signIn(token: String, email: String?) async {
+        clearProjectBoundPresentation()
+        clearWidgetSnapshot()
+        projects = []
+        organizations = []
         AuthClient.saveToken(token, email: email)
         self.authToken = token
         self.userEmail = email
+        self.currentUserId = nil
         self.api = APIClient(token: token)
         await self.api?.setActiveOrganizationId(activeOrganizationId)
         self.sessionExpired = false
@@ -1084,9 +1328,10 @@ func configureDiscovery() async {
         // dette ble userRole nil helt til neste app-start (bootstrap)
         // kjørte loadUserRole — Super Admin-section var skjult etter
         // Google login selv om DB-role var 'super_admin'.
+        await loadUserRole()
         await loadOrganizations()
         await loadOrgContext()
-        await loadUserRole()
+        await loadFromCache()
         await loadMyEntitlements()
         await refreshAll()
         await configureDiscovery()
@@ -1095,15 +1340,23 @@ func configureDiscovery() async {
     /// Brukes etter en vellykket pairing-kode-bytte eller Google Sign-In.
     /// Setter token + last alt frem (inkl. user-role for super_admin-deteksjon).
     func completePairing(token: String, userId: String) {
+        clearProjectBoundPresentation()
+        clearWidgetSnapshot()
+        projects = []
+        organizations = []
         AuthClient.saveToken(token, email: nil)
+        AuthClient.saveActorUserId(userId)
         self.authToken = token
-        self.api = APIClient(token: token)
+        self.userEmail = nil
+        self.currentUserId = userId
+        self.api = APIClient(token: token, actorUserId: userId)
         self.sessionExpired = false
         Task {
             await self.api?.setActiveOrganizationId(activeOrganizationId)
             await loadOrganizations()
             await loadOrgContext()
             await loadUserRole()
+            await loadFromCache()
             await loadMyEntitlements()
             await refreshAll()
             await configureDiscovery()
@@ -1111,6 +1364,13 @@ func configureDiscovery() async {
     }
 
     func signOut() {
+        let signedOutActorUserId = currentUserId
+        if let signedOutActorUserId {
+            Task {
+                await OfflineActionQueue.shared.cancelDrains(
+                    actorUserId: signedOutActorUserId)
+            }
+        }
         heartbeatController?.stop()
         heartbeatController = nil
         notificationsPollTask?.cancel()
@@ -1120,6 +1380,7 @@ func configureDiscovery() async {
         AuthClient.clear()
         self.authToken = nil
         self.userEmail = nil
+        self.currentUserId = nil
         self.api = nil
         self.leads = []
         self.competitors = []
@@ -1129,9 +1390,13 @@ func configureDiscovery() async {
         self.projects = []
         self.projectsLoadState = .idle
         self.organizations = []
+        self.activeProjectId = nil
         self.activeOrganizationId = nil
         self.permissions = []
         self.roleInOrg = nil
+        self.workspacePlanSummary = nil
+        self.workspacePlanOrganizationId = nil
+        self.workspacePlanLoadState = .idle
         self.clearPondusDeepLink()
         self.clearLeadbookExampleDeepLink()
         LeadbookLiveStore.shared.resetForSignOut()
@@ -1143,6 +1408,7 @@ func configureDiscovery() async {
         self.memberLocations = []
         self.sessionExpired = false
         discoveryCoordinator.resetForSignOut()
+        clearWidgetSnapshot()
         Task { await OfflineCache.shared.clear() }
     }
 
@@ -1154,6 +1420,7 @@ func configureDiscovery() async {
             return
         }
         let refreshOrganizationGeneration = organizationSelectionGeneration
+        let refreshActorUserId = currentUserId
         // Marker prosjekter som «laster» FØR vi fyrer av kall. Hvis kortet
         // er i .idle vil det ellers ende på empty-state i 1-2 sek mens
         // fetchProjects pågår — bug fra PR #993 som denne fixen løser.
@@ -1181,7 +1448,8 @@ func configureDiscovery() async {
         do {
             let fetchedProjects = try await projectsTask
             guard refreshOrganizationGeneration == organizationSelectionGeneration,
-                  refreshOrganizationId == activeOrganizationId else { return }
+                  refreshOrganizationId == activeOrganizationId,
+                  refreshActorUserId == currentUserId else { return }
             let newProjects = fetchedProjects.filter {
                 $0.organizationId == nil || $0.organizationId == refreshOrganizationId
             }
@@ -1221,7 +1489,8 @@ func configureDiscovery() async {
             }
         } catch {
             guard refreshOrganizationGeneration == organizationSelectionGeneration,
-                  refreshOrganizationId == activeOrganizationId else { return }
+                  refreshOrganizationId == activeOrganizationId,
+                  refreshActorUserId == currentUserId else { return }
             print("[AppState] fetchProjects failed: \(error)")
             handleAPIError(error)
             let retryable = (error as? APIError)?.isRetryable ?? true
@@ -1265,7 +1534,9 @@ func configureDiscovery() async {
             }
 
             guard refreshOrganizationGeneration == organizationSelectionGeneration,
-                  refreshOrganizationId == activeOrganizationId else { return }
+                  refreshOrganizationId == activeOrganizationId,
+                  refreshActorUserId == currentUserId,
+                  proj == activeProjectId else { return }
             self.leads = newLeads
             self.leadsLoadState = .loaded
             self.calendarLoadState = .loaded
@@ -1276,36 +1547,56 @@ func configureDiscovery() async {
             self.lastSyncAt = Date()
             self.isUsingStaleCache = false
 
-            WatchSession.shared.pushLeads(
-                newLeads,
-                organizationId: refreshOrganizationId
-            )
+            if let refreshActorUserId, let proj {
+                WatchSession.shared.pushLeads(
+                    newLeads,
+                    actorUserId: refreshActorUserId,
+                    organizationId: refreshOrganizationId,
+                    projectId: proj
+                )
+            } else {
+                // Never retain or relabel a Watch snapshot when the refresh
+                // does not have a complete user + tenant + project scope.
+                WatchSession.shared.clearLeads()
+            }
 
             // Lagre snapshot til disk
-            await OfflineCache.shared.save(newLeads, named: "leads")
-            await OfflineCache.shared.save(newComps, named: "competitors")
-            if let m = newMetricsOpt {
-                await OfflineCache.shared.save(m, named: "metrics")
-            }
-            await OfflineCache.shared.save(newCal, named: "calendar")
-            if let r = newRemOpt {
-                await OfflineCache.shared.save(r, named: "reminders")
+            if let cacheScope = OfflineCache.Scope(
+                actorUserId: refreshActorUserId,
+                organizationId: refreshOrganizationId,
+                projectId: proj
+            ) {
+                await OfflineCache.shared.save(newLeads, named: "leads", scope: cacheScope)
+                await OfflineCache.shared.save(newComps, named: "competitors", scope: cacheScope)
+                if let m = newMetricsOpt {
+                    await OfflineCache.shared.save(m, named: "metrics", scope: cacheScope)
+                }
+                await OfflineCache.shared.save(newCal, named: "calendar", scope: cacheScope)
+                if let r = newRemOpt {
+                    await OfflineCache.shared.save(r, named: "reminders", scope: cacheScope)
+                }
             }
 
-            // Flush pending visits hvis vi er online
-            let result = await OfflineCache.shared.flush(using: api)
-            if result.succeeded > 0 {
-                print("[AppState] Flushed \(result.succeeded) pending visits")
+            if let actorUserId = currentUserId, let proj {
+                self.pendingVisitsCount = await OfflineActionQueue.shared.pendingCount(
+                    organizationId: refreshOrganizationId,
+                    actorUserId: actorUserId,
+                    projectId: proj)
+            } else {
+                self.pendingVisitsCount = 0
             }
-            self.pendingVisitsCount = await OfflineCache.shared.pendingCount()
             guard refreshOrganizationGeneration == organizationSelectionGeneration,
-                  refreshOrganizationId == activeOrganizationId else { return }
+                  refreshOrganizationId == activeOrganizationId,
+                  refreshActorUserId == currentUserId,
+                  proj == activeProjectId else { return }
 
             // Skriv widget-snapshot til delt App Group container
             writeWidgetSnapshot()
         } catch {
             guard refreshOrganizationGeneration == organizationSelectionGeneration,
-                  refreshOrganizationId == activeOrganizationId else { return }
+                  refreshOrganizationId == activeOrganizationId,
+                  refreshActorUserId == currentUserId,
+                  proj == activeProjectId else { return }
             print("[AppState] refresh failed (using cache): \(error)")
             self.isUsingStaleCache = true
             handleAPIError(error)
@@ -1324,6 +1615,10 @@ func configureDiscovery() async {
     /// Skriver siste data til App Group container så widget kan lese.
     /// Trigges automatisk etter hver vellykket refreshAll.
     private func writeWidgetSnapshot() {
+        guard let scope = offlineCacheScope else {
+            clearWidgetSnapshot()
+            return
+        }
         let activeName = activeProjectId.flatMap { id in
             projects.first(where: { $0.id == id })?.name
         }
@@ -1336,6 +1631,9 @@ func configureDiscovery() async {
             )
         }
         let snapshot = WidgetSnapshot(
+            actorUserId: scope.actorUserId,
+            organizationId: scope.organizationId,
+            projectId: scope.projectId,
             activeProjectName: activeName,
             totalLeads: metrics?.totalLeads ?? 0,
             followUpsDue: metrics?.followUpsDue ?? 0,
@@ -1355,26 +1653,61 @@ func configureDiscovery() async {
         }
     }
 
-    /// Log en visit — bruker backend hvis tilgjengelig, ellers
-    /// legger i offline-kø som flushes ved neste vellykkede refresh.
-    /// `body` serialiseres til JSON-Data før kryssing av actor-grense for
-    /// å unngå non-Sendable [String:Any].
-    func enqueueOrSendVisit(leadId: String, body: [String: Any]) async throws {
-        guard let api else { throw URLError(.userAuthenticationRequired) }
-        let payload = try JSONSerialization.data(withJSONObject: body)
-        do {
-            try await api.logVisitRaw(leadId: leadId, jsonBody: payload)
-        } catch {
-            await OfflineCache.shared.enqueueRaw(leadId: leadId, jsonBody: payload)
-            self.pendingVisitsCount = await OfflineCache.shared.pendingCount()
-            throw OfflineEnqueuedError()
+    /// Actor-/workspace-bound visit logging with one stable idempotency id for
+    /// direct send and every retry.
+    func enqueueOrSendVisit(
+        leadId: String,
+        draft: VisitDraft,
+        actionId: UUID
+    ) async -> OfflineResilientActions.WriteDisposition {
+        guard let api,
+              let organizationId = activeOrganizationId,
+              let projectId = activeProjectId,
+              let actorUserId = currentUserId,
+              await api.offlineActorUserId() == actorUserId
+        else {
+            return .rejected("Innlogging og aktivt workspace må bekreftes før besøket lagres.")
         }
+        func nonEmpty(_ value: String) -> String? {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        let followUpAt = draft.nextFollowUpAt.map { ISO8601DateFormatter().string(from: $0) }
+        let disposition = await OfflineResilientActions.logVisit(
+            api: api,
+            organizationId: organizationId,
+            projectId: projectId,
+            leadId: leadId,
+            payload: .init(
+                visitType: draft.type.rawValue,
+                conversationSummary: nonEmpty(draft.conversationSummary) ?? "Besøk registrert",
+                contactPerson: nonEmpty(draft.contactPerson),
+                notes: nonEmpty(draft.notes),
+                newStatus: draft.newStatus?.rawValue,
+                nextAction: nonEmpty(draft.nextAction),
+                nextFollowUpAt: followUpAt,
+                activityKind: draft.type.activityKind,
+                objectionReason: nonEmpty(draft.objectionReason),
+                visitLatitude: draft.latitude,
+                visitLongitude: draft.longitude),
+            actionId: actionId)
+        self.pendingVisitsCount = await OfflineActionQueue.shared.pendingCount(
+            organizationId: organizationId,
+            actorUserId: actorUserId,
+            projectId: projectId)
+        return disposition
     }
 
     // MARK: - Cache-loading
 
     private func loadFromCache() async {
-        if let cached: (value: [LeadModel], age: TimeInterval) = await OfflineCache.shared.load([LeadModel].self, named: "leads") {
+        guard let scope = offlineCacheScope else { return }
+        if let cached: (value: [LeadModel], age: TimeInterval) = await OfflineCache.shared.load(
+            [LeadModel].self,
+            named: "leads",
+            scope: scope
+        ) {
+            guard offlineCacheScope == scope else { return }
             self.leads = cached.value
             self.lastSyncAt = Date().addingTimeInterval(-cached.age)
             self.isUsingStaleCache = true
@@ -1382,27 +1715,40 @@ func configureDiscovery() async {
             // ikke skeleton, mens nett-refresh pågår i bakgrunnen.
             self.leadsLoadState = .loaded
         }
-        if let cached: (value: [CompetitorModel], age: TimeInterval) = await OfflineCache.shared.load([CompetitorModel].self, named: "competitors") {
+        if let cached: (value: [CompetitorModel], age: TimeInterval) = await OfflineCache.shared.load(
+            [CompetitorModel].self,
+            named: "competitors",
+            scope: scope
+        ) {
+            guard offlineCacheScope == scope else { return }
             self.competitors = cached.value
         }
-        if let cached: (value: MetricsModel, age: TimeInterval) = await OfflineCache.shared.load(MetricsModel.self, named: "metrics") {
+        if let cached: (value: MetricsModel, age: TimeInterval) = await OfflineCache.shared.load(
+            MetricsModel.self,
+            named: "metrics",
+            scope: scope
+        ) {
+            guard offlineCacheScope == scope else { return }
             self.metrics = cached.value
         }
-        if let cached: (value: [CalendarEvent], age: TimeInterval) = await OfflineCache.shared.load([CalendarEvent].self, named: "calendar") {
+        if let cached: (value: [CalendarEvent], age: TimeInterval) = await OfflineCache.shared.load(
+            [CalendarEvent].self,
+            named: "calendar",
+            scope: scope
+        ) {
+            guard offlineCacheScope == scope else { return }
             self.calendar = cached.value
             self.calendarLoadState = .loaded
         }
-        if let cached: (value: RemindersResponse, age: TimeInterval) = await OfflineCache.shared.load(RemindersResponse.self, named: "reminders") {
+        if let cached: (value: RemindersResponse, age: TimeInterval) = await OfflineCache.shared.load(
+            RemindersResponse.self,
+            named: "reminders",
+            scope: scope
+        ) {
+            guard offlineCacheScope == scope else { return }
             self.reminders = cached.value
         }
-        self.pendingVisitsCount = await OfflineCache.shared.pendingCount()
-    }
-}
-
-/// Signal til UI om at visit ble lagret offline, ikke sendt til backend ennå.
-struct OfflineEnqueuedError: LocalizedError {
-    var errorDescription: String? {
-        "Lagret offline. Sendes når dekning er tilbake."
+        self.pendingVisitsCount = 0
     }
 }
 

@@ -10,6 +10,9 @@
 import Foundation
 
 public struct WidgetSnapshot: Codable {
+    public let actorUserId: String?
+    public let organizationId: String?
+    public let projectId: String?
     public let activeProjectName: String?
     public let totalLeads: Int
     public let followUpsDue: Int
@@ -27,6 +30,9 @@ public struct WidgetSnapshot: Codable {
     }
 
     public init(
+        actorUserId: String?,
+        organizationId: String?,
+        projectId: String?,
         activeProjectName: String?,
         totalLeads: Int,
         followUpsDue: Int,
@@ -37,6 +43,9 @@ public struct WidgetSnapshot: Codable {
         dueToday: [DueItem],
         writtenAt: Date
     ) {
+        self.actorUserId = actorUserId
+        self.organizationId = organizationId
+        self.projectId = projectId
         self.activeProjectName = activeProjectName
         self.totalLeads = totalLeads
         self.followUpsDue = followUpsDue
@@ -50,6 +59,9 @@ public struct WidgetSnapshot: Codable {
 
     public static var empty: WidgetSnapshot {
         WidgetSnapshot(
+            actorUserId: nil,
+            organizationId: nil,
+            projectId: nil,
             activeProjectName: nil,
             totalLeads: 0,
             followUpsDue: 0,
@@ -79,12 +91,16 @@ public enum WidgetSnapshotStore {
     }
 
     public static func write(_ snapshot: WidgetSnapshot) {
+        guard snapshot.hasVerifiedScope else { return }
         guard let url = fileURL else { return }
         do {
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
             let data = try encoder.encode(snapshot)
-            try data.write(to: url, options: .atomic)
+            try data.write(
+                to: url,
+                options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+            )
         } catch {
             print("[WidgetSnapshotStore] write failed: \(error)")
         }
@@ -96,6 +112,21 @@ public enum WidgetSnapshotStore {
         else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(WidgetSnapshot.self, from: data)
+        guard let snapshot = try? decoder.decode(WidgetSnapshot.self, from: data),
+              snapshot.hasVerifiedScope else { return nil }
+        return snapshot
+    }
+
+    public static func clear() {
+        guard let url = fileURL else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+}
+
+private extension WidgetSnapshot {
+    var hasVerifiedScope: Bool {
+        [actorUserId, organizationId, projectId].allSatisfy { value in
+            !(value?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        }
     }
 }

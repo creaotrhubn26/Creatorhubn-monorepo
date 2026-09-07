@@ -7,17 +7,29 @@
 
 import type { Pool } from "pg";
 import type { Express, Request, Response } from "express";
-import { enqueueJob, registerJobHandler, startJobQueueWorker } from "./job-queue.js";
+import {
+  enqueueJob,
+  registerJobHandler,
+  startJobQueueWorker,
+} from "./job-queue.js";
 import {
   discoveryRunJobHandler,
   LEADGRID_DISCOVERY_JOB_TYPE,
 } from "./leadgrid-discovery-service.js";
+import {
+  discoveryCampaignJobHandler,
+  LEADGRID_DISCOVERY_CAMPAIGN_JOB_TYPE,
+} from "./leadgrid-discovery-campaign-service.js";
 
 export function registerCoreJobHandlers(): void {
   // Discovery-runs opprettes og køes atomisk av v2-tjenesten. Direkte
   // registrering her gjør clearJobHandlers() + ny registrering testbar;
   // en modulglobal "allerede registrert"-bool ville skjult en tom registry.
   registerJobHandler(LEADGRID_DISCOVERY_JOB_TYPE, discoveryRunJobHandler);
+  registerJobHandler(
+    LEADGRID_DISCOVERY_CAMPAIGN_JOB_TYPE,
+    discoveryCampaignJobHandler,
+  );
 
   // Første konsument: BRREG-berikelse av leads (visittkort-skann m.fl.).
   // Var fire-and-forget-promise i from-card-ruten — døde ved redeploy.
@@ -25,8 +37,10 @@ export function registerCoreJobHandlers(): void {
   // cacher 30 dager, så en re-kjøring er trygg.
   registerJobHandler("lead_brreg_enrich", async (pool, payload) => {
     const leadId = typeof payload.leadId === "string" ? payload.leadId : null;
-    const ownerUserId = typeof payload.ownerUserId === "string" ? payload.ownerUserId : null;
-    if (!leadId || !ownerUserId) throw new Error("payload mangler leadId/ownerUserId");
+    const ownerUserId =
+      typeof payload.ownerUserId === "string" ? payload.ownerUserId : null;
+    if (!leadId || !ownerUserId)
+      throw new Error("payload mangler leadId/ownerUserId");
     const { enrichLeadWithBrreg } = await import("./lead-brreg-service.js");
     const result = await enrichLeadWithBrreg(pool, {
       leadId,
@@ -34,7 +48,6 @@ export function registerCoreJobHandlers(): void {
     });
     return { found: result.found };
   });
-
 
   // Geo-probe-kjøringer (citation-tracker): lange LLM-jobber (10–15 min)
   // som før levde som løse promises. Idempotent gjenopptak: finnes en
@@ -45,9 +58,8 @@ export function registerCoreJobHandlers(): void {
     const setId = typeof payload.setId === "string" ? payload.setId : null;
     const userId = typeof payload.userId === "string" ? payload.userId : null;
     if (!setId || !userId) throw new Error("payload mangler setId/userId");
-    const { executeProbeRun, runProbe } = await import(
-      "./market-intelligence/geo-probe-runner-service.js"
-    );
+    const { executeProbeRun, runProbe } =
+      await import("./market-intelligence/geo-probe-runner-service.js");
     const existing = await pool.query<{ id: string }>(
       `SELECT id::text FROM geo_probe_runs
         WHERE prompt_set_id = $1::uuid AND status = 'running'
@@ -65,7 +77,8 @@ export function registerCoreJobHandlers(): void {
 
 /** Gjør et vilkårlig kjøre-resultat trygt som JSONB-result. */
 function asJobResult(value: unknown): Record<string, unknown> {
-  if (value && typeof value === "object") return value as Record<string, unknown>;
+  if (value && typeof value === "object")
+    return value as Record<string, unknown>;
   return { value: value ?? null };
 }
 
@@ -109,14 +122,17 @@ export function startBackgroundJobs(pool: Pool): void {
 export function setupJobQueueRoutes(deps: {
   app: Express;
   pool: Pool;
-  activeSessions: Map<string, { userId: string; role?: string; email?: string }>;
+  activeSessions: Map<
+    string,
+    { userId: string; role?: string; email?: string }
+  >;
   isAdminEmail: (email: string | undefined) => boolean;
 }): void {
   const { app, pool, activeSessions, isAdminEmail } = deps;
   app.get("/api/admin-room/jobs", async (req: Request, res: Response) => {
     const auth = req.headers.authorization;
     const session = auth?.startsWith("Bearer ")
-      ? activeSessions.get(auth.slice(7).trim()) ?? null
+      ? (activeSessions.get(auth.slice(7).trim()) ?? null)
       : null;
     if (!session) return res.status(401).json({ error: "ikke_innlogget" });
     if (session.role !== "admin" && !isAdminEmail(session.email)) {
@@ -124,7 +140,10 @@ export function setupJobQueueRoutes(deps: {
     }
     try {
       const limitRaw = Number(req.query.limit);
-      const limit = Number.isFinite(limitRaw) && limitRaw > 0 && limitRaw <= 200 ? Math.round(limitRaw) : 50;
+      const limit =
+        Number.isFinite(limitRaw) && limitRaw > 0 && limitRaw <= 200
+          ? Math.round(limitRaw)
+          : 50;
       const r = await pool.query(
         `SELECT id::text, job_type, status, attempts, max_attempts,
                 run_after::text, started_at::text, completed_at::text,

@@ -305,6 +305,8 @@ struct LiveTranscriptionSheet: View {
     /// (onUse satt) er ikke en tredjepart-opptak-situasjon og gates ikke.
     @State private var showConsentGate = false
     @State private var recordingConsentId: String?
+    @State private var recordingConsentOrganizationId: String?
+    @State private var recordingConsentProjectId: String?
     @State private var consentCustomerLabel = ""
     @State private var showComplianceSheet = false
 
@@ -413,10 +415,27 @@ struct LiveTranscriptionSheet: View {
                     await engine.requestPermissions()
                 }
             }
+            .onChange(of: "\(appState.activeOrganizationId ?? "")|\(appState.activeProjectId ?? "")") {
+                _, _ in
+                guard let consentOrganizationId = recordingConsentOrganizationId,
+                      let consentProjectId = recordingConsentProjectId,
+                      (appState.activeOrganizationId != consentOrganizationId
+                        || appState.activeProjectId != consentProjectId)
+                else { return }
+                engine.stop()
+                recordingConsentId = nil
+                recordingConsentOrganizationId = nil
+                recordingConsentProjectId = nil
+                consentCustomerLabel = ""
+                saveError = "Kundeprosjektet ble byttet. Bekreft nytt samtykke før opptaket fortsetter."
+            }
             .sheet(isPresented: $showConsentGate) {
-                RecordingConsentGateSheet { consent, customerLabel in
+                RecordingConsentGateSheet {
+                    consent, customerLabel, organizationId, projectId in
                     recordingConsentId = consent.id
                     consentCustomerLabel = customerLabel
+                    recordingConsentOrganizationId = organizationId
+                    recordingConsentProjectId = projectId
                     engine.start()
                 }
             }
@@ -724,7 +743,14 @@ struct LiveTranscriptionSheet: View {
         ]
         let raw = engine.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         if raw.count >= 40 {
-            let intel = LeadbookExampleIntelligenceFactory.make(api: api)
+            guard let projectId = recordingConsentProjectId else {
+                saveError = "Samtykkets kundeprosjekt mangler. Start opptaket på nytt."
+                isSaving = false
+                return
+            }
+            let intel = LeadbookExampleIntelligenceFactory.make(
+                api: api,
+                projectId: projectId)
             if let result = try? await intel.structure(rawText: raw) {
                 let s = result.structured
                 if let t = s.title, !t.isEmpty { title = t }
@@ -741,9 +767,12 @@ struct LiveTranscriptionSheet: View {
             }
         }
 
-        guard let organizationId = appState.activeOrganizationId,
-              let recordingConsentId else {
-            saveError = "Samtykke eller organisasjon mangler. Start opptaket på nytt."
+        guard let organizationId = recordingConsentOrganizationId,
+              let projectId = recordingConsentProjectId,
+              let recordingConsentId,
+              appState.activeOrganizationId == organizationId,
+              appState.activeProjectId == projectId else {
+            saveError = "Samtykke eller kundeprosjekt mangler. Start opptaket på nytt."
             isSaving = false
             return
         }
@@ -761,6 +790,7 @@ struct LiveTranscriptionSheet: View {
         let disposition = await OfflineResilientActions.createLeadbookExample(
             api: api,
             organizationId: organizationId,
+            projectId: projectId,
             body: body
         )
         switch disposition {

@@ -12,12 +12,37 @@
  */
 
 import type { Express, Request, Response } from "express";
-import type { Pool } from "pg";
+import { createHash } from "node:crypto";
+import type { Pool, PoolClient } from "pg";
 import { triggerAutoResearchAsync } from "./lead-auto-research-service.js";
-import { notifyClient } from "./client-notification-service.js";
+import { loadAccessibleLeadgridProject } from "./leadgrid-project-access.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps { app: Express; pool: Pool; activeSessions: Map<string, SessionData>; }
+
+interface AgencyLeadPromotionRow {
+  id: string;
+  agency_name: string;
+  contact_name: string;
+  contact_title: string | null;
+  email: string;
+  phone: string | null;
+  org_number: string | null;
+  website: string | null;
+  use_case: string | null;
+  message: string | null;
+  status: string;
+  claude_summary: string | null;
+  claude_temperature: string | null;
+  claude_talking_points: string[] | null;
+  claude_next_action: string | null;
+  leadgrid_organization_id: string | null;
+  leadgrid_project_id: string | null;
+  leadgrid_customer_id: string | null;
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function getSession(req: Request, sessions: Map<string, SessionData>): SessionData | null {
   const auth = req.headers.authorization;
@@ -40,6 +65,89 @@ async function requireSuperAdminOrMarkedssjef(
     return null;
   }
   return s;
+}
+
+function requestedProjectId(req: Request): string | null {
+  const raw = req.body?.projectId ?? req.body?.project_id;
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  return value && value.length <= 255 ? value : null;
+}
+
+function requestedOrganizationId(req: Request): string | null {
+  const raw = req.body?.organizationId ?? req.body?.organization_id;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+
+function safeWebsite(value: string | null): {
+  url: string | null;
+  domain: string | null;
+} {
+  const raw = value?.trim();
+  if (!raw) return { url: null, domain: null };
+  try {
+    const parsed = new URL(
+      /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`,
+    );
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return { url: null, domain: null };
+    }
+    parsed.username = "";
+    parsed.password = "";
+    parsed.hash = "";
+    return {
+      url: parsed.toString(),
+      domain: parsed.hostname.toLowerCase().replace(/^www\./, "") || null,
+    };
+  } catch {
+    return { url: null, domain: null };
+  }
+}
+
+function normalizedOrganizationNumber(value: string | null): string | null {
+  const digits = value?.replace(/\D/g, "") ?? "";
+  return digits.length === 9 ? digits : null;
+}
+
+function promotionNotes(lead: AgencyLeadPromotionRow): string | null {
+  const sections = [
+    lead.claude_summary ? `Research: ${lead.claude_summary}` : null,
+    lead.use_case ? `Behov: ${lead.use_case}` : null,
+    lead.message ? `Henvendelse: ${lead.message}` : null,
+    lead.claude_next_action ? `Anbefalt neste steg: ${lead.claude_next_action}` : null,
+    ...(lead.claude_talking_points ?? []).slice(0, 5).map(
+      (point) => `Samtalepunkt: ${point}`,
+    ),
+  ].filter((value): value is string => Boolean(value?.trim()));
+  return sections.length > 0 ? sections.join("\n\n").slice(0, 20_000) : null;
+}
+
+function sendPromotionResponse(
+  res: Response,
+  input: {
+    sourceLeadId: string;
+    crmLeadId: string;
+    organizationId: string;
+    projectId: string;
+    created: boolean;
+  },
+) {
+  return res.json({
+    ok: true,
+    promotion: {
+      agencyLeadId: input.sourceLeadId,
+      crmLeadId: input.crmLeadId,
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      created: input.created,
+    },
+    source_lead_id: input.sourceLeadId,
+    customer_id: input.crmLeadId,
+    crm_lead_id: input.crmLeadId,
+    organization_id: input.organizationId,
+    project_id: input.projectId,
+    already_promoted: !input.created,
+  });
 }
 
 export function registerLeadAcceptanceRoutes({ app, pool, activeSessions }: Deps): void {
@@ -92,194 +200,251 @@ export function registerLeadAcceptanceRoutes({ app, pool, activeSessions }: Deps
   });
 
   // ============================================================
-  // ACCEPT — konverter til prosjekt + crm_customer + portal-token
+  // ACCEPT — promoter kildelead inn i et eksplisitt Leadgrid-prosjekt.
+  // Tildeling skjer alltid som et eget steg etter at CRM-ID-en er returnert.
   // ============================================================
   app.post("/api/superadmin/leads/:id/accept-as-project", async (req, res) => {
     const s = await requireSuperAdminOrMarkedssjef(pool, activeSessions, req, res);
     if (!s) return;
+    if (!UUID_PATTERN.test(req.params.id ?? "")) {
+      return res.status(404).json({ error: "Lead ikke funnet" });
+    }
 
-    const leadR = await pool.query(
-      `SELECT l.id::text, l.agency_name, l.contact_name, l.email, l.phone,
-              l.org_number, l.website, l.use_case, l.message,
-              j.brreg_data, j.website_scrape_data,
-              j.claude_summary, j.claude_temperature, j.claude_talking_points,
-              j.claude_next_action
-         FROM agency_leads l
-         LEFT JOIN lead_research_jobs j ON j.lead_id = l.id
-        WHERE l.id = $1`,
-      [req.params.id],
-    );
-    if (leadR.rows.length === 0) return res.status(404).json({ error: "Lead ikke funnet" });
-    const lead = leadR.rows[0];
+    const projectId = requestedProjectId(req);
+    if (!projectId) {
+      return res.status(400).json({
+        error: "project_id_required",
+        message: "Velg et aktivt Leadgrid-prosjekt før leadet legges til.",
+      });
+    }
+    const project = await loadAccessibleLeadgridProject(pool, projectId, s.userId);
+    if (!project) return res.status(404).json({ error: "project_not_found" });
+    const requestOrganizationId = requestedOrganizationId(req);
+    if (
+      requestOrganizationId &&
+      requestOrganizationId !== project.organizationId
+    ) {
+      return res.status(404).json({ error: "project_not_found" });
+    }
+    if (
+      req.body?.assigned_team_leader_id != null ||
+      req.body?.assigned_rep_id != null ||
+      req.body?.assignment_note != null
+    ) {
+      return res.status(400).json({
+        error: "assignment_after_promotion_required",
+        message: "Promoter leadet først og tildel deretter med returnert CRM-ID.",
+      });
+    }
 
-    // Hent admin sin org (markedssjef sin org skal eie prosjektet)
-    const orgR = await pool.query<{ organization_id: string }>(
-      `SELECT organization_id::text FROM organization_members
-        WHERE user_id = $1 ORDER BY role = 'owner' DESC LIMIT 1`,
-      [s.userId],
-    );
-    const orgId = req.body?.organization_id ?? orgR.rows[0]?.organization_id;
-    if (!orgId) return res.status(400).json({ error: "organization_id mangler" });
-
+    let client: PoolClient | null = null;
     try {
-      // 1. Opprett prosjekt (Leadgrid-prosjekt for kunden)
-      const projectId = `leadgrid-${lead.id.slice(0, 12)}`;
-      await pool.query(
-        `INSERT INTO leadgrid_projects (id, organization_id, name, created_at, created_by, metadata)
-         VALUES ($1, $2, $3, now(), $4, $5::jsonb)
-         ON CONFLICT (id) DO NOTHING`,
-        [projectId, orgId, lead.agency_name, s.userId,
-         JSON.stringify({
-           leadgrid_source: "lead_accepted",
-           source_lead_id: lead.id,
-           claude_temperature: lead.claude_temperature,
-         })],
+      client = await pool.connect();
+      await client.query("BEGIN");
+      const leadResult = await client.query<AgencyLeadPromotionRow>(
+        `SELECT l.id::text, l.agency_name, l.contact_name, l.contact_title,
+                l.email, l.phone, l.org_number, l.website, l.use_case, l.message,
+                l.status, l.leadgrid_organization_id::text,
+                l.leadgrid_project_id, l.leadgrid_customer_id::text,
+                j.claude_summary, j.claude_temperature,
+                j.claude_talking_points, j.claude_next_action
+           FROM agency_leads l
+           LEFT JOIN lead_research_jobs j ON j.lead_id = l.id
+          WHERE l.id = $1::uuid
+          FOR UPDATE OF l`,
+        [req.params.id],
       );
+      const lead = leadResult.rows[0];
+      if (!lead) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Lead ikke funnet" });
+      }
 
-      // 2. Opprett crm_customer (med ev. tildelt teamleder/rep allerede)
-      const customerId = (await pool.query<{ id: string }>(
-        `SELECT gen_random_uuid() AS id`,
-      )).rows[0].id;
-      const logoUrl = lead.website_scrape_data?.og_image
-                   ?? lead.website_scrape_data?.favicon_url
-                   ?? null;
+      if (lead.leadgrid_customer_id) {
+        if (
+          lead.leadgrid_organization_id !== project.organizationId ||
+          lead.leadgrid_project_id !== project.id
+        ) {
+          await client.query("ROLLBACK");
+          return res.status(409).json({
+            error: "already_promoted_to_another_project",
+            project_id: lead.leadgrid_project_id,
+          });
+        }
+        const persisted = await client.query<{ id: string }>(
+          `SELECT id::text
+             FROM crm_customers
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id = $3
+            LIMIT 1`,
+          [
+            lead.leadgrid_customer_id,
+            project.organizationId,
+            project.id,
+          ],
+        );
+        if (!persisted.rows[0]) throw new Error("promotion_mapping_corrupt");
+        await client.query("COMMIT");
+        return sendPromotionResponse(res, {
+          sourceLeadId: lead.id,
+          crmLeadId: persisted.rows[0].id,
+          organizationId: project.organizationId,
+          projectId: project.id,
+          created: false,
+        });
+      }
 
-      const assignedTeamLeader = req.body?.assigned_team_leader_id ?? null;
-      const assignedRep = req.body?.assigned_rep_id ?? null;
-      const assignmentNote = req.body?.assignment_note ?? null;
+      if (lead.status === "converted") {
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          error: "legacy_conversion_requires_reconciliation",
+        });
+      }
 
-      await pool.query(
-        `INSERT INTO crm_customers
-          (id, project_id, name, email, phone, website_url, logo_url,
-           status, lead_category, ai_opportunity_score,
-           assigned_team_leader_id, assigned_user_id, assigned_by_user_id,
-           assigned_at, assignment_note,
-           assignment_chain, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                 $11, $12, $13,
-                 CASE WHEN $11 IS NOT NULL OR $12 IS NOT NULL THEN now() END,
-                 $14, $15::jsonb, now())`,
-        [customerId, projectId, lead.agency_name, lead.email, lead.phone,
-         lead.website, logoUrl,
-         "active",
-         lead.claude_temperature,
-         lead.claude_temperature === "hot" ? 95
-           : lead.claude_temperature === "warm" ? 75
-           : lead.claude_temperature === "cool" ? 55 : 35,
-         assignedTeamLeader, assignedRep,
-         (assignedTeamLeader || assignedRep) ? s.userId : null,
-         assignmentNote,
-         JSON.stringify([
-           ...(assignedTeamLeader ? [{
-             type: "team_leader", user_id: assignedTeamLeader,
-             by_user_id: s.userId, at: new Date().toISOString(),
-             note: assignmentNote, on_accept: true,
-           }] : []),
-           ...(assignedRep ? [{
-             type: "rep", user_id: assignedRep,
-             by_user_id: s.userId, at: new Date().toISOString(),
-             note: assignmentNote, on_accept: true,
-           }] : []),
-         ]),
+      const website = safeWebsite(lead.website);
+      const temperature = lead.claude_temperature === "hot"
+        ? "hot"
+        : lead.claude_temperature === "warm"
+          ? "warm"
+          : "cold";
+      const score = lead.claude_temperature === "hot"
+        ? 95
+        : lead.claude_temperature === "warm"
+          ? 75
+          : lead.claude_temperature === "cool"
+            ? 55
+            : 35;
+      const requestHash = createHash("sha256")
+        .update(JSON.stringify({
+          agencyLeadId: lead.id,
+          organizationId: project.organizationId,
+          projectId: project.id,
+        }))
+        .digest("hex");
+
+      const inserted = await client.query<{ id: string }>(
+        `INSERT INTO crm_customers (
+           id, organization_id, project_id,
+           name, company, contact_name, contact_role,
+           email, phone, website_url, website_domain_normalized,
+           enrichment_org_nr, notes,
+           status, lead_status, pipeline_stage,
+           lead_category, lead_temperature, ai_opportunity_score,
+           lead_source, source, location_confidence, owner_user_id,
+           creation_idempotency_key, creation_request_hash,
+           created_at, updated_at
+         ) VALUES (
+           gen_random_uuid(), $1::uuid, $2,
+           $3, $3, $4, $5,
+           $6, $7, $8, $9,
+           $10, $11,
+           'lead', 'unvisited', 'new',
+           $12, $13, $14,
+           'agency_inbox', 'agency_inbox', 'unknown', $15,
+           $16::uuid, $17,
+           NOW(), NOW()
+         )
+         ON CONFLICT (organization_id, creation_idempotency_key)
+           WHERE organization_id IS NOT NULL
+             AND creation_idempotency_key IS NOT NULL
+         DO NOTHING
+         RETURNING id::text`,
+        [
+          project.organizationId,
+          project.id,
+          lead.agency_name,
+          lead.contact_name,
+          lead.contact_title,
+          lead.email,
+          lead.phone,
+          website.url,
+          website.domain,
+          normalizedOrganizationNumber(lead.org_number),
+          promotionNotes(lead),
+          lead.claude_temperature,
+          temperature,
+          score,
+          s.userId,
+          lead.id,
+          requestHash,
         ],
       );
 
-      // Logg + notification for ev. tildelinger på accept-tidspunktet
-      if (assignedTeamLeader || assignedRep) {
-        try {
-          await pool.query(
-            `INSERT INTO lead_assignment_log
-               (lead_id, organization_id, from_user_id, to_user_id,
-                assigned_by_user_id, reason, meta)
-             SELECT $1, $2, NULL, unnest($3::text[]),
-                    $4, 'accept_as_project', $5::jsonb`,
-            [customerId, orgId,
-             [assignedTeamLeader, assignedRep].filter(Boolean),
-             s.userId,
-             JSON.stringify({ from_lead_id: lead.id })],
-          );
-          for (const uid of [assignedTeamLeader, assignedRep].filter(Boolean)) {
-            await pool.query(
-              `INSERT INTO notification_events
-                 (user_id, event_type, lead_id, message, created_at)
-               VALUES ($1, 'lead_assigned_on_accept', $2::uuid, $3, now())`,
-              [uid, customerId,
-               `Du har fått tildelt: ${lead.agency_name}`],
-            ).catch(() => {});
-          }
-        } catch (e) {
-          console.warn("[accept] assignment-log feilet", e);
+      let crmLeadId = inserted.rows[0]?.id ?? null;
+      let created = Boolean(crmLeadId);
+      if (!crmLeadId) {
+        const replay = await client.query<{
+          id: string;
+          organization_id: string;
+          project_id: string | null;
+        }>(
+          `SELECT id::text, organization_id::text, project_id
+             FROM crm_customers
+            WHERE organization_id = $1::uuid
+              AND creation_idempotency_key = $2::uuid
+            LIMIT 1`,
+          [project.organizationId, lead.id],
+        );
+        const existing = replay.rows[0];
+        if (!existing || existing.project_id !== project.id) {
+          await client.query("ROLLBACK");
+          return res.status(409).json({
+            error: "promotion_idempotency_conflict",
+          });
         }
+        crmLeadId = existing.id;
+        created = false;
       }
 
-      // 3. Opprett portal-token
-      const tokenR = await pool.query<{ token: string }>(
-        `SELECT encode(gen_random_bytes(16), 'hex') AS token`,
+      const mapped = await client.query(
+        `UPDATE agency_leads
+            SET status = 'converted',
+                customer_at = COALESCE(customer_at, NOW()),
+                leadgrid_organization_id = $2::uuid,
+                leadgrid_project_id = $3,
+                leadgrid_customer_id = $4::uuid,
+                leadgrid_promoted_at = NOW(),
+                updated_at = NOW()
+          WHERE id = $1::uuid
+            AND leadgrid_organization_id IS NULL
+            AND leadgrid_project_id IS NULL
+            AND leadgrid_customer_id IS NULL
+          RETURNING id`,
+        [lead.id, project.organizationId, project.id, crmLeadId],
       );
-      const portalToken = tokenR.rows[0].token;
-      await pool.query(
-        `INSERT INTO client_portal_tokens
-           (organization_id, project_id, customer_id, token, invited_email,
-            invited_name, invited_role, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, 'client', $7)`,
-        [orgId, projectId, customerId, portalToken,
-         lead.email, lead.contact_name, s.userId],
+      if (mapped.rowCount !== 1) throw new Error("promotion_mapping_race");
+
+      await client.query(
+        `INSERT INTO agency_lead_events (
+           lead_id, event_type, actor, details
+         ) VALUES (
+           $1::uuid, 'leadgrid_promoted', $2, $3::jsonb
+         )`,
+        [
+          lead.id,
+          s.email ?? s.userId,
+          JSON.stringify({
+            organization_id: project.organizationId,
+            project_id: project.id,
+            crm_lead_id: crmLeadId,
+          }),
+        ],
       );
-
-      // 4. Sett opp default notification-prefs (e-post på, WA av i start)
-      await pool.query(
-        `INSERT INTO client_notification_prefs
-           (customer_id, contact_name, contact_email, contact_phone,
-            notify_email, notify_sms, notify_whatsapp,
-            consent_given_at)
-         VALUES ($1, $2, $3, $4, TRUE, FALSE, FALSE, now())
-         ON CONFLICT (customer_id) DO NOTHING`,
-        [customerId, lead.contact_name, lead.email, lead.phone],
-      );
-
-      // 5. Legg inn Claude talking-points som "needs" eller signals
-      const talkingPoints = lead.claude_talking_points ?? [];
-      for (const tp of talkingPoints.slice(0, 5)) {
-        await pool.query(
-          `INSERT INTO crm_customer_signals
-             (customer_id, signal_type, polarity, raw_value, source)
-           VALUES ($1, 'claude_insight', 'positive', $2, 'auto_research')
-           ON CONFLICT DO NOTHING`,
-          [customerId, tp],
-        ).catch(() => {});
-      }
-
-      // 6. Oppdater agency_leads status
-      await pool.query(
-        `UPDATE agency_leads SET
-           status = 'converted',
-           customer_at = now(),
-           updated_at = now()
-         WHERE id = $1`,
-        [lead.id],
-      );
-
-      // 7. Send velkomst-e-post m/ portal-token
-      try {
-        await notifyClient(pool, {
-          customerId,
-          event: "new_finding",
-          customerName: lead.contact_name,
-          portalToken,
-          findingTitle: "Velkommen til din Leadgrid-portal",
-        });
-      } catch (e) {
-        console.warn("[lead-accept] velkomst-e-post feilet", e);
-      }
-
-      res.json({
-        ok: true,
-        project_id: projectId,
-        customer_id: customerId,
-        portal_url: `${process.env.LEADGRID_PORTAL_BASE_URL ?? "https://leadgrid.theroleroom.com"}/c/${portalToken}`,
+      await client.query("COMMIT");
+      return sendPromotionResponse(res, {
+        sourceLeadId: lead.id,
+        crmLeadId,
+        organizationId: project.organizationId,
+        projectId: project.id,
+        created,
       });
-    } catch (e: any) {
-      res.status(500).json({ error: "accept_failed", details: "internal_error" });
+    } catch (error) {
+      if (client) await client.query("ROLLBACK").catch(() => undefined);
+      console.error("[lead-accept] promotion failed", error);
+      return res.status(500).json({ error: "accept_failed", details: "internal_error" });
+    } finally {
+      client?.release();
     }
   });
 

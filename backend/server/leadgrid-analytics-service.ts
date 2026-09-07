@@ -5,9 +5,7 @@
  * Express-avhengighet. Returnerer JSON-serializable typer.
  *
  * Tilpasset faktisk skjema:
- *   - crm_customers har INGEN organization_id-kolonne (PR #837/#848).
- *     Org-filter går via owner_user_id IN (SELECT user_id::text FROM
- *     organization_members WHERE organization_id = $1).
+ *   - crm_customers.organization_id er den autoritative tenant-grensen.
  *   - Faktiske kolonner i bruk: lead_status, ai_opportunity_score,
  *     estimated_value, lead_category, city, lead_source, last_visit_at,
  *     next_follow_up_at, archived_at, created_at, owner_user_id.
@@ -106,13 +104,6 @@ export interface FunnelStage {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * CTE som returnerer alle user_id (text) tilhørende org. Brukes som
- * `owner_user_id IN (SELECT user_id::text FROM organization_members ...)`.
- */
-const ORG_MEMBERS_SUBQUERY =
-  `SELECT user_id::text FROM organization_members WHERE organization_id = $1::uuid`;
-
 function num(v: string | null | undefined): number {
   if (v == null) return 0;
   const n = Number(v);
@@ -133,6 +124,7 @@ export async function computeOrgAnalyticsOverview(
   pool: Pool,
   orgId: string,
   sinceDays = 90,
+  projectId: string | null = null,
 ): Promise<OrgAnalyticsOverview> {
   // ai_opportunity_score >= 70  → "hot"
   // ai_opportunity_score 50–69  → "ready"
@@ -158,8 +150,9 @@ export async function computeOrgAnalyticsOverview(
     `WITH base AS (
        SELECT *
          FROM crm_customers
-        WHERE owner_user_id IN (${ORG_MEMBERS_SUBQUERY})
+        WHERE organization_id = $1::uuid
           AND archived_at IS NULL
+          AND ($3::text IS NULL OR project_id = $3)
      ),
      win_period AS (
        SELECT *
@@ -192,7 +185,7 @@ export async function computeOrgAnalyticsOverview(
        (SELECT COALESCE(SUM(estimated_value), 0) FROM win_period) AS closed_revenue,
        (SELECT COALESCE(AVG(estimated_value), 0) FROM win_period) AS average_deal_value
     `,
-    [orgId, sinceDays.toString()],
+    [orgId, sinceDays.toString(), projectId],
   );
   const row = r.rows[0];
   const total = num(row?.total_leads);
@@ -208,10 +201,11 @@ export async function computeOrgAnalyticsOverview(
   const cycleR = await pool.query<{ avg_days: string | null }>(
     `SELECT AVG(EXTRACT(EPOCH FROM (COALESCE(last_visit_at, updated_at) - created_at)) / 86400) AS avg_days
        FROM crm_customers
-      WHERE owner_user_id IN (${ORG_MEMBERS_SUBQUERY})
+      WHERE organization_id = $1::uuid
         AND lead_status = 'won'
+        AND ($2::text IS NULL OR project_id = $2)
         AND COALESCE(last_visit_at, updated_at, created_at) > NOW() - INTERVAL '180 days'`,
-    [orgId],
+    [orgId, projectId],
   );
   const rawCycle = nullableNum(cycleR.rows[0]?.avg_days);
   const avgCycleDays = rawCycle && rawCycle > 0 ? rawCycle : 30;
@@ -228,9 +222,10 @@ export async function computeOrgAnalyticsOverview(
           WHERE customer_id = c.id
           ORDER BY created_at ASC LIMIT 1
        ) first_act ON TRUE
-      WHERE c.owner_user_id IN (${ORG_MEMBERS_SUBQUERY})
+      WHERE c.organization_id = $1::uuid
+        AND ($2::text IS NULL OR c.project_id = $2)
         AND c.created_at > NOW() - INTERVAL '90 days'`,
-    [orgId],
+    [orgId, projectId],
   );
 
   return {
@@ -263,6 +258,7 @@ export async function computeChannelPerformance(
   pool: Pool,
   orgId: string,
   sinceDays = 90,
+  projectId: string | null = null,
 ): Promise<ChannelPerformance[]> {
   // Attempts = visits per visit_type (physical/phone/email/online_meeting/research)
   // Responses = visits som førte til ny status ('meeting_booked','interested',
@@ -272,7 +268,8 @@ export async function computeChannelPerformance(
   const r = await pool.query<{ channel: string; attempts: string; responses: string }>(
     `WITH org_customers AS (
        SELECT id FROM crm_customers
-        WHERE owner_user_id IN (${ORG_MEMBERS_SUBQUERY})
+        WHERE organization_id = $1::uuid
+          AND ($3::text IS NULL OR project_id = $3)
      )
      SELECT
        v.visit_type AS channel,
@@ -285,7 +282,7 @@ export async function computeChannelPerformance(
         AND v.visit_datetime > NOW() - ($2 || ' days')::interval
       GROUP BY v.visit_type
       ORDER BY COUNT(*) DESC NULLS LAST`,
-    [orgId, sinceDays.toString()],
+    [orgId, sinceDays.toString(), projectId],
   );
   return r.rows.map((row) => {
     const attempts = num(row.attempts);
@@ -306,6 +303,7 @@ export async function computeChannelPerformance(
 export async function computeSourcePerformance(
   pool: Pool,
   orgId: string,
+  projectId: string | null = null,
 ): Promise<SourcePerformance[]> {
   const r = await pool.query<{
     source: string;
@@ -319,11 +317,12 @@ export async function computeSourcePerformance(
        COUNT(*) FILTER (WHERE lead_status = 'won')::text AS conversions,
        COALESCE(AVG(estimated_value) FILTER (WHERE lead_status = 'won'), 0)::text AS avg_deal_value
        FROM crm_customers
-      WHERE owner_user_id IN (${ORG_MEMBERS_SUBQUERY})
+      WHERE organization_id = $1::uuid
         AND archived_at IS NULL
+        AND ($2::text IS NULL OR project_id = $2)
       GROUP BY COALESCE(lead_source, 'unknown')
       ORDER BY COUNT(*) DESC`,
-    [orgId],
+    [orgId, projectId],
   );
   return r.rows.map((row) => {
     const total = num(row.total_leads);
@@ -354,6 +353,7 @@ export async function computeSegmentPerformance(
   pool: Pool,
   orgId: string,
   dimension: SegmentDimension,
+  projectId: string | null = null,
 ): Promise<SegmentPerformance[]> {
   // Whitelist kolonner — aldri interpoler bruker-input direkte i SQL.
   const col =
@@ -380,12 +380,13 @@ export async function computeSegmentPerformance(
        ), 0)::text AS expected_value,
        COALESCE(AVG(ai_opportunity_score), 0)::text AS avg_score
        FROM crm_customers
-      WHERE owner_user_id IN (${ORG_MEMBERS_SUBQUERY})
+      WHERE organization_id = $1::uuid
         AND archived_at IS NULL
+        AND ($2::text IS NULL OR project_id = $2)
       GROUP BY segment
       ORDER BY COUNT(*) DESC
       LIMIT 30`,
-    [orgId],
+    [orgId, projectId],
   );
   return r.rows.map((row) => {
     const total = num(row.total_leads);
@@ -409,6 +410,7 @@ export async function computeSegmentPerformance(
 export async function computeTerritoryPerformance(
   pool: Pool,
   orgId: string,
+  projectId: string | null = null,
 ): Promise<TerritoryPerformance[]> {
   const r = await pool.query<{
     city: string;
@@ -432,14 +434,15 @@ export async function computeTerritoryPerformance(
        )::text AS hot_leads,
        COUNT(*) FILTER (WHERE lead_status = 'meeting_booked')::text AS meetings_booked
        FROM crm_customers
-      WHERE owner_user_id IN (${ORG_MEMBERS_SUBQUERY})
+      WHERE organization_id = $1::uuid
         AND archived_at IS NULL
+        AND ($2::text IS NULL OR project_id = $2)
         AND city IS NOT NULL
       GROUP BY city
      HAVING COUNT(*) >= 3
       ORDER BY COUNT(*) DESC
       LIMIT 50`,
-    [orgId],
+    [orgId, projectId],
   );
   return r.rows.map((row) => {
     const total = num(row.total_leads);
@@ -466,6 +469,7 @@ export async function computeVelocityHistory(
   pool: Pool,
   orgId: string,
   days = 90,
+  projectId: string | null = null,
 ): Promise<VelocityPoint[]> {
   // active_deals  = leads med "aktiv" lead_status opprettet før dato
   // wins          = leads med lead_status='won' og last_visit_at::date = dato
@@ -483,21 +487,24 @@ export async function computeVelocityHistory(
      SELECT
        days.d::text AS d,
        (SELECT COUNT(*) FROM crm_customers
-          WHERE owner_user_id IN (${ORG_MEMBERS_SUBQUERY})
+          WHERE organization_id = $1::uuid
+            AND ($3::text IS NULL OR project_id = $3)
             AND lead_status IN ('unvisited','visited','interested','meeting_booked','proposal_sent','return')
             AND created_at <= (days.d + INTERVAL '1 day')
             AND archived_at IS NULL)::text AS active_deals,
        (SELECT COUNT(*) FROM crm_customers
-          WHERE owner_user_id IN (${ORG_MEMBERS_SUBQUERY})
+          WHERE organization_id = $1::uuid
+            AND ($3::text IS NULL OR project_id = $3)
             AND lead_status = 'won'
             AND COALESCE(last_visit_at, updated_at)::date = days.d)::text AS wins,
        (SELECT COALESCE(AVG(estimated_value), 0) FROM crm_customers
-          WHERE owner_user_id IN (${ORG_MEMBERS_SUBQUERY})
+          WHERE organization_id = $1::uuid
+            AND ($3::text IS NULL OR project_id = $3)
             AND lead_status = 'won'
             AND COALESCE(last_visit_at, updated_at)::date <= days.d)::text AS avg_value
        FROM days
       ORDER BY days.d ASC`,
-    [orgId, days.toString()],
+    [orgId, days.toString(), projectId],
   );
   return r.rows.map((row) => {
     const active = num(row.active_deals);
@@ -522,6 +529,7 @@ export async function computeVelocityHistory(
 export async function computeConversionFunnel(
   pool: Pool,
   orgId: string,
+  projectId: string | null = null,
 ): Promise<FunnelStage[]> {
   const r = await pool.query<{ stage: string; count: string; sum_ev: string }>(
     `SELECT
@@ -529,10 +537,11 @@ export async function computeConversionFunnel(
        COUNT(*)::text AS count,
        COALESCE(SUM(estimated_value), 0)::text AS sum_ev
        FROM crm_customers
-      WHERE owner_user_id IN (${ORG_MEMBERS_SUBQUERY})
+      WHERE organization_id = $1::uuid
         AND archived_at IS NULL
+        AND ($2::text IS NULL OR project_id = $2)
       GROUP BY lead_status`,
-    [orgId],
+    [orgId, projectId],
   );
   // Normalisert pipeline-rekkefølge (matcher lead_status CHECK i migrate 271).
   const order = [

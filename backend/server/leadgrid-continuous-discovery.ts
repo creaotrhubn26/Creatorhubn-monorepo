@@ -209,13 +209,36 @@ function buildBrief(
     targetCount,
     clampInteger(source.enrichment_count ?? stored.enrichment_count, 10, 1, 60),
   );
-  const city = opts.cityOverride?.trim() || cities[0] || (geo ? null : "Norge");
+  const cityOverride = opts.cityOverride?.trim() || null;
+  const storedMunicipalityNumbers = cleanStrings(
+    stored.municipality_numbers,
+    30,
+  );
+  const storedMunicipalityNames = cleanStrings(stored.municipality_names, 30);
+  const hasStoredMunicipalities =
+    storedMunicipalityNumbers.length > 0 || storedMunicipalityNames.length > 0;
+  const municipalityNumbers =
+    cityOverride || !hasStoredMunicipalities ? [] : storedMunicipalityNumbers;
+  const municipalityNames =
+    cityOverride || !hasStoredMunicipalities ? [] : storedMunicipalityNames;
+  const selectedGeo = cityOverride || hasStoredMunicipalities ? null : geo;
+  const storedCity =
+    typeof stored.city === "string" && stored.city.trim()
+      ? stored.city.trim()
+      : null;
+  const city = cityOverride
+    ? cityOverride
+    : hasStoredMunicipalities || selectedGeo
+      ? null
+      : cities[0] || storedCity || "Norge";
   const parsed = discoveryBriefSchema.safeParse({
     ...stored,
     industry_queries: industryQueries,
     exclusion_terms: cleanStrings(stored.exclusion_terms, 30),
     city,
-    geo,
+    geo: selectedGeo,
+    municipality_numbers: municipalityNumbers,
+    municipality_names: municipalityNames,
     target_count: targetCount,
     enrichment_count: enrichmentCount,
     minimum_fit_score: clampInteger(stored.minimum_fit_score, 50, 0, 100),
@@ -224,6 +247,17 @@ function buildBrief(
     goal: typeof stored.goal === "string" ? stored.goal : null,
   });
   return parsed.success ? parsed.data : null;
+}
+
+function discoveryAreaLabel(brief: DiscoveryBrief): string {
+  if (brief.city) return brief.city;
+  if (brief.municipality_names.length > 0) {
+    return brief.municipality_names.join(", ");
+  }
+  if (brief.municipality_numbers.length > 0) {
+    return `kommune ${brief.municipality_numbers.join(", ")}`;
+  }
+  return brief.territory_code ?? "valgt kartområde";
 }
 
 async function loadDiscoverySource(
@@ -337,7 +371,7 @@ async function loadExistingRun(
   if (!row) return null;
   const brief = discoveryBriefSchema.safeParse(row.brief_snapshot);
   const discoveryQuery = brief.success
-    ? `${brief.data.industry_queries.join(" + ")} i ${brief.data.city ?? "valgt kartområde"}`
+    ? `${brief.data.industry_queries.join(" + ")} i ${discoveryAreaLabel(brief.data)}`
     : "Discovery";
   return {
     ok: true,
@@ -384,7 +418,7 @@ export async function runDiscoveryForProject(
     scheduledFor: opts.scheduledFor ?? null,
   });
   const runId = result.run.id;
-  const area = brief.city ?? "valgt kartområde";
+  const area = discoveryAreaLabel(brief);
   return {
     ok: true,
     batchId: runId,
@@ -434,7 +468,9 @@ export function isValidDiscoverySchedule(
       scheduleTimezone,
       first,
     );
-    return second.valueOf() - first.valueOf() >= MIN_DISCOVERY_SCHEDULE_INTERVAL_MS;
+    return (
+      second.valueOf() - first.valueOf() >= MIN_DISCOVERY_SCHEDULE_INTERVAL_MS
+    );
   } catch {
     return false;
   }
@@ -574,29 +610,45 @@ async function sourceStillDue(
   row: DueSourceRow,
   now: Date,
 ): Promise<boolean> {
-  const table =
-    row.source_kind === "profile"
-      ? "leadgrid_discovery_profiles"
-      : "leadgrid_project_discovery_config";
-  const idColumn = row.source_kind === "profile" ? "id" : "project_id";
-  const idCast = row.source_kind === "profile" ? "::uuid" : "";
-  const organizationCondition =
-    row.source_kind === "profile"
-      ? "organization_id = $1::uuid"
-      : "(organization_id = $1::uuid OR organization_id IS NULL)";
+  const expectedSlot = row.next_run_at ? new Date(row.next_run_at) : null;
+  if (row.source_kind === "profile") {
+    const result = await client.query(
+      `SELECT 1
+         FROM leadgrid_discovery_profiles
+        WHERE id = $3::uuid
+          AND organization_id = $1::uuid
+          AND project_id = $2
+          AND auto_discover_enabled = TRUE
+          AND status = 'active'
+          AND version = $5
+          AND next_run_at IS NOT DISTINCT FROM $6::timestamptz
+          AND (next_run_at IS NULL OR next_run_at <= $4::timestamptz)
+        LIMIT 1`,
+      [
+        row.organization_id,
+        row.project_id,
+        row.source_id,
+        now.toISOString(),
+        row.profile_version,
+        expectedSlot?.toISOString() ?? null,
+      ],
+    );
+    return Boolean(result.rows[0]);
+  }
+
   const result = await client.query(
     `SELECT 1
-       FROM ${table}
-      WHERE ${idColumn} = $3${idCast}
-        AND ${organizationCondition}
-        AND project_id = $2
+       FROM leadgrid_project_discovery_config
+      WHERE project_id = $2
+        AND (organization_id = $1::uuid OR organization_id IS NULL)
         AND auto_discover_enabled = TRUE
+        AND next_run_at IS NOT DISTINCT FROM $3::timestamptz
         AND (next_run_at IS NULL OR next_run_at <= $4::timestamptz)
       LIMIT 1`,
     [
       row.organization_id,
       row.project_id,
-      row.source_kind === "profile" ? row.source_id : row.project_id,
+      expectedSlot?.toISOString() ?? null,
       now.toISOString(),
     ],
   );
@@ -618,7 +670,10 @@ async function advanceDueSource(
         WHERE organization_id = $1::uuid
           AND project_id = $2
           AND id = $3::uuid
-          AND next_run_at IS NOT DISTINCT FROM $4::timestamptz`,
+          AND next_run_at IS NOT DISTINCT FROM $4::timestamptz
+          AND auto_discover_enabled = TRUE
+          AND status = 'active'
+          AND version = $7`,
       [
         row.organization_id,
         row.project_id,
@@ -626,6 +681,7 @@ async function advanceDueSource(
         expectedSlot?.toISOString() ?? null,
         nextRunAt.toISOString(),
         queued,
+        row.profile_version,
       ],
     );
     return;
@@ -664,12 +720,16 @@ async function pauseDueSource(
         WHERE organization_id = $1::uuid
           AND project_id = $2
           AND id = $3::uuid
-          AND next_run_at IS NOT DISTINCT FROM $4::timestamptz`,
+          AND next_run_at IS NOT DISTINCT FROM $4::timestamptz
+          AND auto_discover_enabled = TRUE
+          AND status = 'active'
+          AND version = $5`,
       [
         row.organization_id,
         row.project_id,
         row.source_id,
         expectedSlot?.toISOString() ?? null,
+        row.profile_version,
       ],
     );
     return;
@@ -732,6 +792,9 @@ async function processDueSource(
       await advanceDueSource(pool, row, null, nextRunAt, false);
       return null;
     }
+    // Close the window where a user can pause or edit the profile after the
+    // due-list read but before the scheduled run is enqueued.
+    if (!(await sourceStillDue(lockClient, row, now))) return null;
     const result = await runDiscoveryForProject(pool, {
       projectId: row.project_id,
       organizationId: row.organization_id,
@@ -830,6 +893,7 @@ export const __test = {
   nextScheduledAt,
   pauseDueSource,
   processDueSource,
+  sourceStillDue,
   runPollerTick,
   scheduledIdempotencyKey,
 };

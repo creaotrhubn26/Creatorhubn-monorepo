@@ -6,13 +6,50 @@
  * Backwards-compatible utvidelser holdes innenfor v1.
  */
 
+const OUTCOME_SAFE_REFERENCE_PATTERN = "^[A-Za-z0-9][A-Za-z0-9._:-]*$";
+
+const outcomeSafeReferenceSchema = {
+  type: "string",
+  minLength: 1,
+  maxLength: 255,
+  pattern: OUTCOME_SAFE_REFERENCE_PATTERN,
+} as const;
+
+const outcomeSafeLabelSchema = {
+  type: "string",
+  minLength: 1,
+  maxLength: 80,
+  pattern: OUTCOME_SAFE_REFERENCE_PATTERN,
+} as const;
+
+const outcomeMetadataSchema = {
+  type: "object",
+  additionalProperties: false,
+  dependentRequired: {
+    value_minor: ["currency"],
+    currency: ["value_minor"],
+  },
+  properties: {
+    channel: outcomeSafeLabelSchema,
+    campaign_ref: outcomeSafeReferenceSchema,
+    territory_code: outcomeSafeLabelSchema,
+    quantity: { type: "integer", minimum: 1, maximum: 100000 },
+    value_minor: {
+      type: "integer",
+      minimum: 0,
+      maximum: Number.MAX_SAFE_INTEGER,
+    },
+    currency: { type: "string", pattern: "^[A-Z]{3}$" },
+  },
+} as const;
+
 export const openApiSpec = {
   openapi: "3.1.0",
   info: {
     title: "Leadgrid Public API",
-    version: "1.0.0",
+    version: "1.2.0",
     description:
-      "Stabilt schema for 3.-parts-integrasjoner mot Leadgrid (Salesforce, HubSpot, custom connectors). Auth: `Authorization: Bearer lgk_live_...`.",
+      "Stabilt schema for 3.-parts-integrasjoner mot Leadgrid (Salesforce, HubSpot, custom connectors). Auth: `Authorization: Bearer lgk_live_...`. Nye nøkler er bundet til ett Leadgrid-prosjekt; eksplisitte admin-nøkler med organisasjonstilgang må angi project_id på hvert datakall.",
     contact: { email: "support@creatorhubn.no" },
   },
   servers: [
@@ -35,6 +72,7 @@ export const openApiSpec = {
         type: "object",
         properties: {
           id: { type: "string", format: "uuid" },
+          project_id: { type: "string", nullable: true },
           name: { type: "string" },
           company: { type: "string", nullable: true },
           email: { type: "string", format: "email", nullable: true },
@@ -87,6 +125,76 @@ export const openApiSpec = {
           updated_at: { type: "string", format: "date-time" },
         },
       },
+      OutcomeEvent: {
+        type: "object",
+        required: [
+          "id",
+          "organization_id",
+          "project_id",
+          "lead_id",
+          "event_type",
+          "external_event_id",
+          "occurred_at",
+          "metadata",
+          "schema_version",
+          "created_at",
+        ],
+        properties: {
+          id: { type: "string", format: "uuid" },
+          organization_id: { type: "string", format: "uuid" },
+          project_id: { type: "string" },
+          lead_id: { type: "string", format: "uuid" },
+          discovery_candidate_id: {
+            type: "string",
+            format: "uuid",
+            nullable: true,
+            description:
+              "Server-derived first Discovery import candidate, when one exists.",
+          },
+          discovery_run_id: {
+            type: "string",
+            format: "uuid",
+            nullable: true,
+            description:
+              "Server-derived Discovery run that first imported the lead.",
+          },
+          discovery_profile_id: {
+            type: "string",
+            format: "uuid",
+            nullable: true,
+            description:
+              "Server-derived Discovery profile; null for non-Discovery or ad-hoc imports.",
+          },
+          discovery_attributed_at: {
+            type: "string",
+            format: "date-time",
+            nullable: true,
+            description:
+              "Timestamp of the authoritative first Discovery import.",
+          },
+          event_type: {
+            type: "string",
+            enum: [
+              "pilot_invited",
+              "meeting_completed",
+              "profile_published",
+              "inquiry_received",
+              "booking_confirmed",
+              "attendance_confirmed",
+            ],
+          },
+          external_event_id: outcomeSafeReferenceSchema,
+          occurred_at: {
+            type: "string",
+            format: "date-time",
+            description:
+              "Actual event time with an explicit timezone offset; values more than five minutes in the future are rejected.",
+          },
+          metadata: outcomeMetadataSchema,
+          schema_version: { type: "integer", enum: [1] },
+          created_at: { type: "string", format: "date-time" },
+        },
+      },
       Recommendation: {
         type: "object",
         properties: {
@@ -137,6 +245,11 @@ export const openApiSpec = {
                   properties: {
                     ok: { type: "boolean" },
                     organization_id: { type: "string", format: "uuid" },
+                    project_id: { type: "string", nullable: true },
+                    access_scope: {
+                      type: "string",
+                      enum: ["project", "organization"],
+                    },
                     scopes: { type: "array", items: { type: "string" } },
                     rate_limit_rpm: { type: "integer" },
                     version: { type: "string" },
@@ -151,7 +264,7 @@ export const openApiSpec = {
     },
     "/api/v1/leads": {
       get: {
-        summary: "List leads for org",
+        summary: "List leads for API-keyens prosjekt",
         parameters: [
           {
             name: "limit",
@@ -162,6 +275,13 @@ export const openApiSpec = {
             name: "offset",
             in: "query",
             schema: { type: "integer", minimum: 0, default: 0 },
+          },
+          {
+            name: "project_id",
+            in: "query",
+            description:
+              "Valgfritt for prosjektbundne nøkler og må da samsvare med bindingen. Påkrevd for eksplisitte organisasjonsnøkler.",
+            schema: { type: "string", maxLength: 255 },
           },
         ],
         responses: {
@@ -197,6 +317,12 @@ export const openApiSpec = {
                 required: ["name"],
                 properties: {
                   name: { type: "string" },
+                  project_id: {
+                    type: "string",
+                    maxLength: 255,
+                    description:
+                      "Valgfritt for prosjektbundne nøkler og må da samsvare med bindingen. Påkrevd for eksplisitte organisasjonsnøkler.",
+                  },
                   company: { type: "string" },
                   email: { type: "string", format: "email" },
                   phone: { type: "string" },
@@ -230,6 +356,13 @@ export const openApiSpec = {
             required: true,
             schema: { type: "string", format: "uuid" },
           },
+          {
+            name: "project_id",
+            in: "query",
+            description:
+              "Valgfritt for prosjektbundne nøkler og må da samsvare med bindingen. Påkrevd for eksplisitte organisasjonsnøkler.",
+            schema: { type: "string", maxLength: 255 },
+          },
         ],
         responses: {
           "200": {
@@ -249,10 +382,119 @@ export const openApiSpec = {
         },
       },
     },
+    "/api/v1/projects/{projectId}/leads/{leadId}/outcome-events": {
+      post: {
+        summary: "Registrer et append-only prosjektresultat",
+        description:
+          "Knytter et aggregert kommersielt resultat til én lead i API-nøkkelens tillatte aktive prosjekt. Endepunktet avviser fritekst og pasient-/kontaktdata. Identiske retries returnerer eksisterende hendelse.",
+        parameters: [
+          {
+            name: "projectId",
+            in: "path",
+            required: true,
+            schema: { type: "string", maxLength: 255 },
+          },
+          {
+            name: "leadId",
+            in: "path",
+            required: true,
+            schema: { type: "string", format: "uuid" },
+          },
+          {
+            name: "Idempotency-Key",
+            in: "header",
+            required: false,
+            description:
+              "Stabil retry-nøkkel. Dersom den utelates brukes external_event_id.",
+            schema: outcomeSafeReferenceSchema,
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["event_type", "external_event_id", "occurred_at"],
+                properties: {
+                  event_type: {
+                    type: "string",
+                    enum: [
+                      "pilot_invited",
+                      "meeting_completed",
+                      "profile_published",
+                      "inquiry_received",
+                      "booking_confirmed",
+                      "attendance_confirmed",
+                    ],
+                  },
+                  external_event_id: outcomeSafeReferenceSchema,
+                  occurred_at: {
+                    type: "string",
+                    format: "date-time",
+                    description:
+                      "Actual event time with an explicit timezone offset; values more than five minutes in the future are rejected.",
+                  },
+                  metadata: outcomeMetadataSchema,
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Idempotent replay; eksisterende hendelse returneres.",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    data: { $ref: "#/components/schemas/OutcomeEvent" },
+                    meta: { type: "object" },
+                  },
+                },
+              },
+            },
+          },
+          "201": {
+            description: "Ny hendelse registrert.",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    data: { $ref: "#/components/schemas/OutcomeEvent" },
+                    meta: { type: "object" },
+                  },
+                },
+              },
+            },
+          },
+          "400": {
+            description: "Ugyldig path, payload eller idempotensnøkkel.",
+          },
+          "401": { description: "Manglende eller ugyldig API-key." },
+          "403": { description: "Mangler scope outcomes.write." },
+          "404": { description: "Aktivt prosjekt/lead-scope finnes ikke." },
+          "409": {
+            description: "Retry-identifikator gjenbrukt med annet innhold.",
+          },
+          "429": { description: "Rate-limit overskredet." },
+        },
+      },
+    },
     "/api/v1/recommendations": {
       get: {
-        summary: "List Next Best Action-anbefalinger",
+        summary: "List Next Best Action-anbefalinger for API-keyens prosjekt",
         parameters: [
+          {
+            name: "project_id",
+            in: "query",
+            description:
+              "Valgfritt for prosjektbundne nøkler og må da samsvare med bindingen. Påkrevd for eksplisitte organisasjonsnøkler.",
+            schema: { type: "string", maxLength: 255 },
+          },
           {
             name: "priority",
             in: "query",

@@ -135,6 +135,7 @@ private func makeAnalysis(_ marker: String) -> TranscriptAnalysis {
 
 final class OfflineActionQueueTests: XCTestCase {
     private enum ExpectedFailure: Error { case offline }
+    private let projectId = "project-a"
 
     private actor DrainProbe {
         private(set) var executionCount = 0
@@ -150,6 +151,33 @@ final class OfflineActionQueueTests: XCTestCase {
             .appendingPathComponent("leadgrid-offline-queue-\(UUID().uuidString).json")
     }
 
+    func testOfflineCacheScopeRequiresCompleteIdentityAndSeparatesProjects() {
+        XCTAssertNil(OfflineCache.Scope(
+            actorUserId: "user-a",
+            organizationId: "org-a",
+            projectId: nil
+        ))
+        XCTAssertNil(OfflineCache.Scope(
+            actorUserId: " ",
+            organizationId: "org-a",
+            projectId: "project-a"
+        ))
+
+        let first = OfflineCache.Scope(
+            actorUserId: "user-a",
+            organizationId: "org-a",
+            projectId: "project-a"
+        )
+        let second = OfflineCache.Scope(
+            actorUserId: "user-a",
+            organizationId: "org-a",
+            projectId: "project-b"
+        )
+        XCTAssertNotNil(first)
+        XCTAssertNotNil(second)
+        XCTAssertNotEqual(first, second)
+    }
+
     func testSuccessfulDrainRemovesOnlyCurrentOrganizationAction() async throws {
         let url = temporaryQueueURL()
         defer { try? FileManager.default.removeItem(at: url) }
@@ -157,25 +185,61 @@ final class OfflineActionQueueTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         await queue.enqueue(.init(
             organizationId: "org-a",
+            actorUserId: "user-a",
+            projectId: projectId,
             endpoint: "/api/admin-room/lead-map/leads/a/status",
             httpMethod: "PATCH",
             nextRetryAt: now
         ))
         await queue.enqueue(.init(
             organizationId: "org-b",
+            actorUserId: "user-a",
+            projectId: projectId,
             endpoint: "/api/admin-room/lead-map/leads/b/status",
             httpMethod: "PATCH",
             nextRetryAt: now
         ))
 
-        let result = await queue.drain(organizationId: "org-a", now: now) { _ in }
-        let pendingA = await queue.pendingCount(organizationId: "org-a")
-        let pendingB = await queue.pendingCount(organizationId: "org-b")
+        let result = await queue.drain(
+            organizationId: "org-a", actorUserId: "user-a",
+            projectId: projectId, now: now) { _ in }
+        let pendingA = await queue.pendingCount(
+            organizationId: "org-a", actorUserId: "user-a", projectId: projectId)
+        let pendingB = await queue.pendingCount(
+            organizationId: "org-b", actorUserId: "user-a", projectId: projectId)
 
         XCTAssertEqual(result.success, 1)
         XCTAssertEqual(result.failed, 0)
         XCTAssertEqual(pendingA, 0)
         XCTAssertEqual(pendingB, 1)
+    }
+
+    func testSyncCenterSnapshotContainsOnlySelectedOrganization() async throws {
+        let url = temporaryQueueURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let queue = OfflineActionQueue(fileURL: url)
+        await queue.enqueue(.init(
+            organizationId: "org-a",
+            actorUserId: "user-a",
+            projectId: projectId,
+            endpoint: "/api/admin-room/lead-map/leads/a/status"
+        ))
+        await queue.enqueue(.init(
+            organizationId: "org-b",
+            actorUserId: "user-a",
+            projectId: projectId,
+            endpoint: "/api/admin-room/lead-map/leads/b/status"
+        ))
+
+        let visible = await queue.actions(
+            organizationId: "org-a", actorUserId: "user-a", projectId: projectId)
+
+        XCTAssertEqual(visible.count, 1)
+        XCTAssertEqual(visible.first?.organizationId, "org-a")
+        XCTAssertEqual(
+            visible.first?.endpoint,
+            "/api/admin-room/lead-map/leads/a/status"
+        )
     }
 
     func testMaxAttemptsRetainsPayloadUntilExplicitRetry() async throws {
@@ -187,37 +251,51 @@ final class OfflineActionQueueTests: XCTestCase {
         await queue.enqueue(.init(
             id: id,
             organizationId: "org-a",
+            actorUserId: "user-a",
+            projectId: projectId,
             endpoint: "/api/admin-room/lead-map/leads/a/visits",
             bodyJson: Data("{\"visitType\":\"phone\"}".utf8),
             nextRetryAt: now
         ))
 
-        _ = await queue.drain(organizationId: "org-a", now: now) { _ in
+        _ = await queue.drain(
+            organizationId: "org-a", actorUserId: "user-a",
+            projectId: projectId, now: now) { _ in
             throw ExpectedFailure.offline
         }
         let second = await queue.drain(
             organizationId: "org-a",
+            actorUserId: "user-a",
+            projectId: projectId,
             now: now.addingTimeInterval(31)
         ) { _ in
             throw ExpectedFailure.offline
         }
-        let pendingAfterFailure = await queue.pendingCount(organizationId: "org-a")
-        let failedAfterFailure = await queue.failedCount(organizationId: "org-a")
+        let pendingAfterFailure = await queue.pendingCount(
+            organizationId: "org-a", actorUserId: "user-a", projectId: projectId)
+        let failedAfterFailure = await queue.failedCount(
+            organizationId: "org-a", actorUserId: "user-a", projectId: projectId)
 
         XCTAssertEqual(second.failed, 1)
         XCTAssertEqual(pendingAfterFailure, 0)
         XCTAssertEqual(failedAfterFailure, 1)
-        let retained = await queue.failedActions(organizationId: "org-a")
+        let retained = await queue.failedActions(
+            organizationId: "org-a", actorUserId: "user-a", projectId: projectId)
         XCTAssertEqual(retained.first?.id, id)
         XCTAssertEqual(retained.first?.bodyJson, Data("{\"visitType\":\"phone\"}".utf8))
 
-        let reset = await queue.retry(id: id, organizationId: "org-a")
+        let reset = await queue.retry(
+            id: id, organizationId: "org-a", actorUserId: "user-a",
+            projectId: projectId)
         XCTAssertTrue(reset)
         let retried = await queue.drain(
             organizationId: "org-a",
+            actorUserId: "user-a",
+            projectId: projectId,
             now: Date().addingTimeInterval(1)
         ) { _ in }
-        let failedAfterRetry = await queue.failedCount(organizationId: "org-a")
+        let failedAfterRetry = await queue.failedCount(
+            organizationId: "org-a", actorUserId: "user-a", projectId: projectId)
         XCTAssertEqual(retried.success, 1)
         XCTAssertEqual(failedAfterRetry, 0)
     }
@@ -240,18 +318,25 @@ final class OfflineActionQueueTests: XCTestCase {
         let queue = OfflineActionQueue(fileURL: url)
         let result = await queue.drain(
             organizationId: "org-a",
+            actorUserId: "user-a",
+            projectId: projectId,
             now: Date().addingTimeInterval(1)
         ) { _ in
             XCTFail("Legacy-handling uten tenant-scope skal aldri eksekveres")
         }
-        let failedCount = await queue.failedCount(organizationId: "org-a")
-        let reset = await queue.retry(id: id, organizationId: "org-a")
+        let failedCount = await queue.failedCount(
+            organizationId: "org-a", actorUserId: "user-a", projectId: projectId)
+        let reset = await queue.retry(
+            id: id, organizationId: "org-a", actorUserId: "user-a",
+            projectId: projectId)
         let remaining = await queue.pendingActions()
 
         XCTAssertEqual(result.success, 0)
-        XCTAssertEqual(failedCount, 1)
+        XCTAssertEqual(failedCount, 0)
         XCTAssertFalse(reset)
         XCTAssertEqual(remaining.count, 1)
+        XCTAssertEqual(remaining.first?.failureKind, .missingSecurityScope)
+        XCTAssertNotNil(remaining.first?.permanentlyFailedAt)
     }
 
     func testDuplicateWatchDeliveryKeepsOneLogicalAction() async throws {
@@ -262,12 +347,16 @@ final class OfflineActionQueueTests: XCTestCase {
         await queue.enqueue(.init(
             id: id,
             organizationId: "org-a",
+            actorUserId: "user-a",
+            projectId: projectId,
             endpoint: "/api/admin-room/lead-map/leads/a/status",
             httpMethod: "PATCH"
         ))
         await queue.enqueue(.init(
             id: id,
             organizationId: "org-a",
+            actorUserId: "user-a",
+            projectId: projectId,
             endpoint: "/api/admin-room/lead-map/leads/a/visits",
             httpMethod: "POST"
         ))
@@ -283,26 +372,68 @@ final class OfflineActionQueueTests: XCTestCase {
         let queue = OfflineActionQueue(fileURL: url)
         let probe = DrainProbe()
         let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let selectedProjectId = projectId
         await queue.enqueue(.init(
             organizationId: "org-a",
+            actorUserId: "user-a",
+            projectId: projectId,
             endpoint: "/api/admin-room/lead-map/leads/a/status",
             httpMethod: "PATCH",
             nextRetryAt: now
         ))
 
-        async let first = queue.drain(organizationId: "org-a", now: now) { _ in
+        async let first = queue.drain(
+            organizationId: "org-a", actorUserId: "user-a",
+            projectId: selectedProjectId, now: now) { _ in
             await probe.execute()
         }
-        async let second = queue.drain(organizationId: "org-a", now: now) { _ in
+        async let second = queue.drain(
+            organizationId: "org-a", actorUserId: "user-a",
+            projectId: selectedProjectId, now: now) { _ in
             await probe.execute()
         }
         let results = await (first, second)
         let executionCount = await probe.executionCount
-        let remaining = await queue.pendingCount(organizationId: "org-a")
+        let remaining = await queue.pendingCount(
+            organizationId: "org-a", actorUserId: "user-a", projectId: projectId)
 
         XCTAssertEqual(executionCount, 1)
         XCTAssertEqual(results.0.success + results.1.success, 1)
         XCTAssertEqual(results.0.failed + results.1.failed, 0)
+        XCTAssertEqual(remaining, 0)
+    }
+
+    func testConcurrentProjectDrainsExecuteGlobalActionOnlyOnce() async throws {
+        let url = temporaryQueueURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let queue = OfflineActionQueue(fileURL: url)
+        let probe = DrainProbe()
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        await queue.enqueue(.init(
+            organizationId: "org-a",
+            actorUserId: "user-a",
+            projectId: nil,
+            endpoint: "/api/leadgrid/academy/progress",
+            httpMethod: "POST",
+            nextRetryAt: now
+        ))
+
+        async let first = queue.drain(
+            organizationId: "org-a", actorUserId: "user-a",
+            projectId: "project-a", now: now) { _ in
+                await probe.execute()
+            }
+        async let second = queue.drain(
+            organizationId: "org-a", actorUserId: "user-a",
+            projectId: "project-b", now: now) { _ in
+                await probe.execute()
+            }
+        let results = await (first, second)
+        let executionCount = await probe.executionCount
+        let remaining = await queue.pendingActions().count
+
+        XCTAssertEqual(executionCount, 1)
+        XCTAssertEqual(results.0.success + results.1.success, 1)
         XCTAssertEqual(remaining, 0)
     }
 
@@ -347,6 +478,8 @@ final class OfflineActionQueueTests: XCTestCase {
 
         let persisted = await queue.enqueue(.init(
             organizationId: "org-a",
+            actorUserId: "user-a",
+            projectId: projectId,
             endpoint: "/api/admin-room/lead-map/leads/a/status",
             httpMethod: "PATCH"
         ))
@@ -362,17 +495,22 @@ final class OfflineActionQueueTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         await queue.enqueue(.init(
             organizationId: "org-a",
+            actorUserId: "user-a",
+            projectId: projectId,
             endpoint: "/api/admin-room/lead-map/leads",
             nextRetryAt: now
         ))
 
-        let result = await queue.drain(organizationId: "org-a", now: now) { _ in
+        let result = await queue.drain(
+            organizationId: "org-a", actorUserId: "user-a",
+            projectId: projectId, now: now) { _ in
             throw OfflineActionExecutionError.permanent(
                 kind: .authorization,
                 message: "Ingen tilgang"
             )
         }
-        let failed = await queue.failedActions(organizationId: "org-a")
+        let failed = await queue.failedActions(
+            organizationId: "org-a", actorUserId: "user-a", projectId: projectId)
 
         XCTAssertEqual(result.failed, 1)
         XCTAssertEqual(failed.first?.attemptCount, 1)
@@ -388,6 +526,7 @@ final class OfflineActionQueueTests: XCTestCase {
         let body = try JSONSerialization.data(withJSONObject: [
             "creation_id": id.uuidString,
             "organization_id": "org-a",
+            "project_id": projectId,
             "name": "Kunde AS",
             "lead_temperature": "warm",
             "pipeline_stage": "new",
@@ -399,6 +538,8 @@ final class OfflineActionQueueTests: XCTestCase {
         await queue.enqueue(.init(
             id: id,
             organizationId: "org-a",
+            actorUserId: "user-a",
+            projectId: projectId,
             endpoint: "/api/admin-room/lead-map/leads",
             bodyJson: body,
             attemptCount: 1,
@@ -409,7 +550,9 @@ final class OfflineActionQueueTests: XCTestCase {
 
         let reset = await queue.retryLeadCreationAllowingDuplicate(
             id: id,
-            organizationId: "org-a"
+            organizationId: "org-a",
+            actorUserId: "user-a",
+            projectId: projectId
         )
         let actions = await queue.pendingActions()
         let action = try XCTUnwrap(actions.first)
@@ -426,6 +569,125 @@ final class OfflineActionQueueTests: XCTestCase {
         XCTAssertTrue(updated.allowDuplicate)
         XCTAssertNil(action.permanentlyFailedAt)
         XCTAssertNil(action.failureKind)
+    }
+
+    func testDifferentActorCannotSeeOrDrainQueuedActionInSameWorkspace() async throws {
+        let url = temporaryQueueURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let queue = OfflineActionQueue(fileURL: url)
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        await queue.enqueue(.init(
+            organizationId: "org-a",
+            actorUserId: "user-a",
+            projectId: projectId,
+            endpoint: "/api/admin-room/lead-map/leads/a/visits",
+            nextRetryAt: now))
+
+        let result = await queue.drain(
+            organizationId: "org-a",
+            actorUserId: "user-b",
+            projectId: projectId,
+            now: now) { _ in
+                XCTFail("Bruker B skal aldri eksekvere bruker A sin handling")
+            }
+        let pendingForA = await queue.pendingCount(
+            organizationId: "org-a", actorUserId: "user-a", projectId: projectId)
+        let pendingForB = await queue.pendingCount(
+            organizationId: "org-a", actorUserId: "user-b", projectId: projectId)
+        let visibleForB = await queue.actions(
+            organizationId: "org-a", actorUserId: "user-b", projectId: projectId)
+
+        XCTAssertEqual(result.success, 0)
+        XCTAssertEqual(pendingForA, 1)
+        XCTAssertEqual(pendingForB, 0)
+        XCTAssertTrue(visibleForB.isEmpty)
+    }
+
+    func testLegacyActorlessActionIsQuarantinedAndNeverAutoDrained() async throws {
+        let url = temporaryQueueURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let id = UUID()
+        let legacy: [[String: Any]] = [[
+            "id": id.uuidString,
+            "organizationId": "org-a",
+            "endpoint": "/api/admin-room/lead-map/leads/a/visits",
+            "httpMethod": "POST",
+            "createdAt": "2023-11-14T22:13:20Z",
+            "attemptCount": 0,
+            "nextRetryAt": "2023-11-14T22:13:20Z",
+        ]]
+        try JSONSerialization.data(withJSONObject: legacy).write(to: url, options: .atomic)
+
+        let queue = OfflineActionQueue(fileURL: url)
+        let result = await queue.drain(
+            organizationId: "org-a",
+            actorUserId: "user-a",
+            projectId: projectId,
+            now: Date()) { _ in
+                XCTFail("Actorless legacy-data skal aldri auto-draines")
+            }
+        let actions = await queue.pendingActions()
+        let retained = try XCTUnwrap(actions.first)
+
+        XCTAssertEqual(result.success, 0)
+        XCTAssertEqual(retained.id, id)
+        XCTAssertNil(retained.actorUserId)
+        XCTAssertEqual(retained.failureKind, .missingSecurityScope)
+        XCTAssertNotNil(retained.permanentlyFailedAt)
+        XCTAssertTrue(retained.lastError?.contains("brukerbinding") == true)
+    }
+
+    func testLegacyRecommendationWithoutProjectIsQuarantined() async throws {
+        let url = temporaryQueueURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let queue = OfflineActionQueue(fileURL: url)
+        let id = UUID()
+        await queue.enqueue(.init(
+            id: id,
+            organizationId: "org-a",
+            actorUserId: "user-a",
+            endpoint: "/api/leadgrid/intelligence/recommendations/rec-1/accept"))
+
+        let failed = await queue.failedActions(
+            organizationId: "org-a", actorUserId: "user-a", projectId: projectId)
+        let reset = await queue.retry(
+            id: id, organizationId: "org-a", actorUserId: "user-a",
+            projectId: projectId)
+
+        XCTAssertEqual(failed.first?.failureKind, .missingSecurityScope)
+        XCTAssertTrue(failed.first?.lastError?.contains("kundeprosjekt") == true)
+        XCTAssertFalse(reset)
+    }
+
+    func testCancelDrainRetainsInflightActionForOriginalActor() async throws {
+        let url = temporaryQueueURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let queue = OfflineActionQueue(fileURL: url)
+        let probe = DrainProbe()
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let selectedProjectId = projectId
+        await queue.enqueue(.init(
+            organizationId: "org-a",
+            actorUserId: "user-a",
+            projectId: projectId,
+            endpoint: "/api/admin-room/lead-map/leads/a/visits",
+            nextRetryAt: now))
+
+        let task = Task {
+            await queue.drain(
+                organizationId: "org-a", actorUserId: "user-a",
+                projectId: selectedProjectId, now: now) { _ in
+                    await probe.execute()
+                }
+        }
+        while await probe.executionCount == 0 { await Task.yield() }
+        await queue.cancelDrains(actorUserId: "user-a")
+        let result = await task.value
+        let remaining = await queue.pendingCount(
+            organizationId: "org-a", actorUserId: "user-a", projectId: projectId)
+
+        XCTAssertEqual(result.success, 0)
+        XCTAssertEqual(remaining, 1)
     }
 }
 
@@ -609,5 +871,15 @@ final class LeadCreationContractTests: XCTestCase {
         })
         XCTAssertTrue(details.contains { $0.field == .coordinates })
         XCTAssertTrue(details.contains { $0.field == .contactRole })
+    }
+
+    func testDraftValidationRequiresCustomerProject() {
+        var draft = makeDraft()
+        draft.projectId = "  "
+
+        XCTAssertTrue(draft.validationDetails().contains {
+            $0.field == .project
+                && $0.message == "Velg et kundeprosjekt før leaden opprettes."
+        })
     }
 }

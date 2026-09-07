@@ -41,7 +41,9 @@ export async function transcribeAudio(
   language = "no",
 ): Promise<{ transcript: string; language: string } | null> {
   if (!OPENAI_API_KEY) {
-    console.warn("[meeting-notes] OPENAI_API_KEY mangler — kan ikke transkribere");
+    console.warn(
+      "[meeting-notes] OPENAI_API_KEY mangler — kan ikke transkribere",
+    );
     return null;
   }
   try {
@@ -118,39 +120,72 @@ ${transcript}`;
   }
 }
 
-/** Hovedflyt: prosesser en pending meeting-note (transcript → analyse → log). */
+export interface MeetingNoteProcessingScope {
+  noteId: string;
+  leadId: string;
+  organizationId: string;
+  projectId: string;
+}
+
+/** Hovedflyt: prosesser én autorisert note innenfor dens uendrede lead-tuple. */
 export async function processMeetingNote(
   pool: Pool,
-  noteId: string,
-): Promise<void> {
-  const r = await pool.query<{
-    lead_id: string;
+  scope: MeetingNoteProcessingScope,
+): Promise<boolean> {
+  const result = await pool.query<{
     transcript: string | null;
     lead_name: string;
   }>(
-    `SELECT mn.lead_id::text, mn.transcript, c.name AS lead_name
+    `SELECT mn.transcript, lead.name AS lead_name
        FROM lead_meeting_notes mn
-       JOIN crm_customers c ON c.id = mn.lead_id
-       WHERE mn.id = $1::uuid`,
-    [noteId],
+       JOIN crm_customers lead
+         ON lead.id = mn.lead_id
+        AND lead.organization_id = mn.organization_id
+      WHERE mn.id = $1::uuid
+        AND mn.lead_id = $2::uuid
+        AND mn.organization_id = $3::uuid
+        AND lead.project_id = $4
+      LIMIT 1`,
+    [scope.noteId, scope.leadId, scope.organizationId, scope.projectId],
   );
-  if (!r.rows.length) return;
-  const { lead_id: leadId, transcript, lead_name: leadName } = r.rows[0];
+  if (!result.rows.length) return false;
+  const { transcript, lead_name: leadName } = result.rows[0];
   if (!transcript) {
     await pool.query(
       `UPDATE lead_meeting_notes
           SET processing_status='failed',
               error_message='No transcript',
               processed_at=NOW()
-        WHERE id=$1::uuid`,
-      [noteId],
+        WHERE id=$1::uuid
+          AND lead_id=$2::uuid
+          AND organization_id=$3::uuid
+          AND EXISTS (
+            SELECT 1
+              FROM crm_customers lead
+             WHERE lead.id = lead_meeting_notes.lead_id
+               AND lead.organization_id = lead_meeting_notes.organization_id
+               AND lead.project_id = $4
+          )`,
+      [scope.noteId, scope.leadId, scope.organizationId, scope.projectId],
     );
-    return;
+    return false;
   }
-  await pool.query(
-    `UPDATE lead_meeting_notes SET processing_status='analyzing' WHERE id=$1::uuid`,
-    [noteId],
+  const analyzing = await pool.query(
+    `UPDATE lead_meeting_notes
+        SET processing_status='analyzing'
+      WHERE id=$1::uuid
+        AND lead_id=$2::uuid
+        AND organization_id=$3::uuid
+        AND EXISTS (
+          SELECT 1
+            FROM crm_customers lead
+           WHERE lead.id = lead_meeting_notes.lead_id
+             AND lead.organization_id = lead_meeting_notes.organization_id
+             AND lead.project_id = $4
+        )`,
+    [scope.noteId, scope.leadId, scope.organizationId, scope.projectId],
   );
+  if (analyzing.rowCount !== 1) return false;
   const analyzed = await analyzeTranscript(transcript, leadName);
   if (!analyzed) {
     await pool.query(
@@ -158,12 +193,21 @@ export async function processMeetingNote(
           SET processing_status='failed',
               error_message='Claude analyse feilet',
               processed_at=NOW()
-        WHERE id=$1::uuid`,
-      [noteId],
+        WHERE id=$1::uuid
+          AND lead_id=$2::uuid
+          AND organization_id=$3::uuid
+          AND EXISTS (
+            SELECT 1
+              FROM crm_customers lead
+             WHERE lead.id = lead_meeting_notes.lead_id
+               AND lead.organization_id = lead_meeting_notes.organization_id
+               AND lead.project_id = $4
+          )`,
+      [scope.noteId, scope.leadId, scope.organizationId, scope.projectId],
     );
-    return;
+    return false;
   }
-  await pool.query(
+  const completed = await pool.query(
     `UPDATE lead_meeting_notes
         SET summary=$1,
             action_items=$2::jsonb,
@@ -175,7 +219,16 @@ export async function processMeetingNote(
             processing_status='completed',
             processed_at=NOW(),
             raw_claude_response=$8::jsonb
-      WHERE id=$9::uuid`,
+      WHERE id=$9::uuid
+        AND lead_id=$10::uuid
+        AND organization_id=$11::uuid
+        AND EXISTS (
+          SELECT 1
+            FROM crm_customers lead
+           WHERE lead.id = lead_meeting_notes.lead_id
+             AND lead.organization_id = lead_meeting_notes.organization_id
+             AND lead.project_id = $12
+        )`,
     [
       analyzed.summary,
       JSON.stringify(analyzed.action_items),
@@ -185,9 +238,13 @@ export async function processMeetingNote(
       JSON.stringify(analyzed.participants),
       analyzed.confidence,
       JSON.stringify(analyzed),
-      noteId,
+      scope.noteId,
+      scope.leadId,
+      scope.organizationId,
+      scope.projectId,
     ],
   );
+  if (completed.rowCount !== 1) return false;
 
   // Auto-log aktivitet. crm_lead_activities.activity_type har CHECK-
   // constraint som ikke inkluderer 'meeting_recap' — bruk 'note_added'
@@ -196,14 +253,24 @@ export async function processMeetingNote(
     await pool.query(
       `INSERT INTO crm_lead_activities
          (customer_id, user_id, activity_type, description, metadata)
-       SELECT lead_id, user_id, 'note_added', $2, $3::jsonb
-         FROM lead_meeting_notes WHERE id=$1::uuid`,
+       SELECT mn.lead_id, mn.user_id, 'note_added', $5, $6::jsonb
+         FROM lead_meeting_notes mn
+         JOIN crm_customers lead
+           ON lead.id = mn.lead_id
+          AND lead.organization_id = mn.organization_id
+        WHERE mn.id=$1::uuid
+          AND mn.lead_id=$2::uuid
+          AND mn.organization_id=$3::uuid
+          AND lead.project_id=$4`,
       [
-        noteId,
+        scope.noteId,
+        scope.leadId,
+        scope.organizationId,
+        scope.projectId,
         analyzed.summary.slice(0, 500),
         JSON.stringify({
           kind: "meeting_recap",
-          meeting_note_id: noteId,
+          meeting_note_id: scope.noteId,
           action_item_count: analyzed.action_items.length,
           decision_count: analyzed.decisions.length,
           next_step_count: analyzed.next_steps.length,
@@ -231,9 +298,13 @@ export async function processMeetingNote(
       eng = null;
     }
     if (eng && typeof eng.computeIntelligenceForLead === "function") {
-      await eng.computeIntelligenceForLead(pool, leadId, { trigger: "activity" });
+      await eng.computeIntelligenceForLead(pool, scope.leadId, {
+        trigger: "activity",
+      });
     }
   } catch (err) {
     console.warn("[meeting-notes] Intelligence re-score feilet:", err);
   }
+
+  return true;
 }

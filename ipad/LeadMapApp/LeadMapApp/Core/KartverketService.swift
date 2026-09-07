@@ -237,13 +237,24 @@ final class KartverketService {
         _ path: String,
         method: String,
         body: B,
+        headers: [String: String] = [:],
         using api: APIClient
     ) async throws -> R {
         let encoder = JSONEncoder()
         let decoder = JSONDecoder()
         let payload = try encoder.encode(body)
-        let data = try await api._request(path, method: method, body: payload)
+        let data = try await api._request(
+            path, method: method, body: payload, headers: headers
+        )
         return try decoder.decode(R.self, from: data)
+    }
+
+    private func dorsalgPath(_ path: String, projectId: String) -> String {
+        guard var components = URLComponents(string: path) else { return path }
+        var items = components.queryItems ?? []
+        items.append(URLQueryItem(name: "projectId", value: projectId))
+        components.queryItems = items
+        return components.string ?? path
     }
 
     /// Resultat-source så UI kan vise "🇳🇴 Kartverket" hvis vi vil.
@@ -414,15 +425,22 @@ func fetchAdresser(
     private struct DorsalgAck: Decodable { let ok: Bool? }
 
     /// Alle husstands-statuser for callerens org. [:] ved feil.
-    func fetchDorsalgStatuser(using api: APIClient) async -> [String: String] {
-        guard let r: DorsalgStatusResponse = try? await api._get(
-            "/api/leadgrid/dorsalg/status"
-        ) else { return [:] }
-        return Dictionary(r.statuser.map { ($0.adresseId, $0.status) },
-                          uniquingKeysWith: { a, _ in a })
+    func fetchDorsalgStatuser(
+        projectId: String,
+        using api: APIClient
+    ) async -> [String: String] {
+        guard !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let response: DorsalgStatusResponse = try? await api._get(
+                dorsalgPath("/api/leadgrid/dorsalg/status", projectId: projectId)
+              ) else { return [:] }
+        return Dictionary(
+            response.statuser.map { ($0.adresseId, $0.status) },
+            uniquingKeysWith: { current, _ in current }
+        )
     }
 
     private struct DorsalgStatusBody: Encodable {
+        let projectId: String
         let adresseId: String
         let adressetekst: String
         let postnummer: String
@@ -435,15 +453,24 @@ func fetchAdresser(
 
     /// Sett vunnet/avslått på en adresse (best effort — UI er optimistisk).
     /// productId: hvilket produkt som ble solgt (vunnet m/ flere produkter).
-    func setDorsalgStatus(_ status: String, for adr: AdressePunkt,
-                          productId: String? = nil,
-                          using api: APIClient) async {
+    func setDorsalgStatus(
+        _ status: String,
+        for adr: AdressePunkt,
+        projectId: String,
+        productId: String? = nil,
+        idempotencyKey: String,
+        using api: APIClient
+    ) async {
+        guard !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let body = DorsalgStatusBody(
+            projectId: projectId,
             adresseId: adr.id, adressetekst: adr.adressetekst,
             postnummer: adr.postnummer, poststed: adr.poststed,
             lat: adr.lat, lon: adr.lon, status: status, productId: productId)
         let _: DorsalgAck? = try? await requestCamelCase(
-            "/api/leadgrid/dorsalg/status", method: "POST", body: body,
+            dorsalgPath("/api/leadgrid/dorsalg/status", projectId: projectId),
+            method: "POST", body: body,
+            headers: ["Idempotency-Key": idempotencyKey],
             using: api)
     }
 
@@ -484,40 +511,75 @@ func fetchAdresser(
         }
     }
 
-    func fetchDorsalgProducts(using api: APIClient) async -> DorsalgProductsEnvelope? {
-        try? await api._get("/api/leadgrid/dorsalg/products")
+    func fetchDorsalgProducts(
+        projectId: String,
+        using api: APIClient
+    ) async -> DorsalgProductsEnvelope? {
+        guard !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return try? await api._get(
+            dorsalgPath("/api/leadgrid/dorsalg/products", projectId: projectId)
+        )
     }
 
     private struct ProductCreateBody: Encodable {
+        let projectId: String
         let navn: String
         let verdiPerVunnet: Double?
     }
     private struct ProductAck: Decodable { let ok: Bool? }
 
-    func createDorsalgProduct(navn: String, verdiPerVunnet: Double?,
-                              using api: APIClient) async -> Bool {
-        let r: ProductAck? = try? await requestCamelCase(
-            "/api/leadgrid/dorsalg/products", method: "POST",
-            body: ProductCreateBody(navn: navn, verdiPerVunnet: verdiPerVunnet), using: api)
-        return r?.ok == true
+    func createDorsalgProduct(
+        navn: String,
+        verdiPerVunnet: Double?,
+        projectId: String,
+        idempotencyKey: String,
+        using api: APIClient
+    ) async -> Bool {
+        let result: ProductAck? = try? await requestCamelCase(
+            dorsalgPath("/api/leadgrid/dorsalg/products", projectId: projectId),
+            method: "POST",
+            body: ProductCreateBody(
+                projectId: projectId,
+                navn: navn,
+                verdiPerVunnet: verdiPerVunnet
+            ),
+            headers: ["Idempotency-Key": idempotencyKey],
+            using: api
+        )
+        return result?.ok == true
     }
 
     private struct ProductPatchBody: Encodable {
+        let projectId: String
         let aktiv: Bool?
         let verdiPerVunnet: Double?
     }
 
-    func patchDorsalgProduct(id: String, aktiv: Bool?, verdiPerVunnet: Double?,
-                             using api: APIClient) async {
+    func patchDorsalgProduct(
+        id: String,
+        aktiv: Bool?,
+        verdiPerVunnet: Double?,
+        projectId: String,
+        idempotencyKey: String,
+        using api: APIClient
+    ) async {
         let _: ProductAck? = try? await requestCamelCase(
-            "/api/leadgrid/dorsalg/products/\(id)", method: "PATCH",
-            body: ProductPatchBody(aktiv: aktiv, verdiPerVunnet: verdiPerVunnet),
-            using: api)
+            dorsalgPath("/api/leadgrid/dorsalg/products/\(id)", projectId: projectId),
+            method: "PATCH",
+            body: ProductPatchBody(
+                projectId: projectId,
+                aktiv: aktiv,
+                verdiPerVunnet: verdiPerVunnet
+            ),
+            headers: ["Idempotency-Key": idempotencyKey],
+            using: api
+        )
     }
 
     // «Registrer salg» (mig 0400): ekte avtale på døra. Grandma-prinsippet:
     // aldri betalingsdata i appen — kun kunde + produkt + bidrag + samtykke.
     private struct DorsalgSaleBody: Encodable {
+        let projectId: String
         let adresseId: String
         let adressetekst: String
         let postnummer: String
@@ -542,9 +604,13 @@ func fetchAdresser(
         bidragBelop: Double?, bidragLabel: String?,
         kundeNavn: String, kundeTelefon: String, kundeEpost: String?,
         ringBekreftet: Bool, samtykkeTekst: String,
+        projectId: String,
+        idempotencyKey: String,
         using api: APIClient
     ) async -> Bool {
+        guard !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
         let body = DorsalgSaleBody(
+            projectId: projectId,
             adresseId: adr.id, adressetekst: adr.adressetekst,
             postnummer: adr.postnummer, poststed: adr.poststed,
             lat: adr.lat, lon: adr.lon,
@@ -552,9 +618,13 @@ func fetchAdresser(
             kundeNavn: kundeNavn, kundeTelefon: kundeTelefon,
             kundeEpost: kundeEpost, ringBekreftet: ringBekreftet,
             samtykkeTekst: samtykkeTekst)
-        let r: DorsalgSaleAck? = try? await requestCamelCase(
-            "/api/leadgrid/dorsalg/sales", method: "POST", body: body, using: api)
-        return r?.ok == true
+        let result: DorsalgSaleAck? = try? await requestCamelCase(
+            dorsalgPath("/api/leadgrid/dorsalg/sales", projectId: projectId),
+            method: "POST", body: body,
+            headers: ["Idempotency-Key": idempotencyKey],
+            using: api
+        )
+        return result?.ok == true
     }
 
     struct DorsalgAccessMember: Decodable, Sendable, Identifiable {
@@ -566,22 +636,41 @@ func fetchAdresser(
     }
     private struct DorsalgAccessEnvelope: Decodable { let members: [DorsalgAccessMember] }
 
-    func fetchDorsalgProductAccess(using api: APIClient) async -> [DorsalgAccessMember] {
-        let r: DorsalgAccessEnvelope? = try? await api._get(
-            "/api/leadgrid/dorsalg/products/access")
-        return r?.members ?? []
+    func fetchDorsalgProductAccess(
+        projectId: String,
+        using api: APIClient
+    ) async -> [DorsalgAccessMember] {
+        guard !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
+        let result: DorsalgAccessEnvelope? = try? await api._get(
+            dorsalgPath("/api/leadgrid/dorsalg/products/access", projectId: projectId)
+        )
+        return result?.members ?? []
     }
 
     private struct AccessPutBody: Encodable {
+        let projectId: String
         let userId: String
         let productIds: [String]
     }
 
-    func setDorsalgProductAccess(userId: String, productIds: [String],
-                                 using api: APIClient) async {
+    func setDorsalgProductAccess(
+        userId: String,
+        productIds: [String],
+        projectId: String,
+        idempotencyKey: String,
+        using api: APIClient
+    ) async {
         let _: ProductAck? = try? await requestCamelCase(
-            "/api/leadgrid/dorsalg/products/access", method: "PUT",
-            body: AccessPutBody(userId: userId, productIds: productIds), using: api)
+            dorsalgPath("/api/leadgrid/dorsalg/products/access", projectId: projectId),
+            method: "PUT",
+            body: AccessPutBody(
+                projectId: projectId,
+                userId: userId,
+                productIds: productIds
+            ),
+            headers: ["Idempotency-Key": idempotencyKey],
+            using: api
+        )
     }
 
     // Dørsalg-oversikt (aggregat for org-en) — vises i Oversikt-fanen.
@@ -633,8 +722,14 @@ func fetchAdresser(
     }
 
     /// Dørsalg-statistikk for callerens org. Nil ved feil.
-    func fetchDorsalgStats(using api: APIClient) async -> DorsalgStats? {
-        try? await api._get("/api/leadgrid/dorsalg/stats")
+    func fetchDorsalgStats(
+        projectId: String,
+        using api: APIClient
+    ) async -> DorsalgStats? {
+        guard !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return try? await api._get(
+            dorsalgPath("/api/leadgrid/dorsalg/stats", projectId: projectId)
+        )
     }
 
     // ─── Dagsmål + budsjett (2026-07-19): leder styrer per team/org ─────
@@ -660,33 +755,67 @@ func fetchAdresser(
     }
 
     /// Hent dagsmål/budsjett — callerens resolverte + (leder) org/team.
-    func fetchDorsalgMaal(using api: APIClient) async -> DorsalgMaal? {
-        try? await api._get("/api/leadgrid/dorsalg/maal")
+    func fetchDorsalgMaal(
+        projectId: String,
+        using api: APIClient
+    ) async -> DorsalgMaal? {
+        guard !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return try? await api._get(
+            dorsalgPath("/api/leadgrid/dorsalg/maal", projectId: projectId)
+        )
     }
 
     /// Sett org-default (teamId nil/tom) eller et teams mål (leder).
     /// Returnerer true ved suksess.
     @discardableResult
-    func setDorsalgMaal(teamId: String?, dagsmalPerSelger: Int,
-                        budsjettPerSelger: Int?, using api: APIClient) async -> Bool {
+    func setDorsalgMaal(
+        teamId: String?,
+        dagsmalPerSelger: Int,
+        budsjettPerSelger: Int?,
+        projectId: String,
+        idempotencyKey: String,
+        using api: APIClient
+    ) async -> Bool {
         struct Body: Encodable {
+            let projectId: String
             let teamId: String
             let dagsmalPerSelger: Int
             let budsjettPerSelger: Int?
         }
         struct Ack: Decodable { let ok: Bool? }
         let ack: Ack? = try? await requestCamelCase(
-            "/api/leadgrid/dorsalg/maal", method: "PUT",
-            body: Body(teamId: teamId ?? "", dagsmalPerSelger: dagsmalPerSelger,
-                       budsjettPerSelger: budsjettPerSelger), using: api)
+            dorsalgPath("/api/leadgrid/dorsalg/maal", projectId: projectId),
+            method: "PUT",
+            body: Body(
+                projectId: projectId,
+                teamId: teamId ?? "",
+                dagsmalPerSelger: dagsmalPerSelger,
+                budsjettPerSelger: budsjettPerSelger
+            ),
+            headers: ["Idempotency-Key": idempotencyKey],
+            using: api
+        )
         return ack?.ok == true
     }
 
     /// Fjern status (angre) — best effort.
-    func clearDorsalgStatus(adresseId: String, using api: APIClient) async {
+    func clearDorsalgStatus(
+        adresseId: String,
+        projectId: String,
+        idempotencyKey: String,
+        using api: APIClient
+    ) async {
+        guard !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let encoded = adresseId.addingPercentEncoding(
             withAllowedCharacters: .urlPathAllowed) ?? adresseId
-        try? await api._delete("/api/leadgrid/dorsalg/status/\(encoded)")
+        _ = try? await api._request(
+            dorsalgPath(
+                "/api/leadgrid/dorsalg/status/\(encoded)",
+                projectId: projectId
+            ),
+            method: "DELETE",
+            headers: ["Idempotency-Key": idempotencyKey]
+        )
     }
 
     // MARK: - Apple CLGeocoder fallback

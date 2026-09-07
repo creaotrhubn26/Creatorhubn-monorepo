@@ -71,6 +71,11 @@ function getActiveOrgId(): string | null {
   return localStorage.getItem('rr_lead_map_active_org');
 }
 
+function getActiveProjectId(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('rr_lead_map_active_project');
+}
+
 const STATUS_LABEL: Record<string, string> = {
   unvisited: 'Ikke besøkt',
   visited: 'Besøkt',
@@ -139,6 +144,7 @@ function googleMapsRouteUrl(stops: DayRouteStop[], origin: { lat: number; lng: n
 
 export default function LeadMapMyDayPanel() {
   const [orgId, setOrgId] = useState<string | null>(getActiveOrgId());
+  const [projectId, setProjectId] = useState<string | null>(getActiveProjectId());
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [leads, setLeads] = useState<WorkloadLead[]>([]);
   const [quota, setQuota] = useState<QuotaProgress | null>(null);
@@ -174,6 +180,7 @@ export default function LeadMapMyDayPanel() {
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           organization_id: orgId ?? undefined,
+          project_id: projectId ?? undefined,
           start_lat: position.lat, start_lng: position.lng,
           planned_date: new Date().toISOString().slice(0, 10),
         }),
@@ -186,14 +193,20 @@ export default function LeadMapMyDayPanel() {
     } finally {
       setRouteLoading(false);
     }
-  }, [position, orgId, headers]);
+  }, [position, orgId, projectId, headers]);
 
   // ─── Load workload + quota ─────────────────────────────────────
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
+      if (!projectId) {
+        setLeads([]);
+        setError('Velg et kundeprosjekt for å se din arbeidsliste.');
+        return;
+      }
       const qs = new URLSearchParams();
       if (orgId) qs.set('organization_id', orgId);
+      qs.set('project_id', projectId);
       if (position) {
         qs.set('lat', String(position.lat));
         qs.set('lng', String(position.lng));
@@ -207,6 +220,9 @@ export default function LeadMapMyDayPanel() {
       if (wRes.ok) {
         const j = await wRes.json();
         setLeads(Array.isArray(j.leads) ? j.leads : []);
+      } else {
+        const problem = await wRes.json().catch(() => ({}));
+        throw new Error(problem.error ?? `HTTP ${wRes.status}`);
       }
       if (qRes?.ok) {
         const j = await qRes.json();
@@ -215,7 +231,7 @@ export default function LeadMapMyDayPanel() {
     } catch (err) {
       setError(`Lasting feilet: ${String(err)}`);
     } finally { setLoading(false); }
-  }, [orgId, position, headers]);
+  }, [orgId, projectId, position, headers]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -223,6 +239,7 @@ export default function LeadMapMyDayPanel() {
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'rr_lead_map_active_org') setOrgId(getActiveOrgId());
+      if (e.key === 'rr_lead_map_active_project') setProjectId(getActiveProjectId());
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);

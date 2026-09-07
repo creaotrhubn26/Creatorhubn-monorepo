@@ -11,10 +11,17 @@ enum AuthClient {
     private static let service = "com.creatorhubn.LeadMapApp.auth"
     private static let tokenAccount = "bearer_token"
     private static let emailAccount = "user_email"
+    private static let actorUserIdAccount = "actor_user_id"
 
     static func saveToken(_ token: String, email: String?) {
         save(token, account: tokenAccount)
-        if let email { save(email, account: emailAccount) }
+        if let email, !email.isEmpty {
+            save(email, account: emailAccount)
+        } else {
+            delete(account: emailAccount)
+        }
+        // A new token must never inherit another account's cache identity.
+        delete(account: actorUserIdAccount)
     }
 
     static func loadToken() -> String? {
@@ -30,10 +37,21 @@ enum AuthClient {
         return load(account: tokenAccount)
     }
     static func loadEmail() -> String? { load(account: emailAccount) }
+    static func loadActorUserId() -> String? { load(account: actorUserIdAccount) }
+
+    static func saveActorUserId(_ userId: String) {
+        let normalized = userId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else {
+            delete(account: actorUserIdAccount)
+            return
+        }
+        save(normalized, account: actorUserIdAccount)
+    }
 
     static func clear() {
         delete(account: tokenAccount)
         delete(account: emailAccount)
+        delete(account: actorUserIdAccount)
     }
 
     // MARK: - Internal

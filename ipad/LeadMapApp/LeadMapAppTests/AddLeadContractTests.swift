@@ -91,3 +91,56 @@ final class AddLeadRequestContractTests: XCTestCase {
         XCTAssertEqual(request.idempotencyKey, idempotencyKey)
     }
 }
+
+final class LeadgridAssignmentScopeContractTests: XCTestCase {
+    private let crmLeadID = "22222222-2222-4222-8222-222222222222"
+
+    func testAssignableUsersUsesCRMLeadAndProjectTogether() throws {
+        let path = try LeadgridAssignmentScope.assignableUsersPath(
+            role: "team_leader",
+            customerId: crmLeadID,
+            projectId: "dentum-oslo"
+        )
+        let components = try XCTUnwrap(
+            URLComponents(string: "https://leadgrid.no\(path)")
+        )
+        let query = Dictionary(
+            uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
+                item.value.map { (item.name, $0) }
+            }
+        )
+
+        XCTAssertEqual(components.path, "/api/leadgrid/assignable-users")
+        XCTAssertEqual(query["role"], "team_leader")
+        XCTAssertEqual(query["leadId"], crmLeadID)
+        XCTAssertEqual(query["projectId"], "dentum-oslo")
+    }
+
+    func testAssignableUsersFailsClosedWithoutPersistedScope() {
+        XCTAssertThrowsError(
+            try LeadgridAssignmentScope.assignableUsersPath(
+                role: "rep",
+                customerId: "agency-source-id",
+                projectId: "dentum-oslo"
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? LeadgridAssignmentScopeError,
+                .invalidCRMLeadID
+            )
+        }
+
+        XCTAssertThrowsError(
+            try LeadgridAssignmentScope.assignableUsersPath(
+                role: "rep",
+                customerId: crmLeadID,
+                projectId: " "
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? LeadgridAssignmentScopeError,
+                .missingProjectID
+            )
+        }
+    }
+}

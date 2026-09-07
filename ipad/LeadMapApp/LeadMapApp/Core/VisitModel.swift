@@ -5,6 +5,8 @@ import Foundation
 enum VisitType: String, Codable, CaseIterable {
     case physical
     case phone
+    case sms
+    case whatsapp
     case email
     case onlineMeeting = "online_meeting"
     case research
@@ -13,9 +15,23 @@ enum VisitType: String, Codable, CaseIterable {
         switch self {
         case .physical: return "Fysisk besøk"
         case .phone: return "Telefon"
+        case .sms: return "SMS"
+        case .whatsapp: return "WhatsApp"
         case .email: return "E-post"
         case .onlineMeeting: return "Online-møte"
         case .research: return "Research"
+        }
+    }
+
+    var activityKind: String {
+        switch self {
+        case .physical: return "visit"
+        case .phone: return "call"
+        case .sms: return "sms"
+        case .whatsapp: return "whatsapp"
+        case .email: return "email"
+        case .onlineMeeting: return "meeting"
+        case .research: return "note"
         }
     }
 }

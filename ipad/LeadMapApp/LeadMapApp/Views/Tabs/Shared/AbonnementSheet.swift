@@ -12,8 +12,8 @@
 //   3. Fakturahistorikk — fra Stripe via backend (status/beløp/PDF)
 //   4. «Administrer betaling» — Stripe kundeportal i Safari
 //
-// Åpnes fra ProfilePopover (kun admin/salgssjef). Ærlige tom-tilstander:
-// org uten Stripe-kobling ser det — vi later ikke som det finnes fakturaer.
+// Åpnes fra Profil for alle medlemmer. Plan/funksjoner er lesbare for alle;
+// fakturaer og Stripe-portal er begrenset til org-admin/super-admin.
 
 import SwiftUI
 
@@ -39,11 +39,20 @@ struct AbonnementSheet: View {
 
     @State private var planKey: String?
     @State private var loadedEnvelope = false
+    @State private var entitlementsLoadFailed = false
     @State private var invoices: [LeadgridBillingInvoice] = []
     @State private var invoicesLoading = true
     @State private var invoicesError = false
     @State private var portalLoading = false
     @State private var toast: String?
+
+    private var canManageBilling: Bool {
+        appState.canManageWorkspaceBilling
+    }
+
+    private var subscriptionLoadKey: String {
+        "\(appState.activeOrganizationId ?? "none")|\(canManageBilling)"
+    }
 
     var body: some View {
         NavigationStack {
@@ -51,7 +60,28 @@ struct AbonnementSheet: View {
                 VStack(alignment: .leading, spacing: 16) {
                     planCard
                     featureSection
-                    invoiceSection
+                    if canManageBilling, let api = appState.api,
+                       let organizationId = appState.activeOrganizationId {
+                        NavigationLink {
+                            LeadgridAIUsageView(api: api, organizationId: organizationId)
+                        } label: {
+                            HStack(spacing: 10) {
+                                Label("AI-kost og bruk", systemImage: "chart.bar.xaxis")
+                                    .font(.appScaled(size: 13, weight: .bold))
+                                    .foregroundStyle(.white)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.appScaled(size: 10, weight: .bold))
+                                    .foregroundStyle(AbBrand.textTertiary)
+                            }
+                            .padding(14)
+                            .background(AbBrand.card, in: RoundedRectangle(cornerRadius: 14))
+                            .overlay(RoundedRectangle(cornerRadius: 14)
+                                .stroke(AbBrand.stroke, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if canManageBilling { invoiceSection }
                     Color.clear.frame(height: 20)
                 }
                 .padding(.horizontal, 16)
@@ -85,26 +115,50 @@ struct AbonnementSheet: View {
         }
         .preferredColorScheme(.dark)
         .presentationDragIndicator(.visible)
-        .task { await load() }
+        .task(id: subscriptionLoadKey) { await load() }
     }
 
     // MARK: Datalasting
 
     private func load() async {
-        guard let api = appState.api else {
+        guard let api = appState.api,
+              let requestedOrganizationId = appState.activeOrganizationId else {
+            planKey = nil
+            loadedEnvelope = true
             invoicesLoading = false
             return
         }
+        loadedEnvelope = false
+        entitlementsLoadFailed = false
+        invoices = []
+        invoicesError = false
+        invoicesLoading = canManageBilling
         async let envelopeTask = try? api.fetchMyEntitlements(
-            organizationId: appState.activeOrganizationId)
-        async let invoicesTask = try? api.fetchLeadgridBillingInvoices()
+            organizationId: requestedOrganizationId)
+        async let planTask: Void = appState.loadWorkspacePlanSummary()
         let envelope = await envelopeTask
-        let inv = await invoicesTask
-        planKey = envelope?.plan
-        loadedEnvelope = true
-        if let inv {
-            invoices = inv.invoices
+        await planTask
+
+        guard requestedOrganizationId == appState.activeOrganizationId else { return }
+        if let envelope {
+            entitlements.applyServer(envelope)
         } else {
+            entitlementsLoadFailed = true
+        }
+        planKey = appState.workspacePlanSummary?.planKey ?? envelope?.plan
+        loadedEnvelope = true
+
+        guard canManageBilling else {
+            invoicesLoading = false
+            return
+        }
+        if let response = try? await api.fetchLeadgridBillingInvoices(
+            organizationId: requestedOrganizationId
+        ) {
+            guard requestedOrganizationId == appState.activeOrganizationId else { return }
+            invoices = response.invoices
+        } else {
+            guard requestedOrganizationId == appState.activeOrganizationId else { return }
             invoicesError = true
         }
         invoicesLoading = false
@@ -112,16 +166,12 @@ struct AbonnementSheet: View {
 
     // MARK: Plan-kort
 
-    /// Backend-plan-nøkler er rå («solo_pro»/«agency»/…) — prettifisér.
     private var planDisplay: String {
-        switch (planKey ?? "").lowercased() {
-        case "solo_pro": return "Solo Pro"
-        case "agency": return "Agency"
-        case "": return "Ingen aktiv plan"
-        default: return (planKey ?? "").split(separator: "_")
-            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
-            .joined(separator: " ")
+        if appState.workspacePlanOrganizationId == appState.activeOrganizationId,
+           let summary = appState.workspacePlanSummary {
+            return summary.displayName
         }
+        return LeadgridPlanPresentation.displayName(for: planKey)
     }
 
     private var planCard: some View {
@@ -131,7 +181,7 @@ struct AbonnementSheet: View {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(LinearGradient(colors: [AbBrand.purple, AbBrand.purpleLight],
                                              startPoint: .topLeading, endPoint: .bottomTrailing))
-                    Image(systemName: "creditcard.fill")
+                    Image(systemName: LeadgridPlanPresentation.icon(for: planKey))
                         .font(.appScaled(size: 18, weight: .bold))
                         .foregroundStyle(.white)
                 }
@@ -148,28 +198,35 @@ struct AbonnementSheet: View {
                 }
                 Spacer()
             }
-            // Stripe kundeportal: fakturaer, betalingsmetode, kansellering.
-            Button {
-                Task { await openPortal() }
-            } label: {
-                HStack(spacing: 6) {
-                    if portalLoading {
-                        ProgressView().tint(.white)
-                    } else {
-                        Image(systemName: "gearshape.fill")
-                            .font(.appScaled(size: 12, weight: .bold))
+            if canManageBilling {
+                // Stripe kundeportal: fakturaer, betalingsmetode, kansellering.
+                Button {
+                    Task { await openPortal() }
+                } label: {
+                    HStack(spacing: 6) {
+                        if portalLoading {
+                            ProgressView().tint(.white)
+                        } else {
+                            Image(systemName: "gearshape.fill")
+                                .font(.appScaled(size: 12, weight: .bold))
+                        }
+                        Text("Administrer betaling")
+                            .font(.appScaled(size: 13, weight: .bold))
                     }
-                    Text("Administrer betaling")
-                        .font(.appScaled(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(AbBrand.cardHi, in: RoundedRectangle(cornerRadius: 11))
+                    .overlay(RoundedRectangle(cornerRadius: 11).stroke(AbBrand.stroke, lineWidth: 1))
                 }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(AbBrand.cardHi, in: RoundedRectangle(cornerRadius: 11))
-                .overlay(RoundedRectangle(cornerRadius: 11).stroke(AbBrand.stroke, lineWidth: 1))
+                .buttonStyle(.plain)
+                .disabled(portalLoading)
+            } else {
+                Label("Betaling administreres av organisasjonens administrator",
+                      systemImage: "lock.shield.fill")
+                    .font(.appScaled(size: 11, weight: .semibold))
+                    .foregroundStyle(AbBrand.textSecondary)
             }
-            .buttonStyle(.plain)
-            .disabled(portalLoading)
         }
         .padding(14)
         .background(AbBrand.card, in: RoundedRectangle(cornerRadius: 14))
@@ -177,11 +234,15 @@ struct AbonnementSheet: View {
     }
 
     private func openPortal() async {
-        guard let api = appState.api else { return }
+        guard canManageBilling,
+              let api = appState.api,
+              let organizationId = appState.activeOrganizationId else { return }
         portalLoading = true
         defer { portalLoading = false }
         do {
-            let resp = try await api.createBillingPortalSession()
+            let resp = try await api.createBillingPortalSession(
+                organizationId: organizationId
+            )
             if let url = URL(string: resp.url) {
                 await UIApplication.shared.open(url)
             }
@@ -215,27 +276,41 @@ struct AbonnementSheet: View {
     private var featureSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionTitle("Funksjoner i planen")
-            if !entitlements.hasServerEntitlements {
-                Text("Alle funksjoner er åpne for organisasjonen din (standard-tilgang).")
-                    .font(.appScaled(size: 11))
-                    .foregroundStyle(AbBrand.textSecondary)
-            }
-            ForEach(LeadgridFeature.Group.allCases) { group in
-                let feats = visibleFeatures(in: group)
-                if !feats.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: 6) {
-                            Image(systemName: group.icon)
-                                .font(.appScaled(size: 10, weight: .semibold))
-                                .foregroundStyle(group.tint)
-                            Text(group.rawValue)
-                                .font(.appScaled(size: 11, weight: .black))
-                                .foregroundStyle(AbBrand.textSecondary)
-                                .textCase(.uppercase)
-                                .tracking(0.6)
-                        }
-                        VStack(spacing: 4) {
-                            ForEach(feats) { f in featureRow(f) }
+            if !loadedEnvelope {
+                HStack(spacing: 8) {
+                    ProgressView().tint(AbBrand.purpleLight)
+                    Text("Henter funksjoner …")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(AbBrand.textSecondary)
+                }
+            } else if entitlementsLoadFailed {
+                Label("Kunne ikke hente funksjonene for dette workspacet",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.appScaled(size: 11, weight: .semibold))
+                    .foregroundStyle(AbBrand.orange)
+            } else {
+                if !entitlements.hasServerEntitlements {
+                    Text("Alle funksjoner er åpne for organisasjonen din (standard-tilgang).")
+                        .font(.appScaled(size: 11))
+                        .foregroundStyle(AbBrand.textSecondary)
+                }
+                ForEach(LeadgridFeature.Group.allCases) { group in
+                    let feats = visibleFeatures(in: group)
+                    if !feats.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 6) {
+                                Image(systemName: group.icon)
+                                    .font(.appScaled(size: 10, weight: .semibold))
+                                    .foregroundStyle(group.tint)
+                                Text(group.rawValue)
+                                    .font(.appScaled(size: 11, weight: .black))
+                                    .foregroundStyle(AbBrand.textSecondary)
+                                    .textCase(.uppercase)
+                                    .tracking(0.6)
+                            }
+                            VStack(spacing: 4) {
+                                ForEach(feats) { f in featureRow(f) }
+                            }
                         }
                     }
                 }

@@ -1,4 +1,5 @@
 import { computeScore, type FactorValue } from "./integrations/score-model.js";
+import type { DiscoveryWebsiteQualityAssessment } from "./leadgrid-discovery-brreg-provider.js";
 
 export interface DiscoveryScoreInput {
   candidateName: string;
@@ -14,6 +15,30 @@ export interface DiscoveryScoreInput {
   organizationNumber: string | null;
   companyStatus: "active" | "in_liquidation" | "bankrupt" | null;
   industryQueries: string[];
+  municipalityNumber?: string | null;
+  requiredMunicipalityNumbers?: string[];
+  organizationFormCode?: string | null;
+  requiredOrganizationForms?: string[];
+  employeeCount?: number | null;
+  employeeCountKnown?: boolean;
+  minimumEmployees?: number | null;
+  maximumEmployees?: number | null;
+  organizationStructure?: "independent" | "chain" | "unknown";
+  requiredOrganizationStructure?: "any" | "independent" | "chain";
+  organizationStructureEvidence?: {
+    sourceUri: string;
+    basis: string;
+    relatedOrganizationCount: number | null;
+  } | null;
+  websiteRequirement?: "any" | "present" | "missing";
+  minimumWebsiteQualityScore?: number | null;
+  websiteQuality?: DiscoveryWebsiteQualityAssessment | null;
+  registeredInVatRegister?: boolean;
+  registeredInVatRegisterKnown?: boolean;
+  requiredVatRegistration?: boolean | null;
+  registeredInBusinessRegister?: boolean;
+  registeredInBusinessRegisterKnown?: boolean;
+  requiredBusinessRegistration?: boolean | null;
   idealCustomer?: string | null;
   exclusionTerms: string[];
   minimumFitScore?: number | null;
@@ -32,13 +57,23 @@ export interface DiscoveryCandidateScore {
   reasons: string[];
   factors: { fit: FactorValue[]; dataQuality: FactorValue[] };
   explanation: Record<string, unknown>;
-  modelVersion: "discovery-fit-v3-brreg";
+  modelVersion: "discovery-fit-v4-profile-evidence";
 }
 
 const FIT_WEIGHTS: Record<string, number> = {
   industry_relevance: 45,
   geography: 25,
   company_status: 30,
+};
+
+const PROFILE_FILTER_WEIGHTS: Record<string, number> = {
+  organization_form: 15,
+  employee_count: 15,
+  organization_structure: 12,
+  website_presence: 8,
+  website_quality: 15,
+  vat_registration: 10,
+  business_register_registration: 10,
 };
 
 const QUALITY_WEIGHTS: Record<string, number> = {
@@ -114,12 +149,27 @@ export function scoreDiscoveryCandidate(
   input: DiscoveryScoreInput,
 ): DiscoveryCandidateScore {
   const exclusionMatches = exclusions(input);
+  const filterMismatches: string[] = [];
+  const unknownFilterEvidence: string[] = [];
+  const fitWeights = { ...FIT_WEIGHTS };
+  const requiredMunicipalityNumbers = input.requiredMunicipalityNumbers ?? [];
   const geoValue =
-    input.radiusMeters === null || input.distanceMeters === null
-      ? null
-      : input.distanceMeters <= input.radiusMeters
-        ? Math.max(0.6, 1 - (input.distanceMeters / input.radiusMeters) * 0.4)
-        : 0;
+    requiredMunicipalityNumbers.length > 0
+      ? input.municipalityNumber
+        ? requiredMunicipalityNumbers.includes(input.municipalityNumber)
+          ? 1
+          : 0
+        : null
+      : input.radiusMeters === null || input.distanceMeters === null
+        ? null
+        : input.distanceMeters <= input.radiusMeters
+          ? Math.max(0.6, 1 - (input.distanceMeters / input.radiusMeters) * 0.4)
+          : 0;
+  if (requiredMunicipalityNumbers.length > 0 && geoValue === 0) {
+    filterMismatches.push("municipality");
+  } else if (requiredMunicipalityNumbers.length > 0 && geoValue === null) {
+    unknownFilterEvidence.push("municipality");
+  }
   const companyValue =
     input.companyStatus === "active"
       ? 1
@@ -162,17 +212,32 @@ export function scoreDiscoveryCandidate(
     {
       key: "geography",
       value: geoValue,
-      missingReason: geoValue === null ? "Ingen målt avstand" : undefined,
+      missingReason:
+        geoValue === null
+          ? requiredMunicipalityNumbers.length > 0
+            ? "Kommunenummer mangler i registeradressen"
+            : "Ingen målt avstand"
+          : undefined,
       evidence:
-        input.distanceMeters === null
-          ? []
-          : [
-              {
-                ref: "geonorge.address_location",
-                label: "Avstand (meter)",
-                value: Math.round(input.distanceMeters),
-              },
-            ],
+        requiredMunicipalityNumbers.length > 0
+          ? input.municipalityNumber
+            ? [
+                {
+                  ref: "brreg.business_address.municipality_number",
+                  label: "Kommunenummer",
+                  value: input.municipalityNumber,
+                },
+              ]
+            : []
+          : input.distanceMeters === null
+            ? []
+            : [
+                {
+                  ref: "geonorge.address_location",
+                  label: "Avstand (meter)",
+                  value: Math.round(input.distanceMeters),
+                },
+              ],
     },
     {
       key: "company_status",
@@ -192,6 +257,259 @@ export function scoreDiscoveryCandidate(
         : [],
     },
   ];
+
+  const appendProfileFactor = (
+    key: keyof typeof PROFILE_FILTER_WEIGHTS,
+    value: number | null,
+    missingReason: string,
+    evidence: FactorValue["evidence"],
+  ): void => {
+    fitWeights[key] = PROFILE_FILTER_WEIGHTS[key];
+    fitFactors.push({
+      key,
+      value,
+      missingReason: value === null ? missingReason : undefined,
+      evidence,
+    });
+    if (value === 0) filterMismatches.push(key);
+    if (value === null) unknownFilterEvidence.push(key);
+  };
+
+  const requiredOrganizationForms = input.requiredOrganizationForms ?? [];
+  if (requiredOrganizationForms.length > 0) {
+    const organizationFormCode =
+      input.organizationFormCode?.toUpperCase() ?? null;
+    appendProfileFactor(
+      "organization_form",
+      organizationFormCode
+        ? requiredOrganizationForms.includes(organizationFormCode)
+          ? 1
+          : 0
+        : null,
+      "Organisasjonsform mangler i registerdata",
+      [
+        {
+          ref: "discovery.brief.organization_forms",
+          label: "Tillatte organisasjonsformer",
+          value: requiredOrganizationForms.join(", "),
+        },
+        ...(organizationFormCode
+          ? [
+              {
+                ref: "brreg.organization_form.code",
+                label: "Organisasjonsform",
+                value: organizationFormCode,
+              },
+            ]
+          : []),
+      ],
+    );
+  }
+
+  if (input.minimumEmployees != null || input.maximumEmployees != null) {
+    const employeeCountKnown =
+      input.employeeCountKnown === true &&
+      input.employeeCount != null &&
+      Number.isFinite(input.employeeCount);
+    const employeeMatches =
+      employeeCountKnown &&
+      (input.minimumEmployees == null ||
+        (input.employeeCount as number) >= input.minimumEmployees) &&
+      (input.maximumEmployees == null ||
+        (input.employeeCount as number) <= input.maximumEmployees);
+    const requestedRange = [
+      input.minimumEmployees == null
+        ? null
+        : "min " + String(input.minimumEmployees),
+      input.maximumEmployees == null
+        ? null
+        : "maks " + String(input.maximumEmployees),
+    ]
+      .filter((value): value is string => value !== null)
+      .join(", ");
+    appendProfileFactor(
+      "employee_count",
+      employeeCountKnown ? (employeeMatches ? 1 : 0) : null,
+      "Antall ansatte er ikke eksplisitt registrert",
+      [
+        {
+          ref: "discovery.brief.employee_count",
+          label: "Ønsket antall ansatte",
+          value: requestedRange,
+        },
+        ...(employeeCountKnown
+          ? [
+              {
+                ref: "brreg.employee_count",
+                label: "Registrert antall ansatte",
+                value: input.employeeCount as number,
+              },
+            ]
+          : []),
+      ],
+    );
+  }
+
+  const requiredStructure = input.requiredOrganizationStructure ?? "any";
+  if (requiredStructure !== "any") {
+    const observedStructure = input.organizationStructure ?? "unknown";
+    const structureKnown = observedStructure !== "unknown";
+    appendProfileFactor(
+      "organization_structure",
+      structureKnown ? (observedStructure === requiredStructure ? 1 : 0) : null,
+      "Brreg har ikke eksplisitt evidens om konserntilknytning for virksomheten",
+      [
+        {
+          ref: "discovery.brief.organization_structure",
+          label: "Ønsket Brreg-konserntilknytning",
+          value: requiredStructure,
+        },
+        ...(input.organizationStructureEvidence
+          ? [
+              {
+                ref: "brreg.group_structure",
+                label: "Brreg-konserntilknytning",
+                value:
+                  observedStructure === "chain"
+                    ? "group_affiliation_observed"
+                    : observedStructure === "independent"
+                      ? "single_entity_observed"
+                      : "unknown",
+              },
+              {
+                ref: "brreg.group_structure.source_uri",
+                label: "Kilde",
+                value: input.organizationStructureEvidence.sourceUri,
+              },
+            ]
+          : []),
+      ],
+    );
+  }
+
+  const websiteRequirement = input.websiteRequirement ?? "any";
+  if (websiteRequirement !== "any") {
+    const websiteKnown = Boolean(input.website) || input.websiteKnown === true;
+    const hasWebsite = Boolean(input.website);
+    appendProfileFactor(
+      "website_presence",
+      websiteKnown
+        ? websiteRequirement === "present"
+          ? hasWebsite
+            ? 1
+            : 0
+          : hasWebsite
+            ? 0
+            : 1
+        : null,
+      "Nettsidetilstedeværelse er ikke undersøkt",
+      [
+        {
+          ref: "discovery.brief.website_requirement",
+          label: "Nettsidekrav",
+          value: websiteRequirement,
+        },
+        ...(websiteKnown
+          ? [
+              {
+                ref: "brreg.website",
+                label: "Registrert nettadresse",
+                value: input.website ?? "mangler",
+              },
+            ]
+          : []),
+      ],
+    );
+  }
+
+  const minimumWebsiteQualityScore = input.minimumWebsiteQualityScore ?? null;
+  if (minimumWebsiteQualityScore !== null) {
+    const assessment = input.websiteQuality;
+    const qualityKnown =
+      assessment?.status === "assessed" &&
+      typeof assessment.score === "number" &&
+      Number.isFinite(assessment.score);
+    const score = qualityKnown ? (assessment?.score as number) : null;
+    appendProfileFactor(
+      "website_quality",
+      score === null
+        ? null
+        : score >= minimumWebsiteQualityScore
+          ? score / 100
+          : 0,
+      "Nettsidekvalitet kunne ikke vurderes sikkert",
+      [
+        {
+          ref: "discovery.brief.website_quality.minimum_score",
+          label: "Minste nettsidekvalitet",
+          value: minimumWebsiteQualityScore,
+        },
+        ...(score !== null && assessment
+          ? [
+              {
+                ref: "discovery.website_quality.score",
+                label: "Målt nettsidekvalitet",
+                value: score,
+              },
+              {
+                ref: "discovery.website_quality.source_uri",
+                label: "Analysert registrert nettadresse",
+                value: assessment.sourceUri,
+              },
+            ]
+          : []),
+      ],
+    );
+  }
+
+  const appendCommercialSignal = (
+    key: "vat_registration" | "business_register_registration",
+    required: boolean | null | undefined,
+    observed: boolean | undefined,
+    known: boolean | undefined,
+    briefRef: string,
+    sourceRef: string,
+    label: string,
+  ): void => {
+    if (required == null) return;
+    appendProfileFactor(
+      key,
+      known === true && typeof observed === "boolean"
+        ? observed === required
+          ? 1
+          : 0
+        : null,
+      label + " er ikke eksplisitt oppgitt i registerdata",
+      [
+        {
+          ref: briefRef,
+          label: "Krav: " + label,
+          value: String(required),
+        },
+        ...(known === true && typeof observed === "boolean"
+          ? [{ ref: sourceRef, label, value: String(observed) }]
+          : []),
+      ],
+    );
+  };
+  appendCommercialSignal(
+    "vat_registration",
+    input.requiredVatRegistration,
+    input.registeredInVatRegister,
+    input.registeredInVatRegisterKnown,
+    "discovery.brief.commercial_signals.registered_in_vat_register",
+    "brreg.registered_in_vat_register",
+    "Registrert i Merverdiavgiftsregisteret",
+  );
+  appendCommercialSignal(
+    "business_register_registration",
+    input.requiredBusinessRegistration,
+    input.registeredInBusinessRegister,
+    input.registeredInBusinessRegisterKnown,
+    "discovery.brief.commercial_signals.registered_in_business_register",
+    "brreg.registered_in_business_register",
+    "Registrert i Foretaksregisteret",
+  );
 
   const dataQualityFactors: FactorValue[] = [
     qualityFactor(
@@ -260,7 +578,7 @@ export function scoreDiscoveryCandidate(
     ),
   ];
 
-  const fit = computeScore(fitFactors, FIT_WEIGHTS);
+  const fit = computeScore(fitFactors, fitWeights);
   const dataQuality = computeScore(dataQualityFactors, QUALITY_WEIGHTS);
   const belowMinimum =
     fit.score !== null &&
@@ -280,6 +598,14 @@ export function scoreDiscoveryCandidate(
   if (input.organizationNumber) {
     reasons.push("Har bekreftet organisasjonsnummer");
   }
+  if (filterMismatches.length) {
+    reasons.push("Matcher ikke profilfilter: " + filterMismatches.join(", "));
+  }
+  if (unknownFilterEvidence.length) {
+    reasons.push(
+      "Mangler sikker evidens for: " + unknownFilterEvidence.join(", "),
+    );
+  }
   if (belowMinimum) {
     reasons.push(
       `Fit-score ${fit.score} er under valgt minstegrense ${input.minimumFitScore}`,
@@ -291,7 +617,10 @@ export function scoreDiscoveryCandidate(
     fitCoverage: fit.coverage,
     dataQualityScore: dataQuality.score,
     dataQualityCoverage: dataQuality.coverage,
-    excluded: exclusionMatches.length > 0 || belowMinimum,
+    excluded:
+      exclusionMatches.length > 0 ||
+      filterMismatches.length > 0 ||
+      belowMinimum,
     exclusionMatches,
     reasons,
     factors: { fit: fitFactors, dataQuality: dataQualityFactors },
@@ -299,6 +628,41 @@ export function scoreDiscoveryCandidate(
       fit_contributions: fit.contributions,
       data_quality_contributions: dataQuality.contributions,
       exclusion_matches: exclusionMatches,
+      filter_mismatches: filterMismatches,
+      unknown_filter_evidence: unknownFilterEvidence,
+      website_quality: input.websiteQuality
+        ? {
+            status: input.websiteQuality.status,
+            score: input.websiteQuality.score,
+            minimum_score: minimumWebsiteQualityScore,
+            outcome:
+              input.websiteQuality.status !== "assessed" ||
+              input.websiteQuality.score === null
+                ? "unknown"
+                : minimumWebsiteQualityScore !== null &&
+                    input.websiteQuality.score < minimumWebsiteQualityScore
+                  ? "excluded"
+                  : "passed",
+            reason: input.websiteQuality.reason,
+            evidence: {
+              source_uri: input.websiteQuality.sourceUri,
+              final_url: input.websiteQuality.finalUrl,
+              fetched_at: input.websiteQuality.fetchedAt,
+              http_status: input.websiteQuality.httpStatus,
+              redirect_count: input.websiteQuality.redirectCount,
+              signals: input.websiteQuality.signals,
+            },
+          }
+        : {
+            status:
+              minimumWebsiteQualityScore === null ? "not_requested" : "unknown",
+            score: null,
+            minimum_score: minimumWebsiteQualityScore,
+            reason:
+              minimumWebsiteQualityScore === null
+                ? "not_requested"
+                : "not_assessed",
+          },
       minimum_fit_threshold:
         input.minimumFitScore == null
           ? null
@@ -309,6 +673,6 @@ export function scoreDiscoveryCandidate(
               outcome: belowMinimum ? "excluded" : "passed",
             },
     },
-    modelVersion: "discovery-fit-v3-brreg",
+    modelVersion: "discovery-fit-v4-profile-evidence",
   };
 }

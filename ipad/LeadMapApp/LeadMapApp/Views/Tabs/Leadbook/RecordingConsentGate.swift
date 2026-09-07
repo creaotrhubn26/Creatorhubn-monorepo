@@ -23,7 +23,7 @@ enum RecordingConsentGate {
 
 struct RecordingConsentGateSheet: View {
     /// Kalt når selger har bekreftet OG samtykket er logget server-side.
-    let onConfirmed: (LeadbookRecordingConsentDTO, String) -> Void
+    let onConfirmed: (LeadbookRecordingConsentDTO, String, String, String) -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
     @State private var customerLabel: String = ""
@@ -110,7 +110,9 @@ struct RecordingConsentGateSheet: View {
     }
 
     private func confirm() async {
-        guard let api = appState.api else {
+        guard let api = appState.api,
+              let requestedOrganizationId = appState.activeOrganizationId,
+              let requestedProjectId = appState.activeProjectId else {
             error = "Ikke innlogget mot backend — samtykke kan ikke logges."
             return
         }
@@ -118,13 +120,25 @@ struct RecordingConsentGateSheet: View {
         error = nil
         do {
             let consent = try await api.leadbookLogRecordingConsent(
+                projectId: requestedProjectId,
                 consentVersion: RecordingConsentGate.currentVersion,
                 customerLabel: customerLabel
             )
+            guard consent.projectId == requestedProjectId,
+                  appState.activeOrganizationId == requestedOrganizationId,
+                  appState.activeProjectId == requestedProjectId else {
+                isSaving = false
+                self.error = "Kundeprosjektet ble byttet. Bekreft samtykket på nytt i riktig prosjekt."
+                return
+            }
             let retainedCustomerLabel = customerLabel.trimmingCharacters(in: .whitespacesAndNewlines)
             isSaving = false
             dismiss()
-            onConfirmed(consent, retainedCustomerLabel)
+            onConfirmed(
+                consent,
+                retainedCustomerLabel,
+                requestedOrganizationId,
+                requestedProjectId)
         } catch {
             isSaving = false
             self.error = "Kunne ikke logge samtykke — prøv igjen. (\(error.localizedDescription))"

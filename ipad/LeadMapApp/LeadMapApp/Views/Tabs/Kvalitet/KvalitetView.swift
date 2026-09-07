@@ -44,7 +44,7 @@ struct KvalitetView: View {
         .sheet(isPresented: $showTemplates) {
             TemplateListSheet(templates: $templates)
         }
-        .task { await reload() }
+        .task(id: appState.activeProjectId) { await reload() }
         #if DEBUG
         // QA (landing-videoer): QA_TOUR=kvalitet spiller kø → åpne
         // verifiseringssamtale → lukk → åpne neste. simctl recordVideo
@@ -226,17 +226,27 @@ struct KvalitetView: View {
             loading = false; loadFailed = false
             return
         }
+        guard let projectId = appState.activeProjectId else {
+            items = []; counts = [:]; templates = []
+            sellerStats = []; reasonStats = []
+            loading = false; loadFailed = true
+            return
+        }
         loading = true; loadFailed = false
-        async let q = QualityService.shared.queue(using: appState.api)
-        async let t = QualityService.shared.templates(using: appState.api)
-        async let s = QualityService.shared.stats(using: appState.api)
-        if let result = await q {
+        async let q = QualityService.shared.queue(projectId: projectId, using: appState.api)
+        async let t = QualityService.shared.templates(projectId: projectId, using: appState.api)
+        async let s = QualityService.shared.stats(projectId: projectId, using: appState.api)
+        let queueResult = await q
+        let templateResult = await t
+        let statsResult = await s
+        guard appState.activeProjectId == projectId else { return }
+        if let result = queueResult {
             items = result.items; counts = result.counts
         } else {
             loadFailed = true
         }
-        templates = await t
-        if let stats = await s {
+        templates = templateResult
+        if let stats = statsResult {
             sellerStats = stats.sellers.filter { $0.total > 0 }
             reasonStats = stats.reasons
         }
@@ -600,8 +610,12 @@ struct VerificationCallView: View {
             status: status, answers: answers, reasonCode: reason,
             note: generalNote, callOutcome: callOutcome, templateId: template?.id,
             flagAsExample: flagAsExample ? true : nil)
+        guard let projectId = appState.activeProjectId else {
+            errorMsg = "Velg et kundeprosjekt før du lagrer verdiktet."
+            return
+        }
         if let err = await QualityService.shared.submitVerdict(
-            id: verification.id, body, using: appState.api) {
+            id: verification.id, body, projectId: projectId, using: appState.api) {
             errorMsg = "Kunne ikke lagre verdikt (\(err))."
             return
         }
@@ -674,7 +688,10 @@ struct TemplateListSheet: View {
     }
 
     private func refresh() async {
-        templates = await QualityService.shared.templates(using: appState.api)
+        guard let projectId = appState.activeProjectId else { return }
+        let fresh = await QualityService.shared.templates(projectId: projectId, using: appState.api)
+        guard appState.activeProjectId == projectId else { return }
+        templates = fresh
     }
 }
 
@@ -796,17 +813,23 @@ struct TemplateEditorSheet: View {
         saving = true; errorMsg = nil
         defer { saving = false }
         let cleanQuestions = questions.filter { !$0.question.trimmingCharacters(in: .whitespaces).isEmpty }
+        guard let projectId = appState.activeProjectId else {
+            errorMsg = "Velg et kundeprosjekt før du lagrer malen."
+            return
+        }
         let ok: Bool
         if let t = existing {
             ok = await QualityService.shared.updateTemplate(
                 id: t.id,
                 .init(name: name, productName: productName, introScript: intro,
                       questions: cleanQuestions, outroScript: outro),
+                projectId: projectId,
                 using: appState.api)
         } else {
             ok = await QualityService.shared.createTemplate(
                 .init(name: name, productName: productName, introScript: intro,
                       questions: cleanQuestions, outroScript: outro),
+                projectId: projectId,
                 using: appState.api)
         }
         if ok { await onSaved(); dismiss() }

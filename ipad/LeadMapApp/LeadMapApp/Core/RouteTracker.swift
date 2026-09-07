@@ -62,6 +62,9 @@ final class RouteTracker {
     private var flushTask: Task<Void, Never>?
     private var trackTask: Task<Void, Never>?
     private var lastFlushAt: Date?
+    private var activeProjectId: String?
+    private var pendingVisitKeys: [String: String] = [:]
+    private var pendingVisitPayloads: [String: LogRouteVisitPayload] = [:]
 
     /// APIClient injisert lazily. Vi lagrer weak siden APIClient eies av AppState.
     private weak var api: APIClient?
@@ -79,16 +82,53 @@ final class RouteTracker {
 
     /// Kalles av OversiktView/KartView (eller app-boot) med APIClient. Idempotent —
     /// re-start ny observasjon hvis api ble byttet.
-    func attach(api: APIClient) {
+    func attach(api: APIClient, projectId: String) {
+        let normalizedProjectId = projectId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedProjectId.isEmpty else {
+            clearProjectScope()
+            return
+        }
+        if activeProjectId != normalizedProjectId {
+            clearProjectState()
+            activeProjectId = normalizedProjectId
+        }
         self.api = api
         startObservingLocation()
     }
 
+    /// Called synchronously by AppState before another project is presented.
+    /// Buffered coordinates must never be relabelled with the next project.
+    func clearProjectScope() {
+        flushTask?.cancel()
+        trackTask?.cancel()
+        flushTask = nil
+        trackTask = nil
+        api = nil
+        activeProjectId = nil
+        clearProjectState()
+    }
+
+    private func clearProjectState() {
+        currentAssignment = nil
+        progress = nil
+        visits = []
+        nextStop = nil
+        adherenceStatus = .noRoute
+        currentDeviationM = nil
+        distanceToNextStopM = nil
+        etaMinutes = nil
+        buffer.removeAll(keepingCapacity: false)
+        pendingVisitKeys.removeAll(keepingCapacity: false)
+        pendingVisitPayloads.removeAll(keepingCapacity: false)
+        lastFlushAt = nil
+    }
+
     /// Hent rute på nytt (typisk pull-down eller etter visit-log).
     func refreshRoute(date: String? = nil) async {
-        guard let api else { return }
+        guard let api, let projectId = activeProjectId else { return }
         do {
-            let resp = try await api.fetchMyRoute(date: date)
+            let resp = try await api.fetchMyRoute(projectId: projectId, date: date)
+            guard activeProjectId == projectId, resp.projectId == projectId else { return }
             currentAssignment = resp.assignment
             progress = resp.progress
             visits = resp.visits
@@ -126,19 +166,43 @@ final class RouteTracker {
         coordinate: CLLocationCoordinate2D,
         notes: String? = nil
     ) async -> RouteVisitDTO? {
-        guard let api, let assignmentId = currentAssignment?.id else {
+        guard let api,
+              let projectId = activeProjectId,
+              let assignment = currentAssignment,
+              assignment.projectId == projectId else {
             return nil
         }
-        let payload = LogRouteVisitPayload(
-            stopLeadId: stopLeadId,
-            actualLat: coordinate.latitude,
-            actualLon: coordinate.longitude,
-            notes: notes
-        )
+        let assignmentId = assignment.id
+        let actionKey = "\(projectId)|\(assignmentId.uuidString)|\(stopLeadId)"
+        let payload: LogRouteVisitPayload
+        let idempotencyKey: String
+        if let pendingPayload = pendingVisitPayloads[actionKey],
+           let pendingKey = pendingVisitKeys[actionKey] {
+            payload = pendingPayload
+            idempotencyKey = pendingKey
+        } else {
+            payload = LogRouteVisitPayload(
+                stopLeadId: stopLeadId,
+                actualLat: coordinate.latitude,
+                actualLon: coordinate.longitude,
+                notes: notes
+            )
+            idempotencyKey = UUID().uuidString.lowercased()
+            pendingVisitPayloads[actionKey] = payload
+            pendingVisitKeys[actionKey] = idempotencyKey
+        }
         do {
             let visit = try await api.logRouteVisit(
-                assignmentId: assignmentId, payload
+                assignmentId: assignmentId,
+                payload,
+                projectId: projectId,
+                idempotencyKey: idempotencyKey
             )
+            guard activeProjectId == projectId, visit.projectId == projectId else {
+                return nil
+            }
+            pendingVisitPayloads.removeValue(forKey: actionKey)
+            pendingVisitKeys.removeValue(forKey: actionKey)
             await refreshRoute()
             return visit
         } catch {
@@ -197,6 +261,7 @@ final class RouteTracker {
         speed: Double,
         heading: Double?
     ) {
+        guard activeProjectId != nil else { return }
         let sample = PositionSampleDTO(
             coordinate: coordinate,
             speed: speed,
@@ -268,16 +333,19 @@ final class RouteTracker {
     }
 
     private func flushBufferedSamples() async {
-        guard let api, !buffer.isEmpty else { return }
+        guard let api, let projectId = activeProjectId, !buffer.isEmpty else { return }
         let batch = buffer
         buffer.removeAll(keepingCapacity: true)
         do {
-            _ = try await api.flushPositionSamples(batch)
+            _ = try await api.flushPositionSamples(batch, projectId: projectId)
+            guard activeProjectId == projectId else { return }
             lastFlushAt = Date()
         } catch {
             // Ved feil — legg buffer tilbake foran ny data så vi kan retry.
             // Prepend for å bevare rekkefølge (eldste først).
-            buffer.insert(contentsOf: batch, at: 0)
+            if activeProjectId == projectId {
+                buffer.insert(contentsOf: batch, at: 0)
+            }
             #if DEBUG
             print("[RouteTracker] flush failed:", error.localizedDescription)
             #endif

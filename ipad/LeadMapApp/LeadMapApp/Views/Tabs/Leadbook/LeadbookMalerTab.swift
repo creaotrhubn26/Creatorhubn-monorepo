@@ -1165,7 +1165,9 @@ struct MalEditorSheet: View {
             flash("Skriv litt tekst først — AI-en trenger noe å styrke")
             return
         }
-        guard let api = appState.api else {
+        guard let api = appState.api,
+              let organizationId = appState.activeOrganizationId,
+              let projectId = appState.activeProjectId else {
             flash("AI utilgjengelig — ikke innlogget mot backend")
             return
         }
@@ -1173,8 +1175,12 @@ struct MalEditorSheet: View {
         Task { @MainActor in
             defer { aiBusyStepID = nil }
             do {
-                let intel = LeadbookExampleIntelligenceFactory.makePhrasing(api: api)
+                let intel = LeadbookExampleIntelligenceFactory.makePhrasing(
+                    api: api,
+                    projectId: projectId)
                 let result = try await intel.strengthen(text: original, charLimit: limit)
+                guard appState.activeOrganizationId == organizationId,
+                      appState.activeProjectId == projectId else { return }
                 step.content.wrappedValue = result.suggestion
                 flash(result.source == .onDevice
                       ? "AI foreslo sterkere formulering — på enheten"

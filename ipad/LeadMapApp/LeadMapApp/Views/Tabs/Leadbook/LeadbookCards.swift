@@ -2516,11 +2516,20 @@ struct NewObjectionSheet: View {
     /// Foreslår en respons via Claude basert på tittel-feltet (innvendingen
     /// selv). Krever tittel utfylt — knappen er disabled inntil da.
     private func suggestAI() async {
-        guard !title.isEmpty, let api = appState.api else { return }
+        guard !title.isEmpty,
+              let api = appState.api,
+              let organizationId = appState.activeOrganizationId,
+              let projectId = appState.activeProjectId else { return }
         aiSuggesting = true
         errorText = nil
         do {
-            response = try await api.suggestObjectionResponse(objection: title, category: categoryLabel)
+            let suggestion = try await api.suggestObjectionResponse(
+                projectId: projectId,
+                objection: title,
+                category: categoryLabel)
+            guard appState.activeOrganizationId == organizationId,
+                  appState.activeProjectId == projectId else { return }
+            response = suggestion
         } catch {
             errorText = "AI-forslag feilet — prøv igjen, eller skriv responsen selv."
         }

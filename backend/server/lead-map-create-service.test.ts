@@ -15,6 +15,7 @@ import {
 const IDEMPOTENCY_KEY = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const OWNER_ID = '11111111-1111-4111-8111-111111111111';
 const ORGANIZATION_ID = '22222222-2222-4222-8222-222222222222';
+const PROJECT_ID = 'dentum-project';
 
 function creationBody() {
   return parseLeadCreationBody({
@@ -42,6 +43,7 @@ function creationBody() {
     city: 'Oslo',
     location_confidence: 'exact',
     lead_source: 'manual_form',
+    project_id: PROJECT_ID,
   });
 }
 
@@ -198,13 +200,14 @@ describe('createLeadFromPin', () => {
     expect(query).toHaveBeenCalledWith('ROLLBACK');
   });
 
-  it('finner naturlig duplikat bare innenfor samme workspace', async () => {
+  it('finner naturlig duplikat bare innenfor samme kundeprosjekt', async () => {
     const { pool, query } = mockPool((sql, params) => {
       if (sql.includes('SELECT id::text, creation_request_hash')) {
         return { rows: [], rowCount: 0 };
       }
       if (sql.includes('AS organization_number_match')) {
         expect(params?.[0]).toBe(ORGANIZATION_ID);
+        expect(params?.[1]).toBe(PROJECT_ID);
         return {
           rows: [
             {
@@ -248,16 +251,17 @@ describe('createLeadFromPin', () => {
       unknown[],
     ];
     expect(duplicateSql).toContain('organization_id = $1::uuid');
-    expect(duplicateSql).toContain('email_normalized = $5::text');
-    expect(duplicateSql).toContain('phone_normalized = $6::text');
+    expect(duplicateSql).toContain('project_id = $2');
+    expect(duplicateSql).toContain('email_normalized = $6::text');
+    expect(duplicateSql).toContain('phone_normalized = $7::text');
     expect(duplicateSql).toContain('<= 25.0');
-    expect(duplicateParams[4]).toBe('post@nordic.example');
-    expect(duplicateParams[5]).toBe('+4799999999');
-    expect(duplicateParams[6]).toBe(true);
+    expect(duplicateParams[5]).toBe('post@nordic.example');
+    expect(duplicateParams[6]).toBe('+4799999999');
+    expect(duplicateParams[7]).toBe(true);
     expect(
       query.mock.calls.some(([_sql, params]) =>
         Array.isArray(params)
-        && params[0] === `leadgrid:${ORGANIZATION_ID}:geographic_proximity`
+        && params[0] === `leadgrid:${ORGANIZATION_ID}:${PROJECT_ID}:geographic_proximity`
       ),
     ).toBe(true);
     expect(query).toHaveBeenCalledWith('ROLLBACK');
@@ -267,7 +271,8 @@ describe('createLeadFromPin', () => {
     const { pool, query } = mockPool((sql, params) => {
       if (sql.includes('AS organization_number_match')) {
         expect(params?.[0]).toBe(ORGANIZATION_ID);
-        expect(params?.[9]).toBe(20);
+        expect(params?.[1]).toBe(PROJECT_ID);
+        expect(params?.[10]).toBe(20);
         return {
           rows: [{
             id: 'lead-existing',

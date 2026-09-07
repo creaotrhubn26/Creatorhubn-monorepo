@@ -45,7 +45,7 @@ struct MyRouteView: View {
         .presentationBackground(.clear)
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
-        .task { await refresh() }
+        .task(id: appState.activeProjectId) { await refresh() }
         .onReceive(clockTimer) { now in
             currentTime = now
             currentCoord = KartLocationManager.shared.currentCoordinate
@@ -645,11 +645,16 @@ struct MyRouteView: View {
     private func refresh() async {
         loading = true
         errorMessage = nil
-        defer { loading = false }
-        if let api = appState.api {
-            RouteTracker.shared.attach(api: api)
+        guard let api = appState.api,
+              let projectId = appState.activeProjectId else {
+            RouteTracker.shared.clearProjectScope()
+            loading = false
+            return
         }
+        RouteTracker.shared.attach(api: api, projectId: projectId)
         await RouteTracker.shared.refreshRoute()
+        guard appState.activeProjectId == projectId else { return }
+        loading = false
         fitCameraToRoute()
     }
 }

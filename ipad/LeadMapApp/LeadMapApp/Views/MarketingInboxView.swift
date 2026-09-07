@@ -16,7 +16,6 @@ struct MarketingInboxView: View {
     @State private var error: String?
     @State private var filter: StatusFilter = .open
     @State private var selectedFocus: FocusRequestRow?
-    @State private var startedDeliverableId: String?
 
     enum StatusFilter: String, CaseIterable {
         case open = "open"
@@ -33,7 +32,7 @@ struct MarketingInboxView: View {
 
         var apiValue: String? {
             switch self {
-            case .open:        return "pending"
+            case .open:        return "open"
             case .in_progress: return "in_progress"
             case .completed:   return "completed"
             }
@@ -51,12 +50,16 @@ struct MarketingInboxView: View {
                 .navigationTitle("Innboks")
                 .navigationBarTitleDisplayMode(.large)
                 .toolbar { toolbar }
-                .task { await load() }
+                .task(id: appState.activeProjectId) {
+                    selectedFocus = nil
+                    response = nil
+                    await load()
+                }
                 .refreshable { await load() }
                 .sheet(item: $selectedFocus) { focus in
                     DeliveryPlaybookView(
                         focusRequest: focus,
-                        existingDeliverableId: startedDeliverableId
+                        existingDeliverableId: focus.deliverableId
                     )
                 }
         }
@@ -66,7 +69,17 @@ struct MarketingInboxView: View {
     private var content: some View {
         ScrollView {
             VStack(spacing: 14) {
-                if isLoading && response == nil {
+                ProjectContextPill()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if appState.activeProjectId == nil {
+                    ContentUnavailableView(
+                        "Velg et kundeprosjekt",
+                        systemImage: "folder.badge.questionmark",
+                        description: Text("Innboksen viser forespørsler fra ett prosjekt om gangen.")
+                    )
+                    .padding(.top, 48)
+                } else if isLoading && response == nil {
                     ProgressView().padding(.top, 60)
                 } else if let rows = response?.focusRequests {
                     if rows.isEmpty {
@@ -174,6 +187,7 @@ struct MarketingInboxView: View {
         case "in_progress":  color = .yellow; label = "Pågår"
         case "completed":    color = .green;  label = "Ferdig"
         case "declined":     color = .gray;   label = "Avvist"
+        case "withdrawn":    color = .gray;   label = "Trukket"
         default:             color = .gray;   label = status
         }
         return Text(label)
@@ -186,12 +200,22 @@ struct MarketingInboxView: View {
 
     private func load() async {
         guard let api = appState.api,
-              let orgId = appState.activeOrganizationId else { return }
+              let projectId = appState.activeProjectId else {
+            isLoading = false
+            return
+        }
+        isLoading = true
+        error = nil
         do {
-            let r = try await api.fetchFocusRequests(orgId: orgId, status: filter.apiValue)
+            let r = try await api.fetchFocusRequests(
+                projectId: projectId,
+                status: filter.apiValue
+            )
+            guard appState.activeProjectId == projectId else { return }
             response = r
             isLoading = false
         } catch {
+            guard appState.activeProjectId == projectId else { return }
             self.error = String(describing: error)
             isLoading = false
         }

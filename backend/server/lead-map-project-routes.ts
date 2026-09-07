@@ -15,12 +15,14 @@
  */
 
 import type { Express, Request, Response } from "express";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import {
   getLeadgridSession,
+  loadAccessibleLeadgridProject,
   type LeadgridSession,
 } from "./leadgrid-project-access.js";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
+import { loadAccessibleLeadgridLead } from "./leadgrid-lead-access.js";
 
 interface Deps {
   app: Express;
@@ -43,7 +45,7 @@ function requestedOrganizationId(req: Request): string | null {
 async function resolveActiveOrganization(
   req: Request,
   res: Response,
-  pool: Pool,
+  pool: Pick<Pool, "query">,
   userId: string,
 ): Promise<string | null> {
   const requested = requestedOrganizationId(req);
@@ -95,29 +97,45 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
     async (req: Request, res: Response) => {
       const session = getLeadgridSession(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      const name = String(b.name ?? "").trim().slice(0, 200);
+      if (name.length < 2) {
+        return res.status(400).json({ error: "bad_request", message: "Prosjektnavn kreves" });
+      }
+      const description = typeof b.description === "string"
+        ? b.description.slice(0, 1000) : null;
+
+      let client: PoolClient | null = null;
       try {
-        const b = (req.body ?? {}) as Record<string, unknown>;
-        const name = String(b.name ?? "").trim().slice(0, 200);
-        if (name.length < 2) {
-          return res.status(400).json({ error: "bad_request", message: "Prosjektnavn kreves" });
-        }
-        const description = typeof b.description === "string"
-          ? b.description.slice(0, 1000) : null;
+        client = await pool.connect();
+        await client.query("BEGIN");
         const orgId = await resolveActiveOrganization(
           req,
           res,
-          pool,
+          client,
           session.userId,
         );
-        if (!orgId) return;
+        if (!orgId) {
+          await client.query("ROLLBACK");
+          return;
+        }
         const projectId = `leadgrid-${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
-        await pool.query(
+        await client.query(
           `INSERT INTO leadgrid_projects
              (id, organization_id, name, description, status, project_type,
               created_at, created_by, metadata)
            VALUES ($1, $2, $3, $4, 'active', 'b2b_sales', now(), $5, $6::jsonb)`,
           [projectId, orgId, name, description, session.userId,
            JSON.stringify({ leadgrid_source: "manuell" })]);
+        await client.query(
+          `INSERT INTO leadgrid_project_members
+             (organization_id, project_id, user_id, role, invited_by, invited_at)
+           VALUES ($1::uuid, $2, $3, 'owner', $3, NOW())
+           ON CONFLICT (organization_id, project_id, user_id) DO UPDATE
+             SET role = 'owner'`,
+          [orgId, projectId, session.userId],
+        );
+        await client.query("COMMIT");
         return res.json({
           project: {
             id: projectId, organizationId: orgId, name, description, status: "active",
@@ -125,8 +143,11 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
           },
         });
       } catch (err) {
+        if (client) await client.query("ROLLBACK").catch(() => undefined);
         console.error("[lead-map] project create failed:", err);
         return res.status(500).json({ error: "project_create_failed" });
+      } finally {
+        client?.release();
       }
     },
   );
@@ -140,13 +161,13 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
       const session = getLeadgridSession(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       try {
-        const orgId = await resolveActiveOrganization(
-          req,
-          res,
-          pool,
-          session.userId,
-        );
-        if (!orgId) return;
+        const orgId = requestedOrganizationId(req);
+        if (orgId && !UUID_RE.test(orgId)) {
+          return res.status(400).json({
+            error: "invalid_organization_id",
+            message: "organization_id må være en gyldig UUID.",
+          });
+        }
         const r = await pool.query<{
           id: string;
           organization_id: string;
@@ -176,10 +197,15 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
                      WHERE (mc.project_id = p.id OR ms.project_id = p.id)
                   ), 0) AS competitor_count
              FROM leadgrid_projects p
-             JOIN organization_members om
+             LEFT JOIN organization_members om
                ON om.organization_id = p.organization_id
               AND om.user_id = $1
+             LEFT JOIN leadgrid_project_members pm
+               ON pm.organization_id = p.organization_id
+              AND pm.project_id = p.id
+              AND pm.user_id = $1
             WHERE (p.status IS NULL OR p.status NOT IN ('archived', 'deleted'))
+              AND p.organization_id IS NOT NULL
               -- Leadgrid (Lead Map) viser kun B2B/lead-orienterte prosjekttyper.
               -- film/casting-prosjekter (TROLL, feature_film, documentary)
               -- hører hjemme i The Role Room og skjules her.
@@ -187,7 +213,37 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
                 'feature_film', 'documentary', 'film', 'short_film',
                 'tv_series', 'commercial', 'music_video', 'casting'
               ))
-              AND p.organization_id = $2::uuid
+              AND ($2::uuid IS NULL OR p.organization_id = $2::uuid)
+              AND (
+                p.created_by = $1
+                OR pm.user_id IS NOT NULL
+                OR (
+                  om.user_id IS NOT NULL
+                  AND NOT EXISTS (
+                    SELECT 1
+                      FROM leadgrid_user_permission_overrides denied
+                     WHERE denied.organization_id = p.organization_id
+                       AND denied.user_id = $1
+                       AND denied.permission_key = 'projects.view_all'
+                       AND denied.effect = 'revoke'
+                  )
+                  AND (
+                    om.role = 'admin'
+                    OR EXISTS (
+                          SELECT 1 FROM role_permissions defaults
+                           WHERE defaults.role = om.role
+                             AND defaults.permission_key = 'projects.view_all'
+                    )
+                        OR EXISTS (
+                          SELECT 1 FROM leadgrid_user_permission_overrides granted
+                           WHERE granted.organization_id = p.organization_id
+                             AND granted.user_id = $1
+                             AND granted.permission_key = 'projects.view_all'
+                             AND granted.effect = 'grant'
+                        )
+                  )
+                )
+              )
             ORDER BY p.created_at DESC
             LIMIT 50`,
           [session.userId, orgId],
@@ -220,24 +276,8 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       const projectId = req.params.id;
       try {
-        // Prosjekt-info
-        const pr = await pool.query<{
-          id: string; organization_id: string; name: string; description: string | null;
-          project_type: string | null; status: string;
-        }>(
-          `SELECT p.id::text, p.organization_id::text, p.name, p.description,
-                  p.project_type, p.status
-             FROM leadgrid_projects p
-             JOIN organization_members om
-               ON om.organization_id = p.organization_id
-              AND om.user_id = $2
-            WHERE p.id = $1
-              AND p.organization_id IS NOT NULL
-            LIMIT 1`,
-          [projectId, session.userId],
-        );
-        if (pr.rows.length === 0) return res.status(404).json({ error: "project_not_found" });
-        const project = pr.rows[0];
+        const project = await loadAccessibleLeadgridProject(pool, projectId, session.userId);
+        if (!project) return res.status(404).json({ error: "project_not_found" });
 
         // Brand Kit
         const bk = await pool.query<{
@@ -263,9 +303,9 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
                   completed_at::text
              FROM market_scans
             WHERE project_id = $1
-              AND workspace_owner_user_id = $2
+              AND organization_id = $2::uuid
             ORDER BY created_at DESC LIMIT 1`,
-          [projectId, session.userId],
+          [projectId, project.organizationId],
         );
 
         // Lead counts grupert på status
@@ -274,7 +314,7 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
              FROM crm_customers
             WHERE project_id = $1 AND organization_id = $2::uuid
             GROUP BY lead_status`,
-          [projectId, project.organization_id],
+          [projectId, project.organizationId],
         );
         const statusCounts: Record<string, number> = {};
         let totalLeads = 0;
@@ -297,10 +337,10 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
         return res.json({
           project: {
             id: project.id,
-            organizationId: project.organization_id,
+            organizationId: project.organizationId,
             name: project.name,
             description: project.description,
-            projectType: project.project_type,
+            projectType: project.projectType ?? null,
             status: project.status,
           },
           brandKit: bk.rows[0]
@@ -351,37 +391,69 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
   );
 
   // ─── PATCH /admin-room/lead-map/leads/:id/project ──
-  // Tilordne / fjerne prosjekt på en lead. Inkluderer scope-sjekk.
+  // Flytt en lead mellom tilgjengelige kundeprosjekter. En lead uten prosjekt
+  // blir utilgjengelig for den sentrale Leadgrid-ACL-en og er derfor ikke en
+  // gyldig applikasjonstilstand.
   app.patch(
     "/api/admin-room/lead-map/leads/:id/project",
-    requireLeadMapPermission("leads.update", { pool, activeSessions }),
+    requireLeadMapPermission("leads.update", {
+      pool,
+      activeSessions,
+      // Authorize against the lead's persisted org, never a client-supplied target.
+      resolveOrgId: async (req, db) => {
+        const leadId = req.params.id?.trim();
+        if (!leadId || !UUID_RE.test(leadId)) return null;
+        const result = await db.query<{ organization_id: string | null }>(
+          `SELECT organization_id::text
+             FROM crm_customers
+            WHERE id = $1::uuid
+            LIMIT 1`,
+          [leadId],
+        );
+        return result.rows[0]?.organization_id ?? null;
+      },
+    }),
     async (req: Request, res: Response) => {
       const session = getLeadgridSession(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
-      const body = req.body as { projectId?: string | null };
+      const body = req.body as { projectId?: unknown };
+      if (
+        typeof body.projectId !== "string"
+        || body.projectId.trim().length === 0
+        || body.projectId.trim().length > 255
+      ) {
+        return res.status(400).json({ error: "invalid_project_id" });
+      }
       try {
+        const lead = await loadAccessibleLeadgridLead(pool, {
+          leadId: req.params.id,
+          userId: session.userId,
+        });
+        if (!lead) return res.status(404).json({ error: "lead_not_found" });
+
+        const requestedProjectId = body.projectId.trim();
+        const target = await loadAccessibleLeadgridProject(
+          pool,
+          requestedProjectId,
+          session.userId,
+        );
+        if (!target || target.organizationId !== lead.organizationId) {
+          return res.status(404).json({ error: "project_not_found" });
+        }
+        const targetProjectId = target.id;
+
         const r = await pool.query(
           `UPDATE crm_customers c
-              SET project_id = $3
-            WHERE c.id = $1
-              AND c.owner_user_id = $2
-              AND (
-                $3::text IS NULL
-                OR EXISTS (
-                  SELECT 1
-                    FROM leadgrid_projects p
-                    JOIN organization_members om
-                      ON om.organization_id = p.organization_id
-                     AND om.user_id = $2
-                   WHERE p.id = $3
-                     AND p.organization_id = c.organization_id
-                     AND (p.status IS NULL OR p.status NOT IN ('archived', 'deleted'))
-                )
-              )
+              SET project_id = $4
+            WHERE c.id = $1::uuid
+              AND c.organization_id = $2::uuid
+              AND c.project_id = $3
           RETURNING id::text, project_id`,
-          [req.params.id, session.userId, body.projectId ?? null],
+          [lead.id, lead.organizationId, lead.projectId, targetProjectId],
         );
-        if (r.rowCount === 0) return res.status(404).json({ error: "lead_not_found" });
+        if (r.rowCount === 0) {
+          return res.status(409).json({ error: "lead_project_changed" });
+        }
         return res.json({ ok: true, projectId: r.rows[0].project_id });
       } catch (err) {
         return res.status(500).json({ error: "assign_failed", detail: "internal_error" });
@@ -391,19 +463,32 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
 
   // ─── POST /admin-room/lead-map/leads/bulk-assign-project ──
   // Bulk-tildel flere leads til samme prosjekt. Body:
-  //   { leadIds: string[], projectId: string | null }
+  //   { leadIds: string[], projectId: string }
   app.post(
     "/api/admin-room/lead-map/leads/bulk-assign-project",
     requireLeadMapPermission("leads.update", { pool, activeSessions }),
     async (req: Request, res: Response) => {
       const session = getLeadgridSession(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
-      const body = req.body as { leadIds?: string[]; projectId?: string | null };
+      const body = req.body as { leadIds?: unknown; projectId?: unknown };
       if (!Array.isArray(body.leadIds) || body.leadIds.length === 0) {
         return res.status(400).json({ error: "leadIds_array_kreves" });
       }
-      if (body.leadIds.length > 500) {
+      const leadIds = [...new Set(body.leadIds.map((id) =>
+        typeof id === "string" ? id.trim() : "",
+      ))];
+      if (leadIds.length > 500) {
         return res.status(400).json({ error: "max_500_per_bulk" });
+      }
+      if (leadIds.some((id) => !UUID_RE.test(id))) {
+        return res.status(400).json({ error: "ugyldig_lead_id" });
+      }
+      if (
+        typeof body.projectId !== "string"
+        || body.projectId.trim().length === 0
+        || body.projectId.trim().length > 255
+      ) {
+        return res.status(400).json({ error: "invalid_project_id" });
       }
       const organizationId = requestedOrganizationId(req);
       if (!organizationId || !UUID_RE.test(organizationId)) {
@@ -413,33 +498,69 @@ export function registerLeadMapProjectRoutes({ app, pool, activeSessions }: Deps
         });
       }
       try {
-        const r = await pool.query(
-          `UPDATE crm_customers c
-              SET project_id = $2
-            WHERE c.id = ANY($3::uuid[])
-              AND c.owner_user_id = $1
-              AND c.organization_id = $4::uuid
-              AND (
-                $2::text IS NULL
-                OR EXISTS (
-                  SELECT 1
-                    FROM leadgrid_projects p
-                    JOIN organization_members om
-                      ON om.organization_id = p.organization_id
-                     AND om.user_id = $1
-                   WHERE p.id = $2
-                     AND p.organization_id = c.organization_id
-                     AND (p.status IS NULL OR p.status NOT IN ('archived', 'deleted'))
-                )
-              )`,
-          [
-            session.userId,
-            body.projectId ?? null,
-            body.leadIds,
-            organizationId,
-          ],
+        const target = await loadAccessibleLeadgridProject(
+          pool,
+          body.projectId.trim(),
+          session.userId,
         );
-        return res.json({ ok: true, updated: r.rowCount ?? 0 });
+        if (!target || target.organizationId !== organizationId) {
+          return res.status(404).json({ error: "project_not_found" });
+        }
+        const targetProjectId = target.id;
+
+        const source = await pool.query<{ id: string; project_id: string }>(
+          `SELECT id::text, project_id::text
+             FROM crm_customers
+            WHERE organization_id = $1::uuid
+              AND id = ANY($2::uuid[])
+              AND project_id IS NOT NULL`,
+          [organizationId, leadIds],
+        );
+        if (source.rows.length !== leadIds.length) {
+          return res.status(404).json({ error: "lead_not_found" });
+        }
+
+        const sourceProjectIds = [...new Set(source.rows.map((row) => row.project_id))];
+        const sourceProjects = await Promise.all(sourceProjectIds.map((projectId) =>
+          loadAccessibleLeadgridProject(pool, projectId, session.userId),
+        ));
+        if (sourceProjects.some((project) =>
+          !project || project.organizationId !== organizationId
+        )) {
+          return res.status(404).json({ error: "lead_not_found" });
+        }
+
+        const expected = source.rows.map((row) => ({
+          id: row.id,
+          projectId: row.project_id,
+        }));
+        const result = await pool.query<{ updated: number }>(
+          `WITH expected AS (
+             SELECT (entry->>'id')::uuid AS id,
+                    entry->>'projectId' AS project_id
+               FROM jsonb_array_elements($3::jsonb) entry
+           ), eligible AS (
+             SELECT c.id
+               FROM crm_customers c
+               JOIN expected e ON e.id = c.id AND e.project_id = c.project_id
+              WHERE c.organization_id = $1::uuid
+           ), updated AS (
+             UPDATE crm_customers c
+                SET project_id = $2
+              WHERE c.organization_id = $1::uuid
+                AND c.id IN (SELECT id FROM eligible)
+                AND (SELECT COUNT(*) FROM eligible) =
+                    (SELECT COUNT(*) FROM expected)
+             RETURNING c.id
+           )
+           SELECT COUNT(*)::int AS updated FROM updated`,
+          [organizationId, targetProjectId, JSON.stringify(expected)],
+        );
+        const updated = result.rows[0]?.updated ?? 0;
+        if (updated !== leadIds.length) {
+          return res.status(409).json({ error: "lead_project_changed" });
+        }
+        return res.json({ ok: true, updated });
       } catch (err) {
         return res.status(500).json({ error: "bulk_assign_failed", detail: "internal_error" });
       }

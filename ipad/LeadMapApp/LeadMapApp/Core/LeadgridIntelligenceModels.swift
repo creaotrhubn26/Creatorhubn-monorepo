@@ -14,6 +14,20 @@ import Foundation
 
 // MARK: - NBA Recommendation
 
+enum LeadgridNBAOutcome: String, Codable, CaseIterable, Sendable {
+    case positive
+    case neutral
+    case negative
+}
+
+/// Truthful lifecycle response for accept/dismiss. These endpoints do not
+/// return the full recommendation payload.
+struct LeadgridNBAMutationResult: Codable, Hashable, Sendable {
+    let id: String
+    let status: String
+    let replayed: Bool?
+}
+
 struct LeadgridNBARecommendation: Codable, Hashable, Identifiable {
     let id: String
     let leadId: String
@@ -29,6 +43,20 @@ struct LeadgridNBARecommendation: Codable, Hashable, Identifiable {
     let status: String            // pending / accepted / executed / dismissed / expired
     let createdAt: String?
     let expiresAt: String?
+}
+
+/// The execute endpoint intentionally returns only execution state, not the
+/// full recommendation. `replayed` is true when the same natural operation
+/// (recommendation id + outcome + notes) is safely acknowledged again.
+struct LeadgridNBAExecutionResult: Codable, Hashable, Sendable {
+    let id: String
+    let status: String
+    let outcome: LeadgridNBAOutcome?
+    let replayed: Bool?
+
+    var confirmsExecution: Bool {
+        status.lowercased() == "executed" || replayed == true
+    }
 }
 
 struct BestContactTime: Codable, Hashable {

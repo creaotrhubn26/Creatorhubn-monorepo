@@ -36,6 +36,12 @@ import {
   WORKFLOW_TEMPLATES,
   findTemplate,
 } from "./leadgrid-workflow-templates.js";
+import {
+  getLeadgridSession,
+  loadAccessibleLeadgridProject,
+  type LeadgridAccessibleProject,
+} from "./leadgrid-project-access.js";
+import { loadAccessibleLeadgridLead } from "./leadgrid-lead-access.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps {
@@ -44,68 +50,51 @@ interface Deps {
   activeSessions: Map<string, SessionData>;
 }
 
-function getSession(
-  req: Request,
-  activeSessions: Map<string, SessionData>,
-): SessionData | null {
-  const auth = req.headers.authorization;
-  if (auth?.startsWith("Bearer ")) {
-    const s = activeSessions.get(auth.slice(7));
-    if (s) return s;
-  }
-  return null;
+function requestedProjectId(req: Request): string | null {
+  const value =
+    req.body?.project_id ?? req.body?.projectId ??
+    req.query?.project_id ?? req.query?.projectId;
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
 }
 
-async function defaultOrgId(
-  pool: Pool,
-  userId: string,
-): Promise<string | null> {
-  const r = await pool.query<{ organization_id: string }>(
-    `SELECT organization_id::text
-       FROM organization_members
-      WHERE user_id = $1
-      ORDER BY
-        CASE role
-          WHEN 'admin' THEN 1
-          WHEN 'salgssjef' THEN 2
-          ELSE 3
-        END,
-        joined_at ASC
-      LIMIT 1`,
-    [userId],
-  );
-  return r.rows[0]?.organization_id ?? null;
-}
-
-async function resolveOrgIdSmart(
+async function resolveWorkflowProject(
   req: Request,
   pool: Pool,
   userId: string,
-): Promise<string | null> {
-  const explicit =
-    (req.body as { organization_id?: string } | undefined)?.organization_id ??
-    (req.query?.organization_id as string | undefined);
-  if (typeof explicit === "string" && explicit.length > 0) return explicit;
-
-  // For /:id, hent workflow.organization_id
+): Promise<LeadgridAccessibleProject | null> {
+  let projectId = requestedProjectId(req);
   const id = req.params?.id;
-  if (typeof id === "string" && id.length > 0) {
+  if (!projectId && typeof id === "string" && id.length > 0) {
     try {
-      const r = await pool.query<{ organization_id: string }>(
-        `SELECT organization_id::text FROM leadgrid_workflows WHERE id = $1::uuid LIMIT 1`,
+      const r = await pool.query<{ project_id: string | null }>(
+        `SELECT project_id::text
+           FROM leadgrid_workflows
+          WHERE id = $1::uuid
+          LIMIT 1`,
         [id],
       );
-      if (r.rows[0]?.organization_id) return r.rows[0].organization_id;
+      projectId = r.rows[0]?.project_id ?? null;
     } catch {
-      /* ignore */
+      return null;
     }
   }
+  if (!projectId) return null;
+  return loadAccessibleLeadgridProject(pool, projectId, userId);
+}
 
-  return defaultOrgId(pool, userId);
+async function resolveWorkflowOrgId(
+  req: Request,
+  pool: Pool,
+  userId: string,
+): Promise<string | null> {
+  return (await resolveWorkflowProject(req, pool, userId))?.organizationId ?? null;
 }
 
 interface WorkflowListRow {
   id: string;
+  project_id: string;
   name: string;
   description: string | null;
   is_active: boolean;
@@ -126,6 +115,7 @@ interface WorkflowListRow {
 function rowToWorkflow(r: WorkflowListRow) {
   return {
     id: r.id,
+    projectId: r.project_id,
     name: r.name,
     description: r.description,
     isActive: r.is_active,
@@ -150,17 +140,17 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
   const permView = requireLeadMapPermission("workflows.view", {
     pool,
     activeSessions,
-    resolveOrgId: resolveOrgIdSmart,
+    resolveOrgId: resolveWorkflowOrgId,
   });
   const permCreate = requireLeadMapPermission("workflows.create", {
     pool,
     activeSessions,
-    resolveOrgId: resolveOrgIdSmart,
+    resolveOrgId: resolveWorkflowOrgId,
   });
   const permExecute = requireLeadMapPermission("workflows.execute", {
     pool,
     activeSessions,
-    resolveOrgId: resolveOrgIdSmart,
+    resolveOrgId: resolveWorkflowOrgId,
   });
 
   // ── GET /api/leadgrid/workflows ────────────────────────────────────
@@ -168,14 +158,18 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
     "/api/leadgrid/workflows",
     permView,
     async (req: Request, res: Response): Promise<void> => {
-      const session = getSession(req, activeSessions);
+      const session = getLeadgridSession(req, activeSessions);
       if (!session) {
         res.status(401).json({ error: "Innlogging kreves" });
         return;
       }
-      const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-      if (!orgId) {
-        res.json({ workflows: [] });
+      const project = await resolveWorkflowProject(req, pool, session.userId);
+      if (!project) {
+        res.status(requestedProjectId(req) ? 404 : 400).json({
+          error: requestedProjectId(req)
+            ? "project_not_found"
+            : "project_id_required",
+        });
         return;
       }
       try {
@@ -183,16 +177,17 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
         const onlyActive =
           onlyActiveRaw === "true" || onlyActiveRaw === "1";
         const r = await pool.query<WorkflowListRow>(
-          `SELECT id::text, name, description, is_active, trigger_type,
+          `SELECT id::text, project_id::text, name, description, is_active, trigger_type,
                   trigger_config, conditions, actions, execution_count,
                   last_executed_at, last_error_at, last_error_message,
                   template_key, created_by, created_at, updated_at
              FROM leadgrid_workflows
             WHERE organization_id = $1::uuid
+              AND project_id = $2
               ${onlyActive ? "AND is_active = TRUE" : ""}
             ORDER BY updated_at DESC
             LIMIT 200`,
-          [orgId],
+          [project.organizationId, project.id],
         );
         res.json({
           workflows: r.rows.map(rowToWorkflow),
@@ -210,7 +205,21 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
   app.get(
     "/api/leadgrid/workflows/templates",
     permView,
-    async (_req: Request, res: Response): Promise<void> => {
+    async (req: Request, res: Response): Promise<void> => {
+      const session = getLeadgridSession(req, activeSessions);
+      if (!session) {
+        res.status(401).json({ error: "Innlogging kreves" });
+        return;
+      }
+      const project = await resolveWorkflowProject(req, pool, session.userId);
+      if (!project) {
+        res.status(requestedProjectId(req) ? 404 : 400).json({
+          error: requestedProjectId(req)
+            ? "project_not_found"
+            : "project_id_required",
+        });
+        return;
+      }
       res.json({ templates: WORKFLOW_TEMPLATES });
     },
   );
@@ -220,15 +229,28 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
     "/api/leadgrid/workflows/:id",
     permView,
     async (req: Request, res: Response): Promise<void> => {
+      const session = getLeadgridSession(req, activeSessions);
+      if (!session) {
+        res.status(401).json({ error: "Innlogging kreves" });
+        return;
+      }
+      const project = await resolveWorkflowProject(req, pool, session.userId);
+      if (!project) {
+        res.status(404).json({ error: "workflow_not_found" });
+        return;
+      }
       try {
         const r = await pool.query<WorkflowListRow>(
-          `SELECT id::text, name, description, is_active, trigger_type,
+          `SELECT id::text, project_id::text, name, description, is_active, trigger_type,
                   trigger_config, conditions, actions, execution_count,
                   last_executed_at, last_error_at, last_error_message,
                   template_key, created_by, created_at, updated_at
              FROM leadgrid_workflows
-            WHERE id = $1::uuid LIMIT 1`,
-          [req.params.id],
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id = $3
+            LIMIT 1`,
+          [req.params.id, project.organizationId, project.id],
         );
         const row = r.rows[0];
         if (!row) {
@@ -248,14 +270,18 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
     "/api/leadgrid/workflows",
     permCreate,
     async (req: Request, res: Response): Promise<void> => {
-      const session = getSession(req, activeSessions);
+      const session = getLeadgridSession(req, activeSessions);
       if (!session) {
         res.status(401).json({ error: "Innlogging kreves" });
         return;
       }
-      const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-      if (!orgId) {
-        res.status(400).json({ error: "ingen_org" });
+      const project = await resolveWorkflowProject(req, pool, session.userId);
+      if (!project) {
+        res.status(requestedProjectId(req) ? 404 : 400).json({
+          error: requestedProjectId(req)
+            ? "project_not_found"
+            : "project_id_required",
+        });
         return;
       }
 
@@ -288,6 +314,14 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
         return;
       }
       const { name, trigger, conditions, actions } = v.value;
+      if (actions.some((action) =>
+        action.type === "leadgrid.discover_leads" &&
+        action.project_id !== undefined &&
+        action.project_id !== project.id
+      )) {
+        res.status(400).json({ error: "workflow_project_scope_mismatch" });
+        return;
+      }
       const isActive =
         typeof payload.is_active === "boolean" ? payload.is_active : true;
       const description =
@@ -296,12 +330,13 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
       try {
         const r = await pool.query<{ id: string }>(
           `INSERT INTO leadgrid_workflows
-             (organization_id, created_by, name, description, is_active,
+             (organization_id, project_id, created_by, name, description, is_active,
               trigger_type, trigger_config, conditions, actions, template_key)
-           VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10)
+           VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11)
            RETURNING id::text`,
           [
-            orgId,
+            project.organizationId,
+            project.id,
             session.userId,
             name,
             description,
@@ -317,8 +352,13 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
         void emitWebhook(
           pool,
           "workflow.created",
-          { workflow_id: id, name, trigger_type: trigger.type },
-          orgId,
+          {
+            workflow_id: id,
+            project_id: project.id,
+            name,
+            trigger_type: trigger.type,
+          },
+          project.organizationId,
         );
         res.status(201).json({ id, status: "created" });
       } catch (err) {
@@ -333,9 +373,14 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
     "/api/leadgrid/workflows/:id",
     permCreate,
     async (req: Request, res: Response): Promise<void> => {
-      const session = getSession(req, activeSessions);
+      const session = getLeadgridSession(req, activeSessions);
       if (!session) {
         res.status(401).json({ error: "Innlogging kreves" });
+        return;
+      }
+      const project = await resolveWorkflowProject(req, pool, session.userId);
+      if (!project) {
+        res.status(404).json({ error: "workflow_not_found" });
         return;
       }
       const body = (req.body ?? {}) as Record<string, unknown>;
@@ -372,8 +417,12 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
           actions: unknown;
         }>(
           `SELECT name, trigger_type, trigger_config, conditions, actions
-             FROM leadgrid_workflows WHERE id = $1::uuid LIMIT 1`,
-          [req.params.id],
+             FROM leadgrid_workflows
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id = $3
+            LIMIT 1`,
+          [req.params.id, project.organizationId, project.id],
         );
         const c = cur.rows[0];
         if (!c) {
@@ -392,6 +441,14 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
           res.status(400).json({ error: v.error });
           return;
         }
+        if (v.value.actions.some((action) =>
+          action.type === "leadgrid.discover_leads" &&
+          action.project_id !== undefined &&
+          action.project_id !== project.id
+        )) {
+          res.status(400).json({ error: "workflow_project_scope_mismatch" });
+          return;
+        }
         sets.push(`trigger_type = $${p++}`);
         vals.push(v.value.trigger.type);
         sets.push(`trigger_config = $${p++}::jsonb`);
@@ -407,24 +464,34 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
         return;
       }
       sets.push(`updated_at = NOW()`);
+      const idParam = p++;
       vals.push(req.params.id);
+      const orgParam = p++;
+      vals.push(project.organizationId);
+      const projectParam = p++;
+      vals.push(project.id);
 
       try {
-        await pool.query(
-          `UPDATE leadgrid_workflows SET ${sets.join(", ")} WHERE id = $${p}::uuid`,
+        const updated = await pool.query(
+          `UPDATE leadgrid_workflows
+              SET ${sets.join(", ")}
+            WHERE id = $${idParam}::uuid
+              AND organization_id = $${orgParam}::uuid
+              AND project_id = $${projectParam}`,
           vals,
         );
+        if (!updated.rowCount) {
+          res.status(404).json({ error: "workflow_not_found" });
+          return;
+        }
         // Hvis is_active endret, emit webhook
         if (typeof body.is_active === "boolean") {
-          const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-          if (orgId) {
-            void emitWebhook(
-              pool,
-              body.is_active ? "workflow.activated" : "workflow.deactivated",
-              { workflow_id: req.params.id },
-              orgId,
-            );
-          }
+          void emitWebhook(
+            pool,
+            body.is_active ? "workflow.activated" : "workflow.deactivated",
+            { workflow_id: req.params.id, project_id: project.id },
+            project.organizationId,
+          );
         }
         res.json({ ok: true });
       } catch (err) {
@@ -439,11 +506,29 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
     "/api/leadgrid/workflows/:id",
     permCreate,
     async (req: Request, res: Response): Promise<void> => {
+      const session = getLeadgridSession(req, activeSessions);
+      if (!session) {
+        res.status(401).json({ error: "Innlogging kreves" });
+        return;
+      }
+      const project = await resolveWorkflowProject(req, pool, session.userId);
+      if (!project) {
+        res.status(404).json({ error: "workflow_not_found" });
+        return;
+      }
       try {
-        await pool.query(
-          `UPDATE leadgrid_workflows SET is_active = FALSE, updated_at = NOW() WHERE id = $1::uuid`,
-          [req.params.id],
+        const updated = await pool.query(
+          `UPDATE leadgrid_workflows
+              SET is_active = FALSE, updated_at = NOW()
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id = $3`,
+          [req.params.id, project.organizationId, project.id],
         );
+        if (!updated.rowCount) {
+          res.status(404).json({ error: "workflow_not_found" });
+          return;
+        }
         res.json({ ok: true });
       } catch (err) {
         console.error("[workflows DELETE]", err);
@@ -459,15 +544,21 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
     "/api/leadgrid/workflows/:id/test",
     permExecute,
     async (req: Request, res: Response): Promise<void> => {
-      const session = getSession(req, activeSessions);
+      const session = getLeadgridSession(req, activeSessions);
       if (!session) {
         res.status(401).json({ error: "Innlogging kreves" });
+        return;
+      }
+      const project = await resolveWorkflowProject(req, pool, session.userId);
+      if (!project) {
+        res.status(404).json({ error: "workflow_not_found" });
         return;
       }
       try {
         const w = await pool.query<{
           id: string;
           organization_id: string;
+          project_id: string;
           name: string;
           trigger_type: string;
           trigger_config: unknown;
@@ -475,10 +566,14 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
           actions: unknown;
           is_active: boolean;
         }>(
-          `SELECT id::text, organization_id::text, name, trigger_type,
+          `SELECT id::text, organization_id::text, project_id::text, name, trigger_type,
                   trigger_config, conditions, actions, is_active
-             FROM leadgrid_workflows WHERE id = $1::uuid LIMIT 1`,
-          [req.params.id],
+             FROM leadgrid_workflows
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id = $3
+            LIMIT 1`,
+          [req.params.id, project.organizationId, project.id],
         );
         const row = w.rows[0];
         if (!row) {
@@ -488,9 +583,24 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
         const leadId =
           (req.body?.lead_id as string | undefined) ??
           (req.body?.leadId as string | undefined);
+        if (leadId) {
+          const lead = await loadAccessibleLeadgridLead(pool, {
+            leadId,
+            userId: session.userId,
+          });
+          if (
+            !lead ||
+            lead.organizationId !== project.organizationId ||
+            lead.projectId !== project.id
+          ) {
+            res.status(404).json({ error: "lead_not_found" });
+            return;
+          }
+        }
         const event: WorkflowEvent = {
           pool,
           organizationId: row.organization_id,
+          projectId: row.project_id,
           type: row.trigger_type as WorkflowEvent["type"],
           leadId: leadId ?? null,
           actorUserId: session.userId,
@@ -501,6 +611,7 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
           {
             id: row.id,
             organization_id: row.organization_id,
+            project_id: row.project_id,
             name: row.name,
             trigger_type: row.trigger_type,
             trigger_config: row.trigger_config as WorkflowEvent["data"] as never,
@@ -525,15 +636,21 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
     "/api/leadgrid/workflows/:id/execute",
     permExecute,
     async (req: Request, res: Response): Promise<void> => {
-      const session = getSession(req, activeSessions);
+      const session = getLeadgridSession(req, activeSessions);
       if (!session) {
         res.status(401).json({ error: "Innlogging kreves" });
+        return;
+      }
+      const project = await resolveWorkflowProject(req, pool, session.userId);
+      if (!project) {
+        res.status(404).json({ error: "workflow_not_found" });
         return;
       }
       try {
         const w = await pool.query<{
           id: string;
           organization_id: string;
+          project_id: string;
           name: string;
           trigger_type: string;
           trigger_config: unknown;
@@ -541,10 +658,14 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
           actions: unknown;
           is_active: boolean;
         }>(
-          `SELECT id::text, organization_id::text, name, trigger_type,
+          `SELECT id::text, organization_id::text, project_id::text, name, trigger_type,
                   trigger_config, conditions, actions, is_active
-             FROM leadgrid_workflows WHERE id = $1::uuid LIMIT 1`,
-          [req.params.id],
+             FROM leadgrid_workflows
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id = $3
+            LIMIT 1`,
+          [req.params.id, project.organizationId, project.id],
         );
         const row = w.rows[0];
         if (!row) {
@@ -566,14 +687,31 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
           null;
         const arrayCandidate =
           (req.body?.lead_ids as unknown) ?? (req.body?.leadIds as unknown);
-        const leadIds: string[] = Array.isArray(arrayCandidate)
+        const leadIds: string[] = Array.from(new Set(Array.isArray(arrayCandidate)
           ? arrayCandidate
               .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
               .map((x) => x.trim())
               .slice(0, 100) // hard-cap så vi ikke aksepterer 10 000 IDs
           : singleLeadId
             ? [singleLeadId]
-            : [];
+            : []));
+
+        // Valider hele bulk-settet før noen jobber startes. Dermed kan ikke en
+        // blanding av prosjekt-ID-er gi en delvis utført workflow.
+        for (const leadId of leadIds) {
+          const lead = await loadAccessibleLeadgridLead(pool, {
+            leadId,
+            userId: session.userId,
+          });
+          if (
+            !lead ||
+            lead.organizationId !== project.organizationId ||
+            lead.projectId !== project.id
+          ) {
+            res.status(404).json({ error: "lead_not_found" });
+            return;
+          }
+        }
 
         const triggeredAt = new Date().toISOString();
         const totalLeads = Math.max(leadIds.length, 1);
@@ -581,6 +719,7 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
         const buildEvent = (leadId: string | null): WorkflowEvent => ({
           pool,
           organizationId: row.organization_id,
+          projectId: row.project_id,
           type: "manual",
           leadId,
           actorUserId: session.userId,
@@ -594,6 +733,7 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
         const wfDef = {
           id: row.id,
           organization_id: row.organization_id,
+          project_id: row.project_id,
           name: row.name,
           trigger_type: row.trigger_type,
           trigger_config: row.trigger_config as WorkflowEvent["data"] as never,
@@ -635,6 +775,16 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
     "/api/leadgrid/workflows/:id/executions",
     permView,
     async (req: Request, res: Response): Promise<void> => {
+      const session = getLeadgridSession(req, activeSessions);
+      if (!session) {
+        res.status(401).json({ error: "Innlogging kreves" });
+        return;
+      }
+      const project = await resolveWorkflowProject(req, pool, session.userId);
+      if (!project) {
+        res.status(404).json({ error: "workflow_not_found" });
+        return;
+      }
       try {
         const limitRaw = req.query.limit;
         const limit =
@@ -655,11 +805,20 @@ export function registerLeadgridWorkflowRoutes(deps: Deps): void {
           `SELECT id::text, lead_id::text, trigger_event, status,
                   actions_executed, error_message,
                   started_at, finished_at, duration_ms
-             FROM leadgrid_workflow_executions
-            WHERE workflow_id = $1::uuid
+             FROM leadgrid_workflow_executions execution
+            WHERE execution.workflow_id = $1::uuid
+              AND execution.organization_id = $2::uuid
+              AND execution.project_id = $3
+              AND EXISTS (
+                SELECT 1
+                  FROM leadgrid_workflows workflow
+                 WHERE workflow.id = execution.workflow_id
+                   AND workflow.organization_id = $2::uuid
+                   AND workflow.project_id = $3
+              )
             ORDER BY started_at DESC
-            LIMIT $2`,
-          [req.params.id, limit],
+            LIMIT $4`,
+          [req.params.id, project.organizationId, project.id, limit],
         );
         res.json({
           executions: r.rows.map((row) => ({

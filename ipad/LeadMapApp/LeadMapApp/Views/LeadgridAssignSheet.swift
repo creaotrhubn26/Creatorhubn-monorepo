@@ -17,6 +17,9 @@ enum AssignLevel {
 struct LeadgridAssignSheet: View {
     let customerId: String
     let customerName: String
+    /// The persisted Leadgrid project for this CRM lead. A missing value is a
+    /// hard stop; the sheet never guesses from an organization or source lead.
+    let projectId: String?
     let level: AssignLevel
     let api: APIClient
     var onAssigned: (() -> Void)?
@@ -32,11 +35,13 @@ struct LeadgridAssignSheet: View {
     @State private var loading = true
     @State private var submitting = false
     @State private var errorText: String?
+    @State private var persistedTeamLeaderID: String?
 
-    init(customerId: String, customerName: String, level: AssignLevel,
+    init(customerId: String, customerName: String, projectId: String?, level: AssignLevel,
          api: APIClient, onAssigned: (() -> Void)? = nil) {
         self.customerId = customerId
         self.customerName = customerName
+        self.projectId = projectId
         self.level = level
         self.api = api
         self.onAssigned = onAssigned
@@ -47,6 +52,12 @@ struct LeadgridAssignSheet: View {
         case workload = "Minst arbeid"
         case online = "Online først"
         case alphabetical = "Alfabetisk"
+    }
+
+    private var normalizedProjectId: String? {
+        guard let value = projectId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else { return nil }
+        return value
     }
 
     var currentUsers: [AssignableUser] {
@@ -76,7 +87,17 @@ struct LeadgridAssignSheet: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
 
-                if loading {
+                if normalizedProjectId == nil {
+                    Spacer()
+                    ContentUnavailableView(
+                        "Prosjekt mangler",
+                        systemImage: "lock.trianglebadge.exclamationmark",
+                        description: Text(
+                            "Leadet må ha et eksplisitt Leadgrid-prosjekt før teamet kan hentes eller tildeles."
+                        )
+                    )
+                    Spacer()
+                } else if loading {
                     Spacer()
                     ProgressView()
                     Spacer()
@@ -131,11 +152,15 @@ struct LeadgridAssignSheet: View {
 
     private var confirmLabel: String {
         if level == .both && step == .teamLeader { return "Neste" }
+        if level == .both && step == .rep && pickedRep == nil {
+            return "Tildel uten rep"
+        }
         return step == .teamLeader ? "Tildel teamleder" : "Tildel rep"
     }
 
     private var canSubmit: Bool {
-        step == .teamLeader ? pickedTeamLeader != nil : pickedRep != nil
+        if step == .teamLeader { return pickedTeamLeader != nil }
+        return pickedRep != nil || (level == .both && pickedTeamLeader != nil)
     }
 
     private func isPicked(_ user: AssignableUser) -> Bool {
@@ -154,13 +179,30 @@ struct LeadgridAssignSheet: View {
             step = .rep
             return
         }
+        guard !submitting else { return }
+        submitting = true
         Task { await submit() }
     }
 
     private func load() async {
+        guard let projectId = normalizedProjectId else {
+            await MainActor.run {
+                loading = false
+                errorText = "Velg et Leadgrid-prosjekt før tildeling."
+            }
+            return
+        }
         do {
-            async let tl = api.fetchAssignableUsers(role: "team_leader")
-            async let rep = api.fetchAssignableUsers(role: "rep")
+            async let tl = api.fetchAssignableUsers(
+                role: "team_leader",
+                customerId: customerId,
+                projectId: projectId
+            )
+            async let rep = api.fetchAssignableUsers(
+                role: "rep",
+                customerId: customerId,
+                projectId: projectId
+            )
             let (tlRes, repRes) = try await (tl, rep)
             await MainActor.run {
                 teamLeaders = tlRes.users
@@ -176,17 +218,25 @@ struct LeadgridAssignSheet: View {
     }
 
     private func submit() async {
-        submitting = true
         defer { submitting = false }
+        let selectedTeamLeader = pickedTeamLeader
+        let selectedRep = pickedRep
+        var leaderPersisted = selectedTeamLeader.map {
+            persistedTeamLeaderID == $0.userId
+        } ?? false
         do {
-            if let tl = pickedTeamLeader {
+            if let tl = selectedTeamLeader, !leaderPersisted {
                 try await api.assignTeamLeader(
                     customerId: customerId,
                     teamLeaderUserId: tl.userId,
                     note: note.isEmpty ? nil : note,
                 )
+                leaderPersisted = true
+                await MainActor.run {
+                    persistedTeamLeaderID = tl.userId
+                }
             }
-            if let rep = pickedRep {
+            if let rep = selectedRep {
                 try await api.assignRep(
                     customerId: customerId,
                     repUserId: rep.userId,
@@ -199,7 +249,9 @@ struct LeadgridAssignSheet: View {
             }
         } catch {
             await MainActor.run {
-                errorText = "Tildeling feilet: \(error.localizedDescription)"
+                errorText = leaderPersisted && selectedRep != nil
+                    ? "Teamleder er lagret, men rep kunne ikke tildeles: \(error.localizedDescription)"
+                    : "Tildeling feilet: \(error.localizedDescription)"
             }
         }
     }

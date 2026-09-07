@@ -33,21 +33,29 @@ describe("Leadgrid iOS to backend route contract", () => {
       .join("\n");
     const endpoints = clientEndpoints();
     const dynamicRouteProof: Record<string, [string, string]> = {
+      "/api/admin-room/lead-map/customers/auto-onboard": [
+        'const root = "/api/admin-room/lead-map/customers"',
+        'root + "/auto-onboard"',
+      ],
+      "/api/admin-room/lead-map/customers/auto-onboard/:param": [
+        'const root = "/api/admin-room/lead-map/customers"',
+        'root + "/auto-onboard/:audit_id"',
+      ],
       "/api/admin-room/lead-map/deliverables/:param": [
-        'const ROOT = "/api/admin-room/lead-map"',
-        '${ROOT}/deliverables/:id',
+        'const root = "/api/admin-room/lead-map"',
+        'root + "/deliverables/:id"',
       ],
       "/api/admin-room/lead-map/deliverables/:param/step": [
-        'const ROOT = "/api/admin-room/lead-map"',
-        '${ROOT}/deliverables/:id/step',
+        'const root = "/api/admin-room/lead-map"',
+        'root + "/deliverables/:id/step"',
       ],
       "/api/admin-room/lead-map/focus-requests": [
-        'const ROOT = "/api/admin-room/lead-map"',
-        '${ROOT}/focus-requests',
+        'const root = "/api/admin-room/lead-map"',
+        'root + "/focus-requests"',
       ],
       "/api/admin-room/lead-map/focus-requests/:param/start-delivery": [
-        'const ROOT = "/api/admin-room/lead-map"',
-        '${ROOT}/focus-requests/:id/start-delivery',
+        'const root = "/api/admin-room/lead-map"',
+        'root + "/focus-requests/:id/start-delivery"',
       ],
       "/api/admin-room/lead-map/pitch-deck/availability": [
         'const ROOT = "/api/admin-room/lead-map/pitch-deck"',
@@ -88,7 +96,9 @@ describe("Leadgrid iOS to backend route contract", () => {
       expect(routes).toContain(field);
     }
     expect(routes).toContain("meeting_duration_minutes");
-    expect(routes).toContain("ON CONFLICT (organization_id, request_id)");
+    expect(routes).toContain(
+      "ON CONFLICT (organization_id, project_id, request_id)",
+    );
     expect(routes).toContain("BEGIN");
     expect(routes).toContain("COMMIT");
   });

@@ -17,21 +17,24 @@
  *   3) emit webhook-event til eventuelle integrasjons-abonnementer
  *
  * Auth:
- *   Email-tracking-pixel-endepunkten er offentlig (kalles fra inbox), MEN den
- *   verifiserer en HMAC-signert query-param (tok=...) for å unngå spoofing.
- *   For nå godtar vi også et fallback ?orgId= for stub-bruken; produksjons-
- *   signing-pipelinen er deferred til neste PR.
- *
- *   Proposal/contract-webhooks krever en signed shared-secret-header
- *   (Signering-spesifikt per leverandør implementeres når vi kobler dem opp).
- *   For nå godtar vi org/lead via body — caller må selv være authentisert
- *   via standard session ELLER inkludere et internt service-token i header.
+ *   Disse generiske mottakerne krever en vanlig Leadgrid-session og avleder
+ *   organization/project fra lead-raden. Offentlige events må ha en egen,
+ *   provider-spesifikk signert inngang. Tilbudslenken bruker allerede sitt
+ *   sterke public_token i leadgrid-proposals-routes og publiserer direkte.
  */
 
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { publishEvent } from "./leadgrid-workflow-engine.js";
 import { emitWebhook } from "./webhook-emitter.js";
+import {
+  getLeadgridSession,
+  type LeadgridSession,
+} from "./leadgrid-project-access.js";
+import {
+  loadAccessibleLeadgridLead,
+  type LeadgridAccessibleLead,
+} from "./leadgrid-lead-access.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -41,20 +44,8 @@ interface Deps {
   activeSessions: Map<string, SessionData>;
 }
 
-function getSession(
-  req: Request,
-  activeSessions: Map<string, SessionData>,
-): SessionData | null {
-  const auth = req.headers.authorization;
-  if (auth?.startsWith("Bearer ")) {
-    const s = activeSessions.get(auth.slice(7));
-    if (s) return s;
-  }
-  return null;
-}
-
 function reqStr(v: unknown): string | null {
-  return typeof v === "string" && v.length > 0 ? v : null;
+  return typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
 }
 
 function reqInt(v: unknown): number | null {
@@ -66,26 +57,35 @@ function reqInt(v: unknown): number | null {
   return null;
 }
 
-/**
- * Hjelper: hent customer_id sin organization_id (vi denormaliserer slik
- * at workflow-eventet havner i riktig org-scope).
- */
-async function orgIdForCustomer(
+async function authorizedEventLead(
+  req: Request,
+  res: Response,
   pool: Pool,
-  customerId: string,
-): Promise<string | null> {
-  try {
-    const r = await pool.query<{ organization_id: string | null }>(
-      `SELECT organization_id::text
-         FROM crm_customers
-        WHERE id = $1::uuid
-        LIMIT 1`,
-      [customerId],
-    );
-    return r.rows[0]?.organization_id ?? null;
-  } catch {
+  activeSessions: Map<string, SessionData>,
+  body: Record<string, unknown>,
+): Promise<{
+  session: LeadgridSession;
+  lead: LeadgridAccessibleLead;
+} | null> {
+  const session = getLeadgridSession(req, activeSessions);
+  if (!session?.userId) {
+    res.status(401).json({ error: "Innlogging kreves" });
     return null;
   }
+  const customerId = reqStr(body.customer_id);
+  if (!customerId) {
+    res.status(400).json({ error: "customer_id_required" });
+    return null;
+  }
+  const lead = await loadAccessibleLeadgridLead(pool, {
+    leadId: customerId,
+    userId: session.userId,
+  });
+  if (!lead) {
+    res.status(404).json({ error: "lead_not_found" });
+    return null;
+  }
+  return { session, lead };
 }
 
 export function registerLeadgridWorkflowTriggerRoutes(deps: Deps): void {
@@ -98,36 +98,34 @@ export function registerLeadgridWorkflowTriggerRoutes(deps: Deps): void {
     "/api/leadgrid/events/email/opened",
     async (req: Request, res: Response): Promise<void> => {
       const body = (req.body ?? {}) as Record<string, unknown>;
-      const customerId = reqStr(body.customer_id);
-      let organizationId = reqStr(body.organization_id);
-      if (!organizationId && customerId) {
-        organizationId = await orgIdForCustomer(pool, customerId);
-      }
-      if (!organizationId) {
-        res.status(400).json({ error: "organization_id_required" });
-        return;
-      }
+      const scope = await authorizedEventLead(
+        req, res, pool, activeSessions, body,
+      );
+      if (!scope) return;
+      const { lead } = scope;
       try {
         await pool.query(
           `INSERT INTO leadgrid_email_tracking_events
-             (organization_id, customer_id, event_type, email_id,
+             (organization_id, project_id, customer_id, event_type, email_id,
               user_agent, ip_address, metadata)
-           VALUES ($1::uuid, $2, 'opened', $3, $4, $5::inet, $6::jsonb)`,
+           VALUES ($1::uuid, $2, $3::uuid, 'opened', $4, $5, $6::inet, $7::jsonb)`,
           [
-            organizationId,
-            customerId,
+            lead.organizationId,
+            lead.projectId,
+            lead.id,
             reqStr(body.email_id),
             reqStr(body.user_agent) ?? req.headers["user-agent"] ?? null,
-            reqStr(body.ip_address) ?? null,
+            req.ip ?? null,
             JSON.stringify(body.metadata ?? {}),
           ],
         );
         void publishEvent({
           pool,
-          organizationId,
+          organizationId: lead.organizationId,
+          projectId: lead.projectId,
           type: "email.opened",
-          leadId: customerId,
-          actorUserId: null,
+          leadId: lead.id,
+          actorUserId: scope.session.userId,
           data: {
             email_id: reqStr(body.email_id),
             occurred_at: new Date().toISOString(),
@@ -136,8 +134,12 @@ export function registerLeadgridWorkflowTriggerRoutes(deps: Deps): void {
         void emitWebhook(
           pool,
           "email.opened",
-          { lead_id: customerId, email_id: reqStr(body.email_id) },
-          organizationId,
+          {
+            lead_id: lead.id,
+            project_id: lead.projectId,
+            email_id: reqStr(body.email_id),
+          },
+          lead.organizationId,
         );
         res.json({ ok: true });
       } catch (err) {
@@ -152,42 +154,40 @@ export function registerLeadgridWorkflowTriggerRoutes(deps: Deps): void {
     "/api/leadgrid/events/email/link-clicked",
     async (req: Request, res: Response): Promise<void> => {
       const body = (req.body ?? {}) as Record<string, unknown>;
-      const customerId = reqStr(body.customer_id);
       const linkUrl = reqStr(body.link_url);
       if (!linkUrl) {
         res.status(400).json({ error: "link_url_required" });
         return;
       }
-      let organizationId = reqStr(body.organization_id);
-      if (!organizationId && customerId) {
-        organizationId = await orgIdForCustomer(pool, customerId);
-      }
-      if (!organizationId) {
-        res.status(400).json({ error: "organization_id_required" });
-        return;
-      }
+      const scope = await authorizedEventLead(
+        req, res, pool, activeSessions, body,
+      );
+      if (!scope) return;
+      const { lead } = scope;
       try {
         await pool.query(
           `INSERT INTO leadgrid_email_tracking_events
-             (organization_id, customer_id, event_type, email_id, link_url,
+             (organization_id, project_id, customer_id, event_type, email_id, link_url,
               user_agent, ip_address, metadata)
-           VALUES ($1::uuid, $2, 'link_clicked', $3, $4, $5, $6::inet, $7::jsonb)`,
+           VALUES ($1::uuid, $2, $3::uuid, 'link_clicked', $4, $5, $6, $7::inet, $8::jsonb)`,
           [
-            organizationId,
-            customerId,
+            lead.organizationId,
+            lead.projectId,
+            lead.id,
             reqStr(body.email_id),
-            linkUrl,
+            linkUrl.slice(0, 4000),
             reqStr(body.user_agent) ?? req.headers["user-agent"] ?? null,
-            reqStr(body.ip_address) ?? null,
+            req.ip ?? null,
             JSON.stringify(body.metadata ?? {}),
           ],
         );
         void publishEvent({
           pool,
-          organizationId,
+          organizationId: lead.organizationId,
+          projectId: lead.projectId,
           type: "email.link_clicked",
-          leadId: customerId,
-          actorUserId: null,
+          leadId: lead.id,
+          actorUserId: scope.session.userId,
           data: {
             link_url: linkUrl,
             email_id: reqStr(body.email_id),
@@ -196,8 +196,12 @@ export function registerLeadgridWorkflowTriggerRoutes(deps: Deps): void {
         void emitWebhook(
           pool,
           "email.link_clicked",
-          { lead_id: customerId, link_url: linkUrl },
-          organizationId,
+          {
+            lead_id: lead.id,
+            project_id: lead.projectId,
+            link_url: linkUrl,
+          },
+          lead.organizationId,
         );
         res.json({ ok: true });
       } catch (err) {
@@ -213,23 +217,19 @@ export function registerLeadgridWorkflowTriggerRoutes(deps: Deps): void {
   app.post(
     "/api/leadgrid/events/meetings/booked",
     async (req: Request, res: Response): Promise<void> => {
-      const session = getSession(req, activeSessions);
       const body = (req.body ?? {}) as Record<string, unknown>;
-      const customerId = reqStr(body.customer_id);
-      let organizationId = reqStr(body.organization_id);
-      if (!organizationId && customerId) {
-        organizationId = await orgIdForCustomer(pool, customerId);
-      }
-      if (!organizationId) {
-        res.status(400).json({ error: "organization_id_required" });
-        return;
-      }
+      const scope = await authorizedEventLead(
+        req, res, pool, activeSessions, body,
+      );
+      if (!scope) return;
+      const { lead, session } = scope;
       void publishEvent({
         pool,
-        organizationId,
+        organizationId: lead.organizationId,
+        projectId: lead.projectId,
         type: "meeting.booked",
-        leadId: customerId,
-        actorUserId: session?.userId ?? null,
+        leadId: lead.id,
+        actorUserId: session.userId,
         data: {
           meeting_id: reqStr(body.meeting_id),
           meeting_type: reqStr(body.meeting_type) ?? "discovery",
@@ -240,11 +240,12 @@ export function registerLeadgridWorkflowTriggerRoutes(deps: Deps): void {
         pool,
         "meeting.booked",
         {
-          lead_id: customerId,
+          lead_id: lead.id,
+          project_id: lead.projectId,
           meeting_id: reqStr(body.meeting_id),
           meeting_type: reqStr(body.meeting_type) ?? "discovery",
         },
-        organizationId,
+        lead.organizationId,
       );
       res.json({ ok: true });
     },
@@ -254,26 +255,24 @@ export function registerLeadgridWorkflowTriggerRoutes(deps: Deps): void {
   app.post(
     "/api/leadgrid/events/meetings/no-show",
     async (req: Request, res: Response): Promise<void> => {
-      const session = getSession(req, activeSessions);
       const body = (req.body ?? {}) as Record<string, unknown>;
-      const customerId = reqStr(body.customer_id);
       const meetingId = reqStr(body.meeting_id);
-      let organizationId = reqStr(body.organization_id);
-      if (!organizationId && customerId) {
-        organizationId = await orgIdForCustomer(pool, customerId);
-      }
-      if (!organizationId) {
-        res.status(400).json({ error: "organization_id_required" });
-        return;
-      }
+      const scope = await authorizedEventLead(
+        req, res, pool, activeSessions, body,
+      );
+      if (!scope) return;
+      const { lead, session } = scope;
       // Best-effort: hvis vi har leadgrid_meetings-rad, sett status
       if (meetingId) {
         try {
           await pool.query(
             `UPDATE leadgrid_meetings
                 SET status = 'no_show', updated_at = NOW()
-              WHERE id = $1::uuid AND organization_id = $2::uuid`,
-            [meetingId, organizationId],
+              WHERE id = $1::uuid
+                AND organization_id = $2::uuid
+                AND project_id = $3
+                AND customer_id = $4::uuid`,
+            [meetingId, lead.organizationId, lead.projectId, lead.id],
           );
         } catch {
           /* swallow */
@@ -281,17 +280,22 @@ export function registerLeadgridWorkflowTriggerRoutes(deps: Deps): void {
       }
       void publishEvent({
         pool,
-        organizationId,
+        organizationId: lead.organizationId,
+        projectId: lead.projectId,
         type: "meeting.no_show",
-        leadId: customerId,
-        actorUserId: session?.userId ?? null,
+        leadId: lead.id,
+        actorUserId: session.userId,
         data: { meeting_id: meetingId },
       });
       void emitWebhook(
         pool,
         "meeting.no_show",
-        { lead_id: customerId, meeting_id: meetingId },
-        organizationId,
+        {
+          lead_id: lead.id,
+          project_id: lead.projectId,
+          meeting_id: meetingId,
+        },
+        lead.organizationId,
       );
       res.json({ ok: true });
     },
@@ -302,52 +306,68 @@ export function registerLeadgridWorkflowTriggerRoutes(deps: Deps): void {
     "/api/leadgrid/events/proposals/opened",
     async (req: Request, res: Response): Promise<void> => {
       const body = (req.body ?? {}) as Record<string, unknown>;
-      const customerId = reqStr(body.customer_id);
       const proposalId = reqStr(body.proposal_id);
-      if (!customerId || !proposalId) {
+      if (!proposalId) {
         res.status(400).json({ error: "customer_id_and_proposal_id_required" });
         return;
       }
-      let organizationId = reqStr(body.organization_id);
-      if (!organizationId) {
-        organizationId = await orgIdForCustomer(pool, customerId);
-      }
-      if (!organizationId) {
-        res.status(400).json({ error: "organization_id_required" });
-        return;
-      }
+      const scope = await authorizedEventLead(
+        req, res, pool, activeSessions, body,
+      );
+      if (!scope) return;
+      const { lead, session } = scope;
       try {
+        const proposal = await pool.query<{ allowed: boolean }>(
+          `SELECT EXISTS (
+             SELECT 1
+               FROM leadgrid_proposals p
+              WHERE p.id::text = $1
+                AND p.lead_id = $2::uuid
+                AND p.organization_id = $3
+           ) AS allowed`,
+          [proposalId, lead.id, lead.organizationId],
+        );
+        if (proposal.rows[0]?.allowed !== true) {
+          res.status(404).json({ error: "proposal_not_found" });
+          return;
+        }
         await pool.query(
           `INSERT INTO leadgrid_proposal_views
-             (organization_id, customer_id, proposal_id,
+             (organization_id, project_id, customer_id, proposal_id,
               view_duration_seconds, pages_viewed, device_type,
               user_agent, ip_address, metadata)
-           VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8::inet, $9::jsonb)`,
+           VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, $7, $8, $9::inet, $10::jsonb)`,
           [
-            organizationId,
-            customerId,
+            lead.organizationId,
+            lead.projectId,
+            lead.id,
             proposalId,
             reqInt(body.view_duration_seconds),
             reqInt(body.pages_viewed),
             reqStr(body.device_type),
             reqStr(body.user_agent) ?? req.headers["user-agent"] ?? null,
-            reqStr(body.ip_address) ?? null,
+            req.ip ?? null,
             JSON.stringify(body.metadata ?? {}),
           ],
         );
         void publishEvent({
           pool,
-          organizationId,
+          organizationId: lead.organizationId,
+          projectId: lead.projectId,
           type: "proposal.opened",
-          leadId: customerId,
-          actorUserId: null,
+          leadId: lead.id,
+          actorUserId: session.userId,
           data: { proposal_id: proposalId },
         });
         void emitWebhook(
           pool,
           "proposal.opened",
-          { lead_id: customerId, proposal_id: proposalId },
-          organizationId,
+          {
+            lead_id: lead.id,
+            project_id: lead.projectId,
+            proposal_id: proposalId,
+          },
+          lead.organizationId,
         );
         res.json({ ok: true });
       } catch (err) {
@@ -364,30 +384,27 @@ export function registerLeadgridWorkflowTriggerRoutes(deps: Deps): void {
     "/api/leadgrid/events/contracts/signed",
     async (req: Request, res: Response): Promise<void> => {
       const body = (req.body ?? {}) as Record<string, unknown>;
-      const customerId = reqStr(body.customer_id);
       const contractId = reqStr(body.contract_id);
-      if (!customerId || !contractId) {
+      if (!contractId) {
         res.status(400).json({ error: "customer_id_and_contract_id_required" });
         return;
       }
-      let organizationId = reqStr(body.organization_id);
-      if (!organizationId) {
-        organizationId = await orgIdForCustomer(pool, customerId);
-      }
-      if (!organizationId) {
-        res.status(400).json({ error: "organization_id_required" });
-        return;
-      }
+      const scope = await authorizedEventLead(
+        req, res, pool, activeSessions, body,
+      );
+      if (!scope) return;
+      const { lead, session } = scope;
       const provider = reqStr(body.provider) ?? "manual";
       try {
         await pool.query(
           `INSERT INTO leadgrid_contract_events
-             (organization_id, customer_id, event_type, contract_id,
+             (organization_id, project_id, customer_id, event_type, contract_id,
               signer_email, provider, metadata)
-           VALUES ($1::uuid, $2::uuid, 'signed', $3, $4, $5, $6::jsonb)`,
+           VALUES ($1::uuid, $2, $3::uuid, 'signed', $4, $5, $6, $7::jsonb)`,
           [
-            organizationId,
-            customerId,
+            lead.organizationId,
+            lead.projectId,
+            lead.id,
             contractId,
             reqStr(body.signer_email),
             provider,
@@ -396,10 +413,11 @@ export function registerLeadgridWorkflowTriggerRoutes(deps: Deps): void {
         );
         void publishEvent({
           pool,
-          organizationId,
+          organizationId: lead.organizationId,
+          projectId: lead.projectId,
           type: "contract.signed",
-          leadId: customerId,
-          actorUserId: null,
+          leadId: lead.id,
+          actorUserId: session.userId,
           data: {
             contract_id: contractId,
             provider,
@@ -409,8 +427,13 @@ export function registerLeadgridWorkflowTriggerRoutes(deps: Deps): void {
         void emitWebhook(
           pool,
           "contract.signed",
-          { lead_id: customerId, contract_id: contractId, provider },
-          organizationId,
+          {
+            lead_id: lead.id,
+            project_id: lead.projectId,
+            contract_id: contractId,
+            provider,
+          },
+          lead.organizationId,
         );
         res.json({ ok: true });
       } catch (err) {

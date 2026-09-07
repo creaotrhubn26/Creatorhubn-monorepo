@@ -3,7 +3,7 @@
 // Modal som åpnes når salgssjefen tapper "Planlegg møte" i detail-panelet.
 // Forhåndsutfylt med lead-info + kontaktperson + adresse.
 //
-// Møte-typer: fysisk møte, video (Google Meet/Teams auto), telefon.
+// Møte-typer: fysisk møte, video og telefon.
 // Inviterte: lead-kontaktperson + meg selv + (valgfritt) andre teammedlemmer.
 // Kalender- og invitasjonsvalg kan forhåndsutfylles her. Selve server-
 // lagringen er sperret til en verifisert møte-write er koblet til.
@@ -71,8 +71,8 @@ struct ScheduleMeetingSheet: View {
         var description: String {
             switch self {
             case .physical:   return "Møte på leadens adresse"
-            case .facetime:   return "Apple FaceTime-lenke (alle får invitasjon)"
-            case .googleMeet: return "Google Meet-lenke genereres automatisk"
+            case .facetime:   return "Lim inn en ekte FaceTime-lenke"
+            case .googleMeet: return "Lim inn en ekte Google Meet-lenke"
             case .phone:      return "Du ringer kontaktpersonen"
             }
         }
@@ -89,18 +89,6 @@ struct ScheduleMeetingSheet: View {
     }
 
     private var isDemo: Bool { DemoModeManager.isActiveNonisolated }
-
-    /// Syntetiske konferanselenker er kun tillatt i eksplisitt demo-modus.
-    /// Live skal få lenken fra en verifisert kalender-/møteintegrasjon.
-    private func generatedLink(for type: MeetingType) -> String {
-        guard isDemo else { return "" }
-        let short = String(UUID().uuidString.prefix(8)).lowercased()
-        switch type {
-        case .facetime:   return "https://facetime.apple.com/join#v=1&p=\(short)&k=abc123"
-        case .googleMeet: return "https://meet.google.com/\(short.prefix(3))-\(short.dropFirst(3).prefix(4))-\(short.suffix(3))"
-        default:          return ""
-        }
-    }
 
     private let durationOptions = [15, 30, 45, 60, 90, 120]
     private let reminderOptions = [5, 15, 30, 60, 120, 1440]  // min
@@ -143,13 +131,12 @@ struct ScheduleMeetingSheet: View {
                 }
             }
             .onChange(of: meetingType) { _, newType in
-                // Auto-generér lenke når brukeren bytter til video-type
                 switch newType {
                 case .physical:   location = lead.address
                 case .phone:
                     location = isDemo ? (lead.phoneOrDemo ?? "") : (lead.phone ?? "")
                 case .facetime, .googleMeet:
-                    location = generatedLink(for: newType)
+                    location = ""
                 }
             }
         }
@@ -382,11 +369,10 @@ struct ScheduleMeetingSheet: View {
         }
     }
 
-    /// Video-lenke-rad m/ auto-generert URL, copy + join-knapp.
-    /// Inkluderer "Regenerér"-button og status-banner (Lagt til i kalender osv.).
+    /// Video-lenken må komme fra brukeren eller en verifisert integrasjon.
+    /// Leadgrid fremstiller aldri en tilfeldig URL som en ekte invitasjon.
     private var videoLinkRow: some View {
         VStack(spacing: 10) {
-            // URL-feltet
             HStack(spacing: 8) {
                 ZStack {
                     Circle().fill(meetingType.color.opacity(0.22))
@@ -395,22 +381,12 @@ struct ScheduleMeetingSheet: View {
                         .foregroundStyle(meetingType.color)
                 }
                 .frame(width: 32, height: 32)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(location.isEmpty
-                         ? (isDemo ? "Genererer lenke…" : "Ingen videolenke opprettet")
-                         : location)
-                        .font(.appScaled(size: 11, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Text(isDemo
-                         ? (meetingType == .facetime
-                            ? "Demo-lenke — ikke en ekte FaceTime-invitasjon"
-                            : "Demo-lenke — ikke et ekte Google Meet")
-                         : "Videolenken opprettes først av en koblet møteintegrasjon")
-                        .font(.appScaled(size: 9))
-                        .foregroundStyle(SmBrand.textSecondary)
-                }
+                TextField("Lim inn ekte videolenke", text: $location)
+                    .textFieldStyle(.plain)
+                    .font(.appScaled(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
                 Spacer(minLength: 4)
                 Button {
                     UIPasteboard.general.string = location
@@ -431,39 +407,16 @@ struct ScheduleMeetingSheet: View {
                     .stroke(meetingType.color.opacity(0.35), lineWidth: 1)
             )
 
-            // Action-rad
             HStack(spacing: 8) {
                 Button {
-                    if isDemo {
-                        location = generatedLink(for: meetingType)
-                    } else {
-                        showPersistenceUnavailable = true
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.appScaled(size: 11, weight: .semibold))
-                        Text("Regenerér")
-                            .font(.appScaled(size: 12, weight: .semibold))
-                    }
-                    .foregroundStyle(SmBrand.purpleLight)
-                    .padding(.horizontal, 12).padding(.vertical, 8)
-                    .background(SmBrand.cardHi.opacity(0.6), in: Capsule())
-                    .overlay(Capsule().stroke(SmBrand.stroke, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    if isDemo, let url = URL(string: location) {
+                    if let url = verifiedVideoURL {
                         UIApplication.shared.open(url)
-                    } else {
-                        showPersistenceUnavailable = true
                     }
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: "arrow.up.forward.app.fill")
                             .font(.appScaled(size: 11, weight: .bold))
-                        Text(meetingType == .facetime ? "Test FaceTime" : "Test Meet")
+                        Text("Åpne lenke")
                             .font(.appScaled(size: 12, weight: .bold))
                     }
                     .foregroundStyle(.white)
@@ -477,6 +430,8 @@ struct ScheduleMeetingSheet: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .disabled(verifiedVideoURL == nil)
+                .opacity(verifiedVideoURL == nil ? 0.45 : 1)
                 Spacer()
             }
 
@@ -486,9 +441,7 @@ struct ScheduleMeetingSheet: View {
                     .font(.appScaled(size: 11))
                     .foregroundStyle(meetingType.color)
                     .padding(.top, 1)
-                Text(isDemo
-                     ? "Demo: lenken er syntetisk og ingen invitasjon sendes."
-                     : "Koble en møteintegrasjon før videolenke, kalenderoppføring eller invitasjon kan opprettes.")
+                Text("Bare lenker du limer inn vises her. Kalenderoppføring og invitasjon krever fortsatt en koblet møteintegrasjon.")
                     .font(.appScaled(size: 11))
                     .foregroundStyle(SmBrand.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -499,12 +452,19 @@ struct ScheduleMeetingSheet: View {
         }
     }
 
+    private var verifiedVideoURL: URL? {
+        guard let url = URL(string: location),
+              let scheme = url.scheme?.lowercased(),
+              ["https", "facetime"].contains(scheme) else { return nil }
+        return url
+    }
+
     // MARK: Inviterte
 
     private var inviteesCard: some View {
         sectionCard(title: "Deltakere", icon: "person.2.fill") {
             VStack(spacing: 8) {
-                // Organisator = faktisk innlogget bruker (var hardkodet «Lars Kristensen»)
+                // Organisator = faktisk innlogget bruker, aldri en demobruker.
                 inviteeRow(
                     name: appState.displayName,
                     role: "Møtearrangør · deg",

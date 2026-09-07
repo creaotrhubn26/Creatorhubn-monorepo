@@ -24,13 +24,24 @@ import crypto from "crypto";
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import PDFDocument from "pdfkit";
+import { buildCsvDocument } from "./leadgrid-csv.js";
 import { buildInfographicUrl, emailImgTag } from "./infographic-share.js";
 import { renderInfographicToBuffer } from "./infographic-render.js";
+import {
+  LeadgridReportProjectScopeError,
+  resolveAccessibleReportProject,
+} from "./leadgrid-report-project-scope.js";
+import {
+  loadAccessibleLeadgridProject,
+  type LeadgridAccessibleProject,
+} from "./leadgrid-project-access.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps { app: Express; pool: Pool; activeSessions: Map<string, SessionData>; }
 
 const CRON_TOKEN = process.env.LEADGRID_CRON_TRIGGER_TOKEN ?? "";
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const REPORT_MANAGER_ROLES = ["owner", "admin", "markedssjef", "salgssjef"];
 
 function getSession(req: Request, sessions: Map<string, SessionData>): SessionData | null {
   const auth = req.headers.authorization;
@@ -45,13 +56,149 @@ function isCronAuthorized(req: Request): boolean {
   return crypto.timingSafeEqual(Buffer.from(t), Buffer.from(CRON_TOKEN));
 }
 
-async function getOrgId(pool: Pool, userId: string): Promise<string | null> {
+async function getOrgId(
+  pool: Pool,
+  userId: string,
+  req: Request,
+): Promise<string | null> {
+  const body = req.body as { organization_id?: unknown } | undefined;
+  const queryValue = Array.isArray(req.query.organization_id)
+    ? req.query.organization_id[0]
+    : req.query.organization_id;
+  const candidates: unknown[] = [
+    body?.organization_id,
+    queryValue,
+    req.get("X-Leadgrid-Organization-Id"),
+  ];
+  const requested = candidates.find(
+    (value) => typeof value === "string" && value.trim().length > 0,
+  );
+
+  if (typeof requested === "string") {
+    const organizationId = requested.trim();
+    if (!UUID_PATTERN.test(organizationId)) return null;
+    const scoped = await pool.query<{ organization_id: string }>(
+      `SELECT om.organization_id::text
+         FROM organization_members om
+        WHERE om.user_id = $1
+          AND om.organization_id = $2::uuid
+        LIMIT 1`,
+      [userId, organizationId],
+    );
+    if (scoped.rows[0]) return scoped.rows[0].organization_id;
+
+    const platformAdmin = await pool.query<{ allowed: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM users WHERE id = $1 AND role = 'super_admin'
+       ) AS allowed`,
+      [userId],
+    );
+    return platformAdmin.rows[0]?.allowed === true ? organizationId : null;
+  }
+
+  // Midlertidig kompatibilitet for web-kalleren som ennå ikke sender aktiv
+  // workspace. Native-klienten sender alltid eksplisitt organization_id.
   const r = await pool.query<{ organization_id: string }>(
     `SELECT organization_id::text FROM organization_members
       WHERE user_id = $1 ORDER BY role = 'owner' DESC LIMIT 1`,
     [userId],
   );
   return r.rows[0]?.organization_id ?? null;
+}
+
+export async function canManageScheduledReports(
+  pool: Pool,
+  userId: string,
+  organizationId: string,
+): Promise<boolean> {
+  const result = await pool.query<{ allowed: boolean }>(
+    `SELECT (
+       EXISTS (
+         SELECT 1
+           FROM organization_members
+          WHERE user_id = $1
+            AND organization_id = $2::uuid
+            AND role = ANY($3::text[])
+       ) OR EXISTS (
+         SELECT 1 FROM users WHERE id = $1 AND role = 'super_admin'
+       )
+     ) AS allowed`,
+    [userId, organizationId, REPORT_MANAGER_ROLES],
+  );
+  return result.rows[0]?.allowed === true;
+}
+
+type ResolvedReportProject = { id: string; name: string } | null;
+
+async function resolveReportProjectForHttp(
+  pool: Pool,
+  res: Response,
+  userId: string,
+  organizationId: string,
+  rawProjectId: unknown,
+  required = false,
+): Promise<
+  | { ok: true; project: ResolvedReportProject }
+  | { ok: false; response: Response }
+> {
+  if (
+    required &&
+    (rawProjectId === undefined || rawProjectId === null || rawProjectId === "")
+  ) {
+    return {
+      ok: false,
+      response: res.status(400).json({ error: "project_id_required" }),
+    };
+  }
+  try {
+    const project = await resolveAccessibleReportProject(pool, {
+      userId,
+      organizationId,
+      projectId: rawProjectId,
+    });
+    return { ok: true, project };
+  } catch (error) {
+    if (error instanceof LeadgridReportProjectScopeError) {
+      return {
+        ok: false,
+        response: res.status(error.status).json({ error: error.code }),
+      };
+    }
+    console.error("[leadgrid/scheduled-reports] project scope lookup failed", error);
+    return {
+      ok: false,
+      response: res.status(500).json({ error: "project_lookup_failed" }),
+    };
+  }
+}
+
+async function loadAccessibleScheduledReport(
+  pool: Pool,
+  input: {
+    reportId: string;
+    organizationId: string;
+    userId: string;
+  },
+): Promise<{ id: string; project: LeadgridAccessibleProject } | null> {
+  if (!UUID_PATTERN.test(input.reportId)) return null;
+  const result = await pool.query<{ id: string; project_id: string }>(
+    `SELECT id::text, project_id
+       FROM leadgrid_scheduled_reports
+      WHERE id = $1::uuid
+        AND organization_id = $2::uuid
+        AND project_id IS NOT NULL
+      LIMIT 1`,
+    [input.reportId, input.organizationId],
+  );
+  const row = result.rows[0];
+  if (!row?.project_id) return null;
+  const project = await loadAccessibleLeadgridProject(
+    pool,
+    row.project_id,
+    input.userId,
+  );
+  if (!project || project.organizationId !== input.organizationId) return null;
+  return { id: row.id, project };
 }
 
 /** Beregn neste send-tidspunkt basert på frequency. */
@@ -118,7 +265,8 @@ function buildScopeClause(scope: ScopeFilter, paramStart: number): {
 // ============================================================
 async function buildLeadsCsv(
   pool: Pool, orgId: string, periodDays: number, statusFilter: string,
-  scopeFilter: ScopeFilter = { scope: "org" },
+  scopeFilter: ScopeFilter,
+  projectId: string,
 ): Promise<string> {
   let statusClause = "";
   if (statusFilter === "won") statusClause = " AND c.status = 'won'";
@@ -128,7 +276,7 @@ async function buildLeadsCsv(
   } else if (statusFilter === "active") {
     statusClause = " AND c.status NOT IN ('archived')";
   }
-  const scopeBuilt = buildScopeClause(scopeFilter, 3);
+  const scopeBuilt = buildScopeClause(scopeFilter, 4);
   statusClause += scopeBuilt.clause;
 
   const r = await pool.query(
@@ -143,25 +291,17 @@ async function buildLeadsCsv(
             c.lost_at::text, c.lost_reason, c.lost_reason_detail,
             c.created_at::text
        FROM crm_customers c
-       JOIN leadgrid_projects p ON p.id = c.project_id
        LEFT JOIN users tl  ON tl.id = c.assigned_team_leader_id
        LEFT JOIN users rep ON rep.id = c.assigned_user_id
-      WHERE p.organization_id::text = $1
+      WHERE c.organization_id = $1::uuid
+        AND c.project_id = $3
         AND COALESCE(c.won_at, c.lost_at, c.status_changed_at, c.created_at)
             > now() - ($2::int * INTERVAL '1 day')
         ${statusClause}
       ORDER BY c.created_at DESC LIMIT 2000`,
-    [orgId, periodDays, ...scopeBuilt.params],
+    [orgId, periodDays, projectId, ...scopeBuilt.params],
   );
 
-  const escape = (v: any): string => {
-    if (v === null || v === undefined) return "";
-    const s = String(v);
-    if (s.includes(";") || s.includes('"') || s.includes("\n")) {
-      return `"${s.replace(/"/g, '""')}"`;
-    }
-    return s;
-  };
   const headers = [
     "Bedrift", "E-post", "Telefon", "Nettside",
     "Status", "Tier", "Score",
@@ -171,9 +311,9 @@ async function buildLeadsCsv(
     "Tapt", "Tapt-årsak", "Tapt-detalj",
     "Opprettet",
   ];
-  const lines = ["﻿" + headers.join(";")]; // UTF-8 BOM
-  for (const row of r.rows) {
-    lines.push([
+  return buildCsvDocument(
+    headers,
+    r.rows.map((row) => [
       row.name, row.email, row.phone, row.website_url,
       row.status, row.lead_category, row.ai_opportunity_score,
       row.tl_name, row.rep_name, row.assignment_note,
@@ -183,21 +323,22 @@ async function buildLeadsCsv(
       row.won_recurring_oere ? (row.won_recurring_oere / 100) : null,
       row.lost_at, row.lost_reason, row.lost_reason_detail,
       row.created_at,
-    ].map(escape).join(";"));
-  }
-  return lines.join("\r\n");
+    ]),
+    { delimiter: ";" },
+  );
 }
 
 async function buildSummary(
   pool: Pool, orgId: string, periodDays: number,
-  scopeFilter: ScopeFilter = { scope: "org" },
+  scopeFilter: ScopeFilter,
+  projectId: string,
 ): Promise<SummaryData> {
-  const scope = buildScopeClause(scopeFilter, 3);
+  const scope = buildScopeClause(scopeFilter, 4);
   const statsR = await pool.query<any>(
     `WITH base AS (
        SELECT c.* FROM crm_customers c
-       JOIN leadgrid_projects p ON p.id = c.project_id
-       WHERE p.organization_id::text = $1
+       WHERE c.organization_id = $1::uuid
+         AND c.project_id = $3
          AND COALESCE(c.won_at, c.lost_at, c.status_changed_at)
              > now() - ($2::int * INTERVAL '1 day')
          ${scope.clause}
@@ -208,7 +349,7 @@ async function buildSummary(
        COALESCE(SUM(won_amount_oere) FILTER (WHERE status='won'), 0) AS total_won_oere,
        COALESCE(SUM(won_recurring_oere) FILTER (WHERE status='won'), 0) AS total_recurring_oere
       FROM base`,
-    [orgId, periodDays, ...scope.params],
+    [orgId, periodDays, projectId, ...scope.params],
   );
   const stats = statsR.rows[0];
   const winRate = Number(stats.won_count)
@@ -216,12 +357,13 @@ async function buildSummary(
 
   const lostR = await pool.query(
     `SELECT lost_reason, COUNT(*) AS n FROM crm_customers c
-     JOIN leadgrid_projects p ON p.id = c.project_id
-     WHERE p.organization_id::text = $1 AND status='lost'
+     WHERE c.organization_id = $1::uuid
+       AND c.project_id = $3
+       AND status='lost'
        AND lost_at > now() - ($2::int * INTERVAL '1 day')
        ${scope.clause}
      GROUP BY lost_reason ORDER BY n DESC LIMIT 5`,
-    [orgId, periodDays, ...scope.params],
+    [orgId, periodDays, projectId, ...scope.params],
   );
 
   const repR = await pool.query(
@@ -229,16 +371,16 @@ async function buildSummary(
             COUNT(*) FILTER (WHERE c.status='won') AS won_count,
             COALESCE(SUM(c.won_amount_oere) FILTER (WHERE c.status='won'), 0) AS won_amount_oere
        FROM crm_customers c
-       JOIN leadgrid_projects p ON p.id = c.project_id
        LEFT JOIN users u ON u.id = c.assigned_user_id
-      WHERE p.organization_id::text = $1
+      WHERE c.organization_id = $1::uuid
+        AND c.project_id = $3
         AND c.assigned_user_id IS NOT NULL
         AND COALESCE(c.won_at, c.lost_at) > now() - ($2::int * INTERVAL '1 day')
         ${scope.clause}
       GROUP BY u.first_name, u.last_name
       HAVING COUNT(*) FILTER (WHERE c.status='won') > 0
       ORDER BY won_amount_oere DESC LIMIT 5`,
-    [orgId, periodDays, ...scope.params],
+    [orgId, periodDays, projectId, ...scope.params],
   );
 
   const funnelR = await pool.query(
@@ -251,11 +393,11 @@ async function buildSummary(
        COUNT(*) FILTER (WHERE status='won') AS won,
        COUNT(*) FILTER (WHERE status='lost') AS lost
       FROM crm_customers c
-      JOIN leadgrid_projects p ON p.id = c.project_id
-     WHERE p.organization_id::text = $1
+     WHERE c.organization_id = $1::uuid
+       AND c.project_id = $3
        AND c.created_at > now() - ($2::int * INTERVAL '1 day')
        ${scope.clause}`,
-    [orgId, periodDays, ...scope.params],
+    [orgId, periodDays, projectId, ...scope.params],
   );
 
   return {
@@ -541,20 +683,44 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
   app.get("/api/leadgrid/scheduled-reports", async (req, res) => {
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
-    const orgId = await getOrgId(pool, s.userId);
+    const orgId = await getOrgId(pool, s.userId, req);
     if (!orgId) return res.status(403).json({ error: "Ikke i noen org" });
+    if (!(await canManageScheduledReports(pool, s.userId, orgId))) {
+      return res.status(403).json({ error: "Krever rapportleder-tilgang" });
+    }
+    const projectRows = await pool.query<{ project_id: string }>(
+      `SELECT DISTINCT project_id
+         FROM leadgrid_scheduled_reports
+        WHERE organization_id = $1::uuid
+          AND project_id IS NOT NULL`,
+      [orgId],
+    );
+    const accessibleProjects = (
+      await Promise.all(
+        projectRows.rows.map((row) =>
+          loadAccessibleLeadgridProject(pool, row.project_id, s.userId)),
+      )
+    ).filter(
+      (project): project is LeadgridAccessibleProject =>
+        Boolean(project && project.organizationId === orgId),
+    );
+    const accessibleProjectIds = accessibleProjects.map((project) => project.id);
+    if (accessibleProjectIds.length === 0) {
+      return res.json({ items: [] });
+    }
     const r = await pool.query(
       `SELECT id::text, name, report_type, period_days, status_filter,
               recipient_user_ids, recipient_emails,
               frequency, day_of_week, day_of_month, time_of_day, timezone,
               is_active, last_sent_at::text, last_send_status, last_send_error,
               next_send_at::text, created_at::text, updated_at::text,
-              created_by_user_id,
+              created_by_user_id, project_id,
               scope, target_team_leader_id, target_user_id, auto_send_to_target
          FROM leadgrid_scheduled_reports
-        WHERE organization_id::text = $1
+        WHERE organization_id = $1::uuid
+          AND project_id = ANY($2::text[])
         ORDER BY is_active DESC, name`,
-      [orgId],
+      [orgId, accessibleProjectIds],
     );
     res.json({ items: r.rows });
   });
@@ -562,10 +728,26 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
   app.post("/api/leadgrid/scheduled-reports", async (req, res) => {
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
-    const orgId = await getOrgId(pool, s.userId);
+    const orgId = await getOrgId(pool, s.userId, req);
     if (!orgId) return res.status(403).json({ error: "Ikke i noen org" });
+    if (!(await canManageScheduledReports(pool, s.userId, orgId))) {
+      return res.status(403).json({ error: "Krever rapportleder-tilgang" });
+    }
     const b = req.body ?? {};
     if (!b.name) return res.status(400).json({ error: "name påkrevd" });
+    const projectScope = await resolveReportProjectForHttp(
+      pool,
+      res,
+      s.userId,
+      orgId,
+      b.project_id ?? b.projectId,
+      true,
+    );
+    if ("response" in projectScope) return projectScope.response;
+    const reportProject = projectScope.project;
+    if (!reportProject) {
+      return res.status(400).json({ error: "project_id_required" });
+    }
 
     const nextSendAt = computeNextSendAt({
       frequency: b.frequency ?? "weekly",
@@ -580,9 +762,10 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
           status_filter, recipient_user_ids, recipient_emails,
           frequency, day_of_week, day_of_month, time_of_day, timezone,
           is_active, next_send_at,
-          scope, target_team_leader_id, target_user_id, auto_send_to_target)
+          scope, target_team_leader_id, target_user_id, auto_send_to_target,
+          project_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7::text[], $8::text[], $9, $10, $11, $12, $13, $14, $15,
-               $16, $17, $18, $19)
+               $16, $17, $18, $19, $20)
        RETURNING id::text`,
       [orgId, s.userId, b.name, b.report_type ?? "summary", b.period_days ?? 7,
        b.status_filter ?? "all",
@@ -591,9 +774,9 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
        b.time_of_day ?? "08:00", b.timezone ?? "Europe/Oslo",
        b.is_active !== false, nextSendAt,
        b.scope ?? "org", b.target_team_leader_id ?? null, b.target_user_id ?? null,
-       b.auto_send_to_target !== false],
+       b.auto_send_to_target !== false, reportProject.id],
     );
-    res.json({ ok: true, id: r.rows[0].id });
+    res.json({ ok: true, id: r.rows[0].id, project_id: reportProject.id });
   });
 
   // ============================================================
@@ -602,20 +785,26 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
   app.post("/api/leadgrid/scheduled-reports/auto-create-for-team", async (req, res) => {
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
-    const orgId = await getOrgId(pool, s.userId);
+    const orgId = await getOrgId(pool, s.userId, req);
     if (!orgId) return res.status(403).json({ error: "Ikke i noen org" });
-
-    // Sjekk at brukeren er markedssjef+
-    const roleR = await pool.query<{ role: string }>(
-      `SELECT role FROM organization_members
-        WHERE user_id = $1 AND organization_id = $2`,
-      [s.userId, orgId],
-    );
-    if (!["owner","admin","markedssjef","salgssjef"].includes(roleR.rows[0]?.role ?? "")) {
-      return res.status(403).json({ error: "Krever markedssjef-rolle eller høyere" });
+    if (!(await canManageScheduledReports(pool, s.userId, orgId))) {
+      return res.status(403).json({ error: "Krever rapportleder-tilgang" });
     }
 
     const b = req.body ?? {};
+    const projectScope = await resolveReportProjectForHttp(
+      pool,
+      res,
+      s.userId,
+      orgId,
+      b.project_id ?? b.projectId,
+      true,
+    );
+    if ("response" in projectScope) return projectScope.response;
+    const reportProject = projectScope.project;
+    if (!reportProject) {
+      return res.status(400).json({ error: "project_id_required" });
+    }
     const frequency = b.frequency ?? "weekly";
     const dayOfWeek = b.day_of_week ?? 1; // Mandag
     const timeOfDay = b.time_of_day ?? "08:00";
@@ -644,6 +833,15 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
 
     for (const user of usersR.rows) {
       try {
+        const targetProject = await loadAccessibleLeadgridProject(
+          pool,
+          reportProject.id,
+          user.user_id,
+        );
+        if (!targetProject || targetProject.organizationId !== orgId) {
+          result.skipped++;
+          continue;
+        }
         const name = user.role === "teamleder"
           ? `Team-rapport: ${[user.first_name, user.last_name].filter(Boolean).join(" ")}`
           : `Min rapport: ${[user.first_name, user.last_name].filter(Boolean).join(" ")}`;
@@ -654,8 +852,9 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
           `SELECT id::text FROM leadgrid_scheduled_reports
             WHERE organization_id = $1
               AND scope = $2
-              AND ${scope === "team" ? "target_team_leader_id" : "target_user_id"} = $3`,
-          [orgId, scope, user.user_id],
+              AND ${scope === "team" ? "target_team_leader_id" : "target_user_id"} = $3
+              AND project_id = $4::text`,
+          [orgId, scope, user.user_id, reportProject.id],
         );
         if (exists.rows.length > 0) { result.skipped++; continue; }
 
@@ -665,15 +864,17 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
               status_filter, recipient_user_ids, recipient_emails,
               frequency, day_of_week, time_of_day,
               is_active, next_send_at,
-              scope, target_team_leader_id, target_user_id, auto_send_to_target)
+              scope, target_team_leader_id, target_user_id, auto_send_to_target,
+              project_id)
            VALUES ($1, $2, $3, $4, $5, 'all', $6::text[], '{}', $7, $8, $9,
-                   TRUE, $10, $11, $12, $13, TRUE)`,
+                   TRUE, $10, $11, $12, $13, TRUE, $14)`,
           [orgId, s.userId, name, reportType, periodDays,
            [user.user_id],
            frequency, dayOfWeek, timeOfDay, computeNext,
            scope,
            scope === "team" ? user.user_id : null,
-           scope === "individual" ? user.user_id : null],
+           scope === "individual" ? user.user_id : null,
+           reportProject.id],
         );
         result.created++;
       } catch (e: any) {
@@ -686,9 +887,39 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
   app.put("/api/leadgrid/scheduled-reports/:id", async (req, res) => {
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
-    const orgId = await getOrgId(pool, s.userId);
+    const orgId = await getOrgId(pool, s.userId, req);
     if (!orgId) return res.status(403).json({ error: "Ikke i noen org" });
+    if (!(await canManageScheduledReports(pool, s.userId, orgId))) {
+      return res.status(403).json({ error: "Krever rapportleder-tilgang" });
+    }
     const b = req.body ?? {};
+    const reportAccess = await loadAccessibleScheduledReport(pool, {
+      reportId: req.params.id,
+      organizationId: orgId,
+      userId: s.userId,
+    });
+    if (!reportAccess) {
+      return res.status(404).json({ error: "report_not_found" });
+    }
+    const hasProjectUpdate =
+      Object.prototype.hasOwnProperty.call(b, "project_id")
+      || Object.prototype.hasOwnProperty.call(b, "projectId");
+    let updatedProjectId: string | null = null;
+    if (hasProjectUpdate) {
+      const projectScope = await resolveReportProjectForHttp(
+        pool,
+        res,
+        s.userId,
+        orgId,
+        b.project_id ?? b.projectId,
+        true,
+      );
+      if ("response" in projectScope) return projectScope.response;
+      if (!projectScope.project) {
+        return res.status(400).json({ error: "project_id_required" });
+      }
+      updatedProjectId = projectScope.project.id;
+    }
     const nextSendAt = (b.frequency || b.time_of_day || b.day_of_week !== undefined)
       ? computeNextSendAt({
           frequency: b.frequency ?? "weekly",
@@ -697,7 +928,7 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
           time_of_day: b.time_of_day ?? "08:00",
         })
       : null;
-    await pool.query(
+    const updated = await pool.query(
       `UPDATE leadgrid_scheduled_reports SET
          name = COALESCE($1, name),
          report_type = COALESCE($2, report_type),
@@ -711,41 +942,93 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
          time_of_day = COALESCE($10, time_of_day),
          is_active = COALESCE($11, is_active),
          next_send_at = COALESCE($12, next_send_at),
+         project_id = CASE WHEN $13::boolean THEN $14::text ELSE project_id END,
          updated_at = now()
-       WHERE id = $13 AND organization_id::text = $14`,
+       WHERE id = $15::uuid
+         AND organization_id = $16::uuid
+         AND project_id = $17`,
       [b.name ?? null, b.report_type ?? null, b.period_days ?? null,
        b.status_filter ?? null, b.recipient_user_ids ?? null,
        b.recipient_emails ?? null,
        b.frequency ?? null, b.day_of_week ?? null, b.day_of_month ?? null,
        b.time_of_day ?? null, b.is_active ?? null, nextSendAt,
-       req.params.id, orgId],
+       hasProjectUpdate, updatedProjectId, req.params.id, orgId,
+       reportAccess.project.id],
     );
+    if (updated.rowCount !== null && updated.rowCount !== 1) {
+      return res.status(409).json({ error: "report_scope_changed" });
+    }
     res.json({ ok: true });
   });
 
   app.delete("/api/leadgrid/scheduled-reports/:id", async (req, res) => {
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
-    const orgId = await getOrgId(pool, s.userId);
+    const orgId = await getOrgId(pool, s.userId, req);
     if (!orgId) return res.status(403).json({ error: "Ikke i noen org" });
-    await pool.query(
+    if (!(await canManageScheduledReports(pool, s.userId, orgId))) {
+      return res.status(403).json({ error: "Krever rapportleder-tilgang" });
+    }
+    const reportAccess = await loadAccessibleScheduledReport(pool, {
+      reportId: req.params.id,
+      organizationId: orgId,
+      userId: s.userId,
+    });
+    if (!reportAccess) {
+      return res.status(404).json({ error: "report_not_found" });
+    }
+    const deleted = await pool.query(
       `DELETE FROM leadgrid_scheduled_reports
-        WHERE id = $1 AND organization_id::text = $2`,
-      [req.params.id, orgId],
+        WHERE id = $1::uuid
+          AND organization_id = $2::uuid
+          AND project_id = $3`,
+      [req.params.id, orgId, reportAccess.project.id],
     );
+    if (deleted.rowCount !== null && deleted.rowCount !== 1) {
+      return res.status(409).json({ error: "report_scope_changed" });
+    }
     res.json({ ok: true });
   });
 
   app.post("/api/leadgrid/scheduled-reports/:id/send-now", async (req, res) => {
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
-    const orgId = await getOrgId(pool, s.userId);
+    const orgId = await getOrgId(pool, s.userId, req);
     if (!orgId) return res.status(403).json({ error: "Ikke i noen org" });
-    await pool.query(
-      `UPDATE leadgrid_scheduled_reports SET next_send_at = now()
-        WHERE id = $1 AND organization_id::text = $2`,
-      [req.params.id, orgId],
+    if (!(await canManageScheduledReports(pool, s.userId, orgId))) {
+      return res.status(403).json({ error: "Krever rapportleder-tilgang" });
+    }
+    const reportAccess = await loadAccessibleScheduledReport(pool, {
+      reportId: req.params.id,
+      organizationId: orgId,
+      userId: s.userId,
+    });
+    if (!reportAccess) {
+      return res.status(404).json({ error: "report_not_found" });
+    }
+    const queued = await pool.query<{ id: string }>(
+      `UPDATE leadgrid_scheduled_reports s
+          SET next_send_at = now()
+        WHERE s.id = $1
+          AND s.organization_id = $2::uuid
+          AND s.project_id = $3
+          AND EXISTS (
+            SELECT 1
+              FROM leadgrid_projects p
+             WHERE p.organization_id = s.organization_id
+               AND p.id = s.project_id
+               AND (p.status IS NULL OR p.status NOT IN ('archived', 'deleted'))
+               AND (p.project_type IS NULL OR p.project_type NOT IN (
+                 'feature_film', 'documentary', 'film', 'short_film',
+                 'tv_series', 'commercial', 'music_video', 'casting'
+               ))
+          )
+        RETURNING s.id::text`,
+      [req.params.id, orgId, reportAccess.project.id],
     );
+    if (!queued.rows[0]) {
+      return res.status(404).json({ error: "report_or_active_project_not_found" });
+    }
     res.json({ ok: true, queued: true });
   });
 
@@ -768,24 +1051,78 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
 
     try {
       const dueR = await pool.query<any>(
-        `SELECT s.*,
+        `WITH due AS (
+           SELECT s.id
+             FROM leadgrid_scheduled_reports s
+             JOIN leadgrid_projects p
+               ON p.organization_id = s.organization_id
+              AND p.id = s.project_id
+            WHERE s.is_active = TRUE
+              AND s.project_id IS NOT NULL
+              AND s.next_send_at <= now()
+              AND (p.status IS NULL OR p.status NOT IN ('archived', 'deleted'))
+              AND (p.project_type IS NULL OR p.project_type NOT IN (
+                'feature_film', 'documentary', 'film', 'short_film',
+                'tv_series', 'commercial', 'music_video', 'casting'
+              ))
+            ORDER BY s.next_send_at
+            FOR UPDATE OF s SKIP LOCKED
+            LIMIT 50
+         ), claimed AS (
+           UPDATE leadgrid_scheduled_reports s
+              SET next_send_at = now() + INTERVAL '15 minutes',
+                  updated_at = now()
+             FROM due
+            WHERE s.id = due.id
+            RETURNING s.*
+         )
+         SELECT claimed.*,
+                p.name AS project_name,
                 tu.email AS target_user_email,
                 tl.email AS target_team_leader_email
-           FROM leadgrid_scheduled_reports s
-           LEFT JOIN users tu ON tu.id = s.target_user_id
-           LEFT JOIN users tl ON tl.id = s.target_team_leader_id
-          WHERE s.is_active = TRUE AND s.next_send_at <= now()
-          ORDER BY s.next_send_at LIMIT 50`,
+           FROM claimed
+           JOIN leadgrid_projects p
+             ON p.organization_id = claimed.organization_id
+            AND p.id = claimed.project_id
+           LEFT JOIN users tu ON tu.id = claimed.target_user_id
+           LEFT JOIN users tl ON tl.id = claimed.target_team_leader_id
+          ORDER BY claimed.next_send_at`,
       );
       results.due = dueR.rows.length;
 
       for (const sub of dueR.rows) {
         try {
+          const currentProject = sub.created_by_user_id
+            ? await loadAccessibleLeadgridProject(
+                pool,
+                sub.project_id,
+                sub.created_by_user_id,
+              )
+            : null;
+          if (
+            !currentProject
+            || currentProject.organizationId !== sub.organization_id
+          ) {
+            await pool.query(
+              `UPDATE leadgrid_scheduled_reports
+                  SET is_active = FALSE,
+                      last_send_status = 'access_revoked',
+                      last_send_error = 'Oppretteren har ikke lenger tilgang til kundeprosjektet',
+                      updated_at = NOW()
+                WHERE id = $1::uuid
+                  AND organization_id = $2::uuid
+                  AND project_id = $3`,
+              [sub.id, sub.organization_id, sub.project_id],
+            );
+            results.errors++;
+            continue;
+          }
           const branding = await getOrgBranding(pool, sub.organization_id);
           const scopeLabel = sub.scope === "individual" ? "Min rapport"
                            : sub.scope === "team" ? "Team-rapport"
                            : "Org-rapport";
-          const periodLabel = `${scopeLabel} · Periode: siste ${sub.period_days} dager`;
+          const projectLabel = sub.project_name ? ` · Prosjekt: ${sub.project_name}` : "";
+          const periodLabel = `${scopeLabel}${projectLabel} · Periode: siste ${sub.period_days} dager`;
           const datedSuffix = new Date().toISOString().slice(0, 10);
           const scopeFilter: ScopeFilter = {
             scope: sub.scope ?? "org",
@@ -799,7 +1136,7 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
           let summary: SummaryData | null = null;
 
           if (sub.report_type === "summary" || sub.report_type === "both") {
-            summary = await buildSummary(pool, sub.organization_id, sub.period_days, scopeFilter);
+            summary = await buildSummary(pool, sub.organization_id, sub.period_days, scopeFilter, sub.project_id);
             const pdf = await renderSummaryPdfToBuffer(pool, summary, branding, periodLabel);
             attachments.push({
               filename: `salgs-rapport-${datedSuffix}.pdf`,
@@ -810,18 +1147,18 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
           if (sub.report_type === "leads_list" || sub.report_type === "both") {
             const csv = await buildLeadsCsv(
               pool, sub.organization_id, sub.period_days,
-              sub.status_filter ?? "all", scopeFilter,
+              sub.status_filter ?? "all", scopeFilter, sub.project_id,
             );
             attachments.push({
               filename: `leads-${datedSuffix}.csv`,
-              content: Buffer.from("﻿" + csv, "utf8"),
+              content: Buffer.from(csv, "utf8"),
               contentType: "text/csv; charset=utf-8",
             });
           }
 
           // Hvis summary mangler (kun leads_list), bygg én for e-post-preview
           if (!summary) {
-            summary = await buildSummary(pool, sub.organization_id, sub.period_days, scopeFilter);
+            summary = await buildSummary(pool, sub.organization_id, sub.period_days, scopeFilter, sub.project_id);
           }
 
           const totalWonKr = `${(Number(summary.total_won_oere) / 100).toLocaleString("no-NO")} kr`;
@@ -874,11 +1211,13 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
             await pool.query(
               `INSERT INTO leadgrid_scheduled_report_log
                  (subscription_id, organization_id, recipient, report_type,
-                  pdf_size_bytes, delivery_status, external_message_id, error_message)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                  pdf_size_bytes, delivery_status, external_message_id, error_message,
+                  project_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
               [sub.id, sub.organization_id, to, sub.report_type,
                totalSize, res2.ok ? "sent" : "failed",
-               res2.messageId ?? null, res2.ok ? null : res2.error],
+               res2.messageId ?? null, res2.ok ? null : res2.error,
+               sub.project_id ?? null],
             );
             if (res2.ok) anySuccess = true;
             else lastErr = res2.error ?? "unknown";
@@ -891,11 +1230,14 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
                last_sent_at = now(),
                last_send_status = $1,
                last_send_error = $2,
-               next_send_at = $3,
-               updated_at = now()
-             WHERE id = $4`,
-            [anySuccess ? "success" : "failed",
-             anySuccess ? null : lastErr, nextSendAt, sub.id],
+             next_send_at = $3,
+             updated_at = now()
+             WHERE id = $4::uuid
+               AND organization_id = $5::uuid
+               AND project_id = $6`,
+           [anySuccess ? "success" : "failed",
+             anySuccess ? null : lastErr, nextSendAt, sub.id,
+             sub.organization_id, sub.project_id],
           );
 
           if (anySuccess) results.sent++;
@@ -905,11 +1247,13 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
           results.errors++;
           await pool.query(
             `UPDATE leadgrid_scheduled_reports SET
-               last_send_status = 'failed',
-               last_send_error = $1,
-               next_send_at = now() + INTERVAL '1 hour'
-             WHERE id = $2`,
-            [e?.message ?? String(e), sub.id],
+              last_send_status = 'failed',
+              last_send_error = $1,
+              next_send_at = now() + INTERVAL '1 hour'
+             WHERE id = $2::uuid
+               AND organization_id = $3::uuid
+               AND project_id = $4`,
+            [e?.message ?? String(e), sub.id, sub.organization_id, sub.project_id],
           );
         }
       }
@@ -921,3 +1265,5 @@ export function registerLeadgridScheduledReportsRoutes({ app, pool, activeSessio
     }
   });
 }
+
+export const __test = { buildLeadsCsv, buildSummary };

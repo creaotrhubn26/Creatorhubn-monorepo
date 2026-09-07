@@ -37,6 +37,8 @@ import {
   sendTransactionalEmail,
   isTransactionalEmailConfigured,
 } from "./transactional-email-service.js";
+import { loadAccessibleLeadgridProject } from "./leadgrid-project-access.js";
+import { dispatchRulesForWorkflowEvent } from "./lead-rules-dispatcher.js";
 
 // ─── Webhook-rate-limit (60 POST/min per destination) ────────────────
 // In-memory sliding-window per destination_id. OK å reset ved process-restart
@@ -136,6 +138,7 @@ export function _resetWebhookRateLimit(): void {
 export interface WorkflowEvent {
   pool: Pool;
   organizationId: string;
+  projectId: string;
   type: WorkflowTrigger["type"];
   leadId: string | null;
   actorUserId: string | null;
@@ -145,6 +148,7 @@ export interface WorkflowEvent {
 interface WorkflowRow {
   id: string;
   organization_id: string;
+  project_id: string;
   name: string;
   trigger_type: string;
   trigger_config: WorkflowTrigger;
@@ -155,6 +159,8 @@ interface WorkflowRow {
 
 interface LeadRow {
   id: string;
+  organization_id: string;
+  project_id: string;
   business_name: string | null;
   lead_score: number | null;
   lead_temperature: string | null;
@@ -175,16 +181,18 @@ interface LeadRow {
 async function matchWorkflows(
   pool: Pool,
   organizationId: string,
+  projectId: string,
   event: WorkflowEvent,
 ): Promise<WorkflowRow[]> {
   const r = await pool.query<WorkflowRow>(
-    `SELECT id::text, organization_id::text, name, trigger_type,
+    `SELECT id::text, organization_id::text, project_id::text, name, trigger_type,
             trigger_config, conditions, actions, is_active
        FROM leadgrid_workflows
       WHERE organization_id = $1::uuid
+        AND project_id = $2
         AND is_active = TRUE
-        AND trigger_type = $2`,
-    [organizationId, event.type],
+        AND trigger_type = $3`,
+    [organizationId, projectId, event.type],
   );
   return r.rows.filter((w) => triggerMatches(w.trigger_config, event));
 }
@@ -285,16 +293,24 @@ export function triggerMatches(
   }
 }
 
-async function fetchLead(pool: Pool, leadId: string): Promise<LeadRow | null> {
+async function fetchLead(
+  pool: Pool,
+  leadId: string,
+  organizationId: string,
+  projectId: string,
+): Promise<LeadRow | null> {
   const r = await pool.query<LeadRow>(
-    `SELECT id::text, name AS business_name, lead_score, lead_temperature,
+    `SELECT id::text, organization_id::text, project_id::text,
+            name AS business_name, lead_score, lead_temperature,
             pipeline_stage, industry_id::text, city,
             deal_amount::text AS deal_amount, deal_probability,
             owner_user_id, email, phone
-       FROM crm_customers
+      FROM crm_customers
       WHERE id = $1::uuid
+        AND organization_id = $2::uuid
+        AND project_id = $3
       LIMIT 1`,
-    [leadId],
+    [leadId, organizationId, projectId],
   );
   return r.rows[0] ?? null;
 }
@@ -382,25 +398,43 @@ export async function executeWorkflow(
     startAtActionIndex?: number;
   },
 ): Promise<{ executionId: string; status: string; actionResults: ActionResult[] }> {
+  if (
+    workflow.organization_id !== event.organizationId ||
+    workflow.project_id !== event.projectId
+  ) {
+    throw new Error("workflow_project_scope_mismatch");
+  }
   const startedAt = Date.now();
   const lead =
     opts?.lead ??
-    (event.leadId ? await fetchLead(pool, event.leadId) : null);
+    (event.leadId
+      ? await fetchLead(
+          pool,
+          event.leadId,
+          event.organizationId,
+          event.projectId,
+        )
+      : null);
+  if (event.leadId && !lead) {
+    throw new Error("lead_not_found_in_project");
+  }
 
   // Insert pending execution-rad
   const insRes = await pool.query<{ id: string }>(
     `INSERT INTO leadgrid_workflow_executions
-       (workflow_id, organization_id, lead_id, trigger_event, context, status)
-     VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, $5::jsonb, $6)
+       (workflow_id, organization_id, project_id, lead_id, trigger_event, context, status)
+     VALUES ($1::uuid, $2::uuid, $3, $4, $5::jsonb, $6::jsonb, $7)
      RETURNING id::text`,
     [
       workflow.id,
       event.organizationId,
+      event.projectId,
       event.leadId,
       JSON.stringify({
         type: event.type,
         data: event.data,
         actorUserId: event.actorUserId,
+        projectId: event.projectId,
       }),
       JSON.stringify({
         actorUserId: event.actorUserId,
@@ -422,6 +456,8 @@ export async function executeWorkflow(
         [],
         Date.now() - startedAt,
         `conditions_failed:${condRes.reason}@${condRes.failedAt}`,
+        event.organizationId,
+        event.projectId,
       );
       return { executionId, status: "skipped", actionResults: [] };
     }
@@ -443,17 +479,19 @@ export async function executeWorkflow(
       try {
         await pool.query(
           `INSERT INTO leadgrid_workflow_resume_jobs
-             (workflow_id, organization_id, lead_id, event, next_action_index,
+             (workflow_id, organization_id, project_id, lead_id, event, next_action_index,
               parent_execution_id, resume_at)
-           VALUES ($1::uuid, $2, $3, $4::jsonb, $5, $6::uuid, $7)`,
+           VALUES ($1::uuid, $2, $3, $4, $5::jsonb, $6, $7::uuid, $8)`,
           [
             workflow.id,
             event.organizationId,
+            event.projectId,
             event.leadId ?? null,
             JSON.stringify({
               type: event.type,
               data: event.data,
               actorUserId: event.actorUserId,
+              projectId: event.projectId,
             }),
             i + 1,
             executionId || null,
@@ -468,16 +506,17 @@ export async function executeWorkflow(
           durationMs: Date.now() - aStart,
         });
       } catch (err) {
-        // Tabell mangler (pre-mig-0366) — behold gammel deferred-adferd
-        // så workflows ikke knekker under utrulling.
+        // Fail closed: å fortsette til neste handling ville gjort en
+        // 7-dagers oppfølging om til en umiddelbar utsending.
         actionResults.push({
           index: i,
           type: a.type,
-          status: "deferred",
+          status: "error",
           message: `wait_schedule_failed:${String((err as Error).message).slice(0, 120)}`,
           durationMs: Date.now() - aStart,
         });
-        continue;
+        overallStatus = "failed";
+        break;
       }
       break; // resten kjøres av resume-polleren
     }
@@ -524,6 +563,8 @@ export async function executeWorkflow(
     overallStatus === "failed"
       ? actionResults.find((r) => r.status === "error")?.message
       : undefined,
+    event.organizationId,
+    event.projectId,
   );
 
   // Update workflow.execution_count + last_executed_at hvis ikke dry-run
@@ -536,13 +577,17 @@ export async function executeWorkflow(
                 last_error_at = CASE WHEN $2 = 'failed' THEN NOW() ELSE last_error_at END,
                 last_error_message = CASE WHEN $2 = 'failed' THEN $3 ELSE last_error_message END,
                 updated_at = NOW()
-          WHERE id = $1::uuid`,
+          WHERE id = $1::uuid
+            AND organization_id = $4::uuid
+            AND project_id = $5`,
         [
           workflow.id,
           overallStatus,
           overallStatus === "failed"
             ? actionResults.find((r) => r.status === "error")?.message ?? null
             : null,
+          event.organizationId,
+          event.projectId,
         ],
       )
       .catch((err: unknown) => {
@@ -557,6 +602,7 @@ export async function executeWorkflow(
         workflow_id: workflow.id,
         workflow_name: workflow.name,
         lead_id: event.leadId,
+        project_id: event.projectId,
         status: overallStatus,
         actions_count: actionResults.length,
         duration_ms: Date.now() - startedAt,
@@ -574,7 +620,9 @@ async function markExecutionFinished(
   status: string,
   actionResults: ActionResult[],
   durationMs: number,
-  errorMessage?: string,
+  errorMessage: string | undefined,
+  organizationId: string,
+  projectId: string,
 ): Promise<void> {
   if (!executionId) return;
   try {
@@ -585,13 +633,17 @@ async function markExecutionFinished(
               finished_at = NOW(),
               duration_ms = $3,
               error_message = $4
-        WHERE id = $5::uuid`,
+        WHERE id = $5::uuid
+          AND organization_id = $6::uuid
+          AND project_id = $7`,
       [
         status,
         JSON.stringify(actionResults),
         durationMs,
         errorMessage ?? null,
         executionId,
+        organizationId,
+        projectId,
       ],
     );
   } catch (err) {
@@ -643,7 +695,14 @@ async function runAction(
           lead.id,
           event.actorUserId ?? "workflow_engine",
           action.stage,
-          { source: "workflow", notes: "applied by workflow" },
+          {
+            source: "workflow",
+            notes: "applied by workflow",
+            scope: {
+              organizationId: event.organizationId,
+              projectId: event.projectId,
+            },
+          },
         );
         return {
           status: "ok",
@@ -665,8 +724,12 @@ async function runAction(
       if (!lead) return { status: "skipped", message: "no_lead" };
       try {
         await pool.query(
-          `UPDATE crm_customers SET lead_status = $1, updated_at = NOW() WHERE id = $2::uuid`,
-          [action.status, lead.id],
+          `UPDATE crm_customers
+              SET lead_status = $1, updated_at = NOW()
+            WHERE id = $2::uuid
+              AND organization_id = $3::uuid
+              AND project_id = $4`,
+          [action.status, lead.id, event.organizationId, event.projectId],
         );
         return { status: "ok", message: `status:${action.status}` };
       } catch (err) {
@@ -680,9 +743,24 @@ async function runAction(
     case "assign_to_user": {
       if (!lead) return { status: "skipped", message: "no_lead" };
       try {
+        const assigneeProject = await loadAccessibleLeadgridProject(
+          pool,
+          event.projectId,
+          action.user_id,
+        );
+        if (
+          !assigneeProject ||
+          assigneeProject.organizationId !== event.organizationId
+        ) {
+          return { status: "error", message: "assignee_not_in_project" };
+        }
         await pool.query(
-          `UPDATE crm_customers SET owner_user_id = $1, updated_at = NOW() WHERE id = $2::uuid`,
-          [action.user_id, lead.id],
+          `UPDATE crm_customers
+              SET owner_user_id = $1, updated_at = NOW()
+            WHERE id = $2::uuid
+              AND organization_id = $3::uuid
+              AND project_id = $4`,
+          [action.user_id, lead.id, event.organizationId, event.projectId],
         );
         return { status: "ok", message: `assigned:${action.user_id}` };
       } catch (err) {
@@ -704,11 +782,16 @@ async function runAction(
         );
         await pool.query(
           `INSERT INTO lead_tag_assignments (lead_id, tag_id)
-           SELECT $1::uuid, lt.id
-             FROM lead_tags lt
-            WHERE lt.organization_id = $2::uuid AND lt.name = $3
+           SELECT c.id, lt.id
+             FROM crm_customers c
+             JOIN lead_tags lt
+               ON lt.organization_id = $2::uuid
+              AND lt.name = $3
+            WHERE c.id = $1::uuid
+              AND c.organization_id = $2::uuid
+              AND c.project_id = $4
            ON CONFLICT (lead_id, tag_id) DO NOTHING`,
-          [lead.id, event.organizationId, action.tag],
+          [lead.id, event.organizationId, action.tag, event.projectId],
         );
         return { status: "ok", message: `tag:${action.tag}` };
       } catch (err) {
@@ -731,7 +814,11 @@ async function runAction(
         await pool.query(
           `INSERT INTO crm_lead_activities
              (customer_id, user_id, activity_type, description, metadata, created_at)
-           VALUES ($1::uuid, $2, 'task', $3, $4::jsonb, NOW())`,
+           SELECT c.id, $2, 'task', $3, $4::jsonb, NOW()
+             FROM crm_customers c
+            WHERE c.id = $1::uuid
+              AND c.organization_id = $5::uuid
+              AND c.project_id = $6`,
           [
             lead.id,
             event.actorUserId ?? lead.owner_user_id ?? "workflow_engine",
@@ -741,6 +828,8 @@ async function runAction(
               due_at: due,
               assignee_role: action.assignee_role ?? "owner",
             }),
+            event.organizationId,
+            event.projectId,
           ],
         );
         return {
@@ -851,14 +940,28 @@ async function runAction(
           return { status: "error", message: `invalid_when:${action.when}` };
         }
         const assigneeUserId = resolveAssignee(action.assignee, lead);
+        if (assigneeUserId) {
+          const assigneeProject = await loadAccessibleLeadgridProject(
+            pool,
+            event.projectId,
+            assigneeUserId,
+          );
+          if (
+            !assigneeProject ||
+            assigneeProject.organizationId !== event.organizationId
+          ) {
+            return { status: "error", message: "assignee_not_in_project" };
+          }
+        }
         const r = await pool.query<{ id: string }>(
           `INSERT INTO leadgrid_phone_calls
-             (organization_id, customer_id, planned_at, assigned_user_id,
+             (organization_id, project_id, customer_id, planned_at, assigned_user_id,
               notes, status, source, created_by_user_id)
-           VALUES ($1::uuid, $2::uuid, $3, $4, $5, 'planned', 'workflow', $6)
+           VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, 'planned', 'workflow', $7)
            RETURNING id::text`,
           [
             event.organizationId,
+            event.projectId,
             lead.id,
             plannedAt.toISOString(),
             assigneeUserId,
@@ -894,13 +997,14 @@ async function runAction(
         const id = randomUUID();
         await pool.query(
           `INSERT INTO leadgrid_meetings
-             (id, organization_id, customer_id, meeting_type, title, starts_at,
+             (id, organization_id, project_id, customer_id, meeting_type, title, starts_at,
               ends_at, duration_minutes, status, notes, created_by_user_id, source)
-           VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, 'scheduled',
-                   $9, $10, 'workflow')`,
+           VALUES ($1::uuid, $2::uuid, $3, $4::uuid, $5, $6, $7, $8, $9, 'scheduled',
+                   $10, $11, 'workflow')`,
           [
             id,
             event.organizationId,
+            event.projectId,
             lead.id,
             action.meeting_type ?? "discovery",
             action.title ??
@@ -948,8 +1052,12 @@ async function runAction(
         const sets = cols.map((c, i) => `${c} = $${i + 2}`).join(", ");
         const vals = cols.map((c) => safeFields[c]);
         await pool.query(
-          `UPDATE crm_customers SET ${sets}, updated_at = NOW() WHERE id = $1::uuid`,
-          [lead.id, ...vals],
+          `UPDATE crm_customers
+              SET ${sets}, updated_at = NOW()
+            WHERE id = $1::uuid
+              AND organization_id = $${cols.length + 2}::uuid
+              AND project_id = $${cols.length + 3}`,
+          [lead.id, ...vals, event.organizationId, event.projectId],
         );
         return {
           status: "ok",
@@ -1071,18 +1179,20 @@ async function runAction(
           action.recipient,
           lead,
           event.organizationId,
+          event.projectId,
         );
         if (!recipientUserId) {
           return { status: "skipped", message: "no_recipient_resolved" };
         }
         const r = await pool.query<{ id: string }>(
           `INSERT INTO leadgrid_internal_notifications
-             (organization_id, recipient_user_id, title, body, related_lead_id,
+             (organization_id, project_id, recipient_user_id, title, body, related_lead_id,
               workflow_id, execution_id)
-           VALUES ($1::uuid, $2, $3, $4, $5, $6::uuid, $7::uuid)
+           VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::uuid, $8::uuid)
            RETURNING id::text`,
           [
             event.organizationId,
+            event.projectId,
             recipientUserId,
             renderTemplate(action.title, event, lead),
             action.body ? renderTemplate(action.body, event, lead) : null,
@@ -1110,11 +1220,18 @@ async function runAction(
         const r = await pool.query(
           `DELETE FROM lead_tag_assignments
              WHERE lead_id = $1::uuid
+               AND EXISTS (
+                 SELECT 1
+                   FROM crm_customers c
+                  WHERE c.id = $1::uuid
+                    AND c.organization_id = $2::uuid
+                    AND c.project_id = $4
+               )
                AND tag_id IN (
                  SELECT id FROM lead_tags
                    WHERE organization_id = $2::uuid AND name = $3
                )`,
-          [lead.id, event.organizationId, action.tag],
+          [lead.id, event.organizationId, action.tag, event.projectId],
         );
         return {
           status: "ok",
@@ -1140,13 +1257,21 @@ async function runAction(
               SET archived_at = NOW(),
                   notes = COALESCE(NULLIF(notes, '') || E'\n', '') || $1,
                   updated_at = NOW()
-            WHERE id = $2::uuid AND archived_at IS NULL`,
-          [noteSuffix, lead.id],
+            WHERE id = $2::uuid
+              AND organization_id = $3::uuid
+              AND project_id = $4
+              AND archived_at IS NULL`,
+          [noteSuffix, lead.id, event.organizationId, event.projectId],
         );
         void emitWebhook(
           pool,
           "lead.archived",
-          { lead_id: lead.id, reason: action.reason ?? null, source: "workflow" },
+          {
+            lead_id: lead.id,
+            project_id: event.projectId,
+            reason: action.reason ?? null,
+            source: "workflow",
+          },
           event.organizationId,
         );
         return {
@@ -1165,13 +1290,21 @@ async function runAction(
       if (!lead) return { status: "skipped", message: "no_lead" };
       try {
         await pool.query(
-          `UPDATE crm_customers SET archived_at = NULL, updated_at = NOW() WHERE id = $1::uuid`,
-          [lead.id],
+          `UPDATE crm_customers
+              SET archived_at = NULL, updated_at = NOW()
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id = $3`,
+          [lead.id, event.organizationId, event.projectId],
         );
         void emitWebhook(
           pool,
           "lead.revived",
-          { lead_id: lead.id, source: "workflow" },
+          {
+            lead_id: lead.id,
+            project_id: event.projectId,
+            source: "workflow",
+          },
           event.organizationId,
         );
         return { status: "ok", message: "revived" };
@@ -1195,6 +1328,9 @@ async function runAction(
           : null);
       if (!projectId) {
         return { status: "error", message: "missing_project_id" };
+      }
+      if (projectId !== event.projectId) {
+        return { status: "error", message: "workflow_project_scope_mismatch" };
       }
       try {
         // Dynamic import for å unngå sirkulær avhengighet
@@ -1299,14 +1435,14 @@ export async function resolveRecipient(
   recipient: InternalNotificationRecipient,
   lead: LeadRow | null,
   organizationId: string,
+  projectId?: string,
 ): Promise<string | null> {
+  let candidate: string | null = null;
   if (typeof recipient === "object" && "user_id" in recipient) {
-    return recipient.user_id;
-  }
-  if (recipient === "owner" || recipient === "assignee") {
-    return lead?.owner_user_id ?? null;
-  }
-  if (recipient === "manager" || recipient === "admin") {
+    candidate = recipient.user_id;
+  } else if (recipient === "owner" || recipient === "assignee") {
+    candidate = lead?.owner_user_id ?? null;
+  } else if (recipient === "manager" || recipient === "admin") {
     const roles =
       recipient === "admin"
         ? ["admin"]
@@ -1328,12 +1464,16 @@ export async function resolveRecipient(
           LIMIT 1`,
         [organizationId, roles],
       );
-      return r.rows[0]?.user_id ?? null;
+      candidate = r.rows[0]?.user_id ?? null;
     } catch {
       return null;
     }
   }
-  return null;
+  if (!candidate) return null;
+  // Older unit callers omit projectId; runtime workflow actions always pass it.
+  if (!projectId) return candidate;
+  const project = await loadAccessibleLeadgridProject(pool, projectId, candidate);
+  return project?.organizationId === organizationId ? candidate : null;
 }
 
 /**
@@ -1400,6 +1540,7 @@ export function buildWebhookPayload(
   const base: Record<string, unknown> = {
     workflow_id: workflowId,
     organization_id: event.organizationId,
+    project_id: event.projectId,
     triggered_at: new Date().toISOString(),
     event: {
       type: event.type,
@@ -1440,6 +1581,40 @@ export function buildWebhookPayload(
   return base;
 }
 
+async function eventHasAuthoritativeProjectScope(
+  event: WorkflowEvent,
+): Promise<boolean> {
+  if (!event.organizationId || !event.projectId) return false;
+  if (event.leadId) {
+    const lead = await event.pool.query<{ allowed: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1
+           FROM crm_customers c
+           JOIN leadgrid_projects p
+             ON p.id = c.project_id
+            AND p.organization_id = c.organization_id
+          WHERE c.id = $1::uuid
+            AND c.organization_id = $2::uuid
+            AND c.project_id = $3
+            AND (p.status IS NULL OR p.status NOT IN ('archived', 'deleted'))
+       ) AS allowed`,
+      [event.leadId, event.organizationId, event.projectId],
+    );
+    return lead.rows[0]?.allowed === true;
+  }
+  const project = await event.pool.query<{ allowed: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+         FROM leadgrid_projects p
+        WHERE p.id = $1
+          AND p.organization_id = $2::uuid
+          AND (p.status IS NULL OR p.status NOT IN ('archived', 'deleted'))
+     ) AS allowed`,
+    [event.projectId, event.organizationId],
+  );
+  return project.rows[0]?.allowed === true;
+}
+
 /**
  * publishEvent: fire-and-forget event-bus.
  *
@@ -1448,22 +1623,37 @@ export function buildWebhookPayload(
  */
 export async function publishEvent(event: WorkflowEvent): Promise<void> {
   try {
+    if (!(await eventHasAuthoritativeProjectScope(event))) {
+      console.warn("[workflow-engine] event dropped: invalid project scope");
+      return;
+    }
+    // The compact IF/THEN rule engine consumes the same authoritative event
+    // envelope.  Start it before looking up Smart Workflows so rules still run
+    // when a project has no workflow-builder definitions.
+    const ruleDispatch = dispatchRulesForWorkflowEvent(event).catch((error) => {
+      console.warn("[lead-rules] canonical event dispatch failed:", error);
+      return null;
+    });
     const workflows = await matchWorkflows(
       event.pool,
       event.organizationId,
+      event.projectId,
       event,
     );
-    if (workflows.length === 0) return;
+    if (workflows.length === 0) {
+      await ruleDispatch;
+      return;
+    }
 
     // Concurrent execution — én feilende workflow stopper ikke de andre
     const results = await Promise.allSettled(
-      workflows.map((w) => executeWorkflow(event.pool, w, event)),
+      [ruleDispatch, ...workflows.map((w) => executeWorkflow(event.pool, w, event))],
     );
     // Feil FØR execution-raden inserts (f.eks. fetchLead) etterlater ellers
     // null spor — skriv til workflow-radens last_error så det er synlig i DB
     // og UI i stedet for kun en warn i server-loggen.
     for (let i = 0; i < results.length; i++) {
-      const r = results[i];
+      const r = results[i + 1];
       if (r.status !== "rejected") continue;
       const msg =
         r.reason instanceof Error ? r.reason.message : String(r.reason);
@@ -1475,8 +1665,15 @@ export async function publishEvent(event: WorkflowEvent): Promise<void> {
         await event.pool.query(
           `UPDATE leadgrid_workflows
               SET last_error_at = NOW(), last_error_message = $2
-            WHERE id = $1::uuid`,
-          [workflows[i].id, msg.slice(0, 500)],
+            WHERE id = $1::uuid
+              AND organization_id = $3::uuid
+              AND project_id = $4`,
+          [
+            workflows[i].id,
+            msg.slice(0, 500),
+            event.organizationId,
+            event.projectId,
+          ],
         );
       } catch {
         // best effort — logging skal aldri velte event-publisering
@@ -1509,6 +1706,7 @@ interface ResumeJobRow {
   id: string;
   workflow_id: string;
   organization_id: string;
+  project_id: string;
   lead_id: string | null;
   event: { type: string; data: Record<string, unknown>; actorUserId: string | null };
   next_action_index: number;
@@ -1544,30 +1742,46 @@ async function runResumeTick(pool: Pool): Promise<void> {
           SET status = 'running', resumed_at = NOW()
         WHERE id IN (
           SELECT id FROM leadgrid_workflow_resume_jobs
-           WHERE status = 'pending' AND resume_at <= NOW()
+           WHERE status = 'pending'
+             AND project_id IS NOT NULL
+             AND resume_at <= NOW()
            ORDER BY resume_at ASC
            LIMIT ${RESUME_BATCH_SIZE}
            FOR UPDATE SKIP LOCKED
         )
-        RETURNING id::text, workflow_id::text, organization_id, lead_id,
+        RETURNING id::text, workflow_id::text, organization_id, project_id, lead_id,
                   event, next_action_index, created_at`,
     ).catch(() => ({ rows: [] as ResumeJobRow[] })); // tabell mangler pre-mig
 
     for (const job of claimed.rows) {
       const finish = (status: string) =>
         pool.query(
-          `UPDATE leadgrid_workflow_resume_jobs SET status = $1 WHERE id = $2::uuid`,
-          [status, job.id],
+          `UPDATE leadgrid_workflow_resume_jobs
+              SET status = $1
+            WHERE id = $2::uuid
+              AND organization_id = $3
+              AND project_id = $4
+              AND workflow_id = $5::uuid`,
+          [
+            status,
+            job.id,
+            job.organization_id,
+            job.project_id,
+            job.workflow_id,
+          ],
         ).catch(() => undefined);
 
       try {
         // 1. Workflow må fortsatt finnes og være aktiv.
         const wfRes = await pool.query<WorkflowRow>(
-          `SELECT id::text, organization_id::text, name, trigger_type,
+          `SELECT id::text, organization_id::text, project_id::text, name, trigger_type,
                   trigger_config, conditions, actions, is_active
              FROM leadgrid_workflows
-            WHERE id = $1::uuid AND is_active = TRUE`,
-          [job.workflow_id],
+            WHERE id = $1::uuid
+              AND organization_id = $2::uuid
+              AND project_id = $3
+              AND is_active = TRUE`,
+          [job.workflow_id, job.organization_id, job.project_id],
         );
         const workflow = wfRes.rows[0];
         if (!workflow) {
@@ -1579,8 +1793,16 @@ async function runResumeTick(pool: Pool): Promise<void> {
         if (job.lead_id) {
           const act = await pool.query<{ n: number }>(
             `SELECT COUNT(*)::int AS n FROM crm_lead_activities
-              WHERE customer_id = $1::uuid AND created_at > $2`,
-            [job.lead_id, job.created_at],
+              WHERE customer_id = $1::uuid
+                AND created_at > $2
+                AND EXISTS (
+                  SELECT 1
+                    FROM crm_customers c
+                   WHERE c.id = $1::uuid
+                     AND c.organization_id = $3::uuid
+                     AND c.project_id = $4
+                )`,
+            [job.lead_id, job.created_at, job.organization_id, job.project_id],
           ).catch(() => ({ rows: [{ n: 0 }] }));
           if ((act.rows[0]?.n ?? 0) > 0) {
             await finish("skipped");
@@ -1592,6 +1814,7 @@ async function runResumeTick(pool: Pool): Promise<void> {
         const event: WorkflowEvent = {
           pool,
           organizationId: job.organization_id,
+          projectId: job.project_id,
           type: job.event.type as WorkflowEvent["type"],
           leadId: job.lead_id,
           actorUserId: job.event.actorUserId ?? null,

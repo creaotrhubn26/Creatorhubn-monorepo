@@ -265,11 +265,15 @@ export async function refreshContestParticipants(
           AND la.user_id IS NOT NULL
         GROUP BY la.user_id
      ), door_stats AS (
-       SELECT seller_user_id::text AS user_id, COUNT(*)::int AS dorsalg_won
-         FROM leadgrid_dorsalg_sales
-        WHERE org_id = $2
-          AND created_at >= $3::timestamptz AND created_at <= $4::timestamptz
-        GROUP BY seller_user_id
+       -- Konkurranser er med hensikt org-wide (samme scope som CRM-KPI-ene).
+       -- NULL project_id er kun uavklart legacy-karantene fra migrasjon 0552.
+       SELECT sale.seller_user_id::text AS user_id, COUNT(*)::int AS dorsalg_won
+         FROM leadgrid_dorsalg_sales sale
+        WHERE sale.org_id = $2
+          AND sale.project_id IS NOT NULL
+          AND sale.created_at >= $3::timestamptz
+          AND sale.created_at <= $4::timestamptz
+        GROUP BY sale.seller_user_id
      )
      SELECT e.user_id, e.user_name, e.user_email,
             COALESCE(c.deals_closed, 0) AS deals_closed,

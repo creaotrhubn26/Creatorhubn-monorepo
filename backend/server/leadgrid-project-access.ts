@@ -44,6 +44,7 @@ export interface LeadgridAccessibleProject {
   organizationId: string;
   name: string;
   description: string | null;
+  projectType?: string | null;
   industry: string | null;
   status: string | null;
   createdBy: string | null;
@@ -78,6 +79,7 @@ interface LeadgridProjectAccessRow {
   organization_id: string;
   name: string;
   description: string | null;
+  project_type: string | null;
   industry: string | null;
   status: string | null;
   created_by: string | null;
@@ -101,33 +103,78 @@ function requiredIdentifier(
  * organization-null fallback: Discovery persistence requires an authoritative
  * organization/project pair.
  */
-export async function getLeadgridProjectAccess(
+async function getLeadgridProjectAccessInternal(
   pool: Pick<Pool, "query">,
   input: { projectId: string; userId: string },
+  includeInactive: boolean,
 ): Promise<LeadgridAccessibleProject | null> {
   const projectId = requiredIdentifier(input.projectId, "invalid_project_id");
   const userId = requiredIdentifier(input.userId, "invalid_user_id");
+  const activeProjectPredicate = includeInactive
+    ? ""
+    : "AND (p.status IS NULL OR p.status NOT IN ('archived', 'deleted'))";
 
   const result = await pool.query<LeadgridProjectAccessRow>(
     `SELECT p.id::text,
             p.organization_id::text,
             p.name,
             p.description,
+            p.project_type,
             p.industry,
             p.status,
             p.created_by,
-            om.role AS member_role
+            COALESCE(
+              pm.role,
+              CASE WHEN p.created_by = $2 THEN 'owner' END,
+              om.role
+            ) AS member_role
        FROM leadgrid_projects p
-       JOIN organization_members om
+       LEFT JOIN organization_members om
          ON om.organization_id = p.organization_id
         AND om.user_id = $2
+       LEFT JOIN leadgrid_project_members pm
+         ON pm.organization_id = p.organization_id
+        AND pm.project_id = p.id
+        AND pm.user_id = $2
       WHERE p.id = $1
         AND p.organization_id IS NOT NULL
-        AND (p.status IS NULL OR p.status NOT IN ('archived', 'deleted'))
+        ${activeProjectPredicate}
         AND (p.project_type IS NULL OR p.project_type NOT IN (
           'feature_film', 'documentary', 'film', 'short_film',
           'tv_series', 'commercial', 'music_video', 'casting'
         ))
+        AND (
+          p.created_by = $2
+          OR pm.user_id IS NOT NULL
+          OR (
+            om.user_id IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1
+                FROM leadgrid_user_permission_overrides denied
+               WHERE denied.organization_id = p.organization_id
+                 AND denied.user_id = $2
+                 AND denied.permission_key = 'projects.view_all'
+                 AND denied.effect = 'revoke'
+            )
+            AND (
+              om.role = 'admin'
+              OR EXISTS (
+                SELECT 1
+                  FROM role_permissions defaults
+                 WHERE defaults.role = om.role
+                   AND defaults.permission_key = 'projects.view_all'
+              )
+              OR EXISTS (
+                SELECT 1
+                  FROM leadgrid_user_permission_overrides granted
+                 WHERE granted.organization_id = p.organization_id
+                   AND granted.user_id = $2
+                   AND granted.permission_key = 'projects.view_all'
+                   AND granted.effect = 'grant'
+              )
+            )
+          )
+        )
       LIMIT 1`,
     [projectId, userId],
   );
@@ -139,11 +186,68 @@ export async function getLeadgridProjectAccess(
     organizationId: row.organization_id,
     name: row.name,
     description: row.description,
+    projectType: row.project_type,
     industry: row.industry,
     status: row.status,
     createdBy: row.created_by,
     memberRole: row.member_role,
   };
+}
+
+export async function getLeadgridProjectAccess(
+  pool: Pick<Pool, "query">,
+  input: { projectId: string; userId: string },
+): Promise<LeadgridAccessibleProject | null> {
+  return getLeadgridProjectAccessInternal(pool, input, false);
+}
+
+/**
+ * Resolves organization-wide project visibility. An explicit user revoke
+ * wins over role defaults, direct grants and the admin role. Creator and
+ * direct-project access are evaluated separately by the project ACL.
+ */
+export async function hasLeadgridProjectsViewAllAccess(
+  pool: Pick<Pool, "query">,
+  input: { organizationId: string; userId: string },
+): Promise<boolean> {
+  const organizationId = input.organizationId?.trim();
+  if (!organizationId) return false;
+  const userId = requiredIdentifier(input.userId, "invalid_user_id");
+  const result = await pool.query<{ allowed: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+         FROM organization_members om
+        WHERE om.organization_id = $1::uuid
+          AND om.user_id = $2
+          AND NOT EXISTS (
+            SELECT 1
+              FROM leadgrid_user_permission_overrides denied
+             WHERE denied.organization_id = om.organization_id
+               AND denied.user_id = om.user_id
+               AND denied.permission_key = 'projects.view_all'
+               AND denied.effect = 'revoke'
+          )
+          AND (
+            om.role = 'admin'
+            OR EXISTS (
+              SELECT 1
+                FROM role_permissions defaults
+               WHERE defaults.role = om.role
+                 AND defaults.permission_key = 'projects.view_all'
+            )
+            OR EXISTS (
+              SELECT 1
+                FROM leadgrid_user_permission_overrides granted
+               WHERE granted.organization_id = om.organization_id
+                 AND granted.user_id = om.user_id
+                 AND granted.permission_key = 'projects.view_all'
+                 AND granted.effect = 'grant'
+            )
+          )
+     ) AS allowed`,
+    [organizationId, userId],
+  );
+  return result.rows[0]?.allowed === true;
 }
 
 /** Stable route-facing alias matching the existing Leadgrid route convention. */
@@ -153,6 +257,20 @@ export async function loadAccessibleLeadgridProject(
   userId: string,
 ): Promise<LeadgridAccessibleProject | null> {
   return getLeadgridProjectAccess(pool, { projectId, userId });
+}
+
+/**
+ * GDPR/compliance-only lookup. It preserves the normal membership, direct
+ * project and projects.view_all ACL, and still rejects media projects. Only
+ * the active-status predicate is relaxed so archived customer data remains
+ * deletable.
+ */
+export async function loadAccessibleLeadgridProjectForCompliance(
+  pool: Pick<Pool, "query">,
+  projectId: string,
+  userId: string,
+): Promise<LeadgridAccessibleProject | null> {
+  return getLeadgridProjectAccessInternal(pool, { projectId, userId }, true);
 }
 
 export async function requireLeadgridProjectAccess(

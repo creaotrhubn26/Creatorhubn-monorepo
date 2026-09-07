@@ -288,7 +288,10 @@ struct DeliveryPlaybookView: View {
             deliverableId = id
             isLoading = true
             do {
-                let resp = try await api.fetchDeliverable(deliverableId: id)
+                let resp = try await api.fetchDeliverable(
+                    deliverableId: id,
+                    projectId: focusRequest.projectId
+                )
                 deliverable = resp.deliverable
             } catch {
                 self.error = String(describing: error)
@@ -299,10 +302,14 @@ struct DeliveryPlaybookView: View {
             isStarting = true
             do {
                 let startResp = try await api.startDeliveryFromFocusRequest(
-                    focusRequestId: focusRequest.id
+                    focusRequestId: focusRequest.id,
+                    projectId: focusRequest.projectId
                 )
                 deliverableId = startResp.deliverableId
-                let resp = try await api.fetchDeliverable(deliverableId: startResp.deliverableId)
+                let resp = try await api.fetchDeliverable(
+                    deliverableId: startResp.deliverableId,
+                    projectId: focusRequest.projectId
+                )
                 deliverable = resp.deliverable
             } catch {
                 self.error = String(describing: error)
@@ -315,7 +322,8 @@ struct DeliveryPlaybookView: View {
         guard let api = appState.api, let id = deliverableId else { return }
         do {
             let resp = try await api.updateDeliverableStep(
-                deliverableId: id, stepNumber: stepNumber,
+                deliverableId: id, projectId: focusRequest.projectId,
+                stepNumber: stepNumber,
                 status: status, notes: nil
             )
             deliverable = resp.deliverable
@@ -328,7 +336,8 @@ struct DeliveryPlaybookView: View {
         guard let api = appState.api, let id = deliverableId else { return }
         do {
             let resp = try await api.toggleDeliverableRequirement(
-                deliverableId: id, requirementIndex: idx, received: received
+                deliverableId: id, projectId: focusRequest.projectId,
+                requirementIndex: idx, received: received
             )
             deliverable = resp.deliverable
         } catch {

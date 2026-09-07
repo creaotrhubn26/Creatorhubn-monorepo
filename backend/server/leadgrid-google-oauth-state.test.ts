@@ -73,7 +73,7 @@ async function buildAppPair(
     CREATORHUB_GOOGLE_CLIENT_SECRET: "leadgrid-web-secret",
     GOOGLE_CLIENT_ID: "",
     GOOGLE_CLIENT_SECRET: "",
-    LEADGRID_PUBLIC_URL: "",
+    LEADGRID_PUBLIC_URL: "https://leadgrid.example.test",
     ROLE_ROOM_PUBLIC_URL: "https://leadgrid.example.test",
     ROLE_ROOM_GOOGLE_CLIENT_ID: "",
     CAPTUREAPP_GOOGLE_CLIENT_ID: "",
@@ -169,8 +169,8 @@ describe("Leadgrid Google OAuth state", () => {
     );
   });
 
-  it("keeps the existing CreatorHub and Role Room configuration as fallback", async () => {
-    const { first } = await buildAppPair();
+  it("may reuse CreatorHub credentials but never the Role Room public origin", async () => {
+    const { first } = await buildAppPair({ LEADGRID_PUBLIC_URL: "" });
 
     const started = await request(first)
       .get("/api/leadgrid/auth/google/start?platform=web")
@@ -179,7 +179,7 @@ describe("Leadgrid Google OAuth state", () => {
 
     expect(authUrl.searchParams.get("client_id")).toBe("leadgrid-web-client");
     expect(authUrl.searchParams.get("redirect_uri")).toBe(
-      "https://leadgrid.example.test/api/leadgrid/auth/google/web-callback",
+      "https://leadgrid.no/api/leadgrid/auth/google/web-callback",
     );
   });
 

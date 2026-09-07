@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   resolveOrgIdForUser: vi.fn(async () => "11111111-1111-4111-8111-111111111111"),
   assertAnyEntitled: vi.fn(async () => true),
+  assertAnyEntitledForOrganization: vi.fn(async () => true),
+  loadAccessibleProject: vi.fn(),
 }));
 
 vi.mock("./leadgrid-org-resolver.js", () => ({
@@ -12,7 +14,11 @@ vi.mock("./leadgrid-org-resolver.js", () => ({
 }));
 vi.mock("./leadgrid-entitlement-guard.js", () => ({
   assertAnyEntitled: mocks.assertAnyEntitled,
+  assertAnyEntitledForOrganization: mocks.assertAnyEntitledForOrganization,
   LEADBOOK_AI_STRUKTUR_FEATURE_KEYS: ["leadbookAiStruktur"],
+}));
+vi.mock("./leadgrid-project-access.js", () => ({
+  loadAccessibleLeadgridProject: mocks.loadAccessibleProject,
 }));
 vi.mock("./lead-map-apns-client.js", () => ({
   sendAPNs: vi.fn(async () => ({ sent: true, shouldDisableToken: false })),
@@ -31,6 +37,20 @@ const exampleId = "22222222-2222-4222-8222-222222222222";
 const consentId = "33333333-3333-4333-8333-333333333333";
 const creationId = "44444444-4444-4444-8444-444444444444";
 const organizationId = "11111111-1111-4111-8111-111111111111";
+const projectId = "dentum-oslo";
+
+function accessibleProject(memberRole = "salgskonsulent") {
+  return {
+    id: projectId,
+    organizationId,
+    name: "Dentum – klinikkpilot Oslo og omegn",
+    description: null,
+    industry: "tannhelse",
+    status: "active",
+    createdBy: "owner-1",
+    memberRole,
+  };
+}
 
 function appWith(register: (deps: any) => void, query: ReturnType<typeof vi.fn>) {
   const app = express();
@@ -40,7 +60,10 @@ function appWith(register: (deps: any) => void, query: ReturnType<typeof vi.fn>)
 }
 
 describe("Leadbook hardened example contract", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.loadAccessibleProject.mockResolvedValue(accessibleProject());
+  });
 
   it("binds recording consent and a seller draft to the current tenant identity", async () => {
     const query = vi.fn(async (sql: string) => {
@@ -54,18 +77,20 @@ describe("Leadbook hardened example contract", () => {
       .send({
         title: "Samtale", status: "published", channel: "phone",
         seller_user_id: "other-user", seller_name: "Annen",
-        source_consent_id: consentId, creation_id: creationId,
+        source_consent_id: consentId, creation_id: creationId, projectId,
       });
     expect(response.status).toBe(201);
     const consent = query.mock.calls.find(([sql]) => String(sql).includes("FROM leadbook_recording_consents"));
-    expect(consent?.[1]).toEqual([consentId, organizationId, session.userId]);
+    expect(consent?.[1]).toEqual([consentId, organizationId, projectId, session.userId]);
     const insert = query.mock.calls.find(([sql]) => String(sql).includes("INSERT INTO leadbook_examples"));
-    expect(String(insert?.[0])).toContain("ON CONFLICT (organization_id, creation_id)");
-    expect(insert?.[1]?.[2]).toBe("draft");
-    expect(insert?.[1]?.[7]).toBe("telephone");
-    expect(insert?.[1]?.[9]).toBe(session.userId);
-    expect(insert?.[1]?.[23]).toBe(consentId);
-    expect(insert?.[1]?.[24]).toBe(creationId);
+    expect(String(insert?.[0])).toContain(
+      "ON CONFLICT (organization_id, project_id, creation_id)",
+    );
+    expect(insert?.[1]?.[3]).toBe("draft");
+    expect(insert?.[1]?.[8]).toBe("telephone");
+    expect(insert?.[1]?.[10]).toBe(session.userId);
+    expect(insert?.[1]?.[24]).toBe(consentId);
+    expect(insert?.[1]?.[25]).toBe(creationId);
   });
 
   it("rejects a consent id that is not owned by the same user and org", async () => {
@@ -75,7 +100,10 @@ describe("Leadbook hardened example contract", () => {
     });
     const response = await request(appWith(registerLeadgridLeadbookExamplesRoutes, query))
       .post("/api/leadgrid/leadbook/examples")
-      .send({ title: "Samtale", source_consent_id: consentId, creation_id: creationId });
+      .send({
+        title: "Samtale", source_consent_id: consentId,
+        creation_id: creationId, projectId,
+      });
     expect(response.status).toBe(400);
     expect(response.body.error).toBe("ugyldig_source_consent");
     expect(query.mock.calls.some(([sql]) => String(sql).includes("INSERT INTO leadbook_examples"))).toBe(false);
@@ -85,12 +113,12 @@ describe("Leadbook hardened example contract", () => {
     const query = vi.fn(async (sql: string) => {
       if (sql.includes("SELECT role FROM organization_members")) return { rows: [{ role: "salgskonsulent" }] };
       if (sql.includes("INSERT INTO leadbook_examples")) return { rows: [] };
-      if (sql.includes("creation_id = $2")) return { rows: [{ id: exampleId }] };
+      if (sql.includes("creation_id = $3")) return { rows: [{ id: exampleId }] };
       return { rows: [] };
     });
     const response = await request(appWith(registerLeadgridLeadbookExamplesRoutes, query))
       .post("/api/leadgrid/leadbook/examples")
-      .send({ title: "Retry", creation_id: creationId });
+      .send({ title: "Retry", creation_id: creationId, projectId });
     expect(response.status).toBe(200);
     expect(response.body.id).toBe(exampleId);
   });
@@ -107,7 +135,7 @@ describe("Leadbook hardened example contract", () => {
       return { rows: [] };
     });
     const response = await request(appWith(registerLeadgridLeadbookExamplesRoutes, query))
-      .get("/api/leadgrid/leadbook/examples?limit=1");
+      .get(`/api/leadgrid/leadbook/examples?limit=1&projectId=${projectId}`);
     expect(response.status).toBe(200);
     expect(response.body.canCreateDraft).toBe(true);
     expect(response.body.examples[0].can_request_deletion).toBe(true);
@@ -124,12 +152,14 @@ describe("Leadbook hardened example contract", () => {
       return { rows: [], rowCount: 0 };
     });
     const response = await request(appWith(registerLeadgridLeadbookExamplesRoutes, query))
-      .get(`/api/leadgrid/leadbook/examples/${exampleId}`);
+      .get(`/api/leadgrid/leadbook/examples/${exampleId}?projectId=${projectId}`);
     expect(response.status).toBe(404);
     const detail = query.mock.calls.find(([sql]) => String(sql).includes("SELECT * FROM leadbook_examples"));
     expect(String(detail?.[0])).toContain("organization_id = $2");
-    expect(String(detail?.[0])).toContain("seller_user_id = $4");
-    expect(detail?.[1]).toEqual([exampleId, organizationId, false, session.userId]);
+    expect(String(detail?.[0])).toContain("seller_user_id = $5");
+    expect(detail?.[1]).toEqual([
+      exampleId, organizationId, projectId, false, session.userId,
+    ]);
   });
 
   it("does not count a view for an invisible example", async () => {
@@ -140,7 +170,7 @@ describe("Leadbook hardened example contract", () => {
       return { rows: [], rowCount: 0 };
     });
     const response = await request(appWith(registerLeadgridLeadbookExamplesRoutes, query))
-      .post(`/api/leadgrid/leadbook/examples/${exampleId}/view`);
+      .post(`/api/leadgrid/leadbook/examples/${exampleId}/view?projectId=${projectId}`);
     expect(response.status).toBe(404);
     expect(query.mock.calls.some(([sql]) => String(sql).includes("INSERT INTO leadbook_example_views"))).toBe(false);
   });
@@ -154,13 +184,16 @@ describe("Leadbook hardened example contract", () => {
     });
     const response = await request(appWith(registerLeadgridLeadbookExamplesRoutes, query))
       .post("/api/leadgrid/leadbook/examples")
-      .send({ title: "Ugyldig", duration_sec: 86401, pondus_score: 101 });
+      .send({
+        title: "Ugyldig", duration_sec: 86401, pondus_score: 101, projectId,
+      });
     expect(response.status).toBe(400);
     expect(response.body.error).toBe("ugyldig_tallverdi");
     expect(query.mock.calls.some(([sql]) => String(sql).includes("INSERT INTO leadbook_examples"))).toBe(false);
   });
 
   it("returns the existing feedback for an idempotent leader retry", async () => {
+    mocks.loadAccessibleProject.mockResolvedValue(accessibleProject("teamleder"));
     const feedbackId = "77777777-7777-4777-8777-777777777777";
     const query = vi.fn(async (sql: string) => {
       if (sql.includes("SELECT role FROM organization_members")) {
@@ -170,12 +203,12 @@ describe("Leadbook hardened example contract", () => {
         return { rows: [{ id: exampleId, title: "Samtale", seller_user_id: session.userId }] };
       }
       if (sql.includes("INSERT INTO leadbook_example_feedback")) return { rows: [] };
-      if (sql.includes("client_action_id = $2")) return { rows: [{ id: feedbackId }] };
+      if (sql.includes("client_action_id = $3")) return { rows: [{ id: feedbackId }] };
       return { rows: [] };
     });
     const response = await request(appWith(registerLeadgridLeadbookExamplesRoutes, query))
       .post(`/api/leadgrid/leadbook/examples/${exampleId}/feedback`)
-      .send({ body: "Bra", client_action_id: creationId });
+      .send({ body: "Bra", client_action_id: creationId, projectId });
     expect(response.status).toBe(200);
     expect(response.body.id).toBe(feedbackId);
   });
@@ -189,11 +222,11 @@ describe("Leadbook hardened example contract", () => {
     });
     const response = await request(appWith(registerLeadgridLeadbookExamplesRoutes, query))
       .post(`/api/leadgrid/leadbook/feedback/${exampleId}/replies`)
-      .send({ body: "Svar", client_action_id: creationId });
+      .send({ body: "Svar", client_action_id: creationId, projectId });
     expect(response.status).toBe(404);
     const lookup = query.mock.calls.find(([sql]) => String(sql).includes("JOIN leadbook_examples"));
     expect(String(lookup?.[0])).toContain("f.organization_id = $2");
-    expect(lookup?.[1]).toEqual([exampleId, organizationId]);
+    expect(lookup?.[1]).toEqual([exampleId, organizationId, projectId]);
   });
 });
 

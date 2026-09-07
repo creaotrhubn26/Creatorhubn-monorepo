@@ -1,5 +1,10 @@
 import { XMLParser } from "fast-xml-parser";
 
+import {
+  ssrfSafeFetchWithMetadata,
+  type SsrfSafeFetchMetadata,
+} from "./ssrf-guard.js";
+
 /**
  * Discovery source backed by Brønnøysundregistrene Open Data (NLOD).
  *
@@ -10,6 +15,10 @@ import { XMLParser } from "fast-xml-parser";
 
 const BRREG_UNITS_ENDPOINT =
   "https://data.brreg.no/enhetsregisteret/api/enheter";
+const BRREG_MUNICIPALITIES_ENDPOINT =
+  "https://data.brreg.no/enhetsregisteret/api/kommuner";
+const BRREG_GROUP_STRUCTURE_ENDPOINT =
+  "https://data.brreg.no/enhetsregisteret/api/konsernstruktur";
 const SSB_NACE_ENDPOINT =
   "https://data.ssb.no/api/klass/v1/classifications/6/codesAt";
 const GEONORGE_ADDRESS_ENDPOINT = "https://ws.geonorge.no/adresser/v1";
@@ -18,13 +27,25 @@ const GEONORGE_MUNICIPALITY_WFS_ENDPOINT =
 
 const MAX_RESULTS = 60;
 const MAX_BRREG_PAGES = 3;
-const MAX_PAGE_SIZE = 100;
+/**
+ * Cursor offsets are only stable when BRREG is queried with one fixed page
+ * size. Changing this value requires a cursor-version migration.
+ */
+export const DISCOVERY_BRREG_PAGE_SIZE = 100;
+const MAX_SOURCE_OFFSET = 2_147_483_647;
 const EARTH_RADIUS_METERS = 6_371_008.8;
 export const DISCOVERY_MAX_EXTERNAL_REQUESTS = 200;
 export const DISCOVERY_MAX_GEOCODES = 120;
 const GEOCODE_CACHE_TTL_MS = 24 * 60 * 60 * 1_000;
 const GEOCODE_CACHE_MAX_ENTRIES = 5_000;
 const GEOCODE_CACHE_VERSION = "geonorge-address-v1";
+const STRUCTURE_CACHE_TTL_MS = 24 * 60 * 60 * 1_000;
+const STRUCTURE_CACHE_MAX_ENTRIES = 5_000;
+const WEBSITE_CACHE_TTL_MS = 6 * 60 * 60 * 1_000;
+const WEBSITE_CACHE_MAX_ENTRIES = 2_000;
+const WEBSITE_MAX_REDIRECTS = 3;
+const WEBSITE_MAX_RESPONSE_BYTES = 512 * 1_024;
+const WEBSITE_ASSESSMENT_CONCURRENCY = 4;
 
 export const BRREG_NLOD_ATTRIBUTION = {
   id: "brreg",
@@ -73,15 +94,80 @@ export interface DiscoveryRegistrySearchInput {
   query: string;
   queryMode?: "industry" | "organization_name";
   maxResults?: number;
+  /**
+   * Compatibility input for callers that still address a whole BRREG page.
+   * New durable callers must use sourceOffset so a run can resume mid-page.
+   */
+  startPage?: number;
+  /** Durable zero-based offset in BRREG fixed, sorted result universe. */
+  sourceOffset?: number;
   city?: string | null;
   geo?: DiscoveryRegistryGeoArea | null;
+  municipalityNumbers?: string[];
+  municipalityNames?: string[];
+  organizationForms?: string[];
+  minimumEmployees?: number | null;
+  maximumEmployees?: number | null;
+  organizationStructure?: "any" | "independent" | "chain";
+  websiteRequirement?: "any" | "present" | "missing";
+  minimumWebsiteQualityScore?: number | null;
+  websiteAssessmentLimit?: number;
+  registeredInVatRegister?: boolean | null;
+  registeredInBusinessRegister?: boolean | null;
   signal?: AbortSignal;
+}
+
+export type DiscoveryOrganizationStructure =
+  | "independent"
+  | "chain"
+  | "unknown";
+
+export interface DiscoveryOrganizationStructureEvidence {
+  source: "brreg_group_structure";
+  sourceUri: string;
+  basis:
+    | "multiple_registered_entities"
+    | "single_registered_entity"
+    | "not_found"
+    | "unavailable";
+  relatedOrganizationCount: number | null;
+}
+
+export interface DiscoveryWebsiteQualityAssessment {
+  status: "assessed" | "unknown";
+  score: number | null;
+  fetchedAt: string;
+  sourceUri: string;
+  finalUrl: string | null;
+  httpStatus: number | null;
+  redirectCount: number;
+  reason:
+    | "assessed"
+    | "no_registered_url"
+    | "invalid_url"
+    | "unsafe_host"
+    | "request_failed"
+    | "response_too_large"
+    | "unsupported_content_type"
+    | "external_request_limit"
+    | "not_selected_for_assessment";
+  signals: {
+    https: boolean | null;
+    reachable: boolean | null;
+    title: boolean | null;
+    meta_description: boolean | null;
+    viewport: boolean | null;
+    contact_path: boolean | null;
+    call_to_action: boolean | null;
+  };
 }
 
 export interface DiscoveryRegistryCandidate {
   organizationNumber: string;
   name: string;
   organizationForm: string | null;
+  organizationFormCode?: string | null;
+  organizationFormDescription?: string | null;
   address: string | null;
   postalCode: string | null;
   city: string | null;
@@ -91,22 +177,43 @@ export interface DiscoveryRegistryCandidate {
   distanceFromSearchCenterMeters: number | null;
   website: string | null;
   employeeCount: number | null;
+  hasRegisteredEmployeeCount?: boolean | null;
   naceCode: string | null;
   naceDescription: string | null;
   registeredAt: string | null;
   registeredInVatRegister: boolean;
   registeredInBusinessRegister: boolean;
+  registeredInVatRegisterKnown?: boolean;
+  registeredInBusinessRegisterKnown?: boolean;
+  organizationStructure?: DiscoveryOrganizationStructure;
+  organizationStructureEvidence?: DiscoveryOrganizationStructureEvidence | null;
+  websiteQuality?: DiscoveryWebsiteQualityAssessment;
   status: "active" | "in_liquidation" | "bankrupt";
+  sourceUri: string;
+}
+
+export interface DiscoveryResolvedMunicipality {
+  number: string;
+  name: string | null;
   sourceUri: string;
 }
 
 export interface DiscoveryRegistrySearchResult {
   candidates: DiscoveryRegistryCandidate[];
+  sourceOffsetStart: number;
+  sourceOffsetNext: number;
+  /** Compatibility diagnostics derived from fixed-size source offsets. */
+  sourcePageStart: number;
+  sourcePageNext: number;
+  sourcePageCount: number;
   pagesFetched: number;
   sourceResultsSeen: number;
   duplicateResultsSkipped: number;
   invalidResultsSkipped: number;
   geoFilteredResults: number;
+  companyFilteredResults: number;
+  websiteAssessmentCandidates: number;
+  websiteAssessmentRequests: number;
   sourceLimitReached: boolean;
   hasMoreSourceResults: boolean;
   limitReason: "page_limit" | "external_request_limit" | "geocode_limit" | null;
@@ -115,6 +222,7 @@ export interface DiscoveryRegistrySearchResult {
   geocodeMisses: number;
   resolution: "nace" | "organization_name";
   resolvedNaceCodes: string[];
+  resolvedMunicipalities: DiscoveryResolvedMunicipality[];
 }
 
 export type DiscoveryRegistryErrorCode =
@@ -125,6 +233,7 @@ export type DiscoveryRegistryErrorCode =
   | "network_error"
   | "invalid_response"
   | "area_resolution_failed"
+  | "municipality_resolution_failed"
   | "classification_resolution_failed"
   | "external_request_limit"
   | "geocode_limit"
@@ -139,6 +248,8 @@ const SAFE_ERROR_MESSAGES: Record<DiscoveryRegistryErrorCode, string> = {
   network_error: "Offentlige registerdata kunne ikke nås.",
   invalid_response: "Datakilden returnerte et ugyldig svar.",
   area_resolution_failed: "Kartområdet kunne ikke kobles til norske kommuner.",
+  municipality_resolution_failed:
+    "Ett eller flere kommunenavn kunne ikke kobles sikkert til et kommunenummer.",
   classification_resolution_failed:
     "Kundesegmentet kunne ikke kobles sikkert til offisielle næringskoder.",
   external_request_limit:
@@ -164,8 +275,16 @@ export class DiscoveryRegistryError extends Error {
   }
 }
 
+type DiscoveryWebsiteFetch = (
+  rawUrl: string,
+  init?: RequestInit,
+  maxRedirects?: number,
+  beforeRequest?: (url: string, hop: number) => void | Promise<void>,
+) => Promise<SsrfSafeFetchMetadata>;
+
 export interface DiscoveryRegistryProviderDependencies {
   fetchImpl?: typeof fetch;
+  websiteFetch?: DiscoveryWebsiteFetch;
   requestTimeoutMs?: number;
   maxAttempts?: number;
   now?: () => Date;
@@ -185,8 +304,20 @@ interface NormalizedInput {
   query: string;
   queryMode: "industry" | "organization_name";
   maxResults: number;
+  sourceOffset: number;
   city: string | null;
   geo: DiscoveryRegistryGeoArea | null;
+  municipalityNumbers: string[];
+  municipalityNames: string[];
+  organizationForms: string[];
+  minimumEmployees: number | null;
+  maximumEmployees: number | null;
+  organizationStructure: "any" | "independent" | "chain";
+  websiteRequirement: "any" | "present" | "missing";
+  minimumWebsiteQualityScore: number | null;
+  websiteAssessmentLimit: number;
+  registeredInVatRegister: boolean | null;
+  registeredInBusinessRegister: boolean | null;
   signal?: AbortSignal;
 }
 
@@ -196,12 +327,30 @@ interface NaceCode {
   level: number | null;
 }
 
+interface BrregMunicipality {
+  number: string;
+  name: string;
+}
+
 interface GeocodeCacheEntry {
   expiresAt: number;
   location: DiscoveryRegistryGeoPoint | null;
 }
 
+interface StructureCacheEntry {
+  expiresAt: number;
+  classification: DiscoveryOrganizationStructure;
+  evidence: DiscoveryOrganizationStructureEvidence;
+}
+
+interface WebsiteCacheEntry {
+  expiresAt: number;
+  assessment: DiscoveryWebsiteQualityAssessment;
+}
+
 const geocodeCache = new Map<string, GeocodeCacheEntry>();
+const structureCache = new Map<string, StructureCacheEntry>();
+const websiteCache = new Map<string, WebsiteCacheEntry>();
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -215,6 +364,66 @@ function text(value: unknown): string | null {
 
 function number(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function normalizeMunicipalityNumbers(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 30) {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
+  const normalized = value.map((entry) => text(entry));
+  if (normalized.some((entry) => !entry || !/^\d{4}$/.test(entry))) {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
+  return [...new Set(normalized as string[])].sort();
+}
+
+function normalizeMunicipalityNames(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 30) {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
+  const unique = new Map<string, string>();
+  for (const entry of value) {
+    const normalized = text(entry);
+    if (!normalized || normalized.length > 120) {
+      throw new DiscoveryRegistryError("invalid_input");
+    }
+    unique.set(normalizeForSearch(normalized), normalized);
+  }
+  return [...unique.values()].sort((a, b) => a.localeCompare(b, "nb-NO"));
+}
+
+function normalizeOrganizationForms(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 20) {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
+  const normalized = value.map((entry) => text(entry)?.toUpperCase() ?? null);
+  if (normalized.some((entry) => !entry || !/^[A-Z0-9]{2,8}$/.test(entry))) {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
+  return [...new Set(normalized as string[])].sort();
+}
+
+function normalizedEmployeeBoundary(
+  value: unknown,
+  kind: "minimum" | "maximum",
+): number | null {
+  if (value === undefined || value === null) return null;
+  if (
+    !Number.isInteger(value) ||
+    (value as number) < 0 ||
+    (value as number) > 1_000_000
+  ) {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
+  const supported =
+    kind === "minimum"
+      ? value === 0 || value === 1 || (value as number) >= 5
+      : value === 0 || value === 4 || (value as number) >= 5;
+  if (!supported) throw new DiscoveryRegistryError("invalid_input");
+  return value as number;
 }
 
 function validatePoint(
@@ -245,8 +454,60 @@ function normalizeInput(input: DiscoveryRegistrySearchInput): NormalizedInput {
   ) {
     throw new DiscoveryRegistryError("invalid_input");
   }
+  const municipalityNumbers = normalizeMunicipalityNumbers(
+    input.municipalityNumbers,
+  );
+  const municipalityNames = normalizeMunicipalityNames(input.municipalityNames);
+  if (municipalityNumbers.length + municipalityNames.length > 30) {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
+  const organizationForms = normalizeOrganizationForms(input.organizationForms);
+  const minimumEmployees = normalizedEmployeeBoundary(
+    input.minimumEmployees,
+    "minimum",
+  );
+  const maximumEmployees = normalizedEmployeeBoundary(
+    input.maximumEmployees,
+    "maximum",
+  );
+  if (
+    minimumEmployees !== null &&
+    maximumEmployees !== null &&
+    minimumEmployees > maximumEmployees
+  ) {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
   const requestedMax = input.maxResults ?? 20;
   if (!Number.isInteger(requestedMax) || requestedMax < 1) {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
+  if (input.sourceOffset !== undefined && input.startPage !== undefined) {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
+  const legacyStartPage = input.startPage ?? 0;
+  if (
+    !Number.isSafeInteger(legacyStartPage) ||
+    legacyStartPage < 0 ||
+    legacyStartPage > Math.floor(MAX_SOURCE_OFFSET / DISCOVERY_BRREG_PAGE_SIZE)
+  ) {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
+  const sourceOffset =
+    input.sourceOffset ?? legacyStartPage * DISCOVERY_BRREG_PAGE_SIZE;
+  if (
+    !Number.isSafeInteger(sourceOffset) ||
+    sourceOffset < 0 ||
+    sourceOffset > MAX_SOURCE_OFFSET
+  ) {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
+  const requestedWebsiteAssessmentLimit =
+    input.websiteAssessmentLimit ?? requestedMax;
+  if (
+    !Number.isInteger(requestedWebsiteAssessmentLimit) ||
+    requestedWebsiteAssessmentLimit < 0 ||
+    requestedWebsiteAssessmentLimit > MAX_RESULTS
+  ) {
     throw new DiscoveryRegistryError("invalid_input");
   }
   const city = input.city == null ? null : text(input.city);
@@ -266,13 +527,67 @@ function normalizeInput(input: DiscoveryRegistrySearchInput): NormalizedInput {
     }
     geo = { center, radiusMeters };
   }
-  if (!city && !geo) throw new DiscoveryRegistryError("invalid_input");
+  const hasMunicipalities =
+    municipalityNumbers.length > 0 || municipalityNames.length > 0;
+  const areaSelectorCount = [
+    Boolean(city),
+    Boolean(geo),
+    hasMunicipalities,
+  ].filter(Boolean).length;
+  if (areaSelectorCount !== 1) {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
+  const organizationStructure = input.organizationStructure ?? "any";
+  if (
+    !(["any", "independent", "chain"] as const).includes(organizationStructure)
+  ) {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
+  const websiteRequirement = input.websiteRequirement ?? "any";
+  if (!(["any", "present", "missing"] as const).includes(websiteRequirement)) {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
+  const minimumWebsiteQualityScore = input.minimumWebsiteQualityScore ?? null;
+  if (
+    minimumWebsiteQualityScore !== null &&
+    (!Number.isInteger(minimumWebsiteQualityScore) ||
+      minimumWebsiteQualityScore < 0 ||
+      minimumWebsiteQualityScore > 100)
+  ) {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
+  const registeredInVatRegister = input.registeredInVatRegister ?? null;
+  const registeredInBusinessRegister =
+    input.registeredInBusinessRegister ?? null;
+  if (
+    (registeredInVatRegister !== null &&
+      typeof registeredInVatRegister !== "boolean") ||
+    (registeredInBusinessRegister !== null &&
+      typeof registeredInBusinessRegister !== "boolean")
+  ) {
+    throw new DiscoveryRegistryError("invalid_input");
+  }
   return {
     query,
     queryMode: input.queryMode ?? "industry",
     maxResults: Math.min(requestedMax, MAX_RESULTS),
+    sourceOffset,
     city,
     geo,
+    municipalityNumbers,
+    municipalityNames,
+    organizationForms,
+    minimumEmployees,
+    maximumEmployees,
+    organizationStructure,
+    websiteRequirement,
+    minimumWebsiteQualityScore,
+    websiteAssessmentLimit: Math.min(
+      requestedWebsiteAssessmentLimit,
+      Math.min(requestedMax, MAX_RESULTS),
+    ),
+    registeredInVatRegister,
+    registeredInBusinessRegister,
     signal: input.signal,
   };
 }
@@ -586,10 +901,12 @@ function normalizeCandidate(value: unknown): DiscoveryRegistryCandidate | null {
         return normalized ? [normalized] : [];
       })
     : [];
-  const organizationForm = isRecord(value.organisasjonsform)
-    ? (text(value.organisasjonsform.beskrivelse) ??
-      text(value.organisasjonsform.kode))
-    : null;
+  const organizationFormRecord = isRecord(value.organisasjonsform)
+    ? value.organisasjonsform
+    : {};
+  const organizationFormCode = text(organizationFormRecord.kode);
+  const organizationFormDescription = text(organizationFormRecord.beskrivelse);
+  const organizationForm = organizationFormDescription ?? organizationFormCode;
   const nace = isRecord(value.naeringskode1) ? value.naeringskode1 : {};
   const links = isRecord(value._links) ? value._links : {};
   const self = isRecord(links.self) ? links.self : {};
@@ -597,10 +914,16 @@ function normalizeCandidate(value: unknown): DiscoveryRegistryCandidate | null {
   const isLiquidating =
     value.underAvvikling === true ||
     value.underTvangsavviklingEllerTvangsopplosning === true;
+  const hasRegisteredEmployeeCount =
+    typeof value.harRegistrertAntallAnsatte === "boolean"
+      ? value.harRegistrertAntallAnsatte
+      : null;
   return {
     organizationNumber,
     name,
     organizationForm,
+    organizationFormCode,
+    organizationFormDescription,
     address: addressLines.length ? addressLines.join(", ") : null,
     postalCode: text(addressRecord.postnummer),
     city: text(addressRecord.poststed),
@@ -610,11 +933,16 @@ function normalizeCandidate(value: unknown): DiscoveryRegistryCandidate | null {
     distanceFromSearchCenterMeters: null,
     website: text(value.hjemmeside),
     employeeCount: number(value.antallAnsatte),
+    hasRegisteredEmployeeCount,
     naceCode: text(nace.kode),
     naceDescription: text(nace.beskrivelse),
     registeredAt: text(value.registreringsdatoEnhetsregisteret),
     registeredInVatRegister: value.registrertIMvaregisteret === true,
+    registeredInVatRegisterKnown:
+      typeof value.registrertIMvaregisteret === "boolean",
     registeredInBusinessRegister: value.registrertIForetaksregisteret === true,
+    registeredInBusinessRegisterKnown:
+      typeof value.registrertIForetaksregisteret === "boolean",
     status: isBankrupt
       ? "bankrupt"
       : isLiquidating
@@ -622,6 +950,86 @@ function normalizeCandidate(value: unknown): DiscoveryRegistryCandidate | null {
         : "active",
     sourceUri: normalizeSourceUri(self.href, organizationNumber),
   };
+}
+
+function matchesHardCompanyFilters(
+  candidate: DiscoveryRegistryCandidate,
+  input: NormalizedInput,
+): boolean {
+  if (
+    input.organizationForms.length > 0 &&
+    (!candidate.organizationFormCode ||
+      !input.organizationForms.includes(
+        candidate.organizationFormCode.toUpperCase(),
+      ))
+  ) {
+    return false;
+  }
+  if (input.minimumEmployees !== null || input.maximumEmployees !== null) {
+    if (
+      candidate.hasRegisteredEmployeeCount !== true ||
+      candidate.employeeCount === null
+    ) {
+      return false;
+    }
+    if (
+      input.minimumEmployees !== null &&
+      candidate.employeeCount < input.minimumEmployees
+    ) {
+      return false;
+    }
+    if (
+      input.maximumEmployees !== null &&
+      candidate.employeeCount > input.maximumEmployees
+    ) {
+      return false;
+    }
+  }
+  const hasWebsite = candidate.website !== null;
+  if (
+    (input.websiteRequirement === "present" && !hasWebsite) ||
+    (input.websiteRequirement === "missing" && hasWebsite)
+  ) {
+    return false;
+  }
+  if (
+    input.registeredInVatRegister !== null &&
+    (candidate.registeredInVatRegisterKnown !== true ||
+      candidate.registeredInVatRegister !== input.registeredInVatRegister)
+  ) {
+    return false;
+  }
+  if (
+    input.registeredInBusinessRegister !== null &&
+    (candidate.registeredInBusinessRegisterKnown !== true ||
+      candidate.registeredInBusinessRegister !==
+        input.registeredInBusinessRegister)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function organizationNumbersFromGroupPayload(payload: unknown): string[] {
+  const found = new Set<string>();
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (!isRecord(value)) return;
+    for (const [key, child] of Object.entries(value)) {
+      if (key.toLocaleLowerCase("nb-NO") === "organisasjonsnummer") {
+        const organizationNumber = text(child);
+        if (organizationNumber && /^\d{9}$/.test(organizationNumber)) {
+          found.add(organizationNumber);
+        }
+      }
+      visit(child);
+    }
+  };
+  visit(payload);
+  return [...found].sort();
 }
 
 function responseUnits(payload: unknown): {
@@ -638,6 +1046,34 @@ function responseUnits(payload: unknown): {
   const totalPages = number(page.totalPages);
   return {
     units: Array.isArray(units) ? units : [],
+    totalPages: totalPages === null ? 1 : Math.max(0, Math.trunc(totalPages)),
+  };
+}
+
+function responseMunicipalities(payload: unknown): {
+  municipalities: BrregMunicipality[];
+  totalPages: number;
+} {
+  if (!isRecord(payload)) throw new DiscoveryRegistryError("invalid_response");
+  const embedded = isRecord(payload._embedded) ? payload._embedded : {};
+  const values = embedded.kommuner;
+  if (values !== undefined && !Array.isArray(values)) {
+    throw new DiscoveryRegistryError("invalid_response");
+  }
+  const municipalities = (Array.isArray(values) ? values : []).flatMap(
+    (value): BrregMunicipality[] => {
+      if (!isRecord(value)) return [];
+      const municipalityNumber = municipalityCodeValue(value.nummer);
+      const name = text(value.navn);
+      return municipalityNumber && name
+        ? [{ number: municipalityNumber, name }]
+        : [];
+    },
+  );
+  const page = isRecord(payload.page) ? payload.page : {};
+  const totalPages = number(page.totalPages);
+  return {
+    municipalities,
     totalPages: totalPages === null ? 1 : Math.max(0, Math.trunc(totalPages)),
   };
 }
@@ -709,6 +1145,137 @@ async function mapConcurrent<T, R>(
   return result;
 }
 
+function emptyWebsiteSignals(): DiscoveryWebsiteQualityAssessment["signals"] {
+  return {
+    https: null,
+    reachable: null,
+    title: null,
+    meta_description: null,
+    viewport: null,
+    contact_path: null,
+    call_to_action: null,
+  };
+}
+
+function unknownWebsiteAssessment(
+  website: string | null,
+  fetchedAt: string,
+  reason: Exclude<DiscoveryWebsiteQualityAssessment["reason"], "assessed">,
+): DiscoveryWebsiteQualityAssessment {
+  return {
+    status: "unknown",
+    score: null,
+    fetchedAt,
+    sourceUri: website ?? "",
+    finalUrl: null,
+    httpStatus: null,
+    redirectCount: 0,
+    reason,
+    signals: emptyWebsiteSignals(),
+  };
+}
+
+function normalizedWebsiteUrl(value: string): URL | null {
+  const raw = value.trim();
+  if (!raw || raw.length > 2_048) return null;
+  try {
+    const url = new URL(
+      /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`,
+    );
+    if (
+      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      url.username ||
+      url.password ||
+      (url.port && url.port !== "80" && url.port !== "443") ||
+      !url.hostname
+    ) {
+      return null;
+    }
+    url.hash = "";
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+function websiteHtmlSignals(
+  html: string,
+): Omit<DiscoveryWebsiteQualityAssessment["signals"], "https" | "reachable"> {
+  const metaTags = html.match(/<meta\b[^>]*>/gi) ?? [];
+  const description = metaTags.some(
+    (tag) =>
+      /\bname\s*=\s*["']description["']/i.test(tag) &&
+      /\bcontent\s*=\s*["'][^"']{10,}["']/i.test(tag),
+  );
+  const viewport = metaTags.some((tag) =>
+    /\bname\s*=\s*["']viewport["']/i.test(tag),
+  );
+  return {
+    title: /<title\b[^>]*>\s*[^<]{2,}\s*<\/title>/i.test(html),
+    meta_description: description,
+    viewport,
+    contact_path:
+      /href\s*=\s*["'](?:mailto:|tel:|[^"']*(?:kontakt|contact)[^"']*)["']/i.test(
+        html,
+      ),
+    call_to_action:
+      /\b(?:bestill(?:\s+time)?|book(?:\s+time)?|kontakt\s+oss|ta\s+kontakt|be\s+om\s+tilbud|få\s+tilbud|ring\s+oss)\b/i.test(
+        html,
+      ),
+  };
+}
+
+async function boundedResponseText(response: Response): Promise<string | null> {
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (
+    Number.isFinite(declaredLength) &&
+    declaredLength > WEBSITE_MAX_RESPONSE_BYTES
+  ) {
+    await cancelResponseBody(response);
+    return null;
+  }
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let total = 0;
+  let body = "";
+  while (true) {
+    const part = await reader.read();
+    if (part.done) break;
+    total += part.value.byteLength;
+    if (total > WEBSITE_MAX_RESPONSE_BYTES) {
+      await reader.cancel();
+      return null;
+    }
+    body += decoder.decode(part.value, { stream: true });
+  }
+  return body + decoder.decode();
+}
+
+async function cancelResponseBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // Resource cleanup is best-effort and must not turn known evidence into a
+    // retryable provider failure.
+  }
+}
+
+function cacheWebsiteAssessment(
+  key: string,
+  assessment: DiscoveryWebsiteQualityAssessment,
+  nowMs: number,
+): DiscoveryWebsiteQualityAssessment {
+  if (websiteCache.size >= WEBSITE_CACHE_MAX_ENTRIES) {
+    const oldest = websiteCache.keys().next().value;
+    if (typeof oldest === "string") websiteCache.delete(oldest);
+  }
+  const ttl =
+    assessment.status === "assessed" ? WEBSITE_CACHE_TTL_MS : 15 * 60 * 1_000;
+  websiteCache.set(key, { assessment, expiresAt: nowMs + ttl });
+  return assessment;
+}
+
 export function createDiscoveryRegistryProvider(
   dependencies: DiscoveryRegistryProviderDependencies = {},
 ): DiscoveryRegistryProvider {
@@ -722,6 +1289,7 @@ export function createDiscoveryRegistryProvider(
     Math.max(1, Math.trunc(dependencies.maxAttempts ?? 3)),
   );
   const now = dependencies.now ?? (() => new Date());
+  const websiteFetch = dependencies.websiteFetch ?? ssrfSafeFetchWithMetadata;
   const maxExternalRequests = Math.min(
     DISCOVERY_MAX_EXTERNAL_REQUESTS,
     Math.max(
@@ -737,13 +1305,174 @@ export function createDiscoveryRegistryProvider(
   );
   let externalRequests = 0;
   let geocodeRequests = 0;
+  let websiteAssessmentRequests = 0;
   let cachedNace: { expiresAt: number; codes: NaceCode[] } | null = null;
+  let cachedMunicipalities: {
+    expiresAt: number;
+    values: BrregMunicipality[];
+  } | null = null;
 
   function reserveExternalRequest(): void {
     if (externalRequests >= maxExternalRequests) {
       throw new DiscoveryRegistryError("external_request_limit");
     }
     externalRequests += 1;
+  }
+
+  async function assessWebsite(
+    website: string | null,
+    signal: AbortSignal | undefined,
+    evidenceSourceUri: string,
+  ): Promise<DiscoveryWebsiteQualityAssessment> {
+    const fetchedAt = now().toISOString();
+    if (!website) {
+      return unknownWebsiteAssessment(
+        evidenceSourceUri,
+        fetchedAt,
+        "no_registered_url",
+      );
+    }
+    const initial = normalizedWebsiteUrl(website);
+    if (!initial) {
+      return unknownWebsiteAssessment(website, fetchedAt, "invalid_url");
+    }
+    const cacheKey = initial.toString();
+    const cached = websiteCache.get(cacheKey);
+    if (cached && cached.expiresAt > now().getTime()) return cached.assessment;
+    if (cached) websiteCache.delete(cacheKey);
+
+    try {
+      if (signal?.aborted) throw new DiscoveryRegistryError("cancelled");
+      const fetched = await websiteFetch(
+        initial.toString(),
+        {
+          headers: {
+            Accept: "text/html,application/xhtml+xml;q=0.9",
+            "User-Agent": "Leadgrid-Discovery/1.0",
+          },
+          signal: attemptSignal(signal, Math.min(timeoutMs, 5_000)),
+        },
+        WEBSITE_MAX_REDIRECTS,
+        () => {
+          reserveExternalRequest();
+          websiteAssessmentRequests += 1;
+        },
+      );
+      const response = fetched.response;
+      const finalUrl = new URL(fetched.finalUrl);
+      const contentType = response.headers.get("content-type")?.toLowerCase();
+      const htmlResponse =
+        !contentType ||
+        contentType.includes("text/html") ||
+        contentType.includes("application/xhtml+xml");
+      const inspectBody = response.ok && htmlResponse;
+      if (!inspectBody) await cancelResponseBody(response);
+      if (
+        !response.ok &&
+        (response.status === 408 ||
+          response.status === 429 ||
+          response.status >= 500)
+      ) {
+        return cacheWebsiteAssessment(
+          cacheKey,
+          {
+            ...unknownWebsiteAssessment(
+              initial.toString(),
+              fetchedAt,
+              "request_failed",
+            ),
+            finalUrl: fetched.finalUrl,
+            httpStatus: response.status,
+            redirectCount: fetched.redirectCount,
+            signals: {
+              ...emptyWebsiteSignals(),
+              https: finalUrl.protocol === "https:",
+              reachable: false,
+            },
+          },
+          now().getTime(),
+        );
+      }
+      if (response.ok && !htmlResponse) {
+        return cacheWebsiteAssessment(
+          cacheKey,
+          {
+            ...unknownWebsiteAssessment(
+              initial.toString(),
+              fetchedAt,
+              "unsupported_content_type",
+            ),
+            finalUrl: fetched.finalUrl,
+            httpStatus: response.status,
+            redirectCount: fetched.redirectCount,
+            signals: {
+              ...emptyWebsiteSignals(),
+              https: finalUrl.protocol === "https:",
+              reachable: true,
+            },
+          },
+          now().getTime(),
+        );
+      }
+      const body = inspectBody ? await boundedResponseText(response) : "";
+      if (body === null) {
+        return cacheWebsiteAssessment(
+          cacheKey,
+          unknownWebsiteAssessment(
+            fetched.finalUrl,
+            fetchedAt,
+            "response_too_large",
+          ),
+          now().getTime(),
+        );
+      }
+      const htmlSignals = websiteHtmlSignals(body);
+      const signals: DiscoveryWebsiteQualityAssessment["signals"] = {
+        https: finalUrl.protocol === "https:",
+        reachable: response.ok,
+        ...htmlSignals,
+      };
+      const score =
+        (signals.https ? 15 : 0) +
+        (signals.reachable ? 25 : 0) +
+        (signals.title ? 15 : 0) +
+        (signals.meta_description ? 15 : 0) +
+        (signals.viewport ? 10 : 0) +
+        (signals.contact_path ? 10 : 0) +
+        (signals.call_to_action ? 10 : 0);
+      return cacheWebsiteAssessment(
+        cacheKey,
+        {
+          status: "assessed",
+          score,
+          fetchedAt,
+          sourceUri: initial.toString(),
+          finalUrl: fetched.finalUrl,
+          httpStatus: response.status,
+          redirectCount: fetched.redirectCount,
+          reason: "assessed",
+          signals,
+        },
+        now().getTime(),
+      );
+    } catch (error) {
+      if (signal?.aborted) throw new DiscoveryRegistryError("cancelled");
+      if (
+        error instanceof DiscoveryRegistryError &&
+        (error.code === "cancelled" || error.code === "external_request_limit")
+      ) {
+        throw error;
+      }
+      const reason =
+        error instanceof Error && error.message.startsWith("SSRF:")
+          ? "unsafe_host"
+          : "request_failed";
+      return cacheWebsiteAssessment(
+        cacheKey,
+        unknownWebsiteAssessment(initial.toString(), fetchedAt, reason),
+        now().getTime(),
+      );
+    }
   }
 
   function reserveGeocode(): void {
@@ -860,6 +1589,89 @@ export function createDiscoveryRegistryProvider(
     return cachedNace ? rankNaceCodes(cachedNace.codes, query) : [];
   }
 
+  async function municipalityCatalog(
+    signal: AbortSignal | undefined,
+  ): Promise<BrregMunicipality[]> {
+    if (
+      cachedMunicipalities &&
+      cachedMunicipalities.expiresAt > now().getTime()
+    ) {
+      return cachedMunicipalities.values;
+    }
+    const values: BrregMunicipality[] = [];
+    let totalPages = 1;
+    for (let page = 0; page < totalPages && page < 10; page += 1) {
+      const url = new URL(BRREG_MUNICIPALITIES_ENDPOINT);
+      url.searchParams.set("size", "100");
+      url.searchParams.set("page", String(page));
+      url.searchParams.set("sort", "nummer,ASC");
+      const response = responseMunicipalities(await getJson(url, signal));
+      values.push(...response.municipalities);
+      totalPages = response.totalPages;
+    }
+    if (!values.length || totalPages > 10) {
+      throw new DiscoveryRegistryError("municipality_resolution_failed", {
+        retryable: true,
+      });
+    }
+    const deduplicated = [
+      ...new Map(values.map((entry) => [entry.number, entry])).values(),
+    ].sort((a, b) => a.number.localeCompare(b.number));
+    cachedMunicipalities = {
+      expiresAt: now().getTime() + 24 * 60 * 60 * 1_000,
+      values: deduplicated,
+    };
+    return deduplicated;
+  }
+
+  async function resolveExplicitMunicipalities(
+    input: NormalizedInput,
+  ): Promise<DiscoveryResolvedMunicipality[]> {
+    if (
+      input.municipalityNumbers.length === 0 &&
+      input.municipalityNames.length === 0
+    ) {
+      return [];
+    }
+    const catalog = await municipalityCatalog(input.signal);
+    const byNormalizedName = new Map<string, BrregMunicipality[]>();
+    for (const municipality of catalog) {
+      const key = normalizeForSearch(municipality.name);
+      byNormalizedName.set(key, [
+        ...(byNormalizedName.get(key) ?? []),
+        municipality,
+      ]);
+    }
+    const resolvedNames = input.municipalityNames.map((name) => {
+      const matches = byNormalizedName.get(normalizeForSearch(name)) ?? [];
+      if (matches.length !== 1) {
+        throw new DiscoveryRegistryError("municipality_resolution_failed");
+      }
+      return matches[0];
+    });
+    const catalogByNumber = new Map(
+      catalog.map((municipality) => [municipality.number, municipality]),
+    );
+    if (
+      input.municipalityNumbers.some(
+        (municipalityNumber) => !catalogByNumber.has(municipalityNumber),
+      )
+    ) {
+      throw new DiscoveryRegistryError("municipality_resolution_failed");
+    }
+    const resolved = [
+      ...input.municipalityNumbers,
+      ...resolvedNames.map((item) => item.number),
+    ].map((municipalityNumber) => ({
+      number: municipalityNumber,
+      name: catalogByNumber.get(municipalityNumber)?.name ?? null,
+      sourceUri: BRREG_MUNICIPALITIES_ENDPOINT + "/" + municipalityNumber,
+    }));
+    return [
+      ...new Map(resolved.map((entry) => [entry.number, entry])).values(),
+    ].sort((a, b) => a.number.localeCompare(b.number));
+  }
+
   async function municipalitiesForArea(
     geo: DiscoveryRegistryGeoArea,
     signal: AbortSignal | undefined,
@@ -895,6 +1707,124 @@ export function createDiscoveryRegistryProvider(
       });
     }
     return municipalities;
+  }
+
+  function cacheOrganizationStructure(
+    organizationNumber: string,
+    classification: DiscoveryOrganizationStructure,
+    evidence: DiscoveryOrganizationStructureEvidence,
+  ): DiscoveryOrganizationStructureEvidence {
+    if (structureCache.size >= STRUCTURE_CACHE_MAX_ENTRIES) {
+      const oldest = structureCache.keys().next().value;
+      if (typeof oldest === "string") structureCache.delete(oldest);
+    }
+    structureCache.set(organizationNumber, {
+      expiresAt: now().getTime() + STRUCTURE_CACHE_TTL_MS,
+      classification,
+      evidence,
+    });
+    return evidence;
+  }
+
+  async function organizationStructureFor(
+    organizationNumber: string,
+    signal: AbortSignal | undefined,
+  ): Promise<{
+    classification: DiscoveryOrganizationStructure;
+    evidence: DiscoveryOrganizationStructureEvidence;
+  }> {
+    const cached = structureCache.get(organizationNumber);
+    if (cached && cached.expiresAt > now().getTime()) {
+      return {
+        classification: cached.classification,
+        evidence: cached.evidence,
+      };
+    }
+    if (cached) structureCache.delete(organizationNumber);
+    const url = new URL(
+      BRREG_GROUP_STRUCTURE_ENDPOINT + "/" + organizationNumber,
+    );
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (signal?.aborted) throw new DiscoveryRegistryError("cancelled");
+      try {
+        reserveExternalRequest();
+        const response = await fetchImpl(url, {
+          headers: { Accept: "application/json" },
+          signal: attemptSignal(signal, timeoutMs),
+        });
+        if (response.status === 404) {
+          const evidence: DiscoveryOrganizationStructureEvidence = {
+            source: "brreg_group_structure",
+            sourceUri: url.toString(),
+            basis: "not_found",
+            relatedOrganizationCount: null,
+          };
+          cacheOrganizationStructure(organizationNumber, "unknown", evidence);
+          return { classification: "unknown", evidence };
+        }
+        if (response.ok) {
+          let payload: unknown;
+          try {
+            payload = await response.json();
+          } catch {
+            payload = null;
+          }
+          const organizationNumbers =
+            organizationNumbersFromGroupPayload(payload);
+          if (organizationNumbers.length > 0) {
+            const related = new Set([
+              organizationNumber,
+              ...organizationNumbers,
+            ]);
+            const classification: DiscoveryOrganizationStructure =
+              related.size > 1 ? "chain" : "independent";
+            const evidence: DiscoveryOrganizationStructureEvidence = {
+              source: "brreg_group_structure",
+              sourceUri: url.toString(),
+              basis:
+                classification === "chain"
+                  ? "multiple_registered_entities"
+                  : "single_registered_entity",
+              relatedOrganizationCount: related.size,
+            };
+            cacheOrganizationStructure(
+              organizationNumber,
+              classification,
+              evidence,
+            );
+            return { classification, evidence };
+          }
+        } else {
+          const error = httpError(response);
+          if (error.retryable && attempt + 1 < maxAttempts) {
+            await delay(100 * 2 ** attempt, signal);
+            continue;
+          }
+        }
+      } catch (error) {
+        if (signal?.aborted) throw new DiscoveryRegistryError("cancelled");
+        if (
+          error instanceof DiscoveryRegistryError &&
+          (error.code === "cancelled" ||
+            error.code === "external_request_limit")
+        ) {
+          throw error;
+        }
+        if (attempt + 1 < maxAttempts) {
+          await delay(100 * 2 ** attempt, signal);
+          continue;
+        }
+      }
+      break;
+    }
+    const evidence: DiscoveryOrganizationStructureEvidence = {
+      source: "brreg_group_structure",
+      sourceUri: url.toString(),
+      basis: "unavailable",
+      relatedOrganizationCount: null,
+    };
+    cacheOrganizationStructure(organizationNumber, "unknown", evidence);
+    return { classification: "unknown", evidence };
   }
 
   async function geocode(
@@ -971,17 +1901,34 @@ export function createDiscoveryRegistryProvider(
       const input = normalizeInput(rawInput);
       const externalRequestsBefore = externalRequests;
       const geocodeRequestsBefore = geocodeRequests;
+      const websiteAssessmentRequestsBefore = websiteAssessmentRequests;
       if (input.signal?.aborted) {
         throw new DiscoveryRegistryError("cancelled");
       }
-      const [resolvedNaceCodes, municipalityNumbers] = await Promise.all([
+      const [
+        resolvedNaceCodes,
+        explicitMunicipalities,
+        geoMunicipalityNumbers,
+      ] = await Promise.all([
         input.queryMode === "industry"
           ? naceCodes(input.query, input.signal)
           : Promise.resolve([]),
+        resolveExplicitMunicipalities(input),
         input.geo
           ? municipalitiesForArea(input.geo, input.signal)
           : Promise.resolve([]),
       ]);
+      const resolvedMunicipalities =
+        explicitMunicipalities.length > 0
+          ? explicitMunicipalities
+          : geoMunicipalityNumbers.map((municipalityNumber) => ({
+              number: municipalityNumber,
+              name: null,
+              sourceUri: GEONORGE_MUNICIPALITY_WFS_ENDPOINT,
+            }));
+      const municipalityNumbers = resolvedMunicipalities.map(
+        (municipality) => municipality.number,
+      );
       if (input.queryMode === "industry" && !resolvedNaceCodes.length) {
         throw new DiscoveryRegistryError("classification_resolution_failed");
       }
@@ -995,22 +1942,31 @@ export function createDiscoveryRegistryProvider(
       let invalidResultsSkipped = 0;
       let geoFilteredResults = 0;
       let geocodeMisses = 0;
+      let companyFilteredResults = 0;
+      let websiteAssessmentCandidates = 0;
+      const sourceOffsetStart = input.sourceOffset;
+      let sourceOffsetNext = sourceOffsetStart;
+      let currentSourceOffset = sourceOffsetStart;
       let totalPages = 1;
       let limitReason: DiscoveryRegistrySearchResult["limitReason"] = null;
+      const visitedSourcePages = new Set<number>();
+      let sourcePagesFetched = 0;
+      let pageRequests = 0;
+      let cursorProbeFallbackUsed = false;
+      let stoppedMidPage = false;
 
-      pageLoop: for (
-        let page = 0;
-        page < totalPages &&
-        page < MAX_BRREG_PAGES &&
-        candidates.length < input.maxResults;
-        page += 1
+      pageLoop: while (
+        sourcePagesFetched < MAX_BRREG_PAGES &&
+        pageRequests < MAX_BRREG_PAGES + 2 &&
+        candidates.length < input.maxResults
       ) {
-        const url = new URL(BRREG_UNITS_ENDPOINT);
-        url.searchParams.set(
-          "size",
-          String(Math.min(MAX_PAGE_SIZE, Math.max(20, input.maxResults * 2))),
+        const sourcePage = Math.floor(
+          currentSourceOffset / DISCOVERY_BRREG_PAGE_SIZE,
         );
-        url.searchParams.set("page", String(page));
+        const sourceRowOffset = currentSourceOffset % DISCOVERY_BRREG_PAGE_SIZE;
+        const url = new URL(BRREG_UNITS_ENDPOINT);
+        url.searchParams.set("size", String(DISCOVERY_BRREG_PAGE_SIZE));
+        url.searchParams.set("page", String(sourcePage));
         url.searchParams.set("sort", "organisasjonsnummer,ASC");
         url.searchParams.set("konkurs", "false");
         if (resolvedNaceCodes.length) {
@@ -1026,11 +1982,56 @@ export function createDiscoveryRegistryProvider(
             input.city.toLocaleUpperCase("nb-NO"),
           );
         }
+        if (input.organizationForms.length > 0) {
+          url.searchParams.set(
+            "organisasjonsform",
+            input.organizationForms.join(","),
+          );
+        }
+        if (input.minimumEmployees !== null) {
+          url.searchParams.set(
+            "fraAntallAnsatte",
+            String(input.minimumEmployees),
+          );
+        }
+        if (input.maximumEmployees !== null) {
+          url.searchParams.set(
+            "tilAntallAnsatte",
+            String(input.maximumEmployees),
+          );
+        }
+        if (input.registeredInVatRegister !== null) {
+          url.searchParams.set(
+            "registrertIMvaregisteret",
+            String(input.registeredInVatRegister),
+          );
+        }
+        if (input.registeredInBusinessRegister !== null) {
+          url.searchParams.set(
+            "registrertIForetaksregisteret",
+            String(input.registeredInBusinessRegister),
+          );
+        }
 
         let response: ReturnType<typeof responseUnits>;
+        pageRequests += 1;
         try {
           response = responseUnits(await getJson(url, input.signal));
         } catch (error) {
+          if (
+            error instanceof DiscoveryRegistryError &&
+            error.code === "invalid_request" &&
+            !cursorProbeFallbackUsed &&
+            sourcePagesFetched === 0 &&
+            sourcePage > 0
+          ) {
+            // A shrunken result universe can make a persisted page invalid.
+            // Resetting to zero may repeat data, but can never skip new data.
+            cursorProbeFallbackUsed = true;
+            currentSourceOffset = 0;
+            sourceOffsetNext = 0;
+            continue;
+          }
           if (
             error instanceof DiscoveryRegistryError &&
             (error.code === "external_request_limit" ||
@@ -1044,46 +2045,101 @@ export function createDiscoveryRegistryProvider(
           }
           throw error;
         }
-        pagesFetched += 1;
-        sourceResultsSeen += response.units.length;
+
         totalPages = response.totalPages;
-        const normalized = response.units.flatMap((value) => {
-          const candidate = normalizeCandidate(value);
+        if (totalPages === 0) {
+          sourceOffsetNext = 0;
+          break;
+        }
+        if (sourcePage >= totalPages) {
+          if (cursorProbeFallbackUsed) {
+            throw new DiscoveryRegistryError("invalid_response");
+          }
+          cursorProbeFallbackUsed = true;
+          currentSourceOffset = 0;
+          sourceOffsetNext = 0;
+          continue;
+        }
+        if (visitedSourcePages.has(sourcePage)) break;
+        visitedSourcePages.add(sourcePage);
+        pagesFetched += 1;
+        sourcePagesFetched += 1;
+
+        const advancePastSourceRow = (rawIndex: number): void => {
+          sourceResultsSeen += 1;
+          const nextRow = rawIndex + 1;
+          sourceOffsetNext =
+            nextRow < response.units.length
+              ? sourcePage * DISCOVERY_BRREG_PAGE_SIZE + nextRow
+              : sourcePage + 1 < totalPages
+                ? (sourcePage + 1) * DISCOVERY_BRREG_PAGE_SIZE
+                : 0;
+          currentSourceOffset = sourceOffsetNext;
+        };
+
+        if (sourceRowOffset >= response.units.length) {
+          sourceOffsetNext =
+            sourcePage + 1 < totalPages
+              ? (sourcePage + 1) * DISCOVERY_BRREG_PAGE_SIZE
+              : 0;
+          currentSourceOffset = sourceOffsetNext;
+          if (visitedSourcePages.size >= totalPages) break;
+          continue;
+        }
+
+        for (
+          let rawIndex = sourceRowOffset;
+          rawIndex < response.units.length;
+          rawIndex += 1
+        ) {
+          const candidate = normalizeCandidate(response.units[rawIndex]);
           if (!candidate) {
             invalidResultsSkipped += 1;
-            return [];
+            advancePastSourceRow(rawIndex);
+            continue;
           }
           if (seen.has(candidate.organizationNumber)) {
             duplicateResultsSkipped += 1;
-            return [];
+            advancePastSourceRow(rawIndex);
+            continue;
           }
           seen.add(candidate.organizationNumber);
-          return [candidate];
-        });
+          if (
+            municipalityNumbers.length > 0 &&
+            (!candidate.municipalityNumber ||
+              !municipalityNumbers.includes(candidate.municipalityNumber))
+          ) {
+            geoFilteredResults += 1;
+            advancePastSourceRow(rawIndex);
+            continue;
+          }
+          if (!matchesHardCompanyFilters(candidate, input)) {
+            companyFilteredResults += 1;
+            advancePastSourceRow(rawIndex);
+            continue;
+          }
 
-        const located: Array<DiscoveryRegistryCandidate | null> = [];
-        if (input.geo) {
-          for (const candidate of normalized) {
+          let locatedCandidate: DiscoveryRegistryCandidate | null = candidate;
+          if (input.geo) {
             try {
               const location = await geocode(candidate, input.signal);
               if (!location) {
                 geocodeMisses += 1;
-                located.push(null);
-                continue;
+                locatedCandidate = null;
+              } else {
+                const distance = distanceBetweenRegistryPoints(
+                  input.geo.center,
+                  location,
+                );
+                locatedCandidate =
+                  distance > input.geo.radiusMeters + 1
+                    ? null
+                    : {
+                        ...candidate,
+                        location,
+                        distanceFromSearchCenterMeters: distance,
+                      };
               }
-              const distance = distanceBetweenRegistryPoints(
-                input.geo.center,
-                location,
-              );
-              located.push(
-                distance > input.geo.radiusMeters + 1
-                  ? null
-                  : {
-                      ...candidate,
-                      location,
-                      distanceFromSearchCenterMeters: distance,
-                    },
-              );
             } catch (error) {
               if (
                 error instanceof DiscoveryRegistryError &&
@@ -1094,42 +2150,183 @@ export function createDiscoveryRegistryProvider(
                   error.code === "geocode_limit"
                     ? "geocode_limit"
                     : "external_request_limit";
-                break;
+                break pageLoop;
               }
               throw error;
             }
           }
-        } else {
-          located.push(...normalized);
-        }
-        for (const candidate of located) {
-          if (!candidate) {
+          if (!locatedCandidate) {
             geoFilteredResults += 1;
+            advancePastSourceRow(rawIndex);
             continue;
           }
-          if (candidates.length < input.maxResults) candidates.push(candidate);
+
+          candidates.push(locatedCandidate);
+          advancePastSourceRow(rawIndex);
+          if (candidates.length >= input.maxResults) {
+            stoppedMidPage = rawIndex + 1 < response.units.length;
+            break pageLoop;
+          }
         }
-        if (limitReason) break pageLoop;
+
+        if (visitedSourcePages.size >= totalPages) break;
       }
 
       if (
         !limitReason &&
-        pagesFetched >= MAX_BRREG_PAGES &&
-        pagesFetched < totalPages &&
+        sourcePagesFetched >= MAX_BRREG_PAGES &&
+        visitedSourcePages.size < totalPages &&
         candidates.length < input.maxResults
       ) {
         limitReason = "page_limit";
       }
 
+      if (input.organizationStructure !== "any" && candidates.length > 0) {
+        let structureRequestLimitReached =
+          limitReason === "external_request_limit";
+        const enriched = await mapConcurrent(
+          candidates,
+          6,
+          async (candidate) => {
+            const unavailableEvidence: DiscoveryOrganizationStructureEvidence =
+              {
+                source: "brreg_group_structure",
+                sourceUri:
+                  BRREG_GROUP_STRUCTURE_ENDPOINT +
+                  "/" +
+                  candidate.organizationNumber,
+                basis: "unavailable",
+                relatedOrganizationCount: null,
+              };
+            if (structureRequestLimitReached) {
+              return {
+                ...candidate,
+                organizationStructure: "unknown" as const,
+                organizationStructureEvidence: unavailableEvidence,
+              };
+            }
+            try {
+              const structure = await organizationStructureFor(
+                candidate.organizationNumber,
+                input.signal,
+              );
+              return {
+                ...candidate,
+                organizationStructure: structure.classification,
+                organizationStructureEvidence: structure.evidence,
+              };
+            } catch (error) {
+              if (
+                error instanceof DiscoveryRegistryError &&
+                error.code === "external_request_limit"
+              ) {
+                structureRequestLimitReached = true;
+                return {
+                  ...candidate,
+                  organizationStructure: "unknown" as const,
+                  organizationStructureEvidence: unavailableEvidence,
+                };
+              }
+              throw error;
+            }
+          },
+        );
+        candidates.splice(0, candidates.length, ...enriched);
+        if (structureRequestLimitReached)
+          limitReason = "external_request_limit";
+      }
+
+      if (input.minimumWebsiteQualityScore !== null && candidates.length > 0) {
+        let websiteRequestLimitReached =
+          limitReason === "external_request_limit";
+        const selectedCandidates = candidates.slice(
+          0,
+          input.websiteAssessmentLimit,
+        );
+        websiteAssessmentCandidates = selectedCandidates.length;
+        const notSelected = candidates
+          .slice(input.websiteAssessmentLimit)
+          .map((candidate) => ({
+            ...candidate,
+            websiteQuality: unknownWebsiteAssessment(
+              candidate.website ?? candidate.sourceUri,
+              now().toISOString(),
+              "not_selected_for_assessment",
+            ),
+          }));
+        const assessed = await mapConcurrent(
+          selectedCandidates,
+          WEBSITE_ASSESSMENT_CONCURRENCY,
+          async (candidate) => {
+            if (websiteRequestLimitReached) {
+              return {
+                ...candidate,
+                websiteQuality: unknownWebsiteAssessment(
+                  candidate.website ?? candidate.sourceUri,
+                  now().toISOString(),
+                  "external_request_limit",
+                ),
+              };
+            }
+            try {
+              return {
+                ...candidate,
+                websiteQuality: await assessWebsite(
+                  candidate.website,
+                  input.signal,
+                  candidate.sourceUri,
+                ),
+              };
+            } catch (error) {
+              if (
+                error instanceof DiscoveryRegistryError &&
+                error.code === "external_request_limit"
+              ) {
+                websiteRequestLimitReached = true;
+                return {
+                  ...candidate,
+                  websiteQuality: unknownWebsiteAssessment(
+                    candidate.website ?? candidate.sourceUri,
+                    now().toISOString(),
+                    "external_request_limit",
+                  ),
+                };
+              }
+              throw error;
+            }
+          },
+        );
+        candidates.splice(0, candidates.length, ...assessed, ...notSelected);
+        if (websiteRequestLimitReached) limitReason = "external_request_limit";
+      }
+
       return {
+        resolvedMunicipalities,
         candidates,
+        sourceOffsetStart,
+        sourceOffsetNext,
+        sourcePageStart: Math.floor(
+          sourceOffsetStart / DISCOVERY_BRREG_PAGE_SIZE,
+        ),
+        sourcePageNext: Math.floor(
+          sourceOffsetNext / DISCOVERY_BRREG_PAGE_SIZE,
+        ),
+        sourcePageCount: totalPages,
         pagesFetched,
         sourceResultsSeen,
         duplicateResultsSkipped,
         invalidResultsSkipped,
         geoFilteredResults,
         sourceLimitReached: limitReason !== null,
-        hasMoreSourceResults: limitReason !== null || pagesFetched < totalPages,
+        companyFilteredResults,
+        websiteAssessmentCandidates,
+        websiteAssessmentRequests:
+          websiteAssessmentRequests - websiteAssessmentRequestsBefore,
+        hasMoreSourceResults:
+          limitReason !== null ||
+          candidates.length >= input.maxResults ||
+          stoppedMidPage ||
+          visitedSourcePages.size < totalPages,
         limitReason,
         externalRequests: externalRequests - externalRequestsBefore,
         geocodeRequests: geocodeRequests - geocodeRequestsBefore,

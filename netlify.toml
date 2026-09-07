@@ -14,15 +14,15 @@
   # Derfor: base = repo-rot (install hoister alt), bygg workspacet, publiser dets dist.
   command = "npm run build --workspace creatorhub-frontend"
   publish = "frontend/client/dist"
-  # Hopp over bygg som ikke rører frontend/. Alle live/*-produksjonsgrener
-  # bygger alltid.
+  # Hopp over bygg som ikke rører frontend/ eller Netlify-konfigurasjonen.
+  # Alle live/*-produksjonsgrener bygger alltid.
   #
   # Merke-isolasjon: creatorhubn.com deployer fra live/creatorhub først etter
   # grønn migrering + eksakt backend-deploy. Leadgrid og Role Room bruker sine
   # egne live/*-grener via «Promoter merke». main er dermed ikke en direkte
   # frontend-produksjonsgren.
   # Netlify: exit 0 = hopp over, non-zero = bygg.
-  ignore = "case \"$BRANCH\" in main|live/*) exit 1 ;; esac; git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- frontend"
+  ignore = "case \"$BRANCH\" in main|live/*) exit 1 ;; esac; git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- frontend netlify.toml netlify"
 
 [build.environment]
   NPM_FLAGS = "--legacy-peer-deps"   # kreves av dagens dependency-graf
@@ -243,7 +243,9 @@
   status = 200
 [[redirects]]
   from = "/terms-and-conditions"
-  to = "/theroleroom-terms.html"
+  # live/leadgrid: This route is also the public OAuth terms URL. Serve the
+  # host-aware React document instead of the static Role Room terms file.
+  to = "/index.html"
   status = 200
 [[redirects]]
   from = "/terms"

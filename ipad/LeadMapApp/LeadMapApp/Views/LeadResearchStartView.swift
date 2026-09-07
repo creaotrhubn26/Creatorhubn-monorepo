@@ -118,28 +118,7 @@ struct LeadResearchStartView: View {
     }
 
     private func start() async {
-        guard let api = appState.api else {
-            error = "Mangler API-klient"
-            return
-        }
-        isStarting = true
-        defer { isStarting = false }
-        do {
-            let resp = try await api.startLeadResearch(
-                industry: industry.trimmingCharacters(in: .whitespaces),
-                region: region.trimmingCharacters(in: .whitespaces),
-                targetAudience: targetAudience.trimmingCharacters(in: .whitespaces).isEmpty
-                    ? nil : targetAudience.trimmingCharacters(in: .whitespaces),
-                goal: goal.trimmingCharacters(in: .whitespaces).isEmpty
-                    ? nil : goal.trimmingCharacters(in: .whitespaces),
-                organizationId: appState.activeOrganizationId
-            )
-            // Kicker orkestratoren — fire-and-forget på server-siden
-            try? await api.runLeadResearch(researchId: resp.researchId)
-            started = resp
-        } catch {
-            self.error = String(describing: error)
-        }
+        error = "Denne research-flyten er avviklet. Bruk Discovery V2-profiler og kjøringer."
     }
 }
 

@@ -172,6 +172,55 @@ extension APIClient {
         return try discoveryDecode(DiscoveryV2DecisionResult.self, from: data)
     }
 
+    func fetchDiscoveryMarketingIntelligence(
+        projectId: String,
+        runId: String
+    ) async throws -> DiscoveryMarketingReport {
+        let data = try await executeRaw(
+            method: "GET",
+            path: discoveryBase(projectId) + "/runs/\(runId)/marketing-intelligence",
+            body: nil)
+        return try discoveryDecode(DiscoveryMarketingReport.self, from: data)
+    }
+
+    func generateDiscoveryMarketingIntelligence(
+        projectId: String,
+        runId: String,
+        idempotencyKey: String
+    ) async throws -> DiscoveryMarketingReport {
+        struct Envelope: Decodable {
+            let report: DiscoveryMarketingReport
+        }
+        let data = try await executeRaw(
+            method: "POST",
+            path: discoveryBase(projectId) + "/runs/\(runId)/marketing-intelligence",
+            body: Data("{}".utf8),
+            headers: ["Idempotency-Key": idempotencyKey])
+        return try discoveryDecode(Envelope.self, from: data).report
+    }
+
+    func reviewDiscoveryMarketingInsight(
+        projectId: String,
+        runId: String,
+        reportId: String,
+        insightId: String,
+        request: DiscoveryMarketingFeedbackRequest,
+        idempotencyKey: String
+    ) async throws -> DiscoveryMarketingInsight {
+        struct Envelope: Decodable {
+            let insight: DiscoveryMarketingInsight
+        }
+        let path = discoveryBase(projectId)
+            + "/runs/\(runId)/marketing-intelligence/\(reportId)"
+            + "/insights/\(insightId)/feedback"
+        let data = try await executeRaw(
+            method: "POST",
+            path: path,
+            body: try discoveryEncode(request),
+            headers: ["Idempotency-Key": idempotencyKey])
+        return try discoveryDecode(Envelope.self, from: data).insight
+    }
+
     func listDiscoveryProfiles(projectId: String) async throws -> [DiscoveryV2Profile] {
         struct Envelope: Decodable { let profiles: [DiscoveryV2Profile] }
         let data = try await executeRaw(
@@ -190,6 +239,19 @@ extension APIClient {
         return try discoveryDecode(Envelope.self, from: data).profile
     }
 
+    func createDiscoveryProfilesBatch(
+        projectId: String,
+        request: DiscoveryV2ProfileBatchRequest,
+        idempotencyKey: String
+    ) async throws -> DiscoveryV2ProfileBatchResponse {
+        let data = try await executeRaw(
+            method: "POST",
+            path: discoveryBase(projectId) + "/profiles/batch",
+            body: try discoveryEncode(request),
+            headers: ["Idempotency-Key": idempotencyKey])
+        return try discoveryDecode(DiscoveryV2ProfileBatchResponse.self, from: data)
+    }
+
     func updateDiscoveryProfile(
         projectId: String,
         profileId: String,
@@ -201,4 +263,104 @@ extension APIClient {
             body: try discoveryEncode(request))
         return try discoveryDecode(Envelope.self, from: data).profile
     }
+
+    func deleteDiscoveryProfile(projectId: String, profileId: String) async throws {
+        _ = try await executeRaw(
+            method: "DELETE",
+            path: discoveryBase(projectId) + "/profiles/\(profileId)",
+            body: nil)
+    }
+
+
+    func createDiscoveryCampaign(
+        projectId: String,
+        request: DiscoveryV2CampaignCreateRequest,
+        idempotencyKey: String
+    ) async throws -> DiscoveryV2CampaignMutation {
+        let data = try await executeRaw(
+            method: "POST",
+            path: discoveryBase(projectId) + "/campaign-runs",
+            body: try discoveryEncode(request),
+            headers: ["Idempotency-Key": idempotencyKey])
+        return try discoveryDecode(DiscoveryV2CampaignMutation.self, from: data)
+    }
+
+    func listDiscoveryCampaigns(
+        projectId: String,
+        limit: Int = 5
+    ) async throws -> [DiscoveryV2CampaignRun] {
+        struct Envelope: Decodable { let campaigns: [DiscoveryV2CampaignRun] }
+        let safeLimit = min(20, max(1, limit))
+        let data = try await executeRaw(
+            method: "GET",
+            path: discoveryBase(projectId) + "/campaign-runs?limit=\(safeLimit)",
+            body: nil)
+        return try discoveryDecode(Envelope.self, from: data).campaigns
+    }
+
+    func fetchDiscoveryCampaign(
+        projectId: String,
+        campaignId: String
+    ) async throws -> DiscoveryV2CampaignRun {
+        let encoded = campaignId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+            ?? campaignId
+        let data = try await executeRaw(
+            method: "GET",
+            path: discoveryBase(projectId) + "/campaign-runs/\(encoded)",
+            body: nil)
+        return try discoveryDecode(DiscoveryV2CampaignRun.self, from: data)
+    }
+
+    func advanceDiscoveryCampaign(
+        projectId: String,
+        campaignId: String,
+        idempotencyKey: String
+    ) async throws -> DiscoveryV2CampaignMutation {
+        try await mutateDiscoveryCampaign(
+            projectId: projectId,
+            campaignId: campaignId,
+            action: "advance",
+            idempotencyKey: idempotencyKey)
+    }
+
+    func retryDiscoveryCampaign(
+        projectId: String,
+        campaignId: String,
+        idempotencyKey: String
+    ) async throws -> DiscoveryV2CampaignMutation {
+        try await mutateDiscoveryCampaign(
+            projectId: projectId,
+            campaignId: campaignId,
+            action: "retry",
+            idempotencyKey: idempotencyKey)
+    }
+
+    func cancelDiscoveryCampaign(
+        projectId: String,
+        campaignId: String,
+        idempotencyKey: String
+    ) async throws -> DiscoveryV2CampaignMutation {
+        try await mutateDiscoveryCampaign(
+            projectId: projectId,
+            campaignId: campaignId,
+            action: "cancel",
+            idempotencyKey: idempotencyKey)
+    }
+
+    private func mutateDiscoveryCampaign(
+        projectId: String,
+        campaignId: String,
+        action: String,
+        idempotencyKey: String
+    ) async throws -> DiscoveryV2CampaignMutation {
+        let encoded = campaignId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+            ?? campaignId
+        let data = try await executeRaw(
+            method: "POST",
+            path: discoveryBase(projectId) + "/campaign-runs/\(encoded)/\(action)",
+            body: Data("{}".utf8),
+            headers: ["Idempotency-Key": idempotencyKey])
+        return try discoveryDecode(DiscoveryV2CampaignMutation.self, from: data)
+    }
+
 }

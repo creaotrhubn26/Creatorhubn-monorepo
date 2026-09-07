@@ -110,7 +110,7 @@ export default function LeadgridMarketplacePage() {
               '&:hover': { textDecoration: 'underline' },
             }}
           >
-            → Se Connector Marketplace (12 integrasjoner + 22 webhook-events)
+            → Se innebygde integrasjoner, Public Leads API og connector-planer
           </Typography>
         </Stack>
 

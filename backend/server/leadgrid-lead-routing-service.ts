@@ -14,8 +14,8 @@
  *   5. Ellers behold default owner.
  *
  * Round-robin = velger medlemmet med færrest åpne lead-tildelinger
- * i org'en (ikke 'won'/'lost'/'do_not_contact'). Stabilt mot pseudo-
- * skjevhet på under 5 leads/medlem.
+ * i det aktuelle kundeprosjektet (ikke 'won'/'lost'/'do_not_contact').
+ * Kandidater må samtidig ha tilgang til akkurat dette prosjektet.
  *
  * Brukes fra alle lead-creation-pathene (URL Research, CSV import,
  * manual create, business card scanner) via `routeLeadByIndustry()`.
@@ -56,10 +56,14 @@ export async function routeLeadByIndustry(
   pool: Pool,
   opts: {
     organizationId: string;
+    projectId: string;
     industryId: string | null;
     currentOwnerUserId?: string | null;
   },
 ): Promise<RoutingDecision> {
+  const projectId = opts.projectId?.trim();
+  if (!projectId) throw new Error("projectId is required for Leadgrid routing");
+
   if (!opts.industryId) {
     return {
       userId: opts.currentOwnerUserId ?? null,
@@ -68,25 +72,69 @@ export async function routeLeadByIndustry(
     };
   }
 
-  // Hent alle medlemmer i org'en som har denne bransjen + tell deres
-  // åpne leads i samme org (round-robin-grunnlag).
+  // Hent medlemmer med denne bransjen som faktisk kan se prosjektet,
+  // og tell bare åpne leads i samme kundeprosjekt.
   const r = await pool.query<RoutingCandidate>(
     `SELECT mi.user_id::text                     AS user_id,
             mi.expertise_level                   AS expertise_level,
             mi.is_primary                        AS is_primary,
             COALESCE(open_counts.n, 0)::int      AS open_lead_count
        FROM organization_member_industries mi
+       JOIN leadgrid_projects project
+         ON project.organization_id = mi.organization_id
+        AND project.id = $2
+        AND (project.status IS NULL OR project.status NOT IN ('archived', 'deleted'))
+       LEFT JOIN organization_members member
+         ON member.organization_id = mi.organization_id
+        AND member.user_id = mi.user_id
+       LEFT JOIN leadgrid_project_members project_member
+         ON project_member.organization_id = mi.organization_id
+        AND project_member.project_id = project.id
+        AND project_member.user_id = mi.user_id
        LEFT JOIN (
          SELECT owner_user_id, COUNT(*)::int AS n
            FROM crm_customers
           WHERE archived_at IS NULL
             AND organization_id = $1::uuid
-            AND lead_status NOT IN ('won', 'lost', 'do_not_contact')
+            AND project_id = $2
+            AND COALESCE(lead_status, 'new') NOT IN ('won', 'lost', 'do_not_contact')
           GROUP BY owner_user_id
        ) open_counts ON open_counts.owner_user_id = mi.user_id::text
       WHERE mi.organization_id = $1::uuid
-        AND mi.industry_id = $2::uuid`,
-    [opts.organizationId, opts.industryId],
+        AND mi.industry_id = $3::uuid
+        AND (
+          project.created_by = mi.user_id
+          OR project_member.user_id IS NOT NULL
+          OR (
+            member.user_id IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1
+                FROM leadgrid_user_permission_overrides denied
+               WHERE denied.organization_id = mi.organization_id
+                 AND denied.user_id = mi.user_id
+                 AND denied.permission_key = 'projects.view_all'
+                 AND denied.effect = 'revoke'
+            )
+            AND (
+              member.role = 'admin'
+              OR EXISTS (
+                SELECT 1
+                  FROM role_permissions defaults
+                 WHERE defaults.role = member.role
+                   AND defaults.permission_key = 'projects.view_all'
+              )
+              OR EXISTS (
+                SELECT 1
+                  FROM leadgrid_user_permission_overrides granted
+                 WHERE granted.organization_id = mi.organization_id
+                   AND granted.user_id = mi.user_id
+                   AND granted.permission_key = 'projects.view_all'
+                   AND granted.effect = 'grant'
+              )
+            )
+          )
+        )`,
+    [opts.organizationId, projectId, opts.industryId],
   );
 
   const candidates = r.rows;
@@ -142,6 +190,7 @@ export async function routeAndPersist(
   leadId: string,
   opts: {
     organizationId: string;
+    projectId: string;
     industryId: string | null;
     currentOwnerUserId?: string | null;
   },
@@ -158,8 +207,11 @@ export async function routeAndPersist(
       `UPDATE crm_customers
           SET owner_user_id = $2,
               updated_at = NOW()
-        WHERE id = $1::uuid`,
-      [leadId, decision.userId],
+        WHERE id = $1::uuid
+          AND organization_id = $3::uuid
+          AND project_id = $4
+          AND owner_user_id IS DISTINCT FROM $2`,
+      [leadId, decision.userId, opts.organizationId, opts.projectId],
     );
   }
   return decision;

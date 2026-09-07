@@ -2,13 +2,15 @@
  * Transactional email-service for The Role Room / CreatorHub.
  *
  * Prøver Resend HTTP-API først (hvis RESEND_API_KEY er satt), faller
- * tilbake til Gmail SMTP via nodemailer (GMAIL_USER + GMAIL_APP_PASSWORD).
- * Resend er foretrukket for produksjon: API-nøkler utløper ikke, ingen
+ * tilbake til Gmail SMTP og deretter en allerede autorisert Gmail API-
+ * tilkobling for den konfigurerte avsenderen når de to første transportene
+ * eksplisitt feiler. Resend er foretrukket for produksjon: API-nøkler
+ * utløper ikke, ingen
  * 2FA-binding, du eier domenet via DKIM/SPF, og du får bounces +
  * open-rates i Resend-dashboardet.
  *
- * Påvirker IKKE Google Workspace-OAuth (Calendar, Meet, Drive) — de er
- * separate systemer som bruker OAuth-tokens, ikke SMTP-passord.
+ * Gmail API-fallbacken gjenbruker kun serverlagrede, krypterte OAuth-tokens
+ * med gmail.compose/gmail.send og eksponerer aldri tokenet til klienten.
  *
  * Bruk:
  *   const result = await sendTransactionalEmail({
@@ -22,8 +24,10 @@
  *   if (!result.sent) console.error(result.reason, result.errorMessage);
  */
 
+import { google } from 'googleapis';
 import nodemailer from 'nodemailer';
 import type { Pool } from 'pg';
+import { resolveRoleRoomGoogleConnection } from './contract-google-signing';
 
 export type TransactionalEmailReason =
   | 'missing_email_config'
@@ -39,7 +43,7 @@ export type TransactionalEmailReason =
 export interface TransactionalEmailResult {
   sent: boolean;
   reason: TransactionalEmailReason | null;
-  provider: 'resend' | 'smtp' | null;
+  provider: 'resend' | 'smtp' | 'gmail_api' | null;
   messageId: string | null;
   accepted: string[];
   errorMessage: string | null;
@@ -73,6 +77,17 @@ export interface TransactionalEmailOptions {
 function readEnvString(value: string | undefined | null): string | null {
   const s = typeof value === 'string' ? value.trim() : '';
   return s.length > 0 ? s : null;
+}
+
+const RESEND_ONBOARDING_FROM_EMAIL = 'onboarding@resend.dev';
+
+function isConfiguredAdminAlertRecipient(opts: TransactionalEmailOptions): boolean {
+  const configuredAdminEmail = readEnvString(process.env.GOOGLE_ADMIN_EMAIL);
+  return Boolean(
+    configuredAdminEmail
+    && opts.kind === 'admin_inbound_notify'
+    && opts.to.trim().toLowerCase() === configuredAdminEmail.toLowerCase()
+  );
 }
 
 function defaultResendFromAddress(): string {
@@ -270,6 +285,151 @@ async function sendViaGmailSmtp(opts: TransactionalEmailOptions): Promise<Transa
   }
 }
 
+async function buildGmailApiRawMessage(opts: TransactionalEmailOptions, senderEmail: string) {
+  const compiler = nodemailer.createTransport({
+    streamTransport: true,
+    buffer: true,
+    newline: 'unix',
+  });
+  const fromLabel = readEnvString(opts.fromLabel) ?? 'The Role Room';
+  const info = await compiler.sendMail({
+    from: `${fromLabel} <${senderEmail}>`,
+    to: opts.to,
+    replyTo: opts.replyTo ?? undefined,
+    subject: opts.subject,
+    text: opts.text,
+    html: opts.html,
+  });
+  const rawMessage = (info as { message?: unknown }).message;
+  const rawBuffer = Buffer.isBuffer(rawMessage)
+    ? rawMessage
+    : Buffer.from(String(rawMessage ?? ''), 'utf8');
+  return rawBuffer.toString('base64url');
+}
+
+/**
+ * Last-resort transport through the configured admin/sender account when it
+ * has already authorized gmail.compose/gmail.send. Tokens remain server-side
+ * and are resolved through the existing encrypted connection store.
+ */
+async function sendViaConnectedGmailApi(
+  opts: TransactionalEmailOptions,
+): Promise<TransactionalEmailResult> {
+  if (!opts.pool) {
+    return {
+      sent: false,
+      reason: 'missing_email_config',
+      provider: 'gmail_api',
+      messageId: null,
+      accepted: [],
+      errorMessage: 'Database pool unavailable for Gmail API connection lookup',
+    };
+  }
+
+  const configuredSenderEmail = readEnvString(process.env.GOOGLE_ADMIN_EMAIL)
+    ?? resolveGmailCredentials(opts.credentialScope).user;
+  if (!configuredSenderEmail) {
+    return {
+      sent: false,
+      reason: 'missing_email_config',
+      provider: 'gmail_api',
+      messageId: null,
+      accepted: [],
+      errorMessage: 'No configured Gmail API sender email',
+    };
+  }
+
+  try {
+    const connectionResult = await opts.pool.query<{ user_id: string | null }>(
+      `SELECT user_id
+         FROM role_room_google_connections
+        WHERE connection_state = 'connected'
+          AND (refresh_token_encrypted IS NOT NULL OR access_token_encrypted IS NOT NULL)
+          AND (
+            LOWER(COALESCE(google_email, '')) = LOWER($1)
+            OR LOWER(COALESCE(role_room_email, '')) = LOWER($1)
+          )
+        ORDER BY
+          CASE WHEN oauth_app = 'creatorhub' THEN 0 ELSE 1 END,
+          CASE WHEN refresh_token_encrypted IS NOT NULL THEN 0 ELSE 1 END,
+          last_used_at DESC NULLS LAST,
+          updated_at DESC NULLS LAST
+        LIMIT 1`,
+      [configuredSenderEmail],
+    );
+    const userId = readEnvString(connectionResult.rows[0]?.user_id);
+    if (!userId) {
+      return {
+        sent: false,
+        reason: 'missing_email_config',
+        provider: 'gmail_api',
+        messageId: null,
+        accepted: [],
+        errorMessage: 'No connected Google Workspace sender account',
+      };
+    }
+
+    const authorized = await resolveRoleRoomGoogleConnection(opts.pool, userId, {
+      allowFallbackToAnyUser: false,
+      preferredOauthApps: ['creatorhub', 'role_room'],
+    });
+    const scopes = authorized.connection.storedScopes;
+    const canSend = scopes.includes('https://www.googleapis.com/auth/gmail.send')
+      || scopes.includes('https://www.googleapis.com/auth/gmail.compose');
+    const senderEmail = readEnvString(authorized.connection.googleEmail);
+    if (
+      !canSend
+      || !senderEmail
+      || senderEmail.toLowerCase() !== configuredSenderEmail.toLowerCase()
+    ) {
+      return {
+        sent: false,
+        reason: 'missing_email_config',
+        provider: 'gmail_api',
+        messageId: null,
+        accepted: [],
+        errorMessage: 'Connected Google Workspace account is not the configured sender',
+      };
+    }
+
+    const gmail = google.gmail({ version: 'v1', auth: authorized.oauthClient });
+    const response = await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: { raw: await buildGmailApiRawMessage(opts, senderEmail) },
+    });
+    const messageId = readEnvString(response.data.id);
+    if (!messageId) {
+      return {
+        sent: false,
+        reason: 'send_failed',
+        provider: 'gmail_api',
+        messageId: null,
+        accepted: [],
+        errorMessage: 'Gmail API returned no message id',
+      };
+    }
+    return {
+      sent: true,
+      reason: null,
+      provider: 'gmail_api',
+      messageId,
+      accepted: [opts.to],
+      errorMessage: null,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('Connected Gmail API send error:', message);
+    return {
+      sent: false,
+      reason: 'send_failed',
+      provider: 'gmail_api',
+      messageId: null,
+      accepted: [],
+      errorMessage: message,
+    };
+  }
+}
+
 async function logTransactionalEmail(
   pool: Pool | null | undefined,
   opts: TransactionalEmailOptions,
@@ -317,6 +477,21 @@ export async function sendTransactionalEmail(
     result = await sendViaResend(opts);
     if (
       !result.sent
+      && result.reason === 'resend_domain_not_verified'
+      && isConfiguredAdminAlertRecipient(opts)
+    ) {
+      // Resend tillater konto-eieren som mottaker fra onboarding@resend.dev.
+      // Hold dette strengt avgrenset til det eksplisitt konfigurerte interne
+      // adminvarselet; kunde- og invitasjonsmail skal fortsatt kreve eget domene.
+      console.warn('Resend-domenet er ikke verifisert; prøver intern adminfallback.');
+      result = await sendViaResend({
+        ...opts,
+        fromAddress: RESEND_ONBOARDING_FROM_EMAIL,
+        fromLabel: readEnvString(opts.fromLabel) ?? 'CreatorHub',
+      });
+    }
+    if (
+      !result.sent
       && (
         result.reason === 'resend_auth_failed'
         || result.reason === 'resend_domain_not_verified'
@@ -328,6 +503,19 @@ export async function sendTransactionalEmail(
     }
   } else {
     result = await sendViaGmailSmtp(opts);
+  }
+
+  if (!result.sent && (
+    result.reason === 'missing_email_config'
+    || result.reason === 'gmail_auth_failed'
+    || result.reason === 'smtp_unreachable'
+  )) {
+    const gmailApiResult = await sendViaConnectedGmailApi(opts);
+    if (gmailApiResult.sent) {
+      result = gmailApiResult;
+    } else {
+      console.warn('Connected Gmail API fallback unavailable:', gmailApiResult.reason);
+    }
   }
 
   await logTransactionalEmail(opts.pool, opts, result);

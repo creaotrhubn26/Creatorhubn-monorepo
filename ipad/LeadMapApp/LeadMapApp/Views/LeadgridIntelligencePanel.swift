@@ -9,12 +9,15 @@ import SwiftUI
 struct LeadgridIntelligencePanel: View {
     let api: APIClient
     let leadId: String
+    /// Immutable customer-project scope captured by the presenting flow.
+    let projectId: String
     @State private var intel: LeadgridIntelligenceForLead?
     @State private var loading = true
     @State private var errorText: String?
     @State private var acted = false
     @State private var presentingVoiceMemo = false
     @State private var presentingFullReport = false
+    @State private var actionError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -118,12 +121,28 @@ struct LeadgridIntelligencePanel: View {
 
         if i.recommendation != nil {
             Divider()
+            if let actionError {
+                Text(actionError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
             HStack {
                 Button(acted ? "Akseptert ✓" : "Aksepter") {
                     guard let rec = i.recommendation else { return }
                     Task {
-                        _ = try? await api.acceptRecommendation(rec.id)
-                        acted = true
+                        do {
+                            let result = try await api.acceptRecommendation(
+                                rec.id,
+                                projectId: projectId)
+                            guard result.status == "accepted" else {
+                                actionError = "Serveren bekreftet ikke aksepten."
+                                return
+                            }
+                            actionError = nil
+                            acted = true
+                        } catch {
+                            actionError = "Kunne ikke akseptere: \(error.localizedDescription)"
+                        }
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -133,8 +152,19 @@ struct LeadgridIntelligencePanel: View {
                 Button("Avvis") {
                     guard let rec = i.recommendation else { return }
                     Task {
-                        _ = try? await api.dismissRecommendation(rec.id)
-                        await load()
+                        do {
+                            let result = try await api.dismissRecommendation(
+                                rec.id,
+                                projectId: projectId)
+                            guard result.status == "dismissed" else {
+                                actionError = "Serveren bekreftet ikke avvisningen."
+                                return
+                            }
+                            actionError = nil
+                            await load()
+                        } catch {
+                            actionError = "Kunne ikke avvise: \(error.localizedDescription)"
+                        }
                     }
                 }
                 .buttonStyle(.bordered)
@@ -268,7 +298,9 @@ struct LeadgridIntelligencePanel: View {
     private func load() async {
         loading = true; errorText = nil
         do {
-            intel = try await api.fetchLeadIntelligence(leadId: leadId)
+            intel = try await api.fetchLeadIntelligence(
+                leadId: leadId,
+                projectId: projectId)
         } catch {
             errorText = "Kunne ikke laste: \(error.localizedDescription)"
         }
@@ -279,7 +311,9 @@ struct LeadgridIntelligencePanel: View {
     private func recompute() async {
         loading = true; errorText = nil
         do {
-            intel = try await api.recomputeLeadIntelligence(leadId: leadId)
+            intel = try await api.recomputeLeadIntelligence(
+                leadId: leadId,
+                projectId: projectId)
             acted = false
         } catch {
             errorText = "Re-compute feilet: \(error.localizedDescription)"

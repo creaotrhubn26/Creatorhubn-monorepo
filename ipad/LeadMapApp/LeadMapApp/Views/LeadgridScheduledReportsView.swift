@@ -1,14 +1,18 @@
 // LeadgridScheduledReportsView.swift
 //
 // Schedulert PDF-rapport-abonnement på iPad.
-// Markedssjef kan opprette / aktivere / sende-nå / slette.
+// Presenteres fra Profil → Workspace-innstillinger for workspace-admin.
 
 import SwiftUI
 
 struct LeadgridScheduledReportsView: View {
     let api: APIClient
+    let organizationId: String
+    @Environment(AppState.self) private var appState
 
     @State private var items: [ScheduledReport] = []
+    @State private var projects: [ProjectListItem] = []
+    @State private var bulkProjectId: String?
     @State private var loading = true
     @State private var errorText: String?
     @State private var showingBulkConfirm = false
@@ -23,18 +27,39 @@ struct LeadgridScheduledReportsView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .listRowBackground(Color.clear)
+            } else {
+                ForEach(items) { sub in
+                    ReportRow(
+                              sub: sub,
+                              projects: projects,
+                              onSendNow: { Task { await sendNow(sub.id) } },
+                              onToggle: { Task { await toggle(sub) } },
+                              onProjectChange: { projectId in
+                                  Task { await assignProject(sub, projectId: projectId) }
+                              },
+                              onDelete: { Task { await deleteSub(sub.id) } })
+                }
+            }
+            Section("Nye teamrapporter") {
+                Picker("Kundeprosjekt", selection: $bulkProjectId) {
+                    Text("Velg kundeprosjekt").tag(String?.none)
+                    ForEach(projects) { project in
+                        Text(project.name).tag(Optional(project.id))
+                    }
+                }
+                if bulkProjectId == nil {
+                    Label(
+                        "Velg hvilket kundeprosjekt rapportene skal avgrenses til.",
+                        systemImage: "folder.badge.questionmark")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
                 Button {
                     showingBulkConfirm = true
                 } label: {
                     Label("Auto-aktiver per person", systemImage: "person.2.fill")
                 }
-            } else {
-                ForEach(items) { sub in
-                    ReportRow(sub: sub,
-                              onSendNow: { Task { await sendNow(sub.id) } },
-                              onToggle: { Task { await toggle(sub) } },
-                              onDelete: { Task { await deleteSub(sub.id) } })
-                }
+                .disabled(bulkProjectId == nil)
             }
             if let errorText {
                 Text(errorText).foregroundStyle(.red).font(.caption)
@@ -42,24 +67,11 @@ struct LeadgridScheduledReportsView: View {
         }
         .navigationTitle("Schedulerte rapporter")
         .marketingDirectorBackdrop(.reports)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button {
-                        showingBulkConfirm = true
-                    } label: {
-                        Label("Auto-aktiver per person", systemImage: "person.2.fill")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-            }
-        }
         .alert("Auto-aktiver?", isPresented: $showingBulkConfirm) {
             Button("Avbryt", role: .cancel) {}
             Button("Opprett") { Task { await bulkAutoCreate() } }
         } message: {
-            Text("Vil du opprette ukentlig rapport-abonnement for hver selger + teamleder i org-en?")
+            Text(bulkConfirmationMessage)
         }
         .overlay(alignment: .bottom) {
             if let text = snackbarText {
@@ -71,15 +83,25 @@ struct LeadgridScheduledReportsView: View {
                     .transition(.move(edge: .bottom))
             }
         }
-        .task { await load() }
+        .task(id: organizationId) { await load() }
         .refreshable { await load() }
     }
 
     private func load() async {
         do {
-            let res = try await api.fetchScheduledReports()
+            async let projectRequest = try? api.fetchProjects(organizationId: organizationId)
+            let res = try await api.fetchScheduledReports(organizationId: organizationId)
+            let freshProjects = await projectRequest ?? appState.projects
             await MainActor.run {
                 items = res.items
+                projects = freshProjects
+                if let activeProjectId = appState.activeLeadgridProjectId,
+                   freshProjects.contains(where: { $0.id == activeProjectId }) {
+                    bulkProjectId = activeProjectId
+                } else if bulkProjectId == nil
+                            || !freshProjects.contains(where: { $0.id == bulkProjectId }) {
+                    bulkProjectId = freshProjects.first?.id
+                }
                 loading = false
             }
         } catch {
@@ -90,35 +112,70 @@ struct LeadgridScheduledReportsView: View {
         }
     }
 
+    private func assignProject(_ sub: ScheduledReport, projectId: String) async {
+        do {
+            try await api.updateScheduledReport(
+                id: sub.id,
+                organizationId: organizationId,
+                payload: ["project_id": projectId])
+            await flash("Kundeprosjekt oppdatert")
+            await load()
+        } catch { await flash("Feilet: \(error.localizedDescription)") }
+    }
+
     private func sendNow(_ id: String) async {
         do {
-            try await api.sendScheduledReportNow(id: id)
+            try await api.sendScheduledReportNow(
+                id: id,
+                organizationId: organizationId
+            )
             await flash("Rapporten sendes innen 1 time")
         } catch { await flash("Feilet: \(error.localizedDescription)") }
     }
 
     private func toggle(_ sub: ScheduledReport) async {
         do {
-            try await api.updateScheduledReport(id: sub.id,
-                                                  payload: ["is_active": !sub.isActive])
+            try await api.updateScheduledReport(
+                id: sub.id,
+                organizationId: organizationId,
+                payload: ["is_active": !sub.isActive]
+            )
             await load()
         } catch { await flash("Feilet: \(error.localizedDescription)") }
     }
 
     private func deleteSub(_ id: String) async {
         do {
-            try await api.deleteScheduledReport(id: id)
+            try await api.deleteScheduledReport(
+                id: id,
+                organizationId: organizationId
+            )
             await flash("Slettet")
             await load()
         } catch { await flash("Feilet: \(error.localizedDescription)") }
     }
 
     private func bulkAutoCreate() async {
+        guard let bulkProjectId else {
+            await flash("Velg et kundeprosjekt først")
+            return
+        }
         do {
-            let res = try await api.autoCreateReportsPerPerson()
+            let res = try await api.autoCreateReportsPerPerson(
+                organizationId: organizationId,
+                projectId: bulkProjectId
+            )
             await flash("\(res.created) opprettet, \(res.skipped) fantes fra før")
             await load()
         } catch { await flash("Feilet: \(error.localizedDescription)") }
+    }
+
+    private var bulkConfirmationMessage: String {
+        if let bulkProjectId,
+           let project = projects.first(where: { $0.id == bulkProjectId }) {
+            return "Opprett ukentlig rapport for hver selger og teamleder, avgrenset til \(project.name)?"
+        }
+        return "Velg et kundeprosjekt før rapportene opprettes."
     }
 
     private func flash(_ text: String) async {
@@ -134,8 +191,10 @@ struct LeadgridScheduledReportsView: View {
 
 private struct ReportRow: View {
     let sub: ScheduledReport
+    let projects: [ProjectListItem]
     let onSendNow: () -> Void
     let onToggle: () -> Void
+    let onProjectChange: (String) -> Void
     let onDelete: () -> Void
 
     private let days = ["Søn", "Man", "Tir", "Ons", "Tor", "Fre", "Lør"]
@@ -156,6 +215,14 @@ private struct ReportRow: View {
                 }
             }
             Text(scheduleString).font(.caption).foregroundStyle(.secondary)
+            Menu {
+                ForEach(projects) { project in
+                    Button(project.name) { onProjectChange(project.id) }
+                }
+            } label: {
+                Label(projectName, systemImage: "folder")
+                    .font(.caption2.bold())
+            }
             HStack(spacing: 12) {
                 Label("\((sub.recipientEmails?.count ?? 0) + (sub.recipientUserIds?.count ?? 0))",
                       systemImage: "envelope.fill")
@@ -171,16 +238,23 @@ private struct ReportRow: View {
             Button(role: .destructive, action: onDelete) {
                 Label("Slett", systemImage: "trash")
             }
-            Button(action: onToggle) {
-                Label(sub.isActive ? "Paus" : "Aktiver",
-                       systemImage: sub.isActive ? "pause.fill" : "play.fill")
+            if sub.projectId != nil {
+                Button(action: onToggle) {
+                    Label(sub.isActive ? "Paus" : "Aktiver",
+                          systemImage: sub.isActive ? "pause.fill" : "play.fill")
+                }
+                .tint(sub.isActive ? .orange : .green)
+                Button(action: onSendNow) {
+                    Label("Send nå", systemImage: "paperplane.fill")
+                }
+                .tint(.purple)
             }
-            .tint(sub.isActive ? .orange : .green)
-            Button(action: onSendNow) {
-                Label("Send nå", systemImage: "paperplane.fill")
-            }
-            .tint(.purple)
         }
+    }
+
+    private var projectName: String {
+        guard let projectId = sub.projectId else { return "Mangler kundeprosjekt – velg ett" }
+        return projects.first(where: { $0.id == projectId })?.name ?? "Prosjekt"
     }
 
     private var scopeChip: some View {

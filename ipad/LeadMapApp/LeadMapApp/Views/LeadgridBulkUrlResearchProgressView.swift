@@ -366,15 +366,8 @@ struct LeadgridBulkUrlResearchProgressView: View {
     // MARK: - Actions
 
     private func cancel() async {
-        guard let api = appState.api else { return }
-        isCancelling = true
-        defer { isCancelling = false }
-        do {
-            try await api.cancelBulkUrlBatch(batchId: batchId)
-        } catch {
-            await MainActor.run {
-                statusMessage = "Avbryt feilet: \(error.localizedDescription)"
-            }
+        await MainActor.run {
+            statusMessage = "Den gamle URL-batchen er skrivebeskyttet. Bruk Discovery V2."
         }
     }
 

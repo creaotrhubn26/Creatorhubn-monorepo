@@ -59,6 +59,7 @@ struct ProjectsPortfolioView: View {
                         // ved load.
                         LegacyLeadSheetProxy(
                             customerId: customerId,
+                            projectId: project.projectId,
                             name: project.customerName ?? project.projectName,
                             websiteUrl: project.websiteUrl,
                             logoUrl: project.logoUrl
@@ -384,6 +385,7 @@ struct ProjectsPortfolioView: View {
 /// LeadModel fra ID + viser sheet.
 private struct LegacyLeadSheetProxy: View {
     let customerId: String
+    let projectId: String
     let name: String
     let websiteUrl: String?
     let logoUrl: String?
@@ -418,7 +420,12 @@ private struct LegacyLeadSheetProxy: View {
                         }
                         Spacer()
                     }
-                    LeadNeedsView(leadId: customerId, leadName: name, canRunScout: true)
+                    LeadNeedsView(
+                        leadId: customerId,
+                        projectId: projectId,
+                        leadName: name,
+                        canRunScout: appState.permissions.contains("marketing.scout.run")
+                    )
                         .frame(minHeight: 600)
                 }
                 .padding(20)

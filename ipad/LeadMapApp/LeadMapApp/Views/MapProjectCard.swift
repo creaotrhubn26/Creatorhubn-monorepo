@@ -237,9 +237,8 @@ private struct ProjectCardContent: View {
                     }
                 }
         )
-        .task(id: project.id) {
-            // Bare det aktive kortet laster momentum (én call per swipe).
-            if isActive { await loadMomentum() }
+        .task(id: "\(project.id)|\(isActive)") {
+            await loadMomentum()
         }
     }
 
@@ -487,11 +486,22 @@ private struct ProjectCardContent: View {
 
     @MainActor
     private func loadMomentum() async {
-        guard let api = appState.api else { return }
+        guard isActive,
+              let api = appState.api,
+              appState.activeLeadgridProjectId == project.id else {
+            momentum = nil
+            return
+        }
         do {
-            self.momentum = try await api.fetchMomentumToday()
+            let loaded = try await api.fetchMomentumToday(projectId: project.id)
+            guard isActive,
+                  appState.activeLeadgridProjectId == project.id,
+                  loaded.projectId == project.id else { return }
+            momentum = loaded
         } catch {
+            guard appState.activeLeadgridProjectId == project.id else { return }
             // Stille — momentum kan være null hvis bruker ikke har Leadgrid.
+            momentum = nil
         }
     }
 }

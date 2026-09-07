@@ -1420,8 +1420,14 @@ struct PrepCoreModal: View {
             }
             return
         }
-        guard let api = appState.api else { return }
-        if let mb = try? await api.hentMoteMaal(selskap: meetingCompany) {
+        guard let api = appState.api,
+              let projectId = appState.activeProjectId,
+              !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        if let mb = try? await api.hentMoteMaal(
+            selskap: meetingCompany,
+            projectId: projectId
+        ) {
             maal = mb.maal
             behov = mb.behov
         }
@@ -1434,10 +1440,20 @@ struct PrepCoreModal: View {
             return
         }
         guard let api = appState.api else { melding = "Krever innlogget modus."; return }
+        guard let projectId = appState.activeProjectId,
+              !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            melding = "Velg et kundeprosjekt først."
+            return
+        }
         lagrer = true
         defer { lagrer = false }
         do {
-            try await api.lagreMoteMaal(selskap: meetingCompany, maal: maal, behov: behov)
+            try await api.lagreMoteMaal(
+                selskap: meetingCompany,
+                maal: maal,
+                behov: behov,
+                projectId: projectId
+            )
             melding = "Lagret — møtebriefen bruker dette fra nå."
         } catch {
             melding = "Lagring feilet — prøv igjen."

@@ -11,22 +11,23 @@
  * Returnerer absolutt URL eller null. Bruker fetch (Node 18+).
  */
 
+import { assertPublicUrl, ssrfSafeFetch } from "./ssrf-guard.js";
+
 interface FetchedLogo {
   url: string;
   source: "apple-touch-icon" | "og:image" | "link-icon" | "favicon-ico" | "google-s2";
   size?: number;
 }
 
-const TIMEOUT_MS = 6000;
+const TIMEOUT_MS = 5000;
 const MAX_HTML_BYTES = 256 * 1024;
+const MAX_DISCOVERED_CANDIDATES = 5;
+const MAX_REDIRECTS = 3;
 
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, rej) =>
-      setTimeout(() => rej(new Error(`${label} timed out etter ${ms}ms`)), ms),
-    ),
-  ]);
+function timeoutController(): { controller: AbortController; stop: () => void } {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  return { controller, stop: () => clearTimeout(timer) };
 }
 
 function absUrl(base: string, href: string): string {
@@ -34,36 +35,50 @@ function absUrl(base: string, href: string): string {
 }
 
 async function fetchHtml(url: string): Promise<string | null> {
+  const timeout = timeoutController();
   try {
-    const res = await withTimeout(
-      fetch(url, {
-        redirect: "follow",
+    const res = await ssrfSafeFetch(
+      url,
+      {
+        signal: timeout.controller.signal,
         headers: {
           // Standard user-agent — noen sites blokkerer ukjente
           "User-Agent": "Mozilla/5.0 (compatible; LeadMapBot/1.0)",
           "Accept": "text/html,application/xhtml+xml",
         },
-      }),
-      TIMEOUT_MS, "HTML-fetch",
+      },
+      MAX_REDIRECTS,
     );
     if (!res.ok) return null;
+    const contentType = res.headers.get("content-type")?.toLowerCase() ?? "";
+    if (contentType && !contentType.includes("text/html") && !contentType.includes("application/xhtml+xml")) {
+      await res.body?.cancel().catch(() => undefined);
+      return null;
+    }
+    const contentLength = Number(res.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > MAX_HTML_BYTES) {
+      await res.body?.cancel().catch(() => undefined);
+      return null;
+    }
     const reader = res.body?.getReader();
-    if (!reader) return await res.text();
+    if (!reader) return (await res.text()).slice(0, MAX_HTML_BYTES);
     let received = 0;
-    const chunks: Uint8Array[] = [];
+    let html = "";
+    const decoder = new TextDecoder("utf-8", { fatal: false });
     while (received < MAX_HTML_BYTES) {
       const { done, value } = await reader.read();
       if (done) break;
-      chunks.push(value);
-      received += value.byteLength;
+      const remaining = MAX_HTML_BYTES - received;
+      const bounded = value.byteLength > remaining ? value.slice(0, remaining) : value;
+      html += decoder.decode(bounded, { stream: true });
+      received += bounded.byteLength;
     }
     reader.cancel().catch(() => { /* noop */ });
-    const decoder = new TextDecoder("utf-8", { fatal: false });
-    return decoder.decode(new Uint8Array(
-      chunks.reduce<number[]>((a, c) => a.concat(Array.from(c)), [])
-    ));
+    return html + decoder.decode();
   } catch {
     return null;
+  } finally {
+    timeout.stop();
   }
 }
 
@@ -96,13 +111,20 @@ function extractLogos(html: string, baseUrl: string): FetchedLogo[] {
 }
 
 async function checkExists(url: string): Promise<boolean> {
+  const timeout = timeoutController();
   try {
-    const res = await withTimeout(
-      fetch(url, { method: "HEAD" }),
-      TIMEOUT_MS, "HEAD-check",
+    const res = await ssrfSafeFetch(
+      url,
+      { method: "HEAD", signal: timeout.controller.signal },
+      MAX_REDIRECTS,
     );
+    await res.body?.cancel().catch(() => undefined);
     return res.ok;
-  } catch { return false; }
+  } catch {
+    return false;
+  } finally {
+    timeout.stop();
+  }
 }
 
 /**
@@ -113,11 +135,12 @@ export async function fetchBestLogo(websiteUrl: string): Promise<FetchedLogo | n
   if (!websiteUrl) return null;
   let url: URL;
   try {
-    url = new URL(
-      websiteUrl.startsWith("http") ? websiteUrl : `https://${websiteUrl}`,
+    const normalized = websiteUrl.trim();
+    url = assertPublicUrl(
+      /^https?:\/\//i.test(normalized) ? normalized : `https://${normalized}`,
     );
   } catch {
-    return null;
+    throw new Error("unsafe_website_url");
   }
   const baseUrl = url.origin;
   // 1. Skrap HTML for ikon-tags
@@ -132,8 +155,16 @@ export async function fetchBestLogo(websiteUrl: string): Promise<FetchedLogo | n
       if (r !== 0) return r;
       return (b.size ?? 0) - (a.size ?? 0);
     });
-    for (const c of candidates) {
-      if (await checkExists(c.url)) return c;
+    const uniqueCandidates = candidates.filter(
+      (candidate, index, all) =>
+        all.findIndex((other) => other.url === candidate.url) === index,
+    ).slice(0, MAX_DISCOVERED_CANDIDATES);
+    const availability = await Promise.all(
+      uniqueCandidates.map((candidate) => checkExists(candidate.url)),
+    );
+    const firstAvailable = uniqueCandidates.find((_, index) => availability[index]);
+    if (firstAvailable) {
+      return firstAvailable;
     }
   }
   // 2. Test /favicon.ico

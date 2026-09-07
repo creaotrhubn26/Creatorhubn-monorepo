@@ -1,17 +1,24 @@
 /**
- * leadgrid-developers.tsx — public dev-docs på /leadgrid/utviklere
+ * leadgrid-developers.tsx — offentlige dev-docs på /leadgrid/utviklere
  *
- * Innhold:
- *   - Hva er Leadgrid Partners API?
- *   - Auth-mønster (Bearer key)
- *   - Scopes
- *   - Endpoints m/ cURL-eksempler
- *   - Webhook-events + HMAC-validering
- *   - Kode-eksempler (Node.js + Python)
+ * Dokumenterer kun den implementerte Public Leads API v1-kontrakten.
+ * Interne Partner API-er og workflow-webhooks er bevisst ikke presentert
+ * som del av den offentlige API-en.
  */
 
 import React, { useEffect } from "react";
-import { Box, Container, Typography, Card, CardContent, Chip, Stack, Divider, Button } from "@mui/material";
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Container,
+  Divider,
+  Stack,
+  Typography,
+} from "@mui/material";
 
 const PALETTE = {
   bg: "#0a0512",
@@ -21,322 +28,480 @@ const PALETTE = {
   textFaint: "rgba(244,240,255,0.45)",
 };
 
+const API_BASE_URL = "https://creatorhub-backend-rtbl.onrender.com";
+
 const ENDPOINTS = [
-  { method: "GET", path: "/api/v1/partner/me", scope: "*", desc: "Validate key + partner-info" },
-  { method: "GET", path: "/api/v1/partner/customers", scope: "customers.read", desc: "List kunder for org" },
-  { method: "GET", path: "/api/v1/partner/customers/:id", scope: "customers.read", desc: "Kunde-detalj" },
-  { method: "GET", path: "/api/v1/partner/customers/:id/needs", scope: "needs.read", desc: "Needs på kunde" },
-  { method: "GET", path: "/api/v1/partner/customers/:id/signals", scope: "signals.read", desc: "Signaler på kunde" },
-  { method: "GET", path: "/api/v1/partner/customers/:id/deliverables", scope: "deliverables.read", desc: "Leveranser" },
-  { method: "POST", path: "/api/v1/partner/customers", scope: "customers.write", desc: "Opprett kunde" },
-  { method: "GET", path: "/api/v1/partner/organizations/:id", scope: "organizations.read", desc: "Org-info" },
-];
+  {
+    method: "GET",
+    path: "/api/v1/health",
+    scope: "gyldig nøkkel",
+    description: "Verifiser nøkkel, prosjektbinding, scopes og rate-limit.",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/leads",
+    scope: "leads.read",
+    description: "List leads i nøkkelens Leadgrid-prosjekt.",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/leads/{id}",
+    scope: "leads.read",
+    description: "Hent én lead innenfor samme prosjekt.",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/leads",
+    scope: "leads.write",
+    description: "Opprett en lead i nøkkelens prosjekt.",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/recommendations",
+    scope: "recommendations.read",
+    description: "List ventende Next Best Action-anbefalinger for prosjektet.",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/projects/{projectId}/leads/{leadId}/outcome-events",
+    scope: "outcomes.write",
+    description: "Registrer et append-only prosjektresultat på én lead.",
+  },
+] as const;
 
-const WEBHOOK_EVENTS = [
-  { name: "customer.created",            desc: "Ny kunde ble opprettet" },
-  { name: "customer.updated",            desc: "Kunde-felt endret" },
-  { name: "customer.needs_changed",      desc: "Behov detektert eller endret" },
-  { name: "customer.score_changed",      desc: "Leadgrid-score oppdatert" },
-  { name: "deliverable.completed",       desc: "Leveranse ferdig" },
-  { name: "focus_request.created",       desc: "Klient ba om fokus" },
-  { name: "partnership.approved",        desc: "Partner-søknad godkjent" },
-  { name: "intent_agreement.signed",     desc: "Intensjonsavtale signert" },
-];
+const OUTCOME_SEMANTICS = [
+  {
+    eventType: "pilot_invited",
+    meaning:
+      "Pilotinvitasjonen ble faktisk sendt eller overlevert til klinikken.",
+  },
+  {
+    eventType: "meeting_completed",
+    meaning: "Møtet ble faktisk avholdt; en booking alene er ikke nok.",
+  },
+  {
+    eventType: "profile_published",
+    meaning: "Klinikkprofilen er publisert og live i Dentum.",
+  },
+  {
+    eventType: "inquiry_received",
+    meaning:
+      "En kommersiell forespørsel er mottatt, uten person- eller pasientdata.",
+  },
+  {
+    eventType: "booking_confirmed",
+    meaning: "En reell booking er bekreftet.",
+  },
+  {
+    eventType: "attendance_confirmed",
+    meaning:
+      "Det faktiske oppmøtet er bekreftet; en booking alene er ikke nok.",
+  },
+] as const;
 
-const CODE_NODE = `// Node.js — validate HMAC-SHA256 signature
-import crypto from 'crypto';
+const CODE_LIST_LEADS = `curl "${API_BASE_URL}/api/v1/leads?limit=50" \\
+  -H "Authorization: Bearer lgk_live_..."`;
 
-function isValidLeadgridSignature(req, signingSecret) {
-  const signature = req.headers['x-leadgrid-signature']; // 'sha256=abc...'
-  const timestamp = req.headers['x-leadgrid-timestamp']; // unix-seconds
-  const rawBody = req.rawBody; // viktig: bruk RAW body, ikke parsed JSON
-
-  if (!signature?.startsWith('sha256=')) return false;
-  const expected = crypto
-    .createHmac('sha256', signingSecret)
-    .update(\`\${timestamp}.\${rawBody}\`)
-    .digest('hex');
-  return crypto.timingSafeEqual(
-    Buffer.from(signature.slice(7)),
-    Buffer.from(expected),
-  );
-}
-
-app.post('/leadgrid-webhook', express.raw({ type: '*/*' }), (req, res) => {
-  if (!isValidLeadgridSignature(req, process.env.LEADGRID_WEBHOOK_SECRET)) {
-    return res.status(401).end();
-  }
-  const event = JSON.parse(req.body);
-  // … håndter event
-  res.json({ received: true });
-});`;
-
-const CODE_PYTHON = `# Python — validate HMAC-SHA256 signature
-import hmac, hashlib
-from flask import request
-
-def is_valid_leadgrid_signature(secret: str) -> bool:
-    signature = request.headers.get('X-Leadgrid-Signature', '')
-    timestamp = request.headers.get('X-Leadgrid-Timestamp', '')
-    raw_body = request.get_data(as_text=True)
-
-    if not signature.startswith('sha256='):
-        return False
-    expected = hmac.new(
-        secret.encode(),
-        f'{timestamp}.{raw_body}'.encode(),
-        hashlib.sha256,
-    ).hexdigest()
-    return hmac.compare_digest(signature[7:], expected)
-
-@app.route('/leadgrid-webhook', methods=['POST'])
-def leadgrid_webhook():
-    if not is_valid_leadgrid_signature(LEADGRID_WEBHOOK_SECRET):
-        return '', 401
-    event = request.get_json()
-    # … håndter event
-    return {'received': True}`;
-
-const CODE_CURL = `# List kunder
-curl https://creatorhub-backend-rtbl.onrender.com/api/v1/partner/customers \\
-  -H "Authorization: Bearer lg_live_..."
-
-# Opprett kunde
-curl -X POST \\
-  https://creatorhub-backend-rtbl.onrender.com/api/v1/partner/customers \\
-  -H "Authorization: Bearer lg_live_..." \\
+const CODE_CREATE_LEAD = `curl -X POST "${API_BASE_URL}/api/v1/leads" \\
+  -H "Authorization: Bearer lgk_live_..." \\
   -H "Content-Type: application/json" \\
   -d '{
-    "name": "Eksempel AS",
-    "website_url": "https://eksempel.no",
-    "email": "ola@eksempel.no",
-    "tags": ["b2b", "norge"]
+    "name": "Grünerløkka Tannhelse",
+    "company": "Grünerløkka Tannhelse AS",
+    "city": "Oslo",
+    "country": "NO",
+    "lead_source": "dentum_clinic_pilot"
+  }'`;
+
+const CODE_OUTCOME = `PROJECT_ID="dentum-klinikkpilot-oslo"
+LEAD_ID="11111111-1111-4111-8111-111111111111"
+
+curl -X POST \\
+  "${API_BASE_URL}/api/v1/projects/\${PROJECT_ID}/leads/\${LEAD_ID}/outcome-events" \\
+  -H "Authorization: Bearer lgk_live_..." \\
+  -H "Content-Type: application/json" \\
+  -H "Idempotency-Key: dentum-booking-book_01JABC123" \\
+  -d '{
+    "event_type": "booking_confirmed",
+    "external_event_id": "dentum-booking-book_01JABC123",
+    "occurred_at": "2026-09-05T12:00:00+02:00",
+    "metadata": {
+      "channel": "dentum",
+      "campaign_ref": "klinikkpilot-oslo",
+      "territory_code": "oslo",
+      "quantity": 1
+    }
   }'`;
 
 export default function LeadgridDevelopersPage() {
   useEffect(() => {
-    document.title = "Leadgrid Developers: API & Webhooks";
+    document.title = "Leadgrid Developers: Public Leads API v1";
   }, []);
 
   return (
-    <Box sx={{ bgcolor: PALETTE.bg, color: PALETTE.text, minHeight: "100vh", py: 8,
-                fontFamily: '-apple-system, "SF Pro Display", "Inter", "Helvetica Neue", Arial, sans-serif' }}>
+    <Box
+      sx={{
+        bgcolor: PALETTE.bg,
+        color: PALETTE.text,
+        minHeight: "100vh",
+        py: 8,
+        fontFamily:
+          '-apple-system, "SF Pro Display", "Inter", "Helvetica Neue", Arial, sans-serif',
+      }}
+    >
       <Container maxWidth="md">
-        <Typography variant="overline" sx={{ color: PALETTE.accent, letterSpacing: 2 }}>
+        <Typography
+          variant="overline"
+          sx={{ color: PALETTE.accent, letterSpacing: 2 }}
+        >
           Leadgrid Developers
         </Typography>
         <Typography variant="h2" sx={{ fontWeight: 800, mb: 2 }}>
-          Partners API & Webhooks
+          Public Leads API v1
         </Typography>
         <Typography variant="h6" sx={{ color: PALETTE.textMuted, mb: 3 }}>
-          Integrer ditt system med Leadgrid. Hent kunder, opprett leads,
-          ta imot real-time events.
+          Les og opprett leads, hent anbefalinger og send kildesystem-bekreftede
+          prosjektresultater tilbake til Leadgrid.
         </Typography>
+
+        <Alert
+          severity="info"
+          sx={{
+            mb: 4,
+            bgcolor: "rgba(122,184,255,0.10)",
+            color: PALETTE.text,
+            border: "1px solid rgba(122,184,255,0.25)",
+          }}
+        >
+          API v1 har foreløpig ingen generell lead-oppdateringsrute og ingen
+          offentlig utgående webhook-katalog. Ferdigpakkede CRM- og
+          automasjonsconnectorer er derfor merket som planlagt.
+        </Alert>
+
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2} mb={6}>
-          <Button variant="contained" size="large" href="/leadgrid/utviklere/soknad"
-                  sx={{ bgcolor: PALETTE.accent, color: "#0a0512", fontWeight: 700,
-                        px: 4, borderRadius: 999,
-                        "&:hover": { bgcolor: "#9171e6" } }}>
+          <Button
+            variant="contained"
+            size="large"
+            href="/leadgrid/utviklere/soknad"
+            sx={{
+              bgcolor: PALETTE.accent,
+              color: "#0a0512",
+              fontWeight: 700,
+              px: 4,
+              borderRadius: 999,
+              "&:hover": { bgcolor: "#9171e6" },
+            }}
+          >
             Søk om API-tilgang
           </Button>
-          <Button variant="outlined" size="large" href="#endpoints"
-                  sx={{ color: PALETTE.text, borderColor: "rgba(255,255,255,0.2)",
-                        px: 4, borderRadius: 999 }}>
-            Se dokumentasjonen
+          <Button
+            variant="outlined"
+            size="large"
+            href="/api/v1/docs"
+            target="_blank"
+            rel="noopener noreferrer"
+            sx={{
+              color: PALETTE.text,
+              borderColor: "rgba(255,255,255,0.2)",
+              px: 4,
+              borderRadius: 999,
+            }}
+          >
+            Åpne Swagger UI
           </Button>
         </Stack>
 
-        {/* Auth */}
-        <Section title="Autentisering">
+        <Section title="Autentisering og nøkkeltilgang">
           <Typography sx={{ mb: 2, color: PALETTE.textMuted }}>
-            Alle API-kall krever en Bearer-token i Authorization-headeren:
+            Alle kall bruker Bearer-token. Live-nøkler starter med{" "}
+            <code>lgk_live_</code>; testnøkler starter med{" "}
+            <code>lgk_test_</code>.
           </Typography>
-          <CodeBlock>{`Authorization: Bearer lg_live_abc123...`}</CodeBlock>
+          <CodeBlock>{`Authorization: Bearer lgk_live_...`}</CodeBlock>
           <Typography sx={{ mt: 2, color: PALETTE.textMuted }}>
-            API-keys genereres i superadmin-grensesnittet. Hver key er knyttet
-            til enten en organisasjon eller en partner og har et sett med scopes.
+            Den offentlige siden har ikke selvbetjent nøkkelopprettelse. Bruk
+            søknadsskjemaet over; en autorisert Leadgrid-administrator utsteder
+            nøkkelen ved innvilget tilgang. Klartekstnøkkelen vises bare én
+            gang, så den må lagres som en hemmelighet.
           </Typography>
         </Section>
 
-        {/* Scopes */}
+        <Section title="Prosjektgrensen">
+          <Stack spacing={2}>
+            <Typography sx={{ color: PALETTE.textMuted }}>
+              Nye API-nøkler er bundet til ett aktivt Leadgrid-prosjekt som
+              standard. Datakall avgrenses både på organisasjon og prosjekt. For
+              en prosjektbundet nøkkel kan <code>project_id</code> utelates;
+              hvis det sendes, må det samsvare med nøkkelens binding.
+            </Typography>
+            <Typography sx={{ color: PALETTE.textMuted }}>
+              Organisasjonsomfattende nøkler er et eksplisitt unntak som bare en
+              organisasjonsadministrator kan opprette. De må angi{" "}
+              <code>project_id</code> på hvert datakall. Outcome-ruten har
+              alltid prosjekt-ID i path og avviser prosjekter utenfor nøkkelens
+              scope.
+            </Typography>
+          </Stack>
+        </Section>
+
         <Section title="Scopes">
           <Stack direction="row" spacing={1} flexWrap="wrap" rowGap={1}>
             {[
-              "customers.read", "customers.write", "needs.read", "signals.read",
-              "deliverables.read", "organizations.read", "webhooks.read",
-            ].map((s) => (
-              <Chip key={s} label={s} size="small"
-                    sx={{ bgcolor: "rgba(155,225,93,0.10)", color: "#9be15d", fontFamily: "monospace" }} />
+              "leads.read",
+              "leads.write",
+              "recommendations.read",
+              "outcomes.write",
+            ].map((scope) => (
+              <Chip
+                key={scope}
+                label={scope}
+                size="small"
+                sx={{
+                  bgcolor: "rgba(155,225,93,0.10)",
+                  color: "#9be15d",
+                  fontFamily: "monospace",
+                }}
+              />
             ))}
           </Stack>
         </Section>
 
-        {/* Endpoints */}
-        <Section title="Endpoints">
+        <Section title="Implementerte endepunkter">
           <Stack spacing={1}>
-            {ENDPOINTS.map((e) => (
-              <Box key={e.path + e.method} sx={{
-                p: 2, borderRadius: 2, bgcolor: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.08)",
-              }}>
-                <Stack direction="row" alignItems="center" spacing={2} flexWrap="wrap">
-                  <Chip label={e.method} size="small"
-                        sx={{ bgcolor: e.method === "GET" ? "#7ab8ff" : "#9be15d",
-                              color: "#0a0512", fontWeight: 700, minWidth: 56 }} />
-                  <Box sx={{ fontFamily: "monospace", fontSize: 13, color: "#fff", flex: 1 }}>
-                    {e.path}
+            {ENDPOINTS.map((endpoint) => (
+              <Box
+                key={endpoint.path + endpoint.method}
+                sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  bgcolor: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                }}
+              >
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  spacing={2}
+                  flexWrap="wrap"
+                >
+                  <Chip
+                    label={endpoint.method}
+                    size="small"
+                    sx={{
+                      bgcolor:
+                        endpoint.method === "GET" ? "#7ab8ff" : "#9be15d",
+                      color: "#0a0512",
+                      fontWeight: 700,
+                      minWidth: 56,
+                    }}
+                  />
+                  <Box
+                    sx={{
+                      fontFamily: "monospace",
+                      fontSize: 13,
+                      color: "#fff",
+                      flex: 1,
+                    }}
+                  >
+                    {endpoint.path}
                   </Box>
-                  <Chip label={e.scope} size="small"
-                        sx={{ bgcolor: "rgba(155,225,93,0.10)", color: "#9be15d", fontFamily: "monospace" }} />
+                  <Chip
+                    label={endpoint.scope}
+                    size="small"
+                    sx={{
+                      bgcolor: "rgba(155,225,93,0.10)",
+                      color: "#9be15d",
+                      fontFamily: "monospace",
+                    }}
+                  />
                 </Stack>
-                <Typography variant="caption" sx={{ color: PALETTE.textMuted, mt: 0.5, display: "block" }}>
-                  {e.desc}
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: PALETTE.textMuted,
+                    mt: 0.5,
+                    display: "block",
+                  }}
+                >
+                  {endpoint.description}
                 </Typography>
               </Box>
             ))}
           </Stack>
         </Section>
 
-        {/* cURL-eksempler */}
-        <Section title="cURL-eksempler">
-          <CodeBlock>{CODE_CURL}</CodeBlock>
+        <Section title="Les leads">
+          <Typography sx={{ mb: 2, color: PALETTE.textMuted }}>
+            Eksemplet bruker en prosjektbundet nøkkel. Bruk <code>limit</code>{" "}
+            og <code>offset</code> for paginering.
+          </Typography>
+          <CodeBlock>{CODE_LIST_LEADS}</CodeBlock>
         </Section>
 
-        {/* Webhook-events */}
-        <Section title="Webhook events">
+        <Section title="Opprett en lead">
+          <CodeBlock>{CODE_CREATE_LEAD}</CodeBlock>
+          <Alert
+            severity="warning"
+            sx={{
+              mt: 2,
+              bgcolor: "rgba(255,184,107,0.10)",
+              color: PALETTE.text,
+              border: "1px solid rgba(255,184,107,0.25)",
+            }}
+          >
+            <code>POST /api/v1/leads</code> har ikke en dokumentert
+            idempotensgaranti. Unngå blind automatisk retry etter et tapt svar;
+            les tilbake og dedupliser før du forsøker igjen.
+          </Alert>
+        </Section>
+
+        <Section title="Send Dentum-resultater tilbake">
           <Typography sx={{ mb: 2, color: PALETTE.textMuted }}>
-            Vi sender HTTP POST til ditt endpoint med JSON-body når events skjer.
-            Hver request har headers:
+            Kildesystemet, for eksempel Dentum, bekrefter at utfallet faktisk
+            skjedde. Leadgrid validerer struktur, prosjekt-/lead-scope,
+            metadata-allowlist og idempotens, men verifiserer ikke uavhengig at
+            et møte, en booking eller et oppmøte fant sted.
           </Typography>
-          <CodeBlock>{`X-Leadgrid-Signature: sha256=<hex>
-X-Leadgrid-Event: <event_type>
-X-Leadgrid-Delivery: <event_id>
-X-Leadgrid-Timestamp: <unix-seconds>`}</CodeBlock>
-          <Typography sx={{ mt: 3, mb: 2, color: PALETTE.textMuted }}>
-            Disse events er tilgjengelig:
+          <Typography sx={{ mb: 2, color: PALETTE.textMuted }}>
+            Outcome-ruten er append-only og krever <code>outcomes.write</code>.
+            Bruk samme stabile <code>Idempotency-Key</code> og{" "}
+            <code>external_event_id</code> ved retry. Identifikatorene må være
+            1–255 tegn og kan bare inneholde bokstaver, tall, punktum,
+            understrek, kolon og bindestrek. Et identisk nytt forsøk returnerer
+            den eksisterende hendelsen; samme identifikator med annet innhold
+            gir HTTP 409.
           </Typography>
-          <Stack spacing={1}>
-            {WEBHOOK_EVENTS.map((e) => (
-              <Box key={e.name} sx={{ p: 1.5, bgcolor: "rgba(255,255,255,0.03)", borderRadius: 1 }}>
-                <Box sx={{ fontFamily: "monospace", color: "#ffb86b", fontSize: 13 }}>{e.name}</Box>
-                <Typography variant="caption" sx={{ color: PALETTE.textMuted }}>{e.desc}</Typography>
+          <CodeBlock>{CODE_OUTCOME}</CodeBlock>
+          <Typography sx={{ mt: 3, mb: 1.5, color: PALETTE.textMuted }}>
+            Autoritativ betydning per hendelse:
+          </Typography>
+          <Stack spacing={1.25}>
+            {OUTCOME_SEMANTICS.map((outcome) => (
+              <Box
+                key={outcome.eventType}
+                sx={{
+                  display: "flex",
+                  gap: 1.5,
+                  alignItems: "center",
+                  p: 1.5,
+                  borderRadius: 2,
+                  bgcolor: "rgba(255,255,255,0.035)",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                }}
+              >
+                <Chip
+                  label={outcome.eventType}
+                  size="small"
+                  sx={{
+                    bgcolor: "rgba(167,139,250,0.12)",
+                    color: PALETTE.accent,
+                    fontFamily: "monospace",
+                    flexShrink: 0,
+                  }}
+                />
+                <Typography variant="body2" sx={{ color: PALETTE.textMuted }}>
+                  {outcome.meaning}
+                </Typography>
               </Box>
             ))}
           </Stack>
-        </Section>
+          <Typography sx={{ mt: 2, color: PALETTE.textMuted }}>
+            Metadata er en streng allowlist: <code>channel</code>,{" "}
+            <code>campaign_ref</code>, <code>territory_code</code>,{" "}
+            <code>quantity</code>, <code>value_minor</code> og{" "}
+            <code>currency</code>. Beløp og valuta må sendes sammen. Ikke send
+            pasientdata, kontaktopplysninger eller fritekst.
+          </Typography>
 
-        {/* Signatur-validering */}
-        <Section title="HMAC-validering">
-          <Typography sx={{ mb: 2, color: PALETTE.textMuted }}>
-            Hver webhook har en signatur i <code>X-Leadgrid-Signature</code> som er
-            HMAC-SHA256 over <code>"{`<timestamp>.<raw-body>`}"</code> med
-            ditt webhook-endpoint sin signing-secret.
-            <strong>Valider alltid signaturen før du behandler eventet.</strong>
-          </Typography>
-          <Typography variant="overline" sx={{ color: PALETTE.accent, mb: 1, display: "block" }}>
-            Node.js (Express)
-          </Typography>
-          <CodeBlock>{CODE_NODE}</CodeBlock>
-          <Typography variant="overline" sx={{ color: PALETTE.accent, mb: 1, mt: 4, display: "block" }}>
-            Python (Flask)
-          </Typography>
-          <CodeBlock>{CODE_PYTHON}</CodeBlock>
-        </Section>
-
-        {/* Rate limiting */}
-        <Section title="Rate limiting">
-          <Typography sx={{ mb: 2, color: PALETTE.textMuted }}>
-            Vi enforcer rate limits per API-key. Hver respons har headere:
-          </Typography>
-          <CodeBlock>{`X-RateLimit-Limit: <calls per hour for your tier>
-X-RateLimit-Remaining: <how many calls left this hour>
-X-RateLimit-Reset: <unix-second when bucket resets>
-X-RateLimit-Tier: <your tier-key>
-X-RateLimit-Burst: <max calls per minute>`}</CodeBlock>
-          <Typography sx={{ mt: 3, mb: 2, color: PALETTE.textMuted }}>
-            <strong>Tier-grenser:</strong>
-          </Typography>
-          <Box sx={{ overflow: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", color: PALETTE.text }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.15)" }}>
-                  {["Tier", "Calls/time", "Calls/dag", "Burst/min", "Overage"].map((h) => (
-                    <th key={h} style={{ textAlign: "left", padding: "8px",
-                                         color: PALETTE.accent, fontWeight: 700 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  ["Sandbox",              "100",   "500",    "20",   "—"],
-                  ["Listed Partner",       "10",    "100",    "5",    "—"],
-                  ["Certified Partner",    "100",   "1 000",  "20",   "—"],
-                  ["Integration Partner",  "1 000", "10 000", "60",   "0.10 kr/call"],
-                  ["Verified Integration", "5 000", "50 000", "200",  "0.05 kr/call"],
-                  ["Strategic Partner",    "50 000","500 000","1 000","0.01 kr/call"],
-                ].map((r) => (
-                  <tr key={r[0]} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-                    {r.map((c, i) => (
-                      <td key={i} style={{ padding: "8px",
-                                            color: i === 0 ? "#fff" : PALETTE.textMuted,
-                                            fontWeight: i === 0 ? 600 : 400 }}>{c}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Box>
-          <Typography sx={{ mt: 3, color: PALETTE.textMuted }}>
-            Ved overskridelse: <strong>HTTP 429 Too Many Requests</strong> m/
-            <code>Retry-After</code>-header (sekunder).
+          <Typography sx={{ mt: 2, color: PALETTE.textMuted }}>
+            <code>occurred_at</code> er tidspunktet hendelsen faktisk skjedde,
+            med eksplisitt tidssone; verdier mer enn fem minutter frem i tid
+            avvises. Ikke send Discovery profile-, run- eller candidate-ID-er.
+            Leadgrid utleder uforanderlig first-touch-attribusjon på serveren
+            fra den første godkjente kandidaten som faktisk importerte leadet
+            før hendelsen. Attribusjonen er tom for leads uten
+            Discovery-opprinnelse.
           </Typography>
         </Section>
 
-        {/* Retry-logikk */}
-        <Section title="Retry-logikk">
+        <Section title="Rate-limit og feil">
           <Typography sx={{ mb: 2, color: PALETTE.textMuted }}>
-            Hvis ditt endpoint returnerer 5xx eller timer ut, prøver vi på nytt
-            opp til 6 ganger med eksponentiell backoff:
-            <strong> 30s → 5min → 30min → 4t → 24t</strong>.
-          </Typography>
-          <Typography sx={{ mb: 2, color: PALETTE.textMuted }}>
-            4xx-respons (utenom 408 og 429) regnes som permanent feil, og vi
-            prøver ikke på nytt. Etter 10 fortløpende fails auto-disables
-            endpoint-et og du må re-aktivere det manuelt.
+            Rate-limit konfigureres per nøkkel og oppgis av{" "}
+            <code>GET /api/v1/health</code> som <code>rate_limit_rpm</code>. Ved
+            overskridelse svarer API-et med HTTP 429 og feltene{" "}
+            <code>limit_rpm</code> og <code>retry_after_seconds</code>.
           </Typography>
           <Typography sx={{ color: PALETTE.textMuted }}>
-            Ditt endpoint må svare innen 10 sekunder.
-            <strong> Returner 200 raskt og prosesser eventet i bakgrunnen</strong>
-            for å unngå unødvendige retries.
+            Vanlige svar er 400 for ugyldig input, 401 for manglende eller
+            ugyldig nøkkel, 403 for manglende scope, 404 for ressurser utenfor
+            prosjektgrensen og 409 for idempotenskonflikt på outcome-hendelser.
           </Typography>
         </Section>
 
-        {/* Idempotency */}
-        <Section title="Idempotency">
-          <Typography sx={{ color: PALETTE.textMuted }}>
-            Vi sender samme event-ID ved retry. Bruk <code>X-Leadgrid-Delivery</code>
-            -headeren til å deduplisere. Lagre IDs du allerede har behandlet.
+        <Section title="Maskinlesbar kontrakt">
+          <Typography sx={{ mb: 2, color: PALETTE.textMuted }}>
+            OpenAPI 3.1-spesifikasjonen er den autoritative, maskinlesbare
+            kontrakten for tilgjengelige ruter og payloads.
           </Typography>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+            <Button
+              variant="outlined"
+              href="/api/v1/docs"
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ color: PALETTE.text, borderColor: "rgba(255,255,255,0.2)" }}
+            >
+              Swagger UI
+            </Button>
+            <Button
+              variant="outlined"
+              href="/api/v1/openapi.json"
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ color: PALETTE.text, borderColor: "rgba(255,255,255,0.2)" }}
+            >
+              OpenAPI JSON
+            </Button>
+          </Stack>
         </Section>
 
         <Divider sx={{ my: 6, borderColor: "rgba(255,255,255,0.08)" }} />
 
         <Typography variant="caption" sx={{ color: PALETTE.textFaint }}>
-          Spørsmål? Send e-post til <a href="mailto:daniel@creatorhubn.com"
-          style={{ color: PALETTE.accent }}>daniel@creatorhubn.com</a>.
-          Vi svarer som regel innen 24 timer.
+          Spørsmål? Send e-post til{" "}
+          <a
+            href="mailto:daniel@creatorhubn.com"
+            style={{ color: PALETTE.accent }}
+          >
+            daniel@creatorhubn.com
+          </a>
+          .
         </Typography>
       </Container>
     </Box>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
-    <Card sx={{ bgcolor: "rgba(255,255,255,0.03)", color: "#fff", mb: 4,
-                 border: "1px solid rgba(255,255,255,0.06)" }}>
+    <Card
+      sx={{
+        bgcolor: "rgba(255,255,255,0.03)",
+        color: "#fff",
+        mb: 4,
+        border: "1px solid rgba(255,255,255,0.06)",
+      }}
+    >
       <CardContent sx={{ p: 4 }}>
-        <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>{title}</Typography>
+        <Typography variant="h5" sx={{ fontWeight: 700, mb: 3 }}>
+          {title}
+        </Typography>
         {children}
       </CardContent>
     </Card>
@@ -345,13 +510,22 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function CodeBlock({ children }: { children: string }) {
   return (
-    <Box component="pre" sx={{
-      p: 2.5, bgcolor: "#000", borderRadius: 2,
-      fontSize: 13, lineHeight: 1.6, color: "#e5e2f0",
-      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-      overflowX: "auto", border: "1px solid rgba(255,255,255,0.08)",
-      whiteSpace: "pre-wrap", wordBreak: "break-word",
-    }}>
+    <Box
+      component="pre"
+      sx={{
+        p: 2.5,
+        bgcolor: "#000",
+        borderRadius: 2,
+        fontSize: 13,
+        lineHeight: 1.6,
+        color: "#e5e2f0",
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        overflowX: "auto",
+        border: "1px solid rgba(255,255,255,0.08)",
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
+      }}
+    >
       {children}
     </Box>
   );

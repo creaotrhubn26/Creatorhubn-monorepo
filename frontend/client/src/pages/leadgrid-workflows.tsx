@@ -19,7 +19,7 @@
  *   GET    /api/leadgrid/workflows/:id/executions
  *   POST   /api/leadgrid/workflows/:id/execute
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import {
@@ -106,6 +106,7 @@ const ACTION_TYPES = [
 
 interface Workflow {
   id: string;
+  projectId: string;
   name: string;
   description: string | null;
   isActive: boolean;
@@ -132,39 +133,89 @@ interface WorkflowTemplate {
   actions: Array<{ type: string }>;
 }
 
+interface ProjectOption {
+  id: string;
+  name: string;
+}
+
 export default function LeadgridWorkflowsPage(): JSX.Element {
   const [tab, setTab] = useState<"list" | "templates">("list");
   const [showBuilder, setShowBuilder] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(
     null,
   );
+  const [projectId, setProjectId] = useState<string | null>(() =>
+    typeof window === "undefined"
+      ? null
+      : localStorage.getItem("rr_lead_map_active_project"),
+  );
   const queryClient = useQueryClient();
 
+  const { data: projectData, isLoading: projectsLoading } = useQuery<{
+    projects: ProjectOption[];
+  }>({
+    queryKey: ["leadgrid-projects-for-workflows"],
+    queryFn: () => apiRequest("/api/admin-room/lead-map/projects"),
+  });
+  const projects = projectData?.projects ?? [];
+
+  useEffect(() => {
+    if (!projectData) return;
+    const next = projects.some((project) => project.id === projectId)
+      ? projectId
+      : projects[0]?.id ?? null;
+    if (next !== projectId) {
+      setProjectId(next);
+      setSelectedWorkflow(null);
+      setShowBuilder(false);
+    }
+    if (next) localStorage.setItem("rr_lead_map_active_project", next);
+    else localStorage.removeItem("rr_lead_map_active_project");
+  }, [projectData, projectId, projects]);
+
   const { data: listData, isLoading } = useQuery<{ workflows: Workflow[] }>({
-    queryKey: ["leadgrid-workflows"],
-    queryFn: () => apiRequest("/api/leadgrid/workflows"),
+    queryKey: ["leadgrid-workflows", projectId],
+    enabled: Boolean(projectId),
+    queryFn: () =>
+      apiRequest(
+        `/api/leadgrid/workflows?projectId=${encodeURIComponent(projectId!)}`,
+      ),
   });
   const { data: templateData } = useQuery<{ templates: WorkflowTemplate[] }>({
-    queryKey: ["leadgrid-workflow-templates"],
-    queryFn: () => apiRequest("/api/leadgrid/workflows/templates"),
+    queryKey: ["leadgrid-workflow-templates", projectId],
+    enabled: Boolean(projectId),
+    queryFn: () =>
+      apiRequest(
+        `/api/leadgrid/workflows/templates?projectId=${encodeURIComponent(projectId!)}`,
+      ),
   });
 
   const toggleMutation = useMutation({
     mutationFn: async (vars: { id: string; isActive: boolean }) =>
       apiRequest(`/api/leadgrid/workflows/${vars.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ is_active: vars.isActive }),
+        body: JSON.stringify({
+          project_id: projectId,
+          is_active: vars.isActive,
+        }),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["leadgrid-workflows"] });
+      queryClient.invalidateQueries({
+        queryKey: ["leadgrid-workflows", projectId],
+      });
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) =>
-      apiRequest(`/api/leadgrid/workflows/${id}`, { method: "DELETE" }),
+      apiRequest(
+        `/api/leadgrid/workflows/${id}?projectId=${encodeURIComponent(projectId!)}`,
+        { method: "DELETE" },
+      ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["leadgrid-workflows"] });
+      queryClient.invalidateQueries({
+        queryKey: ["leadgrid-workflows", projectId],
+      });
     },
   });
 
@@ -172,16 +223,22 @@ export default function LeadgridWorkflowsPage(): JSX.Element {
     mutationFn: async (templateKey: string) =>
       apiRequest("/api/leadgrid/workflows", {
         method: "POST",
-        body: JSON.stringify({ template_key: templateKey }),
+        body: JSON.stringify({
+          project_id: projectId,
+          template_key: templateKey,
+        }),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["leadgrid-workflows"] });
+      queryClient.invalidateQueries({
+        queryKey: ["leadgrid-workflows", projectId],
+      });
       setTab("list");
     },
   });
 
   const workflows = listData?.workflows ?? [];
   const templates = templateData?.templates ?? [];
+  const activeProject = projects.find((project) => project.id === projectId);
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -210,6 +267,7 @@ export default function LeadgridWorkflowsPage(): JSX.Element {
           <Button
             variant="contained"
             startIcon={<AddIcon />}
+            disabled={!projectId}
             onClick={() => {
               setSelectedWorkflow(null);
               setShowBuilder(true);
@@ -220,6 +278,33 @@ export default function LeadgridWorkflowsPage(): JSX.Element {
         </Stack>
       </Stack>
 
+      <Card variant="outlined" sx={{ mb: 3 }}>
+        <CardContent>
+          <FormControl fullWidth>
+            <InputLabel id="leadgrid-workflow-project-label">
+              Kundeprosjekt
+            </InputLabel>
+            <Select
+              labelId="leadgrid-workflow-project-label"
+              value={projectId ?? ""}
+              label="Kundeprosjekt"
+              disabled={projectsLoading || projects.length === 0}
+              onChange={(event) => setProjectId(String(event.target.value))}
+            >
+              {projects.map((project) => (
+                <MenuItem key={project.id} value={project.id}>
+                  {project.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <Typography variant="caption" color="text.secondary">
+            Triggere, handlinger og historikk isoleres til dette
+            kundeprosjektet.
+          </Typography>
+        </CardContent>
+      </Card>
+
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3 }}>
         <Tab label={`Mine workflows (${workflows.length})`} value="list" />
         <Tab label={`Templates (${templates.length})`} value="templates" />
@@ -227,7 +312,12 @@ export default function LeadgridWorkflowsPage(): JSX.Element {
 
       {tab === "list" && (
         <>
-          {isLoading ? (
+          {!projectId || !activeProject ? (
+            <Alert severity="info">
+              Opprett eller velg et kundeprosjekt før du administrerer
+              workflows.
+            </Alert>
+          ) : isLoading ? (
             <CircularProgress />
           ) : workflows.length === 0 ? (
             <Alert severity="info">
@@ -381,7 +471,7 @@ export default function LeadgridWorkflowsPage(): JSX.Element {
                   <Button
                     variant="outlined"
                     onClick={() => useTemplateMutation.mutate(t.key)}
-                    disabled={useTemplateMutation.isPending}
+                    disabled={!projectId || useTemplateMutation.isPending}
                   >
                     Bruk denne
                   </Button>
@@ -394,10 +484,13 @@ export default function LeadgridWorkflowsPage(): JSX.Element {
 
       {showBuilder && (
         <WorkflowBuilderDialog
+          projectId={projectId!}
           onClose={() => setShowBuilder(false)}
           onSaved={() => {
             setShowBuilder(false);
-            queryClient.invalidateQueries({ queryKey: ["leadgrid-workflows"] });
+            queryClient.invalidateQueries({
+              queryKey: ["leadgrid-workflows", projectId],
+            });
           }}
         />
       )}
@@ -444,9 +537,11 @@ interface BuilderAction {
 }
 
 function WorkflowBuilderDialog({
+  projectId,
   onClose,
   onSaved,
 }: {
+  projectId: string;
   onClose: () => void;
   onSaved: () => void;
 }): JSX.Element {
@@ -502,6 +597,7 @@ function WorkflowBuilderDialog({
       return apiRequest("/api/leadgrid/workflows", {
         method: "POST",
         body: JSON.stringify({
+          project_id: projectId,
           name,
           description,
           trigger_type: triggerType,
@@ -1029,9 +1125,15 @@ function ExecutionHistoryDialog({
   onClose: () => void;
 }): JSX.Element {
   const { data, isLoading } = useQuery<{ executions: Execution[] }>({
-    queryKey: ["leadgrid-workflow-executions", workflow.id],
+    queryKey: [
+      "leadgrid-workflow-executions",
+      workflow.projectId,
+      workflow.id,
+    ],
     queryFn: () =>
-      apiRequest(`/api/leadgrid/workflows/${workflow.id}/executions`),
+      apiRequest(
+        `/api/leadgrid/workflows/${workflow.id}/executions?projectId=${encodeURIComponent(workflow.projectId)}`,
+      ),
   });
   const executions = data?.executions ?? [];
 

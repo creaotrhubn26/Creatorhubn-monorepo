@@ -66,6 +66,23 @@ export async function checkAnyEntitlement(
   if (!orgId || featureKeys.length === 0) {
     return { allowed: true, state: null, organizationId: orgId ?? null };
   }
+  return checkAnyEntitlementForOrganization(pool, orgId, featureKeys);
+}
+
+/**
+ * Project-aware callers already resolved an authoritative organization from
+ * the selected Leadgrid project. They must not fall back to the user's first
+ * organization membership when checking a paid feature.
+ */
+export async function checkAnyEntitlementForOrganization(
+  pool: Pick<Pool, "query">,
+  organizationId: string,
+  featureKeys: string[],
+): Promise<EntitlementDecision> {
+  const orgId = organizationId?.trim();
+  if (!orgId || featureKeys.length === 0) {
+    return { allowed: true, state: null, organizationId: orgId || null };
+  }
   const r = await pool.query<{ feature_key: string; state: string }>(
     `SELECT feature_key, state FROM leadgrid_org_entitlements
       WHERE organization_id = $1 AND feature_key = ANY($2::text[])`,
@@ -124,6 +141,34 @@ export async function assertAnyEntitled(
   }
 }
 
+/** Express helper for routes whose selected project already established org. */
+export async function assertAnyEntitledForOrganization(
+  pool: Pick<Pool, "query">,
+  organizationId: string,
+  featureKeys: string[],
+  res: { status: (n: number) => { json: (b: unknown) => unknown } },
+): Promise<boolean> {
+  try {
+    const decision = await checkAnyEntitlementForOrganization(
+      pool,
+      organizationId,
+      featureKeys,
+    );
+    if (!decision.allowed) {
+      res.status(403).json({
+        error: "entitlement_locked",
+        features: featureKeys,
+        message: "Organisasjonen har ikke tilgang til denne funksjonen.",
+      });
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error("[entitlement-guard] scoped check failed (fail-open):", e);
+    return true;
+  }
+}
+
 /** Leadbook-feature-gruppen — alle serveres av pondus_templates. */
 export const LEADBOOK_FEATURE_KEYS = [
   "leadbookMaler",
@@ -173,4 +218,3 @@ export const MOTE_BRIEF_FEATURE_KEYS = ["moteBrief"];
  *  fail-open — org må eksplisitt bekrefte §7-sjekklisten (se
  *  leadbook-recording-consent-routes.ts) før nøkkelen åpnes. */
 export const LEADBOOK_LYDOPPTAK_FEATURE_KEY = "leadbookLydopptak";
-

@@ -19,10 +19,11 @@
  * Gated på `marketing.scout.run` i registreringen.
  */
 
-import type { Pool } from "pg";
+import { createHash } from "node:crypto";
+import type { Pool, PoolClient } from "pg";
 import { callClaudeForJson, ClaudeJsonParseError } from "./claude-json-helper.js";
 import { fetchBestLogo } from "./lead-logo-fetcher.js";
-import { ssrfSafeFetch } from "./ssrf-guard.js";
+import { assertPublicUrl, ssrfSafeFetch } from "./ssrf-guard.js";
 
 // SSRF protection (resolved-address + per-redirect-hop) now lives in
 // ssrfSafeFetch (ssrf-guard.ts); the old string-only assertNotSsrf was removed.
@@ -125,9 +126,13 @@ interface ClaudeScoutPayload {
 function normalizeUrl(input: string): string | null {
   let u = input.trim();
   if (!u) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(u) && !/^https?:\/\//i.test(u)) return null;
   if (!/^https?:\/\//i.test(u)) u = "https://" + u;
   try {
-    return new URL(u).toString();
+    const parsed = new URL(u);
+    if (!parsed.hostname || parsed.username || parsed.password) return null;
+    parsed.hash = "";
+    return parsed.toString();
   } catch {
     return null;
   }
@@ -411,7 +416,89 @@ async function classifyWithClaude(
     userMessage: buildClaudeUserPrompt(obs, leadContext),
     maxTokens: 2800,
   });
-  return result.data;
+  return normalizeClaudeScoutPayload(result.data);
+}
+
+function finiteNumber(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function scoutIdentifier(value: unknown, prefix?: string): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (!/^[a-z][a-z0-9_]{0,59}$/.test(normalized)) return null;
+  if (prefix && !normalized.startsWith(prefix)) return null;
+  return normalized;
+}
+
+/** Treat model output as untrusted input before it reaches persistence. */
+function normalizeClaudeScoutPayload(value: unknown): ClaudeScoutPayload {
+  const record = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const needsByType = new Map<string, ClaudeScoutPayload["needs"][number]>();
+  const signalsByType = new Map<string, ClaudeScoutPayload["signals"][number]>();
+  const scoresByDimension = new Map<string, ClaudeScoutPayload["scores"][number]>();
+
+  if (Array.isArray(record.needs)) {
+    for (const item of record.needs.slice(0, 24)) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+      const source = item as Record<string, unknown>;
+      const needType = scoutIdentifier(source.need_type, "needs_");
+      if (!needType || needsByType.has(needType)) continue;
+      needsByType.set(needType, {
+        need_type: needType,
+        priority: Math.round(Math.max(1, Math.min(5, finiteNumber(source.priority, 3)))),
+        confidence: Math.round(Math.max(0, Math.min(100,
+          finiteNumber(source.confidence, 70)))),
+        evidence: typeof source.evidence === "string"
+          ? source.evidence.trim().slice(0, 1000) : "",
+      });
+      if (needsByType.size === 12) break;
+    }
+  }
+
+  if (Array.isArray(record.signals)) {
+    for (const item of record.signals.slice(0, 24)) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+      const source = item as Record<string, unknown>;
+      const signalType = scoutIdentifier(source.signal_type);
+      if (!signalType || signalsByType.has(signalType)) continue;
+      const polarity = source.polarity === "positive" || source.polarity === "negative"
+        ? source.polarity : "neutral";
+      signalsByType.set(signalType, {
+        signal_type: signalType,
+        polarity,
+        raw_value: typeof source.raw_value === "string"
+          ? source.raw_value.trim().slice(0, 500) : "",
+      });
+      if (signalsByType.size === 12) break;
+    }
+  }
+
+  if (Array.isArray(record.scores)) {
+    for (const item of record.scores.slice(0, 16)) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+      const source = item as Record<string, unknown>;
+      const dimension = scoutIdentifier(source.dimension);
+      if (!dimension || dimension.length > 40 || scoresByDimension.has(dimension)) continue;
+      scoresByDimension.set(dimension, {
+        dimension,
+        normalized_0_100: Math.round(Math.max(0, Math.min(100,
+          finiteNumber(source.normalized_0_100, 50)))),
+        raw_value: typeof source.raw_value === "string"
+          ? source.raw_value.trim().slice(0, 500) : "",
+      });
+      if (scoresByDimension.size === 8) break;
+    }
+  }
+
+  return {
+    needs: [...needsByType.values()],
+    signals: [...signalsByType.values()],
+    scores: [...scoresByDimension.values()],
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -420,50 +507,275 @@ async function classifyWithClaude(
 
 export interface ScoutResult {
   scout_run_id: string;
+  organization_id: string;
+  project_id: string;
   needs_count: number;
   signals_count: number;
   scores_count: number;
   composite_score: number;
   observations: ScoutObservations;
+  idempotent_replay: boolean;
+}
+
+export class ScoutIdempotencyConflictError extends Error {
+  constructor() {
+    super("Idempotency-Key was already used for another scout request");
+    this.name = "ScoutIdempotencyConflictError";
+  }
+}
+
+export class ScoutRunInProgressError extends Error {
+  readonly runId: string;
+
+  constructor(runId: string) {
+    super("A scout run with this Idempotency-Key is already in progress");
+    this.name = "ScoutRunInProgressError";
+    this.runId = runId;
+  }
+}
+
+export class ScoutPreviousAttemptFailedError extends Error {
+  readonly runId: string;
+
+  constructor(runId: string) {
+    super("The scout request failed previously; use a new Idempotency-Key to run again");
+    this.name = "ScoutPreviousAttemptFailedError";
+    this.runId = runId;
+  }
+}
+
+export class ScoutLeadNotFoundError extends Error {
+  constructor() {
+    super("Lead was not found in the selected customer project");
+    this.name = "ScoutLeadNotFoundError";
+  }
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+async function markScoutFailed(
+  db: Pick<Pool, "query"> | PoolClient,
+  scope: {
+    runId: string;
+    organizationId: string;
+    projectId: string;
+    message: string;
+    httpStatus?: number | null;
+    bytes?: number;
+    techFingerprint?: unknown;
+    result?: ScoutResult;
+  },
+): Promise<void> {
+  await db.query(
+    `UPDATE crm_customer_scout_runs
+        SET status = 'failed',
+            error_message = $4,
+            http_status = COALESCE($5, http_status),
+            bytes_received = COALESCE($6, bytes_received),
+            tech_fingerprint = COALESCE($7::jsonb, tech_fingerprint),
+            result_payload = COALESCE($8::jsonb, result_payload),
+            finished_at = now()
+      WHERE id = $1::uuid
+        AND organization_id = $2::uuid
+        AND project_id = $3
+        AND status = 'running'`,
+    [
+      scope.runId,
+      scope.organizationId,
+      scope.projectId,
+      scope.message.slice(0, 500),
+      scope.httpStatus ?? null,
+      scope.bytes ?? null,
+      scope.techFingerprint == null
+        ? null
+        : JSON.stringify(scope.techFingerprint),
+      scope.result == null ? null : JSON.stringify(scope.result),
+    ],
+  );
 }
 
 export async function runScoutForLead(
   pool: Pool,
   args: {
     customerId: string;
+    organizationId: string;
+    projectId: string;
     leadName: string;
     websiteUrl: string;
     industry?: string | null;
     triggeredBy: string;
+    idempotencyKey: string;
   },
 ): Promise<ScoutResult> {
+  const uuidPattern =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidPattern.test(args.customerId) || !uuidPattern.test(args.organizationId)
+    || !args.projectId.trim() || args.projectId !== args.projectId.trim()
+    || args.projectId.length > 255) {
+    throw new TypeError("An exact organization, project and lead scope is required");
+  }
+  const normalizedUrl = normalizeUrl(args.websiteUrl);
+  if (!normalizedUrl) throw new TypeError("A valid public website URL is required");
+  let websiteUrl: string;
+  try {
+    websiteUrl = assertPublicUrl(normalizedUrl).toString();
+  } catch {
+    throw new TypeError("A valid public website URL is required");
+  }
+  const idempotencyKey = args.idempotencyKey.trim();
+  if (idempotencyKey.length < 8 || idempotencyKey.length > 200) {
+    throw new TypeError("A stable Idempotency-Key between 8 and 200 characters is required");
+  }
+  const requestKeyHash = sha256(idempotencyKey);
+  const requestHash = sha256(JSON.stringify({
+    organizationId: args.organizationId,
+    projectId: args.projectId,
+    customerId: args.customerId,
+    websiteUrl,
+  }));
+
   const runRes = await pool.query<{ id: string }>(
     `INSERT INTO crm_customer_scout_runs
-       (customer_id, triggered_by, url_crawled, status)
-     VALUES ($1, $2, $3, 'running')
+       (customer_id, organization_id, project_id, triggered_by, url_crawled,
+        status, request_key_hash, request_hash)
+     SELECT lead.id::text, $2::uuid, $3, $4, $5, 'running', $6, $7
+       FROM crm_customers lead
+       JOIN leadgrid_projects project
+         ON project.organization_id = lead.organization_id
+        AND project.id = lead.project_id
+      WHERE lead.id::text = $1
+        AND lead.organization_id = $2::uuid
+        AND lead.project_id = $3
+        AND lead.archived_at IS NULL
+        AND (project.status IS NULL OR project.status NOT IN ('archived', 'deleted'))
+     ON CONFLICT (organization_id, project_id, request_key_hash)
+       WHERE request_key_hash IS NOT NULL
+     DO NOTHING
      RETURNING id::text`,
-    [args.customerId, args.triggeredBy, args.websiteUrl],
+    [
+      args.customerId,
+      args.organizationId,
+      args.projectId,
+      args.triggeredBy,
+      websiteUrl,
+      requestKeyHash,
+      requestHash,
+    ],
   );
-  const runId = runRes.rows[0].id;
+  let runId = runRes.rows[0]?.id;
+  if (!runId) {
+    const existing = await pool.query<{
+      id: string;
+      customer_id: string;
+      request_hash: string;
+      status: string;
+      result_payload: ScoutResult | null;
+      stale: boolean;
+    }>(
+      `SELECT id::text, customer_id, request_hash, status, result_payload,
+              started_at < now() - interval '30 minutes' AS stale
+         FROM crm_customer_scout_runs
+        WHERE organization_id = $1::uuid
+          AND project_id = $2
+          AND request_key_hash = $3
+        LIMIT 1`,
+      [args.organizationId, args.projectId, requestKeyHash],
+    );
+    const prior = existing.rows[0];
+    if (!prior) throw new ScoutLeadNotFoundError();
+    if (prior.request_hash !== requestHash || prior.customer_id !== args.customerId) {
+      throw new ScoutIdempotencyConflictError();
+    }
+    if (prior.status === "completed" && prior.result_payload) {
+      return { ...prior.result_payload, idempotent_replay: true };
+    }
+    if (prior.status === "running" && prior.stale) {
+      const takeover = await pool.query<{ id: string }>(
+        `UPDATE crm_customer_scout_runs
+            SET triggered_by = $4,
+                url_crawled = $5,
+                started_at = now(),
+                finished_at = NULL,
+                error_message = NULL,
+                result_payload = NULL
+          WHERE id = $1::uuid
+            AND organization_id = $2::uuid
+            AND project_id = $3
+            AND status = 'running'
+            AND started_at < now() - interval '30 minutes'
+          RETURNING id::text`,
+        [
+          prior.id,
+          args.organizationId,
+          args.projectId,
+          args.triggeredBy,
+          websiteUrl,
+        ],
+      );
+      runId = takeover.rows[0]?.id;
+      if (runId) {
+        // Continue below with the original, stable request identity.
+      } else {
+        throw new ScoutRunInProgressError(prior.id);
+      }
+    } else if (prior.status === "running") {
+      throw new ScoutRunInProgressError(prior.id);
+    } else if (prior.status === "failed") {
+      const retry = await pool.query<{ id: string }>(
+        `UPDATE crm_customer_scout_runs
+            SET triggered_by = $4,
+                url_crawled = $5,
+                status = 'running',
+                started_at = now(),
+                finished_at = NULL,
+                error_message = NULL,
+                http_status = NULL,
+                bytes_received = NULL,
+                tech_fingerprint = '{}'::jsonb,
+                needs_found = 0,
+                signals_found = 0,
+                scores_computed = 0,
+                result_payload = NULL
+          WHERE id = $1::uuid
+            AND organization_id = $2::uuid
+            AND project_id = $3
+            AND status = 'failed'
+            AND request_hash = $6
+          RETURNING id::text`,
+        [prior.id, args.organizationId, args.projectId, args.triggeredBy,
+          websiteUrl, requestHash],
+      );
+      runId = retry.rows[0]?.id;
+      if (!runId) throw new ScoutRunInProgressError(prior.id);
+    } else {
+      throw new ScoutPreviousAttemptFailedError(prior.id);
+    }
+  }
+  if (!runId) throw new ScoutRunInProgressError("unknown");
 
   try {
-    const obs = await crawlAndObserve(args.websiteUrl);
+    const obs = await crawlAndObserve(websiteUrl);
     if (!obs.fetched) {
-      await pool.query(
-        `UPDATE crm_customer_scout_runs
-            SET status='failed',
-                error_message='Kunne ikke hente HTML',
-                http_status=$2,
-                finished_at=now()
-          WHERE id=$1`,
-        [runId, obs.http_status ?? null],
-      );
-      return {
+      const result: ScoutResult = {
         scout_run_id: runId,
+        organization_id: args.organizationId,
+        project_id: args.projectId,
         needs_count: 0, signals_count: 0, scores_count: 0,
         composite_score: 0,
         observations: obs,
+        idempotent_replay: false,
       };
+      await markScoutFailed(pool, {
+        runId,
+        organizationId: args.organizationId,
+        projectId: args.projectId,
+        message: "Kunne ikke hente HTML",
+        httpStatus: obs.http_status ?? null,
+        result,
+      });
+      return result;
     }
 
     let payload: ClaudeScoutPayload;
@@ -472,36 +784,68 @@ export async function runScoutForLead(
         name: args.leadName, industry: args.industry,
       });
     } catch (err) {
-      await pool.query(
-        `UPDATE crm_customer_scout_runs
-            SET status='failed',
-                error_message=$2,
-                http_status=$3,
-                bytes_received=$4,
-                tech_fingerprint=$5::jsonb,
-                finished_at=now()
-          WHERE id=$1`,
-        [
-          runId,
-          err instanceof ClaudeJsonParseError
-            ? "claude_invalid_json"
-            : String(err).slice(0, 500),
-          obs.http_status ?? null,
-          obs.bytes ?? 0,
-          JSON.stringify(obs.tech),
-        ],
-      );
+      await markScoutFailed(pool, {
+        runId,
+        organizationId: args.organizationId,
+        projectId: args.projectId,
+        message: err instanceof ClaudeJsonParseError
+          ? "claude_invalid_json"
+          : String(err),
+        httpStatus: obs.http_status ?? null,
+        bytes: obs.bytes ?? 0,
+        techFingerprint: obs.tech,
+      });
       throw err;
     }
 
+    // Keep external logo I/O outside the atomic persistence transaction.
+    let fetchedLogoUrl: string | null = null;
+    try {
+      const existing = await pool.query<{ logo_url: string | null }>(
+        `SELECT logo_url
+           FROM crm_customers
+          WHERE id::text = $1
+            AND organization_id = $2::uuid
+            AND project_id = $3
+            AND archived_at IS NULL`,
+        [args.customerId, args.organizationId, args.projectId],
+      );
+      if (!existing.rows[0]?.logo_url) {
+        const logo = await fetchBestLogo(websiteUrl);
+        if (logo?.url) fetchedLogoUrl = logo.url;
+      }
+    } catch { /* logo is best-effort */ }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const leadLock = await client.query(
+        `SELECT lead.id
+           FROM crm_customers lead
+           JOIN leadgrid_projects project
+             ON project.organization_id = lead.organization_id
+            AND project.id = lead.project_id
+          WHERE lead.id::text = $1
+            AND lead.organization_id = $2::uuid
+            AND lead.project_id = $3
+            AND lead.archived_at IS NULL
+            AND (project.status IS NULL OR project.status NOT IN ('archived', 'deleted'))
+          FOR UPDATE`,
+        [args.customerId, args.organizationId, args.projectId],
+      );
+      if (leadLock.rowCount !== 1) throw new Error("lead_scope_changed");
+
     // Insert needs (upsert pr customer + need_type)
     for (const n of payload.needs ?? []) {
-      await pool.query(
+      await client.query(
         `INSERT INTO crm_customer_needs
-           (customer_id, need_type, priority, claude_confidence, evidence, evidence_url, detected_by)
-         VALUES ($1, $2, $3, $4, $5, $6, 'claude')
+           (customer_id, organization_id, project_id, need_type, priority,
+            claude_confidence, evidence, evidence_url, detected_by)
+         VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (customer_id, need_type) DO UPDATE
-           SET priority = EXCLUDED.priority,
+           SET organization_id = EXCLUDED.organization_id,
+               project_id = EXCLUDED.project_id,
+               priority = EXCLUDED.priority,
                claude_confidence = EXCLUDED.claude_confidence,
                evidence = EXCLUDED.evidence,
                evidence_url = EXCLUDED.evidence_url,
@@ -509,11 +853,14 @@ export async function runScoutForLead(
            WHERE crm_customer_needs.status IN ('detected', 'accepted')`,
         [
           args.customerId,
+          args.organizationId,
+          args.projectId,
           String(n.need_type ?? "").slice(0, 60),
           Math.max(1, Math.min(5, Number(n.priority ?? 3))),
           Math.max(0, Math.min(100, Number(n.confidence ?? 70))),
           String(n.evidence ?? "").slice(0, 1000),
           obs.url,
+          args.triggeredBy,
         ],
       );
     }
@@ -522,16 +869,20 @@ export async function runScoutForLead(
     for (const s of payload.signals ?? []) {
       const pol = s.polarity === "positive" || s.polarity === "negative"
         ? s.polarity : "neutral";
-      await pool.query(
+      await client.query(
         `INSERT INTO crm_customer_signals
-           (customer_id, signal_type, polarity, raw_value, source)
-         VALUES ($1, $2, $3, $4, 'claude')
+           (customer_id, organization_id, project_id, signal_type, polarity, raw_value, source)
+         VALUES ($1, $2::uuid, $3, $4, $5, $6, 'claude')
          ON CONFLICT (customer_id, signal_type) DO UPDATE
-           SET polarity = EXCLUDED.polarity,
+           SET organization_id = EXCLUDED.organization_id,
+               project_id = EXCLUDED.project_id,
+               polarity = EXCLUDED.polarity,
                raw_value = EXCLUDED.raw_value,
                detected_at = now()`,
         [
           args.customerId,
+          args.organizationId,
+          args.projectId,
           String(s.signal_type ?? "").slice(0, 60),
           pol,
           String(s.raw_value ?? "").slice(0, 500),
@@ -542,16 +893,21 @@ export async function runScoutForLead(
     // Insert scores
     for (const sc of payload.scores ?? []) {
       const norm = Math.max(0, Math.min(100, Math.round(Number(sc.normalized_0_100 ?? 50))));
-      await pool.query(
+      await client.query(
         `INSERT INTO crm_customer_scores
-           (customer_id, dimension, raw_value, normalized_0_100, source)
-         VALUES ($1, $2, $3, $4, 'claude')
+           (customer_id, organization_id, project_id, dimension, raw_value,
+            normalized_0_100, source)
+         VALUES ($1, $2::uuid, $3, $4, $5, $6, 'claude')
          ON CONFLICT (customer_id, dimension) DO UPDATE
-           SET raw_value = EXCLUDED.raw_value,
+           SET organization_id = EXCLUDED.organization_id,
+               project_id = EXCLUDED.project_id,
+               raw_value = EXCLUDED.raw_value,
                normalized_0_100 = EXCLUDED.normalized_0_100,
                computed_at = now()`,
         [
           args.customerId,
+          args.organizationId,
+          args.projectId,
           String(sc.dimension ?? "").slice(0, 40),
           String(sc.raw_value ?? "").slice(0, 500),
           norm,
@@ -560,77 +916,92 @@ export async function runScoutForLead(
     }
 
     // Compute composite (SUM contribution / total weight) + cache i crm_customers
-    const composite = await pool.query<{ score: string }>(
+    const composite = await client.query<{ score: string }>(
       `SELECT COALESCE(ROUND(SUM(contribution) / NULLIF(SUM(weight), 0)), 0)::text AS score
-         FROM crm_customer_scores WHERE customer_id = $1`,
-      [args.customerId],
+         FROM crm_customer_scores
+        WHERE customer_id = $1
+          AND organization_id = $2::uuid
+          AND project_id = $3`,
+      [args.customerId, args.organizationId, args.projectId],
     );
     const compositeNum = Math.round(Number(composite.rows[0]?.score ?? 0));
 
-    // Logo-fetch — sjekk om lead allerede har logo. Hvis ikke, prøv
-    // å hente fra websiten (apple-touch → og:image → favicon → Google s2).
-    // Dette gjør at research-orkestratoren automatisk fyller logoer på
-    // hver lead som passerer scout-fasen.
-    let fetchedLogoUrl: string | null = null;
-    try {
-      const existing = await pool.query<{ logo_url: string | null }>(
-        `SELECT logo_url FROM crm_customers WHERE id::text = $1`,
-        [args.customerId],
-      );
-      if (!existing.rows[0]?.logo_url) {
-        const logo = await fetchBestLogo(args.websiteUrl);
-        if (logo?.url) fetchedLogoUrl = logo.url;
-      }
-    } catch { /* tystefall — logo er nice-to-have, ikke kritisk */ }
-
-    await pool.query(
+    const leadUpdate = await client.query(
       `UPDATE crm_customers
           SET ai_opportunity_score = $2,
               claude_ranked_at = now(),
               logo_url = COALESCE(logo_url, $3)
-        WHERE id::text = $1`,
-      [args.customerId, compositeNum, fetchedLogoUrl],
+        WHERE id::text = $1
+          AND organization_id = $4::uuid
+          AND project_id = $5
+          AND archived_at IS NULL`,
+      [
+        args.customerId,
+        compositeNum,
+        fetchedLogoUrl,
+        args.organizationId,
+        args.projectId,
+      ],
     );
+    if (leadUpdate.rowCount !== 1) throw new Error("lead_scope_changed");
 
-    await pool.query(
+    const result: ScoutResult = {
+      scout_run_id: runId,
+      organization_id: args.organizationId,
+      project_id: args.projectId,
+      needs_count: payload.needs?.length ?? 0,
+      signals_count: payload.signals?.length ?? 0,
+      scores_count: payload.scores?.length ?? 0,
+      composite_score: compositeNum,
+      observations: obs,
+      idempotent_replay: false,
+    };
+
+    const completedRun = await client.query(
       `UPDATE crm_customer_scout_runs
           SET status='completed',
-              http_status=$2,
-              bytes_received=$3,
-              tech_fingerprint=$4::jsonb,
-              needs_found=$5,
-              signals_found=$6,
-              scores_computed=$7,
+              http_status=$4,
+              bytes_received=$5,
+              tech_fingerprint=$6::jsonb,
+              needs_found=$7,
+              signals_found=$8,
+              scores_computed=$9,
+              result_payload=$10::jsonb,
               finished_at=now()
-        WHERE id=$1`,
+        WHERE id=$1::uuid
+          AND organization_id=$2::uuid
+          AND project_id=$3
+          AND status='running'`,
       [
         runId,
+        args.organizationId,
+        args.projectId,
         obs.http_status ?? null,
         obs.bytes ?? 0,
         JSON.stringify({ ...obs.tech, pixels: obs.pixels, seo: obs.seo }),
         payload.needs?.length ?? 0,
         payload.signals?.length ?? 0,
         payload.scores?.length ?? 0,
+        JSON.stringify(result),
       ],
     );
+    if (completedRun.rowCount !== 1) throw new Error("scout_run_scope_changed");
 
-    return {
-      scout_run_id: runId,
-      needs_count: payload.needs?.length ?? 0,
-      signals_count: payload.signals?.length ?? 0,
-      scores_count: payload.scores?.length ?? 0,
-      composite_score: compositeNum,
-      observations: obs,
-    };
+      await client.query("COMMIT");
+      return result;
+    } catch (err) {
+      try { await client.query("ROLLBACK"); } catch { /* noop */ }
+      throw err;
+    } finally {
+      client.release();
+    }
   } catch (err) {
-    await pool.query(
-      `UPDATE crm_customer_scout_runs
-          SET status='failed',
-              error_message=$2,
-              finished_at=now()
-        WHERE id=$1 AND status='running'`,
-      [runId, String(err).slice(0, 500)],
-    );
+    await markScoutFailed(pool, {
+      runId,
+      organizationId: args.organizationId,
+      projectId: args.projectId,
+      message: String(err),
+    });
     throw err;
   }
 }

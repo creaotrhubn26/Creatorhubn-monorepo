@@ -37,6 +37,7 @@ import {
   getScanTechStack,
   getScanOpportunities,
 } from "./market-scan-service.js";
+import { loadAccessibleLeadgridProject } from "../leadgrid-project-access.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -78,6 +79,45 @@ export function registerMarketScanRoutes({
     return session;
   }
 
+  async function accessibleProject(
+    projectId: unknown,
+    userId: string,
+    res: Response,
+  ) {
+    const normalized = typeof projectId === "string" ? projectId.trim() : "";
+    if (!normalized) {
+      res.status(400).json({ error: "project_id_required" });
+      return null;
+    }
+    const project = await loadAccessibleLeadgridProject(pool, normalized, userId);
+    if (!project) {
+      res.status(404).json({ error: "project_not_found" });
+      return null;
+    }
+    return project;
+  }
+
+  async function accessibleScan(scanId: string, userId: string, res: Response) {
+    const scan = await getMarketScan(pool, scanId);
+    if (!scan) {
+      res.status(404).json({ error: "not_found" });
+      return null;
+    }
+    if (!scan.projectId) {
+      if (scan.workspaceOwnerUserId !== userId) {
+        res.status(404).json({ error: "not_found" });
+        return null;
+      }
+      return scan;
+    }
+    const project = await loadAccessibleLeadgridProject(pool, scan.projectId, userId);
+    if (!project || (scan.organizationId && scan.organizationId !== project.organizationId)) {
+      res.status(404).json({ error: "not_found" });
+      return null;
+    }
+    return scan;
+  }
+
   app.post("/api/market-scans", async (req, res) => {
     const session = requireAdmin(req, res);
     if (!session) return;
@@ -86,9 +126,15 @@ export function registerMarketScanRoutes({
       return res.status(400).json({ error: "mangler_name_eller_marketQuery" });
     }
     try {
+      const rawProjectId = body.projectId ?? body.project_id;
+      const project = rawProjectId == null
+        ? null
+        : await accessibleProject(rawProjectId, session.userId, res);
+      if (rawProjectId != null && !project) return;
       const scan = await createMarketScan(pool, {
         workspaceOwnerUserId: session.userId,
-        projectId: (body.projectId as string | undefined) ?? null,
+        organizationId: project?.organizationId ?? null,
+        projectId: project?.id ?? null,
         brandKitId: (body.brandKitId as string | undefined) ?? null,
         name: String(body.name),
         marketQuery: String(body.marketQuery),
@@ -108,12 +154,20 @@ export function registerMarketScanRoutes({
     const session = requireAdmin(req, res);
     if (!session) return;
     try {
+      const rawProjectId = req.query.projectId ?? req.query.project_id;
+      const project = rawProjectId == null
+        ? null
+        : await accessibleProject(rawProjectId, session.userId, res);
+      if (rawProjectId != null && !project) return;
+      const requestedLimit = Number(req.query.limit ?? 50);
+      const limit = Number.isFinite(requestedLimit)
+        ? Math.max(1, Math.min(100, Math.trunc(requestedLimit)))
+        : 50;
       const scans = await listMarketScans(pool, {
         workspaceOwnerUserId: session.userId,
-        projectId: req.query.projectId
-          ? String(req.query.projectId)
-          : undefined,
-        limit: req.query.limit ? Number(req.query.limit) : 50,
+        organizationId: project?.organizationId,
+        projectId: project?.id,
+        limit,
       });
       return res.json({ scans });
     } catch (err) {
@@ -122,10 +176,11 @@ export function registerMarketScanRoutes({
   });
 
   app.get("/api/market-scans/:id", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    const session = requireAdmin(req, res);
+    if (!session) return;
     try {
-      const scan = await getMarketScan(pool, req.params.id);
-      if (!scan) return res.status(404).json({ error: "not_found" });
+      const scan = await accessibleScan(req.params.id, session.userId, res);
+      if (!scan) return;
       return res.json({ scan });
     } catch (err) {
       return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
@@ -133,10 +188,13 @@ export function registerMarketScanRoutes({
   });
 
   app.post("/api/market-scans/:id/run", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    const session = requireAdmin(req, res);
+    if (!session) return;
     try {
+      const scan = await accessibleScan(req.params.id, session.userId, res);
+      if (!scan) return;
       // Sync — runner kan ta ~60 sek (Claude × N + HTTP-fetches)
-      const result = await runMarketScan(pool, req.params.id);
+      const result = await runMarketScan(pool, scan.id);
       return res.json(result);
     } catch (err) {
       console.error("[market-scan] run failed", err);
@@ -145,9 +203,12 @@ export function registerMarketScanRoutes({
   });
 
   app.get("/api/market-scans/:id/competitors", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    const session = requireAdmin(req, res);
+    if (!session) return;
     try {
-      const competitors = await getScanCompetitors(pool, req.params.id);
+      const scan = await accessibleScan(req.params.id, session.userId, res);
+      if (!scan) return;
+      const competitors = await getScanCompetitors(pool, scan.id);
       return res.json({ competitors });
     } catch (err) {
       return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
@@ -155,9 +216,12 @@ export function registerMarketScanRoutes({
   });
 
   app.get("/api/market-scans/:id/funnels", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    const session = requireAdmin(req, res);
+    if (!session) return;
     try {
-      const stages = await getScanFunnelStages(pool, req.params.id);
+      const scan = await accessibleScan(req.params.id, session.userId, res);
+      if (!scan) return;
+      const stages = await getScanFunnelStages(pool, scan.id);
       return res.json({ funnelStages: stages });
     } catch (err) {
       return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
@@ -165,9 +229,12 @@ export function registerMarketScanRoutes({
   });
 
   app.get("/api/market-scans/:id/techniques", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    const session = requireAdmin(req, res);
+    if (!session) return;
     try {
-      const techniques = await getScanTechniques(pool, req.params.id);
+      const scan = await accessibleScan(req.params.id, session.userId, res);
+      if (!scan) return;
+      const techniques = await getScanTechniques(pool, scan.id);
       return res.json({ techniques });
     } catch (err) {
       return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
@@ -175,9 +242,12 @@ export function registerMarketScanRoutes({
   });
 
   app.get("/api/market-scans/:id/tech-stack", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    const session = requireAdmin(req, res);
+    if (!session) return;
     try {
-      const techStack = await getScanTechStack(pool, req.params.id);
+      const scan = await accessibleScan(req.params.id, session.userId, res);
+      if (!scan) return;
+      const techStack = await getScanTechStack(pool, scan.id);
       return res.json({ techStack });
     } catch (err) {
       return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });
@@ -185,9 +255,12 @@ export function registerMarketScanRoutes({
   });
 
   app.get("/api/market-scans/:id/opportunities", async (req, res) => {
-    if (!requireAdmin(req, res)) return;
+    const session = requireAdmin(req, res);
+    if (!session) return;
     try {
-      const opportunities = await getScanOpportunities(pool, req.params.id);
+      const scan = await accessibleScan(req.params.id, session.userId, res);
+      if (!scan) return;
+      const opportunities = await getScanOpportunities(pool, scan.id);
       return res.json({ opportunities });
     } catch (err) {
       return res.status(500).json({ error: "fetch_failed", detail: "internal_error" });

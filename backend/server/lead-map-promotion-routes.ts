@@ -47,8 +47,14 @@ function getUser(
 
 const ROLE_RANK: Record<string, number> = {
   admin: 7,
+  markedssjef: 6,
   salgssjef: 6,
+  markedskoordinator: 5,
   teamleder: 5,
+  seo_spesialist: 4,
+  content_ansvarlig: 4,
+  performance_marketer: 4,
+  markedsanalytiker: 4,
   kvalitet: 4,        // sidestilt med salgskonsulent — kontrollerer salg, selger ikke
   salgskonsulent: 4,
   promotor: 3,
@@ -64,9 +70,31 @@ function classifyChange(from: string | null, to: string): string {
   return "lateral";
 }
 
-const VALID_TARGET_ROLES = new Set([
-  "salgssjef", "teamleder", "salgskonsulent", "kvalitet", "promotor", "member", "viewer",
-]);
+export const VALID_PROMOTION_TARGET_ROLES = [
+  "salgssjef",
+  "teamleder",
+  "salgskonsulent",
+  "kvalitet",
+  "promotor",
+  "markedssjef",
+  "markedskoordinator",
+  "seo_spesialist",
+  "content_ansvarlig",
+  "performance_marketer",
+  "markedsanalytiker",
+  "member",
+  "viewer",
+] as const;
+
+const VALID_PROMOTION_TARGET_ROLE_SET = new Set<string>(
+  VALID_PROMOTION_TARGET_ROLES,
+);
+
+export function isValidPromotionTargetRole(
+  role: unknown,
+): role is (typeof VALID_PROMOTION_TARGET_ROLES)[number] {
+  return typeof role === "string" && VALID_PROMOTION_TARGET_ROLE_SET.has(role);
+}
 
 function yearMonth(): string {
   const d = new Date();
@@ -112,7 +140,7 @@ export function registerLeadMapPromotionRoutes({ app, pool, activeSessions }: De
         reason?: string;
       };
 
-      if (!body.to_role || !VALID_TARGET_ROLES.has(body.to_role)) {
+      if (!isValidPromotionTargetRole(body.to_role)) {
         return res.status(400).json({ error: "ugyldig_rolle" });
       }
       if (!body.team_transition || !["kept","left","reassigned"].includes(body.team_transition)) {
@@ -302,7 +330,7 @@ export function registerLeadMapPromotionRoutes({ app, pool, activeSessions }: De
       const session = getUser(req, activeSessions);
       if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
       const toRole = req.query.to_role as string;
-      if (!toRole || !VALID_TARGET_ROLES.has(toRole)) {
+      if (!isValidPromotionTargetRole(toRole)) {
         return res.status(400).json({ error: "ugyldig_to_role" });
       }
       try {
@@ -363,6 +391,18 @@ function roleTemplate(role: string): { title?: string; quota_nok?: number } {
       return { title: "Salgskonsulent", quota_nok: 200_000 };
     case "promotor":
       return { title: "Promotør", quota_nok: 100_000 };
+    case "markedssjef":
+      return { title: "Markedssjef" };
+    case "markedskoordinator":
+      return { title: "Markedskoordinator" };
+    case "seo_spesialist":
+      return { title: "SEO-spesialist" };
+    case "content_ansvarlig":
+      return { title: "Innholdsansvarlig" };
+    case "performance_marketer":
+      return { title: "Performance marketer" };
+    case "markedsanalytiker":
+      return { title: "Markedsanalytiker" };
     default:
       return {};
   }

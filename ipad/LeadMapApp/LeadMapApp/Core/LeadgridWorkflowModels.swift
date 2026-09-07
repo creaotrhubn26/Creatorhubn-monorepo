@@ -17,6 +17,8 @@ import Foundation
 
 struct LeadgridWorkflow: Decodable, Identifiable, Sendable {
     let id: String
+    /// Authoritative Leadgrid customer-project scope returned by the server.
+    let projectId: String
     let name: String
     let description: String?
     let isActive: Bool
@@ -41,6 +43,7 @@ struct LeadgridWorkflow: Decodable, Identifiable, Sendable {
 extension LeadgridWorkflow: Hashable {
     static func == (lhs: LeadgridWorkflow, rhs: LeadgridWorkflow) -> Bool {
         lhs.id == rhs.id
+            && lhs.projectId == rhs.projectId
             && lhs.updatedAt == rhs.updatedAt
             && lhs.isActive == rhs.isActive
             && lhs.executionCount == rhs.executionCount
@@ -48,6 +51,7 @@ extension LeadgridWorkflow: Hashable {
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
+        hasher.combine(projectId)
         hasher.combine(updatedAt)
     }
 }

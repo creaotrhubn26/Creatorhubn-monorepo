@@ -9,6 +9,7 @@
  *       &status=all|won|lost|in_pipeline|active
  *       &assigned_user_id=<uuid> (valgfri filtrering på spesifikk rep)
  *       &team_leader_id=<uuid>   (valgfri)
+ *       &projectId=<id>            (påkrevd, alias: project_id)
  *
  *   GET /api/leadgrid/leads/export-summary  (PDF KPI-rapport)
  *       ?period=30d
@@ -20,6 +21,11 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import PDFDocument from "pdfkit";
+import { buildCsvDocument } from "./leadgrid-csv.js";
+import {
+  LeadgridExportAccessError,
+  requireLeadgridExportProject,
+} from "./leadgrid-export-access.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 interface Deps { app: Express; pool: Pool; activeSessions: Map<string, SessionData>; }
@@ -31,13 +37,45 @@ function getSession(req: Request, sessions: Map<string, SessionData>): SessionDa
   return t ? sessions.get(t) ?? null : null;
 }
 
-async function getOrgId(pool: Pool, userId: string): Promise<string | null> {
-  const r = await pool.query<{ organization_id: string }>(
-    `SELECT organization_id::text FROM organization_members
-      WHERE user_id = $1 ORDER BY role = 'owner' DESC LIMIT 1`,
-    [userId],
-  );
-  return r.rows[0]?.organization_id ?? null;
+type ExportScope =
+  | { ok: true; orgId: string; projectId: string; projectName: string }
+  | { ok: false; response: Response };
+
+async function resolveExportScope(
+  pool: Pool,
+  res: Response,
+  userId: string,
+  rawProjectId: unknown,
+): Promise<ExportScope> {
+  try {
+    const project = await requireLeadgridExportProject(pool, {
+      userId,
+      projectId: rawProjectId,
+    });
+    return {
+      ok: true,
+      orgId: project.organizationId,
+      projectId: project.id,
+      projectName: project.name,
+    };
+  } catch (error) {
+    if (error instanceof LeadgridExportAccessError) {
+      return {
+        ok: false,
+        response: res.status(error.status).json({
+          error: error.code,
+          ...(error.code === "mangler_tillatelse"
+            ? { required: "leads.export" }
+            : {}),
+        }),
+      };
+    }
+    console.error("[leadgrid/export] project scope lookup failed", error);
+    return {
+      ok: false,
+      response: res.status(500).json({ error: "project_lookup_failed" }),
+    };
+  }
 }
 
 async function getOrgBranding(pool: Pool, orgId: string): Promise<{
@@ -74,13 +112,15 @@ interface LeadRow {
 
 async function fetchLeadsForExport(pool: Pool, opts: {
   orgId: string; periodDays: number; status: string;
+  projectId: string;
   assignedUserId?: string | null; teamLeaderId?: string | null;
 }): Promise<LeadRow[]> {
-  let where = `p.organization_id::text = $1
+  let where = `c.organization_id = $1::uuid
+    AND c.project_id = $3
     AND COALESCE(c.won_at, c.lost_at, c.status_changed_at, c.created_at)
         > now() - ($2::int * INTERVAL '1 day')`;
-  const params: any[] = [opts.orgId, opts.periodDays];
-  let n = 3;
+  const params: any[] = [opts.orgId, opts.periodDays, opts.projectId];
+  let n = 4;
 
   if (opts.status === "won") { where += ` AND c.status = 'won'`; }
   else if (opts.status === "lost") { where += ` AND c.status = 'lost'`; }
@@ -109,7 +149,6 @@ async function fetchLeadsForExport(pool: Pool, opts: {
             c.lost_at::text, c.lost_reason,
             c.created_at::text
        FROM crm_customers c
-       JOIN leadgrid_projects p ON p.id = c.project_id
        LEFT JOIN users tl  ON tl.id = c.assigned_team_leader_id
        LEFT JOIN users rep ON rep.id = c.assigned_user_id
       WHERE ${where}
@@ -122,15 +161,6 @@ async function fetchLeadsForExport(pool: Pool, opts: {
 // ============================================================
 // CSV
 // ============================================================
-function escapeCsv(v: any): string {
-  if (v === null || v === undefined) return "";
-  const s = /^[=+\-@|\t\r]/.test(String(v)) ? `'${v}` : String(v);
-  if (s.includes(";") || s.includes('"') || s.includes("\n")) {
-    return `"${s.replace(/"/g, '""')}"`;
-  }
-  return s;
-}
-
 function leadsToCsv(rows: LeadRow[]): string {
   const headers = [
     "Bedrift", "E-post", "Telefon", "Nettside",
@@ -141,11 +171,9 @@ function leadsToCsv(rows: LeadRow[]): string {
     "Tapt", "Tapt-årsak",
     "Opprettet",
   ];
-  const lines = [
-    "﻿" + headers.join(";"), // BOM for Excel
-  ];
-  for (const r of rows) {
-    lines.push([
+  return buildCsvDocument(
+    headers,
+    rows.map((r) => [
       r.name, r.email, r.phone, r.website_url,
       r.status, r.lead_category, r.ai_opportunity_score,
       r.assigned_team_leader_name, r.assigned_rep_name, r.assignment_note,
@@ -154,9 +182,9 @@ function leadsToCsv(rows: LeadRow[]): string {
       r.won_recurring_oere ? (r.won_recurring_oere / 100) : null,
       r.lost_at, r.lost_reason,
       r.created_at,
-    ].map(escapeCsv).join(";"));
-  }
-  return lines.join("\r\n");
+    ]),
+    { delimiter: ";" },
+  );
 }
 
 // ============================================================
@@ -388,6 +416,89 @@ async function renderSummaryPdf(
   doc.end();
 }
 
+interface ExportSummary {
+  stats: Record<string, unknown>;
+  winRate: number;
+  topLostReasons: unknown[];
+  topReps: unknown[];
+  funnel: unknown;
+}
+
+async function buildExportSummary(
+  pool: Pool,
+  orgId: string,
+  periodDays: number,
+  projectId: string,
+): Promise<ExportSummary> {
+  const summary = await pool.query<any>(
+    `WITH base AS (
+       SELECT c.* FROM crm_customers c
+       WHERE c.organization_id = $1::uuid
+         AND c.project_id = $3
+         AND COALESCE(c.won_at, c.lost_at, c.status_changed_at)
+             > now() - ($2::int * INTERVAL '1 day')
+     )
+     SELECT
+       COUNT(*) FILTER (WHERE status = 'won') AS won_count,
+       COUNT(*) FILTER (WHERE status = 'lost') AS lost_count,
+       COALESCE(SUM(won_amount_oere) FILTER (WHERE status = 'won'), 0) AS total_won_oere,
+       COALESCE(SUM(won_recurring_oere) FILTER (WHERE status = 'won'), 0) AS total_recurring_oere
+      FROM base`,
+    [orgId, periodDays, projectId],
+  );
+  const stats = summary.rows[0] ?? {};
+  const winRate = Number(stats.won_count)
+    / Math.max(1, Number(stats.won_count) + Number(stats.lost_count));
+
+  const lostR = await pool.query(
+    `SELECT lost_reason, COUNT(*) AS n FROM crm_customers c
+     WHERE c.organization_id = $1::uuid
+       AND c.project_id = $3
+       AND status = 'lost'
+       AND lost_at > now() - ($2::int * INTERVAL '1 day')
+     GROUP BY lost_reason ORDER BY n DESC LIMIT 5`,
+    [orgId, periodDays, projectId],
+  );
+  const repR = await pool.query(
+    `SELECT u.first_name, u.last_name,
+            COUNT(*) FILTER (WHERE c.status = 'won') AS won_count,
+            COALESCE(SUM(c.won_amount_oere) FILTER (WHERE c.status = 'won'), 0) AS won_amount_oere
+       FROM crm_customers c
+       LEFT JOIN users u ON u.id = c.assigned_user_id
+      WHERE c.organization_id = $1::uuid
+        AND c.project_id = $3
+        AND c.assigned_user_id IS NOT NULL
+        AND COALESCE(c.won_at, c.lost_at) > now() - ($2::int * INTERVAL '1 day')
+      GROUP BY u.first_name, u.last_name
+      HAVING COUNT(*) FILTER (WHERE c.status = 'won') > 0
+      ORDER BY won_amount_oere DESC LIMIT 5`,
+    [orgId, periodDays, projectId],
+  );
+  const funnelR = await pool.query(
+    `SELECT
+       COUNT(*) FILTER (WHERE status IN ('new', 'lead', 'active')) AS new_leads,
+       COUNT(*) FILTER (WHERE status = 'contacted') AS contacted,
+       COUNT(*) FILTER (WHERE status = 'meeting_booked') AS meeting_booked,
+       COUNT(*) FILTER (WHERE status = 'proposal_sent') AS proposal_sent,
+       COUNT(*) FILTER (WHERE status = 'negotiating') AS negotiating,
+       COUNT(*) FILTER (WHERE status = 'won') AS won,
+       COUNT(*) FILTER (WHERE status = 'lost') AS lost
+      FROM crm_customers c
+     WHERE c.organization_id = $1::uuid
+       AND c.project_id = $3
+       AND c.created_at > now() - ($2::int * INTERVAL '1 day')`,
+    [orgId, periodDays, projectId],
+  );
+
+  return {
+    stats,
+    winRate,
+    topLostReasons: lostR.rows,
+    topReps: repR.rows,
+    funnel: funnelR.rows[0],
+  };
+}
+
 // ============================================================
 // ROUTES
 // ============================================================
@@ -396,8 +507,14 @@ export function registerLeadExportRoutes({ app, pool, activeSessions }: Deps): v
   app.get("/api/leadgrid/leads/export", async (req, res) => {
     const s = getSession(req, activeSessions);
     if (!s) return res.status(401).json({ error: "Ikke innlogget" });
-    const orgId = await getOrgId(pool, s.userId);
-    if (!orgId) return res.status(403).json({ error: "Ikke i noen org" });
+    const scope = await resolveExportScope(
+      pool,
+      res,
+      s.userId,
+      req.query.projectId ?? req.query.project_id,
+    );
+    if ("response" in scope) return scope.response;
+    const { orgId, projectId, projectName } = scope;
 
     const format = (req.query.format as string) ?? "csv";
     const period = (req.query.period as string) ?? "30d";
@@ -407,7 +524,7 @@ export function registerLeadExportRoutes({ app, pool, activeSessions }: Deps): v
                : period === "90d" ? 90 : 30;
 
     const rows = await fetchLeadsForExport(pool, {
-      orgId, periodDays: days, status,
+      orgId, projectId, periodDays: days, status,
       assignedUserId: (req.query.assigned_user_id as string) || null,
       teamLeaderId: (req.query.team_leader_id as string) || null,
     });
@@ -423,7 +540,7 @@ export function registerLeadExportRoutes({ app, pool, activeSessions }: Deps): v
     if (format === "pdf") {
       const branding = await getOrgBranding(pool, orgId);
       await renderLeadsPdf(res, rows, branding, {
-        period_label: `Periode: siste ${period}`,
+        period_label: `${projectName ? `Prosjekt: ${projectName} · ` : ""}Periode: siste ${period}`,
         status_label: status,
         total: rows.length,
       });
@@ -434,80 +551,29 @@ export function registerLeadExportRoutes({ app, pool, activeSessions }: Deps): v
   });
 
   app.get("/api/leadgrid/leads/export-summary", async (req, res) => {
-    const s = getSession(req, activeSessions);
-    if (!s) return res.status(401).json({ error: "Ikke innlogget" });
-    const orgId = await getOrgId(pool, s.userId);
-    if (!orgId) return res.status(403).json({ error: "Ikke i noen org" });
+    const session = getSession(req, activeSessions);
+    if (!session) return res.status(401).json({ error: "Ikke innlogget" });
+    const scope = await resolveExportScope(
+      pool,
+      res,
+      session.userId,
+      req.query.projectId ?? req.query.project_id,
+    );
+    if ("response" in scope) return scope.response;
+    const { orgId, projectId, projectName } = scope;
 
     const period = (req.query.period as string) ?? "30d";
-
-    // Reuse won-lost-stats-logic ved å kjøre samme query
     const days = period === "7d" ? 7 : period === "90d" ? 90 : 30;
-    const summary = await pool.query<any>(
-      `WITH base AS (
-         SELECT c.* FROM crm_customers c
-         JOIN leadgrid_projects p ON p.id = c.project_id
-         WHERE p.organization_id::text = $1
-           AND COALESCE(c.won_at, c.lost_at, c.status_changed_at)
-               > now() - ($2::int * INTERVAL '1 day')
-       )
-       SELECT
-         COUNT(*) FILTER (WHERE status = 'won') AS won_count,
-         COUNT(*) FILTER (WHERE status = 'lost') AS lost_count,
-         COALESCE(SUM(won_amount_oere) FILTER (WHERE status = 'won'), 0) AS total_won_oere,
-         COALESCE(SUM(won_recurring_oere) FILTER (WHERE status = 'won'), 0) AS total_recurring_oere
-        FROM base`,
-      [orgId, days],
-    );
-    const stats = summary.rows[0];
-    const winRate = Number(stats.won_count)
-      / Math.max(1, Number(stats.won_count) + Number(stats.lost_count));
-
-    const lostR = await pool.query(
-      `SELECT lost_reason, COUNT(*) AS n FROM crm_customers c
-       JOIN leadgrid_projects p ON p.id = c.project_id
-       WHERE p.organization_id::text = $1 AND status = 'lost'
-         AND lost_at > now() - ($2::int * INTERVAL '1 day')
-       GROUP BY lost_reason ORDER BY n DESC LIMIT 5`,
-      [orgId, days],
-    );
-    const repR = await pool.query(
-      `SELECT u.first_name, u.last_name,
-              COUNT(*) FILTER (WHERE c.status = 'won') AS won_count,
-              COALESCE(SUM(c.won_amount_oere) FILTER (WHERE c.status = 'won'), 0) AS won_amount_oere
-         FROM crm_customers c
-         JOIN leadgrid_projects p ON p.id = c.project_id
-         LEFT JOIN users u ON u.id = c.assigned_user_id
-        WHERE p.organization_id::text = $1
-          AND c.assigned_user_id IS NOT NULL
-          AND COALESCE(c.won_at, c.lost_at) > now() - ($2::int * INTERVAL '1 day')
-        GROUP BY u.first_name, u.last_name
-        HAVING COUNT(*) FILTER (WHERE c.status = 'won') > 0
-        ORDER BY won_amount_oere DESC LIMIT 5`,
-      [orgId, days],
-    );
-    const funnelR = await pool.query(
-      `SELECT
-         COUNT(*) FILTER (WHERE status IN ('new', 'lead', 'active')) AS new_leads,
-         COUNT(*) FILTER (WHERE status = 'contacted') AS contacted,
-         COUNT(*) FILTER (WHERE status = 'meeting_booked') AS meeting_booked,
-         COUNT(*) FILTER (WHERE status = 'proposal_sent') AS proposal_sent,
-         COUNT(*) FILTER (WHERE status = 'negotiating') AS negotiating,
-         COUNT(*) FILTER (WHERE status = 'won') AS won,
-         COUNT(*) FILTER (WHERE status = 'lost') AS lost
-        FROM crm_customers c
-        JOIN leadgrid_projects p ON p.id = c.project_id
-       WHERE p.organization_id::text = $1
-         AND c.created_at > now() - ($2::int * INTERVAL '1 day')`,
-      [orgId, days],
-    );
-
+    const report = await buildExportSummary(pool, orgId, days, projectId);
     const branding = await getOrgBranding(pool, orgId);
     await renderSummaryPdf(res, {
-      ...stats, win_rate: winRate,
-      top_lost_reasons: lostR.rows,
-      top_reps: repR.rows,
-      funnel: funnelR.rows[0],
-    }, branding, `Periode: siste ${period}`);
+      ...report.stats,
+      win_rate: report.winRate,
+      top_lost_reasons: report.topLostReasons,
+      top_reps: report.topReps,
+      funnel: report.funnel,
+    }, branding, `${projectName ? `Prosjekt: ${projectName} · ` : ""}Periode: siste ${period}`);
   });
 }
+
+export const __test = { fetchLeadsForExport, buildExportSummary, leadsToCsv };

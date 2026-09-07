@@ -18,6 +18,7 @@ const GOOGLE_PLACES_FIELD_MASK = [
   "places.googleMapsUri",
   "places.attributions",
 ].join(",");
+const PLACE_CONFIRMATION_TTL_MS = 15 * 60 * 1_000;
 
 export type DiscoveryPlaceMatchQuality = "strong" | "possible" | "weak";
 
@@ -54,6 +55,7 @@ export interface DiscoveryPlaceDetailsDto {
   candidate_id: string;
   mode: "transient_details_only";
   fetched_at: string;
+  confirmation_expires_at: string | null;
   provider: {
     id: "google_places";
     name: "Google Maps";
@@ -318,9 +320,9 @@ function normalizePlace(
   candidate: CandidateIdentityRow,
   place: GooglePlace,
 ): DiscoveryPlaceMatchDto | null {
-  const placeId = text(place.id, 300);
+  const placeId = text(place.id, 256);
   const displayName = text(place.displayName?.text, 300);
-  if (!placeId || !displayName) return null;
+  if (!placeId || placeId.length > 255 || !displayName) return null;
   const match = classifyDiscoveryPlaceMatch(candidate, place);
   return {
     place_id: placeId,
@@ -379,23 +381,43 @@ function locationBias(
   };
 }
 
+async function cancelResponseBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // Best effort: the typed provider error below is authoritative.
+  }
+}
+
 export async function fetchTransientDiscoveryPlaceDetails(
   pool: Pool,
   input: {
     project: LeadgridAccessibleProject;
     runId: string;
     candidateId: string;
+    userId: string;
   },
   dependencies: DiscoveryPlacesDetailsDependencies = {},
 ): Promise<DiscoveryPlaceDetailsDto> {
   const candidateResult = await pool.query<CandidateIdentityRow>(
     `SELECT c.id::text,
-            c.name,
-            c.address,
-            c.city,
-            c.postal_code,
-            c.latitude,
-            c.longitude,
+            COALESCE(
+              NULLIF(rc.observation_snapshot->>'name', ''),
+              'Ukjent virksomhet'
+            ) AS name,
+            NULLIF(rc.observation_snapshot->>'address', '') AS address,
+            NULLIF(rc.observation_snapshot->>'city', '') AS city,
+            NULLIF(rc.observation_snapshot->>'postal_code', '') AS postal_code,
+            CASE
+              WHEN jsonb_typeof(rc.observation_snapshot->'latitude') = 'number'
+                THEN (rc.observation_snapshot->>'latitude')::double precision
+              ELSE NULL
+            END AS latitude,
+            CASE
+              WHEN jsonb_typeof(rc.observation_snapshot->'longitude') = 'number'
+                THEN (rc.observation_snapshot->>'longitude')::double precision
+              ELSE NULL
+            END AS longitude,
             r.profile_id::text,
             p.source_config
        FROM leadgrid_discovery_runs r
@@ -498,15 +520,16 @@ export async function fetchTransientDiscoveryPlaceDetails(
     );
   }
 
-  if (response.status === 429) {
-    throw new DiscoveryPlacesDetailsError(
-      "places_rate_limited",
-      503,
-      "Google Maps har midlertidig begrenset detaljoppslag. Prøv igjen senere.",
-      true,
-    );
-  }
   if (!response.ok) {
+    await cancelResponseBody(response);
+    if (response.status === 429) {
+      throw new DiscoveryPlacesDetailsError(
+        "places_rate_limited",
+        503,
+        "Google Maps har midlertidig begrenset detaljoppslag. Prøv igjen senere.",
+        true,
+      );
+    }
     throw new DiscoveryPlacesDetailsError(
       "places_unavailable",
       502,
@@ -535,10 +558,49 @@ export async function fetchTransientDiscoveryPlaceDetails(
     );
   }
 
+  const fetchedAt = (dependencies.now ?? (() => new Date()))();
+  const matches = (payload.places ?? [])
+    .slice(0, 3)
+    .map((place) => normalizePlace(candidate, place))
+    .filter((place): place is DiscoveryPlaceMatchDto => place !== null);
+  const confirmationExpiresAt =
+    matches.length > 0
+      ? new Date(fetchedAt.getTime() + PLACE_CONFIRMATION_TTL_MS)
+      : null;
+  if (matches.length > 0) {
+    await pool.query(
+      `INSERT INTO leadgrid_discovery_place_confirmations (
+         organization_id, project_id, run_id, candidate_id, place_id,
+         requested_by, issued_at, expires_at
+       )
+       SELECT $1::uuid, $2, $3::uuid, $4::uuid, place_id,
+              $6, $7::timestamptz, $8::timestamptz
+         FROM unnest($5::text[]) AS returned(place_id)
+       ON CONFLICT (
+         organization_id, project_id, run_id, candidate_id, place_id,
+         requested_by
+       ) DO UPDATE
+         SET issued_at = EXCLUDED.issued_at,
+             expires_at = EXCLUDED.expires_at,
+             consumed_at = NULL`,
+      [
+        input.project.organizationId,
+        input.project.id,
+        input.runId,
+        input.candidateId,
+        matches.map((match) => match.place_id),
+        input.userId,
+        fetchedAt.toISOString(),
+        confirmationExpiresAt?.toISOString(),
+      ],
+    );
+  }
+
   return {
     candidate_id: candidate.id,
     mode: "transient_details_only",
-    fetched_at: (dependencies.now ?? (() => new Date()))().toISOString(),
+    fetched_at: fetchedAt.toISOString(),
+    confirmation_expires_at: confirmationExpiresAt?.toISOString() ?? null,
     provider: {
       id: "google_places",
       name: "Google Maps",
@@ -546,13 +608,10 @@ export async function fetchTransientDiscoveryPlaceDetails(
         "https://developers.google.com/maps/documentation/places/web-service/policies",
     },
     notice:
-      "Opplysningene er hentet på forespørsel og lagres ikke i kandidaten eller CRM.",
+      "Opplysningene er hentet på forespørsel. Bare treffets Place ID attesteres kortvarig for en eksplisitt CRM-bekreftelse.",
     ranking_notice:
       "Treffene følger Google Maps sin relevansrekkefølge. Leadgrids matchkontroll påvirker ikke Discovery-score.",
-    matches: (payload.places ?? [])
-      .slice(0, 3)
-      .map((place) => normalizePlace(candidate, place))
-      .filter((place): place is DiscoveryPlaceMatchDto => place !== null),
+    matches,
   };
 }
 

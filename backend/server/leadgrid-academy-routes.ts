@@ -76,7 +76,7 @@ export interface AcademyRoutesDeps {
   requireUserSession: (req: Request, res: Response) => SessionUser | null;
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function registerLeadgridAcademyRoutes(deps: AcademyRoutesDeps): void {
   const { app, pool, requireUserSession } = deps;
@@ -248,8 +248,11 @@ export function registerLeadgridAcademyRoutes(deps: AcademyRoutesDeps): void {
 
   // ── PATCH /api/leadgrid/academy/courses/:id ───────────────────────
   app.patch(
-    "/api/leadgrid/academy/courses/:id([0-9a-fA-F-]{36})",
+    "/api/leadgrid/academy/courses/:id",
     async (req: Request, res: Response) => {
+      if (!UUID_RE.test(req.params.id)) {
+        return res.status(400).json({ error: "ugyldig_course_id" });
+      }
       const session = requireUserSession(req, res);
       if (!session) return;
       const body = (req.body ?? {}) as {
@@ -291,8 +294,11 @@ export function registerLeadgridAcademyRoutes(deps: AcademyRoutesDeps): void {
 
   // ── DELETE /api/leadgrid/academy/courses/:id ──────────────────────
   app.delete(
-    "/api/leadgrid/academy/courses/:id([0-9a-fA-F-]{36})",
+    "/api/leadgrid/academy/courses/:id",
     async (req: Request, res: Response) => {
+      if (!UUID_RE.test(req.params.id)) {
+        return res.status(400).json({ error: "ugyldig_course_id" });
+      }
       const session = requireUserSession(req, res);
       if (!session) return;
       try {
@@ -317,8 +323,11 @@ export function registerLeadgridAcademyRoutes(deps: AcademyRoutesDeps): void {
 
   // ── POST /api/leadgrid/academy/courses/:id/chapters ───────────────
   app.post(
-    "/api/leadgrid/academy/courses/:id([0-9a-fA-F-]{36})/chapters",
+    "/api/leadgrid/academy/courses/:id/chapters",
     async (req: Request, res: Response) => {
+      if (!UUID_RE.test(req.params.id)) {
+        return res.status(400).json({ error: "ugyldig_course_id" });
+      }
       const session = requireUserSession(req, res);
       if (!session) return;
       const body = (req.body ?? {}) as {
@@ -374,8 +383,11 @@ export function registerLeadgridAcademyRoutes(deps: AcademyRoutesDeps): void {
 
   // ── PATCH /api/leadgrid/academy/chapters/:id ──────────────────────
   app.patch(
-    "/api/leadgrid/academy/chapters/:id([0-9a-fA-F-]{36})",
+    "/api/leadgrid/academy/chapters/:id",
     async (req: Request, res: Response) => {
+      if (!UUID_RE.test(req.params.id)) {
+        return res.status(400).json({ error: "ugyldig_chapter_id" });
+      }
       const session = requireUserSession(req, res);
       if (!session) return;
       const body = (req.body ?? {}) as {
@@ -414,8 +426,11 @@ export function registerLeadgridAcademyRoutes(deps: AcademyRoutesDeps): void {
 
   // ── DELETE /api/leadgrid/academy/chapters/:id ─────────────────────
   app.delete(
-    "/api/leadgrid/academy/chapters/:id([0-9a-fA-F-]{36})",
+    "/api/leadgrid/academy/chapters/:id",
     async (req: Request, res: Response) => {
+      if (!UUID_RE.test(req.params.id)) {
+        return res.status(400).json({ error: "ugyldig_chapter_id" });
+      }
       const session = requireUserSession(req, res);
       if (!session) return;
       try {
@@ -437,8 +452,11 @@ export function registerLeadgridAcademyRoutes(deps: AcademyRoutesDeps): void {
 
   // ── POST /api/leadgrid/academy/chapters/:id/video-upload-url ──────
   app.post(
-    "/api/leadgrid/academy/chapters/:id([0-9a-fA-F-]{36})/video-upload-url",
+    "/api/leadgrid/academy/chapters/:id/video-upload-url",
     async (req: Request, res: Response) => {
+      if (!UUID_RE.test(req.params.id)) {
+        return res.status(400).json({ error: "ugyldig_chapter_id" });
+      }
       const session = requireUserSession(req, res);
       if (!session) return;
       const contentType = String((req.body ?? {}).content_type ?? "video/mp4");
@@ -471,8 +489,11 @@ export function registerLeadgridAcademyRoutes(deps: AcademyRoutesDeps): void {
 
   // ── POST /api/leadgrid/academy/chapters/:id/video-attach ──────────
   app.post(
-    "/api/leadgrid/academy/chapters/:id([0-9a-fA-F-]{36})/video-attach",
+    "/api/leadgrid/academy/chapters/:id/video-attach",
     async (req: Request, res: Response) => {
+      if (!UUID_RE.test(req.params.id)) {
+        return res.status(400).json({ error: "ugyldig_chapter_id" });
+      }
       const session = requireUserSession(req, res);
       if (!session) return;
       const body = (req.body ?? {}) as { key?: string; duration_seconds?: number };
@@ -509,8 +530,11 @@ export function registerLeadgridAcademyRoutes(deps: AcademyRoutesDeps): void {
 
   // ── GET /api/leadgrid/academy/chapters/:id/video-url ──────────────
   app.get(
-    "/api/leadgrid/academy/chapters/:id([0-9a-fA-F-]{36})/video-url",
+    "/api/leadgrid/academy/chapters/:id/video-url",
     async (req: Request, res: Response) => {
+      if (!UUID_RE.test(req.params.id)) {
+        return res.status(400).json({ error: "ugyldig_chapter_id" });
+      }
       const session = requireUserSession(req, res);
       if (!session) return;
       try {

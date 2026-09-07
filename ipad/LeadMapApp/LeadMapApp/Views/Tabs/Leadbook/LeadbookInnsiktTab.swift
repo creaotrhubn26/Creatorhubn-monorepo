@@ -21,6 +21,8 @@ struct LeadbookInnsiktView: View {
     @State private var innsiktLoading = false
     @State private var innsiktError: String?
     @State private var openingCaseId: String?
+    @State private var loadedOrganizationId: String?
+    @State private var loadedProjectId: String?
 
     enum Period: String, CaseIterable, Identifiable {
         case d7 = "7 dager"
@@ -109,7 +111,9 @@ struct LeadbookInnsiktView: View {
             }
             Color.clear.frame(height: 20)
         }
-        .task(id: period) { await loadInnsikt() }
+        .task(id: "\(appState.activeOrganizationId ?? "")|\(appState.activeProjectId ?? "")|\(period.apiValue)") {
+            await loadInnsikt()
+        }
         .overlay(alignment: .top) {
             if let t = toast {
                 Label(t, systemImage: "checkmark.circle.fill")
@@ -127,7 +131,15 @@ struct LeadbookInnsiktView: View {
                 periodLabel: period.rawValue
             )
         }
-        .sheet(item: $openExample) { ex in LeadbookExampleDetailSheet(example: ex) }
+        .sheet(item: $openExample) { ex in
+            if let organizationId = loadedOrganizationId,
+               let projectId = loadedProjectId {
+                LeadbookExampleDetailSheet(
+                    example: ex,
+                    organizationId: organizationId,
+                    projectId: projectId)
+            }
+        }
     }
 
     // MARK: Header
@@ -206,12 +218,36 @@ struct LeadbookInnsiktView: View {
 
     @MainActor
     private func loadInnsikt() async {
-        guard !DemoModeManager.isActiveNonisolated, let api = appState.api else { return }
+        guard !DemoModeManager.isActiveNonisolated,
+              let api = appState.api,
+              let requestedOrganizationId = appState.activeOrganizationId,
+              let requestedProjectId = appState.activeProjectId else {
+            innsikt = nil
+            openExample = nil
+            loadedOrganizationId = nil
+            loadedProjectId = nil
+            return
+        }
+        if loadedOrganizationId != requestedOrganizationId
+            || loadedProjectId != requestedProjectId {
+            innsikt = nil
+            openExample = nil
+        }
         innsiktLoading = true
         innsiktError = nil
         do {
-            innsikt = try await api.fetchLeadbookInnsikt(period: period.apiValue)
+            let response = try await api.fetchLeadbookInnsikt(
+                projectId: requestedProjectId,
+                period: period.apiValue)
+            guard appState.activeOrganizationId == requestedOrganizationId,
+                  appState.activeProjectId == requestedProjectId,
+                  response.projectId == requestedProjectId else { return }
+            innsikt = response
+            loadedOrganizationId = requestedOrganizationId
+            loadedProjectId = requestedProjectId
         } catch {
+            guard appState.activeOrganizationId == requestedOrganizationId,
+                  appState.activeProjectId == requestedProjectId else { return }
             let msg = String(describing: error)
             innsiktError = msg.contains("entitlement_locked")
                 ? "Eksempler-modulen er ikke aktivert for organisasjonen."
@@ -580,11 +616,18 @@ struct LeadbookInnsiktView: View {
     /// returnerer kun sammendrags-felter).
     @MainActor
     private func openCase(id: String) async {
-        guard let api = appState.api, openingCaseId == nil else { return }
+        guard let api = appState.api,
+              let requestedOrganizationId = appState.activeOrganizationId,
+              let requestedProjectId = appState.activeProjectId,
+              openingCaseId == nil else { return }
         openingCaseId = id
         defer { openingCaseId = nil }
         do {
-            let resp = try await api.fetchLeadbookExamples()
+            let resp = try await api.fetchLeadbookExamples(
+                projectId: requestedProjectId)
+            guard appState.activeOrganizationId == requestedOrganizationId,
+                  appState.activeProjectId == requestedProjectId,
+                  resp.projectId == requestedProjectId else { return }
             if let dto = resp.examples.first(where: { $0.id == id }) {
                 openExample = LeadbookExample.fromDTO(dto)
             } else {

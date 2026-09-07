@@ -11,6 +11,8 @@ import type { Pool } from 'pg';
 import { requireLeadMapPermission } from './lead-map-rbac-helper.js';
 import { computeTodayMomentum } from './leadgrid-momentum-service.js';
 import { resolveOrgIdForUser } from './leadgrid-org-resolver.js';
+import { loadAccessibleLeadgridProject } from './leadgrid-project-access.js';
+import { requestedLeadMapProjectId } from './lead-map-project-scope.js';
 import { getTeamLeaderboard, getCommissionEarnings } from './leadgrid-sales-management-data.js';
 import { assembleHtml } from './infographic-engine.js';
 import { INTER_FONT_CSS } from './infographic-fonts.js';
@@ -36,14 +38,19 @@ function getSession(req: Request, sessions: Sessions): SessionData | null {
   return null;
 }
 
-async function resolveOrgIdSmart(req: Request, pool: Pool, userId: string): Promise<string | null> {
-  const explicit = (req.query?.organization_id as string | undefined);
-  if (typeof explicit === 'string' && explicit.length > 0) return explicit;
-  const r = await pool.query<{ organization_id: string }>(
-    `SELECT organization_id::text FROM organization_members WHERE user_id = $1 ORDER BY joined_at ASC LIMIT 1`,
-    [userId],
-  );
-  return r.rows[0]?.organization_id ?? null;
+async function resolveMomentumProjectOrgId(
+  req: Request,
+  pool: Pool,
+  userId: string,
+): Promise<string | null> {
+  try {
+    const projectId = requestedLeadMapProjectId(req);
+    if (!projectId) return null;
+    const project = await loadAccessibleLeadgridProject(pool, projectId, userId);
+    return project?.organizationId ?? null;
+  } catch {
+    return null;
+  }
 }
 
 const clampDim = (v: unknown, def: number): number => {
@@ -64,7 +71,7 @@ async function renderToBuffer(pool: Pool, data: Record<string, unknown>, width: 
   return renderHtmlToImage(html, { width, height, deviceScaleFactor: 2, format: 'png', waitForMs: 400, blockExternalRequests: true });
 }
 
-// Kort cache (KPI endres gjennom dagen). Keyet på org+view+dims.
+// Kort cache (KPI endres gjennom dagen). Keyet på org+prosjekt+view+dims.
 const cache = new Map<string, { buf: Buffer; at: number }>();
 const CACHE_TTL_MS = 60_000;
 
@@ -110,20 +117,32 @@ function shapeMomentum(m: Awaited<ReturnType<typeof computeTodayMomentum>>, view
 
 export function registerInfographicLeadgridRoutes(deps: { app: Express; pool: Pool; activeSessions: Sessions }): void {
   const { app, pool, activeSessions } = deps;
-  const permView = requireLeadMapPermission('momentum.view', { pool, activeSessions, resolveOrgId: resolveOrgIdSmart });
+  const permView = requireLeadMapPermission('momentum.view', {
+    pool,
+    activeSessions,
+    resolveOrgId: resolveMomentumProjectOrgId,
+  });
 
   // GET /api/infographics/leadgrid/momentum.png — kallerens egen org (RBAC-gated).
   app.get('/api/infographics/leadgrid/momentum.png', permView, async (req: Request, res: Response) => {
     const session = getSession(req, activeSessions);
     if (!session) { res.status(401).json({ error: 'Innlogging kreves' }); return; }
-    const orgId = await resolveOrgIdSmart(req, pool, session.userId);
-    if (!orgId) { res.status(400).json({ error: 'mangler_organization_id' }); return; }
+    let projectId: string | null;
+    try {
+      projectId = requestedLeadMapProjectId(req);
+    } catch {
+      res.status(400).json({ error: 'invalid_project_id' });
+      return;
+    }
+    if (!projectId) { res.status(400).json({ error: 'project_id_required' }); return; }
+    const project = await loadAccessibleLeadgridProject(pool, projectId, session.userId);
+    if (!project) { res.status(404).json({ error: 'project_not_found' }); return; }
 
     const view = typeof req.query.view === 'string' && VIEWS.has(req.query.view) ? req.query.view : 'score';
     const accent = typeof req.query.accent === 'string' ? req.query.accent : (await getTokens(pool, LEADGRID_WS)).accent;
     const width = clampDim(req.query.w, 1200);
     const height = clampDim(req.query.h, 630);
-    const key = `${orgId}|${view}|${accent}|${width}x${height}`;
+    const key = `${project.organizationId}|${project.id}|${view}|${accent}|${width}x${height}`;
     const now = Date.now();
     const hit = cache.get(key);
     if (hit && now - hit.at < CACHE_TTL_MS) {
@@ -131,7 +150,11 @@ export function registerInfographicLeadgridRoutes(deps: { app: Express; pool: Po
       return;
     }
     try {
-      const momentum = await computeTodayMomentum(pool, orgId);
+      const momentum = await computeTodayMomentum(
+        pool,
+        project.organizationId,
+        project.id,
+      );
       const data = shapeMomentum(momentum, view, accent);
       const id = await pickTemplateId(pool, data, LEADGRID_WS); // donut for score, stat-bar for aktivitet
       const templateHtml = await getTemplateHtml(pool, id);

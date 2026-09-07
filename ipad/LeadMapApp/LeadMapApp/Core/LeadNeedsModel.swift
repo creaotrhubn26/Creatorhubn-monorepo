@@ -106,6 +106,8 @@ struct LeadScoutLastRun: Codable, Sendable {
 }
 
 struct LeadNeedsOverviewResponse: Codable, Sendable {
+    let organizationId: String
+    let projectId: String
     let needs: [LeadNeedRow]
     let signals: [LeadSignalRow]
     let scores: [LeadScoreRow]
@@ -113,6 +115,8 @@ struct LeadNeedsOverviewResponse: Codable, Sendable {
     let lastRun: LeadScoutLastRun?
 
     enum CodingKeys: String, CodingKey {
+        case organizationId = "organization_id"
+        case projectId = "project_id"
         case needs, signals, scores
         case compositeScore = "composite_score"
         case lastRun = "last_run"
@@ -121,6 +125,8 @@ struct LeadNeedsOverviewResponse: Codable, Sendable {
 
 struct LeadScoutResult: Codable, Sendable {
     let scoutRunId: String
+    let organizationId: String
+    let projectId: String
     let needsCount: Int
     let signalsCount: Int
     let scoresCount: Int
@@ -128,6 +134,8 @@ struct LeadScoutResult: Codable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case scoutRunId = "scout_run_id"
+        case organizationId = "organization_id"
+        case projectId = "project_id"
         case needsCount = "needs_count"
         case signalsCount = "signals_count"
         case scoresCount = "scores_count"

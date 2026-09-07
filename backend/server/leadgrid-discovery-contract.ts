@@ -6,6 +6,73 @@ export const DISCOVERY_MAX_RADIUS_KM = 50;
 
 const nonEmpty = (maximum: number) => z.string().trim().min(1).max(maximum);
 
+const municipalityNumberSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{4}$/, "Kommunenummer må bestå av fire siffer.");
+
+const organizationFormCodeSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(
+    /^[A-Z0-9]{2,8}$/,
+    "Organisasjonsform må være en gyldig kode fra Brønnøysundregistrene.",
+  );
+
+const minimumEmployeeCountSchema = z
+  .number()
+  .int()
+  .min(0)
+  .max(1_000_000)
+  .refine(
+    (value) => value === 0 || value === 1 || value >= 5,
+    "Minste antall ansatte må være 0, 1 eller minst 5 i Brønnøysundregistrenes API.",
+  );
+
+const maximumEmployeeCountSchema = z
+  .number()
+  .int()
+  .min(0)
+  .max(1_000_000)
+  .refine(
+    (value) => value === 0 || value === 4 || value >= 5,
+    "Største antall ansatte må være 0, 4 eller minst 5 i Brønnøysundregistrenes API.",
+  );
+
+export const discoveryEmployeeCountSchema = z
+  .object({
+    minimum: minimumEmployeeCountSchema.nullable().default(null),
+    maximum: maximumEmployeeCountSchema.nullable().default(null),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (
+      value.minimum !== null &&
+      value.maximum !== null &&
+      value.minimum > value.maximum
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["maximum"],
+        message: "Største antall ansatte må være lik eller høyere enn minste.",
+      });
+    }
+  });
+
+export const discoveryCommercialSignalsSchema = z
+  .object({
+    registered_in_vat_register: z.boolean().nullable().default(null),
+    registered_in_business_register: z.boolean().nullable().default(null),
+  })
+  .strict();
+
+export const discoveryWebsiteQualitySchema = z
+  .object({
+    minimum_score: z.number().int().min(0).max(100).nullable().default(null),
+  })
+  .strict();
+
 export const discoveryGeoSchema = z
   .object({
     latitude: z.number().finite().min(-90).max(90),
@@ -20,6 +87,23 @@ export const discoveryBriefSchema = z
     exclusion_terms: z.array(nonEmpty(80)).max(30).default([]),
     city: nonEmpty(120).nullable().optional(),
     geo: discoveryGeoSchema.nullable().optional(),
+    territory_code: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+      .max(48)
+      .nullable()
+      .optional(),
+    municipality_numbers: z
+      .array(municipalityNumberSchema)
+      .max(30)
+      .default([])
+      .transform((values) => [...new Set(values)]),
+    municipality_names: z
+      .array(nonEmpty(120))
+      .max(30)
+      .default([])
+      .transform((values) => [...new Set(values)]),
     target_count: z
       .number()
       .int()
@@ -35,23 +119,107 @@ export const discoveryBriefSchema = z
     minimum_fit_score: z.number().int().min(0).max(100).default(50),
     ideal_customer: nonEmpty(1_500).nullable().optional(),
     goal: nonEmpty(500).nullable().optional(),
+    organization_forms: z
+      .array(organizationFormCodeSchema)
+      .max(20)
+      .default([])
+      .transform((values) => [...new Set(values)].sort()),
+    employee_count: discoveryEmployeeCountSchema.nullable().default(null),
+    organization_structure: z
+      .enum(["any", "independent", "chain"])
+      .default("any"),
+    website_requirement: z.enum(["any", "present", "missing"]).default("any"),
+    website_quality: discoveryWebsiteQualitySchema.default({
+      minimum_score: null,
+    }),
+    commercial_signals: discoveryCommercialSignalsSchema.default({
+      registered_in_vat_register: null,
+      registered_in_business_register: null,
+    }),
   })
   .strict()
   .superRefine((brief, ctx) => {
-    if (!brief.geo && !brief.city) {
+    const hasMunicipalities =
+      brief.municipality_numbers.length > 0 ||
+      brief.municipality_names.length > 0;
+    if (
+      brief.municipality_numbers.length + brief.municipality_names.length >
+      30
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["municipality_numbers"],
+        message: "En profil kan avgrenses til maksimalt 30 kommuner.",
+      });
+    }
+    if (!brief.geo && !brief.city && !hasMunicipalities) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["geo"],
-        message: "Velg et kartområde eller en by.",
+        message: "Velg et kartområde, en by eller minst én kommune.",
+      });
+    }
+    const areaSelectors = [
+      Boolean(brief.geo),
+      Boolean(brief.city),
+      hasMunicipalities,
+    ].filter(Boolean).length;
+    if (areaSelectors > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [hasMunicipalities ? "municipality_numbers" : "geo"],
+        message:
+          "Kommunevalg, by og kartområde er alternative geografiske avgrensninger.",
       });
     }
     if (brief.enrichment_count > brief.target_count) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["enrichment_count"],
-        message: "Antall som berikes kan ikke være høyere enn måltallet.",
+        message:
+          "Taket for registrerte nettsider som kan vurderes, kan ikke være høyere enn antall kandidater.",
       });
     }
+    if (
+      brief.website_requirement === "missing" &&
+      brief.website_quality.minimum_score !== null
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["website_quality", "minimum_score"],
+        message:
+          "Nettsidekvalitet kan ikke kreves når profilen bare skal finne virksomheter uten registrert nettside.",
+      });
+    }
+  })
+  .transform((brief) => {
+    const numbers = brief.municipality_numbers;
+    const names = brief.municipality_names;
+    // When the wire payload carries complete indexed pairs, canonicalize the
+    // pair as one unit. Sorting the two arrays independently can silently turn
+    // `Bærum | 3201` into the false pair `Asker | 3201` in editors.
+    if (
+      numbers.length > 0 &&
+      numbers.length === names.length &&
+      new Set(numbers).size === numbers.length &&
+      new Set(names).size === names.length
+    ) {
+      const pairs = numbers
+        .map((number, index) => ({ number, name: names[index] ?? "" }))
+        .sort((left, right) => left.number.localeCompare(right.number));
+      return {
+        ...brief,
+        municipality_numbers: pairs.map((pair) => pair.number),
+        municipality_names: pairs.map((pair) => pair.name),
+      };
+    }
+    return {
+      ...brief,
+      municipality_numbers: [...new Set(numbers)].sort(),
+      municipality_names: [...new Set(names)].sort((left, right) =>
+        left.localeCompare(right, "nb-NO"),
+      ),
+    };
   });
 
 export type DiscoveryBrief = z.infer<typeof discoveryBriefSchema>;
@@ -72,11 +240,39 @@ export const discoveryRunCreateSchema = z
       .nullable()
       .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.profile_id && value.expected_profile_version == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["expected_profile_version"],
+        message:
+          "Profilversjon er påkrevd når en Discovery-kjøring knyttes til en profil.",
+      });
+    }
+    if (!value.profile_id && value.expected_profile_version != null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["profile_id"],
+        message: "Profil-ID er påkrevd når profilversjon oppgis.",
+      });
+    }
+  });
 
 export const discoveryDecisionSchema = z
   .object({
     decision: z.enum(["approve", "reject"]),
+    confirmed_google_place_id: z
+      .string()
+      .trim()
+      .min(1)
+      .max(255)
+      .regex(
+        /^[^\s\x00-\x1F\x7F]+$/,
+        "Google Place ID kan ikke inneholde mellomrom eller kontrolltegn.",
+      )
+      .nullable()
+      .optional(),
     reason_code: z
       .enum([
         "good_fit",
@@ -100,6 +296,17 @@ export const discoveryDecisionSchema = z
         code: z.ZodIssueCode.custom,
         path: ["reason_code"],
         message: "Velg hvorfor kandidaten avvises.",
+      });
+    }
+    if (
+      value.decision !== "approve" &&
+      value.confirmed_google_place_id != null
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["confirmed_google_place_id"],
+        message:
+          "Google Place ID kan bare bekreftes når kandidaten godkjennes.",
       });
     }
   });
@@ -136,7 +343,29 @@ export interface DiscoverySearchPlan {
   estimated_search_pages: number;
   maximum_external_requests: 200;
   maximum_geocodes: 120;
-  area: NonNullable<DiscoveryBrief["geo"]> | { city: string };
+  area:
+    | NonNullable<DiscoveryBrief["geo"]>
+    | { city: string }
+    | {
+        municipality_numbers: string[];
+        municipality_names: string[];
+      };
+  territory_code: DiscoveryBrief["territory_code"];
+  hard_company_filters: {
+    organization_forms: string[];
+    employee_count: DiscoveryBrief["employee_count"];
+    website_requirement: DiscoveryBrief["website_requirement"];
+    commercial_signals: DiscoveryBrief["commercial_signals"];
+  };
+  evidence_scored_filters: {
+    organization_structure: DiscoveryBrief["organization_structure"];
+    website_quality: {
+      minimum_score: number | null;
+      assessment: "safe_registered_url_crawl" | "not_requested";
+      unknown_values_are_retained: true;
+    };
+    unknown_values_are_retained: true;
+  };
   warnings: Array<{ code: string; message: string }>;
 }
 
@@ -167,7 +396,10 @@ export function buildDiscoverySearchPlan(
 ): DiscoverySearchPlan {
   const queries = brief.industry_queries.map((industry) => ({
     text_query: industry,
-    hard_geo_filter: Boolean(brief.geo),
+    hard_geo_filter:
+      Boolean(brief.geo) ||
+      brief.municipality_numbers.length > 0 ||
+      brief.municipality_names.length > 0,
   }));
   const warnings: DiscoverySearchPlan["warnings"] = [];
   if (brief.industry_queries.length > 1) {
@@ -177,6 +409,33 @@ export function buildDiscoverySearchPlan(
         "Søkemålet fordeles mellom flere kundetyper og kan bruke flere registerkall.",
     });
   }
+  if (brief.organization_structure !== "any") {
+    warnings.push({
+      code: "organization_structure_evidence_limited",
+      message:
+        "Brreg-konserntilknytning vurderes bare fra Brregs eksplisitte konsernstruktur. Dette dokumenterer ikke kommersiell kjede- eller franchisetilknytning, og uavklarte virksomheter beholdes for manuell vurdering.",
+    });
+  }
+  if (brief.website_requirement !== "any") {
+    warnings.push({
+      code: "website_presence_registry_filter",
+      message:
+        "Nettsidekravet vurderer bare om Brønnøysundregistrene har en registrert nettadresse.",
+    });
+  }
+  if (brief.website_quality.minimum_score !== null) {
+    warnings.push({
+      code: "website_quality_bounded_assessment",
+      message: `Leadgrid kan vurdere maksimalt ${brief.enrichment_count} Brreg-registrerte nettsider per kjøring. Taket brukes bare når nettsidekvalitet er aktivert. Utilgjengelige eller utrygge nettsteder beholdes som ukjent for manuell vurdering.`,
+    });
+  }
+  const area =
+    brief.municipality_numbers.length > 0 || brief.municipality_names.length > 0
+      ? {
+          municipality_numbers: brief.municipality_numbers,
+          municipality_names: brief.municipality_names,
+        }
+      : (brief.geo ?? { city: brief.city as string });
   return {
     version: 2,
     queries,
@@ -187,7 +446,26 @@ export function buildDiscoverySearchPlan(
     estimated_search_pages: 3 * brief.industry_queries.length,
     maximum_external_requests: 200,
     maximum_geocodes: 120,
-    area: brief.geo ?? { city: brief.city as string },
+    area,
+    territory_code: brief.territory_code ?? null,
+    hard_company_filters: {
+      organization_forms: brief.organization_forms,
+      employee_count: brief.employee_count,
+      website_requirement: brief.website_requirement,
+      commercial_signals: brief.commercial_signals,
+    },
+    evidence_scored_filters: {
+      organization_structure: brief.organization_structure,
+      website_quality: {
+        minimum_score: brief.website_quality.minimum_score,
+        assessment:
+          brief.website_quality.minimum_score === null
+            ? "not_requested"
+            : "safe_registered_url_crawl",
+        unknown_values_are_retained: true,
+      },
+      unknown_values_are_retained: true,
+    },
     warnings,
   };
 }

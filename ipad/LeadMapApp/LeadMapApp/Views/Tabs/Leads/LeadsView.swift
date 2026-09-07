@@ -56,6 +56,7 @@ struct LeadRow: Identifiable, Hashable {
     // Nil i mock-radene — FollowUpDetailSheet/sidebaren faller da tilbake
     // til demo-tekstene sine.
     var backendId: String? = nil
+    var projectId: String? = nil
     var email: String? = nil
     var phone: String? = nil
     var notes: String? = nil
@@ -175,6 +176,7 @@ extension LeadRow {
             valueNok: Int(lead.estimatedValue ?? 0),
             companyColor: Self.stableColor(for: lead.name),
             backendId: lead.id,
+            projectId: lead.projectId,
             email: lead.email,
             phone: lead.phone,
             notes: lead.notes,
@@ -312,6 +314,33 @@ enum LeadsData {
 
 // MARK: - Main view
 
+enum LeadsWorkspaceScope: String, CaseIterable, Identifiable {
+    case all
+    case assignedToMe
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .all: return "Alle leads"
+        case .assignedToMe: return "Tildelt meg"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .all: return "person.3.fill"
+        case .assignedToMe: return "tray.full.fill"
+        }
+    }
+
+    static func defaultScope(for role: String?) -> LeadsWorkspaceScope {
+        ["salgskonsulent", "promotor"].contains(role ?? "")
+            ? .assignedToMe
+            : .all
+    }
+}
+
 struct LeadsView: View {
     @State private var search: String = ""
     @State private var selectedLeadID: UUID?
@@ -349,6 +378,8 @@ struct LeadsView: View {
     @State private var importOpen: Bool = false
     @State private var exportOpen: Bool = false
     @State private var cardScannerOpen: Bool = false
+    @State private var workspaceScope: LeadsWorkspaceScope = .all
+    @State private var didApplyRoleDefault = false
 
     // Mac Catalyst: Cmd+K/Cmd+F fokuserer søkefelt via `.leadgridFocusSearch`
     // NotificationCenter-broadcast.
@@ -398,6 +429,13 @@ struct LeadsView: View {
             if selectedLeadID == nil {
                 selectedLeadID = sourceLeads.first?.id
             }
+            applyRoleDefaultIfReady(appState.roleInOrg)
+        }
+        .onChange(of: appState.roleInOrg) { _, role in
+            applyRoleDefaultIfReady(role)
+        }
+        .onChange(of: workspaceScope) { _, _ in
+            currentPage = 1
         }
         .sheet(isPresented: $logActivityOpen) {
             LogActivitySheet(lead: selectedLead)
@@ -412,7 +450,13 @@ struct LeadsView: View {
                 guard let api = appState.api else {
                     throw AddLeadSaveError(message: "Du må være innlogget for å lagre leaden")
                 }
-                _ = try await api.createLeadAtPin(newLead.makeCreateRequest(), organizationId: appState.activeOrganizationId)
+                guard let projectId = appState.activeLeadgridProjectId else {
+                    throw AddLeadSaveError(message: "Velg et kundeprosjekt før du lagrer leaden")
+                }
+                _ = try await api.createLeadAtPin(
+                    newLead.makeCreateRequest(projectID: projectId),
+                    organizationId: appState.activeOrganizationId
+                )
                 addLeadToast = "«\(newLead.companyName)» lagt til"
             }
         }
@@ -472,34 +516,48 @@ struct LeadsView: View {
         }
     }
 
+    private func applyRoleDefaultIfReady(_ role: String?) {
+        guard !didApplyRoleDefault, role != nil else { return }
+        workspaceScope = LeadsWorkspaceScope.defaultScope(for: role)
+        didApplyRoleDefault = true
+    }
+
     private var content: some View {
         HStack(alignment: .top, spacing: 0) {
             // Hovedinnhold venstre
             VStack(spacing: 0) {
                 header
                     .padding(.horizontal, 20).padding(.top, 14)
-                kpiRow
-                    .padding(.horizontal, 20).padding(.top, 14)
-                searchAndFilters
-                    .padding(.horizontal, 20).padding(.top, 14)
+                workspaceScopePicker
+                    .padding(.horizontal, 20)
+                    .padding(.top, 6)
 
-                ScrollView {
-                    leadsTable
-                        .padding(.horizontal, 20).padding(.top, 12)
-                    if totalLeadsCount > 0 {
-                        pagination
+                if workspaceScope == .assignedToMe {
+                    assignedLeadsContent
+                } else {
+                    kpiRow
+                        .padding(.horizontal, 20).padding(.top, 14)
+                    searchAndFilters
+                        .padding(.horizontal, 20).padding(.top, 14)
+
+                    ScrollView {
+                        leadsTable
                             .padding(.horizontal, 20).padding(.top, 12)
-                            .padding(.bottom, 16)
-                    } else {
-                        Color.clear.frame(height: 16)
-                    }
-                    // iPhone-QA: nederste innhold («+ Nytt lead»-pillen i
-                    // tom-tilstand / pagineringen) lå halvt gjemt bak
-                    // tab-baren — ekstra bunn-luft så alt kan scrolles helt
-                    // fram (samme mønster som Salgsledelse i OversiktView).
-                    // iPad har sidebar-layout uten dette problemet — urørt.
-                    if DeviceIdiom.isPhone {
-                        Color.clear.frame(height: 72)
+                        if totalLeadsCount > 0 {
+                            pagination
+                                .padding(.horizontal, 20).padding(.top, 12)
+                                .padding(.bottom, 16)
+                        } else {
+                            Color.clear.frame(height: 16)
+                        }
+                        // iPhone-QA: nederste innhold («+ Nytt lead»-pillen i
+                        // tom-tilstand / pagineringen) lå halvt gjemt bak
+                        // tab-baren — ekstra bunn-luft så alt kan scrolles helt
+                        // fram (samme mønster som Salgsledelse i OversiktView).
+                        // iPad har sidebar-layout uten dette problemet — urørt.
+                        if DeviceIdiom.isPhone {
+                            Color.clear.frame(height: 72)
+                        }
                     }
                 }
             }
@@ -508,7 +566,7 @@ struct LeadsView: View {
             // Detail sidebar høyre — tom-tilstand når ingen leads finnes.
             // iPhone (compact): 340pt side-stilt kolonne får ikke plass —
             // detaljene vises i stedet som sheet når en rad velges.
-            if !DeviceIdiom.isPhone {
+            if !DeviceIdiom.isPhone, workspaceScope == .all {
                 if sourceLeads.isEmpty {
                     LeadDetailEmptyState(onAddLead: { addLeadOpen = true })
                         .frame(width: 340)
@@ -520,6 +578,41 @@ struct LeadsView: View {
                         .frame(width: 340)
                 }
             }
+        }
+    }
+
+    private var workspaceScopePicker: some View {
+        HStack {
+            Picker("Leadvisning", selection: $workspaceScope) {
+                ForEach(LeadsWorkspaceScope.allCases) { scope in
+                    Label(scope.label, systemImage: scope.systemImage)
+                        .tag(scope)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 360)
+            .accessibilityIdentifier("leads-workspace-scope")
+            Spacer(minLength: 0)
+        }
+    }
+
+    @ViewBuilder
+    private var assignedLeadsContent: some View {
+        if let api = appState.api,
+           let organizationId = appState.activeOrganizationId {
+            LeadgridLeadInboxView(
+                api: api,
+                organizationId: organizationId,
+                embedded: true
+            )
+            .id(organizationId)
+        } else {
+            ContentUnavailableView(
+                "Velg et workspace",
+                systemImage: "building.2.crop.circle",
+                description: Text("Tildelte leads vises når innlogging og workspace er klare.")
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -1202,6 +1295,7 @@ struct LeadTableRow: View {
     /// Bump for å re-evaluere favoritt-label etter toggle (UserDefaults
     /// er ikke observerbar).
     @State private var favoriteTick = 0
+    @State private var contactHandoffRequest: LeadgridExternalContactRequest?
 
     var body: some View {
         // iPhone (compact width): kolonnene får ikke plass side-ved-side —
@@ -1467,6 +1561,7 @@ struct LeadTableRow: View {
             )
         }
         .buttonStyle(.plain)
+        .leadgridContactHandoff(request: $contactHandoffRequest)
     }
 
     // MARK: Radmeny-handlinger (2026-07-17: wiret — var døde knapper)
@@ -1528,12 +1623,16 @@ struct LeadTableRow: View {
 
     private var isFavorite: Bool { lead.isFavorite }
     private func toggleFavorite() {
-        guard let leadId = lead.backendId, let api = appState.api else { return }
+        guard let leadId = lead.backendId,
+              let api = appState.api,
+              let projectId = appState.activeProjectId,
+              !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let desired = !lead.isFavorite
         Task {
             do {
                 _ = try await api.setLeadFavorite(
                     leadId: leadId, favorite: desired,
+                    projectId: projectId,
                     organizationId: appState.activeOrganizationId
                 )
                 favoriteTick += 1
@@ -1546,14 +1645,17 @@ struct LeadTableRow: View {
 
     private func call(_ number: String) {
         let cleaned = number.filter { $0.isNumber || $0 == "+" }
-        if let url = URL(string: "tel://\(cleaned)") {
-            UIApplication.shared.open(url)
-        }
+        guard !cleaned.isEmpty, let url = URL(string: "tel://\(cleaned)") else { return }
+        contactHandoffRequest = .init(
+            url: url, channel: .phone, leadId: lead.backendId,
+            leadProjectId: lead.projectId)
     }
+
     private func email(_ address: String) {
-        if let url = URL(string: "mailto:\(address)") {
-            UIApplication.shared.open(url)
-        }
+        guard let url = URL(string: "mailto:\(address)") else { return }
+        contactHandoffRequest = .init(
+            url: url, channel: .email, leadId: lead.backendId,
+            leadProjectId: lead.projectId)
     }
 
     private func scoreColor(_ score: Int) -> Color {
@@ -1693,6 +1795,7 @@ struct LeadDetailSidebar: View {
     @State private var leadFiles: [LeadFileItem] = []
     // Re-evaluer favoritt-label/stjerne etter toggle.
     @State private var favoriteTick = 0
+    @State private var contactHandoffRequest: LeadgridExternalContactRequest?
 
     var body: some View {
         ScrollView {
@@ -1803,8 +1906,16 @@ struct LeadDetailSidebar: View {
                         userInfo: [NSLocalizedDescriptionKey: "Du må være innlogget og leaden må være lagret"]
                     )
                 }
+                guard let projectId = appState.activeProjectId,
+                      !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw NSError(
+                        domain: "Leadgrid", code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "Velg et kundeprosjekt før du lagrer notatet"]
+                    )
+                }
                 _ = try await api.createLeadNote(
                     leadId: leadId, body: text, pinned: pinned,
+                    projectId: projectId,
                     organizationId: appState.activeOrganizationId
                 )
                 await loadNotes()
@@ -1852,6 +1963,7 @@ struct LeadDetailSidebar: View {
                 }
             }
         }
+        .leadgridContactHandoff(request: $contactHandoffRequest)
     }
 
     // MARK: Header
@@ -2105,12 +2217,19 @@ struct LeadDetailSidebar: View {
 
     private var isFavorite: Bool { lead.isFavorite }
     private func toggleFavorite() {
-        guard let leadId = lead.backendId, let api = appState.api else { return }
+        guard let leadId = lead.backendId,
+              let api = appState.api,
+              let projectId = appState.activeProjectId,
+              !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            actionToast = "Velg et kundeprosjekt først"
+            return
+        }
         let desired = !lead.isFavorite
         Task {
             do {
                 _ = try await api.setLeadFavorite(
                     leadId: leadId, favorite: desired,
+                    projectId: projectId,
                     organizationId: appState.activeOrganizationId
                 )
                 favoriteTick += 1
@@ -2470,10 +2589,15 @@ struct LeadDetailSidebar: View {
 
     private func loadNotes() async {
         guard !DemoModeManager.isActiveNonisolated,
-              let api = appState.api, let leadId = lead.backendId else { return }
+              let api = appState.api,
+              let leadId = lead.backendId,
+              let projectId = appState.activeProjectId,
+              !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         do {
             let notes = try await api.fetchLeadNotes(
-                leadId: leadId, organizationId: appState.activeOrganizationId
+                leadId: leadId,
+                projectId: projectId,
+                organizationId: appState.activeOrganizationId
             )
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "nb_NO")
@@ -2754,14 +2878,17 @@ struct LeadDetailSidebar: View {
 
     private func call(_ number: String) {
         let cleaned = number.filter { $0.isNumber || $0 == "+" }
-        if let url = URL(string: "tel://\(cleaned)") {
-            UIApplication.shared.open(url)
-        }
+        guard !cleaned.isEmpty, let url = URL(string: "tel://\(cleaned)") else { return }
+        contactHandoffRequest = .init(
+            url: url, channel: .phone, leadId: lead.backendId,
+            leadProjectId: lead.projectId)
     }
+
     private func email(_ address: String) {
-        if let url = URL(string: "mailto:\(address)") {
-            UIApplication.shared.open(url)
-        }
+        guard let url = URL(string: "mailto:\(address)") else { return }
+        contactHandoffRequest = .init(
+            url: url, channel: .email, leadId: lead.backendId,
+            leadProjectId: lead.projectId)
     }
 
     private func sectionTitle(_ s: String) -> some View {

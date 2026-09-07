@@ -2,8 +2,8 @@
 //
 // Team-leaderboard — speilet fra web PR #620.
 //
-//   GET /organizations/:id/leaderboard?period=&team_id=&sort=
-//   GET /organizations/:id/leaderboard-summary?period=
+//   GET /organizations/:id/leaderboard?projectId=&period=&team_id=&sort=
+//   GET /organizations/:id/leaderboard-summary?projectId=&period=&team_id=
 
 import Foundation
 
@@ -71,6 +71,7 @@ struct LeaderboardEntry: Identifiable, Decodable {
 }
 
 struct LeaderboardResponse: Decodable {
+    let projectId: String
     let leaderboard: [LeaderboardEntry]
     let period: String
     let teamFilter: String?
@@ -78,7 +79,9 @@ struct LeaderboardResponse: Decodable {
 }
 
 struct LeaderboardSummary: Decodable {
+    let projectId: String
     let period: String
+    let teamFilter: String?
     let totalTargetNok: Double
     let totalAchievedNok: Double
     let progressPct: Int?

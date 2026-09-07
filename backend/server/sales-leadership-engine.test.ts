@@ -94,6 +94,8 @@ describe("refreshContestParticipants", () => {
     expect(scoreSql).toContain("c.organization_id = $1::uuid");
     expect(scoreSql).toContain("c.pipeline_stage = 'won' OR c.status = 'won' OR c.lead_status = 'won'");
     expect(scoreSql).toContain("leadgrid_dorsalg_sales");
+    expect(scoreSql).toContain("sale.org_id = $2");
+    expect(scoreSql).toContain("sale.project_id IS NOT NULL");
     expect(query.mock.calls[2][1]).toEqual([
       "00000000-0000-0000-0000-000000000002",
       "seller-1",

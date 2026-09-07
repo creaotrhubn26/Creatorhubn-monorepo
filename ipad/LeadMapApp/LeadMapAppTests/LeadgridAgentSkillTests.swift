@@ -137,6 +137,7 @@ final class LeadgridAgentSkillTests: XCTestCase {
         let actionID = UUID(uuidString: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")!
         let visit = try OfflineResilientActions.makeAgentVisitAction(
             organizationId: "org-a",
+            projectId: "project-a",
             leadId: leadID,
             payload: .init(
                 visitType: "phone",
@@ -151,8 +152,9 @@ final class LeadgridAgentSkillTests: XCTestCase {
         )
         XCTAssertEqual(visit.id, actionID)
         XCTAssertEqual(visit.organizationId, "org-a")
+        XCTAssertEqual(visit.projectId, "project-a")
         XCTAssertEqual(visit.httpMethod, "POST")
-        XCTAssertEqual(visit.endpoint, "/api/admin-room/lead-map/leads/lead-1/visits")
+        XCTAssertEqual(visit.endpoint, "/api/admin-room/lead-map/leads/lead-1/visits?projectId=project-a")
         let visitBody = try XCTUnwrap(
             JSONSerialization.jsonObject(with: try XCTUnwrap(visit.bodyJson)) as? [String: Any]
         )
@@ -162,6 +164,7 @@ final class LeadgridAgentSkillTests: XCTestCase {
 
         let followUp = try OfflineResilientActions.makeAgentFollowUpAction(
             organizationId: "org-a",
+            projectId: "project-a",
             leadId: leadID,
             payload: .init(
                 nextFollowUpAt: "2030-01-01T12:00:00Z",
@@ -170,8 +173,9 @@ final class LeadgridAgentSkillTests: XCTestCase {
             actionId: actionID
         )
         XCTAssertEqual(followUp.id, actionID)
+        XCTAssertEqual(followUp.projectId, "project-a")
         XCTAssertEqual(followUp.httpMethod, "PATCH")
-        XCTAssertEqual(followUp.endpoint, "/api/admin-room/lead-map/leads/lead-1/follow-up")
+        XCTAssertEqual(followUp.endpoint, "/api/admin-room/lead-map/leads/lead-1/follow-up?projectId=project-a")
         let followUpBody = try XCTUnwrap(
             JSONSerialization.jsonObject(with: try XCTUnwrap(followUp.bodyJson)) as? [String: Any]
         )

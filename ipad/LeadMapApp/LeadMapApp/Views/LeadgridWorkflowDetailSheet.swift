@@ -128,7 +128,10 @@ struct LeadgridWorkflowDetailSheet: View {
     private func loadExecutions() async {
         loadingExec = true
         do {
-            executions = try await api.fetchWorkflowExecutions(workflow.id)
+            executions = try await api.fetchWorkflowExecutions(
+                workflow.id,
+                projectId: workflow.projectId
+            )
         } catch {
             feedback = "Kunne ikke laste historikk: \(error.localizedDescription)"
         }
@@ -139,7 +142,11 @@ struct LeadgridWorkflowDetailSheet: View {
         actionPending = true
         defer { actionPending = false }
         do {
-            try await api.setWorkflowActive(workflow.id, active: value)
+            try await api.setWorkflowActive(
+                workflow.id,
+                active: value,
+                projectId: workflow.projectId
+            )
             await onUpdate()
         } catch {
             feedback = "Klarte ikke å endre status: \(error.localizedDescription)"
@@ -151,7 +158,10 @@ struct LeadgridWorkflowDetailSheet: View {
         actionPending = true
         defer { actionPending = false }
         do {
-            let result = try await api.testWorkflow(workflow.id)
+            let result = try await api.testWorkflow(
+                workflow.id,
+                projectId: workflow.projectId
+            )
             feedback =
                 "Test ferdig (\(result.status)) — \(result.actionsExecuted.count) actions."
             await loadExecutions()
@@ -164,7 +174,11 @@ struct LeadgridWorkflowDetailSheet: View {
         actionPending = true
         defer { actionPending = false }
         do {
-            try await api.executeWorkflow(workflow.id, leadId: nil)
+            try await api.executeWorkflow(
+                workflow.id,
+                projectId: workflow.projectId,
+                leadId: nil
+            )
             feedback = "Workflow startet — sjekk historikk om noen sekunder."
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             await loadExecutions()

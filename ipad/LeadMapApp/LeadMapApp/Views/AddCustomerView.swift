@@ -2,7 +2,7 @@
 //
 // Selv-onboarding-flate: bruker oppgir bare website + kontakt-e-post,
 // så gjør Leadgrid resten — BRREG-oppslag, logo-fetch, crawl + Claude
-// needs/signals/scoring, lager prosjekt + crm_customer, sender e-post
+// needs/signals/scoring, lager lead i valgt kundeprosjekt og sender e-post
 // til kunden med klient-portal-lenke.
 //
 // UX-prinsipp: så enkelt som mulig. To felter, ett trykk, og live
@@ -19,6 +19,8 @@ struct AddCustomerView: View {
     @State private var contactName = ""
     @State private var contactPhone = ""
     @State private var presetId: String? = nil
+    @State private var idempotencyKey = UUID().uuidString.lowercased()
+    @State private var onboardingProjectId: String?
 
     @State private var isStarting = false
     @State private var auditId: String?
@@ -72,6 +74,8 @@ struct AddCustomerView: View {
                         .font(.title3)
                         .foregroundStyle(.white.opacity(0.7))
                 }
+
+                ProjectContextPill()
 
                 VStack(alignment: .leading, spacing: 18) {
                     fieldGroup(
@@ -189,7 +193,7 @@ struct AddCustomerView: View {
     private var canStart: Bool {
         let urlOk = websiteUrl.trimmingCharacters(in: .whitespaces).count > 4
         let emailOk = contactEmail.contains("@") && contactEmail.contains(".")
-        return urlOk && emailOk
+        return urlOk && emailOk && appState.activeProjectId != nil
     }
 
     private var errorBinding: Binding<Bool> {
@@ -246,9 +250,15 @@ struct AddCustomerView: View {
         case "running", "pending":
             return "Vi tråler, scorer og sender en e-post — kommer tilbake om 10–30 sekunder."
         case "completed":
-            return "Klient-portalen er sendt til \(a.contactEmail ?? "kontakten").)"
+            if a.invitationStatus == "sent" {
+                return "Klient-portalen er sendt til \(a.contactEmail ?? "kontakten")."
+            }
+            if a.invitationStatus == "failed" {
+                return "Kunden er opprettet, men invitasjonen kunne ikke sendes."
+            }
+            return "Kunden er opprettet i valgt kundeprosjekt."
         case "duplicate":
-            return "\(a.websiteUrl ?? "") er allerede et prosjekt hos dere."
+            return "\(a.websiteUrl ?? "") finnes allerede som lead i dette kundeprosjektet."
         case "failed":
             return a.errorMessage ?? "Ukjent feil"
         default: return nil
@@ -282,12 +292,14 @@ struct AddCustomerView: View {
         let hasBrreg = audit?.brregName != nil
         let hasCustomer = audit?.customerId != nil
         let hasScout = audit?.compositeScore != nil
-        let hasToken = audit?.clientToken != nil
+        let hasPortal = audit?.portalReady == true
+        let hasInvitation = audit?.invitationStatus == "sent"
         return [
             ("Slår opp BRREG", hasBrreg, !hasBrreg),
             ("Henter logo", hasCustomer, hasBrreg && !hasCustomer),
             ("Tråler website + behovs-analyse", hasScout, hasCustomer && !hasScout),
-            ("Sender klient-portal-lenke", hasToken, hasScout && !hasToken),
+            ("Klargjør klient-portalen", hasPortal, hasScout && !hasPortal),
+            ("Sender klient-portal-lenke", hasInvitation, hasPortal && !hasInvitation),
         ]
     }
 
@@ -324,18 +336,48 @@ struct AddCustomerView: View {
                 statTile(value: "\(a.signalsCount ?? 0)", label: "Signaler", color: .blue)
             }
 
+            let invitationSent = a.invitationStatus == "sent"
             VStack(alignment: .leading, spacing: 6) {
-                Image(systemName: "envelope.badge.fill")
-                    .foregroundStyle(.green)
-                Text("E-post sendt til \(a.contactEmail ?? "")")
+                Image(
+                    systemName: invitationSent
+                        ? "envelope.badge.fill"
+                        : "exclamationmark.triangle.fill"
+                )
+                    .foregroundStyle(invitationSent ? Color.green : Color.orange)
+                Text(
+                    invitationSent
+                        ? "E-post sendt til \(a.contactEmail ?? "")"
+                        : "Invitasjonen ble ikke sendt"
+                )
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(.white)
-                Text("De ser klient-portalen så snart de klikker.")
+                Text(
+                    invitationSent
+                        ? "De ser klient-portalen så snart de klikker."
+                        : "Kunden og portalen er lagret. Prøv igjen for å sende invitasjonen."
+                )
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.6))
             }
             .padding(14)
-            .background(.green.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+            .background(
+                (invitationSent ? Color.green : Color.orange).opacity(0.10),
+                in: RoundedRectangle(cornerRadius: 12)
+            )
+
+            if !invitationSent {
+                Button {
+                    Task { await start() }
+                } label: {
+                    if isStarting {
+                        ProgressView()
+                    } else {
+                        Label("Prøv å sende invitasjonen igjen", systemImage: "arrow.clockwise")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isStarting)
+            }
 
             Button {
                 pollTimer?.cancel()
@@ -371,9 +413,9 @@ struct AddCustomerView: View {
 
     private func duplicateNotice(audit a: AutoOnboardAudit) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Allerede et prosjekt", systemImage: "doc.on.doc")
+            Label("Leadet finnes allerede", systemImage: "doc.on.doc")
                 .foregroundStyle(.yellow)
-            Text("Vi opprettet derfor ikke et nytt — gå til porteføljen for å åpne den eksisterende.")
+            Text("Vi opprettet derfor ikke et duplikat i det valgte kundeprosjektet.")
                 .font(.callout)
                 .foregroundStyle(.white.opacity(0.8))
         }
@@ -382,15 +424,29 @@ struct AddCustomerView: View {
     }
 
     private func failedNotice(audit a: AutoOnboardAudit) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Feil", systemImage: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
-            Text(a.errorMessage ?? "Ukjent feil")
-                .font(.callout)
-                .foregroundStyle(.white.opacity(0.8))
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Feil", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                Text(a.errorMessage ?? "Ukjent feil")
+                    .font(.callout)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+            .padding()
+            .background(.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+
+            Button {
+                Task { await start() }
+            } label: {
+                if isStarting {
+                    ProgressView()
+                } else {
+                    Label("Prøv igjen", systemImage: "arrow.clockwise")
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isStarting)
         }
-        .padding()
-        .background(.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private func scoreColor(_ s: Int) -> Color {
@@ -406,10 +462,11 @@ struct AddCustomerView: View {
 
     private func start() async {
         guard let api = appState.api,
-              let orgId = appState.activeOrganizationId else {
-            error = "Mangler organisasjon"
+              let projectId = onboardingProjectId ?? appState.activeProjectId else {
+            error = "Velg et kundeprosjekt først"
             return
         }
+        onboardingProjectId = projectId
         isStarting = true
         defer { isStarting = false }
         do {
@@ -418,22 +475,34 @@ struct AddCustomerView: View {
                 contactEmail: contactEmail.trimmingCharacters(in: .whitespaces),
                 contactName: contactName.isEmpty ? nil : contactName,
                 contactPhone: contactPhone.isEmpty ? nil : contactPhone,
-                organizationId: orgId,
-                presetId: presetId
+                projectId: projectId,
+                presetId: presetId,
+                idempotencyKey: idempotencyKey
             )
+            let responseProjectId = resp.projectId ?? projectId
+            onboardingProjectId = responseProjectId
             auditId = resp.auditId
             // Start polling
-            pollTimer = Task { await pollUntilDone(auditId: resp.auditId) }
+            pollTimer?.cancel()
+            pollTimer = Task {
+                await pollUntilDone(
+                    auditId: resp.auditId,
+                    projectId: responseProjectId
+                )
+            }
         } catch {
             self.error = String(describing: error)
         }
     }
 
-    private func pollUntilDone(auditId: String) async {
+    private func pollUntilDone(auditId: String, projectId: String) async {
         guard let api = appState.api else { return }
         while !Task.isCancelled {
             do {
-                let resp = try await api.fetchAutoOnboardStatus(auditId: auditId)
+                let resp = try await api.fetchAutoOnboardStatus(
+                    auditId: auditId,
+                    projectId: projectId
+                )
                 audit = resp.audit
                 if resp.audit.isTerminal { break }
             } catch { /* fortsetter */ }

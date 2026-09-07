@@ -151,15 +151,6 @@ struct LeadgridMarketScanFormView: View {
 
     @MainActor
     private func run() async {
-        error = nil
-        isStarting = true
-        defer { isStarting = false }
-        do {
-            let scan = try await api.runLeadgridMarketScan(input: input)
-            onStarted(scan)
-            dismiss()
-        } catch {
-            self.error = "Kunne ikke starte scan: \(error.localizedDescription)"
-        }
+        error = "Denne scan-flyten er avviklet. Bruk Discovery V2-profiler for nye kandidater."
     }
 }

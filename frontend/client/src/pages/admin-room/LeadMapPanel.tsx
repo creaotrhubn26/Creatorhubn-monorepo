@@ -138,19 +138,6 @@ interface PitchResult {
   pitchBody: string;
 }
 
-interface PlaceResult {
-  placeId: string;
-  name: string;
-  address: string | null;
-  latitude: number;
-  longitude: number;
-  rating: number | null;
-  category: string | null;
-  websiteUrl: string | null;
-  phone: string | null;
-  alreadyImported: boolean;
-}
-
 // Role Room Agent's konkurrent — fra market_scan_competitors + Google Places
 interface CompetitorPoint {
   kind: 'competitor';
@@ -752,7 +739,7 @@ export default function LeadMapPanel() {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
 
   // Inline quick-status anchor (FAB ved selected pin)
-  const [quickStatusFor, setQuickStatusFor] = useState<MapLead | null>(null);
+  const [, setQuickStatusFor] = useState<MapLead | null>(null);
 
   // Visit log modal
   const [visitOpen, setVisitOpen] = useState(false);
@@ -770,29 +757,17 @@ export default function LeadMapPanel() {
   const [pitchLoading, setPitchLoading] = useState(false);
   const [pitchServiceFocus, setPitchServiceFocus] = useState('');
 
-  // Places discovery dialog
-  const [placesOpen, setPlacesOpen] = useState(false);
-  const [placesQuery, setPlacesQuery] = useState('');
-  const [placesResults, setPlacesResults] = useState<PlaceResult[]>([]);
-  const [placesLoading, setPlacesLoading] = useState(false);
-  const [placesError, setPlacesError] = useState<string | null>(null);
-  const [importingPlaceId, setImportingPlaceId] = useState<string | null>(null);
-
-  // Add-competitor modal
-  const [addCompOpen, setAddCompOpen] = useState(false);
-  const [addCompSaving, setAddCompSaving] = useState(false);
-  const [addCompError, setAddCompError] = useState<string | null>(null);
-  const [addCompForm, setAddCompForm] = useState({
-    name: '',
-    domain: '',
-    category: '',
-    region: '',
-    threatLevel: '' as '' | 'near' | 'medium' | 'far',
-    positioning: '',
-    primaryOffer: '',
-  });
+  // Direkte Google Places-import er slått av. V2 krever profil/run/kandidat-
+  // kontekst, transient detaljoppslag og eksplisitt attestert godkjenning.
+  const [discoveryNoticeOpen, setDiscoveryNoticeOpen] = useState(false);
 
   const fetchLeads = useCallback(async (bounds?: L.LatLngBounds) => {
+    if (!activeProjectId) {
+      setLeads([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     setError(null);
     try {
       const params = new URLSearchParams();
@@ -805,9 +780,7 @@ export default function LeadMapPanel() {
       if (statusFilter.length > 0) {
         params.set('status', statusFilter.join(','));
       }
-      if (activeProjectId) {
-        params.set('projectId', activeProjectId);
-      }
+      params.set('projectId', activeProjectId);
       const r = await fetch(`/api/admin-room/lead-map/leads?${params}`, {
         credentials: 'include', headers: authHeaders(),
       });
@@ -893,7 +866,12 @@ export default function LeadMapPanel() {
       });
       if (r.ok) {
         const data = await r.json();
-        setProjects(data.projects ?? []);
+        const nextProjects = (data.projects ?? []) as ProjectListItem[];
+        setProjects(nextProjects);
+        setActiveProjectId((current) => {
+          if (nextProjects.some((project) => project.id === current)) return current;
+          return nextProjects.length === 1 ? nextProjects[0].id : null;
+        });
       }
     } catch { /* noop */ }
   }, []);
@@ -972,13 +950,13 @@ export default function LeadMapPanel() {
       // markedspunkter har { kind, ... } men setCompetitors forventer CompetitorPoint
       setCompetitors(body.competitors ?? []);
     } catch { /* noop — konkurrent-data er optional */ }
-  }, []);
+  }, [projectQuery]);
 
   // Trigger Claude threat-assessment på én konkurrent
   const assessCompetitor = useCallback(async (id: string) => {
     setAssessingCompetitorId(id);
     try {
-      const r = await fetch(`/api/admin-room/lead-map/competitors/${id}/assess`, {
+      const r = await fetch(`/api/admin-room/lead-map/competitors/${id}/assess${projectQuery()}`, {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
       });
@@ -994,95 +972,31 @@ export default function LeadMapPanel() {
     } finally {
       setAssessingCompetitorId(null);
     }
-  }, []);
+  }, [projectQuery]);
 
   // Trigger Claude lead-ranking (alle aktive leads)
   const rankAllLeads = useCallback(async () => {
     setRankingLeads(true);
     try {
-      const r = await fetch('/api/admin-room/lead-map/leads/rank-all', {
+      const r = await fetch(`/api/admin-room/lead-map/leads/rank-all${projectQuery()}`, {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
       });
       if (r.ok) {
-        // Re-fetch leads så vi får nye rank-tall
-        void (async () => {
-          const lr = await fetch('/api/admin-room/lead-map/leads', {
-            credentials: 'include', headers: authHeaders(),
-          });
-          if (lr.ok) {
-            const body = await lr.json();
-            setLeads(body.leads ?? []);
-          }
-        })();
+        // Re-fetch den samme prosjektisolerte leadlisten.
+        void fetchLeads(boundsRef.current ?? undefined);
       }
     } finally {
       setRankingLeads(false);
     }
-  }, []);
-
-  // Submit manuell konkurrent. Backend gjør auto-Places-lookup på navn+region
-  // og populerer geo (lat/lng) når mulig — slik at den havner på kartet.
-  const submitAddCompetitor = useCallback(async () => {
-    setAddCompError(null);
-    if (!addCompForm.name.trim()) {
-      setAddCompError('Navn er påkrevd');
-      return;
-    }
-    // Domain er valgfri i UI — defaulter til lower-cased navn hvis tom,
-    // så vi alltid har en sortbar nøkkel uten å plage brukeren.
-    const domain =
-      addCompForm.domain.trim() ||
-      addCompForm.name.trim().toLowerCase().replace(/\s+/g, '-');
-    setAddCompSaving(true);
-    try {
-      const body: Record<string, unknown> = {
-        name: addCompForm.name.trim(),
-        domain: domain.replace(/^https?:\/\//, '').replace(/\/$/, ''),
-      };
-      if (addCompForm.category.trim()) body.category = addCompForm.category.trim();
-      if (addCompForm.region.trim()) body.region = addCompForm.region.trim();
-      if (addCompForm.threatLevel) body.threatLevel = addCompForm.threatLevel;
-      if (addCompForm.positioning.trim()) body.positioning = addCompForm.positioning.trim();
-      if (addCompForm.primaryOffer.trim()) body.primaryOffer = addCompForm.primaryOffer.trim();
-
-      const r = await fetch('/api/admin-room/lead-map/competitors', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) {
-        const e = await r.json().catch(() => ({}));
-        setAddCompError(e.error ?? `HTTP ${r.status}`);
-        return;
-      }
-      const data = await r.json();
-      const newComp: CompetitorPoint = { ...data.competitor, kind: 'competitor' };
-      setCompetitors((prev) => [newComp, ...prev]);
-      // Hvis den landet på kartet (geo funnet), select den så Daniel ser den
-      if (newComp.latitude != null && newComp.longitude != null) {
-        setSelectedCompetitor(newComp);
-        setSelected(null);
-      }
-      // Reset form + lukk
-      setAddCompForm({
-        name: '', domain: '', category: '', region: '',
-        threatLevel: '', positioning: '', primaryOffer: '',
-      });
-      setAddCompOpen(false);
-    } catch (e) {
-      setAddCompError(String(e));
-    } finally {
-      setAddCompSaving(false);
-    }
-  }, [addCompForm]);
+  }, [fetchLeads, projectQuery]);
 
   // Slett konkurrent — bekreft først, så DELETE
   const deleteCompetitor = useCallback(async (id: string) => {
     if (!window.confirm('Slette denne konkurrenten? Dette kan ikke angres.')) return;
     setDeletingCompetitorId(id);
     try {
-      const r = await fetch(`/api/admin-room/lead-map/competitors/${id}`, {
+      const r = await fetch(`/api/admin-room/lead-map/competitors/${id}${projectQuery()}`, {
         method: 'DELETE', credentials: 'include', headers: authHeaders(),
       });
       if (r.ok) {
@@ -1092,13 +1006,13 @@ export default function LeadMapPanel() {
     } finally {
       setDeletingCompetitorId(null);
     }
-  }, []);
+  }, [projectQuery]);
 
   // Inline threat-level edit — bruker eksisterende PATCH
   const setCompetitorThreatLevel = useCallback(
     async (id: string, level: 'near' | 'medium' | 'far' | null) => {
       try {
-        const r = await fetch(`/api/admin-room/lead-map/competitors/${id}`, {
+        const r = await fetch(`/api/admin-room/lead-map/competitors/${id}${projectQuery()}`, {
           method: 'PATCH', credentials: 'include',
           headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify({ threatLevel: level }),
@@ -1111,7 +1025,7 @@ export default function LeadMapPanel() {
         }
       } catch { /* noop */ }
     },
-    [],
+    [projectQuery],
   );
 
   // Hent BRREG-berikkelse (cache hvis allerede berikket)
@@ -1119,7 +1033,7 @@ export default function LeadMapPanel() {
   const loadDemographics = useCallback(async (leadId: string) => {
     if (demographicsByLeadId[leadId] !== undefined) return;
     try {
-      const r = await fetch(`/api/admin-room/lead-map/leads/${leadId}/demographics`, {
+      const r = await fetch(`/api/admin-room/lead-map/leads/${leadId}/demographics${projectQuery()}`, {
         credentials: 'include', headers: authHeaders(),
       });
       if (r.ok) {
@@ -1127,7 +1041,7 @@ export default function LeadMapPanel() {
         setDemographicsByLeadId((prev) => ({ ...prev, [leadId]: data.demographics ?? null }));
       }
     } catch { /* noop */ }
-  }, [demographicsByLeadId]);
+  }, [demographicsByLeadId, projectQuery]);
 
   // Parse CSV i nettleseren — enkelt komma-separert med quote-håndtering
   const parseCsvFile = useCallback(async (file: File) => {
@@ -1178,11 +1092,19 @@ export default function LeadMapPanel() {
   // Declared before submitCsvImport: referenced in submitCsvImport's deps array,
   // so a later useCallback declaration would be a TDZ ReferenceError at render.
   const fetchMeta = useCallback(async () => {
+    if (!activeProjectId) {
+      setMetrics(null);
+      setActivities([]);
+      return;
+    }
     try {
-      const projParam = activeProjectId ? `?projectId=${encodeURIComponent(activeProjectId)}` : '';
+      const projParam = `?projectId=${encodeURIComponent(activeProjectId)}`;
       const [mRes, aRes] = await Promise.all([
         fetch(`/api/admin-room/lead-map/metrics${projParam}`, { credentials: 'include', headers: authHeaders() }),
-        fetch('/api/admin-room/lead-map/activities?limit=20', { credentials: 'include', headers: authHeaders() }),
+        fetch(
+          `/api/admin-room/lead-map/activities?limit=20&projectId=${encodeURIComponent(activeProjectId)}`,
+          { credentials: 'include', headers: authHeaders() },
+        ),
       ]);
       if (mRes.ok) setMetrics(await mRes.json());
       if (aRes.ok) {
@@ -1195,6 +1117,14 @@ export default function LeadMapPanel() {
   // Send parsed CSV til backend
   const submitCsvImport = useCallback(async () => {
     if (!csvPreview) return;
+    if (!activeProjectId) {
+      setCsvImportResult({
+        imported: 0,
+        skipped: [{ name: '(prosjekt mangler)', reason: 'Velg et kundeprosjekt før import.' }],
+        total: csvPreview.length,
+      });
+      return;
+    }
     setCsvImporting(true);
     try {
       const map = (row: Record<string, string>, ...keys: string[]) => {
@@ -1234,29 +1164,41 @@ export default function LeadMapPanel() {
     } finally {
       setCsvImporting(false);
     }
-  }, [csvPreview, fetchLeads, fetchMeta]);
+  }, [activeProjectId, csvPreview, fetchLeads, fetchMeta]);
 
-  // Eksport — laster ned CSV
+  // Eksport — alltid avgrenset til aktivt kundeprosjekt
   const exportLeadsCsv = useCallback(() => {
+    if (!activeProjectId) {
+      setError('Velg et kundeprosjekt før eksport.');
+      return;
+    }
     void (async () => {
-      const r = await fetch('/api/admin-room/lead-map/leads/export-csv', {
-        credentials: 'include', headers: authHeaders(),
-      });
-      if (!r.ok) return;
+      const params = new URLSearchParams({ projectId: activeProjectId });
+      const r = await fetch(
+        `/api/admin-room/lead-map/leads/export-csv?${params.toString()}`,
+        { credentials: 'include', headers: authHeaders() },
+      );
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        setError(body.error ?? `Eksport feilet (HTTP ${r.status})`);
+        return;
+      }
       const blob = await r.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
       a.click();
+      a.remove();
       URL.revokeObjectURL(url);
     })();
-  }, []);
+  }, [activeProjectId]);
 
   const loadEnrichment = useCallback(async (leadId: string) => {
     if (enrichmentByLeadId[leadId] !== undefined) return; // allerede lastet
     try {
-      const r = await fetch(`/api/admin-room/lead-map/leads/${leadId}/enrichment`, {
+      const r = await fetch(`/api/admin-room/lead-map/leads/${leadId}/enrichment${projectQuery()}`, {
         credentials: 'include', headers: authHeaders(),
       });
       if (r.ok) {
@@ -1264,13 +1206,13 @@ export default function LeadMapPanel() {
         setEnrichmentByLeadId((prev) => ({ ...prev, [leadId]: data.enrichment ?? null }));
       }
     } catch { /* noop */ }
-  }, [enrichmentByLeadId]);
+  }, [enrichmentByLeadId, projectQuery]);
 
   // Trigger BRREG-berikkelse manuelt
   const enrichLead = useCallback(async (leadId: string, force = false) => {
     setEnrichingLeadId(leadId);
     try {
-      const r = await fetch(`/api/admin-room/lead-map/leads/${leadId}/enrich`, {
+      const r = await fetch(`/api/admin-room/lead-map/leads/${leadId}/enrich${projectQuery()}`, {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ force }),
@@ -1282,7 +1224,7 @@ export default function LeadMapPanel() {
     } finally {
       setEnrichingLeadId(null);
     }
-  }, []);
+  }, [projectQuery]);
 
   // Generer outreach-strategi for lead
   const generateStrategy = useCallback(async (leadId: string) => {
@@ -1291,7 +1233,7 @@ export default function LeadMapPanel() {
     setStrategy(null);
     try {
       const r = await fetch(
-        `/api/admin-room/lead-map/leads/${leadId}/strategy`,
+        `/api/admin-room/lead-map/leads/${leadId}/strategy${projectQuery()}`,
         { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', ...authHeaders() } },
       );
       if (!r.ok) {
@@ -1306,7 +1248,7 @@ export default function LeadMapPanel() {
     } finally {
       setStrategyLoading(false);
     }
-  }, []);
+  }, [projectQuery]);
 
   // Generer counter-campaign mot konkurrent
   const generateCounterCampaign = useCallback(async (competitorId: string) => {
@@ -1315,7 +1257,7 @@ export default function LeadMapPanel() {
     setCounterCampaign(null);
     try {
       const r = await fetch(
-        `/api/admin-room/lead-map/competitors/${competitorId}/counter-campaign`,
+        `/api/admin-room/lead-map/competitors/${competitorId}/counter-campaign${projectQuery()}`,
         { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', ...authHeaders() } },
       );
       if (!r.ok) {
@@ -1330,7 +1272,7 @@ export default function LeadMapPanel() {
     } finally {
       setCounterCampaignLoading(false);
     }
-  }, []);
+  }, [projectQuery]);
 
   // Lagre counter-campaign som marketing_workflow
   const saveCounterCampaign = useCallback(async () => {
@@ -1338,7 +1280,7 @@ export default function LeadMapPanel() {
     setCounterCampaignSaving(true);
     try {
       const r = await fetch(
-        `/api/admin-room/lead-map/competitors/${selectedCompetitor.id}/counter-campaign/save`,
+        `/api/admin-room/lead-map/competitors/${selectedCompetitor.id}/counter-campaign/save${projectQuery()}`,
         {
           method: 'POST', credentials: 'include',
           headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -1355,7 +1297,7 @@ export default function LeadMapPanel() {
     } finally {
       setCounterCampaignSaving(false);
     }
-  }, [counterCampaign, selectedCompetitor]);
+  }, [counterCampaign, projectQuery, selectedCompetitor]);
 
   useEffect(() => {
     fetchLeads();
@@ -1371,10 +1313,20 @@ export default function LeadMapPanel() {
     if (activeProjectId) {
       void fetchProjectSummary(activeProjectId);
       // Persist valg lokalt
-      try { localStorage.setItem('rr_lead_map_active_project', activeProjectId); } catch { /* noop */ }
+      try {
+        localStorage.setItem('rr_lead_map_active_project', activeProjectId);
+        window.dispatchEvent(new CustomEvent('leadgrid:active-project-changed', {
+          detail: { projectId: activeProjectId },
+        }));
+      } catch { /* noop */ }
     } else {
       setProjectSummary(null);
-      try { localStorage.removeItem('rr_lead_map_active_project'); } catch { /* noop */ }
+      try {
+        localStorage.removeItem('rr_lead_map_active_project');
+        window.dispatchEvent(new CustomEvent('leadgrid:active-project-changed', {
+          detail: { projectId: null },
+        }));
+      } catch { /* noop */ }
     }
   }, [activeProjectId, fetchProjectSummary]);
 
@@ -1450,8 +1402,8 @@ export default function LeadMapPanel() {
     fetchLeads(b);
   }, [fetchLeads]);
 
-  // Tilordne enkelt-lead til prosjekt (eller fjerne tilordning hvis null)
-  const assignLeadToProject = useCallback(async (leadId: string, projectId: string | null) => {
+  // Flytt en lead til et tilgjengelig kundeprosjekt.
+  const assignLeadToProject = useCallback(async (leadId: string, projectId: string) => {
     try {
       const r = await fetch(`/api/admin-room/lead-map/leads/${leadId}/project`, {
         method: 'PATCH', credentials: 'include',
@@ -1478,7 +1430,7 @@ export default function LeadMapPanel() {
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
           leadIds: Array.from(selectedLeadIds),
-          projectId: bulkAssignTarget || null,
+          projectId: bulkAssignTarget,
           organization_id: typeof window !== 'undefined'
             ? localStorage.getItem('rr_lead_map_active_org')
             : null,
@@ -1581,55 +1533,6 @@ export default function LeadMapPanel() {
       }
     } finally {
       setPitchLoading(false);
-    }
-  };
-
-  const searchPlaces = async () => {
-    if (!placesQuery.trim()) return;
-    setPlacesLoading(true);
-    setPlacesError(null);
-    try {
-      const body: Record<string, unknown> = { query: placesQuery };
-      if (boundsRef.current) {
-        const c = boundsRef.current.getCenter();
-        body.latitude = c.lat;
-        body.longitude = c.lng;
-        body.radiusMeters = 10000;
-      }
-      const r = await fetch('/api/admin-room/lead-map/places/search', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify(body),
-      });
-      if (r.ok) {
-        const data = await r.json();
-        setPlacesResults(data.results ?? []);
-      } else {
-        const data = await r.json().catch(() => ({}));
-        setPlacesError(data.error ?? `HTTP ${r.status}`);
-      }
-    } finally {
-      setPlacesLoading(false);
-    }
-  };
-
-  const importPlace = async (place: PlaceResult) => {
-    setImportingPlaceId(place.placeId);
-    try {
-      const r = await fetch('/api/admin-room/lead-map/places/import', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ place, leadCategory: place.category, projectId: activeProjectId }),
-      });
-      if (r.ok) {
-        setPlacesResults((prev) => prev.map((p) =>
-          p.placeId === place.placeId ? { ...p, alreadyImported: true } : p
-        ));
-        void fetchLeads(boundsRef.current ?? undefined);
-        void fetchMeta();
-      }
-    } finally {
-      setImportingPlaceId(null);
     }
   };
 
@@ -1851,19 +1754,19 @@ export default function LeadMapPanel() {
             />
             <Button
               size="small" variant="outlined"
-              onClick={() => setPlacesOpen(true)}
+              onClick={() => setDiscoveryNoticeOpen(true)}
               startIcon={<SearchOutlinedIcon sx={{ fontSize: 16 }} />}
               sx={{ color: palette.amber, borderColor: 'rgba(251,191,36,0.4)', fontWeight: 700, fontSize: '0.78rem' }}
             >
-              Discover leads
+              Discovery V2
             </Button>
             <Button
               size="small" variant="outlined"
-              onClick={() => setAddCompOpen(true)}
+              onClick={() => setDiscoveryNoticeOpen(true)}
               startIcon={<AddLocationAltOutlinedIcon sx={{ fontSize: 16 }} />}
               sx={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.4)', fontWeight: 700, fontSize: '0.78rem' }}
             >
-              Legg til konkurrent
+              Konkurrentinnsikt V2
             </Button>
             <Button
               size="small" variant="outlined"
@@ -1881,14 +1784,25 @@ export default function LeadMapPanel() {
             >
               Import CSV
             </Button>
-            <Button
-              size="small" variant="outlined"
-              onClick={exportLeadsCsv}
-              startIcon={<FileDownloadOutlinedIcon sx={{ fontSize: 16 }} />}
-              sx={{ color: palette.textSecondary, borderColor: palette.border, fontWeight: 700, fontSize: '0.78rem' }}
-            >
-              Eksport
-            </Button>
+            {can('leads.export') && (
+              <Tooltip
+                title={activeProjectId
+                  ? 'Eksporter leads fra valgt kundeprosjekt'
+                  : 'Velg et kundeprosjekt før eksport'}
+              >
+                <span>
+                  <Button
+                    size="small" variant="outlined"
+                    onClick={exportLeadsCsv}
+                    disabled={!activeProjectId}
+                    startIcon={<FileDownloadOutlinedIcon sx={{ fontSize: 16 }} />}
+                    sx={{ color: palette.textSecondary, borderColor: palette.border, fontWeight: 700, fontSize: '0.78rem' }}
+                  >
+                    Eksport
+                  </Button>
+                </span>
+              </Tooltip>
+            )}
             <Tooltip title="Koble iPad">
               <IconButton onClick={() => {
                 setPairOpen(true);
@@ -3741,10 +3655,10 @@ export default function LeadMapPanel() {
                     displayEmpty
                     onChange={(e) => {
                       const v = e.target.value as string;
-                      void assignLeadToProject(selected.id, v || null);
+                      if (v) void assignLeadToProject(selected.id, v);
                     }}
                     renderValue={(v) => {
-                      if (!v) return <Box component="span" sx={{ color: palette.textMuted, fontSize: '0.72rem' }}>Ikke tilordnet</Box>;
+                      if (!v) return <Box component="span" sx={{ color: palette.textMuted, fontSize: '0.72rem' }}>Prosjekt kreves</Box>;
                       const p = projects.find((x) => x.id === v);
                       return <Box component="span" sx={{ fontSize: '0.74rem', fontWeight: 700, color: palette.accent }}>{p?.name ?? v}</Box>;
                     }}
@@ -3757,7 +3671,7 @@ export default function LeadMapPanel() {
                       '& .MuiOutlinedInput-notchedOutline': { borderColor: palette.border },
                     }}
                   >
-                    <MenuItem value=""><em>Ikke tilordnet</em></MenuItem>
+                    <MenuItem value="" disabled><em>Velg prosjekt</em></MenuItem>
                     {projects.map((p) => (
                       <MenuItem key={p.id} value={p.id}>
                         <span style={{ fontWeight: 700 }}>{p.name}</span>
@@ -3953,10 +3867,10 @@ export default function LeadMapPanel() {
               <Button
                 size="small" variant="outlined"
                 startIcon={<SearchOutlinedIcon sx={{ fontSize: 14 }} />}
-                onClick={() => setPlacesOpen(true)}
+                onClick={() => setDiscoveryNoticeOpen(true)}
                 sx={{ color: palette.amber, borderColor: 'rgba(251,191,36,0.4)', fontWeight: 700, fontSize: '0.74rem', mt: 1 }}
               >
-                Discover new leads
+                Finn leads med Discovery V2
               </Button>
             </Box>
           )}
@@ -4081,140 +3995,6 @@ export default function LeadMapPanel() {
           </DialogContent>
           <DialogActions>
             <Button onClick={() => { setPitchOpen(false); setPitch(null); }}>Lukk</Button>
-          </DialogActions>
-        </Dialog>
-
-        {/* Add-competitor dialog — manuell add m/ auto-Places-lookup */}
-        <Dialog
-          open={addCompOpen}
-          onClose={() => !addCompSaving && setAddCompOpen(false)}
-          maxWidth="sm" fullWidth
-          PaperProps={{ sx: { bgcolor: palette.bgPanel, border: `1px solid ${palette.borderStrong}` } }}
-        >
-          <DialogTitle sx={{ color: palette.textPrimary }}>
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <AddLocationAltOutlinedIcon sx={{ color: '#ef4444' }} />
-              <span>Legg til konkurrent</span>
-            </Stack>
-            <Typography sx={{ fontSize: '0.78rem', color: palette.textMuted, mt: 0.4 }}>
-              Role Room Agent slår opp navn + region i Google Places automatisk
-              for å finne lokasjon, kontaktinfo og rating.
-            </Typography>
-          </DialogTitle>
-          <DialogContent>
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              {addCompError && (
-                <Alert severity="error" onClose={() => setAddCompError(null)}>
-                  {addCompError}
-                </Alert>
-              )}
-              <TextField
-                size="small" fullWidth autoFocus required
-                label="Navn"
-                placeholder="F.eks. Holy Crust"
-                value={addCompForm.name}
-                onChange={(e) => setAddCompForm({ ...addCompForm, name: e.target.value })}
-                disabled={addCompSaving}
-              />
-              <TextField
-                size="small" fullWidth
-                label="Domene"
-                placeholder="holycrust.no (valgfri)"
-                value={addCompForm.domain}
-                onChange={(e) => setAddCompForm({ ...addCompForm, domain: e.target.value })}
-                disabled={addCompSaving}
-                helperText="Hvis tom: bruker lower-cased navn som sortbar nøkkel"
-              />
-              <Stack direction="row" spacing={1}>
-                <TextField
-                  size="small" fullWidth
-                  label="Kategori"
-                  placeholder="F.eks. pizzeria, byrå"
-                  value={addCompForm.category}
-                  onChange={(e) => setAddCompForm({ ...addCompForm, category: e.target.value })}
-                  disabled={addCompSaving}
-                />
-                <TextField
-                  size="small" fullWidth
-                  label="Region"
-                  placeholder="Oslo, Norge"
-                  value={addCompForm.region}
-                  onChange={(e) => setAddCompForm({ ...addCompForm, region: e.target.value })}
-                  disabled={addCompSaving}
-                  helperText="For Google Places-oppslag"
-                />
-              </Stack>
-              <Select
-                size="small" fullWidth displayEmpty
-                value={addCompForm.threatLevel}
-                onChange={(e) => setAddCompForm({
-                  ...addCompForm,
-                  threatLevel: e.target.value as '' | 'near' | 'medium' | 'far',
-                })}
-                disabled={addCompSaving}
-              >
-                <MenuItem value="">
-                  <em>Trussel-nivå (Claude vurderer hvis tom)</em>
-                </MenuItem>
-                <MenuItem value="near">
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#ef4444' }} />
-                    <span>Nær — direkte konkurrent</span>
-                  </Stack>
-                </MenuItem>
-                <MenuItem value="medium">
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#f59e0b' }} />
-                    <span>Medium — indirekte</span>
-                  </Stack>
-                </MenuItem>
-                <MenuItem value="far">
-                  <Stack direction="row" alignItems="center" spacing={1}>
-                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#94a3b8' }} />
-                    <span>Fjern — randzone</span>
-                  </Stack>
-                </MenuItem>
-              </Select>
-              <TextField
-                size="small" fullWidth multiline rows={2}
-                label="Posisjonering (valgfri)"
-                placeholder="Hvordan posisjonerer de seg? Hva er deres &quot;hook&quot;?"
-                value={addCompForm.positioning}
-                onChange={(e) => setAddCompForm({ ...addCompForm, positioning: e.target.value })}
-                disabled={addCompSaving}
-              />
-              <TextField
-                size="small" fullWidth multiline rows={2}
-                label="Hovedtilbud (valgfri)"
-                placeholder="Hva er deres primære tjeneste/produkt?"
-                value={addCompForm.primaryOffer}
-                onChange={(e) => setAddCompForm({ ...addCompForm, primaryOffer: e.target.value })}
-                disabled={addCompSaving}
-              />
-            </Stack>
-          </DialogContent>
-          <DialogActions sx={{ px: 3, pb: 2 }}>
-            <Button
-              onClick={() => setAddCompOpen(false)}
-              disabled={addCompSaving}
-              sx={{ color: palette.textMuted }}
-            >
-              Avbryt
-            </Button>
-            <Button
-              onClick={submitAddCompetitor}
-              variant="contained"
-              disabled={addCompSaving || !addCompForm.name.trim()}
-              startIcon={addCompSaving ? <CircularProgress size={14} /> : <AddLocationAltOutlinedIcon sx={{ fontSize: 16 }} />}
-              sx={{
-                bgcolor: '#ef4444',
-                color: '#fff',
-                fontWeight: 700,
-                '&:hover': { bgcolor: '#ef4444', filter: 'brightness(0.92)' },
-              }}
-            >
-              {addCompSaving ? 'Legger til …' : 'Legg til konkurrent'}
-            </Button>
           </DialogActions>
         </Dialog>
 
@@ -5094,75 +4874,33 @@ export default function LeadMapPanel() {
           </MenuItem>
         </Menu>
 
-        {/* Places discovery dialog */}
-        <Dialog open={placesOpen} onClose={() => setPlacesOpen(false)} maxWidth="md" fullWidth>
-          <DialogTitle>
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <SearchOutlinedIcon sx={{ color: palette.amber }} />
-              <span>Discover leads via Google Places</span>
-            </Stack>
-          </DialogTitle>
+        {/* Discovery V2 notice — fail-closed until the attested web flow is available. */}
+        <Dialog
+          open={discoveryNoticeOpen}
+          onClose={() => setDiscoveryNoticeOpen(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Discovery og konkurrentinnsikt bruker nå Discovery V2</DialogTitle>
           <DialogContent>
-            <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-              <TextField
-                size="small" fullWidth autoFocus
-                placeholder="F.eks. 'kafé Grünerløkka' eller 'reklamebyrå Oslo'"
-                value={placesQuery}
-                onChange={(e) => setPlacesQuery(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') void searchPlaces(); }}
-              />
-              <Button
-                onClick={searchPlaces} variant="contained" disabled={placesLoading}
-                startIcon={placesLoading ? <CircularProgress size={14} /> : <SearchOutlinedIcon sx={{ fontSize: 14 }} />}
-                sx={{ bgcolor: palette.amber, color: '#0a0a0f', fontWeight: 700 }}
-              >
-                Søk
-              </Button>
-            </Stack>
-            <Typography sx={{ fontSize: '0.74rem', color: 'text.secondary', mt: 1 }}>
-              Søker innenfor 10 km av nåværende kart-senter.
-            </Typography>
-            {placesError && (
-              <Alert severity="warning" sx={{ mt: 2 }}>{placesError}</Alert>
-            )}
-            <Stack spacing={0.8} sx={{ mt: 2 }}>
-              {placesResults.map((p) => (
-                <Box key={p.placeId} sx={{
-                  p: 1.4, borderRadius: 1.2,
-                  border: '1px solid #ddd',
-                  display: 'flex', alignItems: 'center', gap: 1.4,
-                }}>
-                  <Stack sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ fontSize: '0.88rem', fontWeight: 700 }}>
-                      {p.name}
-                      {p.rating && (
-                        <Box component="span" sx={{ ml: 1, color: 'orange', fontSize: '0.78rem' }}>
-                          ★ {p.rating}
-                        </Box>
-                      )}
-                    </Typography>
-                    <Typography sx={{ fontSize: '0.74rem', color: 'text.secondary' }}>
-                      {p.address}{p.category && ` · ${p.category}`}
-                    </Typography>
-                  </Stack>
-                  {p.alreadyImported ? (
-                    <Chip size="small" label="Importert" sx={{ bgcolor: 'success.light', color: 'success.dark' }} />
-                  ) : (
-                    <Button
-                      size="small" variant="outlined"
-                      onClick={() => importPlace(p)}
-                      disabled={importingPlaceId === p.placeId}
-                      sx={{ fontWeight: 700 }}
-                    >
-                      {importingPlaceId === p.placeId ? 'Importerer …' : 'Importer'}
-                    </Button>
-                  )}
-                </Box>
-              ))}
+            <Stack spacing={1.5} sx={{ mt: 0.5 }}>
+              {!activeProjectId && (
+                <Alert severity="warning">Velg et kundeprosjekt før du starter discovery.</Alert>
+              )}
+              <Alert severity="info">
+                Direkte import fra rå Google Places-treff er deaktivert. Lead- og
+                konkurrentkandidater må komme fra en Discovery-profil, duplikatkontrolleres og
+                godkjennes eksplisitt for valgt kundeprosjekt.
+              </Alert>
+              <Typography sx={{ color: 'text.secondary', fontSize: '0.86rem' }}>
+                Discovery V2-webflaten er ikke koblet til kartet ennå. Kartet oppretter derfor ingen
+                leads eller konkurrenter fra Places-søk. Når flaten er tilgjengelig, vil Google Places bare brukes til
+                et midlertidig detaljoppslag med bekreftet treff.
+              </Typography>
             </Stack>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setPlacesOpen(false)}>Lukk</Button>
+            <Button onClick={() => setDiscoveryNoticeOpen(false)}>Lukk</Button>
           </DialogActions>
         </Dialog>
 
@@ -5201,16 +4939,16 @@ export default function LeadMapPanel() {
             </Stack>
             <Button
               size="small" variant="outlined"
-              onClick={() => setAddCompOpen(true)}
+              onClick={() => setDiscoveryNoticeOpen(true)}
               startIcon={<AddLocationAltOutlinedIcon sx={{ fontSize: 14 }} />}
               sx={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.4)', fontWeight: 700, fontSize: '0.72rem', textTransform: 'none' }}
             >
-              Legg til
+              Discovery V2
             </Button>
           </Stack>
           {competitors.length === 0 ? (
             <Typography sx={{ fontSize: '0.76rem', color: palette.textMuted, fontStyle: 'italic' }}>
-              Ingen konkurrenter ennå. Trykk «Legg til» eller kjør Role Room Agent's Market Scan.
+              Ingen konkurrenter ennå. Bruk Discovery V2 for kundeprosjektet for å finne og godkjenne relevante konkurrenter.
             </Typography>
           ) : (
             <Box sx={{ overflowX: 'auto' }}>
@@ -5627,7 +5365,7 @@ export default function LeadMapPanel() {
                     '& .MuiOutlinedInput-notchedOutline': { borderColor: palette.borderStrong },
                   }}
                 >
-                  <MenuItem value=""><em>Fjern tilordning</em></MenuItem>
+                  <MenuItem value="" disabled><em>Velg prosjekt</em></MenuItem>
                   {projects.map((p) => (
                     <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
                   ))}
@@ -5635,7 +5373,7 @@ export default function LeadMapPanel() {
                 <Button
                   size="small" variant="contained"
                   onClick={bulkAssignProject}
-                  disabled={bulkAssigning}
+                  disabled={bulkAssigning || !bulkAssignTarget}
                   startIcon={bulkAssigning ? <CircularProgress size={12} /> : null}
                   sx={{ bgcolor: palette.accent, color: '#0a0a0f', fontWeight: 800, fontSize: '0.72rem', textTransform: 'none' }}
                 >

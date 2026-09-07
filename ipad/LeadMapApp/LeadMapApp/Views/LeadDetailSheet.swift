@@ -75,6 +75,10 @@ struct LeadDetailSheet: View {
                 await markSeenIfAssigned()
                 await loadAvailableWorkflows()
             }
+            .onChange(of: appState.activeLeadgridProjectId) { _, _ in
+                workflowRunSheet = nil
+                Task { await loadAvailableWorkflows() }
+            }
             .sheet(item: $workflowRunSheet) { wf in
                 LeadgridWorkflowRunSheet(
                     workflow: wf,
@@ -96,6 +100,7 @@ struct LeadDetailSheet: View {
                     LeadgridAssignSheet(
                         customerId: lead.id,
                         customerName: lead.name,
+                        projectId: lead.projectId,
                         level: leadgridAssignLevel,
                         api: api,
                     )
@@ -224,15 +229,24 @@ struct LeadDetailSheet: View {
                 Label("\(addr)\(lead.city.map { ", \($0)" } ?? "")", systemImage: "mappin")
                     .font(.subheadline)
             }
-            if let phone = lead.phone {
-                Link(destination: URL(string: "tel:\(phone)")!) {
+            if let phone = lead.phone,
+               let url = URL(string: "tel:\(phone.filter { $0.isNumber || $0 == "+" })") {
+                LeadgridContactHandoffButton(
+                    url: url, channel: .phone, leadId: lead.id, projectId: lead.projectId
+                ) {
                     Label(phone, systemImage: "phone")
                 }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
             }
-            if let email = lead.email {
-                Link(destination: URL(string: "mailto:\(email)")!) {
+            if let email = lead.email, let url = URL(string: "mailto:\(email)") {
+                LeadgridContactHandoffButton(
+                    url: url, channel: .email, leadId: lead.id, projectId: lead.projectId
+                ) {
                     Label(email, systemImage: "envelope")
                 }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
             }
             if let url = lead.websiteUrl, let link = URL(string: url) {
                 Link(destination: link) {
@@ -481,17 +495,30 @@ struct LeadDetailSheet: View {
     // MARK: - Helpers
 
     private func loadAvailableWorkflows() async {
-        guard let api = appState.api else {
+        guard let api = appState.api,
+              let projectId = lead.projectId,
+              appState.activeLeadgridProjectId == projectId else {
+            availableWorkflows = []
             workflowsLoaded = true
             return
         }
         do {
-            let all = try await api.fetchWorkflows(activeOnly: true)
+            let all = try await api.fetchWorkflows(
+                projectId: projectId,
+                activeOnly: true
+            )
             // Best-effort: filtrer ut workflows som åpenbart ikke kan
             // trigges manuelt (f.eks. webhook-baserte). Backend returnerer
             // ikke et "manually_triggerable"-flagg, så vi viser alle
             // aktive — brukeren ser uansett trigger-type i kortet.
-            availableWorkflows = all.filter { $0.isActive }
+            guard appState.activeLeadgridProjectId == projectId else {
+                availableWorkflows = []
+                workflowsLoaded = true
+                return
+            }
+            availableWorkflows = all.filter {
+                $0.isActive && $0.projectId == projectId
+            }
         } catch {
             // Stille — workflows er ikke kritisk for lead-detail.
         }
@@ -500,8 +527,16 @@ struct LeadDetailSheet: View {
 
     private func loadEnrichment() async {
         guard let api = appState.api else { return }
-        async let e = try? await api.fetchEnrichment(leadId: lead.id, organizationId: appState.activeOrganizationId)
-        async let d = try? await api.fetchDemographics(leadId: lead.id, organizationId: appState.activeOrganizationId)
+        async let e = try? await api.fetchEnrichment(
+            leadId: lead.id,
+            projectId: appState.activeLeadgridProjectId,
+            organizationId: appState.activeOrganizationId
+        )
+        async let d = try? await api.fetchDemographics(
+            leadId: lead.id,
+            projectId: appState.activeLeadgridProjectId,
+            organizationId: appState.activeOrganizationId
+        )
         self.enrichment = await e
         self.demographics = await d
     }
@@ -511,8 +546,12 @@ struct LeadDetailSheet: View {
     /// Setter også `leadgridStatus` til lead's nåværende status.
     private func markSeenIfAssigned() async {
         leadgridStatus = lead.status.rawValue
-        guard let api = appState.api else { return }
-        try? await api.markLeadSeen(customerId: lead.id)
+        guard let api = appState.api,
+              let organizationId = appState.activeOrganizationId else { return }
+        try? await api.markLeadSeen(
+            customerId: lead.id,
+            organizationId: organizationId
+        )
     }
 
     private func update(to newStatus: LeadStatus) async {

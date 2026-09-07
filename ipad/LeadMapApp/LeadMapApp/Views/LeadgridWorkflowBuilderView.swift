@@ -8,6 +8,7 @@ import SwiftUI
 
 struct LeadgridWorkflowBuilderView: View {
     let api: APIClient
+    let projectId: String
     let templates: [LeadgridWorkflowTemplate]
     let onSaved: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -77,6 +78,12 @@ struct LeadgridWorkflowBuilderView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section("Kundeprosjekt") {
+                    Label("Workflow lagres kun i valgt prosjekt", systemImage: "folder.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 if !templates.isEmpty {
                     Section("Start fra template (valgfritt)") {
                         ForEach(templates) { tpl in
@@ -269,7 +276,7 @@ struct LeadgridWorkflowBuilderView: View {
         }
         do {
             let data = try JSONSerialization.data(withJSONObject: body)
-            _ = try await api.createWorkflow(jsonBody: data)
+            _ = try await api.createWorkflow(projectId: projectId, jsonBody: data)
             onSaved()
         } catch {
             errorText = "Klarte ikke å lagre: \(error.localizedDescription)"

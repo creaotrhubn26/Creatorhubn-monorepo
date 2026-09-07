@@ -7,6 +7,7 @@
  *   - lead_recommendations (expired) > 30 dager → DELETE
  *   - webhook_delivery_queue (exhausted) > 30 dager → DELETE
  *   - lead_territory_events > 180 dager → DELETE
+ *   - utløpte Google Places-attesteringer → bounded DELETE
  *
  * Trigger: GitHub Actions (workflow: leadgrid-retention-cleanup.yml)
  *          @ 03:00 UTC daglig (1 time før intelligence-rescore for
@@ -30,6 +31,113 @@ const RECOMMENDATIONS_DISMISSED_DAYS = 30;
 const RECOMMENDATIONS_EXPIRED_DAYS = 30;
 const WEBHOOK_QUEUE_EXHAUSTED_DAYS = 30;
 const TERRITORY_EVENTS_DAYS = 180;
+export const DISCOVERY_PLACE_CONFIRMATION_BATCH_SIZE = 500;
+export const DISCOVERY_PLACE_CONFIRMATION_MAX_BATCHES = 20;
+
+interface PlaceConfirmationCleanupOptions {
+  batchSize?: number;
+  maxBatches?: number;
+  now?: Date;
+}
+
+export interface PlaceConfirmationCleanupResult {
+  deleted: number;
+  batches: number;
+  limitReached: boolean;
+}
+
+function boundedPositiveInteger(
+  value: number | undefined,
+  fallback: number,
+  maximum: number,
+): number {
+  if (value === undefined || !Number.isFinite(value)) return fallback;
+  return Math.min(maximum, Math.max(1, Math.trunc(value)));
+}
+
+/**
+ * Deletes expired, short-lived Place-ID attestations in deterministic batches.
+ *
+ * The cron connection is intentionally organization-agnostic because retention
+ * must cover every tenant. Tenant isolation is preserved by selecting and
+ * deleting on the table's complete composite primary key. SKIP LOCKED makes
+ * overlapping cron/manual invocations cooperate instead of processing the same
+ * rows, while the batch and sweep caps prevent an unbounded delete transaction.
+ */
+export async function cleanupExpiredDiscoveryPlaceConfirmations(
+  pool: Pick<Pool, "query">,
+  options: PlaceConfirmationCleanupOptions = {},
+): Promise<PlaceConfirmationCleanupResult> {
+  const batchSize = boundedPositiveInteger(
+    options.batchSize,
+    DISCOVERY_PLACE_CONFIRMATION_BATCH_SIZE,
+    5_000,
+  );
+  const maxBatches = boundedPositiveInteger(
+    options.maxBatches,
+    DISCOVERY_PLACE_CONFIRMATION_MAX_BATCHES,
+    100,
+  );
+  const cutoff = options.now ?? new Date();
+  let deleted = 0;
+  let batches = 0;
+
+  while (batches < maxBatches) {
+    const result = await pool.query(
+      `WITH expired AS MATERIALIZED (
+         SELECT organization_id,
+                project_id,
+                run_id,
+                candidate_id,
+                place_id,
+                requested_by
+           FROM leadgrid_discovery_place_confirmations
+          WHERE expires_at <= $2::timestamptz
+          ORDER BY expires_at ASC,
+                   organization_id ASC,
+                   project_id ASC,
+                   run_id ASC,
+                   candidate_id ASC,
+                   place_id ASC,
+                   requested_by ASC
+          LIMIT $1
+          FOR UPDATE SKIP LOCKED
+       )
+       DELETE FROM leadgrid_discovery_place_confirmations AS target
+       USING expired
+       WHERE target.organization_id = expired.organization_id
+         AND target.project_id = expired.project_id
+         AND target.run_id = expired.run_id
+         AND target.candidate_id = expired.candidate_id
+         AND target.place_id = expired.place_id
+         AND target.requested_by = expired.requested_by`,
+      [batchSize, cutoff.toISOString()],
+    );
+    const batchDeleted = result.rowCount ?? 0;
+    deleted += batchDeleted;
+    batches += 1;
+
+    if (batchDeleted < batchSize) {
+      return { deleted, batches, limitReached: false };
+    }
+  }
+
+  const remaining = await pool.query(
+    `SELECT EXISTS (
+       SELECT 1
+         FROM leadgrid_discovery_place_confirmations
+        WHERE expires_at <= $1::timestamptz
+        LIMIT 1
+     ) AS has_remaining`,
+    [cutoff.toISOString()],
+  );
+
+  return {
+    deleted,
+    batches,
+    limitReached: remaining.rows[0]?.has_remaining === true,
+  };
+}
 
 export function registerLeadgridRetentionCron(deps: Deps): void {
   const { app, pool } = deps;
@@ -55,7 +163,9 @@ export function registerLeadgridRetentionCron(deps: Deps): void {
       }
 
       const start = Date.now();
-      const stats: Record<string, number> = {};
+      const stats: Record<string, number | boolean> = {};
+      let placeConfirmationCleanupFailed = false;
+      let placeConfirmationCleanupBacklog = false;
       try {
         // 1. lead_scores_history
         try {
@@ -78,7 +188,10 @@ export function registerLeadgridRetentionCron(deps: Deps): void {
           );
           stats.dismissed_recommendations_deleted = r2.rowCount ?? 0;
         } catch (err) {
-          console.warn("[retention-cron] dismissed_recommendations feilet:", err);
+          console.warn(
+            "[retention-cron] dismissed_recommendations feilet:",
+            err,
+          );
           stats.dismissed_recommendations_deleted = -1;
         }
 
@@ -117,8 +230,46 @@ export function registerLeadgridRetentionCron(deps: Deps): void {
         } catch {
           stats.territory_events_deleted = -1;
         }
+        // 6. Short-lived Google Places attestations. This is deliberately part
+        // of the one existing daily retention chain, not a second scheduler.
+        try {
+          const cleanup = await cleanupExpiredDiscoveryPlaceConfirmations(pool);
+          stats.place_confirmations_deleted = cleanup.deleted;
+          stats.place_confirmation_batches = cleanup.batches;
+          placeConfirmationCleanupBacklog = cleanup.limitReached;
+          stats.place_confirmation_limit_reached = cleanup.limitReached;
+          if (cleanup.limitReached) {
+            console.warn(
+              "[retention-cron] Place-attesteringer traff bounded sweep-grensen; resten tas i senere kjøringer",
+            );
+          }
+        } catch (err) {
+          console.warn("[retention-cron] place_confirmations feilet:", err);
+          captureLeadgridError("retention-cron-place-confirmations", err, {
+            stats,
+          });
+          stats.place_confirmations_deleted = -1;
+          placeConfirmationCleanupFailed = true;
+        }
 
         const durationMs = Date.now() - start;
+        if (placeConfirmationCleanupFailed) {
+          res.status(500).json({
+            error: "place_confirmation_retention_failed",
+            stats,
+            duration_ms: durationMs,
+          });
+          return;
+        }
+        if (placeConfirmationCleanupBacklog) {
+          res.status(503).json({
+            ok: false,
+            error: "place_confirmation_retention_backlog",
+            stats,
+            duration_ms: durationMs,
+          });
+          return;
+        }
         console.log(`[retention-cron] OK ${durationMs}ms:`, stats);
         res.json({ ok: true, stats, duration_ms: durationMs });
       } catch (err) {

@@ -86,6 +86,7 @@ struct MapLeadMock: Identifiable, Hashable {
     // Ekte felter fra LeadModel (adapteren fyller; mock-rader har nil).
     var phone: String? = nil
     var email: String? = nil
+    var projectId: String? = nil
     var estimatedValue: Double? = nil
     var aiScore: Int? = nil
     /// Neste avtalte handling på leaden (LeadModel.nextAction) — peek-kortet
@@ -386,6 +387,7 @@ enum KartPreviewData {
             lon: lm.longitude,
             phone: lm.phone,
             email: lm.email,
+            projectId: lm.projectId,
             estimatedValue: lm.estimatedValue,
             aiScore: lm.aiOpportunityScore,
             nextAction: lm.nextAction,
@@ -492,6 +494,7 @@ struct KartView: View {
     @State private var addLeadDraft = AddLeadDraftFlow()
     @State private var openLeadFullSheet: Bool = false
     @State private var scheduleMeetingOpen: Bool = false
+    @State private var contactHandoffRequest: LeadgridExternalContactRequest?
 
     // Filter-state — UI-fokus fase 4: fire dropdowns samlet i én
     // «Filtre · N»-pill (audit-regel 3: chip-budsjett).
@@ -1199,6 +1202,20 @@ struct KartView: View {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
+        .task(id: appState.activeLeadgridProjectId) {
+            // Persisted Dørsalg-state tilhører prosjektet. Kartverkets
+            // adresse-cache, viewport og paging beholdes for rask UX.
+            dorsalgStatuser = [:]
+            dorsalgStatuserLastet = false
+            dorsalgProdukter = nil
+            dorsalgDagensSalg = 0
+            dorsalgDagsmal = 3
+            dorsalgSalgFor = nil
+            guard dorsalgModus, appState.activeLeadgridProjectId != nil else { return }
+            dorsalgLastStatuser()
+            dorsalgLastProdukter()
+            dorsalgLastDagsmal()
+        }
         .task(id: kartLeads.first?.id) {
             // Auto-senter ved oppstart. Demo: zoom på pre-valgt mock-lead
             // (Daniel-feedback 2026-06-29). Ekte: senter over egne leads
@@ -1403,8 +1420,14 @@ struct KartView: View {
                     guard let api = appState.api else {
                         throw AddLeadSaveError(message: "Du må være innlogget for å lagre leaden")
                     }
+                    guard let projectId = appState.activeLeadgridProjectId else {
+                        throw AddLeadSaveError(message: "Velg et kundeprosjekt før du lagrer leaden")
+                    }
                     let newId = try await api.createLeadAtPin(
-                        newLead.makeCreateRequest(idempotencyKey: session.idempotencyKey),
+                        newLead.makeCreateRequest(
+                            projectID: projectId,
+                            idempotencyKey: session.idempotencyKey
+                        ),
                         organizationId: appState.activeOrganizationId
                     )
                     showToast("«\(newLead.companyName)» lagt til")
@@ -1596,8 +1619,16 @@ struct KartView: View {
                         userInfo: [NSLocalizedDescriptionKey: "Du må være innlogget"]
                     )
                 }
+                guard let projectId = appState.activeProjectId,
+                      !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw NSError(
+                        domain: "Leadgrid", code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "Velg et kundeprosjekt før du lagrer notatet"]
+                    )
+                }
                 _ = try await api.createLeadNote(
                     leadId: selectedLead.id, body: note, pinned: pinned,
+                    projectId: projectId,
                     organizationId: appState.activeOrganizationId
                 )
                 showToast("Notat lagret\(pinned ? " (festet)" : "")")
@@ -1611,8 +1642,14 @@ struct KartView: View {
         .sheet(item: $dorsalgSalgFor) { adr in
             RegistrerSalgSheet(
                 adresse: adr,
-                produkter: dorsalgProdukter?.tilgjengelige ?? []
+                produkter: dorsalgProdukter?.tilgjengelige ?? [],
+                projectId: appState.activeLeadgridProjectId ?? "demo"
             ) { salg in
+                guard DemoModeManager.isActiveNonisolated
+                        || appState.activeLeadgridProjectId == salg.projectId else {
+                    showToast("Prosjektet ble byttet — åpne salget på nytt")
+                    return
+                }
                 withAnimation(.easeOut(duration: 0.2)) {
                     dorsalgStatuser[adr.id] = "vunnet"
                 }
@@ -1626,7 +1663,10 @@ struct KartView: View {
                         bidragBelop: salg.bidragBelop, bidragLabel: salg.bidragLabel,
                         kundeNavn: salg.kundeNavn, kundeTelefon: salg.kundeTelefon,
                         kundeEpost: salg.kundeEpost, ringBekreftet: salg.ringBekreftet,
-                        samtykkeTekst: salg.samtykkeTekst, using: api)
+                        samtykkeTekst: salg.samtykkeTekst,
+                        projectId: salg.projectId,
+                        idempotencyKey: salg.idempotencyKey,
+                        using: api)
                 }
             }
         }
@@ -1706,6 +1746,7 @@ struct KartView: View {
             }
             .presentationDetents([.medium])
         }
+        .leadgridContactHandoff(request: $contactHandoffRequest)
     }
 
     /// Finn nærmeste lead-mock til gitt koord. Brukes av VisitLogModal-
@@ -2127,7 +2168,14 @@ struct KartView: View {
             if DemoModeManager.isActiveNonisolated {
                 dto = MoteBriefSheet.demoBrief(selskap: navn)
             } else {
-                dto = try? await appState.api?.hentMoteBrief(selskap: navn)
+                guard let projectId = appState.activeProjectId else {
+                    showToast("Velg et kundeprosjekt først")
+                    return
+                }
+                dto = try? await appState.api?.hentMoteBrief(
+                    selskap: navn,
+                    leadId: selectedLead.id.lowercased(),
+                    projectId: projectId)
             }
             guard let b = dto else {
                 showToast("Fikk ikke laget brief nå")
@@ -3117,24 +3165,36 @@ struct KartView: View {
     /// Hent selgerens resolverte dagsmål (team-først) fra backend —
     /// driver milepæl-feiringen. Demo: behold 3 (salgssjef-styrt live).
     private func dorsalgLastDagsmal() {
-        guard !DemoModeManager.isActiveNonisolated, let api = appState.api else { return }
+        guard !DemoModeManager.isActiveNonisolated,
+              let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else { return }
         Task {
-            if let m = await KartverketService.shared.fetchDorsalgMaal(using: api) {
-                dorsalgDagsmal = max(1, m.mittDagsmal)
-            }
+            let loaded = await KartverketService.shared.fetchDorsalgMaal(
+                projectId: projectId, using: api
+            )
+            guard !Task.isCancelled,
+                  appState.activeLeadgridProjectId == projectId,
+                  let loaded else { return }
+            dorsalgDagsmal = max(1, loaded.mittDagsmal)
         }
     }
 
     /// Hent org-ens husstands-statuser én gang per økt (demo: kun minne).
     private func dorsalgLastStatuser() {
         guard !dorsalgStatuserLastet else { return }
-        guard !DemoModeManager.isActiveNonisolated, let api = appState.api else {
+        guard !DemoModeManager.isActiveNonisolated,
+              let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else {
             dorsalgStatuserLastet = true
             return
         }
         Task {
-            let statuser = await KartverketService.shared.fetchDorsalgStatuser(using: api)
-            if !statuser.isEmpty { dorsalgStatuser = statuser }
+            let loaded = await KartverketService.shared.fetchDorsalgStatuser(
+                projectId: projectId, using: api
+            )
+            guard !Task.isCancelled,
+                  appState.activeLeadgridProjectId == projectId else { return }
+            dorsalgStatuser = loaded
             dorsalgStatuserLastet = true
         }
     }
@@ -3162,9 +3222,15 @@ struct KartView: View {
                 ])
             return
         }
-        guard let api = appState.api else { return }
+        guard let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else { return }
         Task {
-            dorsalgProdukter = await KartverketService.shared.fetchDorsalgProducts(using: api)
+            let loaded = await KartverketService.shared.fetchDorsalgProducts(
+                projectId: projectId, using: api
+            )
+            guard !Task.isCancelled,
+                  appState.activeLeadgridProjectId == projectId else { return }
+            dorsalgProdukter = loaded
         }
     }
 
@@ -3185,13 +3251,27 @@ struct KartView: View {
         if status == "avslatt" { visDorsalgMotivasjon() }
         // Aktivt utfall-filter: adressen kan ha byttet gruppe.
         if dorsalgFilter != nil { oppdaterDorsalgSynlige() }
-        guard !DemoModeManager.isActiveNonisolated, let api = appState.api else { return }
+        guard !DemoModeManager.isActiveNonisolated,
+              let api = appState.api,
+              let projectId = appState.activeLeadgridProjectId else { return }
+        let idempotencyKey = UUID().uuidString
         Task {
             if let status {
                 await KartverketService.shared.setDorsalgStatus(
-                    status, for: adr, productId: produktId, using: api)
+                    status,
+                    for: adr,
+                    projectId: projectId,
+                    productId: produktId,
+                    idempotencyKey: idempotencyKey,
+                    using: api
+                )
             } else {
-                await KartverketService.shared.clearDorsalgStatus(adresseId: adr.id, using: api)
+                await KartverketService.shared.clearDorsalgStatus(
+                    adresseId: adr.id,
+                    projectId: projectId,
+                    idempotencyKey: idempotencyKey,
+                    using: api
+                )
             }
         }
     }
@@ -3802,24 +3882,30 @@ struct KartView: View {
         .shadow(color: Color.black.opacity(0.4), radius: 12, x: 0, y: 4)
     }
 
-    /// Helper for å ringe telefonnummer via tel:-URL.
-    private func makeCall(_ number: String) {
+    /// Åpner Telefon, men lar den delte flyten spørre om samtalen faktisk
+    /// ble gjennomført før CRM-loggen skrives.
+    private func makeCall(_ number: String, lead: MapLeadMock? = nil) {
         let cleaned = number.filter { $0.isNumber || $0 == "+" }
-        if let url = URL(string: "tel://\(cleaned)") {
-            UIApplication.shared.open(url) { ok in
-                if !ok { Task { @MainActor in showToast("Kan ikke ringe fra denne enheten") } }
-            }
-        }
+        guard !cleaned.isEmpty, let url = URL(string: "tel://\(cleaned)") else { return }
+        let scopedLead = lead ?? selectedLead
+        contactHandoffRequest = .init(
+            url: url, channel: .phone, leadId: scopedLead.id,
+            leadProjectId: scopedLead.projectId)
     }
 
-    /// Helper for å sende e-post via mailto:-URL.
-    private func sendEmail(_ email: String, subject: String = "") {
+    /// Åpner valgt e-postapp. Åpningen er ikke en sendt aktivitet; den
+    /// delte flyten krever eksplisitt bekreftelse etter app-handoff.
+    private func sendEmail(
+        _ email: String,
+        subject: String = "",
+        lead: MapLeadMock? = nil
+    ) {
         let subj = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        if let url = URL(string: "mailto:\(email)?subject=\(subj)") {
-            UIApplication.shared.open(url) { ok in
-                if !ok { Task { @MainActor in showToast("Ingen e-post-app konfigurert") } }
-            }
-        }
+        guard let url = URL(string: "mailto:\(email)?subject=\(subj)") else { return }
+        let scopedLead = lead ?? selectedLead
+        contactHandoffRequest = .init(
+            url: url, channel: .email, leadId: scopedLead.id,
+            leadProjectId: scopedLead.projectId)
     }
 
     /// Ett-klikks «meld forsinkelse»: komponerer en ferdig e-post til møte-
@@ -3836,10 +3922,9 @@ struct KartView: View {
         let subj = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let bod = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         if let url = URL(string: "mailto:\(email)?subject=\(subj)&body=\(bod)") {
-            UIApplication.shared.open(url) { ok in
-                if ok { Task { @MainActor in showToast("Forsinkelses-melding klar til sending") } }
-                else { Task { @MainActor in showToast("Ingen e-post-app konfigurert") } }
-            }
+            contactHandoffRequest = .init(
+                url: url, channel: .email, leadId: selectedLead.id,
+                leadProjectId: selectedLead.projectId)
         }
     }
 
@@ -4956,12 +5041,12 @@ struct KartView: View {
         // Hurtighandlinger uten å åpne kortet (long-press).
         .contextMenu {
             if let phone = lead.phoneOrDemo {
-                Button { makeCall(phone) } label: {
+                Button { makeCall(phone, lead: lead) } label: {
                     Label("Ring", systemImage: "phone.fill")
                 }
             }
             if let mail = lead.emailOrDemo {
-                Button { sendEmail(mail, subject: "Oppfølging — \(lead.name)") } label: {
+                Button { sendEmail(mail, subject: "Oppfølging — \(lead.name)", lead: lead) } label: {
                     Label("Send e-post", systemImage: "envelope.fill")
                 }
             }
@@ -7757,6 +7842,8 @@ struct RegistrertSalgData {
     let kundeEpost: String?
     let ringBekreftet: Bool
     let samtykkeTekst: String
+    let projectId: String
+    let idempotencyKey: String
 }
 
 /// «Registrer salg» på døra — grandma-vennlig: store flater, chips i stedet
@@ -7766,6 +7853,7 @@ struct RegistrertSalgData {
 fileprivate struct RegistrerSalgSheet: View {
     let adresse: KartverketService.AdressePunkt
     let produkter: [KartverketService.DorsalgProduct]
+    let projectId: String
     let onRegistrer: (RegistrertSalgData) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -7953,7 +8041,9 @@ fileprivate struct RegistrerSalgSheet: View {
                         kundeTelefon: telefon.trimmingCharacters(in: .whitespaces),
                         kundeEpost: epost.contains("@") ? epost.trimmingCharacters(in: .whitespaces) : nil,
                         ringBekreftet: ringBekreftet,
-                        samtykkeTekst: samtykkeTekst))
+                        samtykkeTekst: samtykkeTekst,
+                        projectId: projectId,
+                        idempotencyKey: UUID().uuidString))
                     withAnimation(.easeInOut(duration: 0.3)) { visKvittering = true }
                 } label: {
                     Text("Registrer salg")

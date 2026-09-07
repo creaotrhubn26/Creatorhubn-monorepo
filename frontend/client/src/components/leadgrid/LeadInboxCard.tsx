@@ -2,15 +2,15 @@
  * LeadInboxCard.tsx
  *
  * Card på markedssjef-/super-admin-dashboard som viser nye leads
- * med ferdig auto-research. "Godta som prosjekt"-knapp er den
- * sentrale CTA-en.
+ * med ferdig auto-research. Kildeleaden promoteres til en CRM-lead i et
+ * eksplisitt kundeprosjekt før en separat tildelingsflyt kan åpnes.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Box, Card, CardContent, Stack, Typography, Chip, Button, IconButton,
   Tooltip, Dialog, DialogTitle, DialogContent, DialogActions,
-  Snackbar, Alert, CircularProgress, Divider,
+  Snackbar, Alert, CircularProgress, Divider, TextField, MenuItem,
 } from "@mui/material";
 import LocalFireDepartmentIcon from "@mui/icons-material/LocalFireDepartment";
 import WhatshotIcon from "@mui/icons-material/Whatshot";
@@ -21,6 +21,12 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import VerifiedUserIcon from "@mui/icons-material/VerifiedUser";
 import { AssignLeadDialog } from "./AssignLeadDialog";
+import {
+  buildAgencyLeadPromotionBody,
+  parseAgencyLeadPromotion,
+  type LeadgridProjectOption,
+  type PromotedLeadReference,
+} from "./leadInboxPromotionContract";
 
 interface Lead {
   id: string;
@@ -50,45 +56,170 @@ const TEMP_CONFIG: Record<string, { color: any; icon: React.ReactNode; label: st
   cold: { color: "default", icon: <AcUnitIcon />,   label: "COLD lead",        bg: "rgba(155,155,155,0.10)" },
 };
 
+function safeExternalWebsite(value: string | null): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(
+      /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`,
+    );
+    return ["http:", "https:"].includes(url.protocol) ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 export function LeadInboxCard() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
+  const [projects, setProjects] = useState<LeadgridProjectOption[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [projectError, setProjectError] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState(() =>
+    typeof window === "undefined"
+      ? ""
+      : localStorage.getItem("rr_lead_map_active_project") ?? "",
+  );
   const [selected, setSelected] = useState<Lead | null>(null);
-  const [assigningLead, setAssigningLead] = useState<Lead | null>(null);
+  const [assigningLead, setAssigningLead] = useState<{
+    source: Lead;
+    promotion: PromotedLeadReference;
+  } | null>(null);
+  const [promotingLeadId, setPromotingLeadId] = useState<string | null>(null);
+  const promotionInFlight = useRef(false);
   const [snack, setSnack] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
+
+  const selectedProject = projects.find((project) => project.id === projectId) ?? null;
+
+  const authHeaders = (): HeadersInit => {
+    const token = typeof window === "undefined"
+      ? null
+      : localStorage.getItem("rr_bearer");
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
 
   const load = async () => {
     setLoading(true);
     try {
-      const r = await fetch("/api/superadmin/leads/inbox", { credentials: "include" });
+      const r = await fetch("/api/superadmin/leads/inbox", {
+        credentials: "include",
+        headers: authHeaders(),
+      });
       if (r.ok) setLeads((await r.json()).items ?? []);
+      else setSnack({ kind: "err", msg: "Kunne ikke hente innboksen" });
+    } catch {
+      setSnack({ kind: "err", msg: "Kunne ikke hente innboksen" });
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadProjects = async () => {
+      setProjectsLoading(true);
+      setProjectError(null);
+      try {
+        const organizationId = typeof window === "undefined"
+          ? null
+          : localStorage.getItem("rr_lead_map_active_org");
+        const query = new URLSearchParams();
+        if (organizationId) query.set("organization_id", organizationId);
+        const response = await fetch(
+          `/api/admin-room/lead-map/projects${query.size ? `?${query}` : ""}`,
+          {
+            credentials: "include",
+            headers: authHeaders(),
+            signal: controller.signal,
+          },
+        );
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body?.message ?? body?.error ?? "Kunne ikke hente prosjekter");
+        }
+        const nextProjects: LeadgridProjectOption[] = Array.isArray(body.projects)
+          ? body.projects.filter((project: unknown): project is LeadgridProjectOption => {
+              if (!project || typeof project !== "object") return false;
+              const row = project as Record<string, unknown>;
+              return typeof row.id === "string" &&
+                typeof row.organizationId === "string" &&
+                typeof row.name === "string";
+            })
+          : [];
+        setProjects(nextProjects);
+        setProjectId((current) => {
+          if (nextProjects.some((project) => project.id === current)) return current;
+          return nextProjects.length === 1 ? nextProjects[0].id : "";
+        });
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setProjects([]);
+          setProjectError(
+            error instanceof Error ? error.message : "Kunne ikke hente prosjekter",
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) setProjectsLoading(false);
+      }
+    };
+    void loadProjects();
+    void load();
+    return () => controller.abort();
+  }, []);
 
-  const accept = async (lead: Lead, assignment?: {
-    assigned_team_leader_id: string | null;
-    assigned_rep_id: string | null;
-    assignment_note: string | null;
-  }) => {
-    const body = assignment ?? {};
-    const r = await fetch(`/api/superadmin/leads/${lead.id}/accept-as-project`, {
-      method: "POST", credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const j = await r.json();
-    if (r.ok) {
-      const msg = assignment?.assigned_team_leader_id
-        ? `${lead.agency_name} lagt til + tildelt!`
-        : `${lead.agency_name} lagt til som prosjekt!`;
-      setSnack({ kind: "ok", msg });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (projectId) localStorage.setItem("rr_lead_map_active_project", projectId);
+    else localStorage.removeItem("rr_lead_map_active_project");
+  }, [projectId]);
+
+  const accept = async (lead: Lead, openAssignment = false) => {
+    if (promotionInFlight.current) return;
+    if (!selectedProject) {
+      setSnack({ kind: "err", msg: "Velg et Leadgrid-prosjekt først" });
+      return;
+    }
+    const targetProjectId = selectedProject.id;
+    promotionInFlight.current = true;
+    setPromotingLeadId(lead.id);
+    try {
+      const response = await fetch(
+        `/api/superadmin/leads/${encodeURIComponent(lead.id)}/accept-as-project`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify(buildAgencyLeadPromotionBody(targetProjectId)),
+        },
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body?.message ?? body?.error ?? "Kunne ikke legge til leadet");
+      }
+      const promotion = parseAgencyLeadPromotion(body, {
+        agencyLeadId: lead.id,
+        projectId: targetProjectId,
+      });
       setSelected(null);
-      setAssigningLead(null);
-      await load();
-    } else {
-      setSnack({ kind: "err", msg: j?.details ?? "Feilet" });
+      if (openAssignment) {
+        setAssigningLead({ source: lead, promotion });
+        setSnack({
+          kind: "ok",
+          msg: `${lead.agency_name} er lagret i ${selectedProject.name}. Velg team.`,
+        });
+      } else {
+        setSnack({
+          kind: "ok",
+          msg: `${lead.agency_name} er lagt til i ${selectedProject.name}.`,
+        });
+        await load();
+      }
+    } catch (error) {
+      setSnack({
+        kind: "err",
+        msg: error instanceof Error ? error.message : "Kunne ikke legge til leadet",
+      });
+    } finally {
+      promotionInFlight.current = false;
+      setPromotingLeadId(null);
     }
   };
 
@@ -97,42 +228,90 @@ export function LeadInboxCard() {
     if (!reason) return;
     const r = await fetch(`/api/superadmin/leads/${lead.id}/reject`, {
       method: "POST", credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ reason }),
     });
-    if (r.ok) { setSnack({ kind: "ok", msg: "Avvist" }); setSelected(null); load(); }
+    if (r.ok) {
+      setSnack({ kind: "ok", msg: "Avvist" });
+      setSelected(null);
+      void load();
+    } else {
+      setSnack({ kind: "err", msg: "Kunne ikke avvise leadet" });
+    }
   };
 
   const retry = async (lead: Lead) => {
     await fetch(`/api/superadmin/leads/${lead.id}/retry-research`, {
       method: "POST", credentials: "include",
+      headers: authHeaders(),
     });
     setSnack({ kind: "ok", msg: "Research re-trigget — sjekk igjen om noen sekunder" });
   };
 
-  if (loading) {
-    return <Card><CardContent sx={{ textAlign: "center", py: 4 }}><CircularProgress /></CardContent></Card>;
-  }
-
-  if (leads.length === 0) {
-    return (
-      <Card>
-        <CardContent>
-          <Typography variant="body2" color="text.secondary"
-                      sx={{ textAlign: "center", py: 3 }}>
-            Ingen nye leads med ferdig research akkurat nå.
-          </Typography>
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
     <>
       <Stack spacing={2}>
-        {leads.map((lead) => {
+        <Card variant="outlined">
+          <CardContent>
+            <Stack direction={{ xs: "column", md: "row" }} spacing={2}
+                   alignItems={{ md: "center" }}>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                  Målprosjekt i Leadgrid
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Leadet persisteres i dette prosjektet før tildeling kan åpnes.
+                </Typography>
+              </Box>
+              <TextField
+                select
+                size="small"
+                label="Aktivt kundeprosjekt"
+                value={projectId}
+                onChange={(event) => setProjectId(event.target.value)}
+                disabled={projectsLoading || projects.length === 0 || !!promotingLeadId}
+                sx={{ minWidth: { xs: "100%", md: 280 } }}
+              >
+                <MenuItem value="" disabled>Velg prosjekt</MenuItem>
+                {projects.map((project) => (
+                  <MenuItem key={project.id} value={project.id}>{project.name}</MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+            {projectsLoading && (
+              <Stack direction="row" spacing={1} alignItems="center" mt={1}>
+                <CircularProgress size={14} />
+                <Typography variant="caption">Henter tilgjengelige prosjekter…</Typography>
+              </Stack>
+            )}
+            {!projectsLoading && (projectError || projects.length === 0) && (
+              <Alert severity="error" sx={{ mt: 1 }}>
+                {projectError ?? "Ingen tilgjengelige Leadgrid-prosjekter. Opprett eller få tilgang til et prosjekt først."}
+              </Alert>
+            )}
+            {!projectsLoading && projects.length > 1 && !selectedProject && (
+              <Alert severity="warning" sx={{ mt: 1 }}>
+                Velg hvilket kundeprosjekt leadet skal tilhøre. Vi velger aldri automatisk mellom flere prosjekter.
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+
+        {loading ? (
+          <Card><CardContent sx={{ textAlign: "center", py: 4 }}><CircularProgress /></CardContent></Card>
+        ) : leads.length === 0 ? (
+          <Card>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary"
+                          sx={{ textAlign: "center", py: 3 }}>
+                Ingen nye leads med ferdig research akkurat nå.
+              </Typography>
+            </CardContent>
+          </Card>
+        ) : leads.map((lead) => {
           const t = TEMP_CONFIG[lead.claude_temperature ?? "cool"];
           const isResearching = lead.research_status === "running" || lead.research_status === "pending";
+          const isPromoting = promotingLeadId === lead.id;
           return (
             <Card key={lead.id} sx={{
               bgcolor: t.bg,
@@ -204,14 +383,14 @@ export function LeadInboxCard() {
                   <Stack spacing={1} sx={{ minWidth: { md: 200 } }}>
                     <Button variant="contained" color="success"
                             startIcon={<CheckCircleIcon />}
-                            onClick={() => setAssigningLead(lead)}
-                            disabled={isResearching}>
-                      Godta + tildel
+                            onClick={() => void accept(lead, true)}
+                            disabled={isResearching || !!promotingLeadId || !selectedProject}>
+                      {isPromoting ? "Legger til…" : "Legg til + tildel"}
                     </Button>
                     <Button variant="outlined" size="small"
-                            onClick={() => accept(lead)}
-                            disabled={isResearching}>
-                      Godta uten tildeling
+                            onClick={() => void accept(lead)}
+                            disabled={isResearching || !!promotingLeadId || !selectedProject}>
+                      Legg til uten tildeling
                     </Button>
                     <Button variant="outlined" size="small"
                             onClick={() => setSelected(lead)}>
@@ -239,21 +418,32 @@ export function LeadInboxCard() {
 
       {selected && (
         <LeadDetailsDialog lead={selected} onClose={() => setSelected(null)}
-                            onAccept={() => accept(selected)}
-                            onReject={() => reject(selected)} />
+                            onAccept={() => void accept(selected)}
+                            onReject={() => reject(selected)}
+                            canAccept={!!selectedProject}
+                            accepting={promotingLeadId === selected.id} />
       )}
 
       {assigningLead && (
         <AssignLeadDialog open
-          onClose={() => setAssigningLead(null)}
-          customerId={assigningLead.id}
-          lead={{
-            agency_name: assigningLead.agency_name,
-            contact_name: assigningLead.contact_name,
-            claude_temperature: assigningLead.claude_temperature ?? undefined,
+          onClose={() => {
+            setAssigningLead(null);
+            void load();
           }}
-          mode="accept" level="both"
-          onSubmit={async (data) => { await accept(assigningLead, data); }} />
+          customerId={assigningLead.promotion.crmLeadId}
+          projectId={assigningLead.promotion.projectId}
+          lead={{
+            agency_name: assigningLead.source.agency_name,
+            contact_name: assigningLead.source.contact_name,
+            claude_temperature: assigningLead.source.claude_temperature ?? undefined,
+          }}
+          mode="assign" level="both"
+          onComplete={() => {
+            setSnack({
+              kind: "ok",
+              msg: `${assigningLead.source.agency_name} er lagt til og tildelt.`,
+            });
+          }} />
       )}
 
       <Snackbar open={!!snack} autoHideDuration={4000} onClose={() => setSnack(null)}>
@@ -264,9 +454,15 @@ export function LeadInboxCard() {
   );
 }
 
-function LeadDetailsDialog({ lead, onClose, onAccept, onReject }: {
-  lead: Lead; onClose: () => void; onAccept: () => void; onReject: () => void;
+function LeadDetailsDialog({ lead, onClose, onAccept, onReject, canAccept, accepting }: {
+  lead: Lead;
+  onClose: () => void;
+  onAccept: () => void;
+  onReject: () => void;
+  canAccept: boolean;
+  accepting: boolean;
 }) {
+  const website = safeExternalWebsite(lead.website);
   return (
     <Dialog open onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>
@@ -325,10 +521,10 @@ function LeadDetailsDialog({ lead, onClose, onAccept, onReject }: {
           </Box>
         )}
 
-        {lead.website && (
+        {website && (
           <Box mb={2}>
             <Typography variant="caption" sx={{ display: "block" }}>
-              <Box component="a" href={lead.website} target="_blank"
+              <Box component="a" href={website} target="_blank" rel="noreferrer"
                    sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}>
                 Åpne hjemmesiden <OpenInNewIcon sx={{ fontSize: 14 }} />
               </Box>
@@ -340,8 +536,9 @@ function LeadDetailsDialog({ lead, onClose, onAccept, onReject }: {
         <Button color="error" onClick={onReject}>Avvis</Button>
         <Button onClick={onClose}>Lukk</Button>
         <Button variant="contained" color="success" onClick={onAccept}
+                disabled={!canAccept || accepting}
                 startIcon={<CheckCircleIcon />}>
-          Godta som prosjekt
+          {accepting ? "Legger til…" : "Legg til i Leadgrid"}
         </Button>
       </DialogActions>
     </Dialog>

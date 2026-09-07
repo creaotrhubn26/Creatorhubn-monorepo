@@ -15,7 +15,7 @@
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 import { requireLeadMapPermission } from "./lead-map-rbac-helper.js";
-import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
+import { hasLeadgridProjectsViewAllAccess } from "./leadgrid-project-access.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -71,14 +71,13 @@ export function registerLeadPortfolioRoutes({ app, pool, activeSessions }: Deps)
 
       // Per-prosjekt-tilgang: Hvis bruker har 'projects.view_all' →
       // ser alle. Ellers begrenset til prosjekter de er medlem av
-      // via project_members. Organisasjonen styrer selv hvem som
+      // via leadgrid_project_members. Organisasjonen styrer selv hvem som
       // får view_all via RBAC (mig 0307 + per-bruker overstyringer).
       let canViewAll = false;
       try {
-        const { permissions } = await resolveEffectivePermissions(
-          pool, orgId, session.userId,
-        );
-        canViewAll = permissions.has("projects.view_all");
+        canViewAll = await hasLeadgridProjectsViewAllAccess(pool, {
+          organizationId: orgId, userId: session.userId,
+        });
       } catch { canViewAll = false; }
 
       const orderBy = sort === "recent"
@@ -96,11 +95,18 @@ export function registerLeadPortfolioRoutes({ app, pool, activeSessions }: Deps)
         params.push(statusFilter);
         conditions.push(`cp.status = $${params.length}`);
       }
-      // Hvis bruker IKKE har view_all → filter på project_members
+      // Hvis bruker IKKE har view_all → filter på Leadgrid-prosjektmedlemskap
       if (!canViewAll) {
         params.push(session.userId);
-        conditions.push(`cp.id IN (
-          SELECT project_id FROM project_members WHERE user_id = $${params.length}
+        conditions.push(`(
+          cp.created_by = $${params.length}
+          OR EXISTS (
+            SELECT 1
+              FROM leadgrid_project_members pm
+             WHERE pm.organization_id = cp.organization_id
+               AND pm.project_id = cp.id
+               AND pm.user_id = $${params.length}
+          )
         )`);
       }
 
@@ -132,26 +138,36 @@ export function registerLeadPortfolioRoutes({ app, pool, activeSessions }: Deps)
                     lead_category, ai_opportunity_score, claude_ranked_at,
                     tags
                FROM crm_customers
-              WHERE project_id = cp.id
+              WHERE organization_id = cp.organization_id
+                AND project_id = cp.id
+                AND archived_at IS NULL
               ORDER BY ai_opportunity_score DESC NULLS LAST
               LIMIT 1
            ) cc ON true
            LEFT JOIN LATERAL (
              SELECT count(*) AS count FROM crm_customer_needs
-              WHERE customer_id = cc.id::text
+              WHERE organization_id = cp.organization_id
+                AND project_id = cp.id
+                AND customer_id = cc.id::text
                 AND status IN ('detected', 'accepted')
            ) needs ON true
            LEFT JOIN LATERAL (
              SELECT count(*) AS count FROM crm_customer_signals
-              WHERE customer_id = cc.id::text AND polarity = 'positive'
+              WHERE organization_id = cp.organization_id
+                AND project_id = cp.id
+                AND customer_id = cc.id::text AND polarity = 'positive'
            ) sig_pos ON true
            LEFT JOIN LATERAL (
              SELECT count(*) AS count FROM crm_customer_signals
-              WHERE customer_id = cc.id::text AND polarity = 'negative'
+              WHERE organization_id = cp.organization_id
+                AND project_id = cp.id
+                AND customer_id = cc.id::text AND polarity = 'negative'
            ) sig_neg ON true
            LEFT JOIN LATERAL (
              SELECT started_at FROM crm_customer_scout_runs
-              WHERE customer_id = cc.id::text AND status = 'completed'
+              WHERE organization_id = cp.organization_id
+                AND project_id = cp.id
+                AND customer_id = cc.id::text AND status = 'completed'
               ORDER BY started_at DESC LIMIT 1
            ) last_run ON true
            WHERE ${conditions.join(" AND ")}
@@ -172,18 +188,25 @@ export function registerLeadPortfolioRoutes({ app, pool, activeSessions }: Deps)
              FROM leadgrid_projects cp
              LEFT JOIN LATERAL (
                SELECT ai_opportunity_score FROM crm_customers
-                WHERE project_id = cp.id
+                WHERE organization_id = cp.organization_id
+                  AND project_id = cp.id
+                  AND archived_at IS NULL
                 ORDER BY ai_opportunity_score DESC NULLS LAST LIMIT 1
              ) cc ON true
              LEFT JOIN LATERAL (
                SELECT count(*) AS count FROM crm_customer_needs
-                WHERE customer_id::text IN (
-                  SELECT id::text FROM crm_customers WHERE project_id = cp.id
+                WHERE organization_id = cp.organization_id
+                  AND project_id = cp.id
+                  AND customer_id::text IN (
+                  SELECT id::text FROM crm_customers
+                   WHERE organization_id = cp.organization_id
+                     AND project_id = cp.id
+                     AND archived_at IS NULL
                 )
                   AND status IN ('detected', 'accepted')
              ) needs ON true
-            WHERE cp.organization_id = $1 AND cp.project_type = 'kundeprosjekt'`,
-          [orgId],
+            WHERE ${conditions.join(" AND ")}`,
+          params,
         );
 
         return res.json({
